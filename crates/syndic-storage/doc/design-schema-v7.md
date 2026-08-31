@@ -1,6 +1,6 @@
 # V7 Persisted Schema
 
-This supplement is the closed compatibility authority for the `syndic` domain at schema V7. It owns
+This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
 the complete 67-primary plus 23-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
@@ -18,8 +18,8 @@ change persisted bytes.
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
   `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
   `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V3; every other
-  V7 family uses record V1. V7 is one clean incompatible schema: V6 domain values and V2 records in
-  those three replaced families are not accepted, migrated, dual-written, or adapted.
+  V7 family uses record V1. V6 domain values and V2 records in those three replaced families are
+  rejected rather than accepted, migrated, dual-written, or adapted.
 - The Rust boundary values remain `DraftPieceBuildRecordV1`,
   `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
   semantic API shapes; the enclosing family codec version is V3 and the digest domains are
@@ -924,7 +924,7 @@ canonical byte comparison of the point-read target closure.
   investigation may enumerate unreachable history. It accepts a retained turn only when its complete
   natural parent closure, indexes, items, projections, resources, and provenance remain internally
   coherent. A missing parent is corruption, not valid unreachable history.
-## Draft-Marker Label-Readiness Compatibility
+## Draft-Marker Label-Readiness Byte Contract
 
 The label-readiness page protocol is a cross-domain byte contract and is an intentional exception to
 the stored-key integer order above. Its HomeStore fixed-32-byte-digest protocol id is

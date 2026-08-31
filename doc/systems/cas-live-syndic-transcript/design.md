@@ -234,6 +234,19 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Recovered Syndic history is never an ordinary per-turn payload. A successful injection starts no
   model turn and is recorded once in the new binding. The injected prefix is never resent on later
   `turn/start` or `turn/steer` requests.
+- Recovery injection uses one domain-separated source identity derived from the exact home,
+  Syndic thread, selected path, represented prefix, source revision, totals, and sequence digest.
+  That complete identity, not a page handle or caller-chosen proof, binds the bounded injected
+  sequence across the storage and provider boundary.
+- After exact CAS recovery injection succeeds, Beryl observes Unix completion time immediately
+  then. The earlier request timestamp is never substituted or relabeled as injection completion;
+  only this post-success completion observation may feed durable recovered-injection publication
+  and its ordering authority.
+- Failed or ambiguous fresh-target publication returns no projection capability and uses targeted
+  natural-record reconciliation of that exact opaque binding-publication scope. Only `ExactNew`
+  followed by a reread of the named complete eligible binding may establish another fresh
+  projection. An ambiguous, uncommitted, or otherwise stale target remains non-authorizing
+  provenance and cannot be promoted through resume or reinjection.
 - Repair-required history is not eligible for fork, rollback, compaction, or injection. A turn that has converged explicitly incomplete is eligible only where the owning feature and pinned CAS lineage contract explicitly permit that incomplete boundary; it is never presented as repaired.
 
 ## Branch Selection Context
@@ -296,6 +309,9 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Context compaction is a CAS provider operation on one exact idle exclusive projection. It is not an ordinary conversation turn and does not change Syndic parentage or represented-prefix identity.
 - Admission requires a healthy store, an idle same-thread gate, no accepted-next work, no repair-required turn, and an exact valid foreground projection.
 - One durable operation and one request-attempt identity authorize at most one `thread/compact/start` dispatch. Possible dispatch is never retried automatically.
+- The random durable operation identity is retyped as the provider-operation turn identity. The
+  snapshot identity is the system-owned domain-separated hash of the complete admission target;
+  callers cannot choose, shorten, or substitute either identity.
 - Exact success requires the pinned completed compaction item and matching successful terminal evidence in order. Acknowledgement, timeout, an idle observation, or item completion alone is insufficient.
 - Accepted input during compaction is durable ordered next-turn work.
 - Soft stop may target compaction only after its exact CAS turn identity is durably known and the

@@ -3,7 +3,7 @@
 Provide the reusable production storage boundary for Syndic-owned durable threads, drafts,
 conversation history, capture records, projections, and immutable resources inside the Beryl home.
 
-Keep routine reads, recovery, and mutations bounded while preserving exact persisted compatibility,
+Keep routine reads, recovery, and mutations bounded while preserving the exact persisted V7 format,
 atomic publication, and typed failure outcomes.
 
 Keep Fjall access and physical home ownership behind `beryl-home-store` while exposing only typed
@@ -29,7 +29,7 @@ This entry point defines the package boundary and governs the following normativ
   marker, candidate, staging, history, materialization, restoration, and sealed-text contracts.
 - [`design-history-storage.md`](design-history-storage.md) owns durable thread, conversation-history,
   capture, projection, resource, recovery, and privacy record semantics.
-- [`design-schema-v7.md`](design-schema-v7.md) is the closed byte-compatibility authority for the V7
+- [`design-schema-v7.md`](design-schema-v7.md) is the sole persisted byte-format authority for the V7
   domain, all 90 families, codecs, canonical encodings, bounds, and structural proofs.
 - [`design-mutation-protocols.md`](design-mutation-protocols.md) owns package-generic revision,
   publication, replay, custody, cancellation, reconciliation, and acknowledgement-loss rules.
@@ -131,7 +131,7 @@ documentation set.
 
 The package is a persistent-state boundary shared by UI, background projection, capture, and
 recovery services. Every persisted key, value, version, digest preimage, ordering rule, revision
-transition, and replay classification is compatibility-sensitive. Arithmetic is checked; decoding
+transition, and replay classification is part of the exact V7 format. Arithmetic is checked; decoding
 is canonical and fail-closed; writes are atomic; work and retained memory are explicitly bounded;
 and ambiguous outcomes preserve single-owner custody until exact durable reconciliation.
 

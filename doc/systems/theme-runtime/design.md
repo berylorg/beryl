@@ -32,7 +32,7 @@ authority.
   storage. It also owns
   typed storage and revision behavior for the scalar active-theme identity; installed documents and
   order never enter the Settings keyspace.
-- [beryl-app](../../../crates/beryl-app/doc/design.md) consumes that service, assembles the process-
+- [beryl-app](../../../crates/beryl-app/doc/design-feature-adapters.md) consumes that service, assembles the process-
   wide publication and preview coordinator, and owns only GPUI adapters, window subscription, and
   bounded UI bridges. It does not parse repository files, become durable theme authority, or
   expose GPUI handles to repository and tool workers.

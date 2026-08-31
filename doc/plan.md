@@ -18,37 +18,25 @@ in the active rework tracker until their own bounded slices are ready. Functiona
 normally; sustained stress or performance work requires a concrete unresolved question and prior
 Operator AC-power coordination.
 
-# Phase 229: Initialize Repo-Local Project-Docs Retrieval (finished)
+# Phase 231: Split Remaining Oversized Package Authorities (finished)
 
-Pinned rag-rat 0.23.0 to the ignored repository-local `.rag-rat/index.sqlite`, installed the
-configured local embedding model, registered the project-scoped MCP server, and indexed exactly 393
-approved Markdown files. Repeated foreground reconciliation returned `Current` with zero failed or
-blocked chunks; doctor, hybrid retrieval, exact-scope enumeration, diff checks, and independent
-semantic review passed. The 0.23.0 bootstrap and `SkipTooSmall` reporting caveat is preserved in
-`doc/failures/rag-rat-0.23.0-project-docs-bootstrap.md`.
-
-# Phase 230: Reconcile And Split Syndic Storage Authority (finished)
-
-Reduced the 3,632-line, 329 KB `syndic-storage` monolith to a 143-line entry point and four bounded
-normative supplements for draft storage, history storage, V7 byte compatibility, and mutation
-protocols. The resulting authority is 1,529 lines and 120 KB, retains the exact 67-primary plus
-23-index schema inventory and all compatibility, integrity, recovery, privacy, and rigor contracts,
-and removes duplicated lifecycle policy, implementation calculations, test narration, and dangling
-monolith references. Adjacent authorities required no changes. Repeated rag-rat barriers ended
-`Current` with zero failed or blocked chunks; exact-constant comparison, links, formatting, scoped
-diff checks, and fresh semantic completion review passed.
-
-# Phase 231: Split Remaining Oversized Package Authorities (pending)
-
-Split the approved `beryl-app`, `beryl-backend`, `beryl-home-store`, and `beryl-state` package
-designs into bounded normative supplements, tighten authority placement, update necessary direct
-references, and verify the complete project-doc index remains current.
+Split the four oversized package designs into concise entry points and 18 bounded normative
+supplements. Their combined authority fell from 3,478 lines and 313 KB to 1,641 lines and 139 KB
+while preserving exact package-owned public contracts, formats, identities, bounds, failures,
+custody, dependency assumptions, and rigor. Derived calculations, test and implementation
+narration, history, and duplicated feature or system policy were removed. Repeated rag-rat barriers
+ended `Current` with zero failed or blocked chunks; exact monolith comparisons, links, formatting,
+scoped diff checks, and fresh independent semantic reviews passed.
 
 # Phase 232: Mount Native-Lineage Compact Restoration (pending)
 
 Phase 228 is sealed and pushed at commit `890b139`; no native-lineage compact-restoration source or
 test work has begun. Resume by rereading this plan and the active rework tracker, then mark this
 phase `wip` only when implementation starts.
+
+Operator restart gate: do not begin this phase in the current Codex process. After Codex restarts,
+verify the project-scoped rag-rat MCP with `index_status` and a focused `semantic_search` before
+resuming implementation.
 
 Mount native-lineage loading, unavailable, failure, and ready states, and carry unmount or true
 rebind through the existing payload-free compact restoration seed. Preserve exact draft identity,

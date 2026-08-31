@@ -30,7 +30,8 @@ confusing current drafts with submitted transcript history or image identity.
 - Image behavior is defined in `doc/features/image-assets/design.md` and
   `doc/systems/image-assets/design.md`, with its package boundary in
   `crates/beryl-state/doc/design.md`.
-- Composer workflow coordination is defined by `crates/beryl-app/doc/design.md`.
+- Composer workflow coordination is defined by the
+  [beryl-app catalog and composer supplement](../../../crates/beryl-app/doc/design-catalog-and-composer.md).
 
 ## Durable Mutation Reconciliation
 
