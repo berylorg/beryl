@@ -26,6 +26,15 @@ use crate::{
     },
 };
 
+mod attempt;
+mod terminal;
+
+pub(crate) use attempt::{
+    DraftMarkerAdmissionAttemptReservation, DraftMarkerAdmissionLiveAuthorityV1,
+    DraftMarkerAdmissionPreparedAttempt,
+};
+pub(crate) use terminal::CancelTransient;
+
 #[derive(Debug)]
 pub(crate) enum DraftMarkerAdmissionAttachmentError {
     Read(ReadError),
@@ -75,6 +84,7 @@ enum ReconstructedHeadClass {
 }
 
 struct ReconstructedHead {
+    owner: DraftMarkerAdmissionOwnerV1,
     class: ReconstructedHeadClass,
 }
 
@@ -93,71 +103,22 @@ enum OperationDisposition {
     UncertainClosed,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum OperationAttempt {
+    Idle,
+    Prepared(DraftMarkerAdmissionCommandIdV1),
+    Dispatched(DraftMarkerAdmissionCommandIdV1),
+}
+
 struct OperationReservation {
     owner: DraftMarkerAdmissionOwnerV1,
     frontier: u64,
-    active_attempt: Option<DraftMarkerAdmissionCommandIdV1>,
+    attempt: OperationAttempt,
+    durable_or_indeterminate: bool,
     disposition: OperationDisposition,
     destination: SyndicThreadId,
     authority: DraftMarkerLabelReadinessRequestAuthorityV1,
     allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
-}
-
-#[derive(Clone)]
-pub(crate) struct DraftMarkerAdmissionLiveAuthorityV1 {
-    pub(crate) authority: DraftMarkerLabelReadinessRequestAuthorityV1,
-    pub(crate) allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
-}
-
-pub(crate) struct DraftMarkerAdmissionAttemptReservation {
-    pub(crate) was_present: bool,
-}
-
-pub(crate) struct DraftMarkerAdmissionPreparedAttempt {
-    state: Option<Arc<Mutex<AttachmentState>>>,
-    owner: DraftMarkerAdmissionOwnerV1,
-    attempt: DraftMarkerAdmissionCommandIdV1,
-    was_present: bool,
-    allocation_range: Option<DraftMarkerLabelAllocationRangeV1>,
-}
-
-impl DraftMarkerAdmissionPreparedAttempt {
-    pub(crate) const fn allocation_range(&self) -> Option<DraftMarkerLabelAllocationRangeV1> {
-        self.allocation_range
-    }
-
-    pub(crate) fn disarm(mut self) -> DraftMarkerAdmissionAttemptReservation {
-        self.state = None;
-        DraftMarkerAdmissionAttemptReservation {
-            was_present: self.was_present,
-        }
-    }
-}
-
-impl Drop for DraftMarkerAdmissionPreparedAttempt {
-    fn drop(&mut self) {
-        let Some(state) = self.state.take() else {
-            return;
-        };
-        let Ok(mut state) = state.lock() else {
-            return;
-        };
-        let Some(index) = state
-            .operations
-            .iter()
-            .position(|entry| entry.owner == self.owner)
-        else {
-            return;
-        };
-        if state.operations[index].active_attempt != Some(self.attempt) {
-            return;
-        }
-        if self.was_present {
-            state.operations[index].active_attempt = None;
-        } else {
-            state.operations.remove(index);
-        }
-    }
 }
 
 pub(crate) struct DraftMarkerAdmissionAttachment {
@@ -181,194 +142,6 @@ impl DraftMarkerAdmissionAttachment {
         };
         Ok(Self {
             state: Arc::new(Mutex::new(state)),
-        })
-    }
-
-    pub(crate) fn prepare_attempt(
-        &self,
-        owner: DraftMarkerAdmissionOwnerV1,
-        attempt: DraftMarkerAdmissionCommandIdV1,
-        frontier: u64,
-        authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
-        allocation_count: Option<u64>,
-    ) -> Result<DraftMarkerAdmissionPreparedAttempt, ()> {
-        let mut state = self.state.lock().map_err(|_| ())?;
-        if state.retired {
-            return Err(());
-        }
-        if let Some(index) = state
-            .operations
-            .iter()
-            .position(|entry| entry.owner == owner)
-        {
-            let operation = &state.operations[index];
-            if operation.disposition != OperationDisposition::Open
-                || operation.active_attempt.is_some()
-                || operation.destination != authority.session.thread_id()
-                || operation.authority != *authority
-            {
-                return Err(());
-            }
-            if reserve_allocation_if_needed(&mut state, owner, authority, allocation_count).is_err()
-            {
-                state.operations[index].disposition = OperationDisposition::UncertainClosed;
-                return Err(());
-            }
-            state.operations[index].active_attempt = Some(attempt);
-            return Ok(DraftMarkerAdmissionPreparedAttempt {
-                state: Some(Arc::clone(&self.state)),
-                owner,
-                attempt,
-                was_present: true,
-                allocation_range: state.operations[index].allocation_range,
-            });
-        }
-        if state.operations.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
-            return Err(());
-        }
-        let allocation_range = allocation_range(&state, authority, allocation_count)?;
-        state.operations.push(OperationReservation {
-            owner,
-            frontier,
-            active_attempt: Some(attempt),
-            disposition: OperationDisposition::Open,
-            destination: authority.session.thread_id(),
-            authority: authority.clone(),
-            allocation_range,
-        });
-        Ok(DraftMarkerAdmissionPreparedAttempt {
-            state: Some(Arc::clone(&self.state)),
-            owner,
-            attempt,
-            was_present: false,
-            allocation_range,
-        })
-    }
-
-    pub(crate) fn finish_submission(
-        &self,
-        owner: DraftMarkerAdmissionOwnerV1,
-        attempt: DraftMarkerAdmissionCommandIdV1,
-        retain_operation: bool,
-        uncertain_closed: bool,
-        frontier: u64,
-    ) -> Result<(), ()> {
-        let mut state = self.state.lock().map_err(|_| ())?;
-        if state.retired {
-            return Err(());
-        }
-        let index = state
-            .operations
-            .iter()
-            .position(|entry| entry.owner == owner)
-            .ok_or(())?;
-        if state.operations[index].active_attempt != Some(attempt) {
-            return Err(());
-        }
-        if retain_operation {
-            let operation = &mut state.operations[index];
-            operation.active_attempt = None;
-            operation.frontier = operation.frontier.max(frontier);
-            if uncertain_closed {
-                operation.disposition = OperationDisposition::UncertainClosed;
-            }
-        } else {
-            state.operations.remove(index);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn resolve_submission(
-        &self,
-        owner: DraftMarkerAdmissionOwnerV1,
-        retain_operation: bool,
-        uncertain_closed: bool,
-        frontier: u64,
-    ) -> Result<(), ()> {
-        let mut state = self.state.lock().map_err(|_| ())?;
-        if state.retired {
-            return Err(());
-        }
-        let Some(index) = state
-            .operations
-            .iter()
-            .position(|entry| entry.owner == owner)
-        else {
-            return Ok(());
-        };
-        if state.operations[index].active_attempt.is_some() {
-            return Err(());
-        }
-        if retain_operation {
-            let operation = &mut state.operations[index];
-            operation.frontier = operation.frontier.max(frontier);
-            operation.disposition = if uncertain_closed {
-                OperationDisposition::UncertainClosed
-            } else {
-                OperationDisposition::Open
-            };
-        } else {
-            state.operations.remove(index);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn prepare_assignment_attempt(
-        &self,
-        owner: DraftMarkerAdmissionOwnerV1,
-        attempt: DraftMarkerAdmissionCommandIdV1,
-    ) -> Result<
-        (
-            DraftMarkerAdmissionPreparedAttempt,
-            DraftMarkerAdmissionLiveAuthorityV1,
-        ),
-        (),
-    > {
-        let mut state = self.state.lock().map_err(|_| ())?;
-        if state.retired {
-            return Err(());
-        }
-        let operation = state
-            .operations
-            .iter_mut()
-            .find(|entry| entry.owner == owner)
-            .ok_or(())?;
-        if operation.disposition != OperationDisposition::Open || operation.active_attempt.is_some()
-        {
-            return Err(());
-        }
-        operation.active_attempt = Some(attempt);
-        Ok((
-            DraftMarkerAdmissionPreparedAttempt {
-                state: Some(Arc::clone(&self.state)),
-                owner,
-                attempt,
-                was_present: true,
-                allocation_range: operation.allocation_range,
-            },
-            DraftMarkerAdmissionLiveAuthorityV1 {
-                authority: operation.authority.clone(),
-                allocation_range: operation.allocation_range,
-            },
-        ))
-    }
-
-    pub(crate) fn live_authority(
-        &self,
-        owner: DraftMarkerAdmissionOwnerV1,
-    ) -> Result<DraftMarkerAdmissionLiveAuthorityV1, ()> {
-        let state = self.state.lock().map_err(|_| ())?;
-        if state.retired {
-            return Err(());
-        }
-        let operation = state
-            .operations
-            .iter()
-            .find(|entry| entry.owner == owner && entry.disposition == OperationDisposition::Open)
-            .ok_or(())?;
-        Ok(DraftMarkerAdmissionLiveAuthorityV1 {
-            authority: operation.authority.clone(),
-            allocation_range: operation.allocation_range,
         })
     }
 
@@ -564,6 +337,7 @@ fn reconstruct_populated(
             .checked_add(head.charge())
             .ok_or(DraftMarkerAdmissionAttachmentError::ChargeOverflow)?;
         reconstructed.push(ReconstructedHead {
+            owner: *key,
             class: classify(head),
         });
     }
@@ -585,10 +359,11 @@ fn classify(head: &DraftMarkerAdmissionHeadV1) -> ReconstructedHeadClass {
     match head.lifecycle() {
         DraftMarkerAdmissionLifecycleV1::Ingesting
         | DraftMarkerAdmissionLifecycleV1::Assigning
-        | DraftMarkerAdmissionLifecycleV1::Ready => ReconstructedHeadClass::InertCleanup,
-        DraftMarkerAdmissionLifecycleV1::Building
-        | DraftMarkerAdmissionLifecycleV1::TerminalCleanup
-        | DraftMarkerAdmissionLifecycleV1::Settled => ReconstructedHeadClass::JointCleanup,
+        | DraftMarkerAdmissionLifecycleV1::Ready
+        | DraftMarkerAdmissionLifecycleV1::TerminalCleanup => ReconstructedHeadClass::InertCleanup,
+        DraftMarkerAdmissionLifecycleV1::Building | DraftMarkerAdmissionLifecycleV1::Settled => {
+            ReconstructedHeadClass::JointCleanup
+        }
     }
 }
 

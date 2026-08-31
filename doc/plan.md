@@ -17,19 +17,13 @@ rework tracker until their own bounded slices are ready. Functional checks run n
 stress or performance work requires a concrete unresolved question and prior Operator AC-power
 coordination.
 
-# Phase 223: Assign Draft-Marker Labels And Issue Readiness (finished)
+# Phase 224: Close And Reclaim Draft-Marker Admission (finished)
 
-Implemented disposition-specific post-EOF assignment, package-derived disjoint allocation ranges,
-one-occurrence durable tree updates, exact retained and command-byte accounting, receipt-bearing
-Ready closure, and generation-fenced move-only proof issuance. The final Phase 213/218/220/222/223
-regression slice passed 42/42, all-target checks passed, and independent semantic review found no
-remaining issue or needless complexity.
-
-# Phase 224: Close And Reclaim Draft-Marker Admission (pending)
-
-Implement cancellation before and after durable admission, inert terminal closure, incremental
-cross-restart cleanup, exact replay/collision retention, and final aggregate resource release without
-reactivating or resuming prior-generation operations.
+Implemented package-owned transient cancellation, dispatched-custody election, inert durable terminal
+closure, bounded cross-restart cleanup, exact replay/collision and retained-charge validation, and
+settlement-authority final release without reviving prior-generation work. The final Phase
+213/218/220/222/223/224 regression passed 51/51, all-target checks passed, and independent semantic
+review found no remaining issue or needless complexity.
 
 # Phase 225: Integrate Exact Ordinary Draft-Marker Writer Admission (pending)
 

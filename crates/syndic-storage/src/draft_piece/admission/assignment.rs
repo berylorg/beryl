@@ -282,7 +282,14 @@ impl SyndicStorage {
         retained_limits: super::DraftMarkerAdmissionLimitsV1,
         command_limit: AssignmentCommandLimit,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
-        let _reservation = reservation.disarm();
+        let _reservation = match reservation.disarm() {
+            Ok(reservation) => reservation,
+            Err(()) => {
+                return DraftMarkerLabelAssignmentOutcomeV1::Refused(
+                    DraftMarkerLabelAssignmentRefusalV1::Rejected,
+                );
+            }
+        };
         match store.execute_current(self.handle.current_command(AssignmentMutation {
             owner,
             command,

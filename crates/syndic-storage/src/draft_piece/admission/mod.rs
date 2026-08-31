@@ -5,12 +5,14 @@ mod model;
 mod publication;
 mod readiness_source;
 mod submission;
+mod terminal;
 mod tree;
 
 pub use assignment::*;
 pub use model::*;
 pub use readiness_source::*;
 pub use submission::*;
+pub use terminal::*;
 pub use tree::*;
 
 pub(crate) use codec::{

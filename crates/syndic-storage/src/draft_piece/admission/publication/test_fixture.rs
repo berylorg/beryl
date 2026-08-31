@@ -1,4 +1,6 @@
+use super::super::DraftMarkerAdmissionCommandIdV1;
 use super::*;
+use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits};
 
 pub struct DraftMarkerAdmissionPublicationFixtureV1 {
     seed: DraftMarkerAdmissionPublicationSeedV1,
@@ -118,6 +120,32 @@ impl SyndicStorage {
                 &DraftMarkerAdmissionReceiptKeyV1::new(owner, command),
                 family_point_limit::<DraftMarkerAdmissionReceiptsFamily>(),
             )?,
+            None if head.as_ref().is_some_and(|head| {
+                head.lifecycle() == DraftMarkerAdmissionLifecycleV1::TerminalCleanup
+            }) =>
+            {
+                let page = store.read_cursor::<SyndicDomain, DraftMarkerAdmissionReceiptsCodec>(
+                    &self.handle,
+                    &CursorRange::closed(
+                        DraftMarkerAdmissionReceiptKeyV1::new(
+                            owner,
+                            DraftMarkerAdmissionCommandIdV1::from_bytes([0; 16]),
+                        ),
+                        DraftMarkerAdmissionReceiptKeyV1::new(
+                            owner,
+                            DraftMarkerAdmissionCommandIdV1::from_bytes([u8::MAX; 16]),
+                        ),
+                    ),
+                    CursorDirection::Forward,
+                    CursorReadLimits::new(2, 512 * 1024)
+                        .expect("terminal receipt fixture limits are nonzero"),
+                )?;
+                if page.records().len() == 1 && !page.has_more() {
+                    Some(page.records()[0].value().clone())
+                } else {
+                    None
+                }
+            }
             None => None,
         };
         let mut nodes = Vec::with_capacity(node_keys.len());

@@ -41,6 +41,16 @@ pub struct DraftMarkerLabelReadinessPageSubmissionFlightV1 {
     state: SubmissionState,
 }
 
+#[cfg(feature = "test-faults")]
+impl DraftMarkerLabelReadinessPageSubmissionFlightV1 {
+    pub fn dispatch_attachment_reservation_for_test(&mut self) -> bool {
+        match &mut self.state {
+            SubmissionState::Ready { reservation, .. } => reservation.dispatch_for_test().is_ok(),
+            SubmissionState::Reconciling { .. } => false,
+        }
+    }
+}
+
 enum SubmissionState {
     Ready {
         seed: DraftMarkerAdmissionPublicationSeedV1,
@@ -75,6 +85,28 @@ impl DraftMarkerLabelReadinessPageAttemptV1 {
 }
 
 impl SyndicStorage {
+    #[cfg(feature = "test-faults")]
+    pub fn invalidate_draft_marker_admission_submission_reservation_for_test(
+        &self,
+        store: &HomeStore,
+        flight: &DraftMarkerLabelReadinessPageSubmissionFlightV1,
+    ) -> bool {
+        let SubmissionState::Ready {
+            seed,
+            page,
+            reservation: _,
+        } = &flight.state
+        else {
+            return false;
+        };
+        matches!(
+            store.with_domain_attachment(&self.handle.attachment_capability(), |attachment| {
+                attachment.invalidate_prepared_attempt_for_test(seed.owner(), page.page_identity())
+            }),
+            Ok(Ok(true))
+        )
+    }
+
     pub fn submit_draft_marker_label_readiness_page(
         &self,
         store: &HomeStore,
@@ -134,7 +166,14 @@ impl SyndicStorage {
                 );
             }
         };
-        let reservation = reservation.disarm();
+        let reservation = match reservation.disarm() {
+            Ok(reservation) => reservation,
+            Err(()) => {
+                return DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
+                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::Rejected,
+                );
+            }
+        };
         let outcome =
             store.execute_current(self.current_publish_draft_marker_admission_v1(seed, page));
         let retain_on_exact_old = had_durable_before || reservation.was_present;

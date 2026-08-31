@@ -230,8 +230,8 @@
   authority, opaque receipt custody, and no durable admission mutation.
 - [x] Extended the opaque Syndic draft-marker proof attempt to accepted local and inherited sources
   through one coherent dependency-neutral Asset witness without durable admission mutation.
-- [ ] Establish operation-owned Syndic draft-marker admission with bounded authenticated indexes,
-  home-wide cross-restart retained-resource limits, and exact package-owned replay custody.
+- [x] Established operation-owned Syndic draft-marker admission with bounded authenticated indexes,
+  cross-restart retained-resource limits, exact replay custody, and inert terminal reclamation.
 - [ ] Replace whole-payload composer mutation and residency with cursor-paged edits, durable root-
   transition history, credit-gated editor realization, compact restoration, autosave, submission,
   and very-large-draft verification.
