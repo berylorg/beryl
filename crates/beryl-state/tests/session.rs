@@ -7,9 +7,10 @@ use beryl_model::{
 };
 use beryl_state::{
     ActivateRestoringClaim, BeginSessionRestore, BerylStateBootstrap, BerylStateRegistrationError,
-    CreateClaimedWindow, InitializeThreadlessWindow, MarkOrderlyExit, RememberedTarget,
-    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionExitIntent, SessionMutationError, SessionState, UpdateWindowPlacement,
+    CreateClaimedWindow, InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit,
+    RememberedTarget, RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionExitIntent, SessionMutationError, SessionState,
+    UpdateWindowPlacement,
 };
 use tempfile::tempdir;
 
@@ -33,6 +34,10 @@ fn target(runtime: u8, root: u8) -> RememberedTarget {
 
 fn bootstrap(store: &HomeStore, session: &SessionState) -> beryl_state::MinimalSessionBootstrap {
     session.clone().minimal_bootstrap(store).unwrap().unwrap()
+}
+
+fn identity(value: u128) -> [u8; 16] {
+    value.to_be_bytes()
 }
 
 #[test]
@@ -95,6 +100,104 @@ fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes(
         bootstrap(&reopened, &reopened_state.session()).windows()[0].placement(),
         &placement
     );
+}
+
+#[test]
+fn claimed_window_capacity_commits_256_and_rejects_257_without_mutation() {
+    let directory = tempdir().unwrap();
+    let (store, state) = support::open(directory.path());
+    let session = state.session();
+    let first_window = WindowId::from_bytes(identity(1));
+    match execute(
+        &store,
+        session.initialize_threadless(
+            session.revision(&store).unwrap(),
+            InitializeThreadlessWindow::new(first_window, placement(1)),
+        ),
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed initial window, got {outcome:?}"),
+    }
+    let initial = bootstrap(&store, &session);
+    match execute(
+        &store,
+        session.replace_claim(
+            session.revision(&store).unwrap(),
+            ReplaceWindowClaim::new(
+                initial.header().revision(),
+                first_window,
+                initial.windows()[0].revision(),
+                None,
+                target(1, 1),
+                SyndicThreadId::from_bytes(identity(1)),
+            ),
+        ),
+    ) {
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome => panic!("expected committed initial claim, got {outcome:?}"),
+    }
+
+    for ordinal in 2..=MAX_RESTORABLE_WINDOWS {
+        let current = bootstrap(&store, &session);
+        let command = CreateClaimedWindow::new(
+            current.header().revision(),
+            WindowId::from_bytes(identity(ordinal as u128)),
+            target(1, 1),
+            SyndicThreadId::from_bytes(identity(ordinal as u128)),
+            placement(ordinal as i32),
+        );
+        let claim = command.catalog_claim();
+        assert_eq!(
+            claim.thread_id(),
+            SyndicThreadId::from_bytes(identity(ordinal as u128))
+        );
+        assert_eq!(
+            claim.window_id(),
+            WindowId::from_bytes(identity(ordinal as u128))
+        );
+        assert_eq!(claim.revision().get(), 1);
+        match execute(
+            &store,
+            session.create_claimed_window(session.revision(&store).unwrap(), command),
+        ) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected window {ordinal} to commit, got {outcome:?}"),
+        }
+    }
+
+    let full = bootstrap(&store, &session);
+    assert_eq!(full.windows().len(), MAX_RESTORABLE_WINDOWS);
+    let rejected_window = WindowId::from_bytes(identity(257));
+    let rejected = match execute(
+        &store,
+        session.create_claimed_window(
+            session.revision(&store).unwrap(),
+            CreateClaimedWindow::new(
+                full.header().revision(),
+                rejected_window,
+                target(1, 1),
+                SyndicThreadId::from_bytes(identity(257)),
+                placement(257),
+            ),
+        ),
+    ) {
+        CommandOutcome::NotCommitted { evidence } => evidence,
+        outcome => panic!("expected 257th window to be rejected, got {outcome:?}"),
+    };
+    assert!(matches!(
+        contributor_source::<SessionMutationError>(&rejected),
+        Some(SessionMutationError::WindowLimit)
+    ));
+    assert_eq!(bootstrap(&store, &session), full);
 }
 
 #[test]

@@ -162,6 +162,11 @@ impl CreateThread {
     pub const fn history_policy(&self) -> DraftEditHistoryPolicyV1 {
         self.history_policy
     }
+
+    #[must_use]
+    pub fn initial_catalog_summary(&self) -> ThreadCatalogSummaryRecord {
+        self.records().catalog_summary
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

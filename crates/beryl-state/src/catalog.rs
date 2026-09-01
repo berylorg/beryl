@@ -4,10 +4,12 @@ use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
     DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuildError, MutationContribution, PointReadLimit, ReadError,
-    ReadLimitError, ReconciliationReader, RecordFamily, StorageDomain,
+    ReadLimitError, ReconciliationReader, RecordFamily, StorageDomain, ValidationContribution,
 };
 use beryl_model::{DomainRevision, SyndicThreadId};
 
+#[path = "catalog/acquisition.rs"]
+mod acquisition;
 #[path = "catalog/codec.rs"]
 mod codec;
 #[path = "catalog/error.rs"]
@@ -27,9 +29,13 @@ mod validate;
 #[path = "catalog/value.rs"]
 mod value;
 
+pub use acquisition::{
+    CatalogCurrentPage, CatalogCurrentRow, CatalogCurrentRowError, CatalogCurrentScan,
+    CatalogWindowClaim,
+};
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
-pub use mutation::{MarkCatalogRowStale, PublishCatalogRow};
+pub use mutation::{MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow};
 pub use normalization::{
     CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
     CatalogNormalizedQuery,
@@ -275,11 +281,55 @@ impl CatalogState {
         })
     }
 
+    pub fn begin_current_scan(
+        &self,
+        store: &HomeStore,
+    ) -> Result<CatalogCurrentScan, CatalogReadError> {
+        acquisition::begin_current_scan(self, store)
+    }
+
+    pub fn current_page(
+        &self,
+        store: &HomeStore,
+        scan: CatalogCurrentScan,
+        after: Option<CatalogRecencyCursor>,
+        limits: CursorReadLimits,
+    ) -> Result<CatalogCurrentPage, CatalogReadError> {
+        acquisition::current_page(self, store, scan, after, limits)
+    }
+
+    pub fn current_row_source(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+        limit: CatalogPointReadLimit,
+    ) -> Result<Option<CatalogCurrentRow>, CatalogCurrentRowError> {
+        acquisition::current_row_source(self, store, thread_id, limit)
+    }
+
+    #[must_use]
+    pub fn validate_current_row(
+        &self,
+        expected_revision: DomainRevision,
+        source: CatalogCurrentRow,
+    ) -> ValidationContribution {
+        self.handle.validation(expected_revision, source)
+    }
+
     #[must_use]
     pub fn publish(
         &self,
         expected_revision: DomainRevision,
         command: PublishCatalogRow,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    #[must_use]
+    pub fn publish_claim(
+        &self,
+        expected_revision: DomainRevision,
+        command: PublishCatalogClaim,
     ) -> MutationContribution {
         self.handle.contribution(expected_revision, command)
     }
@@ -312,6 +362,13 @@ impl CatalogState {
 #[derive(Debug)]
 pub enum CatalogReadError {
     Read(ReadError),
+    RevisionChanged {
+        expected: DomainRevision,
+        current: DomainRevision,
+    },
+    StaleRow {
+        thread_id: SyndicThreadId,
+    },
     Invariant(&'static str),
 }
 
@@ -319,6 +376,15 @@ impl fmt::Display for CatalogReadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read(source) => source.fmt(formatter),
+            Self::RevisionChanged { expected, current } => write!(
+                formatter,
+                "catalog scan revision changed: expected {}, current {}",
+                expected.get(),
+                current.get()
+            ),
+            Self::StaleRow { thread_id } => {
+                write!(formatter, "catalog scan encountered stale row {thread_id}")
+            }
             Self::Invariant(message) => formatter.write_str(message),
         }
     }
@@ -328,7 +394,7 @@ impl Error for CatalogReadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Read(source) => Some(source),
-            Self::Invariant(_) => None,
+            Self::RevisionChanged { .. } | Self::StaleRow { .. } | Self::Invariant(_) => None,
         }
     }
 }
@@ -367,6 +433,22 @@ pub enum CatalogMutationError {
     IndexMismatch {
         thread_id: SyndicThreadId,
     },
+    ClaimThreadMismatch {
+        row_thread_id: SyndicThreadId,
+        claim_thread_id: SyndicThreadId,
+    },
+    ClaimSourceNotUnclaimed {
+        thread_id: SyndicThreadId,
+    },
+    ClaimFactsNotUnclaimed {
+        thread_id: SyndicThreadId,
+    },
+    CurrentRowChanged {
+        thread_id: SyndicThreadId,
+    },
+    CurrentRowStale {
+        thread_id: SyndicThreadId,
+    },
 }
 
 impl fmt::Display for CatalogMutationError {
@@ -401,6 +483,26 @@ impl fmt::Display for CatalogMutationError {
             }
             Self::IndexMismatch { thread_id } => {
                 write!(formatter, "catalog recency copy disagrees for {thread_id}")
+            }
+            Self::ClaimThreadMismatch {
+                row_thread_id,
+                claim_thread_id,
+            } => write!(
+                formatter,
+                "catalog row {row_thread_id} cannot publish a claim for {claim_thread_id}"
+            ),
+            Self::ClaimSourceNotUnclaimed { thread_id } => write!(
+                formatter,
+                "catalog row {thread_id} already has a claim source revision"
+            ),
+            Self::ClaimFactsNotUnclaimed { thread_id } => {
+                write!(formatter, "catalog row {thread_id} is already claimed")
+            }
+            Self::CurrentRowChanged { thread_id } => {
+                write!(formatter, "catalog current row changed for {thread_id}")
+            }
+            Self::CurrentRowStale { thread_id } => {
+                write!(formatter, "catalog row {thread_id} is stale")
             }
         }
     }

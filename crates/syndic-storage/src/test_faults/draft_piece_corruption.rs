@@ -232,6 +232,52 @@ pub fn rekey_draft_piece_root_for_collision(
     )
 }
 
+pub fn draft_piece_root_with_fixture_payload(
+    root: DraftPieceRootReferenceV1,
+    logical_utf8_bytes: u64,
+    marker_count: u64,
+) -> DraftPieceRootReferenceV1 {
+    let source = root.summary();
+    let marker_commitment = if marker_count == 0 {
+        root.marker_commitment()
+    } else {
+        DraftMarkerCommitmentV1::new(
+            [0xD4; 32],
+            marker_count,
+            Some(beryl_model::ImageLabelOrdinal::new(marker_count).unwrap()),
+        )
+        .unwrap()
+    };
+    DraftPieceRootReferenceV1::new_authenticated(
+        root.key(),
+        root.root_node(),
+        DraftPieceSummaryV1::new(
+            logical_utf8_bytes,
+            0,
+            u64::from(logical_utf8_bytes != 0),
+            u64::from(logical_utf8_bytes != 0 || marker_count != 0),
+            marker_count,
+            if marker_count == 0 {
+                source.marker_digest()
+            } else {
+                DraftPieceDigestV1::from_bytes([0xD4; 32])
+            },
+            source.height(),
+            source.root_digest(),
+        ),
+        root.marker_index_root(),
+        DraftMarkerIdentityIndexSummaryV1::new(
+            marker_count,
+            root.marker_index_summary().height(),
+            root.marker_index_summary().root_digest(),
+        ),
+        root.marker_order_root(),
+        root.marker_order_height(),
+        marker_commitment,
+        root.combined_digest(),
+    )
+}
+
 pub fn inject_draft_piece_build_corruption(
     store: &HomeStore,
     storage: &SyndicStorage,

@@ -118,6 +118,11 @@ impl CatalogFacts {
         }
         validate_lineage(self.lineage, thread_id)
     }
+
+    pub(super) fn with_claim(mut self, claim: CatalogClaimSummary) -> Self {
+        self.claim = claim;
+        self
+    }
 }
 
 fn validate_lineage(

@@ -119,6 +119,7 @@ pub enum SyndicMutationError {
         current: crate::ThreadUsageRevision,
     },
     ThreadCatalogSummaryConflict,
+    PristineThreadConflict,
     GeneratedTitleAlreadyAccepted,
     ThreadArchiveStateConflict,
     UsageRouteConflict,
@@ -327,6 +328,8 @@ impl fmt::Display for SyndicMutationError {
             ),
             Self::ThreadCatalogSummaryConflict => formatter
                 .write_str("thread-catalog summary or exact canonical source changed"),
+            Self::PristineThreadConflict => formatter
+                .write_str("pristine-thread eligibility or exact canonical source changed"),
             Self::GeneratedTitleAlreadyAccepted => {
                 formatter.write_str("thread already has an accepted generated title")
             }

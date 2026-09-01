@@ -74,3 +74,53 @@ disposal failure, command presentation, and pending-turn focus. Focused Syndic m
 continuation checks passed, as did external multi-MiB prepublication residency and fresh-widget
 adoption. Fresh independent lifecycle, persistence, shared-resource, external-effect, command, and
 focus review accepted the final implementation with no blocker.
+
+# Phase 236: Establish Atomic Runtime-Backed Window Acquisition (finished)
+
+Implemented the app-neutral runtime-backed window-acquisition service. It performs bounded
+revision-fenced catalog repair and exhaustive candidate selection, fixes one reuse-or-create intent,
+then atomically publishes the exact Syndic thread/draft, catalog claim, session window, restore-set
+reference, fallback, and paired reverse claims through one Home command. `WindowId` owns bounded
+single-flight identity and exact committed, not-committed, repair-indeterminate, acquisition-
+indeterminate, natural-restart, exact-old, exact-new, and collision custody without substitution.
+
+Dependency-owned guards prove pristine Syndic state, runtime/root authority, current catalog facts,
+session capacity and reverse-claim agreement, and absence of live resolution or handoff work.
+Restart audits reconstruct exact committed results from durable natural state; ambiguous repair or
+acquisition retains move-only custody. Catalog scans and audits retain constant state, observe
+cancellation between pages, and repair stale rows without interpreting an arbitrary cutoff as
+absence.
+
+Focused State and Syndic suites passed, as did all 19 cross-domain acquisition cases. Verification
+covered deterministic reuse and creation, type-delete eligibility, active-job rejection, concurrent
+fixed intents, stale repair and exhaustion, reverse disagreement, exact runtime/root mismatch,
+multi-page ordering and cancellation, the 256th and 257th boundaries, collision release, child-
+process acknowledgement loss, same-home reopen, natural exact-old/new/collision classification,
+and absence of fallback or partial publication. Fresh semantic, persistence, adversarial, and
+resource review accepted the final implementation with no blocker.
+
+# Phase 237: Mount Bounded Independent Main-Window Creation (wip)
+
+Build the process-owned bounded main-window registry and mount the visible `New Window` command plus
+`Ctrl+Shift+N` onto the ordinary main shell. Derive the invoking window's exact runtime/root target,
+reserve one of the shared 256 process slots before controller or OS-window allocation, drive the
+Phase 236 acquisition through exact reconciliation, and construct one distinct window controller
+only after its claimed thread and durable draft form one coherent first-presentable editor state.
+
+Keep every controller, selection, navigation history, composer, transcript, focus, and transient
+surface window-local while shared runtime, catalog, storage-health, and occupancy facts remain
+versioned process services. Implement canonical command focus, loading, duplicate-activation, and
+disabled explanations for zero runtimes, process capacity, unavailable target, acquisition failure,
+and application-wide mutation gating. On construction, activation, publication, cancellation,
+collision, close-before-publication, window-host failure, or late settlement, release the exact
+process slot and controller custody without leaking a durable claim or exposing an invisible
+window.
+
+Verify two independent visible windows, distinct claims and editors, invoking-target inheritance,
+eligible-thread reuse versus creation, command pointer and keyboard activation, zero-runtime and
+256-slot denial, duplicate activation, stale or failed acquisition, host-construction failure,
+close-before-first-publication, focus isolation, unrelated-window progress, and repeated creation
+and release. Complete independent GUI lifecycle, shared-service, capacity, focus, persistence, and
+external-effect review. Startup restore, zero-runtime onboarding transition, placement restoration,
+ordinary close after publication, final-window termination, and application Exit remain later
+phases.

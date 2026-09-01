@@ -188,6 +188,7 @@ pub mod input_admission;
 mod lifecycle_dynamic_tools;
 pub mod main_window;
 pub mod theme_runtime;
+pub mod window_acquisition;
 
 pub use branch_discussion_dynamic_tools::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,

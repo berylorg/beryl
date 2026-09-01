@@ -9,6 +9,7 @@ use beryl_model::{
 
 use crate::RecordRevision;
 
+mod acquisition;
 mod bootstrap;
 mod catalog_source;
 mod codec;
@@ -17,6 +18,8 @@ mod mutation;
 mod validate;
 
 use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec};
+
+pub(crate) use acquisition::SessionAcquisitionSource;
 
 pub use catalog_source::{ThreadClaimCatalogSource, ThreadClaimCatalogSourceError};
 pub use error::{SessionMutationError, SessionReadError};
@@ -395,6 +398,14 @@ impl SessionState {
         store: &HomeStore,
     ) -> Result<Option<MinimalSessionBootstrap>, SessionReadError> {
         bootstrap::read(&self.handle, store)
+    }
+
+    pub(crate) fn acquisition_source(
+        &self,
+        store: &HomeStore,
+        window_id: WindowId,
+    ) -> Result<SessionAcquisitionSource, SessionReadError> {
+        acquisition::read(self, store, window_id)
     }
 
     #[must_use]

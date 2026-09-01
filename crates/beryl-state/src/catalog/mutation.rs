@@ -4,8 +4,9 @@ use beryl_home_store::{
 use beryl_model::SyndicThreadId;
 
 use super::{
-    CATALOG_RECORD_LIMIT, CatalogDomain, CatalogFacts, CatalogFreshness, CatalogMutationError,
-    CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSourceRevisions,
+    CATALOG_RECORD_LIMIT, CatalogClaimSummary, CatalogCurrentRow, CatalogDomain, CatalogFacts,
+    CatalogFreshness, CatalogMutationError, CatalogRevision, CatalogRow, CatalogRowExpectation,
+    CatalogSourceRevisions, CatalogWindowClaim,
     codec::{CatalogRecencyCodec, CatalogRowCodec},
 };
 
@@ -15,6 +16,20 @@ pub struct PublishCatalogRow {
     expectation: CatalogRowExpectation,
     sources: CatalogSourceRevisions,
     facts: CatalogFacts,
+}
+
+pub struct PublishCatalogClaim {
+    basis: CatalogClaimBasis,
+    claim: CatalogWindowClaim,
+}
+
+enum CatalogClaimBasis {
+    Initial {
+        thread_id: SyndicThreadId,
+        sources: CatalogSourceRevisions,
+        facts: CatalogFacts,
+    },
+    Current(CatalogCurrentRow),
 }
 
 /// Atomically marks one existing catalog projection stale without treating it as authority.
@@ -37,6 +52,108 @@ impl PublishCatalogRow {
             sources,
             facts,
         })
+    }
+}
+
+impl PublishCatalogClaim {
+    #[must_use]
+    pub const fn initial(
+        thread_id: SyndicThreadId,
+        sources: CatalogSourceRevisions,
+        facts: CatalogFacts,
+        claim: CatalogWindowClaim,
+    ) -> Self {
+        Self {
+            basis: CatalogClaimBasis::Initial {
+                thread_id,
+                sources,
+                facts,
+            },
+            claim,
+        }
+    }
+
+    #[must_use]
+    pub const fn current(current: CatalogCurrentRow, claim: CatalogWindowClaim) -> Self {
+        Self {
+            basis: CatalogClaimBasis::Current(current),
+            claim,
+        }
+    }
+}
+
+impl DomainMutation<CatalogDomain> for PublishCatalogClaim {
+    type Error = CatalogMutationError;
+    type Prepared = (SyndicThreadId, Option<CatalogRow>, CatalogRow);
+
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let claim = self.claim;
+        let (thread_id, current, sources, facts, revision) = match self.basis {
+            CatalogClaimBasis::Initial {
+                thread_id,
+                sources,
+                facts,
+            } => {
+                if read_pair(reader, thread_id)?.is_some() {
+                    return Err(CatalogMutationError::RowExists { thread_id });
+                }
+                (thread_id, None, sources, facts, CatalogRevision::INITIAL)
+            }
+            CatalogClaimBasis::Current(current) => {
+                let expected = current.into_row();
+                let thread_id = expected.thread_id();
+                let Some(actual) = read_pair(reader, thread_id)? else {
+                    return Err(CatalogMutationError::RowMissing { thread_id });
+                };
+                if actual != expected {
+                    return Err(CatalogMutationError::CurrentRowChanged { thread_id });
+                }
+                if expected.freshness() != CatalogFreshness::Current {
+                    return Err(CatalogMutationError::CurrentRowStale { thread_id });
+                }
+                let revision = expected.revision().checked_next()?;
+                let sources = expected.sources();
+                let facts = expected.facts().clone();
+                (thread_id, Some(expected), sources, facts, revision)
+            }
+        };
+        if thread_id != claim.thread_id() {
+            return Err(CatalogMutationError::ClaimThreadMismatch {
+                row_thread_id: thread_id,
+                claim_thread_id: claim.thread_id(),
+            });
+        }
+        if sources.claim().is_some() {
+            return Err(CatalogMutationError::ClaimSourceNotUnclaimed { thread_id });
+        }
+        if facts.claim() != CatalogClaimSummary::Unclaimed {
+            return Err(CatalogMutationError::ClaimFactsNotUnclaimed { thread_id });
+        }
+        let sources = sources.with_claim(claim.revision());
+        let facts = facts.with_claim(claim.summary());
+        let row = CatalogRow::current(thread_id, sources, facts, revision)?;
+        Ok((thread_id, current, row))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CatalogRowCodec>(1)?;
+        reservation.reserve_records::<CatalogRecencyCodec>(2)?;
+        Ok(())
+    }
+
+    fn contribute(
+        (thread_id, current, row): Self::Prepared,
+        mutations: &mut MutationBuilder<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.put::<CatalogRowCodec>(&thread_id, &row)?;
+        replace_recency_copy(mutations, current.as_ref(), &row)?;
+        Ok(())
     }
 }
 

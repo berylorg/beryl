@@ -794,6 +794,7 @@ mod footprint;
 mod membership;
 mod mutation;
 mod native_projection;
+mod pristine_thread;
 mod projection;
 mod provider_item;
 mod provider_observation;
@@ -844,6 +845,7 @@ pub use native_projection::{
     NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,
     NativeProjectionSource, NativeProjectionUnavailable,
 };
+pub use pristine_thread::{PristineThreadAudit, PristineThreadCandidate};
 pub use provider_item::*;
 pub use provider_observation::*;
 pub(crate) use read::AcceptedNextCandidateBasis;

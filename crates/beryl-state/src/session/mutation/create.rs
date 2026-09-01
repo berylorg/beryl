@@ -117,6 +117,15 @@ impl CreateClaimedWindow {
             placement,
         }
     }
+
+    #[must_use]
+    pub fn catalog_claim(&self) -> crate::catalog::CatalogWindowClaim {
+        crate::catalog::CatalogWindowClaim::active(
+            self.thread_id,
+            self.window_id,
+            initial_claim_revision(),
+        )
+    }
 }
 
 impl DomainMutation<SessionDomain> for CreateClaimedWindow {
@@ -179,7 +188,7 @@ fn validate_create(
     reader: &DomainReader<'_, SessionDomain>,
 ) -> Result<SessionHeader, SessionMutationError> {
     let header = required_header(reader, command.expected_session_revision, true)?;
-    if header.windows.len() == MAX_RESTORABLE_WINDOWS {
+    if header.windows.len() >= MAX_RESTORABLE_WINDOWS {
         return Err(SessionMutationError::WindowLimit);
     }
     if !header.windows.is_empty() && header.fallback.is_none() {
@@ -187,17 +196,30 @@ fn validate_create(
             "initial threadless window must establish its claim before another window is created",
         ));
     }
+    let by_window = claim_by_window(reader, command.window_id)?;
+    if let Some(claim) = by_window {
+        if claim_by_thread(reader, claim.thread_id())? != Some(claim) {
+            return Err(SessionMutationError::ClaimCopiesDisagree {
+                window_id: command.window_id,
+            });
+        }
+    }
     if header
         .windows
         .iter()
         .any(|reference| reference.window_id == command.window_id)
-        || claim_by_window(reader, command.window_id)?.is_some()
+        || by_window.is_some()
     {
         return Err(SessionMutationError::WindowExists {
             window_id: command.window_id,
         });
     }
     if let Some(claim) = claim_by_thread(reader, command.thread_id)? {
+        if claim_by_window(reader, claim.window_id())? != Some(claim) {
+            return Err(SessionMutationError::ClaimCopiesDisagree {
+                window_id: claim.window_id(),
+            });
+        }
         return Err(SessionMutationError::ThreadAlreadyClaimed {
             thread_id: command.thread_id,
             window_id: claim.window_id,
@@ -361,4 +383,160 @@ fn prepare_replace(
         old_claim,
         claim,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use beryl_home_store::{
+        CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    };
+    use beryl_model::{RootId, RuntimeId, WindowBounds, WindowDisplayState, WindowPlacement};
+
+    use crate::session::SessionState;
+
+    use super::*;
+
+    struct PutWindowClaimOnly(ThreadClaimRecord);
+
+    impl DomainMutation<SessionDomain> for PutWindowClaimOnly {
+        type Error = SessionMutationError;
+        type Prepared = ThreadClaimRecord;
+
+        fn prepare(
+            self,
+            _reader: &DomainReader<'_, SessionDomain>,
+        ) -> Result<Self::Prepared, Self::Error> {
+            Ok(self.0)
+        }
+
+        fn reserve_reconciliation(
+            &self,
+            reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+        ) -> Result<(), Self::Error> {
+            reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+            Ok(())
+        }
+
+        fn contribute(
+            claim: Self::Prepared,
+            mutations: &mut MutationBuilder<'_, SessionDomain>,
+        ) -> Result<(), Self::Error> {
+            mutations.put::<ClaimByWindowCodec>(&claim.window_id(), &claim)?;
+            Ok(())
+        }
+    }
+
+    fn execute(
+        store: &HomeStore,
+        contribution: beryl_home_store::MutationContribution,
+    ) -> CommandOutcome {
+        let mut command = HomeCommand::new(store.home_revision().unwrap());
+        command.add(contribution).unwrap();
+        store.execute(command)
+    }
+
+    fn placement() -> WindowPlacement {
+        WindowPlacement::new(
+            WindowBounds::new(0, 0, 800, 600).unwrap(),
+            WindowDisplayState::Normal,
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn create_rejects_a_disagreeing_reverse_claim_before_window_conflict() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HomeStore::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        let session = SessionState::register(&mut store).unwrap();
+        let initial_window = WindowId::from_bytes([1; 16]);
+        assert!(matches!(
+            execute(
+                &store,
+                session.initialize_threadless(
+                    session.revision(&store).unwrap(),
+                    InitializeThreadlessWindow::new(initial_window, placement()),
+                ),
+            ),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        let initial = session.clone().minimal_bootstrap(&store).unwrap().unwrap();
+        let target =
+            RememberedTarget::new(RuntimeId::from_bytes([2; 16]), RootId::from_bytes([3; 16]));
+        assert!(matches!(
+            execute(
+                &store,
+                session.replace_claim(
+                    session.revision(&store).unwrap(),
+                    ReplaceWindowClaim::new(
+                        initial.header().revision(),
+                        initial_window,
+                        initial.windows()[0].revision(),
+                        None,
+                        target,
+                        SyndicThreadId::from_bytes([4; 16]),
+                    ),
+                ),
+            ),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        let current = session.clone().minimal_bootstrap(&store).unwrap().unwrap();
+        let orphan_window = WindowId::from_bytes([5; 16]);
+        let orphan = ThreadClaimRecord::new(
+            orphan_window,
+            SyndicThreadId::from_bytes([6; 16]),
+            current.header().revision(),
+            ThreadClaimState::Active,
+            initial_claim_revision(),
+        );
+        assert!(matches!(
+            execute(
+                &store,
+                session.handle.contribution(
+                    session.revision(&store).unwrap(),
+                    PutWindowClaimOnly(orphan),
+                ),
+            ),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+
+        let outcome = execute(
+            &store,
+            session.create_claimed_window(
+                session.revision(&store).unwrap(),
+                CreateClaimedWindow::new(
+                    current.header().revision(),
+                    orphan_window,
+                    target,
+                    SyndicThreadId::from_bytes([7; 16]),
+                    placement(),
+                ),
+            ),
+        );
+        let CommandOutcome::NotCommitted { evidence } = outcome else {
+            panic!("expected reverse-claim disagreement")
+        };
+        let source = match evidence {
+            CommandError::ContributorValidation { source, .. } => source,
+            error => panic!("expected contributor validation error, got {error:?}"),
+        };
+        assert!(matches!(
+            source.downcast_ref::<SessionMutationError>(),
+            Some(SessionMutationError::ClaimCopiesDisagree { window_id })
+                if *window_id == orphan_window
+        ));
+    }
 }

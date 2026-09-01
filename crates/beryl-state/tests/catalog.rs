@@ -24,7 +24,7 @@ use catalog::{
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery,
     CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRow,
     CatalogRowExpectation, CatalogSourceRevisions, CatalogState, CatalogTitleSource,
-    MarkCatalogRowStale, PublishCatalogRow,
+    CatalogWindowClaim, MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow,
 };
 
 fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
@@ -175,6 +175,14 @@ fn seed_rows(store: &HomeStore, state: &CatalogState, count: u8) -> Vec<CatalogR
                 .unwrap()
         })
         .collect()
+}
+
+fn active_claim(thread_byte: u8, window_byte: u8) -> CatalogWindowClaim {
+    CatalogWindowClaim::active(
+        SyndicThreadId::from_bytes([thread_byte; 16]),
+        WindowId::from_bytes([window_byte; 16]),
+        ClaimRevision::new(1).unwrap(),
+    )
 }
 
 fn indeterminate_handle(outcome: CommandOutcome) -> beryl_home_store::ReconciliationHandle {
@@ -493,6 +501,144 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
     );
     assert_eq!(page.rows()[0].title().text(), Some("Generated"));
     assert_eq!(page.rows()[0].title_source(), CatalogTitleSource::Generated);
+}
+
+#[test]
+fn current_scan_is_revision_bound_bounded_and_rejects_stale_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let (store, state) = open(directory.path());
+    let rows = seed_rows(&store, &state, 3);
+    let scan = state.begin_current_scan(&store).unwrap();
+    assert_eq!(scan.revision(), state.revision(&store).unwrap());
+
+    let first = state
+        .current_page(
+            &store,
+            scan,
+            None,
+            CursorReadLimits::new(2, 2 * CATALOG_MAX_STORED_RECENCY_BYTES).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(first.rows().len(), 2);
+    assert!(first.has_more());
+    assert!(first.stored_bytes() > 0);
+    assert!(first.decoded_bytes() > 0);
+    let second = state
+        .current_page(
+            &store,
+            scan,
+            first.next_after(),
+            CursorReadLimits::new(2, 2 * CATALOG_MAX_STORED_RECENCY_BYTES).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(second.rows().len(), 1);
+    assert!(!second.has_more());
+
+    assert_committed!(execute(&store, &state, |revision| state.mark_stale(
+        revision,
+        MarkCatalogRowStale::new(rows[0].thread_id(), rows[0].revision()),
+    )));
+    assert!(matches!(
+        state.current_page(
+            &store,
+            scan,
+            None,
+            CursorReadLimits::new(4, 4 * CATALOG_MAX_STORED_RECENCY_BYTES).unwrap(),
+        ),
+        Err(CatalogReadError::RevisionChanged { .. })
+    ));
+
+    let stale_scan = state.begin_current_scan(&store).unwrap();
+    assert!(matches!(
+        state.current_page(
+            &store,
+            stale_scan,
+            None,
+            CursorReadLimits::new(4, 4 * CATALOG_MAX_STORED_RECENCY_BYTES).unwrap(),
+        ),
+        Err(CatalogReadError::StaleRow { thread_id }) if thread_id == rows[0].thread_id()
+    ));
+}
+
+#[test]
+fn typed_claim_publication_is_coherent_and_revalidates_current_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let (store, state) = open(directory.path());
+    let initial_thread = SyndicThreadId::from_bytes([1; 16]);
+    let initial = PublishCatalogClaim::initial(
+        initial_thread,
+        sources(1, false),
+        facts(1, 100, CatalogResolvedTitle::absent(), false),
+        active_claim(1, 11),
+    );
+    assert_committed!(execute(&store, &state, |revision| state
+        .publish_claim(revision, initial,)));
+    let initial_row = state
+        .row(
+            &store,
+            initial_thread,
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        initial_row.sources().claim(),
+        Some(ClaimRevision::new(1).unwrap())
+    );
+    assert_eq!(
+        initial_row.facts().claim(),
+        CatalogClaimSummary::claimed(WindowId::from_bytes([11; 16]), CatalogClaimKind::Active)
+    );
+
+    assert_committed!(publish(
+        &store,
+        &state,
+        2,
+        CatalogRowExpectation::Missing,
+        1,
+        200,
+        CatalogResolvedTitle::absent(),
+    ));
+    let current = state
+        .current_row_source(
+            &store,
+            SyndicThreadId::from_bytes([2; 16]),
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    let stale = current.clone();
+    let exact_claim = PublishCatalogClaim::current(current, active_claim(2, 12));
+    assert_committed!(execute(&store, &state, |revision| state
+        .publish_claim(revision, exact_claim,)));
+    let claimed = state
+        .row(
+            &store,
+            SyndicThreadId::from_bytes([2; 16]),
+            CatalogPointReadLimit::schema_maximum(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.revision().get(), 2);
+    assert_eq!(
+        claimed.sources().claim(),
+        Some(ClaimRevision::new(1).unwrap())
+    );
+
+    let outcome = execute(&store, &state, |revision| {
+        state.publish_claim(
+            revision,
+            PublishCatalogClaim::current(stale, active_claim(2, 13)),
+        )
+    });
+    let CommandOutcome::NotCommitted { evidence } = outcome else {
+        panic!("expected stale catalog source to be rejected")
+    };
+    assert!(matches!(
+        contributor_source::<CatalogMutationError>(&evidence),
+        Some(CatalogMutationError::CurrentRowChanged { thread_id })
+            if *thread_id == SyndicThreadId::from_bytes([2; 16])
+    ));
 }
 
 #[test]

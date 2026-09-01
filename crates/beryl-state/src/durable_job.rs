@@ -4,12 +4,14 @@ use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
     DomainHandle, DomainReconciliation, DomainRegistrationError, DomainSchemaVersion, HomeStore,
     KeyspaceSchemaVersion, MutationBuildError, MutationContribution, PointReadLimit, ReadError,
-    ReconciliationReader, RecordFamily, StorageDomain,
+    ReconciliationReader, RecordFamily, StorageDomain, ValidationContribution,
 };
 use beryl_model::{DomainRevision, JobId, JobRevision, RevisionError, SyndicThreadId};
 
 use crate::StatePage;
 
+#[path = "durable_job/acquisition.rs"]
+mod acquisition;
 mod codec;
 mod mutation;
 mod record;
@@ -18,6 +20,7 @@ mod test_support;
 mod validate;
 mod value;
 
+pub use acquisition::{ThreadReuseJobGuard, ThreadReuseJobGuardError};
 use codec::{
     DiscussionAttemptIndexCodec, JobRecordCodec, LatestAttemptIndexCodec, LiveJobIndexCodec,
     RequestIdempotencyIndexCodec, RequestIndexKey,
@@ -209,6 +212,23 @@ impl DurableJobState {
             &discussion_thread_id,
             small_point_limit(),
         )
+    }
+
+    pub fn thread_reuse_guard(
+        &self,
+        store: &HomeStore,
+        thread_id: SyndicThreadId,
+    ) -> Result<Option<ThreadReuseJobGuard>, ThreadReuseJobGuardError> {
+        acquisition::thread_reuse_guard(self, store, thread_id)
+    }
+
+    #[must_use]
+    pub fn validate_thread_reuse_guard(
+        &self,
+        expected_revision: DomainRevision,
+        guard: ThreadReuseJobGuard,
+    ) -> ValidationContribution {
+        self.handle.validation(expected_revision, guard)
     }
 
     pub fn list_live(

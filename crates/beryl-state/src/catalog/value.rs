@@ -409,6 +409,11 @@ impl CatalogSourceRevisions {
         }
     }
 
+    pub(super) const fn with_claim(mut self, claim: ClaimRevision) -> Self {
+        self.claim = Some(claim);
+        self
+    }
+
     #[must_use]
     pub const fn syndic_summary(self) -> ProjectionRevision {
         self.syndic_summary

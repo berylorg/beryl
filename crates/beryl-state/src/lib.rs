@@ -190,6 +190,7 @@ mod settings;
 mod state;
 mod theme;
 mod value;
+mod window_acquisition;
 
 #[cfg(feature = "test-faults")]
 pub use asset::AssetReferenceSetManifestCorruption;
@@ -211,12 +212,13 @@ pub use asset::{
 pub use catalog::{
     CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
+    CatalogCurrentPage, CatalogCurrentRow, CatalogCurrentRowError, CatalogCurrentScan,
     CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery, CatalogPage,
     CatalogPointReadLimit, CatalogReadError, CatalogRecencyCursor, CatalogResolvedTitle,
     CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSearchFields,
     CatalogSourceRevisions, CatalogState, CatalogTitleSource, CatalogValueError,
-    MarkCatalogRowStale, PublishCatalogRow,
+    CatalogWindowClaim, MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow,
 };
 pub use durable_job::{
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
@@ -228,7 +230,7 @@ pub use durable_job::{
     RESOLUTION_TEXT_MAX_BYTES, RecordParentCasAcceptance, RecordRetryableHandoffFailure,
     RecordTerminalHandoffFailure, ResolutionAttemptOrdinal, ResolutionRequestAdmission,
     ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff, StartParentHandoff,
-    SucceedBranchHandoff, branch_handoff_job_id,
+    SucceedBranchHandoff, ThreadReuseJobGuard, ThreadReuseJobGuardError, branch_handoff_job_id,
 };
 pub use runtime_root::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, RootRecord, RootRegistration,
@@ -255,3 +257,9 @@ pub use state::{
 };
 pub use theme::*;
 pub use value::{AvailabilitySnapshot, RecordRevision, UnixMillis, ValueError};
+#[cfg(feature = "test-faults")]
+pub use window_acquisition::WindowAcquisitionAuditPageHook;
+pub use window_acquisition::{
+    WindowAcquisitionAuditError, WindowAcquisitionCommittedFacts, WindowAcquisitionNaturalState,
+    WindowAcquisitionThreadOrigin,
+};

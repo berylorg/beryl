@@ -195,9 +195,23 @@ fn failure_kinds_cannot_claim_an_impossible_job_checkpoint() {
 fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
+    let discussion_id = SyndicThreadId::from_bytes([11; 16]);
+    let empty_guard = state
+        .durable_jobs()
+        .thread_reuse_guard(&store, discussion_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(empty_guard.thread_id(), discussion_id);
     let first = admission(3, 1, 11, "retry");
     let job_id = first.job_id();
     admit(&store, &state, first);
+    assert!(
+        state
+            .durable_jobs()
+            .thread_reuse_guard(&store, discussion_id)
+            .unwrap()
+            .is_none()
+    );
 
     match execute(
         &store,
@@ -339,6 +353,13 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
             .unwrap()
             .records()
             .is_empty()
+    );
+    assert!(
+        state
+            .durable_jobs()
+            .thread_reuse_guard(&store, discussion_id)
+            .unwrap()
+            .is_some()
     );
 
     let second = admission(4, 2, 11, "fresh-after-terminal");
