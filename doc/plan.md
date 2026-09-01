@@ -25,41 +25,46 @@ GPUI revision and one canonical GPUI type universe. Locked metadata, package com
 focused four-case scrollbar integration target passed outside local patch scope; fresh independent
 semantic review accepted the dependency-only change with no finding.
 
-# Phase 242: Propagate The GPUI Revision Through GPUI Text Input (wip)
+# Phase 242: Diagnose GPUI Text-Input Revision Compatibility (wip)
 
-Update `gpui-text-input` to GPUI commit `f013db758350882871ec0b666b5a841343557b26` and
-`gpui-scrollbar` commit `f0bd3ab07399374f6cc439c257a898cde8ef1247` without source or API
-changes. Regenerate the canonical lockfile outside repository-local path-patch scope, verify locked
-metadata and package compilation, and run the focused prepublication and streaming integration
-targets with Cargo Nextest. Confirm one resolved GPUI revision and the accepted scrollbar source,
-obtain the package-contract completion review, publish the accepted commit, and preserve local
-development overrides as noncanonical environment state.
+Use the prepared canonical GPUI and scrollbar pins to determine whether the three `range_widget`
+failures are revision-caused package incompatibilities, target-order or concurrency interference, or
+pre-existing failures. Reproduce the exact cases individually and together under bounded repeats,
+compare them with the prior accepted canonical dependency graph without changing the shared checkout
+or relying on local path overrides, and inspect only the implicated `gpui-text-input` and GPUI
+boundaries.
 
-Do not substitute a Beryl root patch or local path override for the published dependency-consistent
-revisions. If the accepted dependency commits require text-input source, API, test, or design
-changes, pause and replan that separate acceptance boundary.
+Produce an evidence-backed root-cause map naming the violated package contract, owning source
+boundary, and smallest source, test, or design correction required for publication. Make no source,
+test, API, design, manifest, or lockfile edits in this diagnostic phase; retain the prepared two-file
+pin change uncommitted. Obtain fresh independent semantic review of the diagnosis, including its
+causal evidence and phase boundary. Clean up any exact task-owned comparison checkout or temporary
+artifacts before completion. If the evidence contradicts accepted GPUI authority or requires a
+public-contract change, stop for authority correction instead of planning around it.
 
-Blocked: the canonical dependency-only pins produce one accepted GPUI type universe, pass locked
-metadata, package compilation, and all 18 prepublication cases, but the focused `range_widget`
-integration target fails three existing package-contract cases covering adjacent-object realization,
-concurrent clipboard/geometry residency, and exact-surface invalidation. The two-file fork change
-remains uncommitted and unpublished. Do not begin Phase 243 until the Operator directs a separate
-`gpui-text-input` source-compatibility investigation and acceptance phase or revises the dependency
-authority.
+# Phase 243: Reconcile And Publish GPUI Text Input At The Accepted Revision (pending)
 
-# Phase 243: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+Apply the smallest authority-consistent `gpui-text-input` source correction established by Phase
+242, preserve its bounded range-backed and shared-resource guarantees without a compatibility path,
+and publish the accepted dependency-consistent commit. Verify canonical locked metadata, package
+compilation, prepublication behavior, the corrected range-backed cases and applicable neighboring
+integration targets with Cargo Nextest, one GPUI type universe, exact dependency sources, local-
+override isolation, and fresh independent semantic review. Replan before editing if Phase 242 finds
+an API, design, GPUI-fork, or separately verifiable test-contract boundary.
 
-Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 242 widget commits,
+# Phase 244: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+
+Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 243 widget commits,
 verify its focused package boundary, and publish the accepted commit.
 
-# Phase 244: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+# Phase 245: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
 
 Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
 canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
 check, restart the language server after the manifest model is accepted, and close the active
 rework checklist item.
 
-# Phase 245: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 246: Build The Target-State Main-Window Shell Foundation (pending)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared
@@ -67,9 +72,9 @@ main-window slots. Prepare the exact claimed editor before GPUI construction, pu
 window, and use Phase 238 abandonment for construction failure or close-before-publication. The
 binary startup/bootstrap path remains outside this phase.
 
-# Phase 246: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 247: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 245 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 246 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
