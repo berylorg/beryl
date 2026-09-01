@@ -18,30 +18,26 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 240: Complete GPUI Scrollbar Engineering-Rigor Authority (finished)
+# Phase 241: Propagate The GPUI Revision Through GPUI Scrollbar (finished)
 
-Published `gpui-scrollbar` commit `d910e37d12f8d73f9f0eb7dbd88264a033c188ea` with the required
-package-scoped production-application rigor declaration and no modifiers. Structural validation and
-fresh independent semantic review accepted the least-cost profile, modifier set, authority scope,
-and unchanged package contract with no finding.
+Published `gpui-scrollbar` commit `f0bd3ab07399374f6cc439c257a898cde8ef1247` with the accepted
+GPUI revision and one canonical GPUI type universe. Locked metadata, package compilation, and the
+focused four-case scrollbar integration target passed outside local patch scope; fresh independent
+semantic review accepted the dependency-only change with no finding.
 
-# Phase 241: Propagate The GPUI Revision Through GPUI Scrollbar (wip)
+# Phase 242: Propagate The GPUI Revision Through GPUI Text Input (wip)
 
-Update the workspace GPUI dependency to `f013db758350882871ec0b666b5a841343557b26` without source or
-API changes. Regenerate the canonical lockfile outside the repository-local path-patch scope and
-verify locked metadata, package compilation, and the focused scrollbar integration target with
-Cargo Nextest. Confirm one resolved GPUI revision, obtain independent semantic review under the
-package rigor contract, publish the accepted commit, and preserve local development overrides as
-noncanonical environment state.
+Update `gpui-text-input` to GPUI commit `f013db758350882871ec0b666b5a841343557b26` and
+`gpui-scrollbar` commit `f0bd3ab07399374f6cc439c257a898cde8ef1247` without source or API
+changes. Regenerate the canonical lockfile outside repository-local path-patch scope, verify locked
+metadata and package compilation, and run the focused prepublication and streaming integration
+targets with Cargo Nextest. Confirm one resolved GPUI revision and the accepted scrollbar source,
+obtain the package-contract completion review, publish the accepted commit, and preserve local
+development overrides as noncanonical environment state.
 
 Do not substitute a Beryl root patch or local path override for the published dependency-consistent
-revision. If the new GPUI commit changes the scrollbar package contract or requires source changes,
-pause and replan that separate acceptance boundary.
-
-# Phase 242: Propagate The GPUI Revision Through GPUI Text Input (pending)
-
-Update `gpui-text-input` to the accepted GPUI revision and the Phase 241 scrollbar commit, verify
-its focused package and prepublication/streaming boundaries, and publish the accepted commit.
+revisions. If the accepted dependency commits require text-input source, API, test, or design
+changes, pause and replan that separate acceptance boundary.
 
 # Phase 243: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
