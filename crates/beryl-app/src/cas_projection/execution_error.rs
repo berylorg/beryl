@@ -84,6 +84,14 @@ pub enum ProjectionExecutionError {
     NativeLineageRecoveryRequired {
         decision: Box<NativeLineageRecoveryDecision>,
     },
+    #[error("native-lineage route capacity is full before dispatch for {thread_id}")]
+    NativeLineageRouteCapacityFull {
+        thread_id: beryl_model::SyndicThreadId,
+    },
+    #[error("native-lineage route reservation was rejected for {thread_id}")]
+    NativeLineageRouteReservationRejected {
+        thread_id: beryl_model::SyndicThreadId,
+    },
     #[error("native CAS lineage recovery decision for {thread_id} is no longer current")]
     NativeLineageRecoveryDecisionStale {
         thread_id: beryl_model::SyndicThreadId,

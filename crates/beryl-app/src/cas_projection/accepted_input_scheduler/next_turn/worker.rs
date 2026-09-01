@@ -14,6 +14,7 @@ use crate::{
     cas_projection::{
         ProjectionCancellationToken, ScheduledOrdinaryExecutionLease,
         connection::ConnectionPromotionReleaseOutcome,
+        native_lineage_recovery::NativeLineageParkDisposition,
     },
     input_admission::accepted_input_promotion_command,
 };
@@ -23,7 +24,8 @@ mod preparation;
 mod settlement;
 
 pub(in crate::cas_projection::accepted_input_scheduler) use execution::{
-    PendingTurnExecutionDisposition, execute_pending_turn,
+    PendingTurnExecutionDisposition, classify_projection_error, classify_projection_error_ref,
+    execute_pending_turn,
 };
 use preparation::{
     classify_unbuilt_promotion, fresh_item_id, fresh_turn_id, pause_obsolete_generation,
@@ -39,7 +41,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) use settlement::{
 pub(super) fn spawn_worker(
     runtime: &mut SchedulerRuntime,
     candidate: AcceptedNextCandidate,
-    mut lease: ScheduledOrdinaryExecutionLease,
+    lease: ScheduledOrdinaryExecutionLease,
 ) -> Result<(), SchedulerFailure> {
     let syndic_thread_id = candidate.thread_id();
     let Some(command) = failure::authorize(&runtime.context)? else {
@@ -49,6 +51,7 @@ pub(super) fn spawn_worker(
     let storage = runtime.context.storage.clone();
     let cancellation = runtime.context.ordinary_cancellation.clone();
     let signal = runtime.context.signal.clone();
+    let native_lineage_recovery = runtime.context.native_lineage_recovery.clone();
     let completions = runtime.completions.clone();
     let handle = std::thread::Builder::new()
         .name("beryl-scheduled-ordinary-execution".to_owned())
@@ -59,15 +62,15 @@ pub(super) fn spawn_worker(
                     storage,
                     &signal,
                     &cancellation,
+                    &native_lineage_recovery,
                     candidate,
-                    &mut lease,
+                    lease,
                 )
             }));
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
             completions.publish(WorkerCompletion {
                 thread_id: std::thread::current().id(),
             });
-            drop(lease);
             signal.wake(AcceptedInputWakeReason::WorkerCompleted);
             disposition
         })
@@ -81,13 +84,14 @@ fn execute_candidate(
     storage: syndic_storage::SyndicStorage,
     signal: &AcceptedInputSchedulerSignal,
     cancellation: &ProjectionCancellationToken,
+    native_lineage_recovery: &crate::cas_projection::NativeLineageRecoveryControl,
     candidate: AcceptedNextCandidate,
-    lease: &mut ScheduledOrdinaryExecutionLease,
+    mut lease: ScheduledOrdinaryExecutionLease,
 ) -> WorkerDisposition {
     if cancellation.is_cancelled() {
         return WorkerDisposition::NextParked;
     }
-    if let Err(error) = validator.validate(lease) {
+    if let Err(error) = validator.validate(&mut lease) {
         pause_obsolete_generation(candidate.thread_id(), obsolete_admission_generation(&error));
         return if failure::is_current_health_loss_admission(&error, validator.home_generation()) {
             WorkerDisposition::PersistentHomeFailure
@@ -131,7 +135,7 @@ fn execute_candidate(
     crate::cas_projection::test_faults::pause_scheduled_promotion_reservation(
         promotion.thread_id(),
     );
-    let reservation = match validator.reserve_promotion(lease) {
+    let reservation = match validator.reserve_promotion(&mut lease) {
         Ok(Some(reservation)) => reservation,
         Ok(None) => return WorkerDisposition::NextParked,
         Err(error) if failure::is_cut_correlated_admission(&error, validator.home_generation()) => {
@@ -251,7 +255,8 @@ fn execute_candidate(
         cancellation,
         promoted_at,
         selected_path,
-        lease,
+        native_lineage_recovery,
+        &mut lease,
     ) {
         PendingTurnExecutionDisposition::Settled => WorkerDisposition::NextContinue,
         PendingTurnExecutionDisposition::ExpectedInterruption => WorkerDisposition::NextParked,
@@ -259,5 +264,18 @@ fn execute_candidate(
             WorkerDisposition::PersistentHomeFailure
         }
         PendingTurnExecutionDisposition::ProjectionRefused => WorkerDisposition::Fatal,
+        PendingTurnExecutionDisposition::NativeLineageCapacityBlocked => {
+            WorkerDisposition::NextContinue
+        }
+        PendingTurnExecutionDisposition::ParkNativeLineage {
+            decision,
+            recovery_available,
+        } => {
+            let execution = lease.park();
+            match native_lineage_recovery.park(decision, recovery_available, execution) {
+                NativeLineageParkDisposition::Parked => WorkerDisposition::NextContinue,
+                NativeLineageParkDisposition::Rejected => WorkerDisposition::Fatal,
+            }
+        }
     }
 }

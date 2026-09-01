@@ -38,6 +38,7 @@ mod initial_start;
 mod input_replay;
 mod live_source;
 mod model;
+mod native_lineage_recovery;
 mod ordinary;
 mod persistent_failure;
 mod provider_frame;
@@ -85,6 +86,10 @@ pub use execution_error::{ProjectionExecutionError, ProjectionPublicationFailure
 pub use model::{
     CasProjectionRequest, LoadedCasProjection, NativeLineageOperation,
     NativeLineageRecoveryDecision,
+};
+pub use native_lineage_recovery::{
+    NativeLineageRecoveryCommand, NativeLineageRecoveryCommandError, NativeLineageRecoveryControl,
+    NativeLineageRecoveryKey, NativeLineageRecoverySnapshot, NativeLineageRecoveryStatus,
 };
 pub use ordinary::{
     OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers, OrdinaryNotStartedProjection,

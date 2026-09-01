@@ -12,6 +12,8 @@ const EXECUTION_READY: u16 = 1 << 10;
 const WORKER_COMPLETED: u16 = 1 << 11;
 pub(super) const NEXT_WORKER_CAPACITY_RELEASED: u16 = 1 << 12;
 const RECOVERED_PENDING_CONTINUE: u16 = 1 << 13;
+const NATIVE_LINEAGE_READY: u16 = 1 << 14;
+const NATIVE_LINEAGE_ROUTE_CAPACITY_RELEASED: u16 = 1 << 15;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) enum AcceptedInputWakeReason {
@@ -29,6 +31,8 @@ pub(in crate::cas_projection) enum AcceptedInputWakeReason {
     WorkerCompleted,
     NextWorkerCapacityReleased,
     RecoveredPendingContinue,
+    NativeLineageReady,
+    NativeLineageRouteCapacityReleased,
 }
 
 impl AcceptedInputWakeReason {
@@ -48,6 +52,8 @@ impl AcceptedInputWakeReason {
             Self::WorkerCompleted => WORKER_COMPLETED,
             Self::NextWorkerCapacityReleased => NEXT_WORKER_CAPACITY_RELEASED,
             Self::RecoveredPendingContinue => RECOVERED_PENDING_CONTINUE,
+            Self::NativeLineageReady => NATIVE_LINEAGE_READY,
+            Self::NativeLineageRouteCapacityReleased => NATIVE_LINEAGE_ROUTE_CAPACITY_RELEASED,
         }
     }
 }
@@ -111,5 +117,13 @@ impl WakeBatch {
 
     pub(in super::super) const fn worker_completed(self) -> bool {
         self.bits & WORKER_COMPLETED != 0
+    }
+
+    pub(in super::super) const fn native_lineage_ready(self) -> bool {
+        self.bits & NATIVE_LINEAGE_READY != 0
+    }
+
+    pub(in super::super) const fn native_lineage_route_capacity_released(self) -> bool {
+        self.bits & NATIVE_LINEAGE_ROUTE_CAPACITY_RELEASED != 0
     }
 }

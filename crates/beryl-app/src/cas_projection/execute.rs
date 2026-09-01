@@ -7,8 +7,8 @@ use syndic_storage::{
 use self::cleanup::StaleObservation;
 use super::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
-    ProjectionCancellationToken, ProjectionCoordinatorError, ProjectionExecutionError,
-    ProjectionPublicationFailure, service::ProjectionFlight,
+    NativeLineageRecoveryControl, ProjectionCancellationToken, ProjectionCoordinatorError,
+    ProjectionExecutionError, ProjectionPublicationFailure, service::ProjectionFlight,
 };
 use crate::cas_projection::connection::{ExistingLease, ThreadRetirement};
 use crate::conversation_tools::ConversationToolRegistry;
@@ -44,6 +44,7 @@ impl CasProjectionCoordinator {
             cancellation,
             tool_profile,
             &flight,
+            None,
         )
     }
 
@@ -55,6 +56,7 @@ impl CasProjectionCoordinator {
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
         flight: &ProjectionFlight,
+        native_lineage_recovery: &NativeLineageRecoveryControl,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let (request, tool_profile) =
             self.prepare_projection_request(home, session, request, cancellation)?;
@@ -66,6 +68,7 @@ impl CasProjectionCoordinator {
             cancellation,
             tool_profile,
             flight,
+            Some(native_lineage_recovery),
         )
     }
 
@@ -111,6 +114,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
         tool_profile: beryl_model::CasConversationToolProfile,
         flight: &ProjectionFlight,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_projection_flight(flight, request.thread_id())?;
         self.ensure_home(home)?;
@@ -129,7 +133,15 @@ impl CasProjectionCoordinator {
             return Err(ProjectionExecutionError::Cancelled);
         }
 
-        self.execute_plan(home, storage, session, request, cancellation, native)
+        self.execute_plan(
+            home,
+            storage,
+            session,
+            request,
+            cancellation,
+            native,
+            native_lineage_recovery,
+        )
     }
 
     fn execute_plan(
@@ -140,6 +152,7 @@ impl CasProjectionCoordinator {
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
         native: NativeProjectionPlan,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         match native {
             NativeProjectionPlan::Current { basis, source } => self.use_current_source(
@@ -150,10 +163,18 @@ impl CasProjectionCoordinator {
                 cancellation,
                 basis,
                 source,
+                native_lineage_recovery,
             ),
-            NativeProjectionPlan::Resume { basis, source } => {
-                self.use_resume_source(home, storage, session, request, cancellation, basis, source)
-            }
+            NativeProjectionPlan::Resume { basis, source } => self.use_resume_source(
+                home,
+                storage,
+                session,
+                request,
+                cancellation,
+                basis,
+                source,
+                native_lineage_recovery,
+            ),
             NativeProjectionPlan::Fork {
                 basis,
                 source,
@@ -169,6 +190,7 @@ impl CasProjectionCoordinator {
                 source,
                 through_turn.as_ref(),
                 native_turn_count,
+                native_lineage_recovery,
             ),
             NativeProjectionPlan::Fresh { basis } => {
                 self.start_fresh_native(home, storage, session, request, cancellation, basis)
@@ -187,6 +209,7 @@ impl CasProjectionCoordinator {
                     basis,
                     source,
                     unavailable_source_reason(reason),
+                    native_lineage_recovery,
                 ),
                 None => {
                     self.recover_projection(home, storage, session, request, cancellation, basis)
@@ -205,6 +228,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         match session.acquire_loaded(
             source.binding().cas_thread_id(),
@@ -232,6 +256,7 @@ impl CasProjectionCoordinator {
                     basis,
                     source,
                     "recovered CAS managed process no longer matches",
+                    native_lineage_recovery,
                 );
             }
             ExistingLease::AnotherConnection => {
@@ -268,9 +293,19 @@ impl CasProjectionCoordinator {
                 basis,
                 source,
                 "recovered CAS loaded-session authority was lost",
+                native_lineage_recovery,
             );
         }
-        self.resume_remote_source(home, storage, session, request, cancellation, basis, source)
+        self.resume_remote_source(
+            home,
+            storage,
+            session,
+            request,
+            cancellation,
+            basis,
+            source,
+            native_lineage_recovery,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -283,6 +318,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         match session.acquire_loaded(
             source.binding().cas_thread_id(),
@@ -302,6 +338,7 @@ impl CasProjectionCoordinator {
                         basis,
                         source,
                         "recovered CAS managed process no longer matches",
+                        native_lineage_recovery,
                     );
                 }
                 return self.publish_existing_loaded(home, storage, request, basis, source, lease);
@@ -340,9 +377,19 @@ impl CasProjectionCoordinator {
                 basis,
                 source,
                 "recovered CAS loaded-session authority was lost",
+                native_lineage_recovery,
             );
         }
-        self.resume_remote_source(home, storage, session, request, cancellation, basis, source)
+        self.resume_remote_source(
+            home,
+            storage,
+            session,
+            request,
+            cancellation,
+            basis,
+            source,
+            native_lineage_recovery,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -356,6 +403,7 @@ impl CasProjectionCoordinator {
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
         reason: &'static str,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         if source.thread_id() != request.thread_id() {
             return Err(ProjectionExecutionError::ProjectionBasisChanged {
@@ -441,7 +489,15 @@ impl CasProjectionCoordinator {
                 thread_id: request.thread_id(),
             });
         }
-        self.execute_plan(home, storage, session, request, cancellation, replanned)
+        self.execute_plan(
+            home,
+            storage,
+            session,
+            request,
+            cancellation,
+            replanned,
+            native_lineage_recovery,
+        )
     }
 }
 

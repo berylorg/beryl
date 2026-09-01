@@ -18,6 +18,7 @@ use super::{
         LoadedProjectionLease, LocalLoadedRegistryDispositionOwner, TargetTurnRegistration,
         TerminalLoadedLeaseDispositionOwner,
     },
+    native_lineage_recovery::NativeLineageRouteReservation,
     service::CasProjectionCoordinator,
 };
 
@@ -131,6 +132,7 @@ pub struct NativeLineageRecoveryDecision {
     operation: NativeLineageRetryOperation,
     failed_attempts: u8,
     last_failure: Box<ManagedBackendError>,
+    route_reservation: Option<NativeLineageRouteReservation>,
 }
 
 impl NativeLineageRecoveryDecision {
@@ -143,6 +145,7 @@ impl NativeLineageRecoveryDecision {
         operation: NativeLineageRetryOperation,
         failed_attempts: u8,
         last_failure: ManagedBackendError,
+        route_reservation: Option<NativeLineageRouteReservation>,
     ) -> Self {
         Self {
             home_id: coordinator.home_id(),
@@ -153,6 +156,7 @@ impl NativeLineageRecoveryDecision {
             operation,
             failed_attempts,
             last_failure: Box::new(last_failure),
+            route_reservation,
         }
     }
 
@@ -217,6 +221,12 @@ impl NativeLineageRecoveryDecision {
 
     pub(super) const fn source(&self) -> &NativeProjectionSource {
         &self.source
+    }
+
+    pub(in crate::cas_projection) fn take_route_reservation(
+        &mut self,
+    ) -> Option<NativeLineageRouteReservation> {
+        self.route_reservation.take()
     }
 
     pub(super) fn matches_plan(&self, plan: &NativeProjectionPlan) -> bool {

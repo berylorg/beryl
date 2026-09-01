@@ -45,6 +45,30 @@ impl ProjectionConnectionService {
         self.workers.diagnostics()
     }
 
+    #[cfg(feature = "test-faults")]
+    pub fn saturate_scheduled_ordinary_capacity_for_test(&self) -> impl FnOnce() + use<> {
+        let steering = self
+            .workers
+            .try_acquire_steering_critical()
+            .expect("test scheduled-ordinary capacity holder obtains progress capacity");
+        let mut permits = Vec::with_capacity(self.workers.diagnostics().capacity());
+        loop {
+            match self.workers.try_acquire_scheduled_ordinary_or_arm() {
+                Ok(permit) => permits.push(permit),
+                Err(super::super::service_config::ProjectionWorkerPermitError::CapacityFull {
+                    ..
+                }) => break,
+                Err(super::super::service_config::ProjectionWorkerPermitError::Poisoned) => {
+                    panic!("test scheduled-ordinary capacity holder requires a healthy worker pool")
+                }
+            }
+        }
+        move || {
+            drop(permits);
+            drop(steering);
+        }
+    }
+
     /// Returns bounded content-free accepted-input scheduler diagnostics.
     #[must_use]
     pub fn accepted_input_scheduler_diagnostics(&self) -> AcceptedInputSchedulerDiagnostics {
@@ -52,6 +76,11 @@ impl ProjectionConnectionService {
             || self.scheduler_signal.diagnostics(),
             AcceptedInputScheduler::diagnostics,
         )
+    }
+
+    #[must_use]
+    pub fn native_lineage_recovery_control(&self) -> NativeLineageRecoveryControl {
+        self.native_lineage_recovery.clone()
     }
 
     /// Installs and wakes one exact test-only scheduler-main panic.

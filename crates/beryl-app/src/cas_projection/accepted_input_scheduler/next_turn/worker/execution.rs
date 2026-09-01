@@ -9,16 +9,20 @@ use super::{
 };
 use crate::cas_projection::{
     CasProjectionCoordinator, CasProjectionRequest, LoadedProjectionReleaseError,
-    ProjectionCancellationToken, ProjectionCoordinatorError, ProjectionExecutionError,
-    ScheduledOrdinaryExecutionLease,
+    NativeLineageRecoveryControl, NativeLineageRecoveryDecision, ProjectionCancellationToken,
+    ProjectionCoordinatorError, ProjectionExecutionError, ScheduledOrdinaryExecutionLease,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection::accepted_input_scheduler) enum PendingTurnExecutionDisposition {
     Settled,
     ExpectedInterruption,
     PersistentHomeFailure,
     ProjectionRefused,
+    NativeLineageCapacityBlocked,
+    ParkNativeLineage {
+        decision: Box<NativeLineageRecoveryDecision>,
+        recovery_available: bool,
+    },
 }
 
 pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
@@ -27,6 +31,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
     cancellation: &ProjectionCancellationToken,
     observed_at: SyndicTimestamp,
     selected_path: SelectedPathProof,
+    native_lineage_recovery: &NativeLineageRecoveryControl,
     lease: &mut ScheduledOrdinaryExecutionLease,
 ) -> PendingTurnExecutionDisposition {
     let thread_id = lease.thread_id();
@@ -60,8 +65,27 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
             &projection_request,
             cancellation,
             flight,
+            native_lineage_recovery,
         ) {
             Ok(projection) => projection,
+            Err(ProjectionExecutionError::NativeLineageRecoveryRequired { decision }) => {
+                let recovery_available = coordinator
+                    .validate_native_lineage_recovery_in_flight(
+                        &validator.home,
+                        storage,
+                        session,
+                        &decision,
+                        cancellation,
+                    )
+                    .is_ok();
+                return PendingTurnExecutionDisposition::ParkNativeLineage {
+                    decision,
+                    recovery_available,
+                };
+            }
+            Err(ProjectionExecutionError::NativeLineageRouteCapacityFull { .. }) => {
+                return PendingTurnExecutionDisposition::NativeLineageCapacityBlocked;
+            }
             Err(error) => return classify_projection_error(error, validator.home_generation()),
         };
         let outcome = coordinator.execute_ordinary_turn_in_flight(
@@ -82,8 +106,16 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
         }
     })
 }
-fn classify_projection_error(
+
+pub(in crate::cas_projection::accepted_input_scheduler) fn classify_projection_error(
     error: ProjectionExecutionError,
+    home_generation: beryl_home_store::HomeGeneration,
+) -> PendingTurnExecutionDisposition {
+    classify_projection_error_ref(&error, home_generation)
+}
+
+pub(in crate::cas_projection::accepted_input_scheduler) fn classify_projection_error_ref(
+    error: &ProjectionExecutionError,
     home_generation: beryl_home_store::HomeGeneration,
 ) -> PendingTurnExecutionDisposition {
     if projection_error_cut_correlated(&error, home_generation) {

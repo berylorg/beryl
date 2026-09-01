@@ -67,6 +67,7 @@ impl ProjectionConnectionService {
         } else {
             self.scheduler_signal.request_shutdown();
         }
+        self.native_lineage_recovery.close();
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }
@@ -150,6 +151,7 @@ impl ProjectionConnectionService {
         } else {
             self.scheduler_signal.request_shutdown();
         }
+        self.native_lineage_recovery.close();
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }

@@ -6,7 +6,7 @@ use syndic_storage::SyndicStorage;
 
 use super::AcceptedInputSchedulerSignal;
 use crate::cas_projection::{
-    ProjectionCancellationToken, TurnStartAdmissionRequirement,
+    NativeLineageRecoveryControl, ProjectionCancellationToken, TurnStartAdmissionRequirement,
     persistent_failure::{MasterCommandGate, PersistentFailureTerminalDisposer},
     scheduled_ordinary::ScheduledOrdinaryExecutionProvider,
     service_config::ProjectionWorkerPool,
@@ -104,6 +104,7 @@ pub(in crate::cas_projection) struct AcceptedInputSchedulerContext {
     pub(super) cancellation: ActiveSteeringCancellationLifecycle,
     pub(super) ordinary_cancellation: ProjectionCancellationToken,
     pub(super) signal: AcceptedInputSchedulerSignal,
+    pub(super) native_lineage_recovery: NativeLineageRecoveryControl,
 }
 
 impl AcceptedInputSchedulerContext {
@@ -121,6 +122,7 @@ impl AcceptedInputSchedulerContext {
         terminal_disposer: PersistentFailureTerminalDisposer,
         cancellation: ActiveSteeringCancellationLifecycle,
         signal: AcceptedInputSchedulerSignal,
+        native_lineage_recovery: NativeLineageRecoveryControl,
     ) -> Self {
         Self {
             home,
@@ -136,6 +138,7 @@ impl AcceptedInputSchedulerContext {
             cancellation,
             ordinary_cancellation: ProjectionCancellationToken::new(),
             signal,
+            native_lineage_recovery,
         }
     }
 }

@@ -420,10 +420,7 @@ impl Drop for ProjectionWorkerAdmission {
                 .expect("steering-critical releases retain exact permit accounting");
         }
         debug_assert!(state.available <= state.capacity);
-        let releases_scheduled_capacity = self.role == ProjectionWorkerRole::Connection
-            || (self.role == ProjectionWorkerRole::SteeringCritical
-                && self.committed_steering_worker.load(Ordering::Acquire));
-        let next_capacity_released = releases_scheduled_capacity
+        let next_capacity_released = state.noncritical_role_fits(SCHEDULED_ORDINARY_WORKER_PERMITS)
             && std::mem::take(&mut state.release_waiter.scheduled_ordinary);
         let steering_capacity_released = std::mem::take(&mut state.release_waiter.steering);
         let steering_released =

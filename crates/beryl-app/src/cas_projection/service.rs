@@ -24,8 +24,8 @@ use super::{
     ProjectionCancellationToken, active_steering,
 };
 use super::{
-    AdmittedProjectionSession, ProjectionCoordinatorError, ProjectionRegistryKind,
-    ProjectionSessionAdmissionError,
+    AdmittedProjectionSession, NativeLineageRecoveryControl, ProjectionCoordinatorError,
+    ProjectionRegistryKind, ProjectionSessionAdmissionError,
     accepted_input_scheduler::{
         AcceptedInputScheduler, AcceptedInputSchedulerContext, AcceptedInputSchedulerDiagnostics,
         AcceptedInputSchedulerExit, AcceptedInputSchedulerSignal, AcceptedInputWakeReason,
@@ -89,6 +89,7 @@ pub struct ProjectionConnectionService {
     context_compaction: Option<Arc<super::context_compaction::ContextCompactionCoordinator>>,
     scheduler: Option<AcceptedInputScheduler>,
     scheduler_signal: AcceptedInputSchedulerSignal,
+    native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
     settled: bool,
 }

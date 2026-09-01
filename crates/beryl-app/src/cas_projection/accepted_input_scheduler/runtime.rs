@@ -1,7 +1,7 @@
 use super::{
     AcceptedInputSchedulerContext, AcceptedInputSchedulerExit, ActiveSteeringRetryState, ScanState,
-    SchedulerFailure, WorkerCompletions, WorkerRecord, failure, next_turn, recovered_pending,
-    steering,
+    SchedulerFailure, WorkerCompletions, WorkerRecord, failure, native_lineage, next_turn,
+    recovered_pending, steering,
 };
 #[cfg(all(test, feature = "test-faults"))]
 use super::{AcceptedInputWakeReason, WorkerCompletion, WorkerDisposition};
@@ -20,6 +20,7 @@ pub(super) struct SchedulerRuntime {
     pub(super) recovered_pending_pass_active: bool,
     pub(super) recovered_pending_capacity_waiting: bool,
     pub(super) recovered_pending_flight_waiting: bool,
+    pub(super) native_lineage_capacity_waiting: bool,
     pub(super) next_capacity_waiting: bool,
     pub(super) next_flight_waiting: bool,
     pub(super) next_active_worker_waiting: bool,
@@ -43,6 +44,7 @@ impl SchedulerRuntime {
             recovered_pending_pass_active: false,
             recovered_pending_capacity_waiting: false,
             recovered_pending_flight_waiting: false,
+            native_lineage_capacity_waiting: false,
             next_capacity_waiting: false,
             next_flight_waiting: false,
             next_active_worker_waiting: false,
@@ -103,7 +105,9 @@ impl SchedulerRuntime {
                     break;
                 }
             }
-            if wake.restarts_recovered_pending_pass() {
+            if wake.restarts_recovered_pending_pass()
+                || wake.native_lineage_route_capacity_released()
+            {
                 self.recovered_pending_pass_active = true;
                 self.recovered_pending_scan =
                     Some(recovered_pending::RecoveredPendingScanState::default());
@@ -111,8 +115,16 @@ impl SchedulerRuntime {
                     diagnostics.recovered_pending_retained_source_cursor = false;
                 });
             }
+            let opens_native_lineage_pass = wake.native_lineage_ready()
+                || next_worker_ready
+                || (wake.next_worker_capacity_released() && self.native_lineage_capacity_waiting);
+            if opens_native_lineage_pass && let Err(failure) = native_lineage::run_pass(self) {
+                self.fail_closed(failure);
+                break;
+            }
             let opens_recovered_pending_pass = self.recovered_pending_pass_active
                 && (wake.restarts_recovered_pending_pass()
+                    || wake.native_lineage_route_capacity_released()
                     || wake.continues_recovered_pending_pass()
                     || recovered_pending_worker_ready
                     || (wake.projection_flight_released()
@@ -183,6 +195,7 @@ impl SchedulerRuntime {
         }
         self.context.cancellation.cancel_current();
         self.context.ordinary_cancellation.cancel();
+        self.context.native_lineage_recovery.close();
         self.context.signal.update_diagnostics(|diagnostics| {
             diagnostics.fatal = true;
         });
@@ -192,6 +205,7 @@ impl SchedulerRuntime {
         self.context.command_gate.close_for_local_failure();
         self.context.cancellation.cancel_current();
         self.context.ordinary_cancellation.cancel();
+        self.context.native_lineage_recovery.close();
         self.context.signal.request_shutdown();
         self.release_pending_launch_gate();
 

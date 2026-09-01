@@ -40,40 +40,40 @@ nextest cases. The full ordinary range-widget target reproduced its clean-HEAD r
 91 passed with the same 26 inherited failures. Fresh independent command and semantic reviews
 accepted lifecycle, identity, capacity, adoption, diagnostics, and cleanup evidence with no blocker.
 
-# Phase 234: Mount Native-Lineage Compact Restoration (wip)
+# Phase 234: Park Native-Lineage Decisions Without Worker Custody (finished)
 
-Mount one coherent native-lineage recovery-decision path in the user-input slot. Preserve the exact
-decision through scheduler-to-GUI routing, keep retry and recovery single-flight, and return command
-failure to the same bounded actionable prompt without replaying possibly delivered input.
+Published dependency commit `efa1e33` and pinned Beryl to it. Native-lineage decisions now park in
+bounded generation-qualified routes without worker custody; `Retry` and `Recover from Syndic
+history` reacquire ordinary capacity and continue only the retained turn. Capacity is reserved
+before any native request that can produce a route, so saturation sends no request, releases all
+ephemeral custody, defers the durable lane until an actual slot release, and permits unrelated work.
+Cancellation, stale generations, command failure, route loss, and service disposal release or
+re-present exact ownership without pending-input replay.
 
-Suspend the mounted composer only after fencing edits, settling admitted operations, reaching the
-external widget's full quiescent cut, and exporting its payload-free compact seed. Use the supported
-unmount/remount path: dispose widget-owned pages and work while retaining only the selected
-draft/session authority and the seed; do not attempt a same-key true rebind or translate the seed
-across a different binding, revision, or extent.
+Locked metadata and focused checks passed, as did all 11 scheduler acceptance cases. Saturation,
+coalesced commands, worker contention, cancellation, disposal, Retry/Recover, route failure, exact
+continuation, no-churn, and unrelated progress were exercised. Fresh independent review accepted
+the bounded reservation, route, wake, and lifecycle behavior with no blocker.
 
-Mount loading, unavailable, ready, running, bounded-failure, and leaving presentation with exactly
-one slot contribution and no empty flash. On eligible success, validate durable root/history and
-the seed's binding, caret, directed selection, scroll continuation, and history availability
-through existing bounded sources before publishing the restored editor. When an already-admitted
-turn owns the input, continue only that exact delivery instead of restoring or admitting it again.
+# Phase 235: Mount Native-Lineage Compact Restoration (wip)
 
-Verify stale decisions and completions, all seed mismatch and nonquiescent cases, exact prior-surface
-retention, focus routing, detached settlement release, repeated unmount/remount, capacity denial,
-and representative multi-MiB bounded residency. Run focused Beryl, Syndic, and external text-input
-checks, then an independent semantic review of lifecycle, persistence, shared-resource, and
-external-effect boundaries. Avoid the pre-existing unrelated import-order changes in shared test
-support files.
+Mount the corrected recovery route in the user-input slot. Fence and settle the composer to the
+full quiescent compact-seed cut, coherently replace it with one canonical prompt contribution, and
+drive exact off-thread validation plus host-serviced prepublication realization through the
+window-affine environment, cleanup ledger, bounded session, one-shot candidate, and fresh widget
+adoption boundary. Branch leaving explicitly between restored editor publication and the already-
+admitted pending-turn continuation.
 
-Resumable milestone: the dependency boundary is accepted at `gpui-text-input` commit `efa1e33`.
-Resume the provisional Beryl scheduler decision and composer mount/owner work by replacing its
-incomplete restoration seam with the exact prepublication environment, session, cleanup-ledger,
-candidate, and adoption contracts; reconcile or remove provisional code that no longer matches.
+Implement canonical command-button focus, keyboard activation, and disabled explanations; retain
+the prompt through bounded failure and leaving; release routes, sessions, candidates, cleanup
+records, adopted custody, and suspended slot state on stale completion, cancellation, replacement,
+close, disposal, and late settlement. Verify seed mismatch and nonquiescence, exact prior-surface
+retention, repeated cycles, capacity denial, late settlement, pending-turn focus routing, and
+representative multi-MiB bounded residency, then run focused Beryl, Syndic, and external text-input
+checks plus independent lifecycle, persistence, shared-resource, and external-effect review. Avoid
+the pre-existing unrelated import-order changes in shared test support files.
 
-Completion-review corrections are active: remove stale-route prompt stranding; implement the
-canonical command-button focus, keyboard, and disabled-explanation contract; keep leaving as one
-prompt contribution and branch explicitly between editor restoration and already-admitted pending-
-turn continuation; move Syndic validation off the GPUI thread with bounded visible failure; and
-release retained routes and suspended slot state on close or disposal. Extend acceptance coverage
-through real scheduler failure and cancellation, disposal, stale selection and seed rejection,
-pending-turn continuation, repeated cycles, late settlement, and representative bounded residency.
+Resumable milestone: the headless prepublication dependency and worker-free native-lineage route
+are accepted. The remaining provisional GUI mount must adopt the new reservation-backed route API,
+realize the compact seed off-screen, and publish exactly one fresh composer widget or continue the
+already-admitted pending turn.

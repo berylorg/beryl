@@ -243,6 +243,20 @@ pub struct ScheduledOrdinaryExecutionLease {
     flight: ProjectionFlight,
 }
 
+pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
+    home_id: BerylHomeId,
+    home_generation: HomeGeneration,
+    thread_id: SyndicThreadId,
+    execution_binding: ExecutionBinding,
+    process_generation: CasProcessGeneration,
+    connection: Arc<ProjectionConnection>,
+    policy: ScheduledOrdinaryRequestPolicy,
+    assets: AssetState,
+    session: Box<dyn ScheduledProjectionSessionAuthority>,
+    tools: Box<dyn OrdinaryDynamicToolAuthority>,
+    flight: ProjectionFlight,
+}
+
 /// Result of one synchronous provider call.
 #[must_use]
 #[derive(Debug)]
@@ -252,6 +266,37 @@ pub enum ScheduledOrdinaryAdmissionResult {
 }
 
 impl ScheduledOrdinaryExecutionLease {
+    pub(in crate::cas_projection) fn park(self) -> ParkedScheduledOrdinaryExecution {
+        let Self {
+            home_id,
+            home_generation,
+            thread_id,
+            execution_binding,
+            process_generation,
+            connection,
+            policy,
+            assets,
+            session,
+            tools,
+            _worker,
+            flight,
+        } = self;
+        drop(_worker);
+        ParkedScheduledOrdinaryExecution {
+            home_id,
+            home_generation,
+            thread_id,
+            execution_binding,
+            process_generation,
+            connection,
+            policy,
+            assets,
+            session,
+            tools,
+            flight,
+        }
+    }
+
     /// Returns the exact Beryl-home identity retained by this lease.
     #[must_use]
     pub const fn home_id(&self) -> BerylHomeId {
@@ -329,6 +374,41 @@ impl ScheduledOrdinaryExecutionLease {
             ..
         } = self;
         use_authority(session.session(), policy, assets, tools.handlers(), flight)
+    }
+}
+
+impl ParkedScheduledOrdinaryExecution {
+    pub(in crate::cas_projection) fn resume(
+        self,
+        worker: ProjectionWorkerPermit,
+    ) -> ScheduledOrdinaryExecutionLease {
+        let Self {
+            home_id,
+            home_generation,
+            thread_id,
+            execution_binding,
+            process_generation,
+            connection,
+            policy,
+            assets,
+            session,
+            tools,
+            flight,
+        } = self;
+        ScheduledOrdinaryExecutionLease {
+            home_id,
+            home_generation,
+            thread_id,
+            execution_binding,
+            process_generation,
+            connection,
+            policy,
+            assets,
+            session,
+            tools,
+            _worker: worker,
+            flight,
+        }
     }
 }
 

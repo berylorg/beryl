@@ -9,6 +9,9 @@ use syndic_storage::{
 
 use crate::cas_projection::connection::{ExistingLease, LoadedProjectionLease};
 use crate::cas_projection::model::NativeLineageRetryOperation;
+use crate::cas_projection::native_lineage_recovery::{
+    NativeLineageRecoveryControl, NativeLineageRouteReservation, NativeLineageRouteReservationError,
+};
 use crate::cas_projection::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
     NativeLineageRecoveryDecision, ProjectionCancellationToken, ProjectionCoordinatorError,
@@ -64,6 +67,7 @@ impl CasProjectionCoordinator {
         cancellation: &ProjectionCancellationToken,
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let lineage = resumed_lineage(&source, basis)?;
         if cancellation.is_cancelled() {
@@ -73,6 +77,8 @@ impl CasProjectionCoordinator {
         let load_options = thread_load_options(request);
         let resume_thread_id = cas_thread_id.clone();
         let timeout = request.timeout();
+        let mut route_reservation =
+            reserve_native_lineage_route(native_lineage_recovery, request.thread_id())?;
         let loaded = match call_native_with_retry(session, cancellation, move |backend| {
             backend.resume_thread(&resume_thread_id, &load_options, timeout)
         }) {
@@ -91,10 +97,12 @@ impl CasProjectionCoordinator {
                         NativeLineageRetryOperation::Resume,
                         failed_attempts,
                         *last_failure,
+                        route_reservation.take(),
                     )),
                 });
             }
         };
+        drop(route_reservation);
         let lease = match session.register_loaded(
             cas_thread_id.clone(),
             request.thread_id(),
@@ -189,6 +197,7 @@ impl CasProjectionCoordinator {
         source: NativeProjectionSource,
         through_turn: Option<&CasTurnId>,
         native_turn_count: CasNativeTurnCount,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let lineage = CasLineageProof::native(NativeCasLineage::Fork, basis.represented_prefix())?;
         let source_lease = if let Some(required) =
@@ -216,6 +225,7 @@ impl CasProjectionCoordinator {
                         basis,
                         source,
                         "recovered fork source managed process no longer matches",
+                        native_lineage_recovery,
                     );
                 }
                 ExistingLease::AnotherConnection => {
@@ -244,6 +254,7 @@ impl CasProjectionCoordinator {
                         basis,
                         source,
                         "recovered fork source loaded-session authority was lost",
+                        native_lineage_recovery,
                     );
                 }
             }
@@ -257,6 +268,8 @@ impl CasProjectionCoordinator {
         let source_thread_id = source.binding().cas_thread_id().clone();
         let operation_through_turn = through_turn.cloned();
         let timeout = request.timeout();
+        let mut route_reservation =
+            reserve_native_lineage_route(native_lineage_recovery, request.thread_id())?;
         let fresh = match call_native_with_retry(session, cancellation, move |backend| {
             match operation_through_turn.as_ref() {
                 Some(turn_id) => {
@@ -283,10 +296,12 @@ impl CasProjectionCoordinator {
                         },
                         failed_attempts,
                         *last_failure,
+                        route_reservation.take(),
                     )),
                 });
             }
         };
+        drop(route_reservation);
         let child = self.publish_fresh_native_target(
             home,
             storage,
@@ -317,6 +332,7 @@ impl CasProjectionCoordinator {
         basis: NativeProjectionBasis,
         source: NativeProjectionSource,
         reason: &'static str,
+        native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let source_is_target = source.thread_id() == request.thread_id();
         let retirement_basis_revision = if source_is_target {
@@ -418,8 +434,36 @@ impl CasProjectionCoordinator {
                 thread_id: request.thread_id(),
             });
         }
-        self.execute_plan(home, storage, session, request, cancellation, replanned)
+        self.execute_plan(
+            home,
+            storage,
+            session,
+            request,
+            cancellation,
+            replanned,
+            native_lineage_recovery,
+        )
     }
+}
+
+fn reserve_native_lineage_route(
+    control: Option<&NativeLineageRecoveryControl>,
+    thread_id: beryl_model::SyndicThreadId,
+) -> Result<Option<NativeLineageRouteReservation>, ProjectionExecutionError> {
+    let Some(control) = control else {
+        return Ok(None);
+    };
+    control
+        .try_reserve_route(thread_id)
+        .map(Some)
+        .map_err(|error| match error {
+            NativeLineageRouteReservationError::CapacityFull => {
+                ProjectionExecutionError::NativeLineageRouteCapacityFull { thread_id }
+            }
+            NativeLineageRouteReservationError::Rejected => {
+                ProjectionExecutionError::NativeLineageRouteReservationRejected { thread_id }
+            }
+        })
 }
 
 fn resumed_lineage(

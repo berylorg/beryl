@@ -2,6 +2,7 @@ mod completion;
 mod context;
 mod failure;
 mod handle;
+mod native_lineage;
 mod next_turn;
 mod recovered_pending;
 mod runtime;

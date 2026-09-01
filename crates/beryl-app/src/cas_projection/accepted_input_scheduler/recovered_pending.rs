@@ -338,7 +338,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<PassOutcome, Sc
 fn spawn_worker(
     runtime: &mut SchedulerRuntime,
     source: RecoveredPendingSource,
-    mut lease: crate::cas_projection::ScheduledOrdinaryExecutionLease,
+    lease: crate::cas_projection::ScheduledOrdinaryExecutionLease,
 ) -> Result<(), SchedulerFailure> {
     let syndic_thread_id = source.thread_id();
     let Some(command) = failure::authorize(&runtime.context)? else {
@@ -348,18 +348,25 @@ fn spawn_worker(
     let storage = runtime.context.storage.clone();
     let cancellation = runtime.context.ordinary_cancellation.clone();
     let signal = runtime.context.signal.clone();
+    let native_lineage_recovery = runtime.context.native_lineage_recovery.clone();
     let completions = runtime.completions.clone();
     let handle = std::thread::Builder::new()
         .name("beryl-recovered-pending-execution".to_owned())
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                execute_source(&validator, &storage, &cancellation, &source, &mut lease)
+                execute_source(
+                    &validator,
+                    &storage,
+                    &cancellation,
+                    &native_lineage_recovery,
+                    &source,
+                    lease,
+                )
             }));
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
             completions.publish(WorkerCompletion {
                 thread_id: std::thread::current().id(),
             });
-            drop(lease);
             signal.wake(AcceptedInputWakeReason::WorkerCompleted);
             disposition
         })
@@ -372,13 +379,14 @@ fn execute_source(
     validator: &super::next_turn::LeaseValidationAuthority,
     storage: &syndic_storage::SyndicStorage,
     cancellation: &crate::cas_projection::ProjectionCancellationToken,
+    native_lineage_recovery: &crate::cas_projection::NativeLineageRecoveryControl,
     source: &RecoveredPendingSource,
-    lease: &mut crate::cas_projection::ScheduledOrdinaryExecutionLease,
+    mut lease: crate::cas_projection::ScheduledOrdinaryExecutionLease,
 ) -> WorkerDisposition {
     if cancellation.is_cancelled() {
         return WorkerDisposition::RecoveredPendingContinue;
     }
-    if let Err(error) = validator.validate(lease) {
+    if let Err(error) = validator.validate(&mut lease) {
         return if failure::is_current_health_loss_admission(&error, validator.home_generation()) {
             WorkerDisposition::PersistentHomeFailure
         } else if failure::is_cut_correlated_admission(&error, validator.home_generation()) {
@@ -414,7 +422,8 @@ fn execute_source(
         cancellation,
         observed_at,
         selected_path,
-        lease,
+        native_lineage_recovery,
+        &mut lease,
     ) {
         super::next_turn::PendingTurnExecutionDisposition::Settled
         | super::next_turn::PendingTurnExecutionDisposition::ExpectedInterruption => {
@@ -425,6 +434,23 @@ fn execute_source(
         }
         super::next_turn::PendingTurnExecutionDisposition::ProjectionRefused => {
             WorkerDisposition::Fatal
+        }
+        super::next_turn::PendingTurnExecutionDisposition::NativeLineageCapacityBlocked => {
+            WorkerDisposition::RecoveredPendingContinue
+        }
+        super::next_turn::PendingTurnExecutionDisposition::ParkNativeLineage {
+            decision,
+            recovery_available,
+        } => {
+            let execution = lease.park();
+            match native_lineage_recovery.park(decision, recovery_available, execution) {
+                crate::cas_projection::native_lineage_recovery::NativeLineageParkDisposition::Parked => {
+                    WorkerDisposition::RecoveredPendingContinue
+                }
+                crate::cas_projection::native_lineage_recovery::NativeLineageParkDisposition::Rejected => {
+                    WorkerDisposition::Fatal
+                }
+            }
         }
     }
 }

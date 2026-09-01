@@ -94,6 +94,13 @@ impl ProjectionConnectionService {
             },
         )?;
         let scheduler_signal = AcceptedInputSchedulerSignal::new();
+        let native_lineage_recovery = NativeLineageRecoveryControl::new(
+            config.worker_capacity(),
+            home.home_id(),
+            home_generation,
+            service_generation,
+            scheduler_signal.clone(),
+        );
         let context_compaction =
             super::super::context_compaction::ContextCompactionCoordinator::new_with_initial_start(
                 Arc::clone(&home),
@@ -126,6 +133,7 @@ impl ProjectionConnectionService {
                 persistent_failure.terminal_disposer(home.home_id(), home_generation),
                 ActiveSteeringCancellationLifecycle::new(),
                 scheduler_signal.clone(),
+                native_lineage_recovery.clone(),
             ),
             initial_start,
         )?;
@@ -147,6 +155,7 @@ impl ProjectionConnectionService {
             context_compaction: Some(context_compaction),
             scheduler: Some(scheduler),
             scheduler_signal,
+            native_lineage_recovery,
             scheduled_ordinary_provider: Some(scheduled_ordinary_provider),
             settled: false,
         })

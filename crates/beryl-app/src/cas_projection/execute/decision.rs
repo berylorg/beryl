@@ -22,10 +22,27 @@ impl CasProjectionCoordinator {
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
-        self.ensure_decision_current(home, session, &decision, cancellation)?;
         let _flight = self.begin_projection(decision.target_thread_id())?;
+        self.retry_native_lineage_retained_in_flight(
+            home,
+            storage,
+            session,
+            &decision,
+            cancellation,
+        )
+    }
+
+    pub(in crate::cas_projection) fn retry_native_lineage_retained_in_flight(
+        &self,
+        home: &HomeStore,
+        storage: &SyndicStorage,
+        session: &mut AdmittedProjectionSession,
+        decision: &NativeLineageRecoveryDecision,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        self.ensure_decision_current(home, session, decision, cancellation)?;
         self.ensure_home(home)?;
-        let plan = self.prepare_decision_plan(home, storage, &decision)?;
+        let plan = self.prepare_decision_plan(home, storage, decision)?;
         if !decision.matches_plan(&plan) {
             return Err(
                 ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -43,6 +60,7 @@ impl CasProjectionCoordinator {
             decision.request(),
             cancellation,
             plan,
+            None,
         )
     }
 
@@ -59,16 +77,31 @@ impl CasProjectionCoordinator {
         decision: &NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<(), ProjectionExecutionError> {
-        self.ensure_decision_current(home, session, decision, cancellation)?;
         let _flight = self.begin_projection(decision.target_thread_id())?;
-        let plan = self.prepare_decision_plan(home, storage, decision)?;
-        if !decision.matches_plan(&plan) {
-            return Err(
-                ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
-                    thread_id: decision.target_thread_id(),
-                },
-            );
-        }
+        self.validate_native_lineage_recovery_in_flight(
+            home,
+            storage,
+            session,
+            decision,
+            cancellation,
+        )
+    }
+
+    pub(in crate::cas_projection) fn validate_native_lineage_recovery_in_flight(
+        &self,
+        home: &HomeStore,
+        storage: &SyndicStorage,
+        session: &AdmittedProjectionSession,
+        decision: &NativeLineageRecoveryDecision,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<(), ProjectionExecutionError> {
+        self.validate_native_lineage_retry_in_flight(
+            home,
+            storage,
+            session,
+            decision,
+            cancellation,
+        )?;
         if decision.basis().represented_prefix().tail().is_none() {
             return Ok(());
         }
@@ -83,6 +116,26 @@ impl CasProjectionCoordinator {
         Ok(())
     }
 
+    pub(in crate::cas_projection) fn validate_native_lineage_retry_in_flight(
+        &self,
+        home: &HomeStore,
+        storage: &SyndicStorage,
+        session: &AdmittedProjectionSession,
+        decision: &NativeLineageRecoveryDecision,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<(), ProjectionExecutionError> {
+        self.ensure_decision_current(home, session, decision, cancellation)?;
+        let plan = self.prepare_decision_plan(home, storage, decision)?;
+        if !decision.matches_plan(&plan) {
+            return Err(
+                ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
+                    thread_id: decision.target_thread_id(),
+                },
+            );
+        }
+        Ok(())
+    }
+
     /// Consumes one recovery decision and establishes a fresh target from Syndic history.
     pub fn recover_native_lineage_from_syndic(
         &self,
@@ -92,10 +145,27 @@ impl CasProjectionCoordinator {
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
-        self.ensure_decision_current(home, session, &decision, cancellation)?;
         let _flight = self.begin_projection(decision.target_thread_id())?;
+        self.recover_native_lineage_from_syndic_retained(
+            home,
+            storage,
+            session,
+            &decision,
+            cancellation,
+        )
+    }
+
+    pub(in crate::cas_projection) fn recover_native_lineage_from_syndic_retained(
+        &self,
+        home: &HomeStore,
+        storage: &SyndicStorage,
+        session: &mut AdmittedProjectionSession,
+        decision: &NativeLineageRecoveryDecision,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        self.ensure_decision_current(home, session, decision, cancellation)?;
         self.ensure_home(home)?;
-        let plan = self.prepare_decision_plan(home, storage, &decision)?;
+        let plan = self.prepare_decision_plan(home, storage, decision)?;
         if !decision.matches_plan(&plan) {
             return Err(
                 ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -110,8 +180,7 @@ impl CasProjectionCoordinator {
                 .expected_binding_revision()
                 .checked_next()
                 .map_err(|_| ProjectionPublicationFailure::BindingRevisionExhausted)?;
-            let retired_revision =
-                self.retire_decision_target(home, storage, session, &decision)?;
+            let retired_revision = self.retire_decision_target(home, storage, session, decision)?;
             if retired_revision != post_retirement_revision {
                 return Err(
                     ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
@@ -120,9 +189,7 @@ impl CasProjectionCoordinator {
                 );
             }
             self.ensure_home(home)?;
-            let replanned_basis = self
-                .prepare_decision_plan(home, storage, &decision)?
-                .basis();
+            let replanned_basis = self.prepare_decision_plan(home, storage, decision)?.basis();
             if replanned_basis.expected_binding_revision() != post_retirement_revision {
                 return Err(
                     ProjectionExecutionError::NativeLineageRecoveryDecisionStale {
