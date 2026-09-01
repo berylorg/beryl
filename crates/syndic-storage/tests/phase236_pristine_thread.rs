@@ -15,9 +15,9 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::{
     CreateThread, DraftEditHistoryPolicyV1, DraftPieceOperationIdV1, DraftPieceRootKeyV1,
-    HistorySummaryRecord, InputGateRecord, InputGateState, PristineThreadAudit, SelectedPathProof,
-    SyndicPointReadLimit, SyndicStorage, ThreadCatalogSummaryRecord, ThreadRecord,
-    canonical_empty_draft_edit_history_v1,
+    HistorySummaryRecord, InputGateRecord, InputGateState, PristineThreadAudit,
+    PristineThreadRemovalAudit, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
+    ThreadCatalogSummaryRecord, ThreadRecord, canonical_empty_draft_edit_history_v1,
 };
 
 use support::{TestHome, commit, draft_id, id, open, timestamp};
@@ -422,4 +422,121 @@ fn writer_validation_rejects_a_stale_candidate() {
         store.execute(command),
         CommandOutcome::NotCommitted { .. }
     ));
+}
+
+#[test]
+fn created_pristine_thread_deletes_the_exact_complete_closure_and_audits_removed() {
+    let home = TestHome::new("phase237-pristine-created-delete");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let binding = execution(100);
+    let creation = create(&store, &storage, 101, binding.clone());
+    let candidate = storage
+        .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+        .unwrap()
+        .expect("created thread is pristine");
+
+    assert_eq!(
+        storage
+            .audit_pristine_thread_removal(&store, &candidate)
+            .unwrap(),
+        PristineThreadRemovalAudit::Present
+    );
+    execute(&store, storage.delete_pristine_thread(candidate.clone()));
+    assert_eq!(
+        storage
+            .audit_pristine_thread_removal(&store, &candidate)
+            .unwrap(),
+        PristineThreadRemovalAudit::Removed
+    );
+    let mut replay = HomeCommand::new(store.home_revision().unwrap());
+    replay
+        .add(storage.delete_pristine_thread(candidate.clone()))
+        .unwrap();
+    assert!(matches!(
+        store.execute(replay),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert!(matches!(
+        storage
+            .audit_pristine_thread(&store, creation.thread_id(), &binding)
+            .unwrap(),
+        PristineThreadAudit::Missing
+    ));
+    assert!(
+        storage
+            .current_draft(&store, creation.thread_id(), point_limit())
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn noncanonical_reused_candidate_is_validation_only_and_cannot_be_deleted() {
+    let home = TestHome::new("phase237-pristine-reused-release");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let binding = execution(110);
+    let creation = create(&store, &storage, 111, binding.clone());
+    replace_current_payload(&store, &storage, creation.thread_id(), 0, 0, true);
+    let candidate = storage
+        .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+        .unwrap()
+        .expect("noncanonical empty thread remains reusable");
+
+    let mut delete = HomeCommand::new(store.home_revision().unwrap());
+    delete
+        .add(storage.delete_pristine_thread(candidate.clone()))
+        .unwrap();
+    assert!(matches!(
+        store.execute(delete),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(
+        storage
+            .audit_pristine_thread_removal(&store, &candidate)
+            .unwrap(),
+        PristineThreadRemovalAudit::Collision
+    );
+    assert!(
+        storage
+            .thread(&store, creation.thread_id(), point_limit())
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn stale_or_partial_created_candidate_never_deletes_and_audits_collision() {
+    let home = TestHome::new("phase237-pristine-stale-partial");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let binding = execution(120);
+    let creation = create(&store, &storage, 121, binding.clone());
+    let candidate = storage
+        .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+        .unwrap()
+        .expect("created thread is pristine");
+
+    create(&store, &storage, 122, execution(123));
+    let mut stale = HomeCommand::new(store.home_revision().unwrap());
+    stale
+        .add(storage.delete_pristine_thread(candidate.clone()))
+        .unwrap();
+    assert!(matches!(
+        store.execute(stale),
+        CommandOutcome::NotCommitted { .. }
+    ));
+
+    let mut partial = FixtureBatch::new();
+    partial
+        .delete(FixtureDelete::ThreadAttributes(creation.thread_id()))
+        .unwrap();
+    commit(&store, storage.clone(), partial);
+    assert_eq!(
+        storage
+            .audit_pristine_thread_removal(&store, &candidate)
+            .unwrap(),
+        PristineThreadRemovalAudit::Collision
+    );
 }

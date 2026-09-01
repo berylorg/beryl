@@ -845,7 +845,9 @@ pub use native_projection::{
     NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,
     NativeProjectionSource, NativeProjectionUnavailable,
 };
-pub use pristine_thread::{PristineThreadAudit, PristineThreadCandidate};
+pub use pristine_thread::{
+    PristineThreadAudit, PristineThreadCandidate, PristineThreadRemovalAudit,
+};
 pub use provider_item::*;
 pub use provider_observation::*;
 pub(crate) use read::AcceptedNextCandidateBasis;
