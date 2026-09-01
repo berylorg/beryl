@@ -75,6 +75,7 @@
 - [GPUI text-input external specs](../../../../gpui-text-input/doc/gui/external-specs.md)
 - [Owned Unicode segmentation design](../../../../unicode-segmentation-fork/doc/design.md)
 - [Owned GPUI fork design](../../../../zed-fork/doc/design.md)
+- [Owned GPUI hidden-window first publication](../../../../zed-fork/doc/features/hidden-window-first-publication/design.md)
 - [GPUI settings-window design](../../../../gpui-settings-window/doc/design.md)
 - [GPUI settings-window external specs](../../../../gpui-settings-window/doc/gui/external-specs.md)
 - [GPUI settings-window spec](../../../../gpui-settings-window/doc/gui/widgets/settings-window/spec.md)
@@ -194,6 +195,7 @@
   and atomic text, object, and geometry-index delivery through the accepted staged-publication
   boundary without an accessibility payload or integration.
 - [x] Published and canonically pinned the accepted `gpui-text-input` boundary and its owned GPUI dependency chain.
+- [ ] Establish, verify, publish, and canonically pin owned GPUI hidden-window first publication before main-window shell construction.
 - [x] Replaced the fixed domain-family ceiling with the exact encoded-metadata-derived capacity
   needed by registered domains.
 - [x] Established persistent composite draft roots with exact candidate-session, logical-line,

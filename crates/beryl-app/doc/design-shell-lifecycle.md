@@ -19,8 +19,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
   No main-window controller or GPUI entity is shared between windows.
 - Construction checks the stable process main-window count before allocating the controller or OS
   window. The [main-windows feature](../../../doc/features/main-windows/design.md) owns capacity and
-  visible creation, close, Exit, and restore behavior; the app creates no overflow or hidden
-  deferred controller.
+  visible creation, close, Exit, and restore behavior. One admitted construction may retain its
+  exact unpublished OS window and controller only through bounded preparation to first publication
+  or prepublication abandonment; the app creates no overflow, parked, or deferred hidden
+  controller.
 - Settings, busy-home, and home-failure windows are distinct top-level controllers and never receive
   main-window claims or restore records.
 
