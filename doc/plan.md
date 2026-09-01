@@ -39,6 +39,14 @@ Do not substitute a Beryl root patch or local path override for the published de
 revisions. If the accepted dependency commits require text-input source, API, test, or design
 changes, pause and replan that separate acceptance boundary.
 
+Blocked: the canonical dependency-only pins produce one accepted GPUI type universe, pass locked
+metadata, package compilation, and all 18 prepublication cases, but the focused `range_widget`
+integration target fails three existing package-contract cases covering adjacent-object realization,
+concurrent clipboard/geometry residency, and exact-surface invalidation. The two-file fork change
+remains uncommitted and unpublished. Do not begin Phase 243 until the Operator directs a separate
+`gpui-text-input` source-compatibility investigation and acceptance phase or revises the dependency
+authority.
+
 # Phase 243: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
 Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 242 widget commits,
