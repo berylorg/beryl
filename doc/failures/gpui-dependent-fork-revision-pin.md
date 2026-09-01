@@ -30,6 +30,12 @@ underlying red target. A source-only diagnosis around the coalesced geometry-res
 invalidated when reverting that transition, and then all behavioral changes from its introducing
 commit, left the accepted-pin failures unchanged.
 
+An exact identical-source lifecycle comparison found only the accepted GPUI window's correct initial
+active fact before the first request cycle. After normalizing that fact, both graphs produced the
+same content-free lifecycle, wait, custody, continuation, and request-count traces. Explicitly
+drawing and draining the accepted window's initial active frame left all three cases failing across
+nine bounded runs, so activation and test-driver drain sequencing are not the correction owner.
+
 # Why It Failed
 
 Cargo revisions are distinct package sources even when they come from the same repository and
@@ -60,7 +66,13 @@ canonical graphs at their first content-free lifecycle divergence and exercise a
 correction before selecting package source, test driver, or owned dependency as the implementation
 owner; do not weaken or replace failing tests merely to continue propagation.
 
+When an excluded divergence leaves the correction owner unresolved, split the next independently
+verifiable diagnostic boundary instead of extending the rejected candidate. Establish a repeatable
+baseline and follow the first response-validation or custody mismatch before selecting implementation
+scope.
+
 # Affected Authority And Work
 
-- `../plan.md`, Phases 241 through 244 and the blocked Phase 242 source-compatibility decision.
+- `../plan.md`, Phases 241 through 244, including Phase 242's activation exclusion and Phase 243's
+  unresolved response-validation and custody diagnosis.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
