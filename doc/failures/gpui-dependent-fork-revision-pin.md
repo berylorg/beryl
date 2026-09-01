@@ -23,18 +23,30 @@ integration target nevertheless failed three existing cases: adjacent zero-width
 realized, concurrent clipboard/geometry residency returned `Busy`, and committed inline-object
 replacement exhausted exact geometry with `ExactGeometryWrongPage` validation rejections.
 
-Exact comparison later showed that prior canonical pins also fail those cases, but earlier with
-residency-capacity and request-shape symptoms. The accepted GPUI revision changes immediate test-
-window activation and therefore changes the exercised lifecycle even though it does not create the
-underlying red target. A source-only diagnosis around the coalesced geometry-response transition was
-invalidated when reverting that transition, and then all behavioral changes from its introducing
-commit, left the accepted-pin failures unchanged.
+Exact isolated comparison later used identical committed package source, exact prior and accepted
+manifests and locks, separate target directories, and one canonical command. Both graphs produced
+the same empty-object, clipboard-busy, and wrong-page symptoms in all three repetitions. The earlier
+residency-capacity and request-shape report was not reproducible under that baseline and came from
+non-exact command, source, configuration, or target evidence. A source-only diagnosis around the
+coalesced geometry-response transition was also invalidated when reverting that transition, and
+then all behavioral changes from its introducing commit, left the accepted-pin failures unchanged.
 
 An exact identical-source lifecycle comparison found only the accepted GPUI window's correct initial
 active fact before the first request cycle. After normalizing that fact, both graphs produced the
 same content-free lifecycle, wait, custody, continuation, and request-count traces. Explicitly
 drawing and draining the accepted window's initial active frame left all three cases failing across
 nine bounded runs, so activation and test-driver drain sequencing are not the correction owner.
+
+The next response-custody trace found a real cross-purpose resident-object classification mismatch,
+but the sole bounded candidate that removed purpose equality from resident lookup left every named
+case unchanged across three repetitions. It therefore did not establish the correction boundary.
+The replacement case separately proved that deterministic wrong-input and stale-alignment geometry
+responses remain dispatched and are requeued through repeated wrong-page rejection; package-source
+custody violates the atomic terminal-failure contract, but the smallest delivery, shared-closure, or
+custody-service correction locus remains unproven. Overlapping-object realization remains
+unattributed after resident selection. Clipboard begins while a same-binding target still awaits an
+object page, exposing an unresolved authority gap between the test's committed-surface availability
+expectation and the source's noninteractive-target `Busy` behavior.
 
 # Why It Failed
 
@@ -51,6 +63,11 @@ Matching failing test names across revisions do not prove one causal mechanism. 
 substitution is not an exact canonical comparison when the historical manifest, lock, or dependency
 lifecycle differs, and a suspicious authority-contradicting branch is not the demonstrated cause
 until reversing it changes the observed failure.
+
+A real state-classification mismatch is likewise not the demonstrated cause of a named failure when
+the exact candidate that reverses it leaves that failure unchanged. Deterministic response failure
+cannot use mere continued dispatch presence as proof of retryable custody when authority permits
+retention only for explicit surface-publication capacity.
 
 # Course Correction
 
@@ -70,6 +87,12 @@ When an excluded divergence leaves the correction owner unresolved, split the ne
 verifiable diagnostic boundary instead of extending the rejected candidate. Establish a repeatable
 baseline and follow the first response-validation or custody mismatch before selecting implementation
 scope.
+
+After the exact baseline and sole failed candidate, do not broaden the existing phase with another
+correction attempt. First correct the missing clipboard command-eligibility authority, then plan
+separate bounded evidence for deterministic response closure, clipboard gating and residency, and
+resident-object scanner continuation and publication. Keep publication blocked until each actual
+correction owner and independently implementable boundary is established.
 
 # Affected Authority And Work
 

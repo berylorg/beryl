@@ -41,6 +41,22 @@ manifests, locks, local overrides, or accepted publication state. Remove all com
 obtain fresh independent semantic review of the causal evidence and smallest correction boundary,
 and stop for authority correction if the owner contradicts accepted GPUI or package design.
 
+Exact isolated baselines over identical package source and separate canonical targets produced the
+same empty-object, clipboard-busy, and wrong-page symptoms in all three repetitions under both the
+prior and accepted dependency graphs. This resolves the earlier symptom discrepancy as non-exact
+command, source, configuration, or target evidence and excludes the GPUI revision as correction
+owner. The sole candidate removed purpose equality only from resident object lookup while retaining
+purpose-qualified pending coalescing; all three cases remained unchanged in all three repetitions.
+
+Blocked: fresh independent review found that deterministic geometry validation failures are
+incorrectly retained and retried by package-source custody, but no candidate has yet established
+the smallest response-specific closure locus. Overlapping-object realization remains unattributed
+after resident selection, while clipboard command eligibility against the committed surface during
+a same-binding nonterminal target is unspecified: the existing test requires availability and the
+source returns `Busy`. The one-candidate allowance is exhausted. Do not exercise another correction
+or begin Phase 244 until the Operator corrects the clipboard authority and the plan is partitioned
+into independently verifiable custody, clipboard, and object-realization boundaries.
+
 # Phase 244: Reconcile And Publish GPUI Text Input At The Accepted Revision (pending)
 
 Apply the smallest authority-consistent correction established by Phase 243 at its identified
