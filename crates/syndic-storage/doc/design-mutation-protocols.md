@@ -32,6 +32,11 @@ identities, call providers, wait for resource capacity while holding the seriali
 whole logical value, or execute application work. No error, cancellation, or panic path exposes a
 partially assembled contribution as committed authority.
 
+An authenticated pristine-thread deletion is one bounded mutation contribution over its complete
+canonical initial closure. It deletes every owned primary and index record together or deletes
+nothing; a validation-only pristine participant contributes no deletion. Neither participant
+interprets Beryl session, claim, catalog, job, or visibility state.
+
 ## Canonical Replay
 
 Every operation has a stable natural identity and canonical request bytes. Replay is exact only when:
@@ -101,6 +106,12 @@ canonical record and revision, and returns a closed result:
 Mutable anchors are observed first and last. A missing or disagreeing required record under a stable
 anchor is corruption, not absence or retryable uncertainty. Reconciliation never scans a family,
 chooses an alternate operation, infers success from a digest, or reconstructs application input.
+
+For authenticated pristine deletion, the exact old side is the complete byte-equal initial closure
+and the exact new side is complete absence of that same closure. A stable mixture, replacement,
+mutation, unexpected record, or disagreeing index is collision rather than successful deletion or
+retry authority. The package contributes these exact sides to HomeStore reconciliation without
+owning the app's operation identity or custody.
 
 ## Acknowledgement Loss And Restart
 

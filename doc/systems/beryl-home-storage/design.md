@@ -664,6 +664,34 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Claims belonging to the durable restore set remain restoring claims across process restart. Claims not referenced by the active restore generation are stale and are released during validated startup before ordinary acquisition.
 - The initial zero-runtime window has a durable window record without a thread claim. Adding the first runtime atomically creates the runtime, home root, thread/draft, window claim, and selected-thread/session updates.
 
+## Prepublication Window Abandonment
+
+- Prepublication abandonment applies only to a successfully acquired main window that has never
+  been published visible. It is not ordinary window close, thread deletion, or cleanup authority
+  for any visible or previously visible window.
+- `WindowId` is the sole abandonment operation identity. A private exact fingerprint binds that
+  identity to the acquired window, selected thread and draft, runtime/root target, placement,
+  acquisition origin, and fallback-creation facts without creating a substitutable second
+  operation identity.
+- One revision-checked `HomeCommand` removes the exact session window, its exact restore-set
+  reference, and both reverse claims together with the matching catalog and Syndic effects. The
+  command validates that no active Beryl durable job depends on the thread.
+- Abandoning a reused pristine thread preserves its complete Syndic closure and changes its exact
+  catalog row to the unclaimed successor. Abandoning a created fallback deletes its authenticated
+  pristine Syndic thread-and-draft closure and deletes the exact acquisition-created catalog row
+  and indexes in the same command.
+- Changed, active, misbound, stale, partial, or disagreeing State or Syndic closure rejects the
+  abandonment without cleanup, replacement, or weakening existing ownership. No failure or retry
+  may choose another window, thread, draft, runtime, root, or operation identity.
+- The app retains sole move-only abandonment and reconciliation custody. Cancellation before
+  writer admission returns that custody; an indeterminate commit transfers it to exact targeted
+  reconciliation until the operation is classified as acquired, abandoned, or collision.
+- Natural-state classification reads only the bounded exact State and Syndic closure between equal
+  observations of the same home revision. Revision drift retries only within a fixed bound and
+  otherwise preserves custody for later reconciliation. Acknowledgement loss, same-home service
+  replacement, and explicit retry never infer success from absence, partial state, or a stale
+  process capability.
+
 ## Session And Window Records
 
 - The store maintains one active restore-set generation and one bounded window record per restorable main conversation window, with at most 256 restorable main windows in one Beryl home.

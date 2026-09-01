@@ -10,13 +10,19 @@ effect fencing, cross-domain asset proof, and bounded recovery. Do not infer who
 validation, continuous semantic proof, blanket adversarial review, arbitrary-scale support, or
 duplicated consumer checks from persistence or an unqualified verification requirement.
 
-The live composer now has cursor-paged ordinary edits, durable root-transition history,
-credit-gated editor realization, autosave/flush, exact mounted submission, and multi-MiB bounded-
-residency evidence. Continue from the next genuine composer seam: native-lineage compact
-restoration. Keep later GUI, repair, recovery, branch, asset, integration, and closure boundaries
-in the active rework tracker until their own bounded slices are ready. Functional checks run
-normally; sustained stress or performance work requires a concrete unresolved question and prior
-Operator AC-power coordination.
+The replacement shell is the final target-state composition boundary, not a compatibility shell or
+a reduced copy of the archived workspace-era view. It ultimately mounts every declared main-window
+slot and feature contribution, including theme roles, toolbar and lineage, transcript and its owned
+scrolling, optional activity and discussion surfaces, composer, status line, overlays, notices, and
+Settings entry. Reuse accepted live target-state services, hosts, projections, and widgets; keep
+unimplemented mounts visibly absent or unavailable until their owning bounded phase completes.
+
+Continue through exact prepublication release, the window-local shell/controller foundation, and
+independent additional-window creation. Keep startup restoration, onboarding, placement, close,
+Exit, later catalog/navigation/activity/status/notice/settings/transcript mounts, repair, recovery,
+branch, asset, integration, and closure boundaries in the active rework tracker until their own
+bounded slices are ready. Functional checks run normally; sustained stress or performance work
+requires a concrete unresolved question and prior Operator AC-power coordination.
 
 # Phase 232: Update And Synchronize AIPM Skills (finished)
 
@@ -99,28 +105,48 @@ process acknowledgement loss, same-home reopen, natural exact-old/new/collision 
 and absence of fallback or partial publication. Fresh semantic, persistence, adversarial, and
 resource review accepted the final implementation with no blocker.
 
-# Phase 237: Mount Bounded Independent Main-Window Creation (wip)
+# Phase 237: Define Exact Prepublication Window Abandonment (finished)
 
-Build the process-owned bounded main-window registry and mount the visible `New Window` command plus
-`Ctrl+Shift+N` onto the ordinary main shell. Derive the invoking window's exact runtime/root target,
-reserve one of the shared 256 process slots before controller or OS-window allocation, drive the
-Phase 236 acquisition through exact reconciliation, and construct one distinct window controller
-only after its claimed thread and durable draft form one coherent first-presentable editor state.
+Defined the cross-domain prepublication-abandonment invariant and its State, Syndic, and app-owned
+boundaries. Reused pristine threads now retain an exact unclaimed catalog successor; created
+fallback abandonment atomically deletes its authenticated pristine Syndic closure and exact catalog
+row while session, restore, reverse-claim, and active-job facts remain revision fenced.
 
-Keep every controller, selection, navigation history, composer, transcript, focus, and transient
-surface window-local while shared runtime, catalog, storage-health, and occupancy facts remain
-versioned process services. Implement canonical command focus, loading, duplicate-activation, and
-disabled explanations for zero runtimes, process capacity, unavailable target, acquisition failure,
-and application-wide mutation gating. On construction, activation, publication, cancellation,
-collision, close-before-publication, window-host failure, or late settlement, release the exact
-process slot and controller custody without leaking a durable claim or exposing an invisible
-window.
+Rag-rat reconciliation finished `Current` with zero failed or blocked chunks. Focused structure,
+link, whitespace, authority-boundary, architecture, persistence, exact-custody, and bounded-work
+review accepted the authority with no finding.
 
-Verify two independent visible windows, distinct claims and editors, invoking-target inheritance,
-eligible-thread reuse versus creation, command pointer and keyboard activation, zero-runtime and
-256-slot denial, duplicate activation, stale or failed acquisition, host-construction failure,
-close-before-first-publication, focus isolation, unrelated-window progress, and repeated creation
-and release. Complete independent GUI lifecycle, shared-service, capacity, focus, persistence, and
-external-effect review. Startup restore, zero-runtime onboarding transition, placement restoration,
-ordinary close after publication, final-window termination, and application Exit remain later
-phases.
+# Phase 238: Establish Exact Prepublication Window Abandonment (wip)
+
+Add one typed Home command that abandons an acquired window which never became visible. Remove the
+exact session window, restore-set reference, catalog claim, and paired reverse claims atomically;
+release a reused pristine thread without deleting it, and delete a created fallback thread and
+draft only through Syndic's authenticated pristine-state boundary. Reject changed, active,
+misbound, stale, partial, or colliding state without weakening its existing durable ownership.
+
+Give `WindowId` sole move-only abandonment and reconciliation custody. Preserve that custody across
+cancellation and acknowledgement loss until natural-state audit proves exact old state, exact
+abandoned state, or collision; never retry by substituting another thread or by interpreting an
+indeterminate result as cleanup. Keep scans and retained reconciliation state bounded and permit
+unrelated windows and threads to progress.
+
+Verify reuse and created-fallback abandonment, exact reverse-claim and restore-set removal, pristine
+deletion guards, mutation and active-work rejection, stale revisions, partial-state collisions,
+before-commit and after-commit failure, same-home reopen reconciliation, cancellation, duplicate
+WindowId admission, repeated acquire/abandon cycles, bounded custody, and unrelated progress.
+Complete independent persistence, lifecycle, concurrency, resource, and external-effect review.
+
+# Phase 239: Build The Target-State Main-Window Shell Foundation (pending)
+
+Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
+one distinct window-local controller, and theme-aware ordinary shell composition over the declared
+main-window slots. Prepare the exact claimed editor before GPUI construction, publish no partial OS
+window, and use Phase 237 abandonment for construction failure or close-before-publication. The
+binary startup/bootstrap path remains outside this phase.
+
+# Phase 240: Mount Bounded Independent Main-Window Creation (pending)
+
+Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
+process registry, Phase 236 acquisition, Phase 238 hidden host, and exact publication or
+abandonment. Verify two isolated visible windows, command and disabled states, capacity and
+duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.

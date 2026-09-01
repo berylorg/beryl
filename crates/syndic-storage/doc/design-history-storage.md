@@ -37,6 +37,23 @@ root, and bounded timestamps/metadata. Turn and thread lineage digests are struc
 scoped reads validate exact depth, parent, skip, and digest progression without retaining an ancestor
 set.
 
+## Pristine Thread Abandonment
+
+- The package exposes a bounded authenticated pristine-thread candidate covering the exact initial
+  thread, current draft, empty draft root and history, immutable execution and attributes, compact
+  summaries, gates, bindings, and every primary and index record created with that thread.
+- A validation-only participant proves that a reused candidate still has the exact pristine
+  closure and preserves it unchanged. A deletion participant accepts only the exact canonical
+  fallback-creation fingerprint and deletes that complete pristine closure atomically.
+- Any accepted input, draft mutation, turn, changed selector or history, live binding, active
+  Syndic operation, mismatched creation fact, missing required record, or disagreeing index makes
+  the candidate ineligible. Rejection deletes nothing and grants no authority over a replacement
+  thread or draft.
+- Natural-state inspection follows only the fixed bounded closure for the named thread and
+  classifies it as the exact authenticated pristine closure, exact absence, or conflict. It does
+  not scan thread families, infer application visibility, inspect Beryl jobs or claims, or decide
+  whether the app may abandon a window.
+
 ## Conversation And Capture Records
 
 Turn state is independently revisioned and carries one closed lifecycle, finalized-item frontier,

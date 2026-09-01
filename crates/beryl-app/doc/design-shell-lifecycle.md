@@ -42,6 +42,32 @@ governed by [design.md](design.md). It does not independently declare engineerin
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md); this
   package owns only typed preparation, fencing, and publication.
 
+## Prepublication Window Abandonment
+
+- The app admits abandonment only for an exact acquired main window that has not been published
+  visible. Once visibility is published, only the separately owned ordinary-close and Exit
+  lifecycles apply.
+- `WindowId` is the sole operation and bounded-flight identity. Private fixed operation facts bind
+  the exact acquisition fingerprint; they authorize no substitute thread, draft, runtime, root,
+  placement, disposition, or fresh operation identity.
+- One shared process registry admits at most 256 window acquisition or abandonment flights and at
+  most one flight per `WindowId`, with no resident wait queue. Definitive settlement releases the
+  exact entry; indeterminate and pending reconciliation retain it.
+- The app composes the typed session, catalog, durable-job, and Syndic participants into one
+  `HomeCommand`. It neither inspects package-private records nor performs a compensating cleanup
+  command. A reused pristine thread is validation-only; a created fallback contributes the typed
+  authenticated pristine-deletion mutation.
+- App abandonment and reconciliation custody is opaque, move-only, and retained across
+  cancellation and acknowledgement loss until exact classification. `NotCommitted` returns the
+  same abandonment custody, committed or exact-abandoned settles it, and indeterminate transfers it
+  synchronously into the sole reconciliation owner. Pending reconciliation returns that same owner;
+  exact-acquired returns retry custody; collision grants no cleanup authority.
+- Natural reconciliation combines only bounded State and Syndic observations bracketed by equal
+  home-revision reads and returns exact acquired, exact abandoned, or collision. Revision drift is
+  retried within a fixed bound; exhaustion preserves custody. A fresh same-home service uses stable
+  operation facts and fresh typed handles rather than an old-generation capability, and it never
+  guesses completion from missing or partial state.
+
 ## Typed Home Integration
 
 - The package never opens Fjall, reads raw keyspaces, or constructs storage encodings. It receives

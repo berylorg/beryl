@@ -56,3 +56,20 @@ durable job records and transitions plus compact catalog schema, normalization, 
   most a 256 KiB payload. Cursor reads require explicit row and byte limits, report accumulated
   byte cost, and fail rather than represent an incomplete collection as complete; stale rows rebuild
   before correctness-sensitive mutation.
+
+## Prepublication abandonment participants
+
+- The durable-job boundary exposes an exact revision-bound validation-only guard proving that the
+  acquired thread has no active dependent job. A missing, stale, or newly active dependency rejects
+  the surrounding command without changing job state.
+- The catalog boundary prepares one bounded exact-row candidate for the acquired window claim. For
+  a reused thread, its mutation replaces that exact claim with the unclaimed successor while
+  preserving the row and indexes. For a created fallback, its mutation deletes the exact
+  acquisition-created row and every matching catalog index copy.
+- Both forms validate the current catalog revision, source revisions, row/index agreement,
+  `WindowId`, thread identity, claim revision, and private acquisition fingerprint during serialized
+  preparation. Missing, stale, rebound, partially present, or disagreeing catalog state rejects
+  without publishing an unclaimed row, deleting a row, or repairing another identity.
+- Bounded catalog natural-state reads classify only the exact expected claimed, successor, or
+  colliding row closure. They do not inspect Syndic pristine state or decide whole-operation
+  abandonment.

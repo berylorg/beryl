@@ -51,3 +51,16 @@ runtime/root, session/window, and thread-claim durable state.
   and not a substitute for the one-process home lock.
 - A catalog join uses one bounded claim point read proving matching reverse copies or thread-keyed
   absence, then carries that present-or-absent fact as an exact validation-only participant.
+
+## Prepublication window abandonment
+
+- The session boundary prepares one bounded exact-window abandonment candidate only for a claimed
+  window that the caller identifies as acquired but not yet published visible. The candidate binds
+  the current session revision, header generation, exact restore-set reference, window record, and
+  both reverse claims to the caller's `WindowId` and private acquisition fingerprint.
+- Its mutation contribution removes the exact restore-set reference, window record, and both
+  reverse claims atomically and advances the session revision. A missing, changed, rebound,
+  partially present, or disagreeing member rejects without deleting any session or claim record.
+- Its natural-state read uses bounded point reads and classifies the session-owned closure only as
+  exact acquired, exact abandoned, or collision. It does not inspect Syndic records, durable jobs,
+  catalog rows, visibility, or application custody and cannot authorize a retry by itself.
