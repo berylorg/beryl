@@ -35,12 +35,14 @@ or relying on local path overrides, and inspect only the implicated `gpui-text-i
 boundaries.
 
 Produce an evidence-backed root-cause map naming the violated package contract, owning source
-boundary, and smallest source, test, or design correction required for publication. Make no source,
-test, API, design, manifest, or lockfile edits in this diagnostic phase; retain the prepared two-file
-pin change uncommitted. Obtain fresh independent semantic review of the diagnosis, including its
-causal evidence and phase boundary. Clean up any exact task-owned comparison checkout or temporary
-artifacts before completion. If the evidence contradicts accepted GPUI authority or requires a
-public-contract change, stop for authority correction instead of planning around it.
+boundary, and smallest source, test, or design correction required for publication. Make no durable
+source, test, API, design, manifest, or lockfile edits in this diagnostic phase; retain the prepared
+two-file pin change uncommitted. One bounded source or driver candidate may be exercised only in an
+exact task-owned ephemeral comparison tree and must be removed before completion. Obtain fresh
+independent semantic review of the diagnosis, including its causal evidence and phase boundary.
+Clean up every exact task-owned comparison checkout or temporary artifact before completion. If the
+evidence contradicts accepted GPUI authority or requires a public-contract change, stop for
+authority correction instead of planning around it.
 
 Resumable milestone: independent review rejected the initial geometry-only diagnosis. Exact parent
 and child checkouts already fail the named cases with prior-pin residency-capacity and request-shape
