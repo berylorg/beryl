@@ -26,19 +26,54 @@ only intended GUI and Rust-first local adaptations, and kept `gpui-scroll-surfac
 frontmatter, manifest, link, heading, whitespace, inventory, hash-parity, and selective-read checks
 passed, as did a fresh independent completion review; no synthetic semantic queries were used.
 
-# Phase 233: Mount Native-Lineage Compact Restoration (pending)
+# Phase 233: Establish Headless Prepublication Realization (finished)
 
-Phase 228 is sealed and pushed at commit `890b139`; no native-lineage compact-restoration source or
-test work has begun. Resume by rereading this plan and the active rework tracker, then mark this
-phase `wip` only when implementation starts.
+Added the app-neutral non-mounted realization boundary to `gpui-text-input` at commit `efa1e33`.
+Detached sessions now validate exact compact seeds, remain bound to one window-affine text system,
+admit bounded source and cleanup custody before effect exposure, reuse ordinary streaming geometry,
+and transfer one coherent candidate into a fresh ordinary widget without hidden rendering or whole-
+value work. Exact cleanup ownership remains ledger-bound through session, candidate, adopted widget,
+replacement, disposal, and late or colliding response settlement.
 
-Operator restart gate: do not begin this phase until the AIPM synchronization phase is sealed and
-the project-scoped rag-rat MCP is available. After Codex restarts, verify index freshness with
-`index_status`. Use a focused `semantic_search` only if concrete uncertainty remains about retrieval
-quality; it is not a correctness or freshness gate.
+Formatting and all-target checks passed, as did 18 focused prepublication and 36 exact-geometry
+nextest cases. The full ordinary range-widget target reproduced its clean-HEAD result exactly: 65 of
+91 passed with the same 26 inherited failures. Fresh independent command and semantic reviews
+accepted lifecycle, identity, capacity, adoption, diagnostics, and cleanup evidence with no blocker.
 
-Mount native-lineage loading, unavailable, failure, and ready states, and carry unmount or true
-rebind through the existing payload-free compact restoration seed. Preserve exact draft identity,
-caret, directed selection, scroll continuation, history availability, bounded realization custody,
-and the prior coherent surface until the replacement is admitted; introduce no retained whole
-draft, compatibility restoration model, or submission work.
+# Phase 234: Mount Native-Lineage Compact Restoration (wip)
+
+Mount one coherent native-lineage recovery-decision path in the user-input slot. Preserve the exact
+decision through scheduler-to-GUI routing, keep retry and recovery single-flight, and return command
+failure to the same bounded actionable prompt without replaying possibly delivered input.
+
+Suspend the mounted composer only after fencing edits, settling admitted operations, reaching the
+external widget's full quiescent cut, and exporting its payload-free compact seed. Use the supported
+unmount/remount path: dispose widget-owned pages and work while retaining only the selected
+draft/session authority and the seed; do not attempt a same-key true rebind or translate the seed
+across a different binding, revision, or extent.
+
+Mount loading, unavailable, ready, running, bounded-failure, and leaving presentation with exactly
+one slot contribution and no empty flash. On eligible success, validate durable root/history and
+the seed's binding, caret, directed selection, scroll continuation, and history availability
+through existing bounded sources before publishing the restored editor. When an already-admitted
+turn owns the input, continue only that exact delivery instead of restoring or admitting it again.
+
+Verify stale decisions and completions, all seed mismatch and nonquiescent cases, exact prior-surface
+retention, focus routing, detached settlement release, repeated unmount/remount, capacity denial,
+and representative multi-MiB bounded residency. Run focused Beryl, Syndic, and external text-input
+checks, then an independent semantic review of lifecycle, persistence, shared-resource, and
+external-effect boundaries. Avoid the pre-existing unrelated import-order changes in shared test
+support files.
+
+Resumable milestone: the dependency boundary is accepted at `gpui-text-input` commit `efa1e33`.
+Resume the provisional Beryl scheduler decision and composer mount/owner work by replacing its
+incomplete restoration seam with the exact prepublication environment, session, cleanup-ledger,
+candidate, and adoption contracts; reconcile or remove provisional code that no longer matches.
+
+Completion-review corrections are active: remove stale-route prompt stranding; implement the
+canonical command-button focus, keyboard, and disabled-explanation contract; keep leaving as one
+prompt contribution and branch explicitly between editor restoration and already-admitted pending-
+turn continuation; move Syndic validation off the GPUI thread with bounded visible failure; and
+release retained routes and suspended slot state on close or disposal. Extend acceptance coverage
+through real scheduler failure and cancellation, disposal, stale selection and seed rejection,
+pending-turn continuation, repeated cycles, late settlement, and representative bounded residency.
