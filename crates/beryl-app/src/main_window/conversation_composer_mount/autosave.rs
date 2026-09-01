@@ -12,7 +12,7 @@ use super::super::{
 };
 use crate::composer_host::{
     ComposerHostAutosaveAdvance, ComposerHostAutosaveCapture, ComposerHostAutosaveInterval,
-    ComposerHostAutosaveSettingsCompletion, ComposerHostAutosaveTimer,
+    ComposerHostAutosaveSettingsCompletion, ComposerHostAutosaveTimer, ComposerHostFlushTicket,
     ComposerHostMarkerSealAuthority, ComposerHostPublicationTicket,
 };
 
@@ -24,6 +24,49 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
+    pub(super) fn capture_native_lineage_disposal_publication(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        flush: ComposerHostFlushTicket,
+    ) -> Result<crate::composer_host::ComposerHostFlushCapture, String> {
+        let requirement = self.service.autosave_capture_requirement(selection)?;
+        if requirement == MainWindowComposerAutosaveCaptureRequirement::Clean {
+            return Ok(crate::composer_host::ComposerHostFlushCapture::State(
+                crate::composer_host::ComposerHostFlushState::DisposalRequired,
+            ));
+        }
+        let marker_authority = match requirement {
+            MainWindowComposerAutosaveCaptureRequirement::ChangedMarkers => {
+                Some(fresh_marker_authority()?)
+            }
+            MainWindowComposerAutosaveCaptureRequirement::UnchangedMarkers => None,
+            MainWindowComposerAutosaveCaptureRequirement::Clean => unreachable!(),
+        };
+        self.service.capture_flush_publication(
+            selection,
+            flush,
+            self.submission_assets(),
+            &self.submission_marker_seals(),
+            fresh_piece_operation_id()?,
+            marker_authority,
+            current_timestamp()?,
+            &CommandCancellation::new(),
+        )
+    }
+
+    pub(super) fn capture_native_lineage_disposal_session(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        flush: ComposerHostFlushTicket,
+    ) -> Result<crate::composer_host::ComposerHostFlushCapture, String> {
+        self.service.capture_flush_disposal(
+            selection,
+            flush,
+            fresh_piece_operation_id()?,
+            &CommandCancellation::new(),
+        )
+    }
+
     pub(super) fn submission_assets(&self) -> beryl_state::AssetState {
         self.autosave.assets.clone()
     }

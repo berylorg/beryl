@@ -67,7 +67,7 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let activation = ComposerHostActivationRequest::new(
         thread,
         syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([72; 16]),
@@ -270,7 +270,7 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -292,7 +292,7 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     let (binding, marker_before, _) =
         composer_support::insert_marker(&mut host, &store, binding, 105, true);
     host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
         &mut host,
         &store,
@@ -390,7 +390,7 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -412,7 +412,7 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     let (binding, marker_before, _) =
         composer_support::insert_marker(&mut host, &store, binding, 115, true);
     host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
         &mut host,
         &store,
@@ -534,7 +534,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -555,7 +555,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
     let binding = composer_support::commit_text(&mut host, &store, binding, 134, 0, 0, "AB", 2, 1);
     let binding = insert_marker_at_text_end(&mut host, &store, binding, 135, marker_asset);
     host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
         &mut host,
         &store,
@@ -795,7 +795,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -816,7 +816,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
     let binding = composer_support::commit_text(&mut host, &store, binding, 154, 0, 0, "AB", 2, 1);
     let binding = insert_marker_at_text_end(&mut host, &store, binding, 155, marker_asset);
     host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
         &mut host,
         &store,
@@ -887,7 +887,7 @@ fn late_cut_preparation_is_fenced_after_successful_clipboard_write(cx: &mut gpui
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
     let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     assert!(matches!(
         host.test_activate(
             &store,
@@ -909,7 +909,7 @@ fn late_cut_preparation_is_fenced_after_successful_clipboard_write(cx: &mut gpui
     let (binding, before, after) =
         composer_support::insert_markers(&mut host, &store, binding, 125, 9);
     host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let last = match after.gap {
         gpui_text_input::InlineObjectGap::After(last) => last,
         _ => unreachable!(),

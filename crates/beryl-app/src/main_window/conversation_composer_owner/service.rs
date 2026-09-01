@@ -1,6 +1,6 @@
-#[cfg(feature = "test-faults")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 #[cfg(feature = "test-faults")]
 use std::{
     future::Future,
@@ -8,11 +8,51 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use beryl_home_store::HomeStore;
-use gpui_text_input::RangeTextInputRequest;
+use beryl_home_store::{CommandCancellation, HomeStore};
+use gpui::BackgroundExecutor;
+use gpui_text_input::{
+    RangePrepublicationValidationRequest, RangePrepublicationValidationResponse,
+    RangeTextInputRequest,
+};
+
+#[cfg(feature = "test-faults")]
+use super::prepublication::MainWindowNativeLineagePrepublicationDiagnostics;
+use super::prepublication::MainWindowNativeLineagePrepublicationSource;
 
 use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease};
 use crate::main_window::MainWindowComposerSlot;
+
+pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
+    CapacityFull { epoch: u64 },
+    Failed(String),
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone)]
+pub struct MainWindowNativeLineageCleanupTestWitness(
+    Arc<Mutex<MainWindowNativeLineageCleanupTestWitnessState>>,
+);
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MainWindowNativeLineageCleanupTestWitnessSnapshot {
+    pub diagnostics: MainWindowNativeLineagePrepublicationDiagnostics,
+    pub driver_alive: bool,
+    pub capacity_epoch: u64,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Default)]
+struct MainWindowNativeLineageCleanupTestWitnessState {
+    snapshot: MainWindowNativeLineageCleanupTestWitnessSnapshot,
+}
+
+#[cfg(feature = "test-faults")]
+impl MainWindowNativeLineageCleanupTestWitness {
+    pub fn snapshot(&self) -> MainWindowNativeLineageCleanupTestWitnessSnapshot {
+        self.0.lock().unwrap().snapshot
+    }
+}
 
 #[cfg(feature = "test-faults")]
 #[derive(Clone)]
@@ -34,12 +74,31 @@ pub(super) struct CutPreparationTestGate(Arc<Mutex<CutPreparationTestGateState>>
 
 #[cfg(feature = "test-faults")]
 #[derive(Clone)]
-pub(super) struct PendingCompletionTestGate(Arc<Mutex<PendingCompletionTestGateState>>);
+pub(in crate::main_window) struct PendingCompletionTestGate(
+    Arc<Mutex<PendingCompletionTestGateState>>,
+);
 
 #[cfg(feature = "test-faults")]
 struct CutPreparationTestGateState {
     released: bool,
     waker: Option<Waker>,
+}
+
+#[cfg(feature = "test-faults")]
+fn install_pending_test_gate(
+    slot: &Mutex<Option<PendingCompletionTestGate>>,
+) -> Option<MainWindowComposerPendingCompletionTestRelease> {
+    let state = Arc::new(Mutex::new(PendingCompletionTestGateState {
+        entered: false,
+        released: false,
+        waker: None,
+    }));
+    let mut slot = slot.lock().ok()?;
+    if slot.is_some() {
+        return None;
+    }
+    *slot = Some(PendingCompletionTestGate(state.clone()));
+    Some(MainWindowComposerPendingCompletionTestRelease(state))
 }
 
 #[cfg(feature = "test-faults")]
@@ -124,6 +183,11 @@ impl Future for PendingCompletionTestGate {
 pub struct MainWindowConversationComposerService {
     pub(super) store: Arc<HomeStore>,
     pub(super) slot: Mutex<MainWindowComposerSlot>,
+    native_lineage_sources: Mutex<Vec<Arc<MainWindowNativeLineagePrepublicationSource>>>,
+    native_lineage_driver_started: AtomicBool,
+    native_lineage_capacity_epoch: AtomicU64,
+    #[cfg(feature = "test-faults")]
+    native_lineage_cleanup_witness: Arc<Mutex<MainWindowNativeLineageCleanupTestWitnessState>>,
     #[cfg(feature = "test-faults")]
     test_cancel_next_mutation_commit: AtomicBool,
     #[cfg(feature = "test-faults")]
@@ -133,10 +197,84 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
+    test_native_lineage_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_native_lineage_page_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_native_lineage_object_page_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_fail_next_native_lineage_validation: AtomicBool,
+    #[cfg(feature = "test-faults")]
+    test_fail_next_native_lineage_page: AtomicBool,
+    #[cfg(feature = "test-faults")]
+    test_fail_next_native_lineage_disposal_begin: AtomicBool,
+    #[cfg(feature = "test-faults")]
+    test_fail_next_native_lineage_disposal_advance: AtomicBool,
+    #[cfg(feature = "test-faults")]
     test_append_impossible_pending_initial_response: AtomicBool,
 }
 
 impl MainWindowConversationComposerService {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn test_native_lineage_disposal_diagnostics(
+        &self,
+    ) -> crate::main_window::MainWindowNativeLineageDisposalDiagnostics {
+        let Ok(slot) = self.slot.lock() else {
+            return crate::main_window::MainWindowNativeLineageDisposalDiagnostics {
+                mount_release_present: false,
+                mount_contribution_present: false,
+                mount_subscription_present: false,
+                mount_flush_ticket_present: false,
+                mount_flush_capture: None,
+                mount_last_disposal_advance: None,
+                marker_current_flights: 0,
+                marker_driving_flights: 0,
+                marker_terminalizing_flights: 0,
+                slot_selected: false,
+                slot_pending: false,
+                slot_disposed: false,
+                slot_suspended: false,
+                slot_disposal_flushing: false,
+                slot_awaiting_widget_release: false,
+                host_pending_requests: 0,
+                host_settlement_custody: 0,
+                host_timers: 0,
+                host_barriers: 0,
+                host_joined_publications: 0,
+                host_publication_ready: false,
+            };
+        };
+        let (selected, pending, disposed, suspended, flushing, awaiting) =
+            slot.test_native_lineage_disposal_state();
+        let host = slot.selected_host();
+        let lifecycle = host.map(|host| host.lifecycle_diagnostics());
+        crate::main_window::MainWindowNativeLineageDisposalDiagnostics {
+            mount_release_present: false,
+            mount_contribution_present: false,
+            mount_subscription_present: false,
+            mount_flush_ticket_present: false,
+            mount_flush_capture: None,
+            mount_last_disposal_advance: None,
+            marker_current_flights: 0,
+            marker_driving_flights: 0,
+            marker_terminalizing_flights: 0,
+            slot_selected: selected,
+            slot_pending: pending,
+            slot_disposed: disposed,
+            slot_suspended: suspended,
+            slot_disposal_flushing: flushing,
+            slot_awaiting_widget_release: awaiting,
+            host_pending_requests: host.map_or(0, |host| host.pending_request_count()),
+            host_settlement_custody: host.map_or(0, |host| host.settlement_custody_in_use()),
+            host_timers: lifecycle.map_or(0, |diagnostics| diagnostics.timers()),
+            host_barriers: lifecycle.map_or(0, |diagnostics| diagnostics.barriers()),
+            host_joined_publications: lifecycle
+                .map_or(0, |diagnostics| diagnostics.joined_publications()),
+            host_publication_ready: lifecycle
+                .is_some_and(|diagnostics| diagnostics.publication_ready()),
+        }
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_submission_diagnostics(
         &self,
@@ -152,6 +290,13 @@ impl MainWindowConversationComposerService {
         Self {
             store,
             slot: Mutex::new(slot),
+            native_lineage_sources: Mutex::new(Vec::with_capacity(2)),
+            native_lineage_driver_started: AtomicBool::new(false),
+            native_lineage_capacity_epoch: AtomicU64::new(0),
+            #[cfg(feature = "test-faults")]
+            native_lineage_cleanup_witness: Arc::new(Mutex::new(
+                MainWindowNativeLineageCleanupTestWitnessState::default(),
+            )),
             #[cfg(feature = "test-faults")]
             test_cancel_next_mutation_commit: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
@@ -161,12 +306,375 @@ impl MainWindowConversationComposerService {
             #[cfg(feature = "test-faults")]
             test_pending_dispatch_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
+            test_native_lineage_validation_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_native_lineage_page_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_native_lineage_object_page_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_fail_next_native_lineage_validation: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
+            test_fail_next_native_lineage_page: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
+            test_fail_next_native_lineage_disposal_begin: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
+            test_fail_next_native_lineage_disposal_advance: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
             test_append_impossible_pending_initial_response: AtomicBool::new(false),
         }
     }
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
         self.slot.lock().ok()?.selected_identity()
+    }
+
+    pub(in crate::main_window) fn retain_native_lineage_source(
+        self: &Arc<Self>,
+        source: Arc<MainWindowNativeLineagePrepublicationSource>,
+        executor: BackgroundExecutor,
+    ) -> Result<(), MainWindowNativeLineageSourceRetentionError> {
+        let mut sources = self.native_lineage_sources.lock().map_err(|_| {
+            MainWindowNativeLineageSourceRetentionError::Failed(
+                "conversation composer prepublication source lock failed".to_owned(),
+            )
+        })?;
+        let previous_len = sources.len();
+        sources.retain(|source| !source.drained());
+        if sources.len() != previous_len {
+            self.native_lineage_capacity_epoch
+                .fetch_add(1, Ordering::AcqRel);
+        }
+        if sources.iter().any(|current| Arc::ptr_eq(current, &source)) {
+            return Ok(());
+        }
+        if sources.len() == sources.capacity() {
+            return Err(MainWindowNativeLineageSourceRetentionError::CapacityFull {
+                epoch: self.native_lineage_capacity_epoch.load(Ordering::Acquire),
+            });
+        }
+        sources.push(source);
+        drop(sources);
+        self.update_native_lineage_cleanup_witness(true);
+        self.start_native_lineage_cleanup_driver(executor);
+        Ok(())
+    }
+
+    pub(in crate::main_window) fn retire_native_lineage_sources(&self) {
+        if let Ok(mut sources) = self.native_lineage_sources.lock() {
+            let previous_len = sources.len();
+            sources.retain(|source| !source.drained());
+            if sources.len() != previous_len {
+                self.native_lineage_capacity_epoch
+                    .fetch_add(1, Ordering::AcqRel);
+            }
+        }
+        self.update_native_lineage_cleanup_witness(
+            self.native_lineage_driver_started.load(Ordering::Acquire),
+        );
+    }
+
+    fn start_native_lineage_cleanup_driver(self: &Arc<Self>, executor: BackgroundExecutor) {
+        if self
+            .native_lineage_driver_started
+            .swap(true, Ordering::AcqRel)
+        {
+            return;
+        }
+        let service = self.clone();
+        let timer_executor = executor.clone();
+        executor
+            .spawn(async move {
+                loop {
+                    timer_executor.timer(Duration::from_millis(50)).await;
+                    service.drive_native_lineage_cleanup_sources();
+                    let empty = service
+                        .native_lineage_sources
+                        .lock()
+                        .map(|sources| sources.is_empty())
+                        .unwrap_or(false);
+                    if empty {
+                        service
+                            .native_lineage_driver_started
+                            .store(false, Ordering::Release);
+                        service.update_native_lineage_cleanup_witness(false);
+                        let still_empty = service
+                            .native_lineage_sources
+                            .lock()
+                            .map(|sources| sources.is_empty())
+                            .unwrap_or(false);
+                        if still_empty
+                            || service
+                                .native_lineage_driver_started
+                                .swap(true, Ordering::AcqRel)
+                        {
+                            return;
+                        }
+                        service.update_native_lineage_cleanup_witness(true);
+                    }
+                }
+            })
+            .detach();
+    }
+
+    pub(in crate::main_window) fn drive_native_lineage_cleanup_sources(&self) {
+        let sources = self
+            .native_lineage_sources
+            .lock()
+            .map(|sources| sources.clone())
+            .unwrap_or_default();
+        for source in sources {
+            source.drive_cleanup(8);
+        }
+        self.retire_native_lineage_sources();
+    }
+
+    pub(in crate::main_window) fn native_lineage_capacity_epoch(&self) -> u64 {
+        self.native_lineage_capacity_epoch.load(Ordering::Acquire)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_lineage_cleanup_witness(&self) -> MainWindowNativeLineageCleanupTestWitness {
+        self.update_native_lineage_cleanup_witness(
+            self.native_lineage_driver_started.load(Ordering::Acquire),
+        );
+        MainWindowNativeLineageCleanupTestWitness(self.native_lineage_cleanup_witness.clone())
+    }
+
+    #[cfg(feature = "test-faults")]
+    fn update_native_lineage_cleanup_witness(&self, driver_alive: bool) {
+        let diagnostics = self.test_native_lineage_cleanup_diagnostics();
+        if let Ok(mut witness) = self.native_lineage_cleanup_witness.lock() {
+            witness.snapshot = MainWindowNativeLineageCleanupTestWitnessSnapshot {
+                diagnostics,
+                driver_alive,
+                capacity_epoch: self.native_lineage_capacity_epoch(),
+            };
+        }
+    }
+
+    #[cfg(not(feature = "test-faults"))]
+    fn update_native_lineage_cleanup_witness(&self, _driver_alive: bool) {}
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_lineage_cleanup_diagnostics(
+        &self,
+    ) -> MainWindowNativeLineagePrepublicationDiagnostics {
+        let sources = self
+            .native_lineage_sources
+            .lock()
+            .map(|sources| sources.clone())
+            .unwrap_or_default();
+        let mut total = MainWindowNativeLineagePrepublicationDiagnostics::default();
+        for source in sources {
+            let diagnostics = source.diagnostics();
+            total.sources += diagnostics.sources;
+            total.owner_active_sources += diagnostics.owner_active_sources;
+            total.validation_flights += diagnostics.validation_flights;
+            total.page_flights += diagnostics.page_flights;
+            total.object_page_flights += diagnostics.object_page_flights;
+            total.pending_flights += diagnostics.pending_flights;
+            total.terminal_flights += diagnostics.terminal_flights;
+            total.delivered_flights += diagnostics.delivered_flights;
+            total.cleanup_active += diagnostics.cleanup_active;
+            total.cleanup_ready += diagnostics.cleanup_ready;
+            total.cleanup_awaiting_acknowledgement += diagnostics.cleanup_awaiting_acknowledgement;
+        }
+        total
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_gate_next_native_lineage_validation(
+        &self,
+    ) -> Option<MainWindowComposerPendingCompletionTestRelease> {
+        install_pending_test_gate(&self.test_native_lineage_validation_gate)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_gate_next_native_lineage_page(
+        &self,
+    ) -> Option<MainWindowComposerPendingCompletionTestRelease> {
+        install_pending_test_gate(&self.test_native_lineage_page_gate)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_gate_next_native_lineage_object_page(
+        &self,
+    ) -> Option<MainWindowComposerPendingCompletionTestRelease> {
+        install_pending_test_gate(&self.test_native_lineage_object_page_gate)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_validation_gate(
+        &self,
+    ) -> Option<PendingCompletionTestGate> {
+        self.test_native_lineage_validation_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_page_gate(
+        &self,
+    ) -> Option<PendingCompletionTestGate> {
+        self.test_native_lineage_page_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_object_page_gate(
+        &self,
+    ) -> Option<PendingCompletionTestGate> {
+        self.test_native_lineage_object_page_gate
+            .lock()
+            .ok()?
+            .take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_native_lineage_validation(&self) {
+        self.test_fail_next_native_lineage_validation
+            .store(true, Ordering::Release);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_validation_failure(&self) -> bool {
+        self.test_fail_next_native_lineage_validation
+            .swap(false, Ordering::AcqRel)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_native_lineage_page(&self) {
+        self.test_fail_next_native_lineage_page
+            .store(true, Ordering::Release);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_page_failure(&self) -> bool {
+        self.test_fail_next_native_lineage_page
+            .swap(false, Ordering::AcqRel)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_native_lineage_disposal_begin(&self) {
+        self.test_fail_next_native_lineage_disposal_begin
+            .store(true, Ordering::Release);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_native_lineage_disposal_advance(&self) {
+        self.test_fail_next_native_lineage_disposal_advance
+            .store(true, Ordering::Release);
+    }
+
+    pub(in crate::main_window) fn begin_native_lineage_suspension(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        seed: gpui_text_input::RangeRestorationSeed,
+    ) -> Result<(), String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .begin_native_lineage_suspension(selection, seed)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(in crate::main_window) fn validate_native_lineage_restoration(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        seed: gpui_text_input::RangeRestorationSeed,
+    ) -> Result<(), String> {
+        let (storage, restoration) = self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .prepare_native_lineage_validation(selection, seed)
+            .map_err(|error| error.to_string())?;
+        storage
+            .validate_draft_piece_restoration(&self.store, restoration)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub(in crate::main_window) fn validate_native_lineage_prepublication(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        seed: gpui_text_input::RangeRestorationSeed,
+        request: RangePrepublicationValidationRequest,
+    ) -> Result<RangePrepublicationValidationResponse, String> {
+        if request.binding != seed.binding || request.history != seed.history {
+            return Err("composer prepublication validation request is stale".to_owned());
+        }
+        self.validate_native_lineage_restoration(selection, seed)?;
+        let current = self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .selected_identity();
+        Ok(RangePrepublicationValidationResponse {
+            key: request.key,
+            binding: request.binding,
+            history: request.history,
+            current: current == Some(selection),
+        })
+    }
+
+    pub(in crate::main_window) fn dispatch_native_lineage_prepublication(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        request: RangeTextInputRequest,
+    ) -> Result<crate::main_window::MainWindowComposerDispatchOutcome, String> {
+        let mut slot = self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?;
+        if !slot.native_lineage_prepublication_active(selection) {
+            return Err("composer prepublication route is stale".to_owned());
+        }
+        slot.dispatch_selected_request(
+            &self.store,
+            selection,
+            request,
+            Vec::new().into_boxed_slice(),
+            &CommandCancellation::new(),
+        )
+        .map_err(|error| format!("composer prepublication dispatch failed: {error}"))
+    }
+
+    pub(in crate::main_window) fn attest_native_lineage_prepublication_current(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        current: gpui_text_input::RangePrepublicationCurrent,
+    ) -> Result<gpui_text_input::RangePrepublicationCurrent, String> {
+        let slot = self
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?;
+        if !slot.native_lineage_prepublication_active(selection)
+            || current.binding != selection.binding().range_binding()
+            || current.history != Some(selection.binding().range_history_frontier())
+        {
+            return Err("composer prepublication adoption authority is stale".to_owned());
+        }
+        Ok(current)
+    }
+
+    pub(in crate::main_window) fn cancel_native_lineage_suspension(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .cancel_native_lineage_suspension(selection)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(in crate::main_window) fn complete_native_lineage_restoration(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .complete_native_lineage_restoration(selection)
+            .map_err(|error| error.to_string())
     }
 
     pub fn pending_identity(
@@ -589,7 +1097,9 @@ impl MainWindowConversationComposerService {
                 operation_id,
                 cancellation,
             )
-            .map_err(|_| "conversation composer service operation failed".to_owned())
+            .map_err(|error| {
+                format!("conversation composer flush disposal capture failed: {error}")
+            })
     }
 
     pub(in crate::main_window) fn complete_publish_after_widget_release(
@@ -619,6 +1129,13 @@ impl MainWindowConversationComposerService {
     pub(in crate::main_window) fn begin_disposal(
         &self,
     ) -> Result<crate::composer_host::ComposerHostFlushAdmission, String> {
+        #[cfg(feature = "test-faults")]
+        if self
+            .test_fail_next_native_lineage_disposal_begin
+            .swap(false, Ordering::AcqRel)
+        {
+            return Err("conversation composer disposal admission failed for test".to_owned());
+        }
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
@@ -654,6 +1171,13 @@ impl MainWindowConversationComposerService {
     pub(in crate::main_window) fn advance_disposal(
         &self,
     ) -> Result<super::MainWindowComposerDisposalAdvance, String> {
+        #[cfg(feature = "test-faults")]
+        if self
+            .test_fail_next_native_lineage_disposal_advance
+            .swap(false, Ordering::AcqRel)
+        {
+            return Err("conversation composer disposal advance failed for test".to_owned());
+        }
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?

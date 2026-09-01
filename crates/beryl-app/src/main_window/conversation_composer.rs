@@ -10,6 +10,7 @@ use syndic_storage::{
     DraftEditHistoryFrontierReferenceV1, DraftPieceRootReferenceV1, DraftRootHistoryPairV1,
 };
 
+#[derive(Clone)]
 pub struct MainWindowConversationComposerConfig {
     selection: MainWindowComposerSelectionIdentity,
     widget: RangeTextInputConfig,
@@ -283,6 +284,50 @@ impl MainWindowConversationComposerConfig {
     pub(super) fn residency_bound(&self) -> Result<MainWindowComposerResidencyBound, String> {
         MainWindowComposerResidencyBound::from_widget(&self.widget)
             .ok_or_else(|| "composer residency bound overflowed".to_owned())
+    }
+
+    pub(super) fn native_lineage_cleanup_slots(&self) -> Result<usize, String> {
+        self.widget
+            .residency_limits
+            .max_resident_pages()
+            .checked_add(self.widget.residency_limits.max_pending_requests())
+            .and_then(|value| {
+                value.checked_add(self.widget.object_residency_limits.max_resident_pages())
+            })
+            .and_then(|value| {
+                value.checked_add(self.widget.object_residency_limits.max_pending_requests())
+            })
+            .and_then(|value| value.checked_mul(2))
+            .and_then(|value| value.checked_add(8))
+            .ok_or_else(|| "composer prepublication cleanup capacity overflowed".to_owned())
+    }
+
+    pub(super) fn native_lineage_environment(
+        &self,
+        id: u64,
+        text_system: &std::sync::Arc<gpui::WindowTextSystem>,
+        cleanup: gpui_text_input::RangePrepublicationCleanupLedger,
+    ) -> Result<gpui_text_input::RangePrepublicationEnvironment, String> {
+        gpui_text_input::RangePrepublicationEnvironment::new(
+            id,
+            self.widget.clone(),
+            text_system,
+            cleanup,
+        )
+        .map_err(|error| format!("composer prepublication environment was rejected: {error:?}"))
+    }
+
+    pub(super) const fn native_lineage_current(
+        &self,
+    ) -> gpui_text_input::RangePrepublicationCurrent {
+        gpui_text_input::RangePrepublicationCurrent {
+            binding: self.widget.binding,
+            history: Some(self.selection.binding().range_history_frontier()),
+            available_capacity: gpui_text_input::RangeSurfaceCharge {
+                bytes: self.widget.limits.max_surface_bytes,
+                items: self.widget.limits.max_surface_items,
+            },
+        }
     }
 
     pub fn mount(

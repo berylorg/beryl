@@ -5,8 +5,9 @@ use gpui::{
 use gpui_text_input::{
     ClipboardCompletion, ClipboardKind, ClipboardLimits, ClipboardWriteOutcome,
     InlineObjectActivation, InlineObjectSurfaceAttachment, InlineObjectSurfaceDismissal,
-    MutationLimits, ObjectPurpose, PagePurpose, RangeSourceSelection, RangeTextInput,
-    RangeTextInputEvent, RangeTextInputRequest, RealizedInlineObjectAnchor, TextInputCommand,
+    MutationLimits, ObjectPurpose, PagePurpose, RangeRestorationSeed, RangeSourceSelection,
+    RangeTextInput, RangeTextInputEvent, RangeTextInputRequest, RealizedInlineObjectAnchor,
+    TextInputCommand,
 };
 use std::{
     collections::VecDeque,
@@ -30,12 +31,24 @@ mod clipboard;
 mod construction;
 mod dispatch;
 mod lifecycle;
+mod prepublication;
 mod realization;
 mod render;
 mod service;
 
+#[cfg(feature = "test-faults")]
+pub use prepublication::MainWindowNativeLineagePrepublicationDiagnostics;
+pub(in crate::main_window) use prepublication::{
+    MainWindowNativeLineagePrepublicationResult, MainWindowNativeLineagePrepublicationSource,
+    MainWindowNativeLineagePrepublicationWork,
+};
 pub use realization::*;
 pub use service::MainWindowConversationComposerService;
+pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
+#[cfg(feature = "test-faults")]
+pub use service::{
+    MainWindowNativeLineageCleanupTestWitness, MainWindowNativeLineageCleanupTestWitnessSnapshot,
+};
 
 pub type ComposerClipboardWriter =
     Box<dyn FnMut(&str, &mut App) -> ClipboardWriteOutcome + 'static>;

@@ -55,25 +55,22 @@ coalesced commands, worker contention, cancellation, disposal, Retry/Recover, ro
 continuation, no-churn, and unrelated progress were exercised. Fresh independent review accepted
 the bounded reservation, route, wake, and lifecycle behavior with no blocker.
 
-# Phase 235: Mount Native-Lineage Compact Restoration (wip)
+# Phase 235: Mount Native-Lineage Compact Restoration (finished)
 
-Mount the corrected recovery route in the user-input slot. Fence and settle the composer to the
-full quiescent compact-seed cut, coherently replace it with one canonical prompt contribution, and
-drive exact off-thread validation plus host-serviced prepublication realization through the
-window-affine environment, cleanup ledger, bounded session, one-shot candidate, and fresh widget
-adoption boundary. Branch leaving explicitly between restored editor publication and the already-
-admitted pending-turn continuation.
+Mounted the reservation-backed native-lineage route in the user-input slot. The composer now
+settles to a full quiescent compact seed, publishes one canonical recovery prompt, realizes the
+seed through bounded prepublication custody, and adopts exactly one fresh editor or continues the
+already-admitted pending turn with external focus routing.
 
-Implement canonical command-button focus, keyboard activation, and disabled explanations; retain
-the prompt through bounded failure and leaving; release routes, sessions, candidates, cleanup
-records, adopted custody, and suspended slot state on stale completion, cancellation, replacement,
-close, disposal, and late settlement. Verify seed mismatch and nonquiescence, exact prior-surface
-retention, repeated cycles, capacity denial, late settlement, pending-turn focus routing, and
-representative multi-MiB bounded residency, then run focused Beryl, Syndic, and external text-input
-checks plus independent lifecycle, persistence, shared-resource, and external-effect review. Avoid
-the pre-existing unrelated import-order changes in shared test support files.
+The prompt provides exact command focus, keyboard activation, running, failure, disabled, and
+disposal states. Service-retained cleanup uses bounded source capacity, terminal-gated flight
+release, retirement rearming, and a finite strong lifetime through cancellation, replacement,
+close, disposal, and late settlement. Disposal preserves prompt and restoration facts through
+admission or flush failure and completes exact dirty-publication reconciliation before release.
 
-Resumable milestone: the headless prepublication dependency and worker-free native-lineage route
-are accepted. The remaining provisional GUI mount must adopt the new reservation-backed route API,
-realize the compact seed off-screen, and publish exactly one fresh composer widget or continue the
-already-admitted pending turn.
+Seven focused native-lineage GUI cases passed, covering exact restoration, repeated cycles,
+capacity denial and rearm, validation and page late settlement, actual mount/service drop,
+disposal failure, command presentation, and pending-turn focus. Focused Syndic marker-admission and
+continuation checks passed, as did external multi-MiB prepublication residency and fresh-widget
+adoption. Fresh independent lifecycle, persistence, shared-resource, external-effect, command, and
+focus review accepted the final implementation with no blocker.

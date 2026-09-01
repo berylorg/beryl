@@ -28,6 +28,18 @@ impl MainWindowConversationComposer {
                 .read_with(cx, |input, _| input.is_surface_current_and_interactive())
     }
 
+    pub(in crate::main_window) fn native_lineage_restoration_ready(&self, cx: &App) -> bool {
+        !self.is_pending_target()
+            && self.last_error.is_none()
+            && self
+                .input
+                .read_with(cx, |input, _| input.is_surface_current_and_interactive())
+    }
+
+    pub(in crate::main_window) fn focus_input(&self, window: &mut Window, cx: &mut App) {
+        self.input.update(cx, |input, _| input.focus(window));
+    }
+
     pub(in crate::main_window) fn admit_pending_surface(&mut self, cx: &App) -> bool {
         let ready = self.pending_surface_ready(cx);
         if ready {
@@ -296,6 +308,39 @@ impl MainWindowConversationComposer {
             && self
                 .input
                 .update(cx, |input, _| input.is_semantically_quiescent())
+    }
+
+    pub(in crate::main_window) fn native_lineage_release_ready(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
+            && self.active_flight.is_none()
+            && self.last_error.is_none()
+            && self.input.update(cx, |input, _| input.is_quiescent())
+            && self.input.update(cx, |input, _| {
+                input
+                    .surface()
+                    .is_some_and(|surface| surface.composition().is_none())
+            })
+    }
+
+    pub(in crate::main_window) fn export_native_lineage_restoration(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Result<RangeRestorationSeed, String> {
+        if !self.native_lineage_release_ready(cx) {
+            return Err(
+                "conversation composer restoration is waiting for full quiescence".to_owned(),
+            );
+        }
+        self.input
+            .update(cx, |input, _| {
+                input.export_restoration(Some(self.selection.binding().range_history_frontier()))
+            })
+            .map_err(|error| {
+                format!("conversation composer restoration export was rejected: {error:?}")
+            })
     }
 
     pub fn resume_after_widget_release_fence(

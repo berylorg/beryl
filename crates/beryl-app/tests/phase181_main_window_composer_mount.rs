@@ -1,15 +1,23 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "phase166_syndic_composer_history/support.rs"]
+mod composer_support;
+#[path = "phase235_native_lineage_gui/support.rs"]
+mod phase235_support;
 #[path = "phase177_main_window_composer_slot/support.rs"]
 mod support;
 
 use std::{
-    num::NonZeroU64,
+    num::{NonZeroU64, NonZeroUsize},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use beryl_app::{
+    cas_projection::{
+        NativeLineageOperation, NativeLineageRecoveryCommand, NativeLineageRecoveryControl,
+        NativeLineageRecoveryKey, NativeLineageRecoveryStatus,
+    },
     composer_host::{
         ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostAutosaveInterval,
         ComposerHostFlushAdmission, ComposerHostFlushCapture, ComposerHostFlushState,
@@ -18,22 +26,24 @@ use beryl_app::{
     },
     main_window::{
         MainWindowComposerActivationAdvance, MainWindowComposerMarkerMetadataAuthority,
-        MainWindowComposerSlot, MainWindowComposerSubmissionRequestSource,
-        MainWindowConversationComposerAutosavePhase, MainWindowConversationComposerConfig,
-        MainWindowConversationComposerMount, MainWindowConversationComposerMountDisposalAdvance,
+        MainWindowComposerSelectionIdentity, MainWindowComposerSlot,
+        MainWindowComposerSubmissionRequestSource, MainWindowConversationComposerAutosavePhase,
+        MainWindowConversationComposerConfig, MainWindowConversationComposerMount,
+        MainWindowConversationComposerMountDisposalAdvance,
         MainWindowConversationComposerMountEvent, MainWindowConversationComposerMountFlushStart,
         MainWindowConversationComposerMountPublishAdvance, MainWindowConversationComposerService,
+        MainWindowNativeLineagePromptCommandPresentation,
     },
 };
 use beryl_home_store::{
     CommandCancellation, CommandOutcome, HomeCommand, SidecarByteLimit, SidecarNamespace,
 };
-use beryl_model::{AssetId, ImageLabelOrdinal};
+use beryl_model::{AssetId, BindingRevision, ImageLabelOrdinal};
 use beryl_state::{AssetMediaType, PublishAssetMetadata};
 use gpui::{
-    AppContext, Entity, EntityInputHandler, IntoElement, ParentElement, Render, SharedString,
-    StreamingLayoutBinding, StreamingLayoutLimits, StreamingLayoutPosition, TextRun, black, div,
-    font, px,
+    AppContext, Entity, EntityInputHandler, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, StreamingLayoutBinding, StreamingLayoutLimits,
+    StreamingLayoutPosition, TextRun, black, div, font, px,
 };
 use gpui_scrollbar::ScrollbarStyle;
 use gpui_text_input::{
@@ -54,6 +64,47 @@ struct MountRoot {
     mount: Entity<MainWindowConversationComposerMount>,
 }
 
+struct NativeLineageMountRoot {
+    mount: Entity<MainWindowConversationComposerMount>,
+}
+
+struct PendingNativeLineageMountRoot {
+    mount: Entity<MainWindowConversationComposerMount>,
+    pending_focus: gpui::FocusHandle,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum NativeLineageLateFlight {
+    Validation,
+    Page,
+    ObjectPage,
+}
+
+impl Render for NativeLineageMountRoot {
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::Context<Self>,
+    ) -> impl IntoElement {
+        div().child(self.mount.clone())
+    }
+}
+
+impl Render for PendingNativeLineageMountRoot {
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::Context<Self>,
+    ) -> impl IntoElement {
+        div().child(self.mount.clone()).child(
+            div()
+                .id("native-lineage-pending-turn-focus")
+                .track_focus(&self.pending_focus)
+                .tab_stop(true),
+        )
+    }
+}
+
 impl Render for MountRoot {
     fn render(
         &mut self,
@@ -62,6 +113,1357 @@ impl Render for MountRoot {
     ) -> impl IntoElement {
         div().children(self.mount.read(cx).contribution())
     }
+}
+
+#[gpui::test]
+fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::TestAppContext) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-restoration", 241);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 242, 243, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(cx, 16);
+
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let selection = service.selected_identity().unwrap();
+    let original = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let original_input = original.read_with(cx, |composer, _| composer.gpui_input());
+    let original_seed = cx
+        .update(|_, app| {
+            original_input.update(app, |input, _| {
+                input.export_restoration(Some(selection.binding().range_history_frontier()))
+            })
+        })
+        .unwrap();
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.contribution()),
+        Some(original.clone())
+    );
+    wait_for_native_lineage_prompt(cx, &mount, "exact restoration prompt");
+    assert!(mount.read_with(cx, |mount, _| mount.contribution().is_none()));
+    assert!(original_input.read_with(cx, |input, _| input.surface().is_none()));
+    assert_eq!(service.selected_identity(), Some(selection));
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
+    assert_eq!(prompt.failed_command, None);
+
+    cx.simulate_keystrokes("enter");
+    assert_eq!(
+        control.take_command_for_test(key),
+        Some(NativeLineageRecoveryCommand::Retry)
+    );
+    assert!(matches!(
+        control.snapshot_for_thread(thread).unwrap().status(),
+        NativeLineageRecoveryStatus::Running {
+            command: NativeLineageRecoveryCommand::Retry,
+        }
+    ));
+    drive(cx, 2);
+    assert!(matches!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .unwrap()
+            .status(),
+        NativeLineageRecoveryStatus::Running {
+            command: NativeLineageRecoveryCommand::Retry,
+        }
+    ));
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Running
+    );
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Disabled
+    );
+    assert_eq!(prompt.retry_label, "Retrying…");
+    assert_eq!(prompt.recover_label, "Recover from Syndic history");
+    assert_eq!(prompt.failed_command, None);
+    assert!(cx.debug_bounds("native-lineage-recovery-prompt").is_some());
+    assert!(cx.debug_bounds("native-lineage-retry-command").is_some());
+    assert!(
+        cx.debug_bounds("native-lineage-recover-from-syndic")
+            .is_some()
+    );
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Failed {
+            command: NativeLineageRecoveryCommand::Retry,
+            recovery_available: true,
+        }
+    ));
+    cx.executor().advance_clock(Duration::from_millis(100));
+    drive(cx, 2);
+    assert!(matches!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .unwrap()
+            .status(),
+        NativeLineageRecoveryStatus::Failed {
+            command: NativeLineageRecoveryCommand::Retry,
+            recovery_available: true,
+        }
+    ));
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Enabled
+    );
+    assert_eq!(
+        prompt.failed_command,
+        Some(NativeLineageRecoveryCommand::Retry)
+    );
+    assert_eq!(prompt.retry_label, "Retry");
+    assert_eq!(prompt.recover_label, "Recover from Syndic history");
+    assert!(!prompt.local_failure_present);
+
+    cx.simulate_keystrokes("space");
+    assert_eq!(
+        control.take_command_for_test(key),
+        Some(NativeLineageRecoveryCommand::Retry)
+    );
+    assert!(matches!(
+        control.snapshot_for_thread(thread).unwrap().status(),
+        NativeLineageRecoveryStatus::Running {
+            command: NativeLineageRecoveryCommand::Retry,
+        }
+    ));
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Failed {
+            command: NativeLineageRecoveryCommand::Retry,
+            recovery_available: true,
+        }
+    ));
+    let mut recover = None;
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        recover = cx.debug_bounds("native-lineage-recover-from-syndic");
+        if recover.is_some() {
+            break;
+        }
+    }
+    let recover = recover.unwrap();
+    cx.simulate_click(recover.center(), gpui::Modifiers::none());
+    assert_eq!(
+        control.take_command_for_test(key),
+        Some(NativeLineageRecoveryCommand::RecoverFromSyndic)
+    );
+    assert!(matches!(
+        control.snapshot_for_thread(thread).unwrap().status(),
+        NativeLineageRecoveryStatus::Running {
+            command: NativeLineageRecoveryCommand::RecoverFromSyndic,
+        }
+    ));
+    drive(cx, 2);
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Disabled
+    );
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Running
+    );
+    assert_eq!(prompt.retry_label, "Retry");
+    assert_eq!(prompt.recover_label, "Recovering…");
+    assert_eq!(prompt.failed_command, None);
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    wait_for_native_lineage_composer(cx, &mount, "exact restoration publication");
+    let restored = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    assert_ne!(restored, original);
+    assert_eq!(service.selected_identity(), Some(selection));
+    assert_eq!(control.snapshot_for_thread(thread), None);
+    let restored_input = restored.read_with(cx, |composer, _| composer.gpui_input());
+    restored_input.read_with(cx, |input, _| {
+        let surface = input.surface().unwrap();
+        assert_eq!(surface.binding(), original_seed.binding);
+        assert_eq!(surface.caret(), original_seed.caret);
+        assert_eq!(surface.selection(), original_seed.selection);
+        assert_eq!(surface.scroll_position(), original_seed.scroll.position);
+        assert_eq!(input.history_frontier(), original_seed.history.unwrap());
+    });
+    assert_eq!(
+        cx.update(|window, app| window.focused(app).unwrap()),
+        restored_input.read_with(cx, |input, app| input.focus_handle(app))
+    );
+}
+
+#[gpui::test]
+fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-cycles", 245);
+    let (claim, target_claim) = fixture.claims();
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let unrelated_thread = fixture.target_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 246, 247, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let first_key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            false,
+        )
+        .unwrap();
+    assert!(
+        control
+            .install_route_for_test(
+                unrelated_thread,
+                unrelated_thread,
+                BindingRevision::new(1).unwrap(),
+                NativeLineageOperation::Resume,
+                1,
+                true,
+            )
+            .is_none()
+    );
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(cx, 16);
+
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    let first = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let first_input = first.read_with(cx, |composer, _| composer.gpui_input());
+    let prior_binding = first_input.read_with(cx, |input, _| input.surface().unwrap().binding());
+    cx.update(|window, app| {
+        first_input.update(app, |input, input_cx| {
+            input.replace_and_mark_text_in_range(None, "x", None, window, input_cx)
+        })
+    });
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.contribution()),
+        Some(first.clone())
+    );
+    assert_eq!(
+        first_input.read_with(cx, |input, _| input.surface().unwrap().binding()),
+        prior_binding
+    );
+    wait_for_native_lineage_prompt(cx, &mount, "cycle one prompt after pending edit");
+    assert!(first_input.read_with(cx, |input, _| input.surface().is_none()));
+    assert_eq!(
+        service
+            .selected_identity()
+            .unwrap()
+            .binding()
+            .logical_extent()
+            .logical_utf8_bytes(),
+        1
+    );
+    let disabled_recovery = cx
+        .debug_bounds("native-lineage-recover-from-syndic")
+        .unwrap();
+    cx.simulate_click(disabled_recovery.center(), gpui::Modifiers::none());
+    cx.simulate_keystrokes("escape");
+    drive(cx, 2);
+    assert_eq!(control.take_command_for_test(first_key), None);
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .is_some()
+    );
+
+    control.cancel(first_key).unwrap();
+    wait_for_native_lineage_composer(cx, &mount, "cycle one cancellation restoration");
+    let after_cancel = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    assert_ne!(after_cancel, first);
+    assert!(!control.set_status_for_test(
+        first_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+
+    let pending = mount
+        .update(cx, |mount, mount_cx| {
+            mount.begin_activation(
+                target_claim,
+                activation(unrelated_thread, 248, 249, 2, 0),
+                operation_id(250),
+                &CommandCancellation::new(),
+                mount_cx,
+            )
+        })
+        .unwrap();
+    let MainWindowComposerActivationAdvance::Ready(pending_receipt) = pending else {
+        panic!("replacement target did not become pending: {pending:?}")
+    };
+    assert_eq!(service.pending_receipt(), Some(pending_receipt));
+    let validation_stale_key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            2,
+            true,
+        )
+        .unwrap();
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if control.snapshot_for_thread(thread).is_none()
+            && mount
+                .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+                .is_none()
+        {
+            break;
+        }
+    }
+    assert_eq!(control.snapshot_for_thread(thread), None);
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .is_none()
+    );
+    assert_eq!(
+        mount.read_with(cx, |mount, _| mount.contribution()),
+        Some(after_cancel.clone())
+    );
+    assert!(!control.set_status_for_test(
+        validation_stale_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    mount
+        .update(cx, |mount, mount_cx| {
+            mount.retire_pending(pending_receipt, mount_cx)
+        })
+        .unwrap();
+    assert_eq!(service.pending_receipt(), None);
+
+    let unrelated_key = control
+        .install_route_for_test(
+            unrelated_thread,
+            unrelated_thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    control.cancel(unrelated_key).unwrap();
+    let second_key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            3,
+            true,
+        )
+        .unwrap();
+    assert_ne!(second_key, first_key);
+    wait_for_native_lineage_prompt(cx, &mount, "cycle two prompt after capacity reuse");
+    control.close_for_test();
+    wait_for_native_lineage_composer(cx, &mount, "cycle two control-close restoration");
+    assert_eq!(control.snapshot_for_thread(thread), None);
+
+    let disposal_control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let disposal_gate = service.test_gate_next_native_lineage_validation().unwrap();
+    let disposal_key = disposal_control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            3,
+            true,
+        )
+        .unwrap();
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(disposal_control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(cx, &mount, "disposal-cycle prompt");
+    assert!(disposal_control.set_status_for_test(
+        disposal_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if disposal_gate.is_blocked() {
+            break;
+        }
+    }
+    assert!(disposal_gate.is_blocked());
+    let disposal_start = cx.update(|window, app| {
+        mount
+            .update(app, |mount, mount_cx| {
+                mount.begin_disposal(window, mount_cx)
+            })
+            .unwrap()
+    });
+    assert!(matches!(
+        disposal_start,
+        MainWindowConversationComposerMountFlushStart::Started(_)
+    ));
+    assert_eq!(disposal_control.snapshot_for_thread(thread), None);
+    assert!(!disposal_control.set_status_for_test(
+        disposal_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    let mut disposed = false;
+    for _ in 0..64 {
+        drive(cx, 2);
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.advance_disposal(window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountDisposalAdvance::Disposed => {
+                disposed = true;
+                break;
+            }
+            MainWindowConversationComposerMountDisposalAdvance::Retained(_) => {}
+            MainWindowConversationComposerMountDisposalAdvance::WidgetReleasePending(_) => {}
+        }
+    }
+    assert!(
+        disposed,
+        "{:?}",
+        mount.read_with(cx, |mount, _| mount
+            .test_native_lineage_disposal_diagnostics())
+    );
+    assert_eq!(service.selected_identity(), None);
+    assert_eq!(service.pending_receipt(), None);
+    assert!(mount.read_with(cx, |mount, _| mount.contribution().is_none()));
+    let diagnostics = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(diagnostics.sources, 1, "{diagnostics:?}");
+    assert_eq!(diagnostics.validation_flights, 1, "{diagnostics:?}");
+    assert_eq!(diagnostics.pending_flights, 1, "{diagnostics:?}");
+    assert!(
+        diagnostics.cleanup_active
+            + diagnostics.cleanup_ready
+            + diagnostics.cleanup_awaiting_acknowledgement
+            > 0,
+        "{diagnostics:?}"
+    );
+    disposal_gate.release();
+    wait_for_native_lineage_cleanup_drain(cx, &service);
+}
+
+#[gpui::test]
+fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retirement(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-capacity", 71);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 72, 73, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+
+    let first_gate = service.test_gate_next_native_lineage_validation().unwrap();
+    let first_control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let first_key = first_control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let first_service = service.clone();
+    let first_marker_seals = marker_seals.clone();
+    let (first_root, mut first_cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                first_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                first_marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut first_cx, 16);
+    let first_mount = first_root.read_with(first_cx, |root, _| root.mount.clone());
+    first_cx.update(|_, app| {
+        first_mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(first_control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(&mut first_cx, &first_mount, "first retained source prompt");
+    assert!(first_control.set_status_for_test(
+        first_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    wait_for_native_lineage_gate(&mut first_cx, "first retained source", || {
+        first_gate.is_blocked()
+    });
+    first_cx.update(|window, _| window.remove_window());
+    drop(first_mount);
+    drop(first_root);
+    first_cx.cx.update(|_| ());
+    first_cx.run_until_parked();
+    let first_retained = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(first_retained.sources, 1, "{first_retained:?}");
+    assert_eq!(first_retained.owner_active_sources, 0, "{first_retained:?}");
+
+    let second_gate = service.test_gate_next_native_lineage_validation().unwrap();
+    let second_control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let second_key = second_control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            2,
+            true,
+        )
+        .unwrap();
+    let second_service = service.clone();
+    let second_marker_seals = marker_seals.clone();
+    let (second_root, mut second_cx) = first_cx.cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                second_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                second_marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut second_cx, 16);
+    let second_mount = second_root.read_with(second_cx, |root, _| root.mount.clone());
+    second_cx.update(|_, app| {
+        second_mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(second_control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(
+        &mut second_cx,
+        &second_mount,
+        "second retained source prompt",
+    );
+    assert!(second_control.set_status_for_test(
+        second_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    wait_for_native_lineage_gate(&mut second_cx, "second retained source", || {
+        second_gate.is_blocked()
+    });
+    second_cx.update(|window, _| window.remove_window());
+    drop(second_mount);
+    drop(second_root);
+    second_cx.cx.update(|_| ());
+    second_cx.run_until_parked();
+    let saturated = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(saturated.sources, 2, "{saturated:?}");
+    assert_eq!(saturated.owner_active_sources, 0, "{saturated:?}");
+    assert_eq!(saturated.pending_flights, 2, "{saturated:?}");
+
+    let third_control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let third_key = third_control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            3,
+            true,
+        )
+        .unwrap();
+    let third_service = service.clone();
+    let (third_root, mut third_cx) = second_cx.cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                third_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut third_cx, 16);
+    let third_mount = third_root.read_with(third_cx, |root, _| root.mount.clone());
+    third_cx.update(|_, app| {
+        third_mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(third_control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(&mut third_cx, &third_mount, "capacity-denied prompt");
+    assert!(third_control.set_status_for_test(
+        third_key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    for _ in 0..64 {
+        third_cx
+            .executor()
+            .advance_clock(Duration::from_millis(100));
+        drive(&mut third_cx, 2);
+        if third_mount.read_with(third_cx, |mount, _| {
+            mount
+                .test_native_lineage_mount_diagnostics()
+                .capacity_blocked
+        }) {
+            break;
+        }
+    }
+    let blocked = third_mount.read_with(third_cx, |mount, _| {
+        mount.test_native_lineage_mount_diagnostics()
+    });
+    assert!(blocked.prompt_published, "{blocked:?}");
+    assert!(blocked.failure_present, "{blocked:?}");
+    assert!(blocked.capacity_blocked, "{blocked:?}");
+    assert!(third_mount.read_with(third_cx, |mount, _| mount.contribution().is_none()));
+    assert!(
+        third_cx
+            .debug_bounds("native-lineage-recovery-prompt")
+            .is_some()
+    );
+    let denied_epoch = service
+        .test_native_lineage_cleanup_witness()
+        .snapshot()
+        .capacity_epoch;
+
+    first_gate.release();
+    for _ in 0..64 {
+        third_cx
+            .executor()
+            .advance_clock(Duration::from_millis(100));
+        drive(&mut third_cx, 2);
+        if third_mount.read_with(third_cx, |mount, _| {
+            mount.contribution().is_some() && mount.native_lineage_recovery_snapshot().is_none()
+        }) {
+            break;
+        }
+    }
+    assert!(
+        third_mount.read_with(third_cx, |mount, _| {
+            mount.contribution().is_some() && mount.native_lineage_recovery_snapshot().is_none()
+        }),
+        "capacity retirement did not rearm exact restoration: mount={:?}, cleanup={:?}, witness={:?}",
+        third_mount.read_with(third_cx, |mount, _| mount
+            .test_native_lineage_mount_diagnostics()),
+        service.test_native_lineage_cleanup_diagnostics(),
+        service.test_native_lineage_cleanup_witness().snapshot(),
+    );
+    let rearmed = third_mount.read_with(third_cx, |mount, _| {
+        mount.test_native_lineage_mount_diagnostics()
+    });
+    assert!(!rearmed.capacity_blocked, "{rearmed:?}");
+    assert!(!rearmed.failure_present, "{rearmed:?}");
+    assert_eq!(third_control.snapshot_for_thread(thread), None);
+    assert!(
+        service
+            .test_native_lineage_cleanup_witness()
+            .snapshot()
+            .capacity_epoch
+            > denied_epoch
+    );
+
+    second_gate.release();
+    wait_for_native_lineage_cleanup_drain(&mut third_cx, &service);
+}
+
+#[gpui::test]
+fn native_lineage_late_flights_drain_after_route_cancellation(cx: &mut gpui::TestAppContext) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-late-flights", 90);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_asset = publish_image_asset(&fixture, b"phase235-native-lineage-object-page");
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            ComposerHostActivationRequest::new(
+                thread,
+                syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([91; 16]),
+                operation_id(92),
+                NonZeroU64::new(1).unwrap(),
+                None,
+                Box::new([]),
+            ),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let binding = host.binding().unwrap();
+    let binding = composer_support::commit_text(&mut host, &store, binding, 93, 0, 0, "a", 1, 1);
+    let binding = phase235_support::insert_published_marker_with_readiness(
+        &mut host,
+        &store,
+        &storage,
+        binding,
+        94,
+        marker_asset,
+    );
+    host.dispose_composer_service(&store).unwrap();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 91, 92, 1, 1),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated {
+            binding: rebound,
+            ..
+        } if rebound.root() == binding.root()
+    ));
+    assert_eq!(binding.root().summary().marker_count(), 1);
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(cx, 16);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+
+    prove_native_lineage_late_flight_cleanup(
+        cx,
+        &mount,
+        &service,
+        thread,
+        NativeLineageLateFlight::Validation,
+        1,
+    );
+    prove_native_lineage_late_flight_cleanup(
+        cx,
+        &mount,
+        &service,
+        thread,
+        NativeLineageLateFlight::Page,
+        2,
+    );
+
+    assert_eq!(
+        service
+            .selected_identity()
+            .unwrap()
+            .binding()
+            .root()
+            .summary()
+            .marker_count(),
+        1
+    );
+    prove_native_lineage_late_flight_cleanup(
+        cx,
+        &mount,
+        &service,
+        thread,
+        NativeLineageLateFlight::ObjectPage,
+        3,
+    );
+    prove_native_lineage_host_failure_cleanup(
+        cx,
+        &mount,
+        &service,
+        thread,
+        NativeLineageLateFlight::Validation,
+        4,
+    );
+    prove_native_lineage_host_failure_cleanup(
+        cx,
+        &mount,
+        &service,
+        thread,
+        NativeLineageLateFlight::Page,
+        5,
+    );
+}
+
+#[gpui::test]
+fn native_lineage_late_settlement_drains_after_actual_mount_and_service_drop(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-drop-cleanup", 111);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 112, 113, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let gate = service.test_gate_next_native_lineage_validation().unwrap();
+    let witness = service.test_native_lineage_cleanup_witness();
+    let weak_service = Arc::downgrade(&service);
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let mounted_service = service.clone();
+    let (root, mut cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut cx, 16);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(&mut cx, &mount, "drop cleanup prompt");
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    wait_for_native_lineage_gate(&mut cx, "drop cleanup admitted token", || gate.is_blocked());
+    let retained = witness.snapshot();
+    assert_eq!(retained.diagnostics.sources, 1, "{retained:?}");
+    assert_eq!(retained.diagnostics.owner_active_sources, 1, "{retained:?}");
+    assert_eq!(retained.diagnostics.pending_flights, 1, "{retained:?}");
+    assert!(retained.driver_alive, "{retained:?}");
+
+    cx.update(|window, _| window.remove_window());
+    drop(mount);
+    drop(root);
+    cx.cx.update(|_| ());
+    cx.run_until_parked();
+    drop(service);
+    gate.release();
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        let snapshot = witness.snapshot();
+        if snapshot.diagnostics.sources == 0 && !snapshot.driver_alive {
+            break;
+        }
+    }
+    let drained = witness.snapshot();
+    assert_eq!(drained.diagnostics.sources, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.owner_active_sources, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.pending_flights, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.terminal_flights, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.delivered_flights, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.cleanup_active, 0, "{drained:?}");
+    assert_eq!(drained.diagnostics.cleanup_ready, 0, "{drained:?}");
+    assert_eq!(
+        drained.diagnostics.cleanup_awaiting_acknowledgement, 0,
+        "{drained:?}"
+    );
+    assert!(!drained.driver_alive, "{drained:?}");
+    assert!(weak_service.upgrade().is_none());
+}
+
+#[gpui::test]
+fn native_lineage_prompt_survives_disposal_admission_and_advance_failures(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-disposal-failures", 121);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 122, 123, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let route_key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let mounted_service = service.clone();
+    let (root, mut cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut cx, 16);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(&mut cx, &mount, "disposal failure prompt");
+    let preserved_selection = service.selected_identity().unwrap();
+
+    service.test_fail_next_native_lineage_disposal_begin();
+    let admission_error = cx.update(|window, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.begin_disposal(window, mount_cx)
+        })
+    });
+    assert!(admission_error.is_err());
+    drive(&mut cx, 2);
+    assert_native_lineage_disposal_failure_preserved(
+        &mut cx,
+        &mount,
+        &service,
+        &control,
+        route_key,
+        preserved_selection,
+        "admission failure",
+    );
+
+    service.test_fail_next_native_lineage_disposal_advance();
+    let admitted = cx
+        .update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.begin_disposal(window, mount_cx)
+            })
+        })
+        .unwrap();
+    assert!(matches!(
+        admitted,
+        MainWindowConversationComposerMountFlushStart::Started(_)
+    ));
+    let advance_error = cx.update(|window, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.advance_disposal(window, mount_cx)
+        })
+    });
+    assert!(advance_error.is_err());
+    drive(&mut cx, 2);
+    assert_native_lineage_disposal_failure_preserved(
+        &mut cx,
+        &mount,
+        &service,
+        &control,
+        route_key,
+        preserved_selection,
+        "post-admission advance failure",
+    );
+}
+
+#[gpui::test]
+fn native_lineage_pending_turn_leaves_without_remounting_or_focusing_a_composer(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase235-native-lineage-pending-focus", 252);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 253, 254, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let mounted_service = service.clone();
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let pending_focus = cx.focus_handle();
+        let mount = cx.new(|mount_cx| {
+            let mut mount = MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap();
+            mount.set_native_lineage_pending_focus(pending_focus.clone(), mount_cx);
+            mount
+        });
+        PendingNativeLineageMountRoot {
+            mount,
+            pending_focus,
+        }
+    });
+    drive(cx, 16);
+
+    let (mount, pending_focus) = root.read_with(cx, |root, _| {
+        (root.mount.clone(), root.pending_focus.clone())
+    });
+    let original = mount
+        .read_with(cx, |mount, _| mount.contribution())
+        .unwrap();
+    let original_input = original.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(cx, &mount, "pending-turn prompt");
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: true,
+        }
+    ));
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if mount.read_with(cx, |mount, _| {
+            mount.contribution().is_none() && mount.native_lineage_recovery_snapshot().is_none()
+        }) {
+            break;
+        }
+    }
+    assert!(mount.read_with(cx, |mount, _| mount.contribution().is_none()));
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .is_none()
+    );
+    assert!(original_input.read_with(cx, |input, _| input.surface().is_none()));
+    assert_eq!(control.snapshot_for_thread(thread), None);
+    assert_eq!(
+        cx.update(|window, app| window.focused(app).unwrap()),
+        pending_focus
+    );
 }
 
 #[gpui::test]
@@ -1149,6 +2551,370 @@ fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {
         cx.run_until_parked();
         cx.update(|window, app| window.draw(app).clear());
     }
+}
+
+fn wait_for_native_lineage_prompt(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    stage: &str,
+) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if cx.debug_bounds("native-lineage-recovery-prompt").is_some()
+            && mount.read_with(cx, |mount, _| mount.contribution().is_none())
+        {
+            return;
+        }
+    }
+    let contribution = mount.read_with(cx, |mount, _| mount.contribution());
+    let contribution_state = contribution.map(|contribution| {
+        contribution.read_with(cx, |composer, app| {
+            let input = composer.gpui_input();
+            (
+                composer.last_error().map(str::to_owned),
+                composer.test_has_active_flight(),
+                input.read(app).is_quiescent(),
+                input.read(app).surface().is_some(),
+            )
+        })
+    });
+    let explicit_refresh = cx.update(|window, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.refresh_native_lineage_recovery(window, mount_cx)
+        })
+    });
+    panic!(
+        "{stage}: native-lineage recovery prompt did not reach its coherent publication cut: snapshot={:?}, contribution={contribution_state:?}, mount={:?}, explicit_refresh={explicit_refresh:?}",
+        mount.read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot()),
+        mount.read_with(cx, |mount, _| mount.test_native_lineage_mount_diagnostics()),
+    );
+}
+
+fn wait_for_native_lineage_composer(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    stage: &str,
+) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if mount.read_with(cx, |mount, _| {
+            mount.contribution().is_some() && mount.native_lineage_recovery_snapshot().is_none()
+        }) {
+            return;
+        }
+    }
+    panic!(
+        "{stage}: native-lineage recovery did not publish a coherent composer: snapshot={:?}, contribution_present={}",
+        mount.read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot()),
+        mount.read_with(cx, |mount, _| mount.contribution().is_some()),
+    );
+}
+
+fn wait_for_native_lineage_gate(
+    cx: &mut gpui::VisualTestContext,
+    stage: &str,
+    mut blocked: impl FnMut() -> bool,
+) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if blocked() {
+            return;
+        }
+    }
+    panic!("{stage}: native-lineage host operation did not reach its admitted-token gate");
+}
+
+fn prove_native_lineage_late_flight_cleanup(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    service: &Arc<MainWindowConversationComposerService>,
+    thread: beryl_model::SyndicThreadId,
+    flight: NativeLineageLateFlight,
+    failed_attempts: u8,
+) {
+    let gate = match flight {
+        NativeLineageLateFlight::Validation => service.test_gate_next_native_lineage_validation(),
+        NativeLineageLateFlight::Page => service.test_gate_next_native_lineage_page(),
+        NativeLineageLateFlight::ObjectPage => service.test_gate_next_native_lineage_object_page(),
+    }
+    .unwrap();
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            failed_attempts,
+            true,
+        )
+        .unwrap();
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(cx, mount, "late-flight prompt");
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if gate.is_blocked() {
+            break;
+        }
+    }
+    assert!(
+        gate.is_blocked(),
+        "{flight:?} flight did not reach its gate: control={:?}, mount={:?}, cleanup={:?}",
+        control.snapshot_for_thread(thread),
+        mount.read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot()),
+        service.test_native_lineage_cleanup_diagnostics(),
+    );
+    let diagnostics = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(diagnostics.sources, 1, "{flight:?}: {diagnostics:?}");
+    assert_eq!(
+        diagnostics.pending_flights, 1,
+        "{flight:?}: {diagnostics:?}"
+    );
+    match flight {
+        NativeLineageLateFlight::Validation => {
+            assert_eq!(diagnostics.validation_flights, 1, "{diagnostics:?}")
+        }
+        NativeLineageLateFlight::Page => {
+            assert_eq!(diagnostics.page_flights, 1, "{diagnostics:?}")
+        }
+        NativeLineageLateFlight::ObjectPage => {
+            assert_eq!(diagnostics.object_page_flights, 1, "{diagnostics:?}")
+        }
+    }
+
+    control.cancel(key).unwrap();
+    wait_for_native_lineage_composer(cx, mount, "late-flight cancellation restoration");
+    wait_for_native_lineage_source_count(cx, service, 1);
+    let diagnostics = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(diagnostics.sources, 1, "{flight:?}: {diagnostics:?}");
+    assert_eq!(
+        diagnostics.pending_flights, 1,
+        "{flight:?}: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics.cleanup_active
+            + diagnostics.cleanup_ready
+            + diagnostics.cleanup_awaiting_acknowledgement
+            > 0,
+        "{flight:?}: cleanup ownership was lost before late settlement: {diagnostics:?}"
+    );
+    assert!(!control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+
+    gate.release();
+    wait_for_native_lineage_cleanup_drain(cx, service);
+}
+
+fn prove_native_lineage_host_failure_cleanup(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    service: &Arc<MainWindowConversationComposerService>,
+    thread: beryl_model::SyndicThreadId,
+    flight: NativeLineageLateFlight,
+    failed_attempts: u8,
+) {
+    let gate = match flight {
+        NativeLineageLateFlight::Validation => {
+            service.test_fail_next_native_lineage_validation();
+            service.test_gate_next_native_lineage_validation()
+        }
+        NativeLineageLateFlight::Page => {
+            service.test_fail_next_native_lineage_page();
+            service.test_gate_next_native_lineage_page()
+        }
+        NativeLineageLateFlight::ObjectPage => {
+            panic!("object-page failure injection is not part of this acceptance seam")
+        }
+    }
+    .unwrap();
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    let key = control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            failed_attempts,
+            true,
+        )
+        .unwrap();
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(cx, mount, "host-failure prompt");
+    assert!(control.set_status_for_test(
+        key,
+        NativeLineageRecoveryStatus::Leaving {
+            pending_turn_continues: false,
+        }
+    ));
+    wait_for_native_lineage_gate(cx, "host-failure admitted token", || gate.is_blocked());
+    let admitted = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(admitted.sources, 1, "{flight:?}: {admitted:?}");
+    assert_eq!(admitted.owner_active_sources, 1, "{flight:?}: {admitted:?}");
+    assert_eq!(admitted.pending_flights, 1, "{flight:?}: {admitted:?}");
+    match flight {
+        NativeLineageLateFlight::Validation => {
+            assert_eq!(admitted.validation_flights, 1, "{admitted:?}")
+        }
+        NativeLineageLateFlight::Page => assert_eq!(admitted.page_flights, 1, "{admitted:?}"),
+        NativeLineageLateFlight::ObjectPage => unreachable!(),
+    }
+
+    gate.release();
+    wait_for_native_lineage_composer(cx, mount, "host-failure exact restoration");
+    assert_eq!(control.snapshot_for_thread(thread), None);
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .is_none()
+    );
+    wait_for_native_lineage_cleanup_drain(cx, service);
+}
+
+fn assert_native_lineage_disposal_failure_preserved(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    service: &Arc<MainWindowConversationComposerService>,
+    control: &NativeLineageRecoveryControl,
+    route_key: NativeLineageRecoveryKey,
+    selection: MainWindowComposerSelectionIdentity,
+    stage: &str,
+) {
+    let diagnostics = mount.read_with(cx, |mount, _| mount.test_native_lineage_mount_diagnostics());
+    assert!(diagnostics.snapshot_present, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.selection_current, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.seed_present, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.config_present, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.prompt_published, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.failure_present, "{stage}: {diagnostics:?}");
+    assert!(diagnostics.disposal_active, "{stage}: {diagnostics:?}");
+    assert!(mount.read_with(cx, |mount, _| mount.contribution().is_none()));
+    assert_eq!(service.selected_identity(), Some(selection));
+    assert!(
+        cx.debug_bounds("native-lineage-recovery-prompt").is_some(),
+        "{stage}: prompt surface disappeared"
+    );
+    let prompt = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert!(prompt.local_failure_present, "{stage}: {prompt:?}");
+    assert!(prompt.disposal_failure_present, "{stage}: {prompt:?}");
+    assert_eq!(
+        prompt.retry,
+        MainWindowNativeLineagePromptCommandPresentation::Disabled,
+        "{stage}: {prompt:?}"
+    );
+    assert_eq!(
+        prompt.recover_from_syndic,
+        MainWindowNativeLineagePromptCommandPresentation::Disabled,
+        "{stage}: {prompt:?}"
+    );
+    assert_eq!(prompt.failed_command, None, "{stage}: {prompt:?}");
+    assert_eq!(
+        prompt.retry_disabled_explanation,
+        "Retry is unavailable because composer disposal did not complete. Your preserved draft has not been discarded.",
+        "{stage}: {prompt:?}"
+    );
+    assert_eq!(
+        prompt.recover_disabled_explanation,
+        "Syndic-history recovery is unavailable because composer disposal did not complete. Your preserved draft has not been discarded.",
+        "{stage}: {prompt:?}"
+    );
+    assert!(
+        prompt.retry_disabled_explanation.len() <= 128
+            && prompt.recover_disabled_explanation.len() <= 128,
+        "{stage}: {prompt:?}"
+    );
+    assert_eq!(control.take_command_for_test(route_key), None);
+    for command_id in [
+        "native-lineage-retry-command",
+        "native-lineage-recover-from-syndic",
+    ] {
+        let bounds = cx
+            .debug_bounds(command_id)
+            .unwrap_or_else(|| panic!("{stage}: {command_id} disappeared"));
+        cx.simulate_click(bounds.center(), gpui::Modifiers::none());
+        cx.simulate_keystrokes("enter");
+        cx.simulate_keystrokes("space");
+        drive(cx, 2);
+        assert_eq!(
+            control.take_command_for_test(route_key),
+            None,
+            "{stage}: disabled {command_id} submitted"
+        );
+    }
+    let after_attempts = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_prompt_diagnostics()
+    });
+    assert_eq!(
+        after_attempts, prompt,
+        "{stage}: disabled activation mutated prompt"
+    );
+}
+
+fn wait_for_native_lineage_cleanup_drain(
+    cx: &mut gpui::VisualTestContext,
+    service: &Arc<MainWindowConversationComposerService>,
+) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if service.test_native_lineage_cleanup_diagnostics().sources == 0 {
+            break;
+        }
+    }
+    let diagnostics = service.test_native_lineage_cleanup_diagnostics();
+    assert_eq!(diagnostics.sources, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.owner_active_sources, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.validation_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.page_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.object_page_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.pending_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.terminal_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.delivered_flights, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.cleanup_active, 0, "{diagnostics:?}");
+    assert_eq!(diagnostics.cleanup_ready, 0, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics.cleanup_awaiting_acknowledgement, 0,
+        "{diagnostics:?}"
+    );
+}
+
+fn wait_for_native_lineage_source_count(
+    cx: &mut gpui::VisualTestContext,
+    service: &Arc<MainWindowConversationComposerService>,
+    expected: usize,
+) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        drive(cx, 2);
+        if service.test_native_lineage_cleanup_diagnostics().sources == expected {
+            return;
+        }
+    }
+    let diagnostics = service.test_native_lineage_cleanup_diagnostics();
+    panic!("native-lineage cleanup did not reach {expected} retained sources: {diagnostics:?}");
 }
 
 fn publish_image_asset(fixture: &Fixture, bytes: &[u8]) -> AssetId {

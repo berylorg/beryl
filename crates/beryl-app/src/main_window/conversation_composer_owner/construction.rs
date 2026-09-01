@@ -20,6 +20,7 @@ impl MainWindowConversationComposer {
             clipboard_writer,
             MainWindowConversationComposerRoute::Selected,
             activation_seeds,
+            None,
             window,
             cx,
         )
@@ -59,6 +60,36 @@ impl MainWindowConversationComposer {
             clipboard_writer,
             MainWindowConversationComposerRoute::Pending(receipt),
             activation_seeds,
+            None,
+            window,
+            cx,
+        )
+    }
+
+    pub(in crate::main_window) fn new_restored(
+        config: MainWindowConversationComposerConfig,
+        service: Arc<MainWindowConversationComposerService>,
+        environment: gpui_text_input::RangePrepublicationEnvironment,
+        candidate: gpui_text_input::RangePrepublicationCandidate,
+        current: gpui_text_input::RangePrepublicationCurrent,
+        clipboard_writer: ComposerClipboardWriter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        let selection = config.selection();
+        if service.selected_identity() != Some(selection)
+            || current.binding != selection.binding().range_binding()
+            || current.history != Some(selection.binding().range_history_frontier())
+        {
+            return Err("restored conversation composer selection is stale".to_owned());
+        }
+        Self::construct(
+            config,
+            service,
+            clipboard_writer,
+            MainWindowConversationComposerRoute::Selected,
+            VecDeque::new(),
+            Some((environment, candidate, current)),
             window,
             cx,
         )
@@ -70,6 +101,11 @@ impl MainWindowConversationComposer {
         clipboard_writer: ComposerClipboardWriter,
         route: MainWindowConversationComposerRoute,
         activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
+        prepublication: Option<(
+            gpui_text_input::RangePrepublicationEnvironment,
+            gpui_text_input::RangePrepublicationCandidate,
+            gpui_text_input::RangePrepublicationCurrent,
+        )>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
@@ -78,25 +114,42 @@ impl MainWindowConversationComposer {
         let clipboard_limits = config.clipboard_limits();
         let mutation_limits = config.mutation_limits();
         let residency_bound = config.residency_bound()?;
-        let input = cx.new(|input_cx| {
-            config
-                .mount(window, input_cx)
-                .expect("validated conversation composer configuration")
-        });
+        let prepublication_adoption = prepublication.is_some();
+        let input = if let Some((environment, candidate, current)) = prepublication {
+            cx.new(|input_cx| {
+                RangeTextInput::new_with_prepublication(
+                    &environment,
+                    candidate,
+                    current,
+                    window,
+                    input_cx,
+                )
+                .expect("validated prepublication composer candidate")
+            })
+        } else {
+            let config = config.clone();
+            cx.new(|input_cx| {
+                config
+                    .mount(window, input_cx)
+                    .expect("validated conversation composer configuration")
+            })
+        };
         if matches!(route, MainWindowConversationComposerRoute::Pending(_)) {
             input.update(cx, |input, input_cx| {
                 input.set_read_only(true, input_cx);
                 input.set_enabled(false, input_cx);
             });
         }
-        input
-            .update(cx, |input, _| {
-                input.set_history_frontier(
-                    input.history_frontier(),
-                    selection.binding().range_history_frontier(),
-                )
-            })
-            .map_err(|_| "initial composer history frontier was rejected".to_owned())?;
+        if !prepublication_adoption {
+            input
+                .update(cx, |input, _| {
+                    input.set_history_frontier(
+                        input.history_frontier(),
+                        selection.binding().range_history_frontier(),
+                    )
+                })
+                .map_err(|_| "initial composer history frontier was rejected".to_owned())?;
+        }
         let mut this = Self {
             input,
             service,

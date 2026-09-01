@@ -1,13 +1,15 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use beryl_home_store::CommandCancellation;
 use beryl_state::WindowClaimSelection;
-use gpui::{App, AppContext, Context, Entity, EventEmitter, Subscription, Window};
+use gpui::{
+    App, AppContext, Context, Entity, EventEmitter, FocusHandle, Subscription, Task, Window,
+};
 use syndic_storage::DraftPieceOperationIdV1;
 
 use crate::composer_host::{
     ComposerHostActivationRequest, ComposerHostFlushAdmission, ComposerHostFlushCapture,
-    ComposerHostFlushTicket, ComposerHostMarkerSealAuthority,
+    ComposerHostFlushState, ComposerHostFlushTicket, ComposerHostMarkerSealAuthority,
 };
 use crate::composer_marker_seal::DraftMarkerSealService;
 
@@ -16,12 +18,14 @@ use super::{
     MainWindowComposerActivationResidency, MainWindowComposerDisposalAdvance,
     MainWindowComposerPublishAdvance, MainWindowComposerResidencyBound,
     MainWindowComposerRetirementAdvance, MainWindowComposerSelectionIdentity,
-    MainWindowConversationComposer, MainWindowConversationComposerCompositeHit,
-    MainWindowConversationComposerConfig, MainWindowConversationComposerPendingRealizerToken,
-    MainWindowConversationComposerService, MainWindowConversationComposerSurfaceSnapshot,
+    MainWindowComposerWidgetRelease, MainWindowConversationComposer,
+    MainWindowConversationComposerCompositeHit, MainWindowConversationComposerConfig,
+    MainWindowConversationComposerPendingRealizerToken, MainWindowConversationComposerService,
+    MainWindowConversationComposerSurfaceSnapshot, MainWindowNativeLineagePrepublicationSource,
 };
 
 mod autosave;
+mod native_lineage;
 mod pending_presentation;
 mod submission;
 
@@ -78,6 +82,69 @@ pub enum MainWindowConversationComposerMountFlushStart {
     Started(ComposerHostFlushAdmission),
 }
 
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowNativeLineageMountDiagnostics {
+    pub snapshot_present: bool,
+    pub selection_current: bool,
+    pub seed_present: bool,
+    pub config_present: bool,
+    pub validation_task_present: bool,
+    pub validation_result_present: bool,
+    pub prompt_published: bool,
+    pub failure_present: bool,
+    pub capacity_blocked: bool,
+    pub disposal_active: bool,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowNativeLineagePromptCommandPresentation {
+    Enabled,
+    Disabled,
+    Running,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowNativeLineagePromptDiagnostics {
+    pub retry: MainWindowNativeLineagePromptCommandPresentation,
+    pub recover_from_syndic: MainWindowNativeLineagePromptCommandPresentation,
+    pub failed_command: Option<crate::cas_projection::NativeLineageRecoveryCommand>,
+    pub retry_label: &'static str,
+    pub recover_label: &'static str,
+    pub retry_disabled_explanation: &'static str,
+    pub recover_disabled_explanation: &'static str,
+    pub local_failure_present: bool,
+    pub disposal_failure_present: bool,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowNativeLineageDisposalDiagnostics {
+    pub mount_release_present: bool,
+    pub mount_contribution_present: bool,
+    pub mount_subscription_present: bool,
+    pub mount_flush_ticket_present: bool,
+    pub mount_flush_capture: Option<ComposerHostFlushCapture>,
+    pub mount_last_disposal_advance: Option<MainWindowComposerDisposalAdvance>,
+    pub marker_current_flights: usize,
+    pub marker_driving_flights: usize,
+    pub marker_terminalizing_flights: usize,
+    pub slot_selected: bool,
+    pub slot_pending: bool,
+    pub slot_disposed: bool,
+    pub slot_suspended: bool,
+    pub slot_disposal_flushing: bool,
+    pub slot_awaiting_widget_release: bool,
+    pub host_pending_requests: usize,
+    pub host_settlement_custody: usize,
+    pub host_timers: usize,
+    pub host_barriers: usize,
+    pub host_joined_publications: usize,
+    pub host_publication_ready: bool,
+}
+
 pub struct MainWindowConversationComposerMount {
     service: Arc<MainWindowConversationComposerService>,
     configurator: MainWindowConversationComposerConfigurator,
@@ -86,6 +153,40 @@ pub struct MainWindowConversationComposerMount {
     autosave: autosave::MainWindowConversationComposerAutosave,
     submission: submission::MainWindowConversationComposerSubmission,
     contribution_subscription: Option<Subscription>,
+    native_lineage_recovery: Option<crate::cas_projection::NativeLineageRecoveryControl>,
+    native_lineage_snapshot: Option<crate::cas_projection::NativeLineageRecoverySnapshot>,
+    native_lineage_selection: Option<MainWindowComposerSelectionIdentity>,
+    native_lineage_seed: Option<gpui_text_input::RangeRestorationSeed>,
+    native_lineage_widget_release: Option<MainWindowComposerWidgetRelease>,
+    native_lineage_disposal_flush:
+        Option<(MainWindowComposerSelectionIdentity, ComposerHostFlushTicket)>,
+    native_lineage_disposal_capture: Option<ComposerHostFlushCapture>,
+    native_lineage_last_disposal_advance: Option<MainWindowComposerDisposalAdvance>,
+    native_lineage_prompt_published: bool,
+    native_lineage_route_lost: bool,
+    native_lineage_config: Option<MainWindowConversationComposerConfig>,
+    native_lineage_environment: Option<gpui_text_input::RangePrepublicationEnvironment>,
+    native_lineage_session: Option<gpui_text_input::RangePrepublicationSession>,
+    native_lineage_candidate: Option<gpui_text_input::RangePrepublicationCandidate>,
+    native_lineage_effects: VecDeque<gpui_text_input::RangePrepublicationEffect>,
+    native_lineage_cleanup: Option<gpui_text_input::RangePrepublicationCleanupLedger>,
+    native_lineage_source: Option<Arc<MainWindowNativeLineagePrepublicationSource>>,
+    native_lineage_next_environment: u64,
+    native_lineage_validation: Option<(
+        crate::cas_projection::NativeLineageRecoveryKey,
+        MainWindowComposerSelectionIdentity,
+        gpui_text_input::RangeRestorationSeed,
+        Result<(), String>,
+    )>,
+    native_lineage_validation_task: Option<Task<()>>,
+    native_lineage_host_result: Option<native_lineage::NativeLineageHostResult>,
+    native_lineage_failure: Option<String>,
+    native_lineage_capacity_blocked_epoch: Option<u64>,
+    native_lineage_disposal_active: bool,
+    native_lineage_retry_focus: FocusHandle,
+    native_lineage_recovery_focus: FocusHandle,
+    native_lineage_pending_focus: Option<FocusHandle>,
+    native_lineage_refresh_task: Option<Task<()>>,
 }
 
 impl EventEmitter<MainWindowConversationComposerMountEvent>
@@ -94,6 +195,24 @@ impl EventEmitter<MainWindowConversationComposerMountEvent>
 }
 
 impl MainWindowConversationComposerMount {
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_lineage_disposal_diagnostics(
+        &self,
+    ) -> MainWindowNativeLineageDisposalDiagnostics {
+        let mut diagnostics = self.service.test_native_lineage_disposal_diagnostics();
+        diagnostics.mount_release_present = self.native_lineage_widget_release.is_some();
+        diagnostics.mount_contribution_present = self.contribution.is_some();
+        diagnostics.mount_subscription_present = self.contribution_subscription.is_some();
+        diagnostics.mount_flush_ticket_present = self.native_lineage_disposal_flush.is_some();
+        diagnostics.mount_flush_capture = self.native_lineage_disposal_capture;
+        diagnostics.mount_last_disposal_advance = self.native_lineage_last_disposal_advance;
+        let markers = self.submission_marker_seals().diagnostics();
+        diagnostics.marker_current_flights = markers.current_flights();
+        diagnostics.marker_driving_flights = markers.driving_flights();
+        diagnostics.marker_terminalizing_flights = markers.terminalizing_flights();
+        diagnostics
+    }
+
     pub fn new(
         service: Arc<MainWindowConversationComposerService>,
         mut configurator: MainWindowConversationComposerConfigurator,
@@ -128,6 +247,34 @@ impl MainWindowConversationComposerMount {
                 cx.background_executor().clone(),
             ),
             contribution_subscription: None,
+            native_lineage_recovery: None,
+            native_lineage_snapshot: None,
+            native_lineage_selection: None,
+            native_lineage_seed: None,
+            native_lineage_widget_release: None,
+            native_lineage_disposal_flush: None,
+            native_lineage_disposal_capture: None,
+            native_lineage_last_disposal_advance: None,
+            native_lineage_prompt_published: false,
+            native_lineage_route_lost: false,
+            native_lineage_config: None,
+            native_lineage_environment: None,
+            native_lineage_session: None,
+            native_lineage_candidate: None,
+            native_lineage_effects: VecDeque::new(),
+            native_lineage_cleanup: None,
+            native_lineage_source: None,
+            native_lineage_next_environment: 1,
+            native_lineage_validation: None,
+            native_lineage_validation_task: None,
+            native_lineage_host_result: None,
+            native_lineage_failure: None,
+            native_lineage_capacity_blocked_epoch: None,
+            native_lineage_disposal_active: false,
+            native_lineage_retry_focus: cx.focus_handle(),
+            native_lineage_recovery_focus: cx.focus_handle(),
+            native_lineage_pending_focus: None,
+            native_lineage_refresh_task: None,
         };
         this.subscribe_to_contribution(window, cx)?;
         this.initialize_autosave(window, cx)?;
@@ -135,7 +282,9 @@ impl MainWindowConversationComposerMount {
     }
 
     pub fn contribution(&self) -> Option<Entity<MainWindowConversationComposer>> {
-        self.contribution.clone()
+        (!self.native_lineage_prompt_published)
+            .then(|| self.contribution.clone())
+            .flatten()
     }
 
     pub fn submission_status(&self) -> MainWindowConversationComposerSubmissionStatus {
@@ -180,6 +329,9 @@ impl MainWindowConversationComposerMount {
         cancellation: &CommandCancellation,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowComposerActivationAdvance, String> {
+        if self.native_lineage_snapshot.is_some() {
+            return Err("native lineage recovery owns the selected composer".to_owned());
+        }
         if let Some(receipt) = self.service.pending_receipt() {
             match self.retire_pending(receipt, cx)? {
                 MainWindowComposerRetirementAdvance::Retired => {}
@@ -211,6 +363,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
+        if self.native_lineage_snapshot.is_some() {
+            return Err("native lineage recovery owns the selected composer".to_owned());
+        }
         if !self.ensure_pending_composer(receipt, window, cx)? {
             return Ok(MainWindowConversationComposerMountFlushStart::TargetPriming(receipt));
         }
@@ -230,8 +385,10 @@ impl MainWindowConversationComposerMount {
                 admission,
             )),
             Err(error) => {
-                self.resume_contribution(window, cx)?;
-                self.refresh_autosave(window, cx)?;
+                if self.contribution.is_some() {
+                    self.resume_contribution(window, cx)?;
+                    self.refresh_autosave(window, cx)?;
+                }
                 self.retire_failed_pending(receipt, cx)?;
                 Err(error)
             }
@@ -385,18 +542,67 @@ impl MainWindowConversationComposerMount {
             return Err("composer submission cancellation is still settling".to_owned());
         }
         self.clear_pending_presentation(cx)?;
-        let expected = self.service.disposal_preflight()?;
-        self.suspend_autosave()?;
-        if !self.fence_contribution(expected, window, cx)? {
+        if !self.native_lineage_disposal_active {
+            self.cancel_native_lineage_for_lifecycle(window, cx)?;
+        }
+        let expected = match self.service.disposal_preflight() {
+            Ok(expected) => expected,
+            Err(error) => {
+                self.preserve_native_lineage_disposal_failure(
+                    format!("Composer disposal could not start: {error}"),
+                    cx,
+                );
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.suspend_autosave() {
+            self.preserve_native_lineage_disposal_failure(
+                format!("Composer disposal could not suspend autosave: {error}"),
+                cx,
+            );
+            return Err(error);
+        }
+        let fenced = if self.contribution.is_some() {
+            match self.fence_contribution(expected, window, cx) {
+                Ok(fenced) => fenced,
+                Err(error) => {
+                    self.preserve_native_lineage_disposal_failure(
+                        format!("Composer disposal could not fence its editor: {error}"),
+                        cx,
+                    );
+                    return Err(error);
+                }
+            }
+        } else {
+            true
+        };
+        if self.contribution.is_some() && !fenced {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
         }
         match self.service.begin_disposal() {
-            Ok(admission) => Ok(MainWindowConversationComposerMountFlushStart::Started(
-                admission,
-            )),
+            Ok(admission) => {
+                self.native_lineage_failure = None;
+                if self.native_lineage_widget_release.is_some()
+                    && let ComposerHostFlushAdmission::Started { ticket, .. }
+                    | ComposerHostFlushAdmission::Joined { ticket, .. } = admission
+                {
+                    self.native_lineage_disposal_flush = Some((expected, ticket));
+                    self.native_lineage_disposal_capture = None;
+                    self.native_lineage_last_disposal_advance = None;
+                }
+                Ok(MainWindowConversationComposerMountFlushStart::Started(
+                    admission,
+                ))
+            }
             Err(error) => {
-                self.resume_contribution(window, cx)?;
-                self.refresh_autosave(window, cx)?;
+                self.preserve_native_lineage_disposal_failure(
+                    format!("Composer disposal admission failed: {error}"),
+                    cx,
+                );
+                if self.contribution.is_some() {
+                    self.resume_contribution(window, cx)?;
+                    self.refresh_autosave(window, cx)?;
+                }
                 Err(error)
             }
         }
@@ -407,15 +613,97 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountDisposalAdvance, String> {
+        let result = self.advance_disposal_inner(window, cx);
+        match &result {
+            Err(error) => self.preserve_native_lineage_disposal_failure(
+                format!("Composer disposal failed: {error}"),
+                cx,
+            ),
+            Ok(MainWindowConversationComposerMountDisposalAdvance::Retained(
+                MainWindowComposerDisposalAdvance::Failed,
+            )) => self.preserve_native_lineage_disposal_failure(
+                "Composer disposal failed. Your preserved draft remains available for recovery."
+                    .to_owned(),
+                cx,
+            ),
+            _ => {}
+        }
+        result
+    }
+
+    fn advance_disposal_inner(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowConversationComposerMountDisposalAdvance, String> {
         let advance = self.service.advance_disposal()?;
-        self.synchronize_contribution_selection(cx)?;
+        self.native_lineage_last_disposal_advance = Some(advance);
+        if matches!(
+            advance,
+            MainWindowComposerDisposalAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+        ) && let Some((selection, flush)) = self.native_lineage_disposal_flush
+        {
+            self.native_lineage_disposal_capture =
+                Some(self.capture_native_lineage_disposal_publication(selection, flush)?);
+        } else if matches!(
+            advance,
+            MainWindowComposerDisposalAdvance::Progress(ComposerHostFlushState::DisposalRequired)
+        ) && let Some((previous, flush)) = self.native_lineage_disposal_flush
+        {
+            let selection = self.service.selected_identity().ok_or_else(|| {
+                "conversation composer selection disappeared before disposal capture".to_owned()
+            })?;
+            if !Self::native_lineage_successor_is_exact(previous, selection) {
+                return Err(
+                    "conversation composer disposal selection left its exact lineage".to_owned(),
+                );
+            }
+            self.native_lineage_disposal_flush = Some((selection, flush));
+            self.native_lineage_widget_release =
+                Some(MainWindowComposerWidgetRelease::new(selection));
+            self.native_lineage_disposal_capture =
+                Some(self.capture_native_lineage_disposal_session(selection, flush)?);
+        }
+        if self.contribution.is_some() {
+            self.synchronize_contribution_selection(cx)?;
+        }
         if matches!(advance, MainWindowComposerDisposalAdvance::Failed) {
-            self.resume_contribution(window, cx)?;
-            self.refresh_autosave(window, cx)?;
+            if self.contribution.is_some() {
+                self.resume_contribution(window, cx)?;
+                self.refresh_autosave(window, cx)?;
+            }
         }
         let MainWindowComposerDisposalAdvance::WidgetReleaseRequired(expected) = advance else {
             return Ok(MainWindowConversationComposerMountDisposalAdvance::Retained(advance));
         };
+        if self
+            .native_lineage_widget_release
+            .as_ref()
+            .is_some_and(|release| release.selection() == expected)
+        {
+            let completion = self.service.complete_disposal_after_widget_release(
+                self.native_lineage_widget_release
+                    .as_ref()
+                    .expect("matching native-lineage widget release exists"),
+            )?;
+            return match completion {
+                MainWindowComposerDisposalAdvance::Disposed => {
+                    self.native_lineage_widget_release = None;
+                    self.native_lineage_disposal_flush = None;
+                    self.native_lineage_disposal_capture = None;
+                    self.native_lineage_last_disposal_advance = None;
+                    self.contribution = None;
+                    self.contribution_subscription = None;
+                    self.suspend_autosave()?;
+                    self.clear_native_lineage_mount_state();
+                    cx.notify();
+                    Ok(MainWindowConversationComposerMountDisposalAdvance::Disposed)
+                }
+                retained => {
+                    Ok(MainWindowConversationComposerMountDisposalAdvance::Retained(retained))
+                }
+            };
+        }
         let contribution = self
             .contribution
             .as_ref()
@@ -440,9 +728,13 @@ impl MainWindowConversationComposerMount {
             .complete_disposal_after_widget_release(&release)?
         {
             MainWindowComposerDisposalAdvance::Disposed => {
+                self.native_lineage_disposal_flush = None;
+                self.native_lineage_disposal_capture = None;
+                self.native_lineage_last_disposal_advance = None;
                 self.contribution = None;
                 self.contribution_subscription = None;
                 self.suspend_autosave()?;
+                self.clear_native_lineage_mount_state();
                 cx.notify();
                 Ok(MainWindowConversationComposerMountDisposalAdvance::Disposed)
             }
@@ -518,6 +810,7 @@ impl MainWindowConversationComposerMount {
                         previous,
                         current,
                     } => {
+                        this.advance_native_lineage_fenced_selection(previous, current);
                         if let Err(error) =
                             this.autosave_selection_advanced(previous, current, window, cx)
                         {

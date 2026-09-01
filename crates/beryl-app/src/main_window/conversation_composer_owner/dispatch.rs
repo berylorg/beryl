@@ -60,12 +60,13 @@ impl MainWindowConversationComposer {
         if !self.can_pump() || self.active_flight.is_some() || self.last_error.is_some() {
             return;
         }
-        if matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
-            && self
-                .input
-                .update(cx, |input, _| input.is_semantically_quiescent())
-        {
-            return;
+        if matches!(self.phase, MainWindowConversationComposerPhase::Fencing) {
+            self.input.update(cx, |input, input_cx| {
+                gpui::EntityInputHandler::unmark_text(input, window, input_cx)
+            });
+            if self.input.update(cx, |input, _| input.is_quiescent()) {
+                return;
+            }
         }
         if let MainWindowConversationComposerRoute::Pending(receipt) = self.route
             && !self

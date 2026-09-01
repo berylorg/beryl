@@ -15,6 +15,7 @@ use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 mod dispatch;
 mod lifecycle;
 mod model;
+mod native_lineage;
 mod retirement;
 mod state;
 mod submission;
@@ -39,6 +40,7 @@ pub struct MainWindowComposerSlot {
     disposed: bool,
     disposal_stage: Option<DisposalStage>,
     submission_successor: Option<MainWindowComposerActivationReceipt>,
+    native_lineage_suspension: Option<MainWindowComposerSelectionIdentity>,
     #[cfg(feature = "test-faults")]
     activation_after_open_fault:
         Option<Box<dyn FnOnce(&HomeStore, SyndicStorage) + Send + 'static>>,
@@ -48,6 +50,23 @@ pub struct MainWindowComposerSlot {
 }
 
 impl MainWindowComposerSlot {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn test_native_lineage_disposal_state(
+        &self,
+    ) -> (bool, bool, bool, bool, bool, bool) {
+        (
+            self.selected.is_some(),
+            self.pending.is_some(),
+            self.disposed,
+            self.native_lineage_suspension.is_some(),
+            matches!(self.disposal_stage, Some(DisposalStage::Flushing(_))),
+            matches!(
+                self.disposal_stage,
+                Some(DisposalStage::AwaitingWidgetRelease)
+            ),
+        )
+    }
+
     pub(in crate::main_window) fn assets(&self) -> AssetState {
         self.marker_authority.assets()
     }
@@ -86,6 +105,7 @@ impl MainWindowComposerSlot {
             disposed: false,
             disposal_stage: None,
             submission_successor: None,
+            native_lineage_suspension: None,
             #[cfg(feature = "test-faults")]
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
@@ -126,7 +146,8 @@ impl MainWindowComposerSlot {
         ) || matches!(
             self.disposal_stage,
             Some(DisposalStage::AwaitingWidgetRelease)
-        ) || self.submission_successor.is_some();
+        ) || self.submission_successor.is_some()
+            || self.native_lineage_suspension == Some(selection);
         if !awaiting_release || self.selected_identity() != Some(selection) {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
         }

@@ -597,6 +597,7 @@ impl MainWindowConversationComposerMount {
 
 impl Drop for MainWindowConversationComposerMount {
     fn drop(&mut self) {
+        self.cancel_native_lineage_on_drop();
         if let Some(task) = self.submission.task.take() {
             task.detach();
         }
