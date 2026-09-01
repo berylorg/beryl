@@ -42,15 +42,24 @@ causal evidence and phase boundary. Clean up any exact task-owned comparison che
 artifacts before completion. If the evidence contradicts accepted GPUI authority or requires a
 public-contract change, stop for authority correction instead of planning around it.
 
+Resumable milestone: independent review rejected the initial geometry-only diagnosis. Exact parent
+and child checkouts already fail the named cases with prior-pin residency-capacity and request-shape
+symptoms, while accepted pins reach later missing-realization, `Busy`, and wrong-page symptoms;
+reverting the suspected geometry transition does not repair them. Next compare the first content-
+free lifecycle divergence around GPUI's initial active-window callback, then exercise one bounded
+temporary accepted-pin candidate against all three cases to identify whether lifecycle source, test-
+driver activation draining, or GPUI first-publication behavior owns the correction.
+
 # Phase 243: Reconcile And Publish GPUI Text Input At The Accepted Revision (pending)
 
-Apply the smallest authority-consistent `gpui-text-input` source correction established by Phase
-242, preserve its bounded range-backed and shared-resource guarantees without a compatibility path,
-and publish the accepted dependency-consistent commit. Verify canonical locked metadata, package
-compilation, prepublication behavior, the corrected range-backed cases and applicable neighboring
-integration targets with Cargo Nextest, one GPUI type universe, exact dependency sources, local-
-override isolation, and fresh independent semantic review. Replan before editing if Phase 242 finds
-an API, design, GPUI-fork, or separately verifiable test-contract boundary.
+Apply the smallest authority-consistent correction established by Phase 242 at its identified
+package-source, test-driver, or owned-GPUI boundary, preserve bounded range-backed and shared-
+resource guarantees without a compatibility path, and publish every accepted dependency commit in
+topological order. Verify canonical locked metadata, package compilation, prepublication behavior,
+the corrected range-backed cases and applicable neighboring integration targets with Cargo Nextest,
+one GPUI type universe, exact dependency sources, local-override isolation, and fresh independent
+semantic review. Replan before editing if Phase 242 identifies more than one independently
+implementable, verifiable, reviewable, or publishable boundary.
 
 # Phase 244: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 

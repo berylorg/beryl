@@ -23,6 +23,13 @@ integration target nevertheless failed three existing cases: adjacent zero-width
 realized, concurrent clipboard/geometry residency returned `Busy`, and committed inline-object
 replacement exhausted exact geometry with `ExactGeometryWrongPage` validation rejections.
 
+Exact comparison later showed that prior canonical pins also fail those cases, but earlier with
+residency-capacity and request-shape symptoms. The accepted GPUI revision changes immediate test-
+window activation and therefore changes the exercised lifecycle even though it does not create the
+underlying red target. A source-only diagnosis around the coalesced geometry-response transition was
+invalidated when reverting that transition, and then all behavioral changes from its introducing
+commit, left the accepted-pin failures unchanged.
+
 # Why It Failed
 
 Cargo revisions are distinct package sources even when they come from the same repository and
@@ -34,6 +41,11 @@ dependent fork. An accepted GPUI revision can require package-source reconciliat
 intended feature is unrelated to that package's public contract, and local path overrides can hide
 both source-identity and published-revision behavior from canonical verification.
 
+Matching failing test names across revisions do not prove one causal mechanism. Historical source
+substitution is not an exact canonical comparison when the historical manifest, lock, or dependency
+lifecycle differs, and a suspicious authority-contradicting branch is not the demonstrated cause
+until reversing it changes the observed failure.
+
 # Course Correction
 
 Publish dependency-consistent commits in topological order: `gpui-scrollbar`, then
@@ -43,8 +55,10 @@ Do not use a Beryl root patch, compatibility wrapper, or local override as the d
 
 At each dependent fork, treat its focused package-contract integration targets as a publication
 gate. When a revision-only update fails that gate, stop the dependency-only phase and establish a
-separate package-source compatibility investigation and acceptance boundary before publication;
-do not weaken or replace the failing tests merely to continue propagation.
+separate compatibility investigation and acceptance boundary before publication. Compare exact
+canonical graphs at their first content-free lifecycle divergence and exercise a bounded candidate
+correction before selecting package source, test driver, or owned dependency as the implementation
+owner; do not weaken or replace failing tests merely to continue propagation.
 
 # Affected Authority And Work
 
