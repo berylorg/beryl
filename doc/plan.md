@@ -42,6 +42,16 @@ the committed-inline-object replacement case across bounded repetitions plus the
 deterministic-failure and publication-capacity neighbors, remove all artifacts, and obtain fresh
 independent semantic review before selecting the durable correction locus.
 
+The sole allowed candidate proved that exact pending-input closure plus the shared prepared terminal-
+response boundary stops deterministic redispatch while preserving explicit publication-capacity
+retry. It did not establish a complete correction locus: the committed replacement case failed all
+three repetitions because successful terminal settlement remained an ordinary public delivery
+error, and the superseded-response guarantee was not verified. Fresh independent review rejected
+phase completion. No second candidate is permitted; keep Phase 245 inactive until the Operator
+authorizes a separate bounded diagnosis of the typed accepted-terminal outcome across shared
+closure, custody servicing, and public delivery, including the superseded-response path, or revises
+this phase's acceptance boundary.
+
 # Phase 245: Correct Deterministic Geometry Response Closure (pending)
 
 Apply and independently verify the smallest package-source correction established by Phase 244

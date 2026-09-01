@@ -48,6 +48,17 @@ unattributed after resident selection. Clipboard begins while a same-binding tar
 object page, exposing an unresolved authority gap between the test's committed-surface availability
 expectation and the source's noninteractive-target `Busy` behavior.
 
+The sole next response-specific candidate closed the exact geometry job from its actual pending
+input and settled the response and dispatch through the shared prepared terminal-response boundary.
+This stopped the repeated wrong-input, stale-alignment, and wrong-page redispatch chain, while the
+deterministic scan-capacity and explicit terminal-publication-capacity neighbor cases passed. The
+committed replacement case nevertheless failed all three repetitions because the successful
+terminal settlement still returned `WrongInputKind` through custody servicing and the public page
+delivery wrapper. The candidate therefore proved a necessary shared atomic-closure mechanism but
+not a sufficient smallest correction locus. It also left the superseded-response guarantee
+unverified and made the superseded exact-key failure helpers unused. Fresh independent review
+rejected phase completion; all candidate artifacts were removed.
+
 The Operator resolved that gap in favor of the published surface: Copy and Cut remain available
 against the last coherent same-binding, same-revision surface and its published selection while a
 nonterminal geometry target continues independently. The unpublished candidate supplies no
@@ -98,6 +109,13 @@ phase across the remaining failures. Use separate bounded diagnosis and correcti
 deterministic response closure, published-surface clipboard gating and residency, and resident-
 object scanner continuation and publication. Keep publication blocked until each actual correction
 owner and independently implementable boundary is established.
+
+Do not suppress the terminal error only in custody servicing or treat dispatch absence as successful
+delivery. A future Operator-authorized diagnostic boundary must establish one typed accepted-and-
+terminally-settled outcome across the exact pending-input closure, shared response/dispatch/job
+settlement, custody servicing, and public delivery wrappers, and must verify that an old response
+never fails a newer geometry job. The Phase 244 one-candidate allowance is exhausted, so no further
+candidate belongs to that phase without an explicit plan-authority resolution.
 
 # Affected Authority And Work
 
