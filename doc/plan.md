@@ -18,69 +18,77 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 242: Determine Initial-Activation Causality In GPUI Text Input (finished)
+# Phase 243: Diagnose Range Response Validation And Custody (finished)
 
-Exact identical-source comparison found only GPUI's correct initial active-window fact before the
-first request cycle; the graphs' 96-event content-free traces matched after normalizing it, and the
-sole ordinary draw-and-drain candidate failed all nine repetitions unchanged. Fresh independent
-review accepted exclusion of initial activation and test-driver draining with no remaining finding;
-no durable fork edit or temporary resource remains.
+Exact isolated prior and accepted dependency graphs produced the same three stable symptoms and
+excluded GPUI revision, activation, and test-driver draining as correction owners. The sole
+cross-purpose residency candidate failed unchanged; fresh review established three independent
+package boundaries, and the Operator resolved clipboard authority in favor of the last published
+same-binding, same-revision coherent surface. No temporary diagnostic resource remains.
 
-# Phase 243: Diagnose Range Response Validation And Custody (wip)
+# Phase 244: Diagnose Deterministic Geometry Response Closure (wip)
 
-Establish one repeatable exact command, source, dependency, and target-directory baseline for the
-three named cases under both prior and accepted graphs, then reconcile the earlier symptom-report
-discrepancy before causal attribution. Trace the first content-free mismatch through page delivery
-and geometry response preparation using only purpose and demand equality, pending-job relation,
-dispatched ownership, custody-transfer class, continuation state, bounded request counts, and
-rejection category; retain no content, raw key, source offset, or payload evidence.
+Trace the replacement case from geometry delivery classification through exact response, dispatch,
+and job custody. Retain only rejection class, alignment relation, retryability class, dispatch/job
+presence, bounded service counts, and terminal outcome; retain no content, raw key, offset, or
+payload evidence. Establish whether the smallest package-source correction belongs in the delivery
+entry points, one shared terminal-closure boundary, or custody servicing.
 
-Exercise exactly one bounded candidate in an exact task-owned ephemeral tree to distinguish package
-source, test-driver, or owned-GPUI ownership. Do not change durable source, tests, API, design,
-manifests, locks, local overrides, or accepted publication state. Remove all comparison artifacts,
-obtain fresh independent semantic review of the causal evidence and smallest correction boundary,
-and stop for authority correction if the owner contradicts accepted GPUI or package design.
+Exercise exactly one response-specific candidate in a task-owned ephemeral tree. It must atomically
+release the exact response, dispatch, and geometry job for deterministic invariant, alignment,
+input-kind, and scan failures; retain retry custody only for explicit surface-publication capacity;
+preserve the prior coherent surface and unrelated residency; and create no successor intent. Verify
+the committed-inline-object replacement case across bounded repetitions plus the smallest existing
+deterministic-failure and publication-capacity neighbors, remove all artifacts, and obtain fresh
+independent semantic review before selecting the durable correction locus.
 
-Exact isolated baselines over identical package source and separate canonical targets produced the
-same empty-object, clipboard-busy, and wrong-page symptoms in all three repetitions under both the
-prior and accepted dependency graphs. This resolves the earlier symptom discrepancy as non-exact
-command, source, configuration, or target evidence and excludes the GPUI revision as correction
-owner. The sole candidate removed purpose equality only from resident object lookup while retaining
-purpose-qualified pending coalescing; all three cases remained unchanged in all three repetitions.
+# Phase 245: Correct Deterministic Geometry Response Closure (pending)
 
-Blocked: fresh independent review found that deterministic geometry validation failures are
-incorrectly retained and retried by package-source custody, but no candidate has yet established
-the smallest response-specific closure locus. Overlapping-object realization remains unattributed
-after resident selection, while clipboard command eligibility against the committed surface during
-a same-binding nonterminal target is unspecified: the existing test requires availability and the
-source returns `Busy`. The one-candidate allowance is exhausted. Do not exercise another correction
-or begin Phase 244 until the Operator corrects the clipboard authority and the plan is partitioned
-into independently verifiable custody, clipboard, and object-realization boundaries.
+Apply and independently verify the smallest package-source correction established by Phase 244
+without weakening exact response identity, atomic failure, or explicit capacity retry.
 
-# Phase 244: Reconcile And Publish GPUI Text Input At The Accepted Revision (pending)
+# Phase 246: Diagnose Clipboard Use Of The Published Coherent Surface (pending)
 
-Apply the smallest authority-consistent correction established by Phase 243 at its identified
-package-source, test-driver, or owned-GPUI boundary, preserve bounded range-backed and shared-
-resource guarantees without a compatibility path, and publish every accepted dependency commit in
-topological order. Verify canonical locked metadata, package compilation, prepublication behavior,
-the corrected range-backed cases and applicable neighboring integration targets with Cargo Nextest,
-one GPUI type universe, exact dependency sources, local-override isolation, and fresh independent
-semantic review. Replan before editing if Phase 243 identifies more than one independently
-implementable, verifiable, reviewable, or publishable boundary.
+Trace and exercise one bounded candidate for Copy and Cut against the last published coherent
+surface while a same-binding, same-revision nonterminal target continues independently; preserve
+ineligibility for absent surfaces, different bindings or revisions, and unpublished selections.
 
-# Phase 245: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+# Phase 247: Correct Clipboard Command Gating And Residency (pending)
 
-Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 244 widget commits,
+Apply and independently verify the smallest package-source correction established by Phase 246,
+including concurrent geometry-resident page reuse and exact clipboard custody.
+
+# Phase 248: Diagnose Resident Object Realization Through Publication (pending)
+
+Trace the overlapping-object case from resident selection through exact scanner preparation,
+continuation, terminal target construction, and coherent publication, then exercise one bounded
+candidate at the first causal mismatch.
+
+# Phase 249: Correct Resident Object Realization (pending)
+
+Apply and independently verify the smallest package-source correction established by Phase 248
+without a purpose-key compatibility path or duplicate object-page ownership.
+
+# Phase 250: Publish GPUI Text Input At The Accepted Revision (pending)
+
+Integrate the accepted corrections, verify canonical locked metadata, package compilation,
+prepublication and applicable range-widget targets, one GPUI type universe, exact dependency
+sources, local-override isolation, and fresh independent semantic review, then publish the accepted
+commit.
+
+# Phase 251: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+
+Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 250 widget commits,
 verify its focused package boundary, and publish the accepted commit.
 
-# Phase 246: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+# Phase 252: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
 
 Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
 canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
 check, restart the language server after the manifest model is accepted, and close the active
 rework checklist item.
 
-# Phase 247: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 253: Build The Target-State Main-Window Shell Foundation (pending)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared
@@ -88,9 +96,9 @@ main-window slots. Prepare the exact claimed editor before GPUI construction, pu
 window, and use Phase 238 abandonment for construction failure or close-before-publication. The
 binary startup/bootstrap path remains outside this phase.
 
-# Phase 248: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 254: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 247 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 253 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.

@@ -48,6 +48,11 @@ unattributed after resident selection. Clipboard begins while a same-binding tar
 object page, exposing an unresolved authority gap between the test's committed-surface availability
 expectation and the source's noninteractive-target `Busy` behavior.
 
+The Operator resolved that gap in favor of the published surface: Copy and Cut remain available
+against the last coherent same-binding, same-revision surface and its published selection while a
+nonterminal geometry target continues independently. The unpublished candidate supplies no
+clipboard, caret, hit-test, or object-activation authority.
+
 # Why It Failed
 
 Cargo revisions are distinct package sources even when they come from the same repository and
@@ -88,14 +93,14 @@ verifiable diagnostic boundary instead of extending the rejected candidate. Esta
 baseline and follow the first response-validation or custody mismatch before selecting implementation
 scope.
 
-After the exact baseline and sole failed candidate, do not broaden the existing phase with another
-correction attempt. First correct the missing clipboard command-eligibility authority, then plan
-separate bounded evidence for deterministic response closure, clipboard gating and residency, and
-resident-object scanner continuation and publication. Keep publication blocked until each actual
-correction owner and independently implementable boundary is established.
+After the exact baseline and sole failed candidate, do not broaden one diagnosis or publication
+phase across the remaining failures. Use separate bounded diagnosis and correction boundaries for
+deterministic response closure, published-surface clipboard gating and residency, and resident-
+object scanner continuation and publication. Keep publication blocked until each actual correction
+owner and independently implementable boundary is established.
 
 # Affected Authority And Work
 
-- `../plan.md`, Phases 241 through 244, including Phase 242's activation exclusion and Phase 243's
-  unresolved response-validation and custody diagnosis.
+- `../plan.md`, Phase 243's diagnostic split and Phases 244 through 250's independent response-
+  closure, clipboard, object-realization, and publication boundaries.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
