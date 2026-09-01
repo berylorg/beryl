@@ -2,9 +2,12 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore
 use beryl_model::{SyndicThreadId, WindowId};
 
 use super::{
-    MAX_SESSION_CLAIMS, MinimalSessionBootstrap, SESSION_WINDOW_V1_BYTES, SessionDomain,
-    SessionReadError, SessionState, SessionWindowRecord, ThreadClaimRecord, bootstrap,
-    codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionWindowCodec},
+    CLAIM_V1_BYTES, MAX_SESSION_CLAIMS, MinimalSessionBootstrap, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionDomain, SessionHeader, SessionReadError, SessionState,
+    SessionWindowRecord, ThreadClaimRecord, bootstrap,
+    codec::{
+        ClaimByThreadCodec, ClaimByWindowCodec, HEADER_KEY, SessionHeaderCodec, SessionWindowCodec,
+    },
 };
 
 const ACQUISITION_AUDIT_MAX_BYTES: usize = 1024 * 1024;
@@ -15,6 +18,13 @@ pub(crate) struct SessionAcquisitionSource {
     pub(crate) claims_by_window: Vec<(WindowId, ThreadClaimRecord)>,
     pub(crate) claims_by_thread: Vec<(SyndicThreadId, ThreadClaimRecord)>,
     pub(crate) claims_bounded: bool,
+}
+
+pub(crate) struct SessionAbandonmentSource {
+    pub(crate) header: Option<SessionHeader>,
+    pub(crate) window: Option<SessionWindowRecord>,
+    pub(crate) claim_by_window: Option<ThreadClaimRecord>,
+    pub(crate) claim_by_thread: Option<ThreadClaimRecord>,
 }
 
 pub(crate) fn read(
@@ -65,6 +75,50 @@ pub(crate) fn read(
             .collect(),
         claims_bounded,
     })
+}
+
+pub(crate) fn read_abandonment(
+    state: &SessionState,
+    store: &HomeStore,
+    window_id: WindowId,
+    thread_id: SyndicThreadId,
+) -> Result<SessionAbandonmentSource, SessionReadError> {
+    let header = read_header(state, store)?;
+    let source = SessionAbandonmentSource {
+        window: store.read_point::<SessionDomain, SessionWindowCodec>(
+            &state.handle,
+            &window_id,
+            point_limit(SESSION_WINDOW_V1_BYTES),
+        )?,
+        claim_by_window: store.read_point::<SessionDomain, ClaimByWindowCodec>(
+            &state.handle,
+            &window_id,
+            point_limit(CLAIM_V1_BYTES),
+        )?,
+        claim_by_thread: store.read_point::<SessionDomain, ClaimByThreadCodec>(
+            &state.handle,
+            &thread_id,
+            point_limit(CLAIM_V1_BYTES),
+        )?,
+        header,
+    };
+    if read_header(state, store)? != source.header {
+        return Err(SessionReadError::ConcurrentPublication);
+    }
+    Ok(source)
+}
+
+fn read_header(
+    state: &SessionState,
+    store: &HomeStore,
+) -> Result<Option<SessionHeader>, SessionReadError> {
+    store
+        .read_point::<SessionDomain, SessionHeaderCodec>(
+            &state.handle,
+            &HEADER_KEY,
+            point_limit(SESSION_HEADER_V1_BYTES),
+        )
+        .map_err(Into::into)
 }
 
 fn point_limit(payload: usize) -> PointReadLimit {

@@ -256,6 +256,119 @@ fn cancellation_between_catalog_pages_is_typed() {
 }
 
 #[test]
+fn abandonment_audit_uses_no_catalog_scan() {
+    let fixture = Fixture::new();
+    fixture.publish(true);
+    let WindowAcquisitionNaturalState::Committed(facts) = fixture
+        .state
+        .audit_window_acquisition(&fixture.store, fixture.window_id)
+        .unwrap()
+    else {
+        panic!("exact publication was not committed")
+    };
+    let cancellation = CommandCancellation::new();
+    reset_catalog_scan_test_state();
+    set_catalog_scan_page_hook_for_test(|| panic!("abandonment audit scanned catalog rows"));
+    assert!(matches!(
+        fixture
+            .state
+            .audit_window_abandonment_with_cancellation(&fixture.store, &facts, &cancellation,)
+            .unwrap(),
+        super::WindowAbandonmentNaturalState::ExactAcquired(_)
+    ));
+    reset_catalog_scan_test_state();
+}
+
+#[test]
+fn created_abandonment_with_retained_expected_recency_copy_is_a_collision() {
+    let fixture = Fixture::new();
+    fixture.publish(true);
+    let WindowAcquisitionNaturalState::Committed(facts) = fixture
+        .state
+        .audit_window_acquisition(&fixture.store, fixture.window_id)
+        .unwrap()
+    else {
+        panic!("exact publication was not committed")
+    };
+    let retained_row = facts.catalog_current.row().clone();
+    let retained_cursor = retained_row.recency_cursor();
+    let mut abandonment = HomeCommand::new(fixture.store.home_revision().unwrap());
+    abandonment
+        .add(fixture.state.session().abandon_window(
+            facts.session_domain_revision(),
+            facts.abandon_session_window(),
+        ))
+        .unwrap();
+    abandonment
+        .add(fixture.state.catalog().delete_claimed_row(
+            facts.catalog_domain_revision(),
+            facts.delete_catalog_claimed_row(),
+        ))
+        .unwrap();
+    assert_committed(fixture.store.execute(abandonment));
+    execute_contribution(
+        &fixture.store,
+        fixture.state.catalog().corrupt_recency_copy_for_test(
+            fixture.state.catalog().revision(&fixture.store).unwrap(),
+            retained_cursor,
+            retained_row,
+        ),
+    );
+    assert_eq!(
+        fixture
+            .state
+            .audit_window_abandonment(&fixture.store, &facts)
+            .unwrap(),
+        super::WindowAbandonmentNaturalState::Collision
+    );
+}
+
+#[test]
+fn known_thread_acquisition_audit_uses_no_catalog_scan() {
+    let fixture = Fixture::new();
+    fixture.publish(true);
+    let cancellation = CommandCancellation::new();
+    reset_catalog_scan_test_state();
+    set_catalog_scan_page_hook_for_test(|| panic!("known-thread audit scanned catalog rows"));
+    assert!(matches!(
+        fixture
+            .state
+            .audit_window_acquisition_for_thread_with_cancellation(
+                &fixture.store,
+                fixture.window_id,
+                fixture.thread_id,
+                &cancellation,
+            )
+            .unwrap(),
+        WindowAcquisitionNaturalState::Committed(_)
+    ));
+    reset_catalog_scan_test_state();
+}
+
+#[test]
+fn abandonment_audit_honors_initial_cancellation() {
+    let fixture = Fixture::new();
+    fixture.publish(true);
+    let WindowAcquisitionNaturalState::Committed(facts) = fixture
+        .state
+        .audit_window_acquisition(&fixture.store, fixture.window_id)
+        .unwrap()
+    else {
+        panic!("exact publication was not committed")
+    };
+    let cancellation = CommandCancellation::new();
+    cancellation.cancel();
+    assert!(matches!(
+        fixture.state.audit_window_abandonment_with_cancellation(
+            &fixture.store,
+            &facts,
+            &cancellation,
+        ),
+        Err(WindowAcquisitionAuditError::Cancelled)
+    ));
+}
+
+#[test]
 fn exact_committed_facts_survive_close_and_reopen() {
     let fixture = Fixture::new();
     fixture.publish(true);

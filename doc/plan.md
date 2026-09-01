@@ -116,27 +116,27 @@ Rag-rat reconciliation finished `Current` with zero failed or blocked chunks. Fo
 link, whitespace, authority-boundary, architecture, persistence, exact-custody, and bounded-work
 review accepted the authority with no finding.
 
-# Phase 238: Establish Exact Prepublication Window Abandonment (wip)
+# Phase 238: Establish Exact Prepublication Window Abandonment (finished)
 
-Add one typed Home command that abandons an acquired window which never became visible. Remove the
-exact session window, restore-set reference, catalog claim, and paired reverse claims atomically;
-release a reused pristine thread without deleting it, and delete a created fallback thread and
-draft only through Syndic's authenticated pristine-state boundary. Reject changed, active,
-misbound, stale, partial, or colliding state without weakening its existing durable ownership.
+Implemented one typed Home command for an acquired window that never became visible. It atomically
+removes the exact session window, restore reference, paired reverse claims, and catalog claim;
+reused pristine threads retain an exact unclaimed catalog successor, while created fallbacks delete
+their authenticated canonical Syndic closure and both catalog copies. Changed, active, advanced,
+misbound, stale, partial, and colliding state rejects without cleanup.
 
-Give `WindowId` sole move-only abandonment and reconciliation custody. Preserve that custody across
-cancellation and acknowledgement loss until natural-state audit proves exact old state, exact
-abandoned state, or collision; never retry by substituting another thread or by interpreting an
-indeterminate result as cleanup. Keep scans and retained reconciliation state bounded and permit
-unrelated windows and threads to progress.
+`WindowId` now owns move-only acquisition and abandonment custody through one process registry.
+Cancellation, command failure, acknowledgement loss, and same-home close/reopen retain or rebuild
+exact acquired/abandoned/collision state from bounded point reads. Unrelated session progress and
+stale catalog rows do not force whole-catalog work; target row/index drift and retained partial
+recency copies collide.
 
-Verify reuse and created-fallback abandonment, exact reverse-claim and restore-set removal, pristine
-deletion guards, mutation and active-work rejection, stale revisions, partial-state collisions,
-before-commit and after-commit failure, same-home reopen reconciliation, cancellation, duplicate
-WindowId admission, repeated acquire/abandon cycles, bounded custody, and unrelated progress.
-Complete independent persistence, lifecycle, concurrency, resource, and external-effect review.
+Locked metadata, formatting, app-library checks, 4 focused State unit cases, 7 State integration
+cases, 10 Syndic pristine-closure cases, 7 app abandonment cases, and all 19 acquisition regressions
+passed. The unrelated full State test target remains blocked by pre-existing Phase 196 test-only
+asset helper references. Fresh independent persistence and lifecycle review accepted atomicity,
+bounded custody, exact restart classification, process-wide concurrency, and partial-state defense.
 
-# Phase 239: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 239: Build The Target-State Main-Window Shell Foundation (wip)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared

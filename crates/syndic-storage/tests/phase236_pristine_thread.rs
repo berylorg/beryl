@@ -4,8 +4,8 @@ mod support;
 
 use beryl_home_store::{CommandOutcome, HomeCommand, MutationContribution};
 use beryl_model::{
-    ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, SyndicPathDigest, SyndicTurnId,
+    BindingRevision, ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId,
+    RuntimeMode, RuntimeNativePath, SyndicPathDigest, SyndicTurnId,
 };
 use syndic_storage::test_faults::{
     DraftPieceCandidateRootCollision, FixtureBatch, FixtureDelete, FixtureRecord,
@@ -14,10 +14,11 @@ use syndic_storage::test_faults::{
     rekey_draft_piece_root_for_collision, replace_draft_edit_history_frontier,
 };
 use syndic_storage::{
-    CreateThread, DraftEditHistoryPolicyV1, DraftPieceOperationIdV1, DraftPieceRootKeyV1,
-    HistorySummaryRecord, InputGateRecord, InputGateState, PristineThreadAudit,
-    PristineThreadRemovalAudit, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
-    ThreadCatalogSummaryRecord, ThreadRecord, canonical_empty_draft_edit_history_v1,
+    BindingHeadRecord, BindingLifecycle, CreateThread, DraftEditHistoryPolicyV1,
+    DraftPieceOperationIdV1, DraftPieceRootKeyV1, HistorySummaryRecord, InputGateRecord,
+    InputGateState, PristineThreadAudit, PristineThreadRemovalAudit, SelectedPathProof,
+    SyndicPointReadLimit, SyndicStorage, ThreadCatalogSummaryRecord, ThreadRecord,
+    canonical_empty_draft_edit_history_v1, empty_selected_path_digest,
 };
 
 use support::{TestHome, commit, draft_id, id, open, timestamp};
@@ -309,8 +310,7 @@ fn submitted_dirty_marker_and_nonordinary_threads_are_ineligible() {
     assert!(
         storage
             .inspect_pristine_thread(&store, creation.thread_id(), &binding)
-            .unwrap()
-            .is_none()
+            .is_err()
     );
 
     let home = TestHome::new("phase236-pristine-nonordinary");
@@ -539,4 +539,66 @@ fn stale_or_partial_created_candidate_never_deletes_and_audits_collision() {
             .unwrap(),
         PristineThreadRemovalAudit::Collision
     );
+}
+
+#[test]
+fn advanced_or_active_binding_head_rejects_pristine_authority() {
+    for (name, revision, lifecycle) in [
+        (
+            "advanced",
+            BindingRevision::new(2).unwrap(),
+            BindingLifecycle::Unbound,
+        ),
+        (
+            "active",
+            BindingRevision::new(1).unwrap(),
+            BindingLifecycle::Active,
+        ),
+    ] {
+        let home = TestHome::new(&format!("phase238-pristine-binding-{name}"));
+        let mut store = open(home.path());
+        let storage = SyndicStorage::register(&mut store).unwrap();
+        let binding = execution(130);
+        let creation = create(&store, &storage, 131, binding.clone());
+        let candidate = storage
+            .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+            .unwrap()
+            .expect("created thread is initially pristine");
+        let mut batch = FixtureBatch::new();
+        batch
+            .put(FixtureRecord::BindingHead(BindingHeadRecord::new(
+                creation.thread_id(),
+                revision,
+                lifecycle,
+                empty_selected_path_digest(),
+            )))
+            .unwrap();
+        commit(&store, storage.clone(), batch);
+
+        assert!(
+            storage
+                .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+                .is_err()
+        );
+        assert!(matches!(
+            storage
+                .audit_pristine_thread(&store, creation.thread_id(), &binding)
+                .unwrap(),
+            PristineThreadAudit::Conflict
+        ));
+        assert_eq!(
+            storage
+                .audit_pristine_thread_removal(&store, &candidate)
+                .unwrap(),
+            PristineThreadRemovalAudit::Collision
+        );
+        let mut delete = HomeCommand::new(store.home_revision().unwrap());
+        delete
+            .add(storage.delete_pristine_thread(candidate))
+            .unwrap();
+        assert!(matches!(
+            store.execute(delete),
+            CommandOutcome::NotCommitted { .. }
+        ));
+    }
 }

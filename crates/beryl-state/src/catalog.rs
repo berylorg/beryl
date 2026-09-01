@@ -35,7 +35,10 @@ pub use acquisition::{
 };
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
-pub use mutation::{MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow};
+pub use mutation::{
+    DeleteCatalogClaimedRow, MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow,
+    ReleaseCatalogClaim,
+};
 pub use normalization::{
     CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
     CatalogNormalizedQuery,
@@ -307,6 +310,19 @@ impl CatalogState {
         acquisition::current_row_source(self, store, thread_id, limit)
     }
 
+    pub(crate) fn recency_row_source(
+        &self,
+        store: &HomeStore,
+        cursor: CatalogRecencyCursor,
+    ) -> Result<Option<CatalogRow>, ReadError> {
+        store.read_point::<CatalogDomain, CatalogRecencyCodec>(
+            &self.handle,
+            &cursor,
+            PointReadLimit::new(CATALOG_POINT_READ_MAX_BYTES)
+                .expect("catalog recency point limit is nonzero"),
+        )
+    }
+
     #[must_use]
     pub fn validate_current_row(
         &self,
@@ -330,6 +346,24 @@ impl CatalogState {
         &self,
         expected_revision: DomainRevision,
         command: PublishCatalogClaim,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    #[must_use]
+    pub fn release_claim(
+        &self,
+        expected_revision: DomainRevision,
+        command: ReleaseCatalogClaim,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    #[must_use]
+    pub fn delete_claimed_row(
+        &self,
+        expected_revision: DomainRevision,
+        command: DeleteCatalogClaimedRow,
     ) -> MutationContribution {
         self.handle.contribution(expected_revision, command)
     }

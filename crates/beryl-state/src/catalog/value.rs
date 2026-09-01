@@ -409,8 +409,8 @@ impl CatalogSourceRevisions {
         }
     }
 
-    pub(super) const fn with_claim(mut self, claim: ClaimRevision) -> Self {
-        self.claim = Some(claim);
+    pub(super) const fn with_claim(mut self, claim: Option<ClaimRevision>) -> Self {
+        self.claim = claim;
         self
     }
 

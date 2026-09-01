@@ -4,8 +4,8 @@ use beryl_model::{SessionRevision, WindowId, WindowPlacement};
 use crate::RecordRevision;
 
 use crate::session::{
-    SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError, SessionWindowRecord,
-    ThreadClaimRecord, WindowClaimSelection,
+    RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader, SessionMutationError,
+    SessionWindowRecord, ThreadClaimRecord, WindowClaimSelection,
     codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
 };
 
@@ -111,6 +111,20 @@ pub(crate) struct RemoveSessionWindowPrepared {
     claim: Option<ThreadClaimRecord>,
 }
 
+pub struct AbandonSessionWindow {
+    expected_session_revision: SessionRevision,
+    window_id: WindowId,
+    expected_window_revision: RecordRevision,
+    expected_target: RememberedTarget,
+    expected_claim: WindowClaimSelection,
+}
+
+pub(crate) struct AbandonSessionWindowPrepared {
+    header: SessionHeader,
+    window_id: WindowId,
+    claim: ThreadClaimRecord,
+}
+
 impl RemoveSessionWindow {
     #[must_use]
     pub const fn new(
@@ -123,6 +137,25 @@ impl RemoveSessionWindow {
             expected_session_revision,
             window_id,
             expected_window_revision,
+            expected_claim,
+        }
+    }
+}
+
+impl AbandonSessionWindow {
+    #[must_use]
+    pub const fn new(
+        expected_session_revision: SessionRevision,
+        window_id: WindowId,
+        expected_window_revision: RecordRevision,
+        expected_target: RememberedTarget,
+        expected_claim: WindowClaimSelection,
+    ) -> Self {
+        Self {
+            expected_session_revision,
+            window_id,
+            expected_window_revision,
+            expected_target,
             expected_claim,
         }
     }
@@ -171,6 +204,73 @@ impl DomainMutation<SessionDomain> for RemoveSessionWindow {
         if let Some(claim) = prepared.claim {
             delete_claim(mutations, claim, true)?;
         }
+        put_header(mutations, &prepared.header)
+    }
+}
+
+impl DomainMutation<SessionDomain> for AbandonSessionWindow {
+    type Error = SessionMutationError;
+    type Prepared = AbandonSessionWindowPrepared;
+
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, SessionDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let mut header = required_header(reader, self.expected_session_revision, true)?;
+        if header.fallback != Some(self.expected_target) {
+            return Err(SessionMutationError::InvalidCurrentState(
+                "abandoned window fallback target changed",
+            ));
+        }
+        let window = required_window(
+            reader,
+            &header,
+            self.window_id,
+            self.expected_window_revision,
+        )?;
+        if window.remembered_target != Some(self.expected_target) {
+            return Err(SessionMutationError::InvalidCurrentState(
+                "abandoned window remembered target changed",
+            ));
+        }
+        ensure_claim_expectation(
+            self.window_id,
+            Some(self.expected_claim),
+            window.selected_thread,
+        )?;
+        let claim = required_claim(reader, self.window_id, self.expected_claim)?;
+        let index = header
+            .windows
+            .binary_search_by_key(&self.window_id, |reference| reference.window_id)
+            .map_err(|_| SessionMutationError::WindowMissing {
+                window_id: self.window_id,
+            })?;
+        header.windows.remove(index);
+        header.revision = header.revision.checked_next()?;
+        Ok(AbandonSessionWindowPrepared {
+            header,
+            window_id: self.window_id,
+            claim,
+        })
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<SessionHeaderCodec>(1)?;
+        reservation.reserve_records::<SessionWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByWindowCodec>(1)?;
+        reservation.reserve_records::<ClaimByThreadCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        prepared: Self::Prepared,
+        mutations: &mut MutationBuilder<'_, SessionDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.delete::<SessionWindowCodec>(&prepared.window_id)?;
+        delete_claim(mutations, prepared.claim, true)?;
         put_header(mutations, &prepared.header)
     }
 }

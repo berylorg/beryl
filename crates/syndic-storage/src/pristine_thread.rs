@@ -10,10 +10,11 @@ use crate::{
     ActivityQueryHeadRecord, BindingHeadRecord, BindingRecord, CreateThread, DraftByThreadRecord,
     DraftEditHistoryFrontierV1, DraftEditHistoryPolicyV1, DraftImageLabelProtectionHeadV1,
     DraftPieceRootRecordV1, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord,
-    ImageLabelAuthorityHeadV1, InputGateRecord, InputGateState, SyndicMutationError,
-    SyndicReadError, SyndicStorage, SyndicTimestamp, ThreadArchiveState, ThreadAttributesRecord,
-    ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageDepth, ThreadRecord,
-    ThreadUsageRecord, TranscriptBuildRecord, TranscriptGeneration, TranscriptViewHeadRecord,
+    ImageLabelAuthorityHeadV1, InputGateRecord, InputGateState, SelectedPathProof,
+    SyndicMutationError, SyndicReadError, SyndicStorage, SyndicTimestamp, ThreadArchiveState,
+    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageDepth,
+    ThreadRecord, ThreadUsageRecord, TranscriptBuildRecord, TranscriptGeneration,
+    TranscriptViewHeadRecord,
     codec::{
         ActivityQueryHeadsCodec, ActivityQueryHeadsFamily, BindingHeadsCodec, BindingHeadsFamily,
         BindingKey, BindingsCodec, BindingsFamily, DraftByThreadCodec, DraftByThreadFamily,
@@ -526,6 +527,21 @@ fn validate_closure(facts: &PristineThreadFacts) -> Result<(), &'static str> {
         || facts.input_gate.thread_id() != thread.id()
     {
         return Err("pristine-thread canonical source identities disagree");
+    }
+    if facts.binding.thread_id() != thread.id()
+        || facts.binding_head.thread_id() != thread.id()
+        || facts.binding.revision() != facts.binding_head.revision()
+        || facts.binding.selected_path()
+            != SelectedPathProof::new(
+                thread.committed_tail(),
+                thread.revision(),
+                thread.selected_path_digest(),
+            )
+        || facts.binding_head.selected_path_digest() != thread.selected_path_digest()
+        || facts.binding_head.lifecycle() != facts.binding.state().lifecycle()
+        || facts.binding_head.lifecycle() != crate::BindingLifecycle::Unbound
+    {
+        return Err("pristine-thread binding head is not the initial unbound binding");
     }
     if facts.summary.thread_revision() != thread.revision()
         || facts.summary.committed_tail() != thread.committed_tail()

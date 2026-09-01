@@ -28,6 +28,10 @@ use crate::catalog_projection::{
     prepare_thread_catalog_projection,
 };
 
+mod abandonment;
+
+pub use abandonment::*;
+
 const CATALOG_PAGE_ITEMS: usize = 16;
 const CATALOG_PAGE_BYTES: usize = CATALOG_PAGE_ITEMS * CATALOG_MAX_STORED_RECENCY_BYTES;
 const CATALOG_REPAIR_BUDGET: usize = MAX_RESTORABLE_WINDOWS;
@@ -134,6 +138,10 @@ pub struct RuntimeBackedWindowAcquisition {
     target: RememberedTarget,
     placement: WindowPlacement,
     disposition: RuntimeBackedWindowAcquisitionDisposition,
+    fallback_thread_id: SyndicThreadId,
+    fallback_draft_id: SyndicDraftId,
+    fallback_execution: ExecutionBinding,
+    fallback_created_at: SyndicTimestamp,
 }
 
 impl RuntimeBackedWindowAcquisition {
@@ -165,6 +173,26 @@ impl RuntimeBackedWindowAcquisition {
     #[must_use]
     pub const fn disposition(&self) -> RuntimeBackedWindowAcquisitionDisposition {
         self.disposition
+    }
+
+    #[must_use]
+    pub const fn fallback_thread_id(&self) -> SyndicThreadId {
+        self.fallback_thread_id
+    }
+
+    #[must_use]
+    pub const fn fallback_draft_id(&self) -> SyndicDraftId {
+        self.fallback_draft_id
+    }
+
+    #[must_use]
+    pub const fn fallback_execution(&self) -> &ExecutionBinding {
+        &self.fallback_execution
+    }
+
+    #[must_use]
+    pub const fn fallback_created_at(&self) -> SyndicTimestamp {
+        self.fallback_created_at
     }
 }
 
@@ -376,14 +404,33 @@ pub struct RuntimeBackedWindowAcquisitionService {
     before_execute: Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>,
 }
 
+#[derive(Clone)]
+pub struct RuntimeBackedWindowProcessRegistry {
+    flights: Arc<Mutex<AcquisitionFlights>>,
+}
+
+impl RuntimeBackedWindowProcessRegistry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            flights: Arc::new(Mutex::new(AcquisitionFlights::default())),
+        }
+    }
+}
+
 impl RuntimeBackedWindowAcquisitionService {
     #[must_use]
-    pub fn new(store: Arc<HomeStore>, state: BerylState, syndic: SyndicStorage) -> Self {
+    pub fn new(
+        process: &RuntimeBackedWindowProcessRegistry,
+        store: Arc<HomeStore>,
+        state: BerylState,
+        syndic: SyndicStorage,
+    ) -> Self {
         Self {
             store,
             state,
             syndic,
-            flights: Arc::new(Mutex::new(AcquisitionFlights::default())),
+            flights: Arc::clone(&process.flights),
             catalog_repair_budget: CATALOG_REPAIR_BUDGET,
             #[cfg(feature = "test-faults")]
             before_execute: Arc::new(Mutex::new(None)),
@@ -540,6 +587,10 @@ impl RuntimeBackedWindowAcquisitionService {
                                             target: facts.target(),
                                             placement: facts.placement().clone(),
                                             disposition,
+                                            fallback_thread_id: request.fallback_thread_id,
+                                            fallback_draft_id: request.fallback_draft_id,
+                                            fallback_execution: request.fallback_execution.clone(),
+                                            fallback_created_at: request.fallback_created_at,
                                         },
                                     ),
                                     None => NaturalAcquisitionAudit::Collision,
@@ -832,6 +883,10 @@ impl RuntimeBackedWindowAcquisitionService {
             target,
             placement: placement.clone(),
             disposition,
+            fallback_thread_id: request.fallback_thread_id,
+            fallback_draft_id: request.fallback_draft_id,
+            fallback_execution: request.fallback_execution.clone(),
+            fallback_created_at: request.fallback_created_at,
         };
         let session_command = CreateClaimedWindow::new(
             session.header().revision(),

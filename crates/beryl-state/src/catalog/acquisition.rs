@@ -38,6 +38,18 @@ impl CatalogCurrentRow {
     pub(super) fn into_row(self) -> CatalogRow {
         self.row
     }
+
+    pub(crate) fn unclaimed_successor(&self) -> Result<CatalogRow, super::CatalogValueError> {
+        CatalogRow::current(
+            self.row.thread_id(),
+            self.row.sources().with_claim(None),
+            self.row
+                .facts()
+                .clone()
+                .with_claim(CatalogClaimSummary::Unclaimed),
+            self.row.revision().checked_next()?,
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

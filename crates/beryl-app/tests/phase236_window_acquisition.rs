@@ -17,6 +17,7 @@ use beryl_app::{
         RuntimeBackedWindowAcquisitionReconciliationOutcome,
         RuntimeBackedWindowAcquisitionRepairReconciliationOutcome,
         RuntimeBackedWindowAcquisitionRequest, RuntimeBackedWindowAcquisitionService,
+        RuntimeBackedWindowProcessRegistry,
     },
 };
 use beryl_home_store::{
@@ -46,6 +47,7 @@ struct Fixture {
     store: Arc<HomeStore>,
     state: BerylState,
     syndic: SyndicStorage,
+    process: RuntimeBackedWindowProcessRegistry,
     service: RuntimeBackedWindowAcquisitionService,
     faults: FaultController,
     runtime_id: RuntimeId,
@@ -102,7 +104,9 @@ impl Fixture {
         initialize_empty_session(&store, &state);
         let execution = ExecutionBinding::new(runtime_id, root_id, root_path);
         let store = Arc::new(store);
+        let process = RuntimeBackedWindowProcessRegistry::new();
         let service = RuntimeBackedWindowAcquisitionService::new(
+            &process,
             Arc::clone(&store),
             state.clone(),
             syndic.clone(),
@@ -112,6 +116,7 @@ impl Fixture {
             store,
             state,
             syndic,
+            process,
             service,
             faults,
             runtime_id,
@@ -350,16 +355,17 @@ fn ack_loss_retains_sole_identity_custody_until_exact_new_reconciliation() {
         panic!("ack loss must retain indeterminate custody: {outcome:?}")
     };
     let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &fixture.process,
         Arc::clone(&fixture.store),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
     assert!(matches!(
         fresh.acquire(request.clone(), CommandCancellation::new()),
-        RuntimeBackedWindowAcquisitionOutcome::ExactCommitted { acquisition }
-            if acquisition.window_id() == request.window_id()
-                && acquisition.disposition()
-                    == RuntimeBackedWindowAcquisitionDisposition::Created
+        RuntimeBackedWindowAcquisitionOutcome::NotCommitted {
+            evidence: RuntimeBackedWindowAcquisitionNotCommitted::DuplicateWindowIdentity,
+            ..
+        }
     ));
     assert!(matches!(
         fixture
@@ -373,6 +379,13 @@ fn ack_loss_retains_sole_identity_custody_until_exact_new_reconciliation() {
     assert!(matches!(
         reconciliation.reconcile(&fixture.store),
         RuntimeBackedWindowAcquisitionReconciliationOutcome::ExactNew { .. }
+    ));
+    assert!(matches!(
+        fresh.acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::ExactCommitted { acquisition }
+            if acquisition.window_id() == request.window_id()
+                && acquisition.disposition()
+                    == RuntimeBackedWindowAcquisitionDisposition::Created
     ));
 }
 
@@ -418,7 +431,9 @@ fn ack_loss_is_exactly_reconstructed_after_process_exit_and_reopen() {
         history_policy(),
     )
     .expect("reopened request");
-    let fresh = RuntimeBackedWindowAcquisitionService::new(Arc::new(reopened), state, syndic);
+    let process = RuntimeBackedWindowProcessRegistry::new();
+    let fresh =
+        RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
     let RuntimeBackedWindowAcquisitionOutcome::ExactCommitted { acquisition } =
         fresh.acquire(request.clone(), CommandCancellation::new())
     else {
@@ -602,6 +617,7 @@ fn fresh_service_classifies_exact_old_created_and_request_collision() {
     ));
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &fixture.process,
         Arc::clone(&fixture.store),
         fixture.state.clone(),
         fixture.syndic.clone(),
@@ -718,7 +734,9 @@ fn absent_window_with_exact_fallback_is_collision_before_and_after_reopen() {
     .expect("reopen exact-fallback home");
     let state = BerylState::register(&mut reopened).expect("re-register Beryl state");
     let syndic = SyndicStorage::register(&mut reopened).expect("re-register Syndic");
-    let fresh = RuntimeBackedWindowAcquisitionService::new(Arc::new(reopened), state, syndic);
+    let process = RuntimeBackedWindowProcessRegistry::new();
+    let fresh =
+        RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
     assert!(matches!(
         fresh.reconcile_natural_state(&request),
         RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::Collision { .. }
@@ -781,6 +799,7 @@ fn fresh_service_reconstructs_the_exact_reused_result() {
     assert_eq!(acquisition.thread_id(), candidate);
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &fixture.process,
         Arc::clone(&fixture.store),
         fixture.state.clone(),
         fixture.syndic.clone(),
@@ -820,6 +839,7 @@ fn reverse_claim_disagreement_is_collision_and_never_creates_a_substitute() {
     );
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &fixture.process,
         Arc::clone(&fixture.store),
         fixture.state.clone(),
         fixture.syndic.clone(),
@@ -993,6 +1013,12 @@ fn cancellation_after_the_first_natural_audit_page_releases_the_flight() {
 #[test]
 fn the_257th_live_identity_is_rejected_before_any_syndic_side_effect() {
     let fixture = Fixture::new(115);
+    let sibling = RuntimeBackedWindowAcquisitionService::new(
+        &fixture.process,
+        Arc::clone(&fixture.store),
+        fixture.state.clone(),
+        fixture.syndic.clone(),
+    );
     let (reached_sender, reached_receiver) = mpsc::channel();
     let gate = Arc::new((Mutex::new(false), Condvar::new()));
     fixture.service.test_set_before_execute({
@@ -1037,7 +1063,7 @@ fn the_257th_live_identity_is_rejected_before_any_syndic_side_effect() {
     )
     .expect("extra request");
     assert!(matches!(
-        fixture.service.acquire(extra, CommandCancellation::new()),
+        sibling.acquire(extra, CommandCancellation::new()),
         RuntimeBackedWindowAcquisitionOutcome::NotCommitted {
             evidence: RuntimeBackedWindowAcquisitionNotCommitted::FlightCapacity,
             ..

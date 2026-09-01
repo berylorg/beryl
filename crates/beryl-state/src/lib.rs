@@ -218,7 +218,8 @@ pub use catalog::{
     CatalogPointReadLimit, CatalogReadError, CatalogRecencyCursor, CatalogResolvedTitle,
     CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSearchFields,
     CatalogSourceRevisions, CatalogState, CatalogTitleSource, CatalogValueError,
-    CatalogWindowClaim, MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow,
+    CatalogWindowClaim, DeleteCatalogClaimedRow, MarkCatalogRowStale, PublishCatalogClaim,
+    PublishCatalogRow, ReleaseCatalogClaim,
 };
 pub use durable_job::{
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
@@ -238,13 +239,13 @@ pub use runtime_root::{
     RuntimeRootMutationError, RuntimeRootState, SetRootAvailability, SetRuntimeAvailability,
 };
 pub use session::{
-    ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow, InitializeThreadlessWindow,
-    MAX_RESTORABLE_WINDOWS, MarkOrderlyExit, MinimalSessionBootstrap, RememberedTarget,
-    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
-    SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
-    SessionWindowRecord, SessionWindowReference, ThreadClaimCatalogSource,
-    ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement,
-    WindowClaimSelection,
+    AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
+    InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit, MinimalSessionBootstrap,
+    RememberedTarget, RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES,
+    SESSION_WINDOW_V1_BYTES, SessionExitIntent, SessionHeader, SessionMutationError,
+    SessionReadError, SessionState, SessionWindowRecord, SessionWindowReference,
+    ThreadClaimCatalogSource, ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState,
+    UpdateWindowPlacement, WindowClaimSelection,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,
@@ -260,6 +261,6 @@ pub use value::{AvailabilitySnapshot, RecordRevision, UnixMillis, ValueError};
 #[cfg(feature = "test-faults")]
 pub use window_acquisition::WindowAcquisitionAuditPageHook;
 pub use window_acquisition::{
-    WindowAcquisitionAuditError, WindowAcquisitionCommittedFacts, WindowAcquisitionNaturalState,
-    WindowAcquisitionThreadOrigin,
+    WindowAbandonmentNaturalState, WindowAcquisitionAuditError, WindowAcquisitionCommittedFacts,
+    WindowAcquisitionNaturalState, WindowAcquisitionThreadOrigin,
 };

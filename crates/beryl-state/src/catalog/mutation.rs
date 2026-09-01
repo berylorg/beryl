@@ -4,9 +4,9 @@ use beryl_home_store::{
 use beryl_model::SyndicThreadId;
 
 use super::{
-    CATALOG_RECORD_LIMIT, CatalogClaimSummary, CatalogCurrentRow, CatalogDomain, CatalogFacts,
-    CatalogFreshness, CatalogMutationError, CatalogRevision, CatalogRow, CatalogRowExpectation,
-    CatalogSourceRevisions, CatalogWindowClaim,
+    CATALOG_RECORD_LIMIT, CatalogClaimKind, CatalogClaimSummary, CatalogCurrentRow, CatalogDomain,
+    CatalogFacts, CatalogFreshness, CatalogMutationError, CatalogRecencyCursor, CatalogRevision,
+    CatalogRow, CatalogRowExpectation, CatalogSourceRevisions, CatalogWindowClaim,
     codec::{CatalogRecencyCodec, CatalogRowCodec},
 };
 
@@ -21,6 +21,20 @@ pub struct PublishCatalogRow {
 pub struct PublishCatalogClaim {
     basis: CatalogClaimBasis,
     claim: CatalogWindowClaim,
+}
+
+pub struct ReleaseCatalogClaim {
+    current: CatalogCurrentRow,
+    claim: CatalogWindowClaim,
+    runtime_id: beryl_model::RuntimeId,
+    root_id: beryl_model::RootId,
+}
+
+pub struct DeleteCatalogClaimedRow {
+    current: CatalogCurrentRow,
+    claim: CatalogWindowClaim,
+    runtime_id: beryl_model::RuntimeId,
+    root_id: beryl_model::RootId,
 }
 
 enum CatalogClaimBasis {
@@ -82,6 +96,40 @@ impl PublishCatalogClaim {
     }
 }
 
+impl ReleaseCatalogClaim {
+    #[must_use]
+    pub const fn new(
+        current: CatalogCurrentRow,
+        claim: CatalogWindowClaim,
+        runtime_id: beryl_model::RuntimeId,
+        root_id: beryl_model::RootId,
+    ) -> Self {
+        Self {
+            current,
+            claim,
+            runtime_id,
+            root_id,
+        }
+    }
+}
+
+impl DeleteCatalogClaimedRow {
+    #[must_use]
+    pub const fn new(
+        current: CatalogCurrentRow,
+        claim: CatalogWindowClaim,
+        runtime_id: beryl_model::RuntimeId,
+        root_id: beryl_model::RootId,
+    ) -> Self {
+        Self {
+            current,
+            claim,
+            runtime_id,
+            root_id,
+        }
+    }
+}
+
 impl DomainMutation<CatalogDomain> for PublishCatalogClaim {
     type Error = CatalogMutationError;
     type Prepared = (SyndicThreadId, Option<CatalogRow>, CatalogRow);
@@ -132,7 +180,7 @@ impl DomainMutation<CatalogDomain> for PublishCatalogClaim {
         if facts.claim() != CatalogClaimSummary::Unclaimed {
             return Err(CatalogMutationError::ClaimFactsNotUnclaimed { thread_id });
         }
-        let sources = sources.with_claim(claim.revision());
+        let sources = sources.with_claim(Some(claim.revision()));
         let facts = facts.with_claim(claim.summary());
         let row = CatalogRow::current(thread_id, sources, facts, revision)?;
         Ok((thread_id, current, row))
@@ -153,6 +201,125 @@ impl DomainMutation<CatalogDomain> for PublishCatalogClaim {
     ) -> Result<(), Self::Error> {
         mutations.put::<CatalogRowCodec>(&thread_id, &row)?;
         replace_recency_copy(mutations, current.as_ref(), &row)?;
+        Ok(())
+    }
+}
+
+impl DomainMutation<CatalogDomain> for ReleaseCatalogClaim {
+    type Error = CatalogMutationError;
+    type Prepared = (SyndicThreadId, CatalogRow);
+
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let Self {
+            current,
+            claim,
+            runtime_id,
+            root_id,
+        } = self;
+        let expected = current.clone().into_row();
+        let thread_id = expected.thread_id();
+        if thread_id != claim.thread_id() {
+            return Err(CatalogMutationError::ClaimThreadMismatch {
+                row_thread_id: thread_id,
+                claim_thread_id: claim.thread_id(),
+            });
+        }
+        let Some(actual) = read_pair(reader, thread_id)? else {
+            return Err(CatalogMutationError::RowMissing { thread_id });
+        };
+        if actual != expected {
+            return Err(CatalogMutationError::CurrentRowChanged { thread_id });
+        }
+        if expected.freshness() != CatalogFreshness::Current {
+            return Err(CatalogMutationError::CurrentRowStale { thread_id });
+        }
+        if expected.facts().execution().runtime_id() != runtime_id
+            || expected.facts().execution().root_id() != root_id
+            || expected.revision() == CatalogRevision::INITIAL
+            || expected.sources().claim() != Some(claim.revision())
+            || expected.facts().claim()
+                != CatalogClaimSummary::claimed(claim.window_id(), CatalogClaimKind::Active)
+        {
+            return Err(CatalogMutationError::CurrentRowChanged { thread_id });
+        }
+        let row = current.unclaimed_successor()?;
+        Ok((thread_id, row))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CatalogRowCodec>(1)?;
+        reservation.reserve_records::<CatalogRecencyCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        (thread_id, row): Self::Prepared,
+        mutations: &mut MutationBuilder<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.put::<CatalogRowCodec>(&thread_id, &row)?;
+        mutations.put::<CatalogRecencyCodec>(&row.recency_cursor(), &row)?;
+        Ok(())
+    }
+}
+
+impl DomainMutation<CatalogDomain> for DeleteCatalogClaimedRow {
+    type Error = CatalogMutationError;
+    type Prepared = (SyndicThreadId, CatalogRecencyCursor);
+
+    fn prepare(
+        self,
+        reader: &DomainReader<'_, CatalogDomain>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let expected = self.current.into_row();
+        let thread_id = expected.thread_id();
+        if thread_id != self.claim.thread_id() {
+            return Err(CatalogMutationError::ClaimThreadMismatch {
+                row_thread_id: thread_id,
+                claim_thread_id: self.claim.thread_id(),
+            });
+        }
+        let Some(actual) = read_pair(reader, thread_id)? else {
+            return Err(CatalogMutationError::RowMissing { thread_id });
+        };
+        if actual != expected {
+            return Err(CatalogMutationError::CurrentRowChanged { thread_id });
+        }
+        if expected.freshness() != CatalogFreshness::Current {
+            return Err(CatalogMutationError::CurrentRowStale { thread_id });
+        }
+        if expected.facts().execution().runtime_id() != self.runtime_id
+            || expected.facts().execution().root_id() != self.root_id
+            || expected.revision() != CatalogRevision::INITIAL
+            || expected.sources().claim() != Some(self.claim.revision())
+            || expected.facts().claim()
+                != CatalogClaimSummary::claimed(self.claim.window_id(), CatalogClaimKind::Active)
+        {
+            return Err(CatalogMutationError::CurrentRowChanged { thread_id });
+        }
+        Ok((thread_id, expected.recency_cursor()))
+    }
+
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        reservation.reserve_records::<CatalogRowCodec>(1)?;
+        reservation.reserve_records::<CatalogRecencyCodec>(1)?;
+        Ok(())
+    }
+
+    fn contribute(
+        (thread_id, recency): Self::Prepared,
+        mutations: &mut MutationBuilder<'_, CatalogDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.delete::<CatalogRowCodec>(&thread_id)?;
+        mutations.delete::<CatalogRecencyCodec>(&recency)?;
         Ok(())
     }
 }

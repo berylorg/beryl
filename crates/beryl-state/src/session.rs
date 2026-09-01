@@ -19,13 +19,14 @@ mod validate;
 
 use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec};
 
-pub(crate) use acquisition::SessionAcquisitionSource;
+pub(crate) use acquisition::{SessionAbandonmentSource, SessionAcquisitionSource};
 
 pub use catalog_source::{ThreadClaimCatalogSource, ThreadClaimCatalogSourceError};
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
-    ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow, InitializeThreadlessWindow,
-    MarkOrderlyExit, RemoveSessionWindow, ReplaceWindowClaim, UpdateWindowPlacement,
+    AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,
+    InitializeThreadlessWindow, MarkOrderlyExit, RemoveSessionWindow, ReplaceWindowClaim,
+    UpdateWindowPlacement,
 };
 
 /// Hard upper bound on main windows represented by one durable restore set.
@@ -408,6 +409,15 @@ impl SessionState {
         acquisition::read(self, store, window_id)
     }
 
+    pub(crate) fn abandonment_source(
+        &self,
+        store: &HomeStore,
+        window_id: WindowId,
+        thread_id: SyndicThreadId,
+    ) -> Result<SessionAbandonmentSource, SessionReadError> {
+        acquisition::read_abandonment(self, store, window_id, thread_id)
+    }
+
     #[must_use]
     pub fn initialize_threadless(
         &self,
@@ -467,6 +477,15 @@ impl SessionState {
         &self,
         expected_revision: beryl_model::DomainRevision,
         command: RemoveSessionWindow,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    #[must_use]
+    pub fn abandon_window(
+        &self,
+        expected_revision: beryl_model::DomainRevision,
+        command: AbandonSessionWindow,
     ) -> MutationContribution {
         self.handle.contribution(expected_revision, command)
     }

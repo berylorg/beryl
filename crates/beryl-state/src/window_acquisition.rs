@@ -1,12 +1,16 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{CommandCancellation, CursorReadLimits, HomeStore, ReadError};
-use beryl_model::{ClaimRevision, SessionRevision, SyndicThreadId, WindowId, WindowPlacement};
+use beryl_model::{
+    ClaimRevision, DomainRevision, SessionRevision, SyndicThreadId, WindowId, WindowPlacement,
+};
 
 use crate::{
-    BerylState, CatalogClaimKind, CatalogReadError, CatalogRecencyCursor, CatalogRevision,
-    CatalogRow, RememberedTarget, SessionReadError, ThreadClaimState,
-    session::SessionAcquisitionSource,
+    AbandonSessionWindow, BerylState, CatalogClaimKind, CatalogCurrentRow, CatalogReadError,
+    CatalogRecencyCursor, CatalogRevision, CatalogWindowClaim, DeleteCatalogClaimedRow,
+    RecordRevision, ReleaseCatalogClaim, RememberedTarget, SessionReadError, ThreadClaimState,
+    WindowClaimSelection,
+    session::{SessionAbandonmentSource, SessionAcquisitionSource},
 };
 
 const CATALOG_AUDIT_PAGE_ITEMS: usize = 16;
@@ -33,9 +37,13 @@ pub struct WindowAcquisitionCommittedFacts {
     thread_id: SyndicThreadId,
     target: RememberedTarget,
     placement: WindowPlacement,
+    window_revision: RecordRevision,
     session_revision: SessionRevision,
+    session_domain_revision: DomainRevision,
     claim_generation: SessionRevision,
     claim_revision: ClaimRevision,
+    catalog_domain_revision: DomainRevision,
+    catalog_current: CatalogCurrentRow,
     fallback_target: RememberedTarget,
     origin: WindowAcquisitionThreadOrigin,
 }
@@ -62,8 +70,18 @@ impl WindowAcquisitionCommittedFacts {
     }
 
     #[must_use]
+    pub const fn window_revision(&self) -> RecordRevision {
+        self.window_revision
+    }
+
+    #[must_use]
     pub const fn session_revision(&self) -> SessionRevision {
         self.session_revision
+    }
+
+    #[must_use]
+    pub const fn session_domain_revision(&self) -> DomainRevision {
+        self.session_domain_revision
     }
 
     #[must_use]
@@ -74,6 +92,42 @@ impl WindowAcquisitionCommittedFacts {
     #[must_use]
     pub const fn claim_revision(&self) -> ClaimRevision {
         self.claim_revision
+    }
+
+    #[must_use]
+    pub const fn catalog_domain_revision(&self) -> DomainRevision {
+        self.catalog_domain_revision
+    }
+
+    #[must_use]
+    pub fn abandon_session_window(&self) -> AbandonSessionWindow {
+        AbandonSessionWindow::new(
+            self.session_revision,
+            self.window_id,
+            self.window_revision,
+            self.target,
+            WindowClaimSelection::new(self.thread_id, self.claim_generation, self.claim_revision),
+        )
+    }
+
+    #[must_use]
+    pub fn release_catalog_claim(&self) -> ReleaseCatalogClaim {
+        ReleaseCatalogClaim::new(
+            self.catalog_current.clone(),
+            CatalogWindowClaim::active(self.thread_id, self.window_id, self.claim_revision),
+            self.target.runtime_id(),
+            self.target.root_id(),
+        )
+    }
+
+    #[must_use]
+    pub fn delete_catalog_claimed_row(&self) -> DeleteCatalogClaimedRow {
+        DeleteCatalogClaimedRow::new(
+            self.catalog_current.clone(),
+            CatalogWindowClaim::active(self.thread_id, self.window_id, self.claim_revision),
+            self.target.runtime_id(),
+            self.target.root_id(),
+        )
     }
 
     #[must_use]
@@ -91,6 +145,13 @@ impl WindowAcquisitionCommittedFacts {
 pub enum WindowAcquisitionNaturalState {
     Missing,
     Committed(WindowAcquisitionCommittedFacts),
+    Collision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WindowAbandonmentNaturalState {
+    ExactAcquired(WindowAcquisitionCommittedFacts),
+    ExactAbandoned,
     Collision,
 }
 
@@ -213,7 +274,264 @@ impl BerylState {
             return Err(WindowAcquisitionAuditError::ConcurrentPublication);
         }
 
-        Ok(combine(session, catalog))
+        Ok(combine(
+            session,
+            catalog,
+            session_revision,
+            catalog_scan.revision(),
+        ))
+    }
+
+    pub fn audit_window_acquisition_for_thread_with_cancellation(
+        &self,
+        store: &HomeStore,
+        window_id: WindowId,
+        thread_id: SyndicThreadId,
+        cancellation: &CommandCancellation,
+    ) -> Result<WindowAcquisitionNaturalState, WindowAcquisitionAuditError> {
+        if cancellation.is_cancelled() {
+            return Err(WindowAcquisitionAuditError::Cancelled);
+        }
+        let before = store
+            .home_revision()
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let session_domain_revision = self
+            .session()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let catalog_domain_revision = self
+            .catalog()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let session = match self
+            .session()
+            .abandonment_source(store, window_id, thread_id)
+        {
+            Ok(source) => classify_point_acquired_session(window_id, thread_id, source),
+            Err(SessionReadError::ConcurrentPublication) => {
+                return Err(WindowAcquisitionAuditError::ConcurrentPublication);
+            }
+            Err(error @ SessionReadError::Read(_)) => {
+                return Err(WindowAcquisitionAuditError::Session(error));
+            }
+            Err(_) => SessionClassification::Collision,
+        };
+        let catalog = match self.catalog().current_row_source(
+            store,
+            thread_id,
+            crate::CatalogPointReadLimit::schema_maximum(),
+        ) {
+            Ok(Some(current)) => CatalogClassification::Exact(current),
+            Ok(None) => CatalogClassification::Missing,
+            Err(crate::CatalogCurrentRowError::Read(error)) => {
+                return Err(WindowAcquisitionAuditError::Store(error));
+            }
+            Err(_) => CatalogClassification::Collision,
+        };
+        if cancellation.is_cancelled() {
+            return Err(WindowAcquisitionAuditError::Cancelled);
+        }
+        let after = store
+            .home_revision()
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        if after != before {
+            return Err(WindowAcquisitionAuditError::ConcurrentPublication);
+        }
+        Ok(combine(
+            session,
+            catalog,
+            session_domain_revision,
+            catalog_domain_revision,
+        ))
+    }
+
+    pub fn audit_window_abandonment(
+        &self,
+        store: &HomeStore,
+        expected: &WindowAcquisitionCommittedFacts,
+    ) -> Result<WindowAbandonmentNaturalState, WindowAcquisitionAuditError> {
+        self.audit_window_abandonment_with_cancellation(
+            store,
+            expected,
+            &CommandCancellation::new(),
+        )
+    }
+
+    pub fn audit_window_abandonment_with_cancellation(
+        &self,
+        store: &HomeStore,
+        expected: &WindowAcquisitionCommittedFacts,
+        cancellation: &CommandCancellation,
+    ) -> Result<WindowAbandonmentNaturalState, WindowAcquisitionAuditError> {
+        if cancellation.is_cancelled() {
+            return Err(WindowAcquisitionAuditError::Cancelled);
+        }
+        let before = store
+            .home_revision()
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let session_domain_revision = self
+            .session()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let catalog_domain_revision = self
+            .catalog()
+            .revision(store)
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let session =
+            match self
+                .session()
+                .abandonment_source(store, expected.window_id, expected.thread_id)
+            {
+                Ok(source) => source,
+                Err(SessionReadError::ConcurrentPublication) => {
+                    return Err(WindowAcquisitionAuditError::ConcurrentPublication);
+                }
+                Err(error @ SessionReadError::Read(_)) => {
+                    return Err(WindowAcquisitionAuditError::Session(error));
+                }
+                Err(_) => return Ok(WindowAbandonmentNaturalState::Collision),
+            };
+        let catalog = match self.catalog().current_row_source(
+            store,
+            expected.thread_id,
+            crate::CatalogPointReadLimit::schema_maximum(),
+        ) {
+            Ok(current) => current,
+            Err(crate::CatalogCurrentRowError::Read(error)) => {
+                return Err(WindowAcquisitionAuditError::Store(error));
+            }
+            Err(_) => return Ok(WindowAbandonmentNaturalState::Collision),
+        };
+        let expected_catalog_index = self
+            .catalog()
+            .recency_row_source(store, expected.catalog_current.row().recency_cursor())
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        let state = match classify_abandonment_session(expected, session) {
+            AbandonmentSessionClassification::ExactAcquired(header_revision) => match catalog {
+                Some(current) if current == expected.catalog_current => {
+                    WindowAbandonmentNaturalState::ExactAcquired(expected.refreshed(
+                        header_revision,
+                        session_domain_revision,
+                        catalog_domain_revision,
+                        current,
+                    ))
+                }
+                _ => WindowAbandonmentNaturalState::Collision,
+            },
+            AbandonmentSessionClassification::ExactAbandoned => {
+                classify_abandoned_catalog(expected, catalog, expected_catalog_index)
+            }
+            AbandonmentSessionClassification::Collision => WindowAbandonmentNaturalState::Collision,
+        };
+        if cancellation.is_cancelled() {
+            return Err(WindowAcquisitionAuditError::Cancelled);
+        }
+        let after = store
+            .home_revision()
+            .map_err(WindowAcquisitionAuditError::Store)?;
+        if after != before {
+            return Err(WindowAcquisitionAuditError::ConcurrentPublication);
+        }
+        Ok(state)
+    }
+}
+
+impl WindowAcquisitionCommittedFacts {
+    fn refreshed(
+        &self,
+        session_revision: SessionRevision,
+        session_domain_revision: DomainRevision,
+        catalog_domain_revision: DomainRevision,
+        catalog_current: CatalogCurrentRow,
+    ) -> Self {
+        let mut refreshed = self.clone();
+        refreshed.session_revision = session_revision;
+        refreshed.session_domain_revision = session_domain_revision;
+        refreshed.catalog_domain_revision = catalog_domain_revision;
+        refreshed.catalog_current = catalog_current;
+        refreshed
+    }
+}
+
+fn classify_abandoned_catalog(
+    expected: &WindowAcquisitionCommittedFacts,
+    current: Option<CatalogCurrentRow>,
+    expected_index: Option<crate::CatalogRow>,
+) -> WindowAbandonmentNaturalState {
+    let exact = match expected.origin {
+        WindowAcquisitionThreadOrigin::Reused => match current {
+            Some(current) => {
+                expected
+                    .catalog_current
+                    .unclaimed_successor()
+                    .is_ok_and(|successor| current.row() == &successor)
+                    && expected_index.as_ref() == Some(current.row())
+            }
+            None => false,
+        },
+        WindowAcquisitionThreadOrigin::CreatedFallback => {
+            current.is_none() && expected_index.is_none()
+        }
+    };
+    if exact {
+        WindowAbandonmentNaturalState::ExactAbandoned
+    } else {
+        WindowAbandonmentNaturalState::Collision
+    }
+}
+
+enum AbandonmentSessionClassification {
+    ExactAcquired(SessionRevision),
+    ExactAbandoned,
+    Collision,
+}
+
+fn classify_abandonment_session(
+    expected: &WindowAcquisitionCommittedFacts,
+    source: SessionAbandonmentSource,
+) -> AbandonmentSessionClassification {
+    let Some(header) = source.header else {
+        return AbandonmentSessionClassification::Collision;
+    };
+    let references: Vec<_> = header
+        .windows()
+        .iter()
+        .filter(|reference| reference.window_id() == expected.window_id)
+        .collect();
+    match (
+        references.as_slice(),
+        source.window,
+        source.claim_by_window,
+        source.claim_by_thread,
+    ) {
+        ([], None, None, None) => AbandonmentSessionClassification::ExactAbandoned,
+        ([reference], Some(window), Some(by_window), Some(by_thread))
+            if reference.record_revision() == expected.window_revision
+                && window.window_id() == expected.window_id
+                && window.revision() == expected.window_revision
+                && window.remembered_target() == Some(expected.target)
+                && window.placement() == &expected.placement
+                && window.selected_thread()
+                    == Some(WindowClaimSelection::new(
+                        expected.thread_id,
+                        expected.claim_generation,
+                        expected.claim_revision,
+                    ))
+                && header.fallback() == Some(expected.fallback_target)
+                && by_window == by_thread
+                && by_window.window_id() == expected.window_id
+                && by_window.thread_id() == expected.thread_id
+                && by_window.selection()
+                    == WindowClaimSelection::new(
+                        expected.thread_id,
+                        expected.claim_generation,
+                        expected.claim_revision,
+                    )
+                && by_window.state() == ThreadClaimState::Active =>
+        {
+            AbandonmentSessionClassification::ExactAcquired(header.revision())
+        }
+        _ => AbandonmentSessionClassification::Collision,
     }
 }
 
@@ -228,6 +546,7 @@ struct SessionExactFacts {
     thread_id: SyndicThreadId,
     target: RememberedTarget,
     placement: WindowPlacement,
+    window_revision: RecordRevision,
     session_revision: SessionRevision,
     claim_generation: SessionRevision,
     claim_revision: ClaimRevision,
@@ -236,7 +555,7 @@ struct SessionExactFacts {
 
 enum CatalogClassification {
     Missing,
-    Exact(CatalogRow),
+    Exact(CatalogCurrentRow),
     Collision,
 }
 
@@ -336,6 +655,59 @@ fn classify_session(
         thread_id: selection.thread_id(),
         target,
         placement: window.placement().clone(),
+        window_revision: window.revision(),
+        session_revision: header.revision(),
+        claim_generation: by_window.generation(),
+        claim_revision: by_window.revision(),
+        fallback_target: target,
+    })
+}
+
+fn classify_point_acquired_session(
+    window_id: WindowId,
+    thread_id: SyndicThreadId,
+    source: SessionAbandonmentSource,
+) -> SessionClassification {
+    let Some(header) = source.header else {
+        return SessionClassification::Collision;
+    };
+    let references: Vec<_> = header
+        .windows()
+        .iter()
+        .filter(|reference| reference.window_id() == window_id)
+        .collect();
+    let (Some(window), Some(by_window), Some(by_thread)) = (
+        source.window,
+        source.claim_by_window,
+        source.claim_by_thread,
+    ) else {
+        return SessionClassification::Collision;
+    };
+    let Some(target) = window.remembered_target() else {
+        return SessionClassification::Collision;
+    };
+    let Some(selection) = window.selected_thread() else {
+        return SessionClassification::Collision;
+    };
+    if references.len() != 1
+        || references[0].record_revision() != window.revision()
+        || window.window_id() != window_id
+        || selection.thread_id() != thread_id
+        || by_window != by_thread
+        || by_window.window_id() != window_id
+        || by_window.thread_id() != thread_id
+        || by_window.selection() != selection
+        || by_window.state() != ThreadClaimState::Active
+        || header.fallback() != Some(target)
+    {
+        return SessionClassification::Collision;
+    }
+    SessionClassification::Exact(SessionExactFacts {
+        window_id,
+        thread_id,
+        target,
+        placement: window.placement().clone(),
+        window_revision: window.revision(),
         session_revision: header.revision(),
         claim_generation: by_window.generation(),
         claim_revision: by_window.revision(),
@@ -373,14 +745,15 @@ fn scan_catalog(
             }
             Err(error) => return Err(WindowAcquisitionAuditError::Catalog(error)),
         };
-        for row in page.rows().iter().map(|current| current.row()) {
+        for current in page.rows() {
+            let row = current.row();
             if row.facts().claim().window_id() != Some(window_id) {
                 continue;
             }
             if matched.is_some() {
                 duplicate = true;
             } else {
-                matched = Some(row.clone());
+                matched = Some(current.clone());
             }
         }
         page_ordinal += 1;
@@ -467,8 +840,10 @@ fn set_catalog_scan_page_hook_for_test(hook: impl FnMut() + 'static) {
 fn combine(
     session: SessionClassification,
     catalog: CatalogClassification,
+    session_domain_revision: DomainRevision,
+    catalog_domain_revision: DomainRevision,
 ) -> WindowAcquisitionNaturalState {
-    let (session, row) = match (session, catalog) {
+    let (session, current) = match (session, catalog) {
         (SessionClassification::Missing, CatalogClassification::Missing) => {
             return WindowAcquisitionNaturalState::Missing;
         }
@@ -477,11 +852,14 @@ fn combine(
         }
         _ => return WindowAcquisitionNaturalState::Collision,
     };
+    let row = current.row();
     let claim = row.facts().claim();
     if row.thread_id() != session.thread_id
         || claim.window_id() != Some(session.window_id)
         || claim.kind() != Some(CatalogClaimKind::Active)
         || row.sources().claim() != Some(session.claim_revision)
+        || row.facts().execution().runtime_id() != session.target.runtime_id()
+        || row.facts().execution().root_id() != session.target.root_id()
     {
         return WindowAcquisitionNaturalState::Collision;
     }
@@ -495,9 +873,13 @@ fn combine(
         thread_id: session.thread_id,
         target: session.target,
         placement: session.placement,
+        window_revision: session.window_revision,
         session_revision: session.session_revision,
+        session_domain_revision,
         claim_generation: session.claim_generation,
         claim_revision: session.claim_revision,
+        catalog_domain_revision,
+        catalog_current: current,
         fallback_target: session.fallback_target,
         origin,
     })
