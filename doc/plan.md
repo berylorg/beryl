@@ -18,48 +18,44 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 239: Establish Hidden-Window First Publication In Owned GPUI (finished)
+# Phase 240: Complete GPUI Scrollbar Engineering-Rigor Authority (finished)
 
-Published owned-fork commit `f013db758350882871ec0b666b5a841343557b26` with one identity-
-preserving, nonactivating, retryable hidden-window first-publication boundary across Test, Windows,
-macOS, Wayland, and X11 backends. Hidden controls are inert until publication, immediate behavior is
-preserved, macOS hidden fullscreen fails before native allocation, and platform-required initial
-ordering is the only admitted ordering change.
+Published `gpui-scrollbar` commit `d910e37d12f8d73f9f0eb7dbd88264a033c188ea` with the required
+package-scoped production-application rigor declaration and no modifiers. Structural validation and
+fresh independent semantic review accepted the least-cost profile, modifier set, authority scope,
+and unchanged package contract with no finding.
 
-Formatting, locked metadata, GPUI checks, and all 6 focused lifecycle cases passed on the Windows
-host. Fresh independent semantic review accepted the complete boundary with no finding; native
-macOS and Linux execution remains unavailable. A direct Beryl pin was invalidated because the three
-owned widget forks still pin the prior GPUI revision; the clean propagation is split into the next
-bounded phases and recorded in
-[`doc/failures/gpui-dependent-fork-revision-pin.md`](failures/gpui-dependent-fork-revision-pin.md).
+# Phase 241: Propagate The GPUI Revision Through GPUI Scrollbar (wip)
 
-# Phase 240: Propagate The GPUI Revision Through GPUI Scrollbar (wip)
+Update the workspace GPUI dependency to `f013db758350882871ec0b666b5a841343557b26` without source or
+API changes. Regenerate the canonical lockfile outside the repository-local path-patch scope and
+verify locked metadata, package compilation, and the focused scrollbar integration target with
+Cargo Nextest. Confirm one resolved GPUI revision, obtain independent semantic review under the
+package rigor contract, publish the accepted commit, and preserve local development overrides as
+noncanonical environment state.
 
-Update `gpui-scrollbar` to the accepted GPUI revision, regenerate only its canonical dependency
-state, run locked metadata plus focused package verification, and publish the accepted commit.
+Do not substitute a Beryl root patch or local path override for the published dependency-consistent
+revision. If the new GPUI commit changes the scrollbar package contract or requires source changes,
+pause and replan that separate acceptance boundary.
 
-Blocked pending Operator acknowledgement of the clean dependency-pin cascade discovered by the
-canonical Beryl check. Do not substitute a Beryl root patch or local path override for a published
-dependency-consistent revision.
+# Phase 242: Propagate The GPUI Revision Through GPUI Text Input (pending)
 
-# Phase 241: Propagate The GPUI Revision Through GPUI Text Input (pending)
-
-Update `gpui-text-input` to the accepted GPUI revision and the Phase 240 scrollbar commit, verify
+Update `gpui-text-input` to the accepted GPUI revision and the Phase 241 scrollbar commit, verify
 its focused package and prepublication/streaming boundaries, and publish the accepted commit.
 
-# Phase 242: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+# Phase 243: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
-Update `gpui-settings-window` to the accepted GPUI revision and the Phase 240 and 241 widget commits,
+Update `gpui-settings-window` to the accepted GPUI revision and the Phase 241 and 242 widget commits,
 verify its focused package boundary, and publish the accepted commit.
 
-# Phase 243: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+# Phase 244: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
 
 Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
 canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
 check, restart the language server after the manifest model is accepted, and close the active
 rework checklist item.
 
-# Phase 244: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 245: Build The Target-State Main-Window Shell Foundation (pending)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared
@@ -67,9 +63,9 @@ main-window slots. Prepare the exact claimed editor before GPUI construction, pu
 window, and use Phase 238 abandonment for construction failure or close-before-publication. The
 binary startup/bootstrap path remains outside this phase.
 
-# Phase 245: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 246: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 244 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 245 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.

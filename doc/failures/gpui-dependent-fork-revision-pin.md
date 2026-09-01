@@ -30,5 +30,5 @@ Do not use a Beryl root patch, compatibility wrapper, or local override as the d
 
 # Affected Authority And Work
 
-- `../plan.md`, Phases 240 through 243.
+- `../plan.md`, Phases 241 through 244.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
