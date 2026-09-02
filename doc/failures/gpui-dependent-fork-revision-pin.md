@@ -284,6 +284,15 @@ custody, and preserves unrelated active work. Its successor and restoration retr
 passed 2/2 twice and in fresh independent review; accepted `gpui-text-input` commit
 `bb5019464d82e0ff24d73c8bba1d96f5c62a5be1` leaves Phase 258's end-to-end case unchanged.
 
+Phase 256 corrected only the attached-surface test driver. Its finite request service now
+re-observes the queue after each draw and park before accepting two idle cycles, retains the exact
+active anchor and zero `FocusLost` events while attachment custody remains live, and uses full
+quiescence only after exact `RefocusObject` or `ClearObject` dismissal. Fresh independent review
+rejected the first candidate until the post-draw observation and explicit event-order assertions
+were present, then accepted the corrected case. The exact case passed twice with its three-case
+lifecycle set; accepted test-only `gpui-text-input` commit
+`f37fb23e8cb46fda048c208790ac3ac8f673d7c0` changes no production behavior.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed

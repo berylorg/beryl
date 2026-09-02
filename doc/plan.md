@@ -18,29 +18,24 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 255: Close Failed Geometry Pages And Restoration Exactly (finished)
+# Phase 256: Correct Attached-Surface Test Driving (finished)
 
-Closed only the exact active geometry owner for direct or job-associated coalesced page failure,
-released its returned custody, cleared successor intent, and rejected owning restoration once while
-preserving the prior surface and unrelated newer work. Exact successor and restoration retry-
-admission evidence passed 2/2 twice; fresh independent review passed 2/2 with no blocking findings.
-Accepted `gpui-text-input` commit: `bb5019464d82e0ff24d73c8bba1d96f5c62a5be1`.
+Replaced premature global-quiescence driving with finite attached-surface request servicing that
+re-observes the queue after each draw/park cycle, then required quiescence only after exact
+dismissal. The exact case passed twice with its three-case lifecycle set; fresh independent review
+accepted the explicit no-loss-before-dismissal evidence. Accepted `gpui-text-input` commit:
+`f37fb23e8cb46fda048c208790ac3ac8f673d7c0`.
 
-# Phase 256: Correct Attached-Surface Test Driving (wip)
+# Phase 257: Requalify Retarget Capacity Fixtures (wip)
 
 Correct only
-`exact_attached_inline_object_surface_owns_focus_loss_until_one_explicit_dismissal` so retained
-surface attachment uses bounded request servicing without falsely requiring global quiescence.
-Preserve the exact active anchor and suppression of premature `FocusLost` publication while the
-attachment owns the surface; require full quiescence only after the exact dismissal releases that
-ownership, and retain the once-only loss event and stale-attachment rejection. Change no production
-behavior. Verify the corrected case twice plus directly affected focused evidence.
-
-# Phase 257: Requalify Retarget Capacity Fixtures (pending)
-
-Replace the two stale hard-coded retarget capacity literals with an exact accepted-fit and one-under
-boundary, then verify repeated wheel and rendered-scrollbar rejection preserves the publication
-fingerprint.
+`repeated_wheel_retarget_rejection_preserves_full_publication_fingerprint` and
+`repeated_rendered_scrollbar_retarget_rejection_preserves_full_publication_fingerprint`. Replace
+their obsolete fixed `max_surface_items` literals with fixture-derived exact accepted-fit and
+one-under capacities, without changing production behavior or weakening rejection semantics. Prove
+that exact fit admits the intended retarget, one under rejects it, and repeated wheel or rendered-
+scrollbar attempts preserve the complete committed publication fingerprint and event count. Verify
+both corrected cases twice plus the directly affected capacity-boundary evidence.
 
 # Phase 258: Correct Restoration Geometry Response Routing (pending)
 
