@@ -18,29 +18,23 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 253: Diagnose The Focused GPUI Text Input Publication Failures (finished)
+# Phase 254: Restore Target-First Malformed-Index Test Coverage (finished)
 
-Partitioned all 25 unchanged focused failures without changing package source or publishing the
-candidate. Seventeen failures have eight proven correction owners: target-first malformed-index
-fixtures, failed-page geometry closure, attached-surface test driving, retarget capacity fixtures,
-restoration geometry routing, restored same-anchor gap publication, restoration dispatch
-cancellation, and retryable clipboard-preparation test expectations. The other eight failures are
-now eight independent diagnostic boundaries rather than assumed shared roots. Both attempted fresh
-representative builds failed before test execution from Windows process-memory exhaustion and were
-discarded; the accepted complete Phase 252 comparison remains execution evidence. The unchanged
-seven-test library result remains a separately accepted baseline risk with no proven mapping to the
-25 integration failures.
+Corrected only the four stale malformed-index test drivers so authoritative target requests are
+served before malformed index responses are injected. The exact terminal failure, release, late-
+response rejection, preserved prior coherent surface, quiescence, and restart contracts passed 4/4
+in two focused runs. Fresh independent review found no issues; production behavior was unchanged.
+Accepted `gpui-text-input` commit: `02f2eebe792a85e202d4afd9589aa1abfa72bae5`.
 
-# Phase 254: Restore Target-First Malformed-Index Test Coverage (wip)
+# Phase 255: Close Failed Geometry Pages And Restoration Exactly (wip)
 
-Update only the four stale malformed-index test drivers to advance through authoritative target-first
-realization before injecting malformed index responses, then verify their intended terminal failure,
-release, and restart contracts without changing production behavior.
-
-# Phase 255: Close Failed Geometry Pages And Restoration Exactly (pending)
-
-Correct only `fail_page` ownership so a failed page awaited by geometry closes the exact geometry job
-and rejects any owning restoration exactly once while preserving the prior coherent publication.
+Correct only `page_delivery.rs::fail_page` ownership so a failed page awaited by geometry closes the
+exact geometry job and rejects any owning restoration exactly once. Preserve the prior coherent
+surface, release the exact page, job, and restoration custody, reject late responses, and permit a
+fresh retry without changing unrelated production behavior. Verify
+`failed_successor_geometry_retains_prior_surface_and_returns_late_page` and
+`post_validation_restoration_geometry_failure_rejects_once_and_can_retry` plus directly affected
+focused evidence.
 
 # Phase 256: Correct Attached-Surface Test Driving (pending)
 

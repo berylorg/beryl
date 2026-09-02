@@ -266,6 +266,13 @@ trees were cleaned, and the complete retained Phase 252 prior/candidate comparis
 accepted execution record. The seven `--lib` failures remain the separately accepted unchanged
 baseline risk; no causal mapping from those names to these focused integration roots was proven.
 
+Phase 254 corrected only the four stale malformed-index fixtures. Their drivers now serve the
+authoritative target request before injecting the exact malformed index response, and the text-page
+case preserves the coherent surface already published by target-first realization instead of
+expecting no surface. Both focused runs passed 4/4, fresh independent review found no issues, and no
+production source changed. The accepted test-only correction is `gpui-text-input` commit
+`02f2eebe792a85e202d4afd9589aa1abfa72bae5`.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
