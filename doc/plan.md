@@ -18,28 +18,23 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 254: Restore Target-First Malformed-Index Test Coverage (finished)
+# Phase 255: Close Failed Geometry Pages And Restoration Exactly (finished)
 
-Corrected only the four stale malformed-index test drivers so authoritative target requests are
-served before malformed index responses are injected. The exact terminal failure, release, late-
-response rejection, preserved prior coherent surface, quiescence, and restart contracts passed 4/4
-in two focused runs. Fresh independent review found no issues; production behavior was unchanged.
-Accepted `gpui-text-input` commit: `02f2eebe792a85e202d4afd9589aa1abfa72bae5`.
+Closed only the exact active geometry owner for direct or job-associated coalesced page failure,
+released its returned custody, cleared successor intent, and rejected owning restoration once while
+preserving the prior surface and unrelated newer work. Exact successor and restoration retry-
+admission evidence passed 2/2 twice; fresh independent review passed 2/2 with no blocking findings.
+Accepted `gpui-text-input` commit: `bb5019464d82e0ff24d73c8bba1d96f5c62a5be1`.
 
-# Phase 255: Close Failed Geometry Pages And Restoration Exactly (wip)
+# Phase 256: Correct Attached-Surface Test Driving (wip)
 
-Correct only `page_delivery.rs::fail_page` ownership so a failed page awaited by geometry closes the
-exact geometry job and rejects any owning restoration exactly once. Preserve the prior coherent
-surface, release the exact page, job, and restoration custody, reject late responses, and permit a
-fresh retry without changing unrelated production behavior. Verify
-`failed_successor_geometry_retains_prior_surface_and_returns_late_page` and
-`post_validation_restoration_geometry_failure_rejects_once_and_can_retry` plus directly affected
-focused evidence.
-
-# Phase 256: Correct Attached-Surface Test Driving (pending)
-
-Separate bounded runtime draining from full quiescence in the attached-inline-object focus-loss test,
-then require full quiescence only after the explicit dismissal that owns surface release.
+Correct only
+`exact_attached_inline_object_surface_owns_focus_loss_until_one_explicit_dismissal` so retained
+surface attachment uses bounded request servicing without falsely requiring global quiescence.
+Preserve the exact active anchor and suppression of premature `FocusLost` publication while the
+attachment owns the surface; require full quiescence only after the exact dismissal releases that
+ownership, and retain the once-only loss event and stale-attachment rejection. Change no production
+behavior. Verify the corrected case twice plus directly affected focused evidence.
 
 # Phase 257: Requalify Retarget Capacity Fixtures (pending)
 

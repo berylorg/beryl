@@ -273,6 +273,17 @@ expecting no surface. Both focused runs passed 4/4, fresh independent review fou
 production source changed. The accepted test-only correction is `gpui-text-input` commit
 `02f2eebe792a85e202d4afd9589aa1abfa72bae5`.
 
+Phase 255 execution proved that its restoration test crosses two already partitioned production
+owners. Exact failed-page closure and once-only restoration rejection complete before a fresh retry;
+that retry is admitted, then fails only in Phase 258's independent index-to-target response routing.
+Phase 255 therefore owns exact failure closure plus fresh retry admission, while Phase 258 retains
+the unchanged end-to-end retry-completion case. Purpose alone is not page ownership: closure must
+associate a coalesced wait with the active job or use the exact geometry owner's pending-key check.
+The accepted correction does exactly that, clears successor intent, releases the returned exact
+custody, and preserves unrelated active work. Its successor and restoration retry-admission cases
+passed 2/2 twice and in fresh independent review; accepted `gpui-text-input` commit
+`bb5019464d82e0ff24d73c8bba1d96f5c62a5be1` leaves Phase 258's end-to-end case unchanged.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
