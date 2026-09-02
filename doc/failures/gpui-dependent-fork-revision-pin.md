@@ -75,6 +75,23 @@ necessary for those failures without claiming identical failure points for the t
 They remain accepted-graph integration risk for the later correction and publication gates rather
 than evidence against the geometry delivery classification.
 
+The durable Phase 247 correction exposed three supported branches that the diagnostic candidate and
+its first focused evidence did not fully exercise. Active coalescing required a distinct settlement
+from detached supersession so an old delivered response could close without failing or counting the
+newer logical job. Ordinary Viewport and Caret admission failures required exact pending-residency
+settlement before dispatch removal and host release. A public object-delivery wrapper with remaining
+service credit required a pre-mutation configured-capacity gate so immediate current-demand reissue
+could not overflow a queue left exactly full by old-cancel replacement. Fresh independent reviews
+found each gap; real-path forced tests and symmetric text and object capacity gates corrected them.
+
+The final shared-fork implementation passed locked metadata, all package targets, formatting, the
+focused delivery matrix, three committed inline-object replacement repetitions, and the broad
+library gate with only the same seven accepted baseline names. A fresh critical semantic review
+accepted the exact 17-path boundary, and commit `4dec32f42bf92cb0f203c8079eb7b7aaac5cff09`
+contains the correction without the already accepted manifest and lockfile edits. Linker-only PDB
+and memory failures occurred before test execution on one cold repeat; the unchanged target passed
+with process-local test debug information disabled, which changed no source or manifest semantics.
+
 The Operator resolved that gap in favor of the published surface: Copy and Cut remain available
 against the last coherent same-binding, same-revision surface and its published selection while a
 nonterminal geometry target continues independently. The unpublished candidate supplies no
@@ -142,9 +159,16 @@ capacity retry. Public wrappers and custody must never infer those outcomes from
 or queue occupancy. Durable correction must retain the focused three-disposition, mixed-custody,
 forced-capacity, clipboard retry, alias partial-progress, and replacement evidence together.
 
+Within that boundary, distinguish the delivered external response key from the current logical
+pending key before selecting active-coalesced or detached-superseded settlement. Every ordinary
+admission failure must close its exact pending residency before release, even when public
+classification differs. A full outgoing request queue may gate progress and preserve a runnable
+pending demand, but it cannot classify the semantic outcome, overflow through immediate servicing,
+discard unrelated work, or spin; later capacity admits exactly one current request.
+
 # Affected Authority And Work
 
-- `../plan.md`, Phase 247's deterministic response closure, Phases 248 through 251's clipboard and
-  object-realization boundaries, and Phases 252 through 254's publication, propagation, and
-  canonical-pin gates.
+- `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 through 251's
+  clipboard and object-realization boundaries, and Phases 252 through 254's publication,
+  propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
