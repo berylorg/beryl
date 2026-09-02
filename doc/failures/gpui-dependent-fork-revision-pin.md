@@ -212,12 +212,17 @@ custody owner. Verify its exact immediate or high-water charge and terminal rele
 an owner-free path that contradicts the package contract or accept a test that observes only final
 quiescence.
 
-Do not require the clipboard phase to conceal the separately planned resident-object realization
-defect. In the exact selected same-anchor scenario, completing the continuing target's object
-responses changed resident-object ownership from two to four before clipboard-specific reuse could
-be observed. Holding or failing the response avoids the duplicate but cannot prove object-page
-reuse or coalescing. Phases 250 and 251 own the causal diagnosis, correction, and integrated normal-
-clipboard object-page evidence; no purpose-key compatibility path may substitute for that work.
+Do not infer a resident-object realization defect from the discarded Phase 249 experiment. The
+exact two-fact standalone same-anchor fixture remained at two allocated object slots through the
+same-revision retarget and target response. The only recorded four-slot value came from a different
+four-fact fixture and was already present before rebind or target-response delivery. That observation
+counts allocated `ObjectPage` vector slots across the coherent surface and object residency; it does
+not establish a second backing, a target-response-attributed increase, or a correction locus.
+The ordinary geometry-response service deliberately retains one deep retry clone charged through
+active response processing; that transient owner is outside the surface-plus-residency subtotal and
+is not the discarded observation's alleged resident duplication. Phase 250 therefore finishes as a
+no-change diagnosis, and no purpose-key compatibility or ownership change may substitute for
+independently reproducible evidence.
 
 The accepted correction is `gpui-text-input` commit
 `bf172ea97f8d3726701ea287c13e5556f242b75d`. Its clipboard-only predicate preserves history,
@@ -232,6 +237,6 @@ hashes remain unchanged.
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
-  clipboard diagnosis and correction, Phases 250 and 251's object-realization boundaries, and
-  Phases 252 through 254's publication, propagation, and canonical-pin gates.
+  clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
+  and Phases 252 through 254's publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

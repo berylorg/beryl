@@ -18,53 +18,30 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 249: Correct Clipboard Command Gating And Residency (finished)
+# Phase 250: Diagnose Resident Object Realization Through Publication (finished)
 
-Implemented the exact published-surface clipboard exception, deferred ordinary Cut proofs until
-`Written`, preserved every non-target coherence gate, and added genuine lifecycle, selection,
-resident-response-custody, failure, and release evidence. Locked structural checks, the 11-case
-focused suite, the 21-case coordinator target, preserved manifest hashes, and fresh independent
-semantic review accepted `gpui-text-input` commit
-`bf172ea97f8d3726701ea287c13e5556f242b75d`; every task-owned build artifact was removed. The
-independently diagnosable selected-object ownership defect remains in Phases 250 and 251.
+The exact quiescent two-fact same-anchor fixture remained at two allocated resident object slots
+through same-revision retarget and target response; the discarded four-slot observation used four
+facts and was already four before rebind. Trace confirmed that the subtotal counts coherent-surface
+and residency vector slots, while the deliberate deep retry clone is separately bounded and
+charged. Locked metadata, all-target compilation, unchanged shared hashes, complete artifact
+removal, and fresh independent semantic review accepted the no-change diagnosis; no source
+correction or successor correction phase remains.
 
-# Phase 250: Diagnose Resident Object Realization Through Publication (wip)
+# Phase 252: Publish GPUI Text Input At The Accepted Revision (wip)
 
-Reproduce the exact selected same-anchor object case on accepted commit
-`bf172ea97f8d3726701ea287c13e5556f242b75d`: a continuing same-binding, same-revision target begins
-with two resident object facts and reaches four after its object responses are realized. Trace the
-first ownership increase through request coalescing and response custody, resident-object admission,
-scanner preparation and continuation, target fragment and presentation construction, terminal
-publication, retirement, and release. Distinguish a second backing or owner from two fixed handles
-to one admitted backing, and identify the first causal mismatch against the exact allocation-slot
-and page-owner accounting contract.
+Publish the accepted `gpui-text-input` source at
+`bf172ea97f8d3726701ea287c13e5556f242b75d` together with the already accepted canonical manifest
+and lockfile GPUI revision. Preserve the exact accepted source and manifest hashes, integrate only
+the manifest pair into the shared fork, and create no local path patch, compatibility edge, or
+second GPUI source universe.
 
-Exercise one isolated bounded candidate only at that first mismatch. Preserve the current published
-surface and target selection authority, exact response and dispatch closure, same-anchor ordering,
-current and superseded target settlement, and independent normal clipboard progress. Do not change
-the Phase 249 clipboard gate, weaken exact capacity admission, copy a target response into a second
-resident owner, or revive purpose-key compatibility. Keep the correction itself in Phase 251.
-
-Use the accepted manifests and an isolated task-owned build target. Verify exact scoped diffs,
-locked metadata, all package targets, formatting, the selected-object reproduction, current and
-superseded geometry-response neighbors, object residency and presentation high-water diagnostics,
-terminal release, applicable unchanged-source failures, and fresh independent semantic review.
-Commit no shared package source in this diagnostic phase; remove the candidate and every task-owned
-artifact after retaining the smallest reproducible owner and evidence.
-
-# Phase 251: Correct Resident Object Realization (pending)
-
-Apply and independently verify the smallest package-source correction established by Phase 250
-without a purpose-key compatibility path or duplicate object-page ownership, then prove the Phase
-249 normal clipboard path reuses or coalesces the exact resident object page while target progress
-remains independent.
-
-# Phase 252: Publish GPUI Text Input At The Accepted Revision (pending)
-
-Integrate the accepted corrections, verify canonical locked metadata, package compilation,
-prepublication and applicable range-widget targets, one GPUI type universe, exact dependency
-sources, local-override isolation, and fresh independent semantic review, then publish the accepted
-commit.
+Verify the resulting revision from a clean task-owned canonical checkout outside Beryl's
+repository-local overrides. Require locked metadata with one exact GPUI source, all package targets,
+formatting, the complete prepublication target, applicable range-widget and clipboard/object
+integration targets, and the established accepted-baseline disposition for any unchanged broader
+failures. Confirm the exact dependency graph and published revision, obtain fresh independent
+semantic review, remove every task-owned build artifact, and publish only the accepted commit.
 
 # Phase 253: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
