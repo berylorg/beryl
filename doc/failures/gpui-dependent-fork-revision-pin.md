@@ -234,9 +234,22 @@ causally observed bounded response-custody owner with exact release, independent
 and no post-write deletion on proof or mutation-admission failure. The accepted manifest and lock
 hashes remain unchanged.
 
+Phase 252 produced dependency-only candidate
+`96a4a204f1b6ebc84f16db0783c50e5757d08312` with that accepted source and manifest pair. Locked
+metadata proved one exact GPUI source, and all-target compilation, formatting, all 18 prepublication
+cases, and the exact-geometry, clipboard, and object targets passed. The combined focused run's
+initial nine-failure stop was only fail-fast partial evidence. Controlled complete runs on the prior
+and candidate graphs each executed 179 cases with the identical 154-pass, 25-fail name and status
+inventory; their source, test, and doc trees were identical. The dependency update therefore caused
+no focused-test divergence, but unchanged failure is not publication acceptance. Do not publish,
+weaken tests, or infer one shared correction from matching names. Partition the focused failures by
+their first causal mismatch, then implement each independently correctable root in its own bounded
+phase before repeating publication qualification.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  and Phases 252 through 254's publication, propagation, and canonical-pin gates.
+  Phase 252's completed no-publish qualification, and Phases 253 through 257's diagnosis,
+  correction, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
