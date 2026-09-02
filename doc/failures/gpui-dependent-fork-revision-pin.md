@@ -59,6 +59,17 @@ not a sufficient smallest correction locus. It also left the superseded-response
 unverified and made the superseded exact-key failure helpers unused. Fresh independent review
 rejected phase completion; all candidate artifacts were removed.
 
+The next sole integrated candidate carried a typed accepted-terminal result through geometry
+delivery, custody, deferred servicing, and public text and object wrappers. It passed the committed
+replacement case three times, deterministic scan-capacity closure, explicit terminal-publication-
+capacity retry, malformed target rejection, and one successful superseded-response settlement.
+Fresh review nevertheless rejected the durable correction boundary. Superseded residency or
+request-queue admission capacity still returns the retryable `SurfaceCapacity` class without
+settling its old dispatch, delivered text/object residency `LimitExceeded` branches were not proven
+terminal, and an existing terminal-failure neighbor still expects a public error after an accepted
+deterministic closure. The sole candidate and cleanup allowance was exhausted before those distinct
+capacity paths could be diagnosed.
+
 The Operator resolved that gap in favor of the published surface: Copy and Cut remain available
 against the last coherent same-binding, same-revision surface and its published selection while a
 nonterminal geometry target continues independently. The unpublished candidate supplies no
@@ -117,6 +128,13 @@ settlement, custody servicing, and public delivery wrappers, and to verify that 
 never fails a newer geometry job. Phase 244's one-candidate allowance remains exhausted; its
 established atomic-closure mechanism is input to the new diagnosis rather than another candidate
 inside the finished phase.
+
+Do not treat the typed accepted-terminal seam alone as the complete correction. Before durable
+implementation, separately diagnose superseded residency and request-queue capacity plus delivered
+text/object residency-limit failures, prove that they settle the old response and dispatch without
+retry or effect on the newer job, and preserve explicit terminal surface-publication capacity as
+the sole retry class. Include the existing accepted-terminal error-expectation neighbor in the
+resulting correction boundary.
 
 # Affected Authority And Work
 

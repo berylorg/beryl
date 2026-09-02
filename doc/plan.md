@@ -47,6 +47,15 @@ that old settlement never closes or fails the newer geometry job. Verify that ev
 leaves the prior coherent publication and unrelated residency unchanged. Remove every artifact and
 obtain fresh independent semantic review before selecting the durable Phase 246 correction boundary.
 
+Resumable blocker: the sole candidate established the typed accepted-terminal path and passed its
+named replacement, deterministic-capacity, explicit publication-capacity, malformed-delivery, and
+successful superseded-settlement checks, but fresh review found that superseded residency or request-
+queue capacity still uses the retryable `SurfaceCapacity` class and that delivered text/object
+residency `LimitExceeded` branches were not proven terminal. The existing terminal-failure neighbor
+also still expects a public error after accepted deterministic closure. The one-candidate allowance
+is exhausted, so this phase cannot establish Phase 246's correction boundary without a separate
+bounded diagnosis and an Operator-approved replan. No temporary diagnostic resource remains.
+
 # Phase 246: Correct Deterministic Geometry Response Closure (pending)
 
 Apply and independently verify the smallest package-source correction established by Phase 245
