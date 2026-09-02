@@ -111,14 +111,15 @@ object scanner continuation and publication. Keep publication blocked until each
 owner and independently implementable boundary is established.
 
 Do not suppress the terminal error only in custody servicing or treat dispatch absence as successful
-delivery. A future Operator-authorized diagnostic boundary must establish one typed accepted-and-
+delivery. The Operator accepted a separate diagnostic boundary to establish one typed accepted-and-
 terminally-settled outcome across the exact pending-input closure, shared response/dispatch/job
-settlement, custody servicing, and public delivery wrappers, and must verify that an old response
-never fails a newer geometry job. The Phase 244 one-candidate allowance is exhausted, so no further
-candidate belongs to that phase without an explicit plan-authority resolution.
+settlement, custody servicing, and public delivery wrappers, and to verify that an old response
+never fails a newer geometry job. Phase 244's one-candidate allowance remains exhausted; its
+established atomic-closure mechanism is input to the new diagnosis rather than another candidate
+inside the finished phase.
 
 # Affected Authority And Work
 
-- `../plan.md`, Phase 243's diagnostic split and Phases 244 through 250's independent response-
-  closure, clipboard, object-realization, and publication boundaries.
+- `../plan.md`, Phase 244's atomic-closure result and Phases 245 through 251's independent typed-
+  delivery, response-closure, clipboard, object-realization, and publication boundaries.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
