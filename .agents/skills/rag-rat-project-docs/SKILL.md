@@ -17,8 +17,9 @@ docs, plans, rework trackers, exploration memory, failure records, and project-d
 Archived obsolete rework documents may be deliberately excluded so they do not rank as live
 authority.
 
-Once per session, confirm the available `rag-rat` reports exactly version `0.23.0`. First use shell
-command discovery; do not invoke a missing executable. Do not silently accept another version.
+Once per session, confirm the available `rag-rat` reports exactly version
+`0.23.0+g7dc9ab62c1ed`. First use shell command discovery; do not invoke a missing executable. Do not
+silently accept another version.
 
 If the executable, model, `rag-rat.toml`, initial index, or project-scoped Codex MCP configuration
 is absent or unhealthy, read [setup and recovery](references/setup-and-recovery.md). Never use

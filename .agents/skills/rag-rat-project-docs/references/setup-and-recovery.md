@@ -3,20 +3,12 @@
 Read this reference only when installing, configuring, initializing, upgrading, or recovering the
 rag-rat project-document integration.
 
-## Supported Release
+## Supported Build
 
-This skill is qualified against rag-rat `0.23.0`. Use its official GitHub release assets or build
-that exact crate version with an existing Rust toolchain. Do not use the project's npm package,
-Codex plugin installer, npx skills installer, Node, or npm.
-
-Official release: <https://github.com/cq27-dev/rag-rat/releases/tag/v0.23.0>
-
-Pinned release archive SHA-256 values:
-
-- macOS Apple Silicon: `6cc54ff8a723b62f9cf524861535ce0a3a97eb820cfa1378129a351d1bcf7b74`
-- Windows x64: `0dedf82613de45e7cd6ad3a98386028228aa39c8c3e0bcac9b92674ed7272722`
-- Linux ARM64 glibc: `7f829cbfca81bcfc5ead5a565a351e70fc18d327437c19e29c8f08bafcc0e274`
-- Linux x64 glibc: `6cb07a9abf488302031da79a20ff006110f7b5d9201b2aa56b484516c9923d1f`
+This project-local skill is qualified against the Operator-provided patched build
+`0.23.0+g7dc9ab62c1ed`. Require that exact version output; do not substitute the official `0.23.0`
+release or another local build. This skill does not prescribe a public download, archive hash, or
+source-build command for the patched executable.
 
 ## Permission And Preflight
 
@@ -30,34 +22,25 @@ attempted executable is missing, stop and report it rather than selecting a subs
 
 - the repository is a Git working tree;
 - the repository is on a native local filesystem, not NFS or WSL2 `/mnt`;
-- any existing `rag-rat` executable reports exactly `0.23.0`;
+- any existing `rag-rat` executable reports exactly `0.23.0+g7dc9ab62c1ed`;
 - existing `rag-rat.toml` and `.codex/config.toml` content can be merged without contradiction.
 
 If a different rag-rat version or conflicting server configuration exists, stop and ask whether to
 replace, preserve, or requalify it. Do not silently upgrade or downgrade shared tooling.
 
-## Node-Free Installation
+## Operator-Provided Installation
 
-Prefer the matching prebuilt archive from the pinned release. Download the archive to a temporary
-directory, compute its SHA-256 locally, compare it with the value above, and refuse extraction on a
-mismatch. Put the executable in the Operator-approved location on `PATH`; do not pipe a remote
-installer script into a shell.
-
-If the Operator explicitly prefers a source build and an existing Cargo toolchain is available,
-the alternative is:
-
-```text
-cargo install --version 0.23.0 --locked rag-rat
-```
-
-Do not install a Rust toolchain as part of this workflow.
+If the exact patched build is absent, stop and ask the Operator to provide its approved source or
+location and explicit installation permission. Do not download, build, install, upgrade, or
+downgrade another version as a substitute. Do not use the project's npm package, Codex plugin
+installer, npx skills installer, Node, or npm.
 
 ## Project Index Configuration
 
 Merge an AIPM Markdown target into `rag-rat.toml`. For a new configuration, use this baseline:
 
 ```toml
-# AIPM rag-rat-project-docs is qualified against rag-rat 0.23.0.
+# AIPM rag-rat-project-docs is qualified against rag-rat 0.23.0+g7dc9ab62c1ed.
 [index]
 root = "."
 

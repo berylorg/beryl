@@ -1,4 +1,4 @@
-# AIPM rag-rat-project-docs is qualified against rag-rat 0.23.0.
+# AIPM rag-rat-project-docs is qualified against rag-rat 0.23.0+g7dc9ab62c1ed.
 [index]
 root = "."
 database = ".rag-rat/index.sqlite"
