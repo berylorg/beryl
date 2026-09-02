@@ -246,10 +246,30 @@ weaken tests, or infer one shared correction from matching names. Partition the 
 their first causal mismatch, then implement each independently correctable root in its own bounded
 phase before repeating publication qualification.
 
+Phase 253 partitioned the 25 unchanged focused failures without creating a source candidate. Eight
+correction owners are proven. Four stale malformed-index fixtures still assume index-first rather
+than target-first realization; one attached-surface helper incorrectly requires full quiescence
+before explicit dismissal; two retarget fixtures use an obsolete fixed surface-item cap; and one
+legacy clipboard fixture expects `Busy` and unwind where the authoritative wrapper retains exact
+retryable preparation custody. Production correction owners are `fail_page` geometry/restoration
+closure, restoration index-to-target response routing, restored same-anchor gap publication, and
+restoration dispatch cancellation. Those owners cover seventeen failures in total.
+
+The other eight failures remain deliberately unassigned to source corrections. They independently
+concern rebind restoration quiescence, marked successor composition publication, overlapping-object
+realization, cross-purpose clipboard object custody, split-atom clipboard progress, generation-two
+pointer activation, atom-cut restoration proof, and large-object presentation publication. Each now
+has its own bounded diagnostic phase; matching object, clipboard, or lifecycle terminology is not
+evidence that their roots are shared. Two fresh representative builds failed before test execution
+from Windows compiler-process memory exhaustion, so neither is behavioral evidence. Their target
+trees were cleaned, and the complete retained Phase 252 prior/candidate comparison remains the
+accepted execution record. The seven `--lib` failures remain the separately accepted unchanged
+baseline risk; no causal mapping from those names to these focused integration roots was proven.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  Phase 252's completed no-publish qualification, and Phases 253 through 257's diagnosis,
-  correction, publication, propagation, and canonical-pin gates.
+  Phase 252's completed no-publish qualification, and Phases 253 through 273's focused partition,
+  correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
