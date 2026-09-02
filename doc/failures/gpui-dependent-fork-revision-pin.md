@@ -129,15 +129,16 @@ never fails a newer geometry job. Phase 244's one-candidate allowance remains ex
 established atomic-closure mechanism is input to the new diagnosis rather than another candidate
 inside the finished phase.
 
-Do not treat the typed accepted-terminal seam alone as the complete correction. Before durable
-implementation, separately diagnose superseded residency and request-queue capacity plus delivered
-text/object residency-limit failures, prove that they settle the old response and dispatch without
-retry or effect on the newer job, and preserve explicit terminal surface-publication capacity as
-the sole retry class. Include the existing accepted-terminal error-expectation neighbor in the
-resulting correction boundary.
+Do not treat the typed accepted-terminal seam alone as the complete correction. The Operator
+accepted a separate exhaustive capacity-classification diagnosis for superseded residency and
+request-queue capacity plus delivered text/object residency-limit failures. It must prove that they
+settle the old response and dispatch without retry or effect on the newer job, preserve explicit
+terminal surface-publication capacity as the sole retry class, and include the existing accepted-
+terminal error-expectation neighbor before durable correction.
 
 # Affected Authority And Work
 
-- `../plan.md`, Phase 244's atomic-closure result and Phases 245 through 251's independent typed-
-  delivery, response-closure, clipboard, object-realization, and publication boundaries.
+- `../plan.md`, Phase 244's atomic-closure result and Phases 245 through 252's independent typed-
+  delivery, capacity-classification, response-closure, clipboard, object-realization, and
+  publication boundaries.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
