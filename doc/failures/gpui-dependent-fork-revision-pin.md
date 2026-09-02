@@ -97,6 +97,27 @@ against the last coherent same-binding, same-revision surface and its published 
 nonterminal geometry target continues independently. The unpublished candidate supplies no
 clipboard, caret, hit-test, or object-activation authority.
 
+Phase 248 then moved the existing concurrent clipboard and geometry scenario into the required
+nonterminal interval by holding the target page through clipboard begin. Unchanged package source
+reproducibly returned `Busy` before selection residency, coordinator preparation, or capacity
+admission. `begin_clipboard` called the general `interactive_surface` predicate, which correctly
+rejects geometry-dependent interaction while a target is pending but incorrectly rejected the
+retained published surface for the clipboard exception. The prior test delivered the held target
+page before beginning clipboard work and therefore never exercised that gate.
+
+The first lookup-only candidate exposed a second mismatch inside the same begin and settlement
+owner: normal begin eagerly resolved endpoint edit proofs for both Copy and Cut. Without
+pre-admitted edit proofs, even Copy failed with `InvalidObjectGapProof` before coordinator begin.
+This made later Cut deletion admission a command-eligibility requirement and placed proof storage
+outside clipboard preparation accounting. The sole bounded candidate instead captured only the
+published clipboard facts and resolved Cut proof only after a successful platform write. Focused
+Copy, Cut, differing-binding, propagation, preparation-capacity, coordinator, and geometry-neighbor
+evidence passed with locked metadata, all targets, formatting, and exact diffs. Three unrelated
+clipboard-filter failures reproduced under identical commands on unchanged accepted source. Fresh
+independent semantic review accepted `begin_clipboard`, `settle_clipboard_write`, and
+`tests/range_widget.rs` as the smallest correction owner; all candidate and build artifacts were
+removed without changing shared source.
+
 # Why It Failed
 
 Cargo revisions are distinct package sources even when they come from the same repository and
@@ -166,9 +187,20 @@ classification differs. A full outgoing request queue may gate progress and pres
 pending demand, but it cannot classify the semantic outcome, overflow through immediate servicing,
 discard unrelated work, or spin; later capacity admits exactly one current request.
 
+For the clipboard correction, do not weaken the general interactive-surface predicate. Normal Copy
+and Cut need a clipboard-only lookup of the mounted published coherent surface at the current
+binding and revision; a same-key target candidate and its desired selection remain non-authority.
+Clipboard begin captures no ordinary edit proofs. Copy never needs them, and Cut resolves its exact
+endpoint proofs only after `Written`, immediately before staged deletion admission. Later proof or
+edit failure may leave the copied value but must delete nothing and release exact clipboard
+custody. Preserve separate evidence for absent, mismatched, unpublished-only, and missing-selection
+unavailability, concurrent geometry page reuse, later preparation-capacity retry, rebind and
+unmount, and post-write Cut failure.
+
 # Affected Authority And Work
 
-- `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 through 251's
-  clipboard and object-realization boundaries, and Phases 252 through 254's publication,
+- `../plan.md`, Phase 247's completed deterministic response closure, Phase 248's completed
+  clipboard diagnosis, Phases 249 through 251's correction and object-realization boundaries, and
+  Phases 252 through 254's publication,
   propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

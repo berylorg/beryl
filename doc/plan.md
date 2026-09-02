@@ -18,43 +18,48 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 247: Correct Deterministic Geometry Response Closure (finished)
+# Phase 248: Diagnose Clipboard Use Of The Published Coherent Surface (finished)
 
-The shared `gpui-text-input` fork now carries explicit typed delivery and custody outcomes, exact
-active, active-coalesced, detached-superseded, ordinary-residency, clipboard, and alias settlement,
-and configured-capacity request reissue without mutable-state classification. Locked structural
-checks, the focused matrix, replacement repetition, the exact-seven broad baseline gate, and fresh
-critical semantic review accepted commit `4dec32f42bf92cb0f203c8079eb7b7aaac5cff09`; all task-owned
-build artifacts were removed.
+An exact original-source baseline proved that normal Copy and Cut incorrectly returned `Busy`
+before clipboard preparation while a same-binding, same-revision target continued. One isolated
+candidate established `begin_clipboard` and `settle_clipboard_write`, with package-boundary tests in
+`tests/range_widget.rs`, as the smallest correction owner: clipboard begin must use the published
+surface and capture no edit proofs, while Cut resolves its deletion proof only after a successful
+write. Locked structural checks, focused clipboard and geometry evidence, exact unchanged-source
+failure comparison, and fresh independent semantic review accepted the diagnosis; no shared source
+was committed and every task-owned artifact was removed.
 
-# Phase 248: Diagnose Clipboard Use Of The Published Coherent Surface (wip)
+# Phase 249: Correct Clipboard Command Gating And Residency (wip)
 
-Trace Copy and Cut from command eligibility through selection resolution, published coherent-
-surface lookup, text and object residency, clipboard preparation, and any ordinary edit admission
-while a same-binding, same-revision nonterminal geometry target continues independently. Establish
-the first source or test-driver mismatch against the package contract that the last published
-coherent surface and its published selection remain clipboard authority; the unpublished candidate
-provides none. Exercise only one bounded candidate at that first causal mismatch, without changing
-the accepted deterministic response-closure implementation or reviving a purpose-key compatibility
-path.
+Correct normal range-backed Copy and Cut only at the proven clipboard owner. Make
+`begin_clipboard` select a mounted published coherent surface whose binding and revision match the
+current configuration while ignoring a continuing same-binding, same-revision target candidate and
+its desired selection, geometry, residency, presentation generation, and interaction state. Capture
+only the published binding, revision, composite selection, and predecessor needed by clipboard
+begin; do not resolve or retain ordinary edit proofs there, and do not weaken `interactive_surface`
+for caret, hit-test, IME, object activation, or other geometry-dependent commands.
 
-Cover Copy and Cut with a published selection and a continuing same-binding, same-revision target,
-including exact reuse or bounded admission of required text and object residency, independent target
-progress, and exact clipboard custody and release. Preserve unavailability for no coherent surface,
-different binding or revision, an unpublished-only selection, or missing published selection
-authority. Keep diagnostics content-free and distinguish command gating from a later preparation-
-capacity retry or edit-transaction failure.
+After a successful Cut clipboard write, make `settle_clipboard_write` resolve the captured
+selection's exact endpoint proofs and admit the deletion transaction against its captured base.
+Issue no mutation before `Written`; a failed or cancelled write, missing proof, later proof or
+mutation-admission failure, conflict, rejection, cancellation, rebind, or unmount must delete
+nothing, clear exact clipboard custody, and never let a late result affect a replacement binding.
+Copy must never require deletion proofs.
 
-Use exact accepted manifests and an isolated task-owned target. Verify the repeatable baseline, the
-sole candidate, locked metadata, all package targets, formatting, and exact diffs; run the focused
-clipboard and geometry neighbors and obtain fresh independent semantic review. Remove every
-candidate and build artifact, then record the smallest proven correction owner for Phase 249 without
-committing package source in this diagnostic phase.
+Add normal-command package-boundary coverage for Copy and Cut while a same-binding, same-revision
+target page remains held, including a different unpublished target selection, exact reuse or
+coalescing of resident text and object pages, independent target progress, no duplicate request or
+page ownership, and exact clipboard release. Preserve unavailability with no coherent surface, a
+different binding or revision, an unpublished-only selection, or missing valid published selection.
+Keep later exact-fit and one-under clipboard preparation retry distinct from command eligibility and
+prove post-write Cut proof or edit failure retains the copied value without deletion. Do not change
+the accepted deterministic response-closure implementation or revive purpose-key compatibility.
 
-# Phase 249: Correct Clipboard Command Gating And Residency (pending)
-
-Apply and independently verify the smallest package-source correction established by Phase 248,
-including concurrent geometry-resident page reuse and exact clipboard custody.
+Use the exact accepted manifests and an isolated task-owned build target. Verify locked metadata,
+all package targets, formatting, exact diffs, the focused normal-command and coordinator matrix,
+Phase 247 geometry and custody neighbors, applicable unchanged-source baseline failures, and fresh
+independent semantic review. Commit only the accepted package source and tests, remove every
+task-owned build artifact, and preserve the shared manifest and lockfile hashes.
 
 # Phase 250: Diagnose Resident Object Realization Through Publication (pending)
 
