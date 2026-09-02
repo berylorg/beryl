@@ -59,16 +59,21 @@ not a sufficient smallest correction locus. It also left the superseded-response
 unverified and made the superseded exact-key failure helpers unused. Fresh independent review
 rejected phase completion; all candidate artifacts were removed.
 
-The next sole integrated candidate carried a typed accepted-terminal result through geometry
-delivery, custody, deferred servicing, and public text and object wrappers. It passed the committed
-replacement case three times, deterministic scan-capacity closure, explicit terminal-publication-
-capacity retry, malformed target rejection, and one successful superseded-response settlement.
-Fresh review nevertheless rejected the durable correction boundary. Superseded residency or
-request-queue admission capacity still returns the retryable `SurfaceCapacity` class without
-settling its old dispatch, delivered text/object residency `LimitExceeded` branches were not proven
-terminal, and an existing terminal-failure neighbor still expects a public error after an accepted
-deterministic closure. The sole candidate and cleanup allowance was exhausted before those distinct
-capacity paths could be diagnosed.
+The final sole integrated classification candidate carried explicit progressed, accepted-terminal,
+rejected, and retryable terminal-publication outcomes through geometry delivery, custody, deferred
+servicing, and public wrappers. It established one distinct prepared helper for superseded old
+object responses, used the active owner's actual pending input for current-job terminal closure,
+classified delivered residency and request-queue capacity as deterministic settlement, preserved
+clipboard-local prepared-capacity retry, and made alias-fanout capacity settle deterministically.
+Focused forced and neighbor cases passed, including three committed-replacement repetitions, and
+fresh independent semantic review accepted the boundary after rejecting and correcting mutable
+dispatch/queue inference and two shared-custody regressions. All candidate resources were removed.
+
+The broad library target retained seven red tests. Each same test name also failed from unchanged
+shared source with byte-identical accepted manifests and lockfile, proving that the candidate was not
+necessary for those failures without claiming identical failure points for the two history cases.
+They remain accepted-graph integration risk for the later correction and publication gates rather
+than evidence against the geometry delivery classification.
 
 The Operator resolved that gap in favor of the published surface: Copy and Cut remain available
 against the last coherent same-binding, same-revision surface and its published selection while a
@@ -129,16 +134,17 @@ never fails a newer geometry job. Phase 244's one-candidate allowance remains ex
 established atomic-closure mechanism is input to the new diagnosis rather than another candidate
 inside the finished phase.
 
-Do not treat the typed accepted-terminal seam alone as the complete correction. The Operator
-accepted a separate exhaustive capacity-classification diagnosis for superseded residency and
-request-queue capacity plus delivered text/object residency-limit failures. It must prove that they
-settle the old response and dispatch without retry or effect on the newer job, preserve explicit
-terminal surface-publication capacity as the sole retry class, and include the existing accepted-
-terminal error-expectation neighbor before durable correction.
+Do not treat the typed accepted-terminal seam alone as the complete correction. The accepted durable
+boundary includes explicit rejected and retryable terminal-publication dispositions, the distinct
+superseded-response settlement helper, active-input closure, deterministic residency, request-queue,
+and alias-fanout capacity settlement, and the separately authorized clipboard-local prepared-
+capacity retry. Public wrappers and custody must never infer those outcomes from dispatch presence
+or queue occupancy. Durable correction must retain the focused three-disposition, mixed-custody,
+forced-capacity, clipboard retry, alias partial-progress, and replacement evidence together.
 
 # Affected Authority And Work
 
-- `../plan.md`, Phase 244's atomic-closure result and Phases 245 through 252's independent typed-
-  delivery, capacity-classification, response-closure, clipboard, object-realization, and
-  publication boundaries.
+- `../plan.md`, Phase 247's deterministic response closure, Phases 248 through 251's clipboard and
+  object-realization boundaries, and Phases 252 through 254's publication, propagation, and
+  canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

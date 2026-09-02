@@ -18,44 +18,47 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 245: Diagnose Accepted Terminal Geometry Delivery (finished)
+# Phase 246: Diagnose Geometry Delivery Capacity Classification (finished)
 
-The sole candidate established the typed accepted-terminal seam through geometry delivery, custody,
-deferred servicing, and public wrappers, but fresh review proved that adjacent deterministic
-residency and request-queue capacity paths require their own classification boundary. The Operator
-accepted that split, all temporary resources were removed, and the durable lesson is recorded in
+The sole integrated candidate established and fresh independent review accepted the complete typed
+delivery classification, distinct active and superseded atomic settlement helpers, clipboard-local
+prepared-capacity retry, and deterministic alias-fanout settlement. Every task-owned candidate and
+build artifact was removed. The durable investigation lesson and independently reproduced accepted-
+graph integration risks are recorded in
 `doc/failures/gpui-dependent-fork-revision-pin.md`.
 
-# Phase 246: Diagnose Geometry Delivery Capacity Classification (wip)
+# Phase 247: Correct Deterministic Geometry Response Closure (wip)
 
-Classify every geometry text-page, object-page, resident-page, custody, deferred-service, and public-
-wrapper exit that can accept, reject, retain, or settle one delivered response. Establish exactly
-three public meanings: accepted and terminally settled, malformed or otherwise rejected host
-delivery, and retryable explicit terminal surface-publication capacity. Treat delivered text or
-object residency-limit, request-queue, and superseded residency-admission capacity as deterministic
-terminal settlement unless direct evidence proves that the failure is the explicit terminal
-surface-publication gate. Retain only settlement and retryability classes, dispatch and old/new job
-presence, bounded release and service counts, public outcome, prior-publication and unrelated-
-residency preservation, and retry-liveness state; retain no content, raw key, offset, or payload.
+Apply the accepted integrated correction in the shared `gpui-text-input` checkout without changing
+the already accepted `Cargo.toml` or `Cargo.lock`. Add explicit delivery and custody dispositions for
+progressed, accepted-terminal, rejected, and retryable terminal surface-publication outcomes; carry
+them through text and object delivery, response custody, deferred servicing, and every public
+wrapper without classifying from mutable dispatch or queue state. Preserve explicit clipboard-local
+prepared-capacity retry as a separate internal disposition.
 
-Exercise exactly one integrated classification candidate in a task-owned ephemeral tree. Reuse the
-accepted-terminal seam and Phase 244's atomic exact-response closure only where their proven
-preconditions hold, and determine whether superseded admission requires one distinct prepared
-settlement helper. Force representative request-queue and object-residency capacity failures for a
-superseded old object response while a newer job is active, plus delivered text and object residency
-`LimitExceeded`. Prove exactly one old response and dispatch release, no retained custody or
-redispatch, an untouched newer job, and unchanged prior coherent publication and unrelated
-residency. Re-run malformed delivery and the full-fingerprint explicit terminal surface-capacity
-retry to prove that rejected delivery remains public error and that surface publication remains the
-sole retry class. Include the accepted-terminal expectation in the existing terminal-failure
-neighbor. Remove every artifact and obtain fresh independent semantic review before selecting the
-durable Phase 247 correction boundary.
+Add the exact active-input terminal-failure preparation, the distinct prepared superseded object-
+response settlement, deterministic alias-fanout capacity settlement before and after partial
+progress, and the classified text/object index, target, resident, nonterminal, and terminal delivery
+branches. Commit only after every fallible identity, capacity, residency, queue, and release check;
+settle and release the exact old response and dispatch once, preserve any newer job, prior coherent
+publication, and unrelated residency, and retain geometry custody and liveness only for explicit
+terminal surface-publication capacity. Retain only content-free diagnostics.
 
-# Phase 247: Correct Deterministic Geometry Response Closure (pending)
+Add the focused test-only text and object residency-limit controls and cover delivered text-residency
+limit, delivered object-residency limit, superseded old-object residency-admission capacity, and
+superseded old-object request-queue capacity. Also cover direct accepted/rejected/retry dispositions,
+mixed rejected-front custody, clipboard text/object one-under retry and later exact commit, alias
+capacity before first and after partial progress, malformed delivery, ordinary deterministic closure,
+explicit terminal retry, successful superseded settlement, and the accepted-terminal neighbor.
+Repeat the committed inline-object replacement case three times.
 
-Apply and independently verify the smallest package-source correction established by Phase 246
-without weakening exact response identity, atomic failure, rejected-delivery reporting, superseded-
-job isolation, prior-publication preservation, or explicit surface-capacity retry.
+Verify locked metadata, all package targets, formatting, and exact diffs. Run the focused matrix and
+the broad library target. The broad target may retain only the exact seven failing test names
+independently reproduced from unchanged shared source under the byte-identical accepted manifest
+graph. Failure-point identity is not required for the two history cases; any additional failing test
+or evidence that the Phase 247 correction is necessary for an allowed failure blocks completion.
+Obtain fresh independent semantic review, then commit the exact accepted package source and test
+paths before compacting this phase.
 
 # Phase 248: Diagnose Clipboard Use Of The Published Coherent Surface (pending)
 
