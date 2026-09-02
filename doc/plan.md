@@ -18,59 +18,46 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 248: Diagnose Clipboard Use Of The Published Coherent Surface (finished)
+# Phase 249: Correct Clipboard Command Gating And Residency (finished)
 
-An exact original-source baseline proved that normal Copy and Cut incorrectly returned `Busy`
-before clipboard preparation while a same-binding, same-revision target continued. One isolated
-candidate established `begin_clipboard` and `settle_clipboard_write`, with package-boundary tests in
-`tests/range_widget.rs`, as the smallest correction owner: clipboard begin must use the published
-surface and capture no edit proofs, while Cut resolves its deletion proof only after a successful
-write. Locked structural checks, focused clipboard and geometry evidence, exact unchanged-source
-failure comparison, and fresh independent semantic review accepted the diagnosis; no shared source
-was committed and every task-owned artifact was removed.
+Implemented the exact published-surface clipboard exception, deferred ordinary Cut proofs until
+`Written`, preserved every non-target coherence gate, and added genuine lifecycle, selection,
+resident-response-custody, failure, and release evidence. Locked structural checks, the 11-case
+focused suite, the 21-case coordinator target, preserved manifest hashes, and fresh independent
+semantic review accepted `gpui-text-input` commit
+`bf172ea97f8d3726701ea287c13e5556f242b75d`; every task-owned build artifact was removed. The
+independently diagnosable selected-object ownership defect remains in Phases 250 and 251.
 
-# Phase 249: Correct Clipboard Command Gating And Residency (wip)
+# Phase 250: Diagnose Resident Object Realization Through Publication (wip)
 
-Correct normal range-backed Copy and Cut only at the proven clipboard owner. Make
-`begin_clipboard` select a mounted published coherent surface whose binding and revision match the
-current configuration while ignoring a continuing same-binding, same-revision target candidate and
-its desired selection, geometry, residency, presentation generation, and interaction state. Capture
-only the published binding, revision, composite selection, and predecessor needed by clipboard
-begin; do not resolve or retain ordinary edit proofs there, and do not weaken `interactive_surface`
-for caret, hit-test, IME, object activation, or other geometry-dependent commands.
+Reproduce the exact selected same-anchor object case on accepted commit
+`bf172ea97f8d3726701ea287c13e5556f242b75d`: a continuing same-binding, same-revision target begins
+with two resident object facts and reaches four after its object responses are realized. Trace the
+first ownership increase through request coalescing and response custody, resident-object admission,
+scanner preparation and continuation, target fragment and presentation construction, terminal
+publication, retirement, and release. Distinguish a second backing or owner from two fixed handles
+to one admitted backing, and identify the first causal mismatch against the exact allocation-slot
+and page-owner accounting contract.
 
-After a successful Cut clipboard write, make `settle_clipboard_write` resolve the captured
-selection's exact endpoint proofs and admit the deletion transaction against its captured base.
-Issue no mutation before `Written`; a failed or cancelled write, missing proof, later proof or
-mutation-admission failure, conflict, rejection, cancellation, rebind, or unmount must delete
-nothing, clear exact clipboard custody, and never let a late result affect a replacement binding.
-Copy must never require deletion proofs.
+Exercise one isolated bounded candidate only at that first mismatch. Preserve the current published
+surface and target selection authority, exact response and dispatch closure, same-anchor ordering,
+current and superseded target settlement, and independent normal clipboard progress. Do not change
+the Phase 249 clipboard gate, weaken exact capacity admission, copy a target response into a second
+resident owner, or revive purpose-key compatibility. Keep the correction itself in Phase 251.
 
-Add normal-command package-boundary coverage for Copy and Cut while a same-binding, same-revision
-target page remains held, including a different unpublished target selection, exact reuse or
-coalescing of resident text and object pages, independent target progress, no duplicate request or
-page ownership, and exact clipboard release. Preserve unavailability with no coherent surface, a
-different binding or revision, an unpublished-only selection, or missing valid published selection.
-Keep later exact-fit and one-under clipboard preparation retry distinct from command eligibility and
-prove post-write Cut proof or edit failure retains the copied value without deletion. Do not change
-the accepted deterministic response-closure implementation or revive purpose-key compatibility.
-
-Use the exact accepted manifests and an isolated task-owned build target. Verify locked metadata,
-all package targets, formatting, exact diffs, the focused normal-command and coordinator matrix,
-Phase 247 geometry and custody neighbors, applicable unchanged-source baseline failures, and fresh
-independent semantic review. Commit only the accepted package source and tests, remove every
-task-owned build artifact, and preserve the shared manifest and lockfile hashes.
-
-# Phase 250: Diagnose Resident Object Realization Through Publication (pending)
-
-Trace the overlapping-object case from resident selection through exact scanner preparation,
-continuation, terminal target construction, and coherent publication, then exercise one bounded
-candidate at the first causal mismatch.
+Use the accepted manifests and an isolated task-owned build target. Verify exact scoped diffs,
+locked metadata, all package targets, formatting, the selected-object reproduction, current and
+superseded geometry-response neighbors, object residency and presentation high-water diagnostics,
+terminal release, applicable unchanged-source failures, and fresh independent semantic review.
+Commit no shared package source in this diagnostic phase; remove the candidate and every task-owned
+artifact after retaining the smallest reproducible owner and evidence.
 
 # Phase 251: Correct Resident Object Realization (pending)
 
 Apply and independently verify the smallest package-source correction established by Phase 250
-without a purpose-key compatibility path or duplicate object-page ownership.
+without a purpose-key compatibility path or duplicate object-page ownership, then prove the Phase
+249 normal clipboard path reuses or coalesces the exact resident object page while target progress
+remains independent.
 
 # Phase 252: Publish GPUI Text Input At The Accepted Revision (pending)
 

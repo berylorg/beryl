@@ -197,10 +197,41 @@ custody. Preserve separate evidence for absent, mismatched, unpublished-only, an
 unavailability, concurrent geometry page reuse, later preparation-capacity retry, rebind and
 unmount, and post-write Cut failure.
 
+The first durable clipboard correction candidate made its clipboard-only surface predicate too
+broad by admitting commands during pending history and deferred rebind intent. Keep those two
+lifecycle exclusions, the ordinary layout, presentation, surface-candidate, presentation-
+generation, and geometry-epoch coherence gates, while relaxing only the continuing same-binding,
+same-revision target state. Public-flow negatives must exercise real queued history and one-under
+deferred rebind states plus the remaining retained coherence exclusions.
+
+Do not mistake bounded resident text-page reuse for owner-free reuse. The package design explicitly
+keeps clipboard text and object responses in response custody while the coordinator prepares their
+fixed-size merge steps and charges initial custody plus coordinator transfer. A resident text hit
+therefore avoids another external clipboard request but may create the designed, bounded response-
+custody owner. Verify its exact immediate or high-water charge and terminal release; do not require
+an owner-free path that contradicts the package contract or accept a test that observes only final
+quiescence.
+
+Do not require the clipboard phase to conceal the separately planned resident-object realization
+defect. In the exact selected same-anchor scenario, completing the continuing target's object
+responses changed resident-object ownership from two to four before clipboard-specific reuse could
+be observed. Holding or failing the response avoids the duplicate but cannot prove object-page
+reuse or coalescing. Phases 250 and 251 own the causal diagnosis, correction, and integrated normal-
+clipboard object-page evidence; no purpose-key compatibility path may substitute for that work.
+
+The accepted correction is `gpui-text-input` commit
+`bf172ea97f8d3726701ea287c13e5556f242b75d`. Its clipboard-only predicate preserves history,
+layout, presentation, rebind, generation, epoch, and non-index candidate exclusions while admitting
+only the exact continuing target exception. Normal begin retains no edit proof; `Written` Cut alone
+resolves the captured endpoints. The accepted public-flow evidence proves 11 focused lifecycle and
+failure cases, 21 clipboard-coordinator cases, zero additional external text-page requests, one
+causally observed bounded response-custody owner with exact release, independent target progress,
+and no post-write deletion on proof or mutation-admission failure. The accepted manifest and lock
+hashes remain unchanged.
+
 # Affected Authority And Work
 
-- `../plan.md`, Phase 247's completed deterministic response closure, Phase 248's completed
-  clipboard diagnosis, Phases 249 through 251's correction and object-realization boundaries, and
-  Phases 252 through 254's publication,
-  propagation, and canonical-pin gates.
+- `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
+  clipboard diagnosis and correction, Phases 250 and 251's object-realization boundaries, and
+  Phases 252 through 254's publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
