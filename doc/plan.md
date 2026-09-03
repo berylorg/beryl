@@ -18,25 +18,30 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 270: Diagnose Atom-Cut Restoration Proof (finished)
+# Phase 271: Diagnose Large-Object Presentation Publication (finished)
 
 Accepted `gpui-text-input` test-only commit
-`83764f705ebcd49fd4c83a4467299f14118a7417`. The original failure occurs before Cut: restoration
-export after Select All returns `IncompleteSurface` because the retained object page proves the
-caret, selection head, and scroll position at source position two after object 901, but does not
-cover the selection anchor's `NoObjects` gap at source position zero. The accepted diagnostic binds
-the exact published positions, scalar boundaries, object-page edges, and pre-admission failure;
-admits only the distinct required positions zero and two from exact text and object facts; proves
-pre-Cut restoration export succeeds; and preserves the original Cut propagation, no-write,
-no-deletion, publication, quiescence, and restoration assertions. Repeated exact feature-enabled
-runs and fresh independent semantic review pass. No Cut or production correction is required.
+`8a76d0ef74e6ba5c7e52fe1390d3e7ec51316a58`. The diagnostic binds the exact `GeometryTarget`
+page, release, and sole object-response sequence and proves the first mismatch at bounded-drive step
+two. Response custody admission peaks at 632,205 bytes under the 902,103-byte one-under limit, but
+terminal publication requires 902,104 bytes; production classifies the deterministic
+`SurfaceCapacity` result as retryable, restores the unchanged response to custody, and leaves the
+request and geometry job live without a surface or rejection. Repeated exact feature-enabled runs
+fail at that first transition instead of exhausting the 512-step driver, while preserving the exact-
+capacity publication and charge-once path. Fresh independent semantic review passes. This is a
+terminal-settlement defect, not duplicate large-display accounting, and Phase 272 owns its
+production correction.
 
-# Phase 271: Diagnose Large-Object Presentation Publication (pending)
+# Phase 272: Correct Terminal Surface Capacity Settlement (pending)
 
-Locate the first request, response, accounting, or terminal-publication liveness mismatch that leaves
-one bounded large-object target pending without a coherent surface.
+When an accepted `GeometryTarget` object response reaches a deterministic terminal
+`SurfaceCapacity` result, settle the target coherently instead of retaining the unchanged response,
+request, and geometry job for an impossible retry. Record the exact terminal rejection, release all
+bounded custody and reservations, preserve prior-current-surface authority, and prove the one-byte-
+insufficient large-display case terminates while exact capacity still publishes and charges the 8
+KiB display once.
 
-# Phase 272: Correct Presentation-Transition Publication Atomicity (pending)
+# Phase 273: Correct Presentation-Transition Publication Atomicity (pending)
 
 Prevent an accepted presentation-generation transition from becoming quiescent with only the prior
 generation's surface retained after `CandidateSurfaceIncomplete`. Preserve exact current-surface
@@ -44,29 +49,29 @@ authority, bounded request and response ownership, coherent terminal publication
 semantics; prove the original generation-two pointer activation reproducer passes without weakening
 stale-surface rejection.
 
-# Phase 273: Requalify The Complete GPUI Text Input Focused Gate (pending)
+# Phase 274: Requalify The Complete GPUI Text Input Focused Gate (pending)
 
 After every proven and newly diagnosed correction has its own accepted phase, rerun the complete
 focused gate and preserve only the accepted unchanged seven-test library baseline.
 
-# Phase 274: Publish GPUI Text Input After Its Focused Gate Passes (pending)
+# Phase 275: Publish GPUI Text Input After Its Focused Gate Passes (pending)
 
 Verify every required focused target from a clean canonical checkout, independently review the exact
 accepted graph and source, publish only the accepted commit, and remove all task-owned artifacts.
 
-# Phase 275: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+# Phase 276: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
 Update `gpui-settings-window` to the accepted GPUI revision and the published widget commits, verify
 its focused package boundary, and publish the accepted commit.
 
-# Phase 276: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+# Phase 277: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
 
 Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
 canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
 check, restart the language server after the manifest model is accepted, and close the active
 rework checklist item.
 
-# Phase 277: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 278: Build The Target-State Main-Window Shell Foundation (pending)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared
@@ -74,9 +79,9 @@ main-window slots. Prepare the exact claimed editor before GPUI construction, pu
 window, and use Phase 238 abandonment for construction failure or close-before-publication. The
 binary startup/bootstrap path remains outside this phase.
 
-# Phase 278: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 279: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 277 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 278 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
