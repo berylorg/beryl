@@ -18,22 +18,14 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 264: Correct Rebind Restoration Lifecycle Evidence (finished)
+# Phase 265: Diagnose Marked Successor Composition Publication (finished)
 
-Accepted `gpui-text-input` test-only commit `6d670a23c2053202c2bbf41107c120f37c777c13`.
-The bounded public lifecycle now proves the delayed index intent, exact request and payload custody,
-inert late and duplicate callbacks, fixed disposed-owner baseline, and eventual quiescence. The exact
-case and three adjacent restoration cases passed twice in fresh independent release review.
-
-# Phase 265: Diagnose Marked Successor Composition Publication (wip)
-
-Reproduce `object_gap_platform_composition_is_not_collapsed_and_lifecycle_loss_is_once` twice under
-the locked retained target. Trace the marked composite range, platform composition, and successor
-binding facts through the exact edit settlement, rebind, index, target, and terminal-publication
-transitions. Establish the first content-free state divergence and its owning boundary without a
-durable correction candidate, then repeat the decisive probe and obtain fresh independent review.
-Keep restoration lifecycle, overlapping-object realization, production publication, authority,
-manifests, and lockfiles outside this diagnosis.
+Accepted `gpui-text-input` test-only commit `895872310ae6bafbc69210cd5f5da2ed4b453200`.
+Repeated locked-target probes and fresh independent review proved that an exact object-bearing
+composite selection has no platform selection, so marked replacement exits before allocating or
+admitting a mutation and no settlement or successor facts reach publication. The independent direct-
+rebind control proved downstream target, terminal, index, lifecycle-loss, and disposal paths coherent
+and quiescent; no durable correction candidate was selected.
 
 # Phase 266: Diagnose Overlapping Object Realization (pending)
 
