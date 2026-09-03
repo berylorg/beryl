@@ -18,19 +18,14 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 266: Diagnose Overlapping Object Realization (finished)
+# Phase 267: Diagnose Cross-Purpose Clipboard Object Custody (finished)
 
-Accepted `gpui-text-input` test-only commit `315c76f80172791afec707fc4cb63e6041b1b54c`.
-Repeated locked-target probes and fresh independent review located the earliest causal mismatch at
-target-window checkpoint admission: End targeting resumes after both same-anchor objects with empty
-fragment and presentation buffers, then receives only the adjacent empty object page, so target
-publication emits no object fragments, presentations, or geometry. The evidence also isolates a later
-independent committed-page-custody replacement; no durable correction candidate was selected.
-
-# Phase 267: Diagnose Cross-Purpose Clipboard Object Custody (pending)
-
-Locate the first liveness or retained-charge mismatch between geometry object-response custody and
-clipboard provenance preparation before selecting a correction owner.
+Accepted `gpui-text-input` test-only commit `1072530f320462e41f562c1354f12788300db79d`.
+Repeated feature-enabled probes and fresh independent review proved the ordered geometry-object then
+clipboard-object custody branch coherent. Exact admission, charge, processing-high-water, release,
+provenance, complete lifecycle, and terminal-quiescence evidence shows the continuation preserves
+both request order and retained charge, releases every distinct request exactly once, and returns
+custody, processing, and clipboard charge to zero. No production correction owner was selected.
 
 # Phase 268: Diagnose Split-Atom Clipboard Prepared Progress (pending)
 
