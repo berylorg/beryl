@@ -18,27 +18,22 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 263: Diagnose Rebind Restoration Quiescence (finished)
+# Phase 264: Correct Rebind Restoration Lifecycle Evidence (finished)
 
-Proved that the failing fixture stopped on transient outbound-queue emptiness while one deliberate
-background-index intent awaited ordinary draw/prepaint service; no request, response, job, candidate,
-continuation, or queued-effect owner leaked. The original failure and corrected public lifecycle were
-each repeated twice with adjacent cases and fresh independent review; no production source changed.
+Accepted `gpui-text-input` test-only commit `6d670a23c2053202c2bbf41107c120f37c777c13`.
+The bounded public lifecycle now proves the delayed index intent, exact request and payload custody,
+inert late and duplicate callbacks, fixed disposed-owner baseline, and eventual quiescence. The exact
+case and three adjacent restoration cases passed twice in fresh independent release review.
 
-# Phase 264: Correct Rebind Restoration Lifecycle Evidence (wip)
+# Phase 265: Diagnose Marked Successor Composition Publication (wip)
 
-Replace the focused fixture's first-empty-queue completion rule with bounded public draw/prepaint,
-park, and queue re-observation until semantic quiescence. Preserve the existing disposal branch and
-prove exact once-only restoration cancellation and rejection, successor dispatch/release parity,
-unchanged coherent publication under late and duplicate old responses, zero final semantic owners,
-and eventual quiescence. Run the exact case with the three smallest adjacent restoration lifecycle
-cases twice under the locked retained target and obtain fresh independent review. Make no production,
-authority, manifest, or lockfile change and do not absorb marked-composition publication.
-
-# Phase 265: Diagnose Marked Successor Composition Publication (pending)
-
-Trace the already preserved marked range across successor index-to-target publication and identify
-the exact transition that loses composition before making a correction candidate.
+Reproduce `object_gap_platform_composition_is_not_collapsed_and_lifecycle_loss_is_once` twice under
+the locked retained target. Trace the marked composite range, platform composition, and successor
+binding facts through the exact edit settlement, rebind, index, target, and terminal-publication
+transitions. Establish the first content-free state divergence and its owning boundary without a
+durable correction candidate, then repeat the decisive probe and obtain fresh independent review.
+Keep restoration lifecycle, overlapping-object realization, production publication, authority,
+manifests, and lockfiles outside this diagnosis.
 
 # Phase 266: Diagnose Overlapping Object Realization (pending)
 

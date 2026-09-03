@@ -359,18 +359,16 @@ high-water bound. The exact case passed repeatedly with adjacent lifecycle cover
 independent review; accepted test-only `gpui-text-input` commit
 `40e63a1f2d3d7a155dfe81e04508f653aa072212` changes no production behavior.
 
-Phase 263 proved that the rebind-restoration failure is another stale lifecycle fixture, not a
+Phases 263 and 264 proved that the rebind-restoration failure was a stale lifecycle fixture, not a
 production custody defect. True rebind retires the dispatched restoration geometry exactly once,
-emits one restoration rejection, publishes the coherent successor target, and deliberately retains
-one compact background-index intent for ordinary draw/prepaint service. The fixture stopped at the
-first empty outbound-request observation and asserted quiescence before that public lifecycle pass;
-at that point every request, response, geometry job, candidate, continuation, and queued-effect
-owner was already zero. A bounded draw/prepaint pass admitted the index request, whose ordinary
-settlement reached quiescence while late and duplicate old responses left successor publication
-unchanged and returned their payloads. The original failure and corrected public lifecycle each
-repeated twice with adjacent cancellation, publication, retry, and disposal cases, and fresh
-independent review found no production issue. Correct only the focused test driver in its own phase
-before resuming the remaining independent diagnoses.
+emits one restoration rejection, publishes the coherent successor target, and retains one compact
+background-index intent for ordinary draw/prepaint service. The old fixture stopped at transient
+outbound-queue emptiness before that pass. Accepted test-only `gpui-text-input` commit
+`6d670a23c2053202c2bbf41107c120f37c777c13` instead drives bounded draw/prepaint, park, and queue
+re-observation through quiescence; proves exact predecessor and successor dispatch/release semantics,
+payload and event invariance for late and duplicate responses, and the fixed disposed-owner baseline;
+and passed the exact case with three adjacent restoration cases twice in fresh independent release
+review. No production behavior changed, and the remaining focused diagnoses stay independent.
 
 # Affected Authority And Work
 
