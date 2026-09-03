@@ -18,19 +18,16 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 267: Diagnose Cross-Purpose Clipboard Object Custody (finished)
+# Phase 268: Diagnose Split-Atom Clipboard Prepared Progress (finished)
 
-Accepted `gpui-text-input` test-only commit `1072530f320462e41f562c1354f12788300db79d`.
-Repeated feature-enabled probes and fresh independent review proved the ordered geometry-object then
-clipboard-object custody branch coherent. Exact admission, charge, processing-high-water, release,
-provenance, complete lifecycle, and terminal-quiescence evidence shows the continuation preserves
-both request order and retained charge, releases every distinct request exactly once, and returns
-custody, processing, and clipboard charge to zero. No production correction owner was selected.
-
-# Phase 268: Diagnose Split-Atom Clipboard Prepared Progress (pending)
-
-Locate the first coordinator or widget-resume mismatch that loses runnable progress after a
-cross-page source-covering atom response.
+Accepted `gpui-text-input` test-only commit `a41d1815aa33fd1f8287ebd23c1d29fbfcded50d`.
+The reconstructed Phase 252 immediate-progress edge is distinct from the later same-named
+capacity-return fixture. Repeated exact feature-enabled probes and fresh independent review prove
+that the trailing cross-page source-covering atom response completes in the current coordinator
+operation, releases exactly once, and queues release-first successor progress without retained
+custody, an eligible deferred continuation, redispatch, or cloning. Terminal provenance, once-only
+write, stale duplicate settlement, baseline accounting, and quiescence evidence all pass. No
+production correction owner was selected.
 
 # Phase 269: Diagnose Current-Surface Pointer Activation (pending)
 
