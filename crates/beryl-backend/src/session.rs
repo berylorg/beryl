@@ -1519,6 +1519,19 @@ impl ManagedBackendSession {
     }
 
     #[cfg(feature = "lifecycle-test-support")]
+    #[doc(hidden)]
+    pub fn launch_and_initialize_test_command(
+        launch_spec: BackendLaunchSpec,
+        command: Command,
+        options: ManagedBackendClientOptions,
+        timeout: Duration,
+    ) -> Result<Self, ManagedBackendError> {
+        let mut session = Self::launch_command(launch_spec, command)?;
+        session.initialize_client_with_options(&options, timeout)?;
+        Ok(session)
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
     pub(crate) fn stdio_cleanup_finished_for_test(&self) -> bool {
         self.terminal_cleanup
             .as_ref()
@@ -3719,6 +3732,7 @@ struct ClientInfo<'a> {
 #[serde(rename_all = "camelCase")]
 struct InitializeCapabilities {
     experimental_api: bool,
+    saved_path_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     opt_out_notification_methods: Option<Vec<String>>,
 }
@@ -3729,6 +3743,7 @@ impl InitializeCapabilities {
             .then(|| options.opt_out_notification_methods.clone());
         Self {
             experimental_api: true,
+            saved_path_only: true,
             opt_out_notification_methods,
         }
     }

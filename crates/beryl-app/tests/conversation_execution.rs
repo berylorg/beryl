@@ -1682,6 +1682,103 @@ fn image_generation_history_turn_is_preserved_as_generated_image_item() {
 }
 
 #[test]
+fn saved_path_only_image_generation_history_stays_complete_without_inline_result() {
+    let response: ThreadSessionResponse = serde_json::from_value(json!({
+        "approvalPolicy": "never",
+        "approvalsReviewer": "user",
+        "cwd": "C:/work/beryl",
+        "model": "gpt-5.4",
+        "modelProvider": "openai",
+        "sandbox": {
+            "mode": "danger-full-access",
+            "networkAccess": true
+        },
+        "thread": {
+            "cliVersion": "0.128.0",
+            "createdAt": 1,
+            "cwd": "C:/work/beryl",
+            "ephemeral": false,
+            "id": "thread_1",
+            "modelProvider": "openai",
+            "preview": "image",
+            "source": "appServer",
+            "status": {
+                "type": "notLoaded"
+            },
+            "turns": [{
+                "id": "turn_image",
+                "items": [{
+                    "id": "image_generation_1",
+                    "type": "imageGeneration",
+                    "status": "completed",
+                    "revisedPrompt": "A saved-path-only cat",
+                    "savedPath": "C:/work/beryl/saved-only-cat.png"
+                }],
+                "status": "completed"
+            }],
+            "updatedAt": 2
+        }
+    }))
+    .unwrap();
+
+    let mut state = ExecutionDetailState::default();
+    state.load_thread_history(&response.thread);
+
+    let [ExecutionItem::GeneratedImage(item)] = state.turns()[0].items.as_slice() else {
+        panic!("expected saved-path-only imageGeneration history item to stay typed");
+    };
+    assert_eq!(item.id, "image_generation_1");
+    assert_eq!(item.status.as_deref(), Some("completed"));
+    assert_eq!(
+        item.revised_prompt.as_deref(),
+        Some("A saved-path-only cat")
+    );
+    assert_eq!(
+        item.saved_path.as_deref(),
+        Some("C:/work/beryl/saved-only-cat.png")
+    );
+    assert!(item.result.is_none());
+    assert!(item.complete);
+}
+
+#[test]
+fn saved_path_only_live_image_generation_stays_complete_without_inline_result() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Generate an image".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_image".to_string(),
+            status: TurnStatus::InProgress,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+    state.apply_stream_event(TurnStreamEvent::ItemCompleted {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_image".to_string(),
+        item: ThreadItem::ImageGeneration(ImageGenerationItem {
+            id: "saved_only".to_string(),
+            status: Some("completed".to_string()),
+            revised_prompt: Some("Saved cat".to_string()),
+            result: None,
+            saved_path: Some("C:/work/beryl/saved-cat.png".to_string()),
+        }),
+    });
+
+    let [ExecutionItem::GeneratedImage(image)] = state.turns()[0].items.as_slice() else {
+        panic!("expected saved-path-only generated image item");
+    };
+    assert_eq!(image.id, "saved_only");
+    assert_eq!(
+        image.saved_path.as_deref(),
+        Some("C:/work/beryl/saved-cat.png")
+    );
+    assert!(image.result.is_none());
+    assert!(image.complete);
+}
+
+#[test]
 fn image_generation_history_without_saved_path_keeps_only_bounded_inline_result() {
     let large_result = "A".repeat(300 * 1024);
     let response: ThreadSessionResponse = serde_json::from_value(json!({
@@ -1751,7 +1848,7 @@ fn image_generation_history_without_saved_path_keeps_only_bounded_inline_result(
 }
 
 #[test]
-fn live_image_generation_without_saved_path_keeps_only_bounded_inline_result() {
+fn live_image_generation_without_saved_path_keeps_small_inline_result_and_drops_oversized_result() {
     let mut state = ExecutionDetailState::default();
     state.begin_turn("Generate an image".to_string());
     state.apply_stream_event(TurnStreamEvent::TurnStarted {
@@ -1768,6 +1865,17 @@ fn live_image_generation_without_saved_path_keeps_only_bounded_inline_result() {
         thread_id: "thread_1".to_string(),
         turn_id: "turn_image".to_string(),
         item: ThreadItem::ImageGeneration(ImageGenerationItem {
+            id: "small_inline".to_string(),
+            status: Some("completed".to_string()),
+            revised_prompt: Some("Tiny inline image".to_string()),
+            result: Some("iVBORw0KGgo=".to_string()),
+            saved_path: None,
+        }),
+    });
+    state.apply_stream_event(TurnStreamEvent::ItemCompleted {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_image".to_string(),
+        item: ThreadItem::ImageGeneration(ImageGenerationItem {
             id: "large_inline".to_string(),
             status: Some("completed".to_string()),
             revised_prompt: Some("Huge inline image".to_string()),
@@ -1776,12 +1884,24 @@ fn live_image_generation_without_saved_path_keeps_only_bounded_inline_result() {
         }),
     });
 
-    let [ExecutionItem::GeneratedImage(image)] = state.turns()[0].items.as_slice() else {
-        panic!("expected generated image item");
+    let [
+        ExecutionItem::GeneratedImage(small),
+        ExecutionItem::GeneratedImage(large),
+    ] = state.turns()[0].items.as_slice()
+    else {
+        panic!("expected generated image items");
     };
-    assert_eq!(image.id, "large_inline");
-    assert!(image.result.is_none());
-    assert!(image.saved_path.is_none());
+    assert_eq!(small.id, "small_inline");
+    assert_eq!(
+        small.result.as_ref().map(|result| result.as_str()),
+        Some("iVBORw0KGgo=")
+    );
+    assert!(small.saved_path.is_none());
+    assert!(small.complete);
+    assert_eq!(large.id, "large_inline");
+    assert!(large.result.is_none());
+    assert!(large.saved_path.is_none());
+    assert!(large.complete);
 }
 
 #[test]

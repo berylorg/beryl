@@ -540,6 +540,43 @@ fn completed_native_generated_image_without_bytes_reports_unavailable() {
 }
 
 #[test]
+fn incomplete_native_generated_image_without_source_stays_pending() {
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_1",
+        Some("Still generating".to_string()),
+        None::<Arc<String>>,
+        None,
+        false,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-incomplete"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(lookup.outcome.is_pending());
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let pending = cache.lookup(
+        cache_key("native-incomplete"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    assert!(pending.outcome.is_pending());
+    assert!(pending.load_request.is_none());
+    assert_eq!(cache.stats().loaded_entries, 0);
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
 fn native_generated_image_cache_identity_ignores_inline_result_when_saved_path_is_present() {
     let temp = tempfile::tempdir().expect("temp dir should be created");
     let saved_path = temp.path().join("cat.png");

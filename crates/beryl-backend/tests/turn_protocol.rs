@@ -2223,7 +2223,7 @@ fn thread_history_preserves_context_compaction_as_generic_item() {
 }
 
 #[test]
-fn thread_history_deserializes_image_generation_items() {
+fn thread_history_deserializes_saved_path_image_generation_without_inline_result() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
         "approvalsReviewer": "user",
@@ -2252,7 +2252,6 @@ fn thread_history_deserializes_image_generation_items() {
                     {
                         "id": "image_generation_1",
                         "type": "imageGeneration",
-                        "result": "iVBORw0KGgo=",
                         "revisedPrompt": "A small blue glass bird on a desk",
                         "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
                         "status": "generating"
@@ -2276,7 +2275,7 @@ fn thread_history_deserializes_image_generation_items() {
         item.revised_prompt.as_deref(),
         Some("A small blue glass bird on a desk")
     );
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
+    assert_eq!(item.result, None);
     assert_eq!(
         item.saved_path.as_deref(),
         Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
@@ -2390,7 +2389,6 @@ fn thread_turns_list_response_deserializes_image_generation_items() {
                         "type": "imageGeneration",
                         "result": "iVBORw0KGgo=",
                         "revisedPrompt": "A small blue glass bird on a desk",
-                        "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
                         "status": "generating"
                     }
                 ]
@@ -2411,14 +2409,11 @@ fn thread_turns_list_response_deserializes_image_generation_items() {
         Some("A small blue glass bird on a desk")
     );
     assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
-    assert_eq!(
-        item.saved_path.as_deref(),
-        Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
-    );
+    assert_eq!(item.saved_path, None);
 }
 
 #[test]
-fn image_generation_stream_event_preserves_result_while_generating() {
+fn image_generation_stream_event_deserializes_saved_path_without_inline_result() {
     let event = parse_turn_stream_event(
         "item/completed",
         Some(json!({
@@ -2427,7 +2422,6 @@ fn image_generation_stream_event_preserves_result_while_generating() {
             "item": {
                 "id": "image_generation_1",
                 "type": "imageGeneration",
-                "result": "iVBORw0KGgo=",
                 "revisedPrompt": "A small blue glass bird on a desk",
                 "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
                 "status": "generating"
@@ -2452,7 +2446,7 @@ fn image_generation_stream_event_preserves_result_while_generating() {
     assert_eq!(thread_id, "thread_123");
     assert_eq!(turn_id, "turn_123");
     assert_eq!(item.status.as_deref(), Some("generating"));
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
+    assert_eq!(item.result, None);
     assert_eq!(
         item.saved_path.as_deref(),
         Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")

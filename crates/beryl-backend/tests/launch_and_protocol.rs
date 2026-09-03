@@ -27,6 +27,9 @@ use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
 
 #[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+use std::process::Command;
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
 use beryl_backend::{
     combine_lifecycle_test_shutdown_results, launch_and_probe_lifecycle_test_with_options,
     spawn_lifecycle_test_server,
@@ -51,6 +54,31 @@ fn host_windows_compatibility_stdio_launch_is_explicit() {
         ]
     );
     assert_eq!(command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn stdio_initialize_serializes_saved_path_only_without_server_acknowledgement() {
+    let launch =
+        BackendLaunchSpec::managed_stdio_for_workspace(WorkspaceId::host_windows(r"C:\work\beryl"));
+    let mut command = Command::new("powershell.exe");
+    command.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; if ($request.params.capabilities.savedPathOnly -ne $true) { exit 1 }; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows"}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine()"#,
+    ]);
+
+    let mut session = ManagedBackendSession::launch_and_initialize_test_command(
+        launch,
+        command,
+        ManagedBackendClientOptions::foreground(),
+        Duration::from_secs(2),
+    )
+    .expect(
+        "stdio initialize should accept the legacy response without capability acknowledgement",
+    );
+    session.shutdown().unwrap();
 }
 
 #[test]
@@ -2582,6 +2610,10 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
             request["params"]["capabilities"]["experimentalApi"],
             json!(true)
         );
+        assert_eq!(
+            request["params"]["capabilities"]["savedPathOnly"],
+            json!(true)
+        );
 
         let opt_out_methods = request["params"]["capabilities"]["optOutNotificationMethods"]
             .as_array()
@@ -3646,6 +3678,10 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {
     assert_eq!(request["params"]["clientInfo"]["name"], json!("beryl"));
     assert_eq!(
         request["params"]["capabilities"]["experimentalApi"],
+        json!(true)
+    );
+    assert_eq!(
+        request["params"]["capabilities"]["savedPathOnly"],
         json!(true)
     );
     assert_thread_started_not_opted_out(&request);

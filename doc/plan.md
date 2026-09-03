@@ -2,13 +2,9 @@
 
 Integrate Beryl V1 with the maintained Codex app-server fork without bundling or installing it: support explicit standalone Host-Windows launch, negotiate saved-path-only generated images, consume authoritative root usage-tree snapshots, and render current selected-root `main` and delegated-descendant `sub` token totals in the existing compact status line. Preserve legacy server and WSL usability by treating the fork extensions as optional, never estimating descendant usage, and retaining exact target/thread ownership and bounded resources.
 
-# Phase 2: Launch an explicitly selected standalone app-server (finished)
+# Phase 3: Negotiate saved-path-only image delivery (finished)
 
-The exact standalone Host-Windows launch path now flows from CLI through application bootstrap to target-local backend launch, invokes the server without the CLI-only subcommand, preserves existing Codex CLI and WSL forms, and fails invalid or missing configured paths without fallback. Formatting, 57 backend launch/protocol tests, 10 bootstrap/propagation tests, 14 CLI tests, and the all-targets workspace check passed; repeat independent review found no issues. Real-fork launch remains Phase 7 integration acceptance.
-
-# Phase 3: Negotiate saved-path-only image delivery (pending)
-
-Make every Beryl backend session request `savedPathOnly`, preserve legacy-server compatibility, and verify live/history generated-image handling continues through authoritative saved paths without requiring inline bytes.
+Every Beryl backend session now requests additive `savedPathOnly` delivery through the shared initializer, with real stdio and managed-WebSocket wire coverage and no required server acknowledgement. Live/history saved-path-only media, saved-path precedence, bounded legacy inline fallback, and honest missing-source states are covered. Formatting, 64 feature-enabled launch/protocol tests, 72 turn-protocol tests, 20 managed-WebSocket tests, 37 conversation-execution tests, 22 media-source tests, and the all-target workspace check passed; repeat independent review found no issues. Real-fork delivery remains Phase 7 acceptance.
 
 # Phase 4: Normalize authoritative usage-tree snapshots (pending)
 

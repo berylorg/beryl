@@ -1121,6 +1121,10 @@ fn assert_initialize_request(request: &Value, request_id: u64) {
         request["params"]["capabilities"]["experimentalApi"],
         json!(true)
     );
+    assert_eq!(
+        request["params"]["capabilities"]["savedPathOnly"],
+        json!(true)
+    );
     assert_thread_started_not_opted_out(request);
 }
 
