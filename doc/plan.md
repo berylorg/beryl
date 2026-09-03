@@ -18,30 +18,24 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 256: Correct Attached-Surface Test Driving (finished)
+# Phase 257: Requalify Retarget Capacity Fixtures (finished)
 
-Replaced premature global-quiescence driving with finite attached-surface request servicing that
-re-observes the queue after each draw/park cycle, then required quiescence only after exact
-dismissal. The exact case passed twice with its three-case lifecycle set; fresh independent review
-accepted the explicit no-loss-before-dismissal evidence. Accepted `gpui-text-input` commit:
-`f37fb23e8cb46fda048c208790ac3ac8f673d7c0`.
+Added an opt-in one-way test-support limit seam and replaced obsolete fixed caps with same-subject
+measured exact-fit and one-under proofs for real wheel and rendered-scrollbar retargets. Both cases
+passed twice with three capacity-boundary cases, default/release exclusion, feature-enabled checks,
+and fresh independent review. Accepted `gpui-text-input` commit:
+`a7edd9f7cbfbd3a01eb4de93b58fa1e28c55f3c4`.
 
-# Phase 257: Requalify Retarget Capacity Fixtures (wip)
+# Phase 258: Correct Restoration Geometry Response Routing (wip)
 
-Correct only
-`repeated_wheel_retarget_rejection_preserves_full_publication_fingerprint` and
-`repeated_rendered_scrollbar_retarget_rejection_preserves_full_publication_fingerprint`. Replace
-their obsolete fixed `max_surface_items` literals with fixture-derived exact accepted-fit and
-one-under capacities, without changing production behavior or weakening rejection semantics. Prove
-that exact fit admits the intended retarget, one under rejects it, and repeated wheel or rendered-
-scrollbar attempts preserve the complete committed publication fingerprint and event count. Verify
-both corrected cases twice plus the directly affected capacity-boundary evidence.
-
-# Phase 258: Correct Restoration Geometry Response Routing (pending)
-
-Correct the shared restoration index-to-target response-kind and lifecycle boundary for the five
-proven post-validation failures, including exact terminal seed settlement and retained-custody
-release.
+Trace and correct only the shared post-validation restoration index-to-target response-kind and
+lifecycle boundary responsible for the five proven failures. Preserve exact request/job ownership,
+publish a successor only from the matching target and index evidence, settle the compact restoration
+seed exactly once, and release every response, geometry job, and retained custody on success,
+rejection, cancellation, stale delivery, or terminal failure without disturbing the prior coherent
+surface or unrelated work. Do not restore purpose-only ownership or combine this correction with
+same-anchor gap publication. Verify all five corrected cases twice, the Phase 255 end-to-end retry
+completion boundary, directly adjacent routing and release evidence, and fresh independent review.
 
 # Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (pending)
 

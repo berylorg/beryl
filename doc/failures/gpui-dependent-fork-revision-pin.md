@@ -293,6 +293,15 @@ were present, then accepted the corrected case. The exact case passed twice with
 lifecycle set; accepted test-only `gpui-text-input` commit
 `f37fb23e8cb46fda048c208790ac3ac8f673d7c0` changes no production behavior.
 
+Phase 257 invalidated separate low-capacity integration fixtures. The surface limit participates in
+construction and every earlier admission, so a subject created at the measured retarget charge
+rejects before reaching that boundary; cumulative high-water is not the exact candidate charge.
+The accepted opt-in one-way test-support seam instead measures, settles, and repeats the real
+interaction on one initialized subject, rejects limit widening, and is absent from default builds.
+Both wheel and rendered-scrollbar cases passed twice with their capacity evidence and fresh
+independent review; accepted `gpui-text-input` commit
+`a7edd9f7cbfbd3a01eb4de93b58fa1e28c55f3c4` changes no ordinary production behavior.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
