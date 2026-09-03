@@ -830,6 +830,7 @@ fn record_turn_event_ingress(
         TurnStreamEvent::CommandExecutionOutputDelta { .. } => LivenessCategory::CommandOutputDelta,
         TurnStreamEvent::FileChangeOutputDelta { .. } => LivenessCategory::FileChangeOutputDelta,
         TurnStreamEvent::TokenUsageUpdated { .. } => LivenessCategory::TokenUsage,
+        TurnStreamEvent::TokenUsageTreeUpdated { .. } => LivenessCategory::TokenUsage,
         TurnStreamEvent::AccountRateLimitsUpdated { .. } => LivenessCategory::AccountRateLimits,
         TurnStreamEvent::ThreadNameUpdated { .. } => LivenessCategory::ThreadName,
         TurnStreamEvent::ApprovalRequested(_) => LivenessCategory::ApprovalRequest,

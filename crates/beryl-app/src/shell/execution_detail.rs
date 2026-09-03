@@ -883,6 +883,7 @@ impl ExecutionDetailState {
                 TurnStreamEvent::ThreadDeleted { .. } => {}
                 TurnStreamEvent::AgentLabelUpdated { .. } => {}
                 TurnStreamEvent::TokenUsageUpdated { .. } => {}
+                TurnStreamEvent::TokenUsageTreeUpdated { .. } => {}
                 TurnStreamEvent::AccountRateLimitsUpdated { .. } => {}
                 TurnStreamEvent::ThreadNameUpdated { .. } => {}
                 TurnStreamEvent::TurnError { .. } => {}
@@ -962,7 +963,8 @@ fn stream_event_matches_active_turn(turn: &TurnExecutionRecord, event: &TurnStre
         | TurnStreamEvent::TokenUsageUpdated {
             thread_id, turn_id, ..
         } => stream_turn_identity_matches_active_turn(turn, thread_id, turn_id),
-        TurnStreamEvent::AccountRateLimitsUpdated { .. } => false,
+        TurnStreamEvent::TokenUsageTreeUpdated { .. }
+        | TurnStreamEvent::AccountRateLimitsUpdated { .. } => false,
         TurnStreamEvent::ProtocolError { .. } => true,
     }
 }

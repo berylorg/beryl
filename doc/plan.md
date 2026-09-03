@@ -2,13 +2,9 @@
 
 Integrate Beryl V1 with the maintained Codex app-server fork without bundling or installing it: support explicit standalone Host-Windows launch, negotiate saved-path-only generated images, consume authoritative root usage-tree snapshots, and render current selected-root `main` and delegated-descendant `sub` token totals in the existing compact status line. Preserve legacy server and WSL usability by treating the fork extensions as optional, never estimating descendant usage, and retaining exact target/thread ownership and bounded resources.
 
-# Phase 3: Negotiate saved-path-only image delivery (finished)
+# Phase 4: Normalize authoritative usage-tree snapshots (finished)
 
-Every Beryl backend session now requests additive `savedPathOnly` delivery through the shared initializer, with real stdio and managed-WebSocket wire coverage and no required server acknowledgement. Live/history saved-path-only media, saved-path precedence, bounded legacy inline fallback, and honest missing-source states are covered. Formatting, 64 feature-enabled launch/protocol tests, 72 turn-protocol tests, 20 managed-WebSocket tests, 37 conversation-execution tests, 22 media-source tests, and the all-target workspace check passed; repeat independent review found no issues. Real-fork delivery remains Phase 7 acceptance.
-
-# Phase 4: Normalize authoritative usage-tree snapshots (pending)
-
-Add the fork's schema-version-1 read and notification surfaces to `beryl-backend`, including unsupported-method distinction, root identity, revision, completeness, and exact totals.
+`beryl-backend` now exposes strict schema-version-1 absolute usage-tree types, a typed root read with narrow optional-method detection and requested-root correlation, and flattened update events. Signed provider values, required-nullable context metadata, revisions, completeness, and every total component remain exact; existing app consumers compile without projecting Phase 5 state. Formatting, 139 affected backend tests, and the all-feature all-target workspace check passed; final independent review found no issues. Real-fork interoperability remains Phase 7 acceptance.
 
 # Phase 5: Project selected-root usage-tree state (pending)
 

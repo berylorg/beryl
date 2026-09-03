@@ -23,6 +23,24 @@
 //! ```no_run
 //! use std::time::Duration;
 //!
+//! use beryl_backend::{ManagedBackendSession, UsageTreeReadOutcome};
+//!
+//! # fn read_usage_tree(session: &mut ManagedBackendSession) -> Result<(), Box<dyn std::error::Error>> {
+//! match session.read_token_usage_tree("thread_root", Duration::from_secs(10))? {
+//!     UsageTreeReadOutcome::Snapshot(snapshot) => {
+//!         assert_eq!(snapshot.schema_version, 1);
+//!     }
+//!     UsageTreeReadOutcome::UnsupportedMethod { error } => {
+//!         eprintln!("usage-tree support is unavailable: {error}");
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ```no_run
+//! use std::time::Duration;
+//!
 //! use beryl_backend::{
 //!     ManagedBackendSession, ThreadListBudget, ThreadListOptions,
 //! };
@@ -165,6 +183,7 @@ mod thread_branch;
 mod thread_history;
 mod thread_lifecycle;
 mod turn;
+mod usage_tree;
 mod websocket_transport;
 
 #[cfg(feature = "lifecycle-test-support")]
@@ -233,4 +252,8 @@ pub use turn::{
     TurnError, TurnInfo, TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse,
     TurnStreamEvent, UserInput, UserMessageItem, active_turn_not_steerable_error,
     parse_approval_request, parse_turn_stream_event,
+};
+pub use usage_tree::{
+    UsageTreeAccountingStatus, UsageTreeReadOutcome, UsageTreeSelfUsage, UsageTreeSnapshot,
+    UsageTreeTokenUsageBreakdown,
 };

@@ -20,7 +20,8 @@ use beryl_backend::{
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, SortDirection,
     ThreadBranchCapabilityProbe, ThreadForkFailure, ThreadForkOptions, ThreadListOptions,
     ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey, ThreadStartOptions, ThreadStatus,
-    TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    TurnStartOptions, TurnStatus, TurnStreamEvent, UsageTreeAccountingStatus, UsageTreeReadOutcome,
+    UserInput, active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
@@ -2098,6 +2099,351 @@ fn websocket_notification_defers_while_waiting_for_response() {
 }
 
 #[test]
+fn websocket_usage_tree_read_uses_exact_flattened_wire_protocol() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/tokenUsageTree/read"));
+        assert_eq!(request["params"], json!({ "threadId": "thread_root" }));
+        socket
+            .send(Message::text(
+                usage_tree_snapshot_response("complete", json!(128000)).to_string(),
+            ))
+            .unwrap();
+    });
+
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    let outcome = client
+        .read_token_usage_tree("thread_root", Duration::from_secs(2))
+        .unwrap();
+    let UsageTreeReadOutcome::Snapshot(snapshot) = outcome else {
+        panic!("expected usage-tree snapshot");
+    };
+    assert_eq!(snapshot.root_thread_id, "thread_root");
+    assert_eq!(snapshot.revision, 9);
+    assert_eq!(snapshot.self_usage.total.total_tokens, i64::MAX);
+    assert_eq!(snapshot.self_usage.total.input_tokens, 900);
+    assert_eq!(snapshot.self_usage.total.cached_input_tokens, 500);
+    assert_eq!(snapshot.self_usage.total.cache_write_input_tokens, 0);
+    assert_eq!(snapshot.self_usage.total.output_tokens, 100);
+    assert_eq!(snapshot.self_usage.last.reasoning_output_tokens, 7);
+    assert_eq!(snapshot.self_usage.model_context_window, Some(128000));
+    assert_eq!(snapshot.descendants_total.cache_write_input_tokens, 5);
+    assert_eq!(snapshot.descendants_total.reasoning_output_tokens, 20);
+    assert_eq!(snapshot.tree_total.total_tokens, 1700);
+    assert_eq!(snapshot.tree_total.output_tokens, 400);
+    assert_eq!(
+        snapshot.accounting_status,
+        UsageTreeAccountingStatus::Complete
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_preserves_legacy_partial_and_queued_update() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/tokenUsageTree/read"));
+        let mut update = usage_tree_snapshot_body("complete", json!(64000));
+        update["treeTotal"]["outputTokens"] = json!(-12);
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0", "method": "thread/tokenUsageTree/updated",
+                    "params": update
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let mut response = usage_tree_snapshot_response("legacyPartial", Value::Null);
+        response["result"]["treeTotal"]["outputTokens"] = json!(-13);
+        socket.send(Message::text(response.to_string())).unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    let outcome = client
+        .read_token_usage_tree("thread_root", Duration::from_secs(2))
+        .unwrap();
+    let UsageTreeReadOutcome::Snapshot(snapshot) = outcome else {
+        panic!("expected usage-tree snapshot");
+    };
+    assert_eq!(
+        snapshot.accounting_status,
+        UsageTreeAccountingStatus::LegacyPartial
+    );
+    assert_eq!(snapshot.self_usage.model_context_window, None);
+    assert_eq!(snapshot.tree_total.output_tokens, -13);
+    let event = client
+        .next_turn_stream_event(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
+    let TurnStreamEvent::TokenUsageTreeUpdated { snapshot } = event else {
+        panic!("expected queued usage-tree update");
+    };
+    assert_eq!(snapshot.self_usage.model_context_window, Some(64000));
+    assert_eq!(snapshot.tree_total.output_tokens, -12);
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_classifies_only_identifiable_unsupported_errors() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        for (id, code, message) in [
+            (2, -32601, "method not found"),
+            (
+                3,
+                -32600,
+                "Invalid request: unknown method thread/tokenUsageTree/read",
+            ),
+            (
+                4,
+                -32600,
+                "Invalid request: unknown variant `thread/tokenUsageTree/read`, expected a known method",
+            ),
+        ] {
+            let request = read_json(&mut socket);
+            assert_eq!(request["id"], json!(id));
+            socket
+                .send(Message::text(
+                    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string(),
+                ))
+                .unwrap();
+        }
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    for expected_code in [-32601, -32600, -32600] {
+        let outcome = client
+            .read_token_usage_tree("thread_root", Duration::from_secs(2))
+            .unwrap();
+        let UsageTreeReadOutcome::UnsupportedMethod { error } = outcome else {
+            panic!("expected unsupported usage-tree method");
+        };
+        assert_eq!(error.code, expected_code);
+    }
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_keeps_other_errors_and_malformed_results_explicit() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        for (id, error) in [
+            (
+                2,
+                json!({ "code": -32600, "message": "Invalid request: invalid thread id" }),
+            ),
+            (
+                3,
+                json!({ "code": -32600, "message": "Invalid request: only supports root threads" }),
+            ),
+            (
+                4,
+                json!({ "code": -32600, "message": "Invalid request: usage tree not found" }),
+            ),
+            (5, json!({ "code": -32603, "message": "internal error" })),
+        ] {
+            let request = read_json(&mut socket);
+            assert_eq!(request["id"], json!(id));
+            socket
+                .send(Message::text(
+                    json!({ "jsonrpc": "2.0", "id": id, "error": error }).to_string(),
+                ))
+                .unwrap();
+        }
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(6));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0", "id": 6, "result": { "schemaVersion": 1 }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    for expected_code in [-32600, -32600, -32600, -32603] {
+        let error = client
+            .read_token_usage_tree("thread_root", Duration::from_secs(2))
+            .unwrap_err();
+        let ManagedBackendError::RequestFailed { method, error } = error else {
+            panic!("expected request failure");
+        };
+        assert_eq!(method, "thread/tokenUsageTree/read");
+        assert_eq!(error.code, expected_code);
+    }
+    assert!(matches!(
+        client.read_token_usage_tree("thread_root", Duration::from_secs(2)),
+        Err(ManagedBackendError::DeserializeResponse { .. })
+    ));
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_rejects_adversarial_unknown_method_errors() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        for (id, message) in [
+            (
+                2,
+                "Invalid request: unknown methodology thread/tokenUsageTree/read",
+            ),
+            (
+                3,
+                "Invalid request: unknown method parameter thread/tokenUsageTree/read",
+            ),
+            (
+                4,
+                "Invalid request: unknown method thread/tokenUsageTree/readExtra",
+            ),
+            (
+                5,
+                "Invalid request: unknown variant `thread/tokenUsageTree/other`",
+            ),
+            (
+                6,
+                "Invalid request: unknown method thread/tokenUsageTree/read.extra",
+            ),
+            (
+                7,
+                "Invalid request: unknown method thread/tokenUsageTree/read:extra",
+            ),
+            (
+                8,
+                "Invalid request: unknown method thread/tokenUsageTree/read;extra",
+            ),
+        ] {
+            let request = read_json(&mut socket);
+            assert_eq!(request["id"], json!(id));
+            socket
+                .send(Message::text(
+                    json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32600, "message": message }
+                    })
+                    .to_string(),
+                ))
+                .unwrap();
+        }
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    for _ in 0..7 {
+        assert!(matches!(
+            client.read_token_usage_tree("thread_root", Duration::from_secs(2)),
+            Err(ManagedBackendError::RequestFailed { .. })
+        ));
+    }
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_rejects_missing_required_context_window() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("thread/tokenUsageTree/read"));
+        let mut response = usage_tree_snapshot_response("complete", Value::Null);
+        response["result"]["self"]
+            .as_object_mut()
+            .unwrap()
+            .remove("modelContextWindow");
+        socket.send(Message::text(response.to_string())).unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    assert!(matches!(
+        client.read_token_usage_tree("thread_root", Duration::from_secs(2)),
+        Err(ManagedBackendError::DeserializeResponse { .. })
+    ));
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_usage_tree_read_rejects_mismatched_root_identity() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["params"], json!({ "threadId": "thread_requested" }));
+        let mut response = usage_tree_snapshot_response("complete", json!(128000));
+        response["result"]["rootThreadId"] = json!("thread_returned");
+        socket.send(Message::text(response.to_string())).unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    let error = client
+        .read_token_usage_tree("thread_requested", Duration::from_secs(2))
+        .unwrap_err();
+    let ManagedBackendError::UsageTreeRootMismatch {
+        method,
+        requested_thread_id,
+        returned_root_thread_id,
+    } = error
+    else {
+        panic!("expected usage-tree root mismatch");
+    };
+    assert_eq!(method, "thread/tokenUsageTree/read");
+    assert_eq!(requested_thread_id, "thread_requested");
+    assert_eq!(returned_root_thread_id, "thread_returned");
+    server.join().unwrap();
+}
+
+#[test]
 fn websocket_turn_steer_serializes_expected_turn_and_ordered_user_input() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
@@ -2637,6 +2983,11 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
             opt_out_methods
                 .iter()
                 .any(|method| method.as_str() == Some("error"))
+        );
+        assert!(
+            opt_out_methods
+                .iter()
+                .any(|method| method.as_str() == Some("thread/tokenUsageTree/updated"))
         );
 
         socket
@@ -3700,6 +4051,58 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {
             .to_string(),
         ))
         .unwrap();
+}
+
+fn usage_tree_snapshot_response(accounting_status: &str, model_context_window: Value) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": usage_tree_snapshot_body(accounting_status, model_context_window)
+    })
+}
+
+fn usage_tree_snapshot_body(accounting_status: &str, model_context_window: Value) -> Value {
+    json!({
+        "schemaVersion": 1,
+        "rootThreadId": "thread_root",
+        "revision": 9,
+        "self": {
+            "total": {
+                "totalTokens": i64::MAX,
+                "inputTokens": 900,
+                "cachedInputTokens": 500,
+                "cacheWriteInputTokens": 0,
+                "outputTokens": 100,
+                "reasoningOutputTokens": 10
+            },
+            "last": {
+                "totalTokens": 50,
+                "inputTokens": 30,
+                "cachedInputTokens": 20,
+                "cacheWriteInputTokens": 2,
+                "outputTokens": 15,
+                "reasoningOutputTokens": 7
+            },
+            "modelContextWindow": model_context_window
+        },
+        "descendantsTotal": {
+            "totalTokens": 800,
+            "inputTokens": 500,
+            "cachedInputTokens": 400,
+            "cacheWriteInputTokens": 5,
+            "outputTokens": 300,
+            "reasoningOutputTokens": 20
+        },
+        "treeTotal": {
+            "totalTokens": 1700,
+            "inputTokens": 1400,
+            "cachedInputTokens": 900,
+            "cacheWriteInputTokens": 5,
+            "outputTokens": 400,
+            "reasoningOutputTokens": 30
+        },
+        "accountingStatus": accounting_status
+    })
 }
 
 fn assert_thread_started_not_opted_out(request: &Value) {

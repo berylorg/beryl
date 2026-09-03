@@ -9,6 +9,7 @@ use std::fmt;
 
 use crate::{
     DynamicToolCallRequest, DynamicToolSpec, JsonRpcError, ProtocolPhase, ThreadSummary,
+    UsageTreeSnapshot,
     activity::{
         ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent, ToolActivityFileChangeSummary,
         ToolActivityLifecycle, ToolActivitySource,
@@ -35,6 +36,7 @@ const COMMAND_EXECUTION_OUTPUT_DELTA_METHOD: &str = "item/commandExecution/outpu
 const FILE_CHANGE_OUTPUT_DELTA_METHOD: &str = "item/fileChange/outputDelta";
 const THREAD_NAME_UPDATED_METHOD: &str = "thread/name/updated";
 const THREAD_TOKEN_USAGE_UPDATED_METHOD: &str = "thread/tokenUsage/updated";
+const THREAD_TOKEN_USAGE_TREE_UPDATED_METHOD: &str = "thread/tokenUsageTree/updated";
 const ACCOUNT_RATE_LIMITS_UPDATED_METHOD: &str = "account/rateLimits/updated";
 const CODEX_EVENT_COLLAB_AGENT_SPAWN_END_METHOD: &str = "codex/event/collab_agent_spawn_end";
 const COMMAND_EXECUTION_REQUEST_APPROVAL_METHOD: &str = "item/commandExecution/requestApproval";
@@ -442,6 +444,9 @@ pub enum TurnStreamEvent {
         thread_id: String,
         turn_id: String,
         token_usage: ThreadTokenUsage,
+    },
+    TokenUsageTreeUpdated {
+        snapshot: UsageTreeSnapshot,
     },
     AccountRateLimitsUpdated {
         rate_limits: RateLimitSnapshot,
@@ -1622,6 +1627,10 @@ pub fn parse_turn_stream_event(
                 turn_id: params.turn_id,
                 token_usage: params.token_usage,
             }
+        }
+        THREAD_TOKEN_USAGE_TREE_UPDATED_METHOD => {
+            let snapshot: UsageTreeSnapshot = serde_json::from_value(params)?;
+            TurnStreamEvent::TokenUsageTreeUpdated { snapshot }
         }
         ACCOUNT_RATE_LIMITS_UPDATED_METHOD => {
             let params: AccountRateLimitsUpdatedNotification = serde_json::from_value(params)?;

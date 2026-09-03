@@ -179,6 +179,7 @@ pub(crate) fn stream_event_thread_turn_id(event: &TurnStreamEvent) -> Option<(&s
         | TurnStreamEvent::AgentLabelUpdated { .. }
         | TurnStreamEvent::ThreadStatusChanged { .. }
         | TurnStreamEvent::ThreadClosed { .. }
+        | TurnStreamEvent::TokenUsageTreeUpdated { .. }
         | TurnStreamEvent::AccountRateLimitsUpdated { .. }
         | TurnStreamEvent::ThreadNameUpdated { .. }
         | TurnStreamEvent::TurnError { .. }

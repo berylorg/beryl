@@ -261,7 +261,8 @@ pub(crate) fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
         | TurnStreamEvent::ThreadNameUpdated { thread_id, .. } => Some(thread_id.as_str()),
         TurnStreamEvent::ApprovalRequested(request) => request.thread_id(),
         TurnStreamEvent::DynamicToolCallRequested(request) => Some(request.thread_id()),
-        TurnStreamEvent::AccountRateLimitsUpdated { .. }
+        TurnStreamEvent::TokenUsageTreeUpdated { .. }
+        | TurnStreamEvent::AccountRateLimitsUpdated { .. }
         | TurnStreamEvent::ProtocolError { .. } => None,
     }
 }

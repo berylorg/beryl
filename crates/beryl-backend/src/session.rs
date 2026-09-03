@@ -51,6 +51,10 @@ use crate::{
         ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
         parse_turn_stream_event,
     },
+    usage_tree::{
+        THREAD_TOKEN_USAGE_TREE_READ_METHOD, UsageTreeReadOutcome, UsageTreeReadParams,
+        UsageTreeSnapshot, is_unsupported_usage_tree_method,
+    },
     websocket_transport::{WebSocketClientTransport, WebSocketReceiveMode},
 };
 
@@ -80,6 +84,7 @@ const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "thread/closed",
     "thread/name/updated",
     "thread/tokenUsage/updated",
+    "thread/tokenUsageTree/updated",
     "account/rateLimits/updated",
     "turn/started",
     "turn/completed",
@@ -228,6 +233,14 @@ pub enum ManagedBackendError {
         method: String,
         #[source]
         source: serde_json::Error,
+    },
+    #[error(
+        "backend returned a {method} usage-tree snapshot for {returned_root_thread_id:?}, not requested root {requested_thread_id:?}"
+    )]
+    UsageTreeRootMismatch {
+        method: String,
+        requested_thread_id: String,
+        returned_root_thread_id: String,
     },
     #[error("backend returned an invalid {method} response during streaming sanitization")]
     SanitizeResponse {
@@ -945,6 +958,45 @@ impl ManagedBackendSession {
     ) -> Result<ThreadReadMetadata, ManagedBackendError> {
         self.read_thread(thread_id, ThreadReadOptions::metadata_only(), timeout)
             .map(|response| response.read_metadata())
+    }
+
+    /// Reads the optional authoritative, root-only usage tree without making
+    /// any local projection or deriving aggregate counters.
+    pub fn read_token_usage_tree(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<UsageTreeReadOutcome, ManagedBackendError> {
+        match self.request_json(
+            THREAD_TOKEN_USAGE_TREE_READ_METHOD,
+            &UsageTreeReadParams::new(thread_id),
+            timeout,
+        )? {
+            JsonRpcRequestOutcome::Result(result) => {
+                let snapshot: UsageTreeSnapshot =
+                    serde_json::from_value(result).map_err(|source| {
+                        ManagedBackendError::DeserializeResponse {
+                            method: THREAD_TOKEN_USAGE_TREE_READ_METHOD.to_string(),
+                            source,
+                        }
+                    })?;
+                if snapshot.root_thread_id != thread_id {
+                    return Err(ManagedBackendError::UsageTreeRootMismatch {
+                        method: THREAD_TOKEN_USAGE_TREE_READ_METHOD.to_string(),
+                        requested_thread_id: thread_id.to_string(),
+                        returned_root_thread_id: snapshot.root_thread_id,
+                    });
+                }
+                Ok(UsageTreeReadOutcome::Snapshot(snapshot))
+            }
+            JsonRpcRequestOutcome::Error(error) if is_unsupported_usage_tree_method(&error) => {
+                Ok(UsageTreeReadOutcome::UnsupportedMethod { error })
+            }
+            JsonRpcRequestOutcome::Error(error) => Err(ManagedBackendError::RequestFailed {
+                method: THREAD_TOKEN_USAGE_TREE_READ_METHOD.to_string(),
+                error,
+            }),
+        }
     }
 
     pub fn read_file_bytes(

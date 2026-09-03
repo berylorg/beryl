@@ -7,11 +7,55 @@ use beryl_backend::{
     ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadTurnsListOptions,
     ThreadTurnsListResponse, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
     ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnInfo,
-    TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
-    active_turn_not_steerable_error, parse_approval_request, parse_dynamic_tool_call_request,
-    parse_turn_stream_event,
+    TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent,
+    UsageTreeAccountingStatus, UserInput, active_turn_not_steerable_error, parse_approval_request,
+    parse_dynamic_tool_call_request, parse_turn_stream_event,
 };
 use serde_json::{Value, json};
+
+fn usage_tree_snapshot() -> Value {
+    json!({
+        "schemaVersion": 1,
+        "rootThreadId": "thread_root",
+        "revision": 42,
+        "self": {
+            "total": {
+                "totalTokens": 900,
+                "inputTokens": 600,
+                "cachedInputTokens": 200,
+                "cacheWriteInputTokens": 50,
+                "outputTokens": 250,
+                "reasoningOutputTokens": 25
+            },
+            "last": {
+                "totalTokens": 90,
+                "inputTokens": 60,
+                "cachedInputTokens": 20,
+                "cacheWriteInputTokens": 5,
+                "outputTokens": 25,
+                "reasoningOutputTokens": 2
+            },
+            "modelContextWindow": 128000
+        },
+        "descendantsTotal": {
+            "totalTokens": 700,
+            "inputTokens": 500,
+            "cachedInputTokens": 125,
+            "cacheWriteInputTokens": 10,
+            "outputTokens": 200,
+            "reasoningOutputTokens": 20
+        },
+        "treeTotal": {
+            "totalTokens": 1600,
+            "inputTokens": 1100,
+            "cachedInputTokens": 325,
+            "cacheWriteInputTokens": 60,
+            "outputTokens": 450,
+            "reasoningOutputTokens": 45
+        },
+        "accountingStatus": "complete"
+    })
+}
 
 fn parse_tool_activity(method: &str, item: Value) -> ToolActivityEvent {
     parse_turn_stream_event(
@@ -793,6 +837,116 @@ fn token_usage_notification_parses_from_turn_stream() {
     assert_eq!(token_usage.last.input_tokens, 250);
     assert_eq!(token_usage.total.input_tokens, 900);
     assert_eq!(token_usage.model_context_window, Some(1000));
+}
+
+#[test]
+fn usage_tree_notification_preserves_complete_snapshot_without_turn_identity() {
+    let event =
+        parse_turn_stream_event("thread/tokenUsageTree/updated", Some(usage_tree_snapshot()))
+            .unwrap()
+            .unwrap();
+
+    let TurnStreamEvent::TokenUsageTreeUpdated { snapshot } = event else {
+        panic!("expected usage-tree update");
+    };
+
+    assert_eq!(snapshot.schema_version, 1);
+    assert_eq!(snapshot.root_thread_id, "thread_root");
+    assert_eq!(snapshot.revision, 42);
+    assert_eq!(snapshot.self_usage.total.cache_write_input_tokens, 50);
+    assert_eq!(snapshot.self_usage.last.reasoning_output_tokens, 2);
+    assert_eq!(snapshot.self_usage.model_context_window, Some(128000));
+    assert_eq!(snapshot.descendants_total.total_tokens, 700);
+    assert_eq!(snapshot.tree_total.total_tokens, 1600);
+    assert_eq!(
+        snapshot.accounting_status,
+        UsageTreeAccountingStatus::Complete
+    );
+}
+
+#[test]
+fn usage_tree_notification_preserves_legacy_partial_zero_and_large_counters() {
+    let mut value = usage_tree_snapshot();
+    value["accountingStatus"] = json!("legacyPartial");
+    value["self"]["modelContextWindow"] = Value::Null;
+    value["self"]["total"]["totalTokens"] = json!(i64::MAX);
+    value["self"]["total"]["inputTokens"] = json!(0);
+    value["self"]["total"]["cachedInputTokens"] = json!(0);
+    value["self"]["total"]["cacheWriteInputTokens"] = json!(0);
+    value["self"]["total"]["outputTokens"] = json!(0);
+    value["self"]["total"]["reasoningOutputTokens"] = json!(0);
+    value["self"]["total"]
+        .as_object_mut()
+        .unwrap()
+        .remove("cacheWriteInputTokens");
+    value["treeTotal"]["outputTokens"] = json!(-11);
+
+    let event = parse_turn_stream_event("thread/tokenUsageTree/updated", Some(value))
+        .unwrap()
+        .unwrap();
+    let TurnStreamEvent::TokenUsageTreeUpdated { snapshot } = event else {
+        panic!("expected usage-tree update");
+    };
+
+    assert_eq!(
+        snapshot.accounting_status,
+        UsageTreeAccountingStatus::LegacyPartial
+    );
+    assert_eq!(snapshot.self_usage.model_context_window, None);
+    assert_eq!(snapshot.self_usage.total.total_tokens, i64::MAX);
+    assert_eq!(snapshot.self_usage.total.cache_write_input_tokens, 0);
+    assert_eq!(snapshot.tree_total.output_tokens, -11);
+}
+
+#[test]
+fn usage_tree_notification_rejects_invalid_schema_identity_status_and_counters() {
+    let mut unsupported_schema = usage_tree_snapshot();
+    unsupported_schema["schemaVersion"] = json!(2);
+
+    let mut unknown_status = usage_tree_snapshot();
+    unknown_status["accountingStatus"] = json!("estimated");
+
+    let mut missing_required_counter = usage_tree_snapshot();
+    missing_required_counter["self"]["last"]
+        .as_object_mut()
+        .unwrap()
+        .remove("inputTokens");
+
+    let mut missing_context_window = usage_tree_snapshot();
+    missing_context_window["self"]
+        .as_object_mut()
+        .unwrap()
+        .remove("modelContextWindow");
+
+    let mut missing_root_identity = usage_tree_snapshot();
+    missing_root_identity
+        .as_object_mut()
+        .unwrap()
+        .remove("rootThreadId");
+
+    let mut blank_root_identity = usage_tree_snapshot();
+    blank_root_identity["rootThreadId"] = json!(" \t ");
+
+    for value in [
+        unsupported_schema,
+        unknown_status,
+        missing_required_counter,
+        missing_context_window,
+        missing_root_identity,
+        blank_root_identity,
+    ] {
+        assert!(parse_turn_stream_event("thread/tokenUsageTree/updated", Some(value)).is_err());
+    }
+
+    let overflow = serde_json::from_str::<beryl_backend::UsageTreeSnapshot>(
+        r#"{
+            "schemaVersion":1,"rootThreadId":"thread_root","revision":42,
+            "self":{"total":{"totalTokens":9223372036854775808,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"last":{"totalTokens":0,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"modelContextWindow":null},
+            "descendantsTotal":{"totalTokens":0,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},
+            "treeTotal":{"totalTokens":0,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"accountingStatus":"complete"
+        }"#,
+    );
+    assert!(overflow.is_err());
 }
 
 #[test]

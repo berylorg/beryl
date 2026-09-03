@@ -590,6 +590,7 @@ impl ToolActivityProjection {
             | TurnStreamEvent::CommandExecutionOutputDelta { .. }
             | TurnStreamEvent::FileChangeOutputDelta { .. }
             | TurnStreamEvent::TokenUsageUpdated { .. }
+            | TurnStreamEvent::TokenUsageTreeUpdated { .. }
             | TurnStreamEvent::AccountRateLimitsUpdated { .. }
             | TurnStreamEvent::ThreadNameUpdated { .. }
             | TurnStreamEvent::TurnError { .. }

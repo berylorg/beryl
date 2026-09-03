@@ -348,6 +348,7 @@ impl ThreadTitleAttempt {
             | TurnStreamEvent::ThreadStatusChanged { .. }
             | TurnStreamEvent::TurnError { .. }
             | TurnStreamEvent::TokenUsageUpdated { .. }
+            | TurnStreamEvent::TokenUsageTreeUpdated { .. }
             | TurnStreamEvent::ReasoningSummaryPartAdded { .. }
             | TurnStreamEvent::ReasoningSummaryTextDelta { .. }
             | TurnStreamEvent::ReasoningTextDelta { .. }
