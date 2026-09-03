@@ -18,23 +18,18 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 269: Diagnose Current-Surface Pointer Activation (finished)
+# Phase 270: Diagnose Atom-Cut Restoration Proof (finished)
 
 Accepted `gpui-text-input` test-only commit
-`58363fcad0b155a4604ff56675eb777d41e3ba13`. The original failing click never reaches the pointer
-pipeline: presentation ownership advances to generation two, but terminal publication records one
-`CandidateSurfaceIncomplete`, becomes quiescent, and retains the generation-one surface at epoch
-two. Exact current-surface gating therefore correctly rejects the retained surface before hit
-resolution, `Set` intent, activation, resolver, or installation. The accepted diagnostic binds the
-generation-one activation and `Superseded` loss, generation-two requests, repeated-generation no-op,
-retained surface and geometry, inert pointer outcome, accounting, and quiescence. Repeated exact
-feature-enabled runs and fresh independent review pass. The production correction owner is the
-presentation-transition terminal rejection/publication atomicity path, not pointer activation.
-
-# Phase 270: Diagnose Atom-Cut Restoration Proof (pending)
-
-Locate the missing published source-position or object-gap proof that makes restoration export fail
-before the Cut action begins; do not change Cut propagation without that proof.
+`83764f705ebcd49fd4c83a4467299f14118a7417`. The original failure occurs before Cut: restoration
+export after Select All returns `IncompleteSurface` because the retained object page proves the
+caret, selection head, and scroll position at source position two after object 901, but does not
+cover the selection anchor's `NoObjects` gap at source position zero. The accepted diagnostic binds
+the exact published positions, scalar boundaries, object-page edges, and pre-admission failure;
+admits only the distinct required positions zero and two from exact text and object facts; proves
+pre-Cut restoration export succeeds; and preserves the original Cut propagation, no-write,
+no-deletion, publication, quiescence, and restoration assertions. Repeated exact feature-enabled
+runs and fresh independent semantic review pass. No Cut or production correction is required.
 
 # Phase 271: Diagnose Large-Object Presentation Publication (pending)
 
