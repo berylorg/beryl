@@ -18,28 +18,27 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (finished)
+# Phase 260: Preserve Restoration Dispatch Cancellation (finished)
 
-Selected the earliest validated restored position sharing the scroll byte as the streaming-layout
-anchor, so before, between, and after gaps all enter the coherent surface without changing the
-restored scroll position. The exact cases passed twice with adjacent composite, publication,
-rejection, stale-custody, and routing evidence plus fresh independent review. Accepted
-`gpui-text-input` commit: `0314104b866785df4049bf62fb3481a44aafb74f`.
+Confirmed that the production Select All path already cancels the exact dispatched restoration
+geometry page once before successor dispatch, rejects restoration once, releases a late exact-key
+payload as obsolete, and reaches quiescent ordinary publication and restoration retry. Strengthened
+the exact integration proof; it passed twice with adjacent cancellation, custody, capacity, and
+failure evidence plus fresh independent review. Accepted `gpui-text-input` commit:
+`be516b914573aa5e8126808a533f590b94f5efcf`.
 
-# Phase 260: Preserve Restoration Dispatch Cancellation (wip)
+# Phase 261: Reconcile Retryable Clipboard-Preparation Test Authority (wip)
 
-Trace and correct only restoration rejection release so Select All that supersedes a post-validation
-restoration cancels the exact dispatched geometry page once before ordinary target realization
-proceeds. Preserve the prior coherent surface, Phase 258 routing ownership, Phase 259 composite-gap
-anchor, once-only restoration settlement, and exact late-response release; do not absorb rebind
-quiescence or later diagnostics. Verify the proven Select All case twice, directly adjacent
-pre-dispatch and post-dispatch cancellation, late-response, ordinary-target, custody-release, and
-bounded-capacity evidence, plus fresh independent review.
-
-# Phase 261: Reconcile Retryable Clipboard-Preparation Test Authority (pending)
-
-Update the stale saturated clipboard fixture to exercise retained retryable preparation custody,
-liveness, exact release, and immediate retry under the authoritative public wrapper contract.
+Reconcile only the stale saturated clipboard fixture with the authoritative public delivery-wrapper
+contract. Trace the exact current response, dispatch, coordinator, and prepared-step custody when
+clipboard-local capacity rejects an otherwise valid preparation; replace obsolete `Busy` or unwind
+expectations with proof that the bounded exact response remains retryable, runnable work is
+rescheduled, cancellation releases all retained owners once, and capacity recovery permits the
+correct immediate retry without redispatch, duplication, or mutation. Preserve the accepted
+clipboard coordinator and geometry boundaries and do not absorb Phase 262 or later diagnoses.
+Verify the corrected case twice with adjacent retryable-capacity, exact-fit and one-under,
+cancellation, stale-key, payload-release, liveness, and bounded high-water evidence plus fresh
+independent review.
 
 # Phase 262: Diagnose Rebind Restoration Quiescence (pending)
 

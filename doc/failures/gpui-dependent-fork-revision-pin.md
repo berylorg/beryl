@@ -323,6 +323,16 @@ rejection, stale-response, bounded-capacity, and prior-routing evidence plus fre
 accepted `gpui-text-input` commit `0314104b866785df4049bf62fb3481a44aafb74f` leaves dispatch
 cancellation and rebind quiescence to their existing phases.
 
+Phase 260 established that the suspected restoration dispatch-cancellation defect was a proof gap,
+not a production defect. The existing Select All path rejects restoration before ordinary target
+realization, rebinds and releases the active geometry job, removes the exact dispatched page key,
+queues one cancellation, and rejects a late payload before response-custody admission. The accepted
+test now proves that ordering, once-only restoration settlement, distinct successor dispatch and
+publication, obsolete late-payload return, quiescence, and a successful restoration retry. The case
+passed twice with adjacent lifecycle, custody, capacity, and failure evidence plus fresh independent
+review; accepted test-only `gpui-text-input` commit
+`be516b914573aa5e8126808a533f590b94f5efcf` leaves rebind quiescence and later diagnoses unchanged.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
