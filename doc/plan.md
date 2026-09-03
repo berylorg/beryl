@@ -18,19 +18,14 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 265: Diagnose Marked Successor Composition Publication (finished)
+# Phase 266: Diagnose Overlapping Object Realization (finished)
 
-Accepted `gpui-text-input` test-only commit `895872310ae6bafbc69210cd5f5da2ed4b453200`.
-Repeated locked-target probes and fresh independent review proved that an exact object-bearing
-composite selection has no platform selection, so marked replacement exits before allocating or
-admitting a mutation and no settlement or successor facts reach publication. The independent direct-
-rebind control proved downstream target, terminal, index, lifecycle-loss, and disposal paths coherent
-and quiescent; no durable correction candidate was selected.
-
-# Phase 266: Diagnose Overlapping Object Realization (pending)
-
-Locate the first exact scanner, fragment-retention, or terminal-publication mismatch that leaves two
-proven overlapping object pages absent from the coherent surface.
+Accepted `gpui-text-input` test-only commit `315c76f80172791afec707fc4cb63e6041b1b54c`.
+Repeated locked-target probes and fresh independent review located the earliest causal mismatch at
+target-window checkpoint admission: End targeting resumes after both same-anchor objects with empty
+fragment and presentation buffers, then receives only the adjacent empty object page, so target
+publication emits no object fragments, presentations, or geometry. The evidence also isolates a later
+independent committed-page-custody replacement; no durable correction candidate was selected.
 
 # Phase 267: Diagnose Cross-Purpose Clipboard Object Custody (pending)
 
