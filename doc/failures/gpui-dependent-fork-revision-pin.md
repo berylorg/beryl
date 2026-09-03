@@ -359,10 +359,23 @@ high-water bound. The exact case passed repeatedly with adjacent lifecycle cover
 independent review; accepted test-only `gpui-text-input` commit
 `40e63a1f2d3d7a155dfe81e04508f653aa072212` changes no production behavior.
 
+Phase 263 proved that the rebind-restoration failure is another stale lifecycle fixture, not a
+production custody defect. True rebind retires the dispatched restoration geometry exactly once,
+emits one restoration rejection, publishes the coherent successor target, and deliberately retains
+one compact background-index intent for ordinary draw/prepaint service. The fixture stopped at the
+first empty outbound-request observation and asserted quiescence before that public lifecycle pass;
+at that point every request, response, geometry job, candidate, continuation, and queued-effect
+owner was already zero. A bounded draw/prepaint pass admitted the index request, whose ordinary
+settlement reached quiescence while late and duplicate old responses left successor publication
+unchanged and returned their payloads. The original failure and corrected public lifecycle each
+repeated twice with adjacent cancellation, publication, retry, and disposal cases, and fresh
+independent review found no production issue. Correct only the focused test driver in its own phase
+before resuming the remaining independent diagnoses.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  Phase 252's completed no-publish qualification, and Phases 253 through 273's focused partition,
+  Phase 252's completed no-publish qualification, and Phases 253 through 275's focused partition,
   correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
