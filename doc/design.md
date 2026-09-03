@@ -57,6 +57,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Agent execution, transcript history, and Codex-owned state flow through `codex app-server`.
 - Beryl integrates with `codex app-server` as an out-of-process GUI client rather than by directly linking Codex internal crates.
 - Beryl does not bundle or install Codex.
+- Beryl V1 targets the Beryl-maintained Codex app-server fork for fork-owned protocol extensions while retaining explicit out-of-process executable selection. Selecting that fork does not move Codex state into Beryl or authorize Beryl to inspect Codex process memory or storage directly.
 - Beryl may own narrow GUI-side orchestration using app-server protocol primitives when the app-server protocol does not expose a direct GUI-needed helper.
 - Cross-boundary communication uses the app-server contract rather than direct access to backend storage, process memory, or implementation internals.
 - Authentication, session storage, agent execution, subagents, configuration, skills, MCP state, and other non-UI agent behavior remain backend-owned.

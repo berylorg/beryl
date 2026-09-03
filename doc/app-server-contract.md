@@ -34,6 +34,7 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - Image-generation transcript probing was performed on May 9, 2026 against `codex-cli 0.128.0` using local app-server stdio and `thread/read includeTurns=true` on a thread containing an AI-generated image. The observed `imageGeneration` item carried base64 PNG result bytes, a generated-image `savedPath`, a `revisedPrompt`, and `status = "generating"` even though the result bytes and saved file were already available.
 - Graph-upkeep hooks and filesystem-watch inspection was performed on May 19, 2026 against `codex-cli 0.128.0` and `codex-cli 0.131.0` using stable and experimental generated app-server schemas, local stdio probes, the current OpenAI Codex hooks documentation, and an official `openai/codex` source clone at commit `80fdd4688f6fa8143488c206d4c14dc193905254`.
 - Forked-child dynamic-tool planning inspected and live-probed the exact installed `codex-cli 0.146.0` executable on August 4, 2026. The result was requalified after the harness adopted launch-first guarded compatibility probing, independently bounded version-process/output handling, exact root-snapshot identity checks, required summary-level model-provider comparison, and post-resume runtime-conflict checks. The executable SHA-256, schema-bundle identities, exact lifecycle sequence, passing tool-retention result, and cleanup evidence are retained in `doc/memory/topic/codex-app-server-0.146.0/forked-dynamic-tool-retention.md`.
+- Beryl-maintained fork protocol verification was completed on September 3, 2026 against fork source commit `37d76a9304`. The verified standalone `codex-app-server.exe` artifact is 227,301,376 bytes with SHA-256 `4EFB698B794C07466B6022DBE457126DC60330F5F0B833A000E30DFEEE233D65`.
 
 ## Transport
 
@@ -53,6 +54,7 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - Compatibility probing therefore needs to combine the handshake result with targeted request validation of required methods and fields.
 - The 0.125.0 schema declares `capabilities.experimentalApi` as the opt-in for experimental methods and fields. Beryl requests this capability so it can receive new stream metadata such as subagent `agentNickname` fields and `thread/started` notifications.
 - The 0.125.0 schema also declares `capabilities.optOutNotificationMethods` for suppressing exact notification methods on a connection. Beryl may consume `thread/started` metadata for thread features, but Activity panel v2 child labels do not depend on it; they come from exact per-item `agentPath` values.
+- The maintained fork adds `capabilities.savedPathOnly`. It defaults to false, preserves upstream delivery for other clients, and when true omits generated-image `result` bytes from live and historical wire projections while preserving `savedPath` and other item state.
 
 ## Filesystem Watch And Hooks
 
@@ -201,6 +203,8 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - The observed `codex-cli 0.125.0` schema exposes token usage through `thread/tokenUsage/updated`; it does not expose latest per-thread token usage through `thread/resume`, `thread/read`, `thread/list`, `thread/turns/list`, or another read-only thread-status response.
 - The April 30, 2026 read-through re-check found no backend field for seeding restored-thread context status, so Beryl has no backend normalization work to perform for restored threads in this app-server version beyond normalizing `thread/tokenUsage/updated` notifications.
 - Beryl can cache exact `thread/tokenUsage/updated` notifications per thread for thread switches within the same GUI process and can persist those exact notification payloads as GUI-held last-known snapshots for app restarts.
+- The maintained fork adds experimental root-only `thread/tokenUsageTree/read { threadId }` and `thread/tokenUsageTree/updated`. Both return a flattened absolute schema-version-1 snapshot with `rootThreadId`, durable monotonic `revision`, root-only `self`, `descendantsTotal`, `treeTotal`, and `accountingStatus` of `complete` or `legacyPartial`; the update has no turn id.
+- A root subscription receives descendant-caused tree updates, and root resume or reconnect publishes a current connection-local snapshot. Beryl therefore does not need to enumerate or resume descendants. Ordinary conversation forks start distinct accounting trees, while recursively spawned delegated descendants contribute once to their root.
 - The `codex-cli 0.128.0` schema exposes `account/rateLimits/updated` as a server notification whose params contain `rateLimits`.
 - `rateLimits.primary` and `rateLimits.secondary` are nullable windows with required `usedPercent` and optional `windowDurationMins` and `resetsAt`.
 - Each `RateLimitSnapshot` may include nullable `limitId` and `limitName`; Beryl preserves these fields so the UI can select the active model's bucket instead of merging unrelated buckets.

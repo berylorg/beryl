@@ -15,7 +15,8 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 
 - Beryl integrates with Codex through `codex app-server` as an out-of-process client.
 - Beryl launches and owns managed backend processes in V1. It does not attach to already running app-server instances.
-- Host-Windows launch uses the `codex` executable from the user's `PATH`.
+- Host-Windows launch uses the `codex` executable from the user's `PATH` by default. A distinct exact Codex CLI override preserves the `app-server` subcommand, while an exact standalone `codex-app-server` override omits that CLI-only subcommand.
+- The Beryl executable exposes only the explicit standalone Host-Windows app-server path as bootstrap configuration. This is the supported selection path for a locally built Beryl-maintained Codex fork; Beryl does not bundle, install, discover from the source checkout, or hardcode a machine-local fork artifact.
 - WSL launch uses `wsl.exe`, targets the selected distro, sets the requested working directory, and runs `codex app-server` inside the distro.
 - A Beryl-owned app-server listens on an authenticated loopback WebSocket endpoint chosen by Beryl.
 - Beryl generates a high-entropy capability token per managed launch, stores it only in a per-run local token file and memory, passes the token file to app-server auth configuration, uses the token in WebSocket handshakes, and removes the token file when the server exits.
@@ -55,6 +56,8 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 - Branch actions depend on app-server fork and rollback primitives. When missing, branch actions are disabled rather than emulated.
 - Edit actions depend on app-server rollback and turn-start primitives plus exact rollback-scope proof. When missing or unprovable, edit actions are disabled rather than emulated.
 - Hard-stop backend primitives are probed separately. Missing hard-stop support disables only affected hard-stop escalation targets and must not disable soft interruption.
+- Every initialized client session requests saved-path-only generated-image delivery. Servers that honor the capability omit generated-image inline result bytes; Beryl continues to treat `savedPath` as authoritative and handles capability absence without inventing an image artifact.
+- Beryl consumes the optional root-only thread-usage-tree read and update surfaces when available. Capability absence or `method not found` leaves the runtime usable, preserves exact legacy root-thread status when known, and makes descendant usage unavailable rather than estimating it.
 - Operations that target incompatible or unavailable backends fail or present localized recovery for that target and must not silently switch runtime target, workspace member, backend process, or thread.
 
 ## Connection Loss Recovery

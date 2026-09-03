@@ -13,8 +13,9 @@ Own Beryl's integration boundary with `codex app-server`.
 ## Launch Ownership
 
 - This crate owns managed host-Windows and WSL-Linux backend launch construction.
-- Host-Windows launch targets `codex app-server`.
+- Default and exact Codex CLI Host-Windows launch modes target `codex app-server`.
 - The public managed-launch options default to resolving `codex` through `PATH`; an explicit absolute Unicode Host-Windows executable path may replace that command program without changing its arguments or working directory. That opt-in is rejected for WSL-Linux and other non-Host-Windows runtimes before listener or authentication material is created. Launch-option validation does not canonicalize the path, require the target to exist, or validate the target app-server version.
+- A distinct explicit absolute Unicode Host-Windows standalone app-server path targets `codex-app-server` directly and omits the CLI-only `app-server` argument while preserving the same listener, authentication, configuration, and working-directory arguments. This mode is rejected for WSL-Linux and other runtimes before listener or authentication material is created.
 - WSL-Linux launch targets `wsl.exe`, selects the requested distro, sets the requested working directory, and runs a Bash login shell so user-local `PATH` setup is applied before `codex app-server` starts inside WSL.
 - Managed app-server launch targets an authenticated loopback WebSocket listener so multiple Beryl backend clients can connect to one Beryl-owned app-server process.
 - Host-Windows managed WebSocket launch binds the app-server to `ws://127.0.0.1:<port>` in the selected workspace directory.
@@ -39,7 +40,7 @@ Own Beryl's integration boundary with `codex app-server`.
 - Each backend client session performs its own initialize handshake, request id sequencing, notification buffering, and stream polling.
 - Each backend client session bounds deferred notification and server-request retention by message count and approximate retained bytes while it is waiting for a specific JSON-RPC response.
 - Deferred dynamic tool-call requests have an additional explicit count cap. Exceeding that cap is a bounded-resource error instead of an unbounded retained request backlog.
-- Backend client initialization requests the app-server experimental API capability when available, because Beryl depends on new protocol fields and notifications such as subagent `agentNickname` metadata and `thread/started`.
+- Backend client initialization requests the app-server experimental API capability when available, because Beryl depends on new protocol fields and notifications such as subagent `agentNickname` metadata and `thread/started`. Every session also requests `savedPathOnly` generated-image delivery; absence of that additive capability remains compatible with legacy servers.
 - Backend client initialization must not opt out of `thread/started` on sessions that can feed foreground turn-stream activity.
 - Beryl callers register logical function tools individually, with optional namespace membership. The backend `thread/start` boundary normalizes those registrations into the current app-server tagged wire contract: unnamespaced functions remain top-level function entries, while namespaced functions are grouped deterministically into one namespace entry with nested function entries. This wire normalization must preserve function metadata and stable first-occurrence ordering without changing inbound dynamic-call routing semantics.
 - An empty logical dynamic-tool registry omits `dynamicTools` from `thread/start`. Valid logical registries contain at most one function for each namespace-and-name pair; normalization never silently overwrites duplicates, so callers remain responsible for rejecting an invalid duplicate registry before launch.
@@ -92,6 +93,8 @@ Own Beryl's integration boundary with `codex app-server`.
 - Hard-stop normalization must preserve request-level failure information per target so callers can report partial hard-stop success rather than collapsing all escalation outcomes into one opaque transport error.
 - Thread-compaction normalization exposes app-server `thread/compact/start` as a thread-id-targeted backend operation without owning the GUI policy for when users may request compaction.
 - Token-usage normalization exposes only app-server-provided exact token usage from stream notifications or read-only protocol responses.
+- Root usage-tree normalization exposes schema-version-1 absolute snapshots from `thread/tokenUsageTree/read` and `thread/tokenUsageTree/updated`, including exact root identity, durable revision, root `self` usage, descendant totals, tree totals, and `complete` or `legacyPartial` accounting status. It never enumerates, resumes, or locally sums descendants.
+- Usage-tree reads are root-thread-only. Unsupported-method responses remain distinguishable from malformed or failed supported responses so callers can retain legacy root-only status without treating guessed descendant usage as exact.
 - Account rate-limit normalization exposes only app-server-provided exact account rate-limit snapshots from stream notifications or read-only protocol responses, including the multi-bucket account rate-limit read response and backend bucket identity fields such as `limitId` and `limitName` when the protocol provides them.
 - If app-server exposes latest per-thread token usage through read-only thread metadata, this crate owns normalizing that field without making GUI callers depend on raw protocol JSON.
 - This crate must not estimate status-line context from transcript text or local tokenization.
