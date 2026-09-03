@@ -782,6 +782,42 @@ fn context_compaction_uses_configured_completion_timeout_only_for_stream_wait() 
 }
 
 #[test]
+fn usage_tree_updates_are_guarded_before_generic_stream_routing_and_after_exact_selection() {
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let discovery_source = include_str!("../src/shell/discovery.rs");
+    let poll_body = rust_function_body(shell_source, "fn poll_turn_updates");
+    let workspace_finish_body =
+        rust_function_body(lifecycle_source, "pub(super) fn finish_workspace_open");
+    let activation_finish_body = rust_function_body(
+        lifecycle_source,
+        "pub(super) fn finish_thread_activation_worker",
+    );
+
+    assert!(poll_body.contains("TurnStreamEvent::TokenUsageTreeUpdated { snapshot }"));
+    assert!(poll_body.contains("surface.apply_usage_tree_snapshot(snapshot)"));
+    assert_order(
+        poll_body,
+        "TurnStreamEvent::TokenUsageTreeUpdated { snapshot }",
+        "TurnWorkerUpdate::Event(event) => {",
+    );
+    assert_order(
+        activation_finish_body,
+        "surface.load_thread_history_window",
+        "surface.apply_usage_tree_snapshot(snapshot)",
+    );
+    assert!(
+        discovery_source
+            .contains("selected_usage_tree_snapshot: selected_thread_history.usage_tree_snapshot")
+    );
+    assert_order(
+        workspace_finish_body,
+        "let mut surface = match preserved_surface",
+        "surface.apply_usage_tree_snapshot(snapshot)",
+    );
+}
+
+#[test]
 fn active_theme_refresh_notifies_open_surfaces_without_reconstructing_workspace_state() {
     let shell_source = include_str!("../src/shell.rs");
     let dynamic_theme_source = include_str!("../src/shell/dynamic_theme.rs");

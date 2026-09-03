@@ -4,7 +4,8 @@ mod status_line;
 
 use beryl_backend::{
     AccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow, ThreadSessionMetadata,
-    ThreadStatus, ThreadTokenUsage, TokenUsageBreakdown,
+    ThreadStatus, ThreadTokenUsage, TokenUsageBreakdown, UsageTreeAccountingStatus,
+    UsageTreeSelfUsage, UsageTreeSnapshot, UsageTreeTokenUsageBreakdown,
 };
 use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown,
@@ -12,9 +13,9 @@ use beryl_model::conversation::{
 };
 use beryl_model::workspace::WorkspaceId;
 use status_line::{
-    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction, StatusLineCellLayout,
-    StatusLineCellValueKind, StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState,
-    ThreadTurnDefaults,
+    CancellableActiveTurn, CancellableActiveTurnKind, SelectedRootUsage, StatusLineCellAction,
+    StatusLineCellLayout, StatusLineCellValueKind, StatusLineCellValueSegmentKind,
+    StatusLineProjection, StatusLineState, ThreadTurnDefaults,
 };
 use std::collections::BTreeMap;
 
@@ -987,6 +988,179 @@ fn token_usage_for_unknown_thread_is_ignored() {
 }
 
 #[test]
+fn complete_usage_tree_is_selected_without_changing_legacy_token_counter_rendering() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_legacy".to_string(),
+        token_usage_with_totals(250, 1_000, 200, 300, Some(1_000)),
+    ));
+    let tree = usage_tree_snapshot("thread_1", 1, UsageTreeAccountingStatus::Complete, 400);
+
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), tree.clone()));
+    assert_eq!(
+        state.selected_root_usage(Some("thread_1")),
+        SelectedRootUsage::Complete(&tree)
+    );
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "60% I: 800 IC: 200 O: 300"
+    );
+}
+
+#[test]
+fn legacy_partial_tree_is_retained_but_preserves_independent_legacy_fallback() {
+    let mut state = StatusLineState::default();
+    let legacy = token_usage_with_totals(250, 1_000, 200, 300, Some(1_000));
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_legacy".to_string(),
+        legacy.clone(),
+    ));
+    assert!(state.apply_usage_tree_snapshot(
+        Some("thread_1"),
+        usage_tree_snapshot("thread_1", 7, UsageTreeAccountingStatus::LegacyPartial, 900,),
+    ));
+
+    assert_eq!(
+        state.selected_root_usage(Some("thread_1")),
+        SelectedRootUsage::LegacyFallback(&legacy)
+    );
+    assert_eq!(
+        state.selected_root_usage(Some("thread_2")),
+        SelectedRootUsage::Unavailable
+    );
+
+    let mut partial_only = StatusLineState::default();
+    assert!(partial_only.apply_usage_tree_snapshot(
+        Some("thread_1"),
+        usage_tree_snapshot("thread_1", 7, UsageTreeAccountingStatus::LegacyPartial, 900,),
+    ));
+    assert_eq!(
+        partial_only.selected_root_usage(Some("thread_1")),
+        SelectedRootUsage::Unavailable
+    );
+    assert_eq!(
+        partial_only
+            .projection(Some("thread_1"), "ok")
+            .context_space_left,
+        "10% I: — IC: — O: —"
+    );
+}
+
+#[test]
+fn newer_partial_revision_replaces_complete_tree_but_not_legacy_fallback() {
+    let mut state = StatusLineState::default();
+    let legacy = token_usage_with_totals(250, 1_000, 200, 300, Some(1_000));
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_legacy".to_string(),
+        legacy.clone(),
+    ));
+    assert!(state.apply_usage_tree_snapshot(
+        Some("thread_1"),
+        usage_tree_snapshot("thread_1", 5, UsageTreeAccountingStatus::Complete, 500),
+    ));
+    assert!(state.apply_usage_tree_snapshot(
+        Some("thread_1"),
+        usage_tree_snapshot("thread_1", 6, UsageTreeAccountingStatus::LegacyPartial, 600),
+    ));
+
+    assert_eq!(
+        state.selected_root_usage(Some("thread_1")),
+        SelectedRootUsage::LegacyFallback(&legacy)
+    );
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "40% I: 800 IC: 200 O: 300"
+    );
+    assert!(!state.apply_usage_tree_snapshot(
+        Some("thread_1"),
+        usage_tree_snapshot("thread_1", 5, UsageTreeAccountingStatus::Complete, 500),
+    ));
+}
+
+#[test]
+fn retained_tree_without_a_usable_context_window_does_not_mix_with_legacy_context() {
+    let mut state = StatusLineState::default();
+    let legacy = token_usage_with_totals(250, 1_000, 200, 300, Some(1_000));
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_legacy".to_string(),
+        legacy,
+    ));
+
+    let mut missing_window =
+        usage_tree_snapshot("thread_1", 1, UsageTreeAccountingStatus::LegacyPartial, 900);
+    missing_window.self_usage.model_context_window = None;
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), missing_window));
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "Unknown I: 800 IC: 200 O: 300"
+    );
+
+    let mut nonpositive_window =
+        usage_tree_snapshot("thread_1", 2, UsageTreeAccountingStatus::LegacyPartial, 900);
+    nonpositive_window.self_usage.model_context_window = Some(0);
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), nonpositive_window));
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "Unknown I: 800 IC: 200 O: 300"
+    );
+}
+
+#[test]
+fn usage_tree_guard_accepts_only_newer_exact_selected_root_snapshots() {
+    let mut state = StatusLineState::default();
+    let root_a_v2 = usage_tree_snapshot("root_a", 2, UsageTreeAccountingStatus::Complete, 200);
+    let root_a_v3 = usage_tree_snapshot("root_a", 3, UsageTreeAccountingStatus::Complete, 300);
+
+    assert!(!state.apply_usage_tree_snapshot(None, root_a_v2.clone()));
+    assert!(!state.apply_usage_tree_snapshot(Some("root_b"), root_a_v2.clone()));
+    assert!(state.apply_usage_tree_snapshot(Some("root_a"), root_a_v2.clone()));
+    assert!(!state.apply_usage_tree_snapshot(Some("root_a"), root_a_v2.clone()));
+    assert!(!state.apply_usage_tree_snapshot(
+        Some("root_a"),
+        usage_tree_snapshot("root_a", 1, UsageTreeAccountingStatus::Complete, 100)
+    ));
+    assert!(state.apply_usage_tree_snapshot(Some("root_a"), root_a_v3.clone()));
+    assert_eq!(
+        state.selected_root_usage(Some("root_a")),
+        SelectedRootUsage::Complete(&root_a_v3)
+    );
+}
+
+#[test]
+fn usage_tree_cache_survives_selected_root_switches_without_accepting_late_cross_root_data() {
+    let mut state = StatusLineState::default();
+    let root_a = usage_tree_snapshot("root_a", 4, UsageTreeAccountingStatus::Complete, 400);
+    let root_b = usage_tree_snapshot("root_b", 2, UsageTreeAccountingStatus::Complete, 200);
+    assert!(state.apply_usage_tree_snapshot(Some("root_a"), root_a.clone()));
+    assert!(state.apply_usage_tree_snapshot(Some("root_b"), root_b.clone()));
+
+    assert!(!state.apply_usage_tree_snapshot(
+        Some("root_b"),
+        usage_tree_snapshot("root_a", 5, UsageTreeAccountingStatus::Complete, 500)
+    ));
+    assert_eq!(
+        state.selected_root_usage(Some("root_b")),
+        SelectedRootUsage::Complete(&root_b)
+    );
+    assert_eq!(
+        state.selected_root_usage(Some("root_a")),
+        SelectedRootUsage::Complete(&root_a)
+    );
+    assert_eq!(
+        state.selected_root_usage(None),
+        SelectedRootUsage::Unavailable
+    );
+}
+
+#[test]
 fn cached_token_usage_is_selected_by_thread() {
     let mut state = StatusLineState::default();
 
@@ -1353,6 +1527,35 @@ fn token_usage_snapshot(
         model_context_window,
         42,
     )
+}
+
+fn usage_tree_snapshot(
+    root_thread_id: &str,
+    revision: u64,
+    accounting_status: UsageTreeAccountingStatus,
+    last_input_tokens: i64,
+) -> UsageTreeSnapshot {
+    let breakdown = |input_tokens| UsageTreeTokenUsageBreakdown {
+        total_tokens: input_tokens + 35,
+        input_tokens,
+        cached_input_tokens: 20,
+        cache_write_input_tokens: 3,
+        output_tokens: 10,
+        reasoning_output_tokens: 5,
+    };
+    UsageTreeSnapshot {
+        schema_version: 1,
+        root_thread_id: root_thread_id.to_string(),
+        revision,
+        self_usage: UsageTreeSelfUsage {
+            total: breakdown(last_input_tokens + 100),
+            last: breakdown(last_input_tokens),
+            model_context_window: Some(1_000),
+        },
+        descendants_total: breakdown(0),
+        tree_total: breakdown(last_input_tokens + 100),
+        accounting_status,
+    }
 }
 
 fn workspace_state_with_snapshot(

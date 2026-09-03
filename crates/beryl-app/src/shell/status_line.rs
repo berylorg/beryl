@@ -1,6 +1,7 @@
 use beryl_backend::{
     AccountRateLimitsResponse, HardStopTarget, RateLimitSnapshot, RateLimitWindow,
     ThreadSessionMetadata, ThreadStatus, ThreadTokenUsage, TurnStartOptions,
+    UsageTreeAccountingStatus, UsageTreeSnapshot,
 };
 use beryl_model::conversation::{
     ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown,
@@ -25,6 +26,14 @@ pub(crate) struct StatusLineState {
     effective_turn_defaults_by_thread: HashMap<String, ThreadTurnDefaults>,
     turn_state_overrides_by_thread: HashMap<String, StatusLineTurnStateOverride>,
     token_usage_by_thread: HashMap<String, ThreadTokenUsage>,
+    usage_tree_by_root: HashMap<String, UsageTreeSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectedRootUsage<'a> {
+    Complete(&'a UsageTreeSnapshot),
+    LegacyFallback(&'a ThreadTokenUsage),
+    Unavailable,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -563,6 +572,53 @@ impl StatusLineState {
         true
     }
 
+    pub(crate) fn apply_usage_tree_snapshot(
+        &mut self,
+        selected_thread_id: Option<&str>,
+        snapshot: UsageTreeSnapshot,
+    ) -> bool {
+        let Some(selected_thread_id) = selected_thread_id else {
+            return false;
+        };
+        if snapshot.root_thread_id != selected_thread_id {
+            return false;
+        }
+        if self
+            .usage_tree_by_root
+            .get(selected_thread_id)
+            .is_some_and(|retained| retained.revision >= snapshot.revision)
+        {
+            return false;
+        }
+
+        self.usage_tree_by_root
+            .insert(selected_thread_id.to_string(), snapshot);
+        true
+    }
+
+    pub(crate) fn selected_root_usage(
+        &self,
+        selected_thread_id: Option<&str>,
+    ) -> SelectedRootUsage<'_> {
+        let Some(selected_thread_id) = selected_thread_id else {
+            return SelectedRootUsage::Unavailable;
+        };
+
+        if let Some(snapshot) = self.usage_tree_by_root.get(selected_thread_id)
+            && matches!(
+                snapshot.accounting_status,
+                UsageTreeAccountingStatus::Complete
+            )
+        {
+            return SelectedRootUsage::Complete(snapshot);
+        }
+
+        self.token_usage_by_thread
+            .get(selected_thread_id)
+            .map(SelectedRootUsage::LegacyFallback)
+            .unwrap_or(SelectedRootUsage::Unavailable)
+    }
+
     pub(crate) fn hydrate_token_usage_snapshots(
         &mut self,
         workspace_state: &WorkspaceConversationState,
@@ -676,14 +732,21 @@ impl StatusLineState {
 
     fn context_space_left_percent(&self, selected_thread_id: Option<&str>) -> Option<u8> {
         let selected_thread_id = selected_thread_id?;
-        let usage = self.token_usage_by_thread.get(selected_thread_id)?;
-
-        let model_context_window = usage.model_context_window?;
+        let (last_input_tokens, model_context_window) =
+            if let Some(snapshot) = self.usage_tree_by_root.get(selected_thread_id) {
+                (
+                    snapshot.self_usage.last.input_tokens,
+                    snapshot.self_usage.model_context_window?,
+                )
+            } else {
+                let usage = self.token_usage_by_thread.get(selected_thread_id)?;
+                (usage.last.input_tokens, usage.model_context_window?)
+            };
         if model_context_window <= 0 {
             return None;
         }
 
-        let input_tokens = usage.last.input_tokens.max(0);
+        let input_tokens = last_input_tokens.max(0);
         let remaining = (model_context_window - input_tokens).clamp(0, model_context_window);
         let percent = ((remaining as f64 / model_context_window as f64) * 100.0).round();
         Some(percent.clamp(0.0, 100.0) as u8)

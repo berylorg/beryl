@@ -367,6 +367,7 @@ pub(super) fn open_workspace_worker(
                 selected_thread_history_window: selected_thread_history.thread_history_window,
                 selected_thread_image_resolver: selected_thread_history.image_resolver,
                 selected_thread_session_metadata: selected_thread_history.thread_session_metadata,
+                selected_usage_tree_snapshot: selected_thread_history.usage_tree_snapshot,
                 surface_notice: selected_thread_history.surface_notice,
                 graph: surface_seed.graph,
                 graph_revision: surface_seed.graph_revision,
@@ -595,6 +596,7 @@ fn load_selected_thread_history(
             image_resolver: TranscriptImagePathResolver::default(),
             thread_history: None,
             thread_history_window: None,
+            usage_tree_snapshot: None,
             surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail.clone())),
         };
     }
@@ -626,6 +628,7 @@ fn load_selected_thread_history(
                 ),
                 thread_history: Some(activation.thread),
                 thread_history_window: Some(activation.history_window),
+                usage_tree_snapshot: activation.usage_tree_snapshot,
                 surface_notice: None,
             },
             Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
@@ -635,6 +638,7 @@ fn load_selected_thread_history(
                     image_resolver: TranscriptImagePathResolver::default(),
                     thread_history: None,
                     thread_history_window: None,
+                    usage_tree_snapshot: None,
                     surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail)),
                 }
             }
@@ -644,6 +648,7 @@ fn load_selected_thread_history(
                 image_resolver: TranscriptImagePathResolver::default(),
                 thread_history: None,
                 thread_history_window: None,
+                usage_tree_snapshot: None,
                 surface_notice: Some(SurfaceNotice::new("Thread activation failed", message)),
             },
         };
@@ -679,6 +684,7 @@ fn load_selected_thread_history(
                     ),
                     thread_history: Some(activation.thread),
                     thread_history_window: Some(activation.history_window),
+                    usage_tree_snapshot: activation.usage_tree_snapshot,
                     surface_notice: None,
                 },
                 Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
@@ -694,6 +700,7 @@ fn load_selected_thread_history(
                         image_resolver: TranscriptImagePathResolver::default(),
                         thread_history: None,
                         thread_history_window: None,
+                        usage_tree_snapshot: None,
                         surface_notice: strict
                             .then(|| SurfaceNotice::new("Thread requires rebind", detail)),
                     }
@@ -711,6 +718,7 @@ fn load_selected_thread_history(
                         image_resolver: TranscriptImagePathResolver::default(),
                         thread_history: None,
                         thread_history_window: None,
+                        usage_tree_snapshot: None,
                         surface_notice: strict
                             .then(|| SurfaceNotice::new("Thread activation failed", message)),
                     }
@@ -723,6 +731,7 @@ fn load_selected_thread_history(
             image_resolver: TranscriptImagePathResolver::default(),
             thread_history: None,
             thread_history_window: None,
+            usage_tree_snapshot: None,
             surface_notice: None,
         },
     }
@@ -762,6 +771,7 @@ struct SelectedThreadHistory {
     image_resolver: TranscriptImagePathResolver,
     thread_history: Option<ThreadInfo>,
     thread_history_window: Option<super::transcript_history::TranscriptHistoryWindow>,
+    usage_tree_snapshot: Option<beryl_backend::UsageTreeSnapshot>,
     surface_notice: Option<SurfaceNotice>,
 }
 

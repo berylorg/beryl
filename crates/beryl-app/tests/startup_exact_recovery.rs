@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use beryl_backend::{ThreadSessionResponse, ThreadTurnsListOptions, ThreadTurnsListResponse};
+use beryl_backend::{
+    JsonRpcError, ThreadSessionResponse, ThreadTurnsListOptions, ThreadTurnsListResponse,
+    UsageTreeReadOutcome,
+};
 use beryl_model::conversation::{
     ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
 };
@@ -126,6 +129,7 @@ fn eligible_persisted_request_activates_the_exact_backend_id() {
     assert_eq!(activation.thread.summary().id, "thread_exact");
     assert_eq!(backend.resume_calls, vec!["thread_exact"]);
     assert_eq!(backend.turn_calls, vec!["thread_exact"]);
+    assert_eq!(backend.usage_tree_calls, vec!["thread_exact"]);
 }
 
 #[test]
@@ -234,6 +238,7 @@ struct RecordingActivationBackend {
     resume_response: Option<ThreadSessionResponse>,
     resume_calls: Vec<String>,
     turn_calls: Vec<String>,
+    usage_tree_calls: Vec<String>,
 }
 
 impl RecordingActivationBackend {
@@ -242,6 +247,7 @@ impl RecordingActivationBackend {
             resume_response: Some(thread_response(thread_id, execution_target)),
             resume_calls: Vec::new(),
             turn_calls: Vec::new(),
+            usage_tree_calls: Vec::new(),
         }
     }
 }
@@ -256,6 +262,21 @@ impl ExistingThreadActivationBackend for RecordingActivationBackend {
         self.resume_response
             .take()
             .ok_or_else(|| "unexpected repeated metadata resume".to_string())
+    }
+
+    fn read_token_usage_tree(
+        &mut self,
+        thread_id: &str,
+        _: Duration,
+    ) -> Result<UsageTreeReadOutcome, Self::Error> {
+        self.usage_tree_calls.push(thread_id.to_string());
+        Ok(UsageTreeReadOutcome::UnsupportedMethod {
+            error: JsonRpcError {
+                code: -32601,
+                message: "method not found".to_string(),
+                data: None,
+            },
+        })
     }
 }
 

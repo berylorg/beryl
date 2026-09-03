@@ -2,10 +2,10 @@ use std::time::{Duration, Instant};
 
 use beryl_backend::{
     ManagedBackendSession, ThreadInfo, ThreadItem, ThreadSessionMetadata, ThreadSessionResponse,
-    ThreadSummary, ThreadTurnsListResponse,
+    ThreadSummary, ThreadTurnsListResponse, UsageTreeReadOutcome, UsageTreeSnapshot,
 };
 use beryl_model::workspace::WorkspaceId;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::memory_diagnostics::MemoryMilestone;
 
@@ -20,6 +20,7 @@ pub(crate) struct ExistingThreadActivation {
     pub thread: ThreadInfo,
     pub session_metadata: ThreadSessionMetadata,
     pub history_window: TranscriptHistoryWindow,
+    pub usage_tree_snapshot: Option<UsageTreeSnapshot>,
 }
 
 #[derive(Debug)]
@@ -34,6 +35,12 @@ pub(crate) trait ExistingThreadActivationBackend: TranscriptHistoryBackend {
         thread_id: &str,
         timeout: Duration,
     ) -> Result<ThreadSessionResponse, Self::Error>;
+
+    fn read_token_usage_tree(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<UsageTreeReadOutcome, Self::Error>;
 }
 
 impl ExistingThreadActivationBackend for ManagedBackendSession {
@@ -43,6 +50,14 @@ impl ExistingThreadActivationBackend for ManagedBackendSession {
         timeout: Duration,
     ) -> Result<ThreadSessionResponse, Self::Error> {
         ManagedBackendSession::resume_thread_metadata(self, thread_id, timeout)
+    }
+
+    fn read_token_usage_tree(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<UsageTreeReadOutcome, Self::Error> {
+        ManagedBackendSession::read_token_usage_tree(self, thread_id, timeout)
     }
 }
 
@@ -146,12 +161,39 @@ where
         worker_activation_total_ms = elapsed_ms(activation_started.elapsed()),
         "applied initial existing-thread history page"
     );
+    let usage_tree_snapshot = read_usage_tree_nonfatally(backend, thread_id, timeout);
 
     Ok(ExistingThreadActivation {
         thread,
         session_metadata,
         history_window,
+        usage_tree_snapshot,
     })
+}
+
+fn read_usage_tree_nonfatally<B>(
+    backend: &mut B,
+    thread_id: &str,
+    timeout: Duration,
+) -> Option<UsageTreeSnapshot>
+where
+    B: ExistingThreadActivationBackend,
+{
+    match backend.read_token_usage_tree(thread_id, timeout) {
+        Ok(UsageTreeReadOutcome::Snapshot(snapshot)) => Some(snapshot),
+        Ok(UsageTreeReadOutcome::UnsupportedMethod { .. }) => {
+            debug!(thread_id, "backend does not support usage-tree reads");
+            None
+        }
+        Err(error) => {
+            warn!(
+                thread_id,
+                error = %error,
+                "failed to read selected-root usage tree after thread activation"
+            );
+            None
+        }
+    }
 }
 
 fn validate_thread_identity(

@@ -1,8 +1,10 @@
 use std::time::Duration;
 
 use beryl_backend::{
-    AgentMessageItem, ImageGenerationItem, ProtocolPhase, ThreadItem, ThreadSessionResponse,
-    ThreadTurnsListOptions, ThreadTurnsListResponse, TurnInfo, TurnStatus,
+    AgentMessageItem, ImageGenerationItem, JsonRpcError, ProtocolPhase, ThreadItem,
+    ThreadSessionResponse, ThreadTurnsListOptions, ThreadTurnsListResponse, TurnInfo, TurnStatus,
+    UsageTreeAccountingStatus, UsageTreeReadOutcome, UsageTreeSelfUsage, UsageTreeSnapshot,
+    UsageTreeTokenUsageBreakdown,
 };
 use beryl_model::workspace::WorkspaceId;
 use serde_json::json;
@@ -50,6 +52,7 @@ fn direct_activation_uses_metadata_resume_and_bounded_latest_turn_page() {
     .unwrap();
 
     assert_eq!(backend.resume_calls, vec!["thread_a"]);
+    assert_eq!(backend.usage_tree_calls, vec!["thread_a"]);
     assert_eq!(backend.turn_calls.len(), 1);
     assert_eq!(backend.turn_calls[0].0, "thread_a");
     assert_eq!(
@@ -101,6 +104,76 @@ fn direct_activation_preserves_generated_image_saved_path_from_latest_page() {
     );
     assert!(item.result.is_none());
     assert!(activation.history_window.has_older_pages());
+    assert!(activation.usage_tree_snapshot.is_some());
+}
+
+#[test]
+fn direct_activation_carries_complete_or_partial_usage_tree_snapshot_nonfatally() {
+    for status in [
+        UsageTreeAccountingStatus::Complete,
+        UsageTreeAccountingStatus::LegacyPartial,
+    ] {
+        let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+        let mut backend = FakeActivationBackend::new(
+            thread_response("thread_a", r"C:\work\alpha"),
+            Ok(empty_turn_page()),
+        );
+        backend.usage_tree_response = Ok(UsageTreeReadOutcome::Snapshot(usage_tree_snapshot(
+            "thread_a", 3, status,
+        )));
+
+        let activation = activate_existing_thread_direct(
+            &mut backend,
+            &execution_target,
+            "thread_a",
+            "Thread A",
+            Duration::from_secs(5),
+        )
+        .unwrap();
+
+        assert_eq!(
+            activation
+                .usage_tree_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.accounting_status),
+            Some(status)
+        );
+    }
+}
+
+#[test]
+fn unsupported_or_failed_usage_tree_read_does_not_fail_activation() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let responses = [
+        Ok(UsageTreeReadOutcome::UnsupportedMethod {
+            error: JsonRpcError {
+                code: -32601,
+                message: "method not found".to_string(),
+                data: None,
+            },
+        }),
+        Err("usage read unavailable".to_string()),
+    ];
+
+    for response in responses {
+        let mut backend = FakeActivationBackend::new(
+            thread_response("thread_a", r"C:\work\alpha"),
+            Ok(empty_turn_page()),
+        );
+        backend.usage_tree_response = response;
+
+        let activation = activate_existing_thread_direct(
+            &mut backend,
+            &execution_target,
+            "thread_a",
+            "Thread A",
+            Duration::from_secs(5),
+        )
+        .unwrap();
+
+        assert!(activation.usage_tree_snapshot.is_none());
+        assert_eq!(backend.usage_tree_calls, vec!["thread_a"]);
+    }
 }
 
 #[test]
@@ -285,6 +358,8 @@ struct FakeActivationBackend {
     turn_response: Result<ThreadTurnsListResponse, String>,
     resume_calls: Vec<String>,
     turn_calls: Vec<(String, ThreadTurnsListOptions)>,
+    usage_tree_response: Result<UsageTreeReadOutcome, String>,
+    usage_tree_calls: Vec<String>,
 }
 
 impl FakeActivationBackend {
@@ -297,6 +372,12 @@ impl FakeActivationBackend {
             turn_response,
             resume_calls: Vec::new(),
             turn_calls: Vec::new(),
+            usage_tree_response: Ok(UsageTreeReadOutcome::Snapshot(usage_tree_snapshot(
+                "thread_a",
+                1,
+                UsageTreeAccountingStatus::Complete,
+            ))),
+            usage_tree_calls: Vec::new(),
         }
     }
 }
@@ -311,6 +392,15 @@ impl ExistingThreadActivationBackend for FakeActivationBackend {
         self.resume_response
             .take()
             .ok_or_else(|| "resume called more than once".to_string())
+    }
+
+    fn read_token_usage_tree(
+        &mut self,
+        thread_id: &str,
+        _: Duration,
+    ) -> Result<UsageTreeReadOutcome, Self::Error> {
+        self.usage_tree_calls.push(thread_id.to_string());
+        self.usage_tree_response.clone()
     }
 }
 
@@ -387,5 +477,41 @@ fn generated_image_turn(id: &str, image_id: &str, saved_path: &str) -> TurnInfo 
             saved_path: Some(saved_path.to_string()),
         })],
         error: None,
+    }
+}
+
+fn empty_turn_page() -> ThreadTurnsListResponse {
+    ThreadTurnsListResponse {
+        data: Vec::new(),
+        next_cursor: None,
+        backwards_cursor: None,
+    }
+}
+
+fn usage_tree_snapshot(
+    root_thread_id: &str,
+    revision: u64,
+    accounting_status: UsageTreeAccountingStatus,
+) -> UsageTreeSnapshot {
+    let breakdown = UsageTreeTokenUsageBreakdown {
+        total_tokens: 30,
+        input_tokens: 20,
+        cached_input_tokens: 5,
+        cache_write_input_tokens: 0,
+        output_tokens: 10,
+        reasoning_output_tokens: 2,
+    };
+    UsageTreeSnapshot {
+        schema_version: 1,
+        root_thread_id: root_thread_id.to_string(),
+        revision,
+        self_usage: UsageTreeSelfUsage {
+            total: breakdown.clone(),
+            last: breakdown.clone(),
+            model_context_window: Some(200_000),
+        },
+        descendants_total: breakdown.clone(),
+        tree_total: breakdown,
+        accounting_status,
     }
 }

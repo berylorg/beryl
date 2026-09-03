@@ -18,7 +18,7 @@ use beryl_backend::{
     DynamicToolCallRequest, HardStopCapabilities, ManagedBackendClientConnector,
     ManagedBackendProbeReport, ManagedBackendServer, ManagedBackendStartupProgress,
     ManagedBackendStartupStage, ThreadInfo, ThreadSessionMetadata, ThreadStatus, ThreadSummary,
-    TurnStartOptions, list_wsl_distros,
+    TurnStartOptions, TurnStreamEvent, list_wsl_distros,
 };
 use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadTokenUsageSnapshot, ConversationTurnId,
@@ -1652,6 +1652,7 @@ struct OpenedWorkspace {
     selected_thread_history_window: Option<TranscriptHistoryWindow>,
     selected_thread_image_resolver: TranscriptImagePathResolver,
     selected_thread_session_metadata: Option<ThreadSessionMetadata>,
+    selected_usage_tree_snapshot: Option<beryl_backend::UsageTreeSnapshot>,
     surface_notice: Option<SurfaceNotice>,
     graph: SemanticGraph,
     graph_revision: WorkspaceGraphRevision,
@@ -6154,6 +6155,11 @@ impl ShellView {
                     }) =>
                 {
                     updated = true;
+                }
+                TurnWorkerUpdate::Event(TurnStreamEvent::TokenUsageTreeUpdated { snapshot }) => {
+                    updated |= self
+                        .conversation_surface_mut()
+                        .is_some_and(|surface| surface.apply_usage_tree_snapshot(snapshot));
                 }
                 TurnWorkerUpdate::Event(beryl_backend::TurnStreamEvent::TokenUsageUpdated {
                     thread_id,

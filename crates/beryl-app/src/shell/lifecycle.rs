@@ -16,6 +16,17 @@ use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::memory_diagnostics::MemoryMilestone;
 use tracing::debug;
 
+impl ConversationSurfaceState {
+    pub(super) fn apply_usage_tree_snapshot(
+        &mut self,
+        snapshot: beryl_backend::UsageTreeSnapshot,
+    ) -> bool {
+        let selected_thread_id = self.selected_thread_id().map(str::to_string);
+        self.status_line
+            .apply_usage_tree_snapshot(selected_thread_id.as_deref(), snapshot)
+    }
+}
+
 impl ShellView {
     pub(super) fn finish_workspace_open(
         &mut self,
@@ -95,6 +106,7 @@ impl ShellView {
                 let known_threads = opened.known_threads.clone();
                 let inventory_workspace_id = loaded_workspace.workspace.id().clone();
                 let inventory_workspace_state = loaded_workspace.workspace_state.clone();
+                let selected_usage_tree_snapshot = opened.selected_usage_tree_snapshot;
                 let mut surface = match preserved_surface {
                     Some(mut surface) => {
                         if backend_reopen_selection_unvalidated {
@@ -134,6 +146,9 @@ impl ShellView {
                         self.activity_diagnostic_capture_sink(),
                     ),
                 };
+                if let Some(snapshot) = selected_usage_tree_snapshot {
+                    surface.apply_usage_tree_snapshot(snapshot);
+                }
                 if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation
                     && active_thread_id.is_some()
                 {
@@ -358,6 +373,7 @@ impl ShellView {
                 session_metadata,
                 history_window,
                 image_resolver,
+                usage_tree_snapshot,
             } => {
                 let ui_finish_started = Instant::now();
                 if let ShellState::Ready(ready) = &mut self.state {
@@ -407,6 +423,9 @@ impl ShellView {
                         "applied activated thread history to conversation surface"
                     );
                     surface.set_thread_session_metadata(session_metadata);
+                    if let Some(snapshot) = usage_tree_snapshot {
+                        surface.apply_usage_tree_snapshot(snapshot);
+                    }
                 }
                 MemoryMilestone::new("thread_activation_ui_applied")
                     .thread_id(summary.id.as_str())

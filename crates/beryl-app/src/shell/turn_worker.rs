@@ -90,6 +90,7 @@ pub(super) enum ThreadActivationOutcome {
         session_metadata: ThreadSessionMetadata,
         history_window: TranscriptHistoryWindow,
         image_resolver: TranscriptImagePathResolver,
+        usage_tree_snapshot: Option<beryl_backend::UsageTreeSnapshot>,
     },
     RequiresRebind {
         detail: String,
@@ -980,6 +981,7 @@ fn run_thread_activation_worker(
                     session_metadata: activation.session_metadata,
                     history_window: activation.history_window,
                     image_resolver,
+                    usage_tree_snapshot: activation.usage_tree_snapshot,
                 },
             ));
         }
