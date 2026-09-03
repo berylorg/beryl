@@ -18,25 +18,17 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 272: Correct Terminal Surface Capacity Settlement (finished)
+# Phase 273: Correct Presentation-Transition Publication Atomicity (finished)
 
-Accepted `gpui-text-input` commit `128336165065c0db350aa4c5eb960d5fc25ab509`. Deterministic
-terminal `GeometryTarget` publication capacity now uses accepted terminal settlement instead of
-retaining unchanged response custody for impossible retry. The one-byte-insufficient path returns
-public `Ok(())`, records the exact residency-capacity rejection, releases bounded custody,
-processing, request, job, and reservation state, emits the required object release, preserves the
-prior current surface, and becomes quiescent. Exact capacity 902,104 still publishes and charges the
-8 KiB display once. Fresh review rejected an initially self-fulfilling public-delivery assertion;
-the corrected regression pins successful public delivery, and a new independent semantic review
-passes both it and the focused prior-surface settlement regression.
-
-# Phase 273: Correct Presentation-Transition Publication Atomicity (pending)
-
-Prevent an accepted presentation-generation transition from becoming quiescent with only the prior
-generation's surface retained after `CandidateSurfaceIncomplete`. Preserve exact current-surface
-authority, bounded request and response ownership, coherent terminal publication, and existing loss
-semantics; prove the original generation-two pointer activation reproducer passes without weakening
-stale-surface rejection.
+Accepted `gpui-text-input` commit `1793f665fd938c1f6884f8493251ba30ffedc7be`.
+Exact-index presentation transitions now carry the retained surface's exact scroll position only
+when `ScrollAnchor` is the effective priority, while non-restoration caret, IME, directed-selection,
+and active-interaction targets clear the incompatible lower-priority preservation claim. The
+historical generation-two reproducer now publishes and activates the current object, preserves the
+exact `Superseded` loss and bounded quiescent ownership, and leaves stale-surface rejection intact.
+Fresh review rejected the first unconditional retained-scroll correction; distant active-interaction
+coexistence coverage closes that gap, and a new independent semantic review passes the corrected
+priority, lifecycle, publication, and stale-surface gates.
 
 # Phase 274: Requalify The Complete GPUI Text Input Focused Gate (pending)
 
