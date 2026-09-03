@@ -18,28 +18,17 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 271: Diagnose Large-Object Presentation Publication (finished)
+# Phase 272: Correct Terminal Surface Capacity Settlement (finished)
 
-Accepted `gpui-text-input` test-only commit
-`8a76d0ef74e6ba5c7e52fe1390d3e7ec51316a58`. The diagnostic binds the exact `GeometryTarget`
-page, release, and sole object-response sequence and proves the first mismatch at bounded-drive step
-two. Response custody admission peaks at 632,205 bytes under the 902,103-byte one-under limit, but
-terminal publication requires 902,104 bytes; production classifies the deterministic
-`SurfaceCapacity` result as retryable, restores the unchanged response to custody, and leaves the
-request and geometry job live without a surface or rejection. Repeated exact feature-enabled runs
-fail at that first transition instead of exhausting the 512-step driver, while preserving the exact-
-capacity publication and charge-once path. Fresh independent semantic review passes. This is a
-terminal-settlement defect, not duplicate large-display accounting, and Phase 272 owns its
-production correction.
-
-# Phase 272: Correct Terminal Surface Capacity Settlement (pending)
-
-When an accepted `GeometryTarget` object response reaches a deterministic terminal
-`SurfaceCapacity` result, settle the target coherently instead of retaining the unchanged response,
-request, and geometry job for an impossible retry. Record the exact terminal rejection, release all
-bounded custody and reservations, preserve prior-current-surface authority, and prove the one-byte-
-insufficient large-display case terminates while exact capacity still publishes and charges the 8
-KiB display once.
+Accepted `gpui-text-input` commit `128336165065c0db350aa4c5eb960d5fc25ab509`. Deterministic
+terminal `GeometryTarget` publication capacity now uses accepted terminal settlement instead of
+retaining unchanged response custody for impossible retry. The one-byte-insufficient path returns
+public `Ok(())`, records the exact residency-capacity rejection, releases bounded custody,
+processing, request, job, and reservation state, emits the required object release, preserves the
+prior current surface, and becomes quiescent. Exact capacity 902,104 still publishes and charges the
+8 KiB display once. Fresh review rejected an initially self-fulfilling public-delivery assertion;
+the corrected regression pins successful public delivery, and a new independent semantic review
+passes both it and the focused prior-surface settlement regression.
 
 # Phase 273: Correct Presentation-Transition Publication Atomicity (pending)
 
