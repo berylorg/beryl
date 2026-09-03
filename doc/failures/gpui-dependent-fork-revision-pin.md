@@ -347,6 +347,18 @@ work or use rebind, cancellation, unmount, an independent subject, or cap wideni
 The corrected fixture must create a real independent owner release that returns capacity while the
 same clipboard operation and prepared generation remain valid.
 
+Phase 262 replaced that stale fixture with a real same-binding, same-revision geometry-target owner
+on the same widget. The exact one-under prepared transition remained scheduled until settlement of
+the independently dispatched geometry page returned enough capacity; ordinary service then committed
+the original clipboard operation by exactly 832 bytes and one item without response redispatch or
+surface mutation. The proof retains the original clipboard key, accounts every delivered text and
+object response and its exact once-only release through terminal settlement, distinguishes the
+host-acknowledged geometry failure from outbound payload release, rejects duplicate callbacks, and
+ends with empty clipboard, response, dispatch, geometry, and payload custody under the configured
+high-water bound. The exact case passed repeatedly with adjacent lifecycle coverage and fresh
+independent review; accepted test-only `gpui-text-input` commit
+`40e63a1f2d3d7a155dfe81e04508f653aa072212` changes no production behavior.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed

@@ -18,29 +18,25 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 261: Diagnose Clipboard Prepared-Continuation Liveness (finished)
+# Phase 262: Reconcile Retryable Clipboard-Preparation Test Authority (finished)
 
-Established that the scheduled continuation is awake, eligible, serviced, and exactly rejected
-while the fixture permanently leaves its immutable prepared transition one byte over capacity.
-Two deterministic probes and fresh independent review confirmed correct refund and rescheduling,
-invalidating the production-correction premise; the owned fork remains clean at
-`be516b914573aa5e8126808a533f590b94f5efcf`.
+Replaced the permanently saturated fixture with same-binding, same-revision proof that an independent
+geometry target can release capacity while the original clipboard operation remains scheduled and
+then commits exactly once. Exact response, dispatch, release, identity, high-water, and quiescence
+evidence passed twice with adjacent cases and fresh independent review in accepted test-only
+`gpui-text-input` commit `40e63a1f2d3d7a155dfe81e04508f653aa072212`.
 
-# Phase 262: Reconcile Retryable Clipboard-Preparation Test Authority (wip)
+# Phase 263: Diagnose Rebind Restoration Quiescence (wip)
 
-Replace the stale saturated clipboard fixture with durable public-wrapper proof using a genuine
-same-operation capacity-return event from an independent bounded owner that can release without
-rebinding, cancelling, unmounting, or otherwise invalidating clipboard custody. Prove the exact
-one-under rejection remains scheduled, the owner release makes the already prepared transition fit,
-and ordinary service commits it once without response redispatch, duplication, or mutation. Retain
-exact response, dispatch, coordinator, prepared-step, cancellation, stale-key, payload-release,
-exact-fit, bounded high-water, and quiescence evidence; verify the corrected case twice with
-adjacent focused cases and fresh independent review. Do not absorb Phase 263 or later diagnoses.
-
-# Phase 263: Diagnose Rebind Restoration Quiescence (pending)
-
-Distinguish stale manual test driving from a pending-rebind lifecycle leak after restoration rejection
-and identify one exact correction owner before making a candidate.
+Reproduce the focused restoration lifecycle that remains nonquiescent after rebind and distinguish
+stale manual request driving from live widget-owned custody. Trace the exact restoration intent,
+validation, geometry job, request and response dispatch, cancellation or release, candidate,
+scheduled-continuation, and settlement owners across the public wrapper; identify the first owner
+that remains live or the exact stale fixture assumption, without making a production candidate.
+Require bounded deterministic evidence, unchanged prior publication, once-only rejection and stale
+delivery behavior, exact resource release, and eventual quiescence; rerun the focused diagnosis twice
+with the smallest adjacent restoration lifecycle cases and obtain fresh independent review. Do not
+absorb marked-composition publication or later diagnoses.
 
 # Phase 264: Diagnose Marked Successor Composition Publication (pending)
 
