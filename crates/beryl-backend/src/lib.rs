@@ -118,6 +118,26 @@
 //! ```
 //!
 //! ```no_run
+//! use std::time::Duration;
+//!
+//! use beryl_backend::{ManagedBackendLaunchOptions, ManagedBackendServer};
+//! use beryl_model::workspace::RuntimeMode;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let options = ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(
+//!     r"C:\build\codex-app-server.exe",
+//! )?;
+//! let (_server, _session, _report) = ManagedBackendServer::launch_and_probe_with_options(
+//!     RuntimeMode::HostWindows,
+//!     r"C:\work\beryl",
+//!     options,
+//!     Duration::from_secs(30),
+//! )?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use beryl_backend::BackendLaunchSpec;
 //! use beryl_model::workspace::WorkspaceId;

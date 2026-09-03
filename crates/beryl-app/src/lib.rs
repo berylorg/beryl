@@ -11,7 +11,10 @@
 //! use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 //!
 //! let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
-//! let bootstrap = AppBootstrap::new(Some(workspace));
+//! let bootstrap = AppBootstrap::new(Some(workspace))
+//!     .with_host_windows_standalone_app_server_executable(
+//!         r"C:\tools\codex-app-server.exe",
+//!     );
 //! let beryl_home_dir = bootstrap.beryl_home_dir().unwrap();
 //! let workspace_store = beryl_home_dir.workspace_persistence();
 //! let preferences_store = beryl_home_dir.gui_preferences_store();
@@ -119,7 +122,12 @@ mod workspace_graph_commit;
 mod workspace_image_assets;
 mod workspace_persistence;
 
-use std::{error::Error, fmt, path::PathBuf, time::Duration};
+use std::{
+    error::Error,
+    fmt,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use beryl_model::workspace::WorkspaceId;
 
@@ -129,6 +137,7 @@ pub const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct AppBootstrap {
     initial_workspace: Option<WorkspaceId>,
     beryl_home_dir: Option<BerylHomeDir>,
+    host_windows_standalone_app_server_executable: Option<PathBuf>,
     probe_timeout: Duration,
     memory_milestones_enabled: bool,
 }
@@ -168,6 +177,7 @@ impl AppBootstrap {
         Self {
             initial_workspace,
             beryl_home_dir: None,
+            host_windows_standalone_app_server_executable: None,
             probe_timeout: DEFAULT_PROBE_TIMEOUT,
             memory_milestones_enabled: false,
         }
@@ -190,6 +200,26 @@ impl AppBootstrap {
             .clone()
             .map(Ok)
             .unwrap_or_else(BerylHomeDir::from_environment)
+    }
+
+    /// Returns the bootstrap-supplied exact standalone app-server executable
+    /// for Host-Windows backend launches, if configured.
+    pub fn host_windows_standalone_app_server_executable(&self) -> Option<&Path> {
+        self.host_windows_standalone_app_server_executable
+            .as_deref()
+    }
+
+    /// Retains an exact standalone app-server executable for later
+    /// Host-Windows backend launch selection.
+    ///
+    /// Validation belongs to the backend launch boundary so WSL workspace
+    /// opens can ignore this Host-Windows-only setting.
+    pub fn with_host_windows_standalone_app_server_executable(
+        mut self,
+        executable: impl Into<PathBuf>,
+    ) -> Self {
+        self.host_windows_standalone_app_server_executable = Some(executable.into());
+        self
     }
 
     pub fn with_beryl_home_dir(

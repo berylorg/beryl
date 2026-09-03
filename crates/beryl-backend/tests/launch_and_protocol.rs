@@ -123,6 +123,11 @@ fn host_windows_exact_program_is_used_directly_for_stdio_and_websocket() {
     let program = PathBuf::from(r"C:\Program Files\Codex\codex.exe");
     let options = ManagedBackendLaunchOptions::with_exact_host_windows_program(program.clone())
         .expect("absolute Unicode exact program should be accepted");
+    assert_eq!(
+        options.exact_host_windows_program(),
+        Some(program.as_path())
+    );
+    assert_eq!(options.exact_host_windows_standalone_app_server(), None);
 
     let stdio = BackendLaunchSpec::managed_stdio_with_options(
         RuntimeMode::HostWindows,
@@ -175,6 +180,63 @@ fn host_windows_exact_program_is_used_directly_for_stdio_and_websocket() {
 }
 
 #[test]
+fn host_windows_exact_standalone_app_server_omits_only_cli_subcommand() {
+    let program = PathBuf::from(r"C:\build\codex-app-server.exe");
+    let options =
+        ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(program.clone())
+            .expect("absolute Unicode standalone app-server should be accepted");
+    assert_eq!(
+        options.exact_host_windows_standalone_app_server(),
+        Some(program.as_path())
+    );
+    assert_eq!(options.exact_host_windows_program(), None);
+
+    let stdio = BackendLaunchSpec::managed_stdio_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        options.clone(),
+    )
+    .expect("Host Windows stdio launch should accept a standalone app-server");
+    let stdio_command = stdio
+        .command_line()
+        .expect("Host Windows stdio command line should build");
+    assert_eq!(stdio_command.program(), program.to_str().unwrap());
+    assert_eq!(
+        stdio_command.args(),
+        &["--listen".to_string(), "stdio://".to_string()]
+    );
+    assert_eq!(stdio_command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+
+    let websocket = BackendLaunchSpec::managed_websocket_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        BackendWebSocketEndpoint::loopback(49152),
+        r"C:\tmp\beryl-token.txt",
+        options,
+    )
+    .expect("Host Windows WebSocket launch should accept a standalone app-server");
+    let websocket_command = websocket
+        .command_line()
+        .expect("Host Windows WebSocket command line should build");
+    assert_eq!(websocket_command.program(), program.to_str().unwrap());
+    assert_eq!(
+        websocket_command.args(),
+        &[
+            "--listen".to_string(),
+            "ws://127.0.0.1:49152".to_string(),
+            "--ws-auth".to_string(),
+            "capability-token".to_string(),
+            "--ws-token-file".to_string(),
+            r"C:\tmp\beryl-token.txt".to_string(),
+        ]
+    );
+    assert_eq!(
+        websocket_command.cwd(),
+        Some(&PathBuf::from(r"C:\work\beryl"))
+    );
+}
+
+#[test]
 fn exact_host_windows_program_rejects_empty_and_relative_paths() {
     assert!(matches!(
         ManagedBackendLaunchOptions::with_exact_host_windows_program(""),
@@ -186,6 +248,20 @@ fn exact_host_windows_program_rejects_empty_and_relative_paths() {
     ));
 }
 
+#[test]
+fn exact_host_windows_standalone_app_server_rejects_empty_and_relative_paths() {
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(""),
+        Err(ManagedBackendLaunchOptionsError::EmptyExactHostWindowsProgram)
+    ));
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(
+            "codex-app-server.exe"
+        ),
+        Err(ManagedBackendLaunchOptionsError::RelativeExactHostWindowsProgram { .. })
+    ));
+}
+
 #[cfg(unix)]
 #[test]
 fn exact_host_windows_program_rejects_non_unicode_paths_when_representable() {
@@ -193,6 +269,17 @@ fn exact_host_windows_program_rejects_non_unicode_paths_when_representable() {
 
     assert!(matches!(
         ManagedBackendLaunchOptions::with_exact_host_windows_program(program),
+        Err(ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram { .. })
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn exact_host_windows_standalone_app_server_rejects_non_unicode_paths_when_representable() {
+    let program = PathBuf::from(OsString::from_vec(vec![b'/', 0xff]));
+
+    assert!(matches!(
+        ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(program),
         Err(ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram { .. })
     ));
 }
@@ -223,6 +310,36 @@ fn exact_host_windows_program_is_rejected_for_wsl_before_managed_server_setup() 
     ));
 }
 
+#[test]
+fn exact_host_windows_standalone_app_server_is_rejected_for_wsl_before_launch_progress() {
+    let options = ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(
+        r"C:\build\codex-app-server.exe",
+    )
+    .expect("absolute Unicode standalone app-server should be accepted");
+    let mut progress = Vec::new();
+
+    let error = ManagedBackendServer::launch_and_probe_with_progress_and_options(
+        RuntimeMode::WslLinux {
+            distro_name: "Ubuntu".to_string(),
+        },
+        "/work/beryl",
+        options,
+        Duration::from_millis(100),
+        |update| progress.push(update.stage()),
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ManagedBackendError::InvalidLaunchOptions {
+            source: ManagedBackendLaunchOptionsError::ExactHostWindowsProgramUnsupportedRuntime {
+                runtime_mode: RuntimeMode::WslLinux { .. }
+            }
+        }
+    ));
+    assert!(progress.is_empty());
+}
+
 #[cfg(windows)]
 #[test]
 fn nonexistent_exact_host_windows_program_is_preserved_in_spawn_error() {
@@ -239,6 +356,31 @@ fn nonexistent_exact_host_windows_program_is_preserved_in_spawn_error() {
 
     let error = ManagedBackendSession::launch_and_probe(launch, Duration::from_millis(100))
         .expect_err("nonexistent exact program should fail to spawn");
+
+    assert!(matches!(
+        &error,
+        ManagedBackendError::Spawn { program, .. } if program == &program_text
+    ));
+    assert!(error.to_string().contains(&program_text));
+}
+
+#[cfg(windows)]
+#[test]
+fn nonexistent_exact_host_windows_standalone_app_server_is_preserved_in_spawn_error() {
+    let program = std::env::temp_dir().join("beryl phase2 nonexistent codex-app-server.exe");
+    let program_text = program.to_str().unwrap().to_string();
+    let options =
+        ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(program)
+            .expect("temporary-directory target should be an absolute Unicode path");
+    let launch = BackendLaunchSpec::managed_stdio_with_options(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        options,
+    )
+    .expect("Host Windows stdio launch should accept a standalone app-server");
+
+    let error = ManagedBackendSession::launch_and_probe(launch, Duration::from_millis(100))
+        .expect_err("nonexistent standalone app-server should fail to spawn");
 
     assert!(matches!(
         &error,

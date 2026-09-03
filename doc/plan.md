@@ -2,13 +2,9 @@
 
 Integrate Beryl V1 with the maintained Codex app-server fork without bundling or installing it: support explicit standalone Host-Windows launch, negotiate saved-path-only generated images, consume authoritative root usage-tree snapshots, and render current selected-root `main` and delegated-descendant `sub` token totals in the existing compact status line. Preserve legacy server and WSL usability by treating the fork extensions as optional, never estimating descendant usage, and retaining exact target/thread ownership and bounded resources.
 
-# Phase 1: Reconcile Beryl authority for fork integration (finished)
+# Phase 2: Launch an explicitly selected standalone app-server (finished)
 
-Authority now consistently defines the distinct standalone Host-Windows launch mode, optional fork capabilities, saved-path-only delivery, authoritative usage-tree semantics, and exact root/sub status presentation. Documentation checks and independent review passed with no findings.
-
-# Phase 2: Launch an explicitly selected standalone app-server (pending)
-
-Add and verify the host-only CLI/bootstrap/backend launch path that invokes an exact standalone `codex-app-server` executable without the `app-server` subcommand, with target-local validation and failure isolation.
+The exact standalone Host-Windows launch path now flows from CLI through application bootstrap to target-local backend launch, invokes the server without the CLI-only subcommand, preserves existing Codex CLI and WSL forms, and fails invalid or missing configured paths without fallback. Formatting, 57 backend launch/protocol tests, 10 bootstrap/propagation tests, 14 CLI tests, and the all-targets workspace check passed; repeat independent review found no issues. Real-fork launch remains Phase 7 integration acceptance.
 
 # Phase 3: Negotiate saved-path-only image delivery (pending)
 

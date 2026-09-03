@@ -37,10 +37,32 @@ impl BackendCommandLineError {
 ///
 /// By default, Host Windows launches resolve `codex` through `PATH`. Callers
 /// that need a known executable may opt into an absolute exact Host Windows
-/// program path with [`Self::with_exact_host_windows_program`].
+/// Codex CLI path with [`Self::with_exact_host_windows_program`], or select an
+/// exact standalone app-server executable with
+/// [`Self::with_exact_host_windows_standalone_app_server`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ManagedBackendLaunchOptions {
-    exact_host_windows_program: Option<PathBuf>,
+    host_windows_program: HostWindowsProgram,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum HostWindowsProgram {
+    #[default]
+    CodexCliFromPath,
+    ExactCodexCli(PathBuf),
+    ExactStandaloneAppServer(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HostWindowsAppServerCommand {
+    CodexCli,
+    Standalone,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SelectedHostWindowsProgram {
+    program: String,
+    app_server_command: HostWindowsAppServerCommand,
 }
 
 /// An invalid managed backend launch customization.
@@ -66,13 +88,41 @@ impl ManagedBackendLaunchOptions {
         validate_exact_host_windows_program(&program)?;
 
         Ok(Self {
-            exact_host_windows_program: Some(program),
+            host_windows_program: HostWindowsProgram::ExactCodexCli(program),
         })
     }
 
-    /// Returns the configured exact Host Windows executable, if any.
+    /// Selects an absolute standalone Host Windows app-server executable.
+    ///
+    /// Unlike [`Self::with_exact_host_windows_program`], the selected program
+    /// is invoked directly and does not receive the Codex CLI `app-server`
+    /// subcommand.
+    pub fn with_exact_host_windows_standalone_app_server(
+        program: impl Into<PathBuf>,
+    ) -> Result<Self, ManagedBackendLaunchOptionsError> {
+        let program = program.into();
+        validate_exact_host_windows_program(&program)?;
+
+        Ok(Self {
+            host_windows_program: HostWindowsProgram::ExactStandaloneAppServer(program),
+        })
+    }
+
+    /// Returns the configured exact Host Windows Codex CLI executable, if any.
     pub fn exact_host_windows_program(&self) -> Option<&Path> {
-        self.exact_host_windows_program.as_deref()
+        match &self.host_windows_program {
+            HostWindowsProgram::ExactCodexCli(program) => Some(program),
+            HostWindowsProgram::CodexCliFromPath
+            | HostWindowsProgram::ExactStandaloneAppServer(_) => None,
+        }
+    }
+
+    /// Returns the configured exact standalone Host Windows app-server executable, if any.
+    pub fn exact_host_windows_standalone_app_server(&self) -> Option<&Path> {
+        match &self.host_windows_program {
+            HostWindowsProgram::ExactStandaloneAppServer(program) => Some(program),
+            HostWindowsProgram::CodexCliFromPath | HostWindowsProgram::ExactCodexCli(_) => None,
+        }
     }
 
     /// Verifies that this customization is valid for `runtime_mode`.
@@ -80,7 +130,10 @@ impl ManagedBackendLaunchOptions {
         &self,
         runtime_mode: &RuntimeMode,
     ) -> Result<(), ManagedBackendLaunchOptionsError> {
-        let Some(program) = &self.exact_host_windows_program else {
+        let Some(program) = self
+            .exact_host_windows_program()
+            .or_else(|| self.exact_host_windows_standalone_app_server())
+        else {
             return Ok(());
         };
         validate_exact_host_windows_program(program)?;
@@ -96,19 +149,36 @@ impl ManagedBackendLaunchOptions {
         Ok(())
     }
 
-    fn selected_host_windows_program(&self) -> Result<String, ManagedBackendLaunchOptionsError> {
-        self.exact_host_windows_program
-            .as_ref()
-            .map(|program| {
-                program.to_str().map(str::to_owned).ok_or_else(|| {
-                    ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram {
-                        path: program.clone(),
-                    }
+    fn selected_host_windows_program(
+        &self,
+    ) -> Result<SelectedHostWindowsProgram, ManagedBackendLaunchOptionsError> {
+        match &self.host_windows_program {
+            HostWindowsProgram::CodexCliFromPath => Ok(SelectedHostWindowsProgram {
+                program: "codex".to_string(),
+                app_server_command: HostWindowsAppServerCommand::CodexCli,
+            }),
+            HostWindowsProgram::ExactCodexCli(program) => Ok(SelectedHostWindowsProgram {
+                program: exact_host_windows_program_as_string(program)?,
+                app_server_command: HostWindowsAppServerCommand::CodexCli,
+            }),
+            HostWindowsProgram::ExactStandaloneAppServer(program) => {
+                Ok(SelectedHostWindowsProgram {
+                    program: exact_host_windows_program_as_string(program)?,
+                    app_server_command: HostWindowsAppServerCommand::Standalone,
                 })
-            })
-            .transpose()
-            .map(|program| program.unwrap_or_else(|| "codex".to_string()))
+            }
+        }
     }
+}
+
+fn exact_host_windows_program_as_string(
+    program: &Path,
+) -> Result<String, ManagedBackendLaunchOptionsError> {
+    program.to_str().map(str::to_owned).ok_or_else(|| {
+        ManagedBackendLaunchOptionsError::NonUnicodeExactHostWindowsProgram {
+            path: program.to_path_buf(),
+        }
+    })
 }
 
 fn validate_exact_host_windows_program(
@@ -158,6 +228,7 @@ pub struct BackendLaunchSpec {
     runtime_mode: RuntimeMode,
     cwd: PathBuf,
     host_windows_program: String,
+    host_windows_app_server_command: HostWindowsAppServerCommand,
     transport: BackendTransport,
     runtime_cleanup: Option<BackendRuntimeCleanup>,
 }
@@ -200,10 +271,12 @@ impl BackendLaunchSpec {
     ) -> Result<Self, ManagedBackendLaunchOptionsError> {
         options.validate_for_runtime(&runtime_mode)?;
         let runtime_cleanup = BackendRuntimeCleanup::for_runtime_mode(&runtime_mode);
+        let selected_host_windows_program = options.selected_host_windows_program()?;
         Ok(Self {
             runtime_mode,
             cwd,
-            host_windows_program: options.selected_host_windows_program()?,
+            host_windows_program: selected_host_windows_program.program,
+            host_windows_app_server_command: selected_host_windows_program.app_server_command,
             transport,
             runtime_cleanup,
         })
@@ -299,7 +372,7 @@ impl BackendLaunchSpec {
             BackendTransport::ManagedStdio => match &self.runtime_mode {
                 RuntimeMode::HostWindows => Ok(BackendCommandLine::new(
                     self.host_windows_program.clone(),
-                    managed_stdio_codex_args(),
+                    managed_stdio_host_windows_args(self.host_windows_app_server_command),
                     Some(self.cwd.clone()),
                 )),
                 RuntimeMode::WslLinux { distro_name } => {
@@ -324,7 +397,10 @@ impl BackendLaunchSpec {
             BackendTransport::ManagedWebSocket(config) => match &self.runtime_mode {
                 RuntimeMode::HostWindows => Ok(BackendCommandLine::new(
                     self.host_windows_program.clone(),
-                    managed_websocket_codex_args(config),
+                    managed_websocket_host_windows_args(
+                        config,
+                        self.host_windows_app_server_command,
+                    ),
                     Some(self.cwd.clone()),
                 )),
                 RuntimeMode::WslLinux { distro_name } => {
@@ -443,6 +519,13 @@ fn managed_stdio_codex_args() -> Vec<String> {
     ]
 }
 
+fn managed_stdio_host_windows_args(app_server_command: HostWindowsAppServerCommand) -> Vec<String> {
+    managed_host_windows_app_server_args(
+        app_server_command,
+        vec!["--listen".to_string(), MANAGED_STDIO_LISTEN_URL.to_string()],
+    )
+}
+
 fn managed_stdio_wsl_shell_command(
     cleanup: &WslProcessGroupCleanup,
 ) -> Result<String, BackendCommandLineError> {
@@ -459,6 +542,33 @@ fn managed_websocket_codex_args(config: &BackendWebSocketConfig) -> Vec<String> 
         "--ws-token-file".to_string(),
         config.backend_token_file_path.display().to_string(),
     ]
+}
+
+fn managed_websocket_host_windows_args(
+    config: &BackendWebSocketConfig,
+    app_server_command: HostWindowsAppServerCommand,
+) -> Vec<String> {
+    managed_host_windows_app_server_args(
+        app_server_command,
+        vec![
+            "--listen".to_string(),
+            config.endpoint.listen_url(),
+            "--ws-auth".to_string(),
+            WEBSOCKET_AUTH_MODE.to_string(),
+            "--ws-token-file".to_string(),
+            config.backend_token_file_path.display().to_string(),
+        ],
+    )
+}
+
+fn managed_host_windows_app_server_args(
+    app_server_command: HostWindowsAppServerCommand,
+    mut app_server_args: Vec<String>,
+) -> Vec<String> {
+    if app_server_command == HostWindowsAppServerCommand::CodexCli {
+        app_server_args.insert(0, "app-server".to_string());
+    }
+    app_server_args
 }
 
 fn managed_websocket_wsl_shell_command(

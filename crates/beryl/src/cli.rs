@@ -26,6 +26,13 @@ pub struct BootstrapCli {
     beryl_home_dir: Option<PathBuf>,
 
     #[arg(
+        long = "host-app-server-executable",
+        value_name = "PATH",
+        help = "Use PATH as the exact standalone Host-Windows codex-app-server executable"
+    )]
+    host_app_server_executable: Option<PathBuf>,
+
+    #[arg(
         long = "probe-timeout-ms",
         value_name = "MS",
         default_value = "10000",
@@ -116,6 +123,10 @@ impl BootstrapCli {
 
     pub fn beryl_home_dir(&self) -> Option<&Path> {
         self.beryl_home_dir.as_deref()
+    }
+
+    pub fn host_app_server_executable(&self) -> Option<&Path> {
+        self.host_app_server_executable.as_deref()
     }
 
     pub fn probe_timeout_ms(&self) -> u64 {

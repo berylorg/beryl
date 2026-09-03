@@ -15,12 +15,28 @@ fn bootstrap_defaults_to_startup_resolution() {
 
     assert_eq!(bootstrap.initial_workspace(), None);
     assert_eq!(bootstrap.probe_timeout(), DEFAULT_PROBE_TIMEOUT);
+    assert_eq!(
+        bootstrap.host_windows_standalone_app_server_executable(),
+        None
+    );
     assert!(!bootstrap.memory_milestones_enabled());
     assert_eq!(
         bootstrap.beryl_home_dir().unwrap(),
         BerylHomeDir::from_environment().unwrap()
     );
     assert_native_window_title(&bootstrap.window_title(), "Beryl");
+}
+
+#[test]
+fn bootstrap_retains_raw_host_windows_standalone_app_server_executable() {
+    let executable = PathBuf::from(r"relative folder\codex-app-server.exe");
+    let bootstrap = AppBootstrap::new(None)
+        .with_host_windows_standalone_app_server_executable(executable.clone());
+
+    assert_eq!(
+        bootstrap.host_windows_standalone_app_server_executable(),
+        Some(executable.as_path())
+    );
 }
 
 #[test]
@@ -131,6 +147,60 @@ fn bootstrap_rejects_zero_probe_timeout() {
     assert_eq!(error, AppBootstrapError::ZeroProbeTimeout);
 }
 
+#[test]
+fn workspace_open_forwards_standalone_host_app_server_without_wsl_fallback() {
+    let shell_source = include_str!("../src/shell.rs");
+    let discovery_source = include_str!("../src/shell/discovery.rs");
+    let begin_workspace_open_body = rust_function_body(
+        shell_source,
+        "fn begin_open_target_with_thread_selection_and_intent(",
+    );
+    let launch_options_body = rust_function_body(
+        discovery_source,
+        "fn managed_backend_launch_options_for_execution_target(",
+    );
+    let open_workspace_worker_body =
+        rust_function_body(discovery_source, "pub(super) fn open_workspace_worker(");
+
+    assert!(begin_workspace_open_body.contains(
+        "self\n            .bootstrap\n            .host_windows_standalone_app_server_executable()"
+    ));
+    assert!(begin_workspace_open_body.contains(
+        "workspace_persistence_flush,\n                host_windows_standalone_app_server_executable,\n                timeout,"
+    ));
+
+    assert!(
+        launch_options_body
+            .contains("(beryl_model::workspace::RuntimeMode::HostWindows, Some(executable))")
+    );
+    assert_eq!(
+        launch_options_body
+            .matches("with_exact_host_windows_standalone_app_server")
+            .count(),
+        1,
+        "only a Host-Windows target with a configured path may select the standalone executable"
+    );
+    assert!(launch_options_body.contains("_ => Ok(ManagedBackendLaunchOptions::default())"));
+
+    let options_call = open_workspace_worker_body
+        .find("let launch_options = managed_backend_launch_options_for_execution_target(")
+        .expect("workspace open should derive options from its resolved execution target");
+    let options_result = open_workspace_worker_body[options_call..]
+        .find("host_windows_standalone_app_server_executable.as_deref(),\n        )?;")
+        .expect("invalid Host-Windows standalone options must propagate with ?");
+    let launch_call = open_workspace_worker_body[options_call..]
+        .find("ManagedBackendServer::launch_and_probe_with_progress_and_options(")
+        .expect("workspace open should launch with the selected options");
+    assert!(
+        options_result < launch_call,
+        "standalone-option validation must complete before backend launch without a PATH fallback"
+    );
+    assert!(
+        open_workspace_worker_body[options_call + launch_call..]
+            .contains("launch_options,\n            timeout,")
+    );
+}
+
 fn unique_temp_dir(label: &str) -> tempdir_support::TestTempDir {
     tempdir_support::temp_dir(format!("beryl-app-bootstrap-{label}-"))
 }
@@ -163,4 +233,31 @@ fn assert_native_window_title(title: &str, base_title: &str) {
                     .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')),
         "build identity should be unknown or a lowercase twelve-hex commit with an optional dirty suffix: {build_id}"
     );
+}
+
+fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
+    let signature_index = source
+        .find(function_signature)
+        .unwrap_or_else(|| panic!("missing function {function_signature}"));
+    let after_signature = &source[signature_index..];
+    let open_offset = after_signature
+        .find('{')
+        .unwrap_or_else(|| panic!("missing body for function {function_signature}"));
+    let body_start = signature_index + open_offset;
+    let mut depth = 0usize;
+
+    for (offset, character) in source[body_start..].char_indices() {
+        match character {
+            '{' => depth = depth.saturating_add(1),
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return &source[body_start..body_start + offset + character.len_utf8()];
+                }
+            }
+            _ => {}
+        }
+    }
+
+    panic!("unterminated body for function {function_signature}");
 }

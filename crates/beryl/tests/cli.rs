@@ -14,6 +14,7 @@ fn default_parse_uses_picker_default_timeout_and_default_home() {
     assert!(matches!(cli.target(), RuntimeTarget::Picker));
     assert_eq!(cli.probe_timeout_ms(), DEFAULT_PROBE_TIMEOUT_MS);
     assert_eq!(cli.beryl_home_dir(), None);
+    assert_eq!(cli.host_app_server_executable(), None);
     assert!(!cli.memory_milestones());
     assert!(!cli.diagnostic_target_stdio());
     assert!(!cli.diagnostic_acceptance_startup_gate());
@@ -27,6 +28,7 @@ fn help_lists_beryl_home_options() {
 
     let help = error.to_string();
     assert!(help.contains("-H, --beryl-home-dir <PATH>"));
+    assert!(help.contains("--host-app-server-executable <PATH>"));
     assert!(help.contains("--host-path <PATH>"));
     assert!(help.contains("--wsl-distro <DISTRO>"));
     assert!(help.contains("--wsl-path <PATH>"));
@@ -105,6 +107,31 @@ fn diagnostic_target_stdio_accepts_explicit_beryl_home() {
 }
 
 #[test]
+fn standalone_host_app_server_executable_is_retained_without_target_restrictions() {
+    let executable = r"C:\Program Files\Beryl\codex-app-server.exe";
+    let host = parse(&["--host-app-server-executable", executable]).unwrap();
+    assert_eq!(
+        host.host_app_server_executable(),
+        Some(Path::new(executable))
+    );
+
+    let wsl = parse(&[
+        "--wsl-distro",
+        "Ubuntu",
+        "--wsl-path",
+        "/work",
+        "--host-app-server-executable",
+        executable,
+    ])
+    .unwrap();
+    assert_eq!(
+        wsl.host_app_server_executable(),
+        Some(Path::new(executable))
+    );
+    assert!(matches!(wsl.target(), RuntimeTarget::Wsl { .. }));
+}
+
+#[test]
 fn hidden_acceptance_gate_requires_diagnostic_target_and_stays_out_of_help() {
     let error = parse(&["--diagnostic-acceptance-startup-gate"]).unwrap_err();
     assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
@@ -130,6 +157,7 @@ fn value_flags_reject_missing_values() {
         "--wsl-path",
         "--probe-timeout-ms",
         "--beryl-home-dir",
+        "--host-app-server-executable",
         "-H",
     ] {
         let error = parse(&[flag]).unwrap_err();

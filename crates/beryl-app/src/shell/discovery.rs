@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -9,9 +9,10 @@ use std::{
 };
 
 use beryl_backend::{
-    ManagedBackendError, ManagedBackendServer, ManagedBackendSession, ManagedBackendStartupStage,
-    ThreadInfo, ThreadItem, ThreadListBudget, ThreadListCollectionStatus, ThreadListOptions,
-    ThreadSummary, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_path,
+    ManagedBackendError, ManagedBackendLaunchOptions, ManagedBackendServer, ManagedBackendSession,
+    ManagedBackendStartupStage, ThreadInfo, ThreadItem, ThreadListBudget,
+    ThreadListCollectionStatus, ThreadListOptions, ThreadSummary, WorkspacePathError,
+    canonicalize_host_path, canonicalize_wsl_path,
 };
 use beryl_model::{
     semantic_graph::SemanticGraph,
@@ -102,6 +103,22 @@ impl BlockedState {
     }
 }
 
+fn managed_backend_launch_options_for_execution_target(
+    execution_target: &WorkspaceId,
+    host_windows_standalone_app_server_executable: Option<&Path>,
+) -> Result<ManagedBackendLaunchOptions, ManagedBackendError> {
+    match (
+        execution_target.runtime_mode(),
+        host_windows_standalone_app_server_executable,
+    ) {
+        (beryl_model::workspace::RuntimeMode::HostWindows, Some(executable)) => {
+            ManagedBackendLaunchOptions::with_exact_host_windows_standalone_app_server(executable)
+                .map_err(Into::into)
+        }
+        _ => Ok(ManagedBackendLaunchOptions::default()),
+    }
+}
+
 pub(super) fn open_workspace_worker(
     workspace_persistence: BerylWorkspacePersistence,
     workspace_id: BerylWorkspaceId,
@@ -110,6 +127,7 @@ pub(super) fn open_workspace_worker(
     intent: WorkspaceOpenIntent,
     cancellation: WorkspaceOpenCancellation,
     workspace_persistence_flush: WorkspacePersistenceFlush,
+    host_windows_standalone_app_server_executable: Option<PathBuf>,
     timeout: Duration,
     sender: mpsc::Sender<WorkspaceUpdate>,
 ) {
@@ -241,15 +259,22 @@ pub(super) fn open_workspace_worker(
         .workspace_id(workspace_id.as_str())
         .runtime(execution_target.runtime_mode().display_name())
         .log();
-    let result = match ManagedBackendServer::launch_and_probe_with_progress(
-        execution_target.runtime_mode().clone(),
-        execution_target.canonical_path().to_path_buf(),
-        timeout,
-        |progress| {
-            last_stage = progress.stage();
-            let _ = sender.send(WorkspaceUpdate::Progress(progress));
-        },
-    ) {
+    let result = match (|| -> Result<_, ManagedBackendError> {
+        let launch_options = managed_backend_launch_options_for_execution_target(
+            &execution_target,
+            host_windows_standalone_app_server_executable.as_deref(),
+        )?;
+        ManagedBackendServer::launch_and_probe_with_progress_and_options(
+            execution_target.runtime_mode().clone(),
+            execution_target.canonical_path().to_path_buf(),
+            launch_options,
+            timeout,
+            |progress| {
+                last_stage = progress.stage();
+                let _ = sender.send(WorkspaceUpdate::Progress(progress));
+            },
+        )
+    })() {
         Ok((mut server, mut session, report)) => {
             MemoryMilestone::new("backend_launch_probe_done")
                 .workspace_id(workspace_id.as_str())

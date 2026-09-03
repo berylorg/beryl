@@ -29,6 +29,11 @@ fn run(cli: BootstrapCli) -> Result<()> {
     if let Some(beryl_home_dir) = cli.beryl_home_dir() {
         bootstrap = bootstrap.with_beryl_home_dir(beryl_home_dir.to_path_buf())?;
     }
+    if let Some(host_app_server_executable) = cli.host_app_server_executable() {
+        bootstrap = bootstrap.with_host_windows_standalone_app_server_executable(
+            host_app_server_executable.to_path_buf(),
+        );
+    }
 
     let beryl_home_dir_label = cli
         .beryl_home_dir()

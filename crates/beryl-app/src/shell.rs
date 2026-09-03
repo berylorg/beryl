@@ -5411,6 +5411,10 @@ impl ShellView {
         )));
 
         let timeout = self.bootstrap.probe_timeout();
+        let host_windows_standalone_app_server_executable = self
+            .bootstrap
+            .host_windows_standalone_app_server_executable()
+            .map(PathBuf::from);
         let cancellation = WorkspaceOpenCancellation::new();
         self.workspace_open_cancellation = Some(cancellation.clone());
         let workspace_persistence_flush = self.workspace_persistence_queue.flush();
@@ -5428,6 +5432,7 @@ impl ShellView {
                 intent,
                 cancellation,
                 workspace_persistence_flush,
+                host_windows_standalone_app_server_executable,
                 timeout,
                 sender,
             )
