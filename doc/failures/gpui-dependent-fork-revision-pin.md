@@ -333,6 +333,20 @@ passed twice with adjacent lifecycle, custody, capacity, and failure evidence pl
 review; accepted test-only `gpui-text-input` commit
 `be516b914573aa5e8126808a533f590b94f5efcf` leaves rebind quiescence and later diagnoses unchanged.
 
+Phase 261 invalidated the apparent production-liveness defect. Exact tracing showed every forced
+draw entered response-custody service, re-prepared the same coordinator generation, rejected its
+`EmitProvenance` transition against the unchanged cap, refunded the frame credit, and rescheduled.
+The fixture retained 2,179,279 current bytes, replaced a 2,099,072-byte coordinator charge with a
+2,099,904-byte prepared peak, and therefore required 2,180,111 bytes under a permanently lowered
+2,180,110-byte cap. Its reported zero spent work reflected the refund, not skipped servicing, and
+capacity never returned. Two deterministic temporary probes plus fresh independent review excluded
+a missing wake, ineligible continuation, incorrect prepared charge, and service-loop exclusion; all
+probe changes were removed and the owned fork remains clean at
+`be516b914573aa5e8126808a533f590b94f5efcf`. Do not change production admission to accept one-under
+work or use rebind, cancellation, unmount, an independent subject, or cap widening as retry proof.
+The corrected fixture must create a real independent owner release that returns capacity while the
+same clipboard operation and prepared generation remain valid.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
