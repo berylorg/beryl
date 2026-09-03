@@ -18,29 +18,22 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 257: Requalify Retarget Capacity Fixtures (finished)
+# Phase 258: Correct Restoration Geometry Response Routing (finished)
 
-Added an opt-in one-way test-support limit seam and replaced obsolete fixed caps with same-subject
-measured exact-fit and one-under proofs for real wheel and rendered-scrollbar retargets. Both cases
-passed twice with three capacity-boundary cases, default/release exclusion, feature-enabled checks,
-and fresh independent review. Accepted `gpui-text-input` commit:
-`a7edd9f7cbfbd3a01eb4de93b58fa1e28c55f3c4`.
+Preserved the already admitted live viewport through restoration completion so matching index
+evidence alone creates its target successor, and corrected the stale Phase 255 failure driver. The
+five routing cases passed twice with retry, adjacent release and stale-delivery evidence, and fresh
+independent review. Accepted `gpui-text-input` commit:
+`83d848b2792892cdb91f221e272ac5c437b76ced`.
 
-# Phase 258: Correct Restoration Geometry Response Routing (wip)
+# Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (wip)
 
-Trace and correct only the shared post-validation restoration index-to-target response-kind and
-lifecycle boundary responsible for the five proven failures. Preserve exact request/job ownership,
-publish a successor only from the matching target and index evidence, settle the compact restoration
-seed exactly once, and release every response, geometry job, and retained custody on success,
-rejection, cancellation, stale delivery, or terminal failure without disturbing the prior coherent
-surface or unrelated work. Do not restore purpose-only ownership or combine this correction with
-same-anchor gap publication. Verify all five corrected cases twice, the Phase 255 end-to-end retry
-completion boundary, directly adjacent routing and release evidence, and fresh independent review.
-
-# Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (pending)
-
-Correct only restored streaming-layout gap conversion so published neighbor-qualified source
-positions retain exact before, between, and after same-anchor object geometry.
+Trace and correct only restored streaming-layout gap conversion so neighbor-qualified published
+source positions retain exact before, between, and after geometry for multiple objects at one byte
+anchor. Preserve Phase 258's exact index-to-target ownership and once-only restoration settlement,
+and do not absorb restoration dispatch cancellation or later quiescence work. Verify every proven
+same-anchor restoration case twice, directly adjacent composite-position and publication evidence,
+bounded residency and custody release on rejection or stale delivery, and fresh independent review.
 
 # Phase 260: Preserve Restoration Dispatch Cancellation (pending)
 

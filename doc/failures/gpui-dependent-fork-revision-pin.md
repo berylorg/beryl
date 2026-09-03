@@ -302,6 +302,16 @@ Both wheel and rendered-scrollbar cases passed twice with their capacity evidenc
 independent review; accepted `gpui-text-input` commit
 `a7edd9f7cbfbd3a01eb4de93b58fa1e28c55f3c4` changes no ordinary production behavior.
 
+Phase 258 proved that restoration completion overwrote the already admitted live viewport with the
+construction-time extent. Prepaint then started an ordinary target job before the queued restoration
+index response arrived, so that exact index response reached a target owner and failed as the wrong
+input kind. The accepted correction preserves the live desired viewport, letting matching index
+evidence alone create the restoration target successor; the stale Phase 255 fixture now fails the
+legitimate active index owner before proving fresh retry admission. All five routing cases passed
+twice with retry, adjacent release and stale-delivery evidence, and fresh independent review;
+accepted `gpui-text-input` commit `83d848b2792892cdb91f221e272ac5c437b76ced` leaves same-anchor gap
+publication, dispatch cancellation, and rebind quiescence to their existing phases.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
