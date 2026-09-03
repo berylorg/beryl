@@ -18,27 +18,23 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 258: Correct Restoration Geometry Response Routing (finished)
+# Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (finished)
 
-Preserved the already admitted live viewport through restoration completion so matching index
-evidence alone creates its target successor, and corrected the stale Phase 255 failure driver. The
-five routing cases passed twice with retry, adjacent release and stale-delivery evidence, and fresh
-independent review. Accepted `gpui-text-input` commit:
-`83d848b2792892cdb91f221e272ac5c437b76ced`.
+Selected the earliest validated restored position sharing the scroll byte as the streaming-layout
+anchor, so before, between, and after gaps all enter the coherent surface without changing the
+restored scroll position. The exact cases passed twice with adjacent composite, publication,
+rejection, stale-custody, and routing evidence plus fresh independent review. Accepted
+`gpui-text-input` commit: `0314104b866785df4049bf62fb3481a44aafb74f`.
 
-# Phase 259: Publish Restored Same-Anchor Object Gaps Exactly (wip)
+# Phase 260: Preserve Restoration Dispatch Cancellation (wip)
 
-Trace and correct only restored streaming-layout gap conversion so neighbor-qualified published
-source positions retain exact before, between, and after geometry for multiple objects at one byte
-anchor. Preserve Phase 258's exact index-to-target ownership and once-only restoration settlement,
-and do not absorb restoration dispatch cancellation or later quiescence work. Verify every proven
-same-anchor restoration case twice, directly adjacent composite-position and publication evidence,
-bounded residency and custody release on rejection or stale delivery, and fresh independent review.
-
-# Phase 260: Preserve Restoration Dispatch Cancellation (pending)
-
-Correct restoration rejection release so Select All cancels the exact dispatched geometry page once
-before ordinary target realization proceeds.
+Trace and correct only restoration rejection release so Select All that supersedes a post-validation
+restoration cancels the exact dispatched geometry page once before ordinary target realization
+proceeds. Preserve the prior coherent surface, Phase 258 routing ownership, Phase 259 composite-gap
+anchor, once-only restoration settlement, and exact late-response release; do not absorb rebind
+quiescence or later diagnostics. Verify the proven Select All case twice, directly adjacent
+pre-dispatch and post-dispatch cancellation, late-response, ordinary-target, custody-release, and
+bounded-capacity evidence, plus fresh independent review.
 
 # Phase 261: Reconcile Retryable Clipboard-Preparation Test Authority (pending)
 

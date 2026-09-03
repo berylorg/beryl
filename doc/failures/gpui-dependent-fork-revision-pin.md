@@ -312,6 +312,17 @@ twice with retry, adjacent release and stale-delivery evidence, and fresh indepe
 accepted `gpui-text-input` commit `83d848b2792892cdb91f221e272ac5c437b76ced` leaves same-anchor gap
 publication, dispatch cancellation, and rebind quiescence to their existing phases.
 
+Phase 259 proved that restoration validated every compact source position but always began streaming
+target realization at the restored scroll position. When selection, caret, and scroll occupied the
+before, between, and after gaps of one same-anchor object run, an after-all scroll anchor skipped the
+earlier object and before-all gap during forward realization. The accepted fixed-size correction
+selects the earliest validated seed position sharing the scroll byte at all three mounted and
+detached restoration target-entry paths without changing the restored scroll position, retaining an
+object run, or changing custody. The exact cases passed twice with composite geometry, publication,
+rejection, stale-response, bounded-capacity, and prior-routing evidence plus fresh independent review;
+accepted `gpui-text-input` commit `0314104b866785df4049bf62fb3481a44aafb74f` leaves dispatch
+cancellation and rebind quiescence to their existing phases.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
