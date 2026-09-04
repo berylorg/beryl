@@ -18,23 +18,16 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 274: Diagnose The Rejected Complete GPUI Text Input Focused Gate (finished)
+# Phase 275: Correct Anchored Target Checkpoint Coverage (finished)
 
-At accepted `gpui-text-input` commit `1793f665fd938c1f6884f8493251ba30ffedc7be`,
-historical run `cbffaec9-a316-4788-a863-bc335d06951f` reproduced the exact seven-test library
-baseline and current run `b9889bff-dc08-4e4b-85ae-a7a36854660b` passed all 18 prepublication
-cases. Default focused run `5b8c9f01-015b-4e74-8ce1-901e84585511` passed 177 of 181 cases and
-rejected four. Independent read-only diagnosis separated one anchored-checkpoint production defect,
-two obsolete clipboard fixture expectations, and one marked-successor publication defect; existing
-package and widget authority fully determines all four correction boundaries.
-
-# Phase 275: Correct Anchored Target Checkpoint Coverage (pending)
-
-Use one exact target-predecessor rule in direct and prepared-transition paths: choose no checkpoint
-later than either the effective viewport-leading block or the active anchor, and never rewrite the
-requested target block to a later checkpoint. Publish the earlier wrapped objects, presentations,
-gaps, and terminal page exactly once, and reconcile the contradictory diagnostic assertions with the
-authoritative coherent-publication result.
+Accepted `gpui-text-input` commit `3cc95b52433523b95d6634ead0392871ad9e8693`
+preserves the requested target while direct and prepared paths share the exact viewport-leading and
+active-anchor predecessor rule. Per-fragment retention now publishes required earlier inline objects,
+presentations, gaps, and the terminal page exactly once without broadening trailing-only public text;
+terminal publication capacity and fragment-edge ownership are causally exact. Independent review
+passed after exact geometry run `e6144b6b-4fb4-485c-b164-d100f78009f7` passed 40 of 40, range-widget
+run `8493fbf8-d9a1-438f-a615-349c40812b77` retained only the three Phase 276–278 failures, and library
+run `1e11fe9c-32cd-49d6-8d9a-48be7352aedc` retained only six accepted historical failures.
 
 # Phase 276: Reconcile The Deferred Clipboard-Capacity Integration Fixture (pending)
 
