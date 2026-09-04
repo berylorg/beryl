@@ -1,11 +1,15 @@
 # Scope
 
-Integrate Beryl V1 with the maintained Codex app-server fork without bundling or installing it: support explicit standalone Host-Windows launch, negotiate saved-path-only generated images, consume authoritative root usage-tree snapshots, and render current selected-root `main` and delegated-descendant `sub` token totals in the existing compact status line. Preserve legacy server and WSL usability by treating the fork extensions as optional, never estimating descendant usage, and retaining exact target/thread ownership and bounded resources.
+Integrate Beryl V1 with the maintained Codex app-server fork without bundling or installing it: support explicit standalone Host-Windows launch, negotiate saved-path-only generated images, consume authoritative root usage-tree snapshots, and render current selected-root `main` and delegated-descendant `sub` token totals in the existing compact status line. Keep fork-owned accounting out of upstream SQLite schema and migration namespaces. Preserve legacy server and WSL usability by treating the fork extensions as optional, never estimating descendant usage, and retaining exact target/thread ownership and bounded resources.
 
-# Phase 6: Render root plus descendant token counters (finished)
+# Phase 7: Isolate fork-owned usage accounting storage (finished)
 
-The Context segment now renders the exact compact root-and-descendant accounting suffix from complete schema-version-1 trees, with independent legacy/unknown fallbacks, saturating uncached-input subtraction, negative clamping, and existing k/M/B formatting. Bootstrap state, value segments, thread isolation, partial or unsupported schemas, and root-only context occupancy are covered; 66 focused tests, formatting, and the serialized all-workspace/all-target/all-feature check passed, and final independent review found no issues.
+Fork-owned usage accounting now uses its own configured-home database and migration ledger, with upstream-state isolation, accounting-local atomicity, root-scoped response ownership, bounded multi-runtime revision observation, initialization-outage fallback, and usage-first retryable deletion. Focused verification passed for `codex-state` (8), `codex-core` (3), and app-server (2), together with formatting and scoped diff checks; the Windows Core run used a command-scoped larger test stack after the default harness stack overflowed. Independent completion review found no blocking or non-blocking issues under the lightweight v0.1 rigor contract.
 
-# Phase 7: Verify the integrated Beryl/fork boundary (pending)
+# Phase 8: Cut over the prototype shared migration safely (pending)
 
-Build and exercise Beryl against the exact standalone fork artifact, covering startup selection, initialize capability, read/update routing, selected-thread isolation, legacy/partial states, descendant changes, and saved-path image delivery without inline result bytes.
+Import any exact pre-separation fork migration-53 accounting state into the separate database and remove only the checksum-proven fork schema and ledger entry from `state_5.sqlite`. Prove semantic preservation, interruption-safe idempotent retry, refusal of ambiguous or upstream-owned version 53, and the declared exclusion of concurrently running old modified binaries.
+
+# Phase 9: Verify the integrated Beryl/fork boundary (pending)
+
+Build the corrected standalone fork artifact and exercise it through Beryl's supported Host-Windows override against the active shared Codex home. Cover startup selection, initialize capability, usage-tree read/update and reconnect routing, selected-thread isolation, complete/partial states, descendant changes, vanilla-CAS coexistence, and saved-path image delivery without inline result bytes; finish the retained opt-in live smoke without starting a model turn.
