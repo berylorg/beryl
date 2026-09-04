@@ -18,25 +18,13 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 276: Reconcile The Deferred Clipboard-Capacity Integration Fixture (finished)
+# Phase 277: Requalify Legacy Clipboard Saturation For Accepted Terminal Unwind (finished)
 
-Accepted `gpui-text-input` commit `d4bba63d` updates only the exact-fit/one-under fixture for the
-authoritative post-transfer scheduled-capacity state. Focused nextest run
-`48997980-0da6-4323-974d-fdc3d749b366` passed 1 of 1 and independent review passed with exact retained
-dispatch, no redispatch, precise clipboard ownership, rebind-failure preservation, and complete
-single cancellation and release verified without production changes.
-
-# Phase 277: Requalify Legacy Clipboard Saturation For Retained Response Custody (blocked)
-
-Replace the obsolete legacy `Busy` expectation with accepted delivery into exact retained response
-custody. Prove one unchanged dispatched key, no release or redispatch, internal resumption after the
-competing residency charge is freed, and complete single unwind before any independent Copy begins.
-
-Blocked because the exact one-under fixture accepts, transfers, and releases the object response
-before provenance-page emission reaches the capacity boundary. The surviving state has no response
-custody or clipboard dispatch and resumes coordinator-derived scheduled work, matching the current
-design authority. A fixture-only change therefore cannot prove the required retained-response
-custody; the acceptance boundary needs Operator authority or the production lifecycle must change.
+Accepted `gpui-text-input` commit `656a83a` requalifies the legacy saturated Cut for accepted empty-
+object delivery, exact terminal unwind, independent geometry settlement, and distinct Copy slot
+reuse without production changes. Exact nextest runs `084b21c2-ecea-4618-883e-eeff8bf2413c` and
+`2c2c6318-44f5-447b-adb1-18031f9c50f2` passed; adjacent lifecycle run
+`ae86fee2-0942-4dd5-83da-3a19ae356f61` passed 2 of 2, and independent review passed with no findings.
 
 # Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (pending)
 

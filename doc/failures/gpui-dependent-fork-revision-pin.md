@@ -250,8 +250,8 @@ Phase 253 partitioned the 25 unchanged focused failures without creating a sourc
 correction owners are proven. Four stale malformed-index fixtures still assume index-first rather
 than target-first realization; one attached-surface helper incorrectly requires full quiescence
 before explicit dismissal; two retarget fixtures use an obsolete fixed surface-item cap; and one
-legacy clipboard fixture expects `Busy` and unwind where the authoritative wrapper retains exact
-retryable preparation custody. Production correction owners are `fail_page` geometry/restoration
+legacy clipboard fixture expects `Busy` and unwind where the authoritative wrapper retains
+retryable clipboard progress. Production correction owners are `fail_page` geometry/restoration
 closure, restoration index-to-target response routing, restored same-anchor gap publication, and
 restoration dispatch cancellation. Those owners cover seventeen failures in total.
 
@@ -370,10 +370,21 @@ payload and event invariance for late and duplicate responses, and the fixed dis
 and passed the exact case with three adjacent restoration cases twice in fresh independent release
 review. No production behavior changed, and the remaining focused diagnoses stay independent.
 
+Phase 277 invalidated both narrower assumptions that its legacy fixture reaches retained response
+custody or post-transfer scheduled work. The empty object response is accepted and released with its
+dispatch while the initial geometry request still owns the only pending page slot; the clipboard
+operation then has zero response, dispatch, coordinator and scheduled-continuation custody. Accepted
+test-only `gpui-text-input` commit `656a83aea6b0913f370af0fbfc5ae28b00984cbc` instead proves once-only
+release, the exact empty-owner accounting baseline, terminal unwind, independent geometry
+settlement, and complete slot reuse by a distinct Copy. Exact runs passed twice with adjacent
+lifecycle coverage and fresh independent review. Separate focused fixtures own response-admission
+retry and post-transfer scheduled resumption; do not extend response lifetime, retain nonexistent
+coordinator work or manufacture an unreachable public state through a test seam.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  Phase 252's completed no-publish qualification, and Phases 253 through 275's focused partition,
+  Phase 252's completed no-publish qualification, and Phases 253 through 277's focused partition,
   correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
