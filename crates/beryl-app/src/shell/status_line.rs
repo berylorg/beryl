@@ -609,6 +609,7 @@ impl StatusLineState {
                 snapshot.accounting_status,
                 UsageTreeAccountingStatus::Complete
             )
+            && snapshot.schema_version == 1
         {
             return SelectedRootUsage::Complete(snapshot);
         }
@@ -772,15 +773,19 @@ impl StatusLineState {
         }
 
         let token_counters = self.token_counters(selected_thread_id);
-        for (label, value) in [
-            ("I:", token_counters.input),
-            ("IC:", token_counters.cached_input),
-            ("O:", token_counters.output),
-        ] {
-            plain_text.push_str(&format!(" {label} {value}"));
-            value_segments.push(StatusLineCellValueSegment::label(label));
-            value_segments.push(StatusLineCellValueSegment::value(value));
-        }
+        plain_text.push_str(&format!(
+            " I/IC/O: main: {} sub: {}",
+            token_counters.main, token_counters.sub
+        ));
+        value_segments.push(StatusLineCellValueSegment::label("I/IC/O:"));
+        value_segments.push(StatusLineCellValueSegment::label("main:"));
+        value_segments.push(StatusLineCellValueSegment::value(
+            token_counters.main.to_string(),
+        ));
+        value_segments.push(StatusLineCellValueSegment::label("sub:"));
+        value_segments.push(StatusLineCellValueSegment::value(
+            token_counters.sub.to_string(),
+        ));
 
         ContextStatus {
             plain_text,
@@ -789,23 +794,28 @@ impl StatusLineState {
     }
 
     fn token_counters(&self, selected_thread_id: Option<&str>) -> TokenCounters {
-        let Some(selected_thread_id) = selected_thread_id else {
-            return TokenCounters::unavailable();
-        };
-        let Some(total) = self
-            .token_usage_by_thread
-            .get(selected_thread_id)
-            .map(|usage| &usage.total)
-        else {
-            return TokenCounters::unavailable();
-        };
-
-        let input = total.input_tokens.max(0);
-        let cached_input = total.cached_input_tokens.max(0);
-        TokenCounters {
-            input: format_compact_token_count(input.saturating_sub(cached_input)),
-            cached_input: format_compact_token_count(cached_input),
-            output: format_compact_token_count(total.output_tokens.max(0)),
+        match self.selected_root_usage(selected_thread_id) {
+            SelectedRootUsage::Complete(snapshot) => TokenCounters {
+                main: TokenCounterGroup::from_counts(
+                    snapshot.self_usage.total.input_tokens,
+                    snapshot.self_usage.total.cached_input_tokens,
+                    snapshot.self_usage.total.output_tokens,
+                ),
+                sub: TokenCounterGroup::from_counts(
+                    snapshot.descendants_total.input_tokens,
+                    snapshot.descendants_total.cached_input_tokens,
+                    snapshot.descendants_total.output_tokens,
+                ),
+            },
+            SelectedRootUsage::LegacyFallback(usage) => TokenCounters {
+                main: TokenCounterGroup::from_counts(
+                    usage.total.input_tokens,
+                    usage.total.cached_input_tokens,
+                    usage.total.output_tokens,
+                ),
+                sub: TokenCounterGroup::unavailable(),
+            },
+            SelectedRootUsage::Unavailable => TokenCounters::unavailable(),
         }
     }
 
@@ -849,7 +859,12 @@ impl StatusLineState {
 }
 
 struct TokenCounters {
-    input: String,
+    main: TokenCounterGroup,
+    sub: TokenCounterGroup,
+}
+
+struct TokenCounterGroup {
+    uncached_input: String,
     cached_input: String,
     output: String,
 }
@@ -857,10 +872,39 @@ struct TokenCounters {
 impl TokenCounters {
     fn unavailable() -> Self {
         Self {
-            input: TOKEN_COUNTER_UNAVAILABLE.to_string(),
+            main: TokenCounterGroup::unavailable(),
+            sub: TokenCounterGroup::unavailable(),
+        }
+    }
+}
+
+impl TokenCounterGroup {
+    fn from_counts(input: i64, cached_input: i64, output: i64) -> Self {
+        let uncached_input = input.saturating_sub(cached_input).max(0);
+        let cached_input = cached_input.max(0);
+        Self {
+            uncached_input: format_compact_token_count(uncached_input),
+            cached_input: format_compact_token_count(cached_input),
+            output: format_compact_token_count(output.max(0)),
+        }
+    }
+
+    fn unavailable() -> Self {
+        Self {
+            uncached_input: TOKEN_COUNTER_UNAVAILABLE.to_string(),
             cached_input: TOKEN_COUNTER_UNAVAILABLE.to_string(),
             output: TOKEN_COUNTER_UNAVAILABLE.to_string(),
         }
+    }
+}
+
+impl std::fmt::Display for TokenCounterGroup {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}/{}/{}",
+            self.uncached_input, self.cached_input, self.output
+        )
     }
 }
 
@@ -893,11 +937,22 @@ pub(crate) fn format_compact_token_count(value: i64) -> String {
 
 impl StatusLineProjection {
     pub(crate) fn unknown() -> Self {
+        let token_counters = TokenCounters::unavailable();
         Self {
             model: UNKNOWN_LABEL.to_string(),
             reasoning_effort: UNKNOWN_LABEL.to_string(),
-            context_space_left: UNKNOWN_LABEL.to_string(),
-            context_value_segments: vec![StatusLineCellValueSegment::value(UNKNOWN_LABEL)],
+            context_space_left: format!(
+                "{UNKNOWN_LABEL} I/IC/O: main: {} sub: {}",
+                token_counters.main, token_counters.sub
+            ),
+            context_value_segments: vec![
+                StatusLineCellValueSegment::value(UNKNOWN_LABEL),
+                StatusLineCellValueSegment::label("I/IC/O:"),
+                StatusLineCellValueSegment::label("main:"),
+                StatusLineCellValueSegment::value(token_counters.main.to_string()),
+                StatusLineCellValueSegment::label("sub:"),
+                StatusLineCellValueSegment::value(token_counters.sub.to_string()),
+            ],
             last_turn_state: UNKNOWN_LABEL.to_string(),
             model_reasoning_available: false,
             context_operation_available: false,

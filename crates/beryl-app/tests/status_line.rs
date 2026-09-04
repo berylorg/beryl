@@ -27,8 +27,36 @@ fn status_projection_uses_unknown_fallbacks() {
 
     assert_eq!(projection.model, "Unknown");
     assert_eq!(projection.reasoning_effort, "Unknown");
-    assert_eq!(projection.context_space_left, "Unknown I: — IC: — O: —");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
+    );
     assert_eq!(projection.last_turn_state, "Unknown");
+}
+
+#[test]
+fn unknown_status_projection_uses_context_counter_shape_and_segments() {
+    let projection = StatusLineProjection::unknown();
+
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
+    );
+    assert_eq!(
+        projection
+            .context_value_segments
+            .iter()
+            .map(|segment| (segment.text.as_str(), segment.kind))
+            .collect::<Vec<_>>(),
+        [
+            ("Unknown", StatusLineCellValueSegmentKind::Value),
+            ("I/IC/O:", StatusLineCellValueSegmentKind::Label),
+            ("main:", StatusLineCellValueSegmentKind::Label),
+            ("—/—/—", StatusLineCellValueSegmentKind::Value),
+            ("sub:", StatusLineCellValueSegmentKind::Label),
+            ("—/—/—", StatusLineCellValueSegmentKind::Value),
+        ]
+    );
 }
 
 #[test]
@@ -654,7 +682,7 @@ fn compact_token_count_formats_base_1000_boundaries_without_overflow() {
 }
 
 #[test]
-fn context_status_appends_selected_thread_cumulative_token_counters_in_order() {
+fn context_status_appends_selected_root_counters_after_rate_limits_in_order() {
     let mut state = StatusLineState::default();
     assert!(state.apply_token_usage(
         true,
@@ -667,7 +695,7 @@ fn context_status_appends_selected_thread_cumulative_token_counters_in_order() {
     let projection = state.projection(Some("thread_1"), "ok");
     assert_eq!(
         projection.context_space_left,
-        "75% Daily 85% Weekly 45% I: 1k IC: 450 O: 1M"
+        "75% Daily 85% Weekly 45% I/IC/O: main: 1k/450/1M sub: —/—/—"
     );
     let specs = status_line::status_line_cell_specs(projection, true, true, true);
     let segments = &specs[1].value_segments;
@@ -677,7 +705,16 @@ fn context_status_appends_selected_thread_cumulative_token_counters_in_order() {
             .map(|segment| segment.text.as_str())
             .collect::<Vec<_>>(),
         [
-            "75%", "Daily", "85%", "Weekly", "45%", "I:", "1k", "IC:", "450", "O:", "1M"
+            "75%",
+            "Daily",
+            "85%",
+            "Weekly",
+            "45%",
+            "I/IC/O:",
+            "main:",
+            "1k/450/1M",
+            "sub:",
+            "—/—/—"
         ]
     );
 }
@@ -694,7 +731,23 @@ fn token_counters_use_totals_and_remain_independent_from_context_percentage() {
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown I: 0 IC: 175 O: 0"
+        "Unknown I/IC/O: main: 0/175/0 sub: —/—/—"
+    );
+}
+
+#[test]
+fn token_counters_subtract_raw_negative_cached_input_before_display_clamping() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_1".to_string(),
+        token_usage_with_totals(0, 100, -50, 0, Some(100)),
+    ));
+
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "100% I/IC/O: main: 150/0/0 sub: —/—/—"
     );
 }
 
@@ -715,19 +768,19 @@ fn token_counters_follow_selected_thread_and_restore_without_draft_inheritance()
 
     assert_eq!(
         state.projection(Some("thread_a"), "ok").context_space_left,
-        "90% I: 800 IC: 200 O: 300"
+        "90% I/IC/O: main: 800/200/300 sub: —/—/—"
     );
     assert_eq!(
         state.projection(Some("thread_b"), "ok").context_space_left,
-        "60% I: 60 IC: 0 O: 11"
+        "60% I/IC/O: main: 60/0/11 sub: —/—/—"
     );
     assert_eq!(
         state.projection(None, "ok").context_space_left,
-        "Unknown I: — IC: — O: —"
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
     assert_eq!(
         state.projection(Some("thread_a"), "ok").context_space_left,
-        "90% I: 800 IC: 200 O: 300"
+        "90% I/IC/O: main: 800/200/300 sub: —/—/—"
     );
 }
 
@@ -773,7 +826,10 @@ fn context_percent_uses_selected_thread_last_input_tokens() {
 
     let projection = state.projection(Some("thread_1"), "ok");
 
-    assert_eq!(projection.context_space_left, "75% I: 900 IC: 0 O: 0");
+    assert_eq!(
+        projection.context_space_left,
+        "75% I/IC/O: main: 900/0/0 sub: —/—/—"
+    );
 }
 
 #[test]
@@ -791,7 +847,7 @@ fn context_status_appends_available_account_rate_limit_remaining_percentages() {
 
     assert_eq!(
         projection.context_space_left,
-        "75% Daily 85% Weekly 45% I: 0 IC: 0 O: 0"
+        "75% Daily 85% Weekly 45% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -810,7 +866,7 @@ fn context_status_exposes_rate_limit_labels_as_value_segments() {
     let specs = status_line::status_line_cell_specs(projection, true, true, true);
     let segments = &specs[1].value_segments;
 
-    assert_eq!(segments.len(), 11);
+    assert_eq!(segments.len(), 10);
     assert_eq!(segments[0].kind, StatusLineCellValueSegmentKind::Value);
     assert_eq!(segments[0].text, "75%");
     assert_eq!(segments[1].kind, StatusLineCellValueSegmentKind::Label);
@@ -821,12 +877,16 @@ fn context_status_exposes_rate_limit_labels_as_value_segments() {
     assert_eq!(segments[3].text, "Weekly");
     assert_eq!(segments[4].kind, StatusLineCellValueSegmentKind::Value);
     assert_eq!(segments[4].text, "45%");
-    assert_eq!(segments[5].text, "I:");
-    assert_eq!(segments[6].text, "0");
-    assert_eq!(segments[7].text, "IC:");
-    assert_eq!(segments[8].text, "0");
-    assert_eq!(segments[9].text, "O:");
-    assert_eq!(segments[10].text, "0");
+    assert_eq!(segments[5].text, "I/IC/O:");
+    assert_eq!(segments[5].kind, StatusLineCellValueSegmentKind::Label);
+    assert_eq!(segments[6].text, "main:");
+    assert_eq!(segments[6].kind, StatusLineCellValueSegmentKind::Label);
+    assert_eq!(segments[7].text, "0/0/0");
+    assert_eq!(segments[7].kind, StatusLineCellValueSegmentKind::Value);
+    assert_eq!(segments[8].text, "sub:");
+    assert_eq!(segments[8].kind, StatusLineCellValueSegmentKind::Label);
+    assert_eq!(segments[9].text, "—/—/—");
+    assert_eq!(segments[9].kind, StatusLineCellValueSegmentKind::Value);
 }
 
 #[test]
@@ -846,14 +906,14 @@ fn account_rate_limit_read_uses_multi_bucket_view_and_notifications_are_partial(
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 45% I: — IC: — O: —"
+        "Unknown Daily 85% Weekly 45% I/IC/O: main: —/—/— sub: —/—/—"
     );
 
     assert!(state.apply_account_rate_limits(rate_limits(None, Some((60, 10080)))));
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 40% I: — IC: — O: —"
+        "Unknown Daily 85% Weekly 40% I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -891,7 +951,7 @@ fn account_rate_limit_read_selects_main_bucket_and_renders_short_window_label() 
 
     assert_eq!(
         projection.context_space_left,
-        "Unknown 5h 91% Weekly 98% I: — IC: — O: —"
+        "Unknown 5h 91% Weekly 98% I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -929,7 +989,7 @@ fn account_rate_limit_read_selects_spark_bucket_for_spark_model() {
 
     assert_eq!(
         projection.context_space_left,
-        "Unknown 5h 75% Weekly 70% I: — IC: — O: —"
+        "Unknown 5h 75% Weekly 70% I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -942,7 +1002,7 @@ fn account_rate_limit_segments_are_partial_and_independent_from_context_usage() 
 
     assert_eq!(
         projection.context_space_left,
-        "Unknown Daily 85% I: — IC: — O: —"
+        "Unknown Daily 85% I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -966,7 +1026,7 @@ fn account_rate_limit_remaining_clamps_used_percent_and_requires_known_window() 
 
     assert_eq!(
         projection.context_space_left,
-        "100% Daily 100% I: 0 IC: 0 O: 0"
+        "100% Daily 100% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -984,11 +1044,14 @@ fn token_usage_for_unknown_thread_is_ignored() {
     assert_eq!(state.cached_thread_count(), 0);
 
     let projection = state.projection(Some("thread_2"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown I: — IC: — O: —");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
+    );
 }
 
 #[test]
-fn complete_usage_tree_is_selected_without_changing_legacy_token_counter_rendering() {
+fn complete_usage_tree_renders_root_and_authoritative_descendant_totals() {
     let mut state = StatusLineState::default();
     assert!(state.apply_token_usage(
         true,
@@ -1005,7 +1068,62 @@ fn complete_usage_tree_is_selected_without_changing_legacy_token_counter_renderi
     );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "60% I: 800 IC: 200 O: 300"
+        "60% I/IC/O: main: 480/20/10 sub: 0/20/10"
+    );
+}
+
+#[test]
+fn unsupported_complete_usage_tree_falls_back_to_legacy_main_totals() {
+    let mut state = StatusLineState::default();
+    let legacy = token_usage_with_totals(250, 1_000, 200, 300, Some(1_000));
+    assert!(state.apply_token_usage(
+        true,
+        "thread_1".to_string(),
+        "turn_legacy".to_string(),
+        legacy.clone(),
+    ));
+    let mut unsupported_tree =
+        usage_tree_snapshot("thread_1", 1, UsageTreeAccountingStatus::Complete, 400);
+    unsupported_tree.schema_version = 2;
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), unsupported_tree));
+
+    assert_eq!(
+        state.selected_root_usage(Some("thread_1")),
+        SelectedRootUsage::LegacyFallback(&legacy)
+    );
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "60% I/IC/O: main: 800/200/300 sub: —/—/—"
+    );
+}
+
+#[test]
+fn complete_usage_tree_renders_zero_descendants_and_clamps_each_group() {
+    let mut state = StatusLineState::default();
+    let mut tree = usage_tree_snapshot("thread_1", 1, UsageTreeAccountingStatus::Complete, 250);
+    tree.self_usage.total.input_tokens = -20;
+    tree.self_usage.total.cached_input_tokens = 150;
+    tree.self_usage.total.output_tokens = -4;
+    tree.descendants_total.input_tokens = 100;
+    tree.descendants_total.cached_input_tokens = 200;
+    tree.descendants_total.output_tokens = -10;
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), tree));
+
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "75% I/IC/O: main: 0/150/0 sub: 0/200/0"
+    );
+
+    let mut zero_descendants =
+        usage_tree_snapshot("thread_1", 2, UsageTreeAccountingStatus::Complete, 250);
+    zero_descendants.descendants_total.input_tokens = 0;
+    zero_descendants.descendants_total.cached_input_tokens = 0;
+    zero_descendants.descendants_total.output_tokens = 0;
+    assert!(state.apply_usage_tree_snapshot(Some("thread_1"), zero_descendants));
+
+    assert_eq!(
+        state.projection(Some("thread_1"), "ok").context_space_left,
+        "75% I/IC/O: main: 330/20/10 sub: 0/0/0"
     );
 }
 
@@ -1046,7 +1164,7 @@ fn legacy_partial_tree_is_retained_but_preserves_independent_legacy_fallback() {
         partial_only
             .projection(Some("thread_1"), "ok")
             .context_space_left,
-        "10% I: — IC: — O: —"
+        "10% I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -1075,7 +1193,7 @@ fn newer_partial_revision_replaces_complete_tree_but_not_legacy_fallback() {
     );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "40% I: 800 IC: 200 O: 300"
+        "40% I/IC/O: main: 800/200/300 sub: —/—/—"
     );
     assert!(!state.apply_usage_tree_snapshot(
         Some("thread_1"),
@@ -1100,7 +1218,7 @@ fn retained_tree_without_a_usable_context_window_does_not_mix_with_legacy_contex
     assert!(state.apply_usage_tree_snapshot(Some("thread_1"), missing_window));
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown I: 800 IC: 200 O: 300"
+        "Unknown I/IC/O: main: 800/200/300 sub: —/—/—"
     );
 
     let mut nonpositive_window =
@@ -1109,7 +1227,7 @@ fn retained_tree_without_a_usable_context_window_does_not_mix_with_legacy_contex
     assert!(state.apply_usage_tree_snapshot(Some("thread_1"), nonpositive_window));
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown I: 800 IC: 200 O: 300"
+        "Unknown I/IC/O: main: 800/200/300 sub: —/—/—"
     );
 }
 
@@ -1179,11 +1297,11 @@ fn cached_token_usage_is_selected_by_thread() {
 
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75% I: 0 IC: 0 O: 0"
+        "75% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
     assert_eq!(
         state.projection(Some("thread_2"), "ok").context_space_left,
-        "90% I: 0 IC: 0 O: 0"
+        "90% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -1200,11 +1318,11 @@ fn cached_token_usage_survives_switching_away_and_back() {
 
     assert_eq!(
         state.projection(Some("thread_2"), "ok").context_space_left,
-        "Unknown I: — IC: — O: —"
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75% I: 0 IC: 0 O: 0"
+        "75% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -1222,7 +1340,7 @@ fn durable_snapshot_hydrates_context_for_selected_thread() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "75% I: 70 IC: 0 O: 11"
+        "75% I/IC/O: main: 70/0/11 sub: —/—/—"
     );
 }
 
@@ -1245,19 +1363,19 @@ fn durable_snapshot_cache_is_selected_by_thread_after_switching() {
         state
             .projection(Some("thread_a"), "Idle")
             .context_space_left,
-        "75% I: 70 IC: 0 O: 11"
+        "75% I/IC/O: main: 70/0/11 sub: —/—/—"
     );
     assert_eq!(
         state
             .projection(Some("thread_b"), "Idle")
             .context_space_left,
-        "60% I: 60 IC: 0 O: 11"
+        "60% I/IC/O: main: 60/0/11 sub: —/—/—"
     );
     assert_eq!(
         state
             .projection(Some("thread_a"), "Idle")
             .context_space_left,
-        "75% I: 70 IC: 0 O: 11"
+        "75% I/IC/O: main: 70/0/11 sub: —/—/—"
     );
 }
 
@@ -1269,7 +1387,7 @@ fn missing_durable_snapshot_keeps_context_unknown_after_restart_style_hydration(
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown I: — IC: — O: —"
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -1288,7 +1406,7 @@ fn durable_snapshot_for_unknown_thread_is_ignored() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown I: — IC: — O: —"
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 
@@ -1306,7 +1424,7 @@ fn durable_snapshot_missing_context_window_is_unknown() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown I: 70 IC: 0 O: 11"
+        "Unknown I/IC/O: main: 70/0/11 sub: —/—/—"
     );
 }
 
@@ -1324,7 +1442,7 @@ fn durable_snapshot_non_positive_context_window_is_unknown() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "Unknown I: 70 IC: 0 O: 11"
+        "Unknown I/IC/O: main: 70/0/11 sub: —/—/—"
     );
 }
 
@@ -1348,7 +1466,7 @@ fn durable_snapshot_does_not_overwrite_newer_notification_cache() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "80% I: 0 IC: 0 O: 0"
+        "80% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -1368,7 +1486,7 @@ fn restart_style_hydration_reads_workspace_conversation_state_snapshots() {
         state
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
-        "75% I: 70 IC: 0 O: 11"
+        "75% I/IC/O: main: 70/0/11 sub: —/—/—"
     );
 }
 
@@ -1385,11 +1503,11 @@ fn new_thread_projection_does_not_consume_cached_usage() {
 
     assert_eq!(
         state.projection(None, "ok").context_space_left,
-        "Unknown I: — IC: — O: —"
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
     assert_eq!(
         state.projection(Some("thread_1"), "ok").context_space_left,
-        "75% I: 0 IC: 0 O: 0"
+        "75% I/IC/O: main: 0/0/0 sub: —/—/—"
     );
 }
 
@@ -1404,7 +1522,10 @@ fn non_positive_context_window_is_unknown() {
     ));
 
     let projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown I: 0 IC: 0 O: 0");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown I/IC/O: main: 0/0/0 sub: —/—/—"
+    );
 }
 
 #[test]
@@ -1418,7 +1539,10 @@ fn missing_context_window_is_unknown() {
     ));
 
     let projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(projection.context_space_left, "Unknown I: 0 IC: 0 O: 0");
+    assert_eq!(
+        projection.context_space_left,
+        "Unknown I/IC/O: main: 0/0/0 sub: —/—/—"
+    );
 }
 
 fn token_usage(
