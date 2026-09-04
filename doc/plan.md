@@ -26,11 +26,17 @@ authoritative post-transfer scheduled-capacity state. Focused nextest run
 dispatch, no redispatch, precise clipboard ownership, rebind-failure preservation, and complete
 single cancellation and release verified without production changes.
 
-# Phase 277: Requalify Legacy Clipboard Saturation For Retained Response Custody (pending)
+# Phase 277: Requalify Legacy Clipboard Saturation For Retained Response Custody (blocked)
 
 Replace the obsolete legacy `Busy` expectation with accepted delivery into exact retained response
 custody. Prove one unchanged dispatched key, no release or redispatch, internal resumption after the
 competing residency charge is freed, and complete single unwind before any independent Copy begins.
+
+Blocked because the exact one-under fixture accepts, transfers, and releases the object response
+before provenance-page emission reaches the capacity boundary. The surviving state has no response
+custody or clipboard dispatch and resumes coordinator-derived scheduled work, matching the current
+design authority. A fixture-only change therefore cannot prove the required retained-response
+custody; the acceptance boundary needs Operator authority or the production lifecycle must change.
 
 # Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (pending)
 
