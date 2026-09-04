@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive phase work, edge cases, verification, and proportionate completion review from applicable design authority and its effective engineering-rigor contract; record blockers; and respect other active planning authorities."
+description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to verify architecture readiness, create or update the authoritative plan, enforce # Scope and # Phase N status structure, keep one acceptance boundary per phase, pause and replan on material scope growth, maintain a compact sliding execution window, derive phase work and review from applicable design authority and engineering rigor, record blockers, and respect other active planning authorities."
 ---
 
 # Implementation Planning
@@ -40,11 +40,33 @@ Reflect planning scope, input, sequencing, or continuation constraints from anot
 ## Planning Workflow
 
 1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus project-declared root or parent authorities.
-2. Stop if the request contradicts design authority; otherwise derive scope from it.
-3. Split the work into small coherent phases.
+2. Stop if the request contradicts design authority; otherwise apply the architecture-readiness gate
+   to the actionable slice.
+3. Split only architecture-ready implementation work into small coherent phases.
 4. Mark the active phase `wip` and future phases `pending`.
 5. Include phase tasks, edge cases, verification, and resumable milestone details.
 6. Record any blocker in its phase before stopping.
+
+## Architecture-Readiness Gate
+
+Apply the `project-doc-authority` architecture-readiness review before authoring an implementation
+scope or phase, and repeat it when scope growth, diagnosis, or review exposes a previously hidden
+material choice.
+
+An actionable phase must be derivable from authoritative decisions without using the plan to choose
+among materially different architectures. Phase text may translate those decisions into ordering,
+work, edge cases, verification, and review, but it must not become the only place that defines
+ownership, public boundaries, lifecycle or state semantics, cross-boundary dataflow, failure or
+recovery behavior, supported limits, or acceptance evidence.
+
+If any such choice remains missing or contradictory, stop implementation planning for that slice and
+update the owning feature, system, package, subproject, GUI, API, or project-declared design authority
+first. Do not use an implementation phase, rework item, test expectation, or source experiment as a
+temporary architecture decision. A bounded research or diagnosis phase may gather evidence only when
+its acceptance boundary is the evidence itself and it does not authorize production implementation.
+
+Implementation-private choices may remain open when every allowed choice satisfies the same
+authoritative contract and would not change phase boundaries or completion evidence.
 
 Resolve the effective engineering-rigor contract across every applicable design scope before
 splitting phases. Read the engineering-rigor authority and profile catalog as required there. Treat
@@ -90,6 +112,10 @@ continuing. Do not append it to the active phase or broaden that phase's accepta
 minor implementation details within the active phase only when they remain necessary to its existing
 acceptance boundary and do not create an independently implementable, verifiable, reviewable, or
 resumable unit.
+
+If scope growth reveals an unresolved architectural choice rather than merely another accepted-design
+task, apply the architecture-readiness gate before adding implementation phases. Correct the owning
+design authority first, then derive the new phases from it.
 
 ## Execution Rules
 

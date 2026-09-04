@@ -35,6 +35,20 @@ In `# Engineering Rigor`, select the system scope's versioned rigor profile and 
 radii, and consequence requirements here when catalog identifiers are insufficient. Do not
 duplicate generic profile definitions or package-local requirements.
 
+## Architecture Readiness
+
+Before a system design feeds implementation planning, apply the `project-doc-authority` architecture
+readiness review to the concrete slice being scheduled. The system decisions must resolve every
+material cross-boundary choice relevant to that slice, including ownership, lifecycle and state
+transitions, shared dataflow and consistency, failure and recovery behavior, supported operating
+limits, and the observable evidence needed to verify the contract.
+
+Keep private implementation choices open when they cannot change the authoritative boundary or its
+acceptance evidence. Treat a choice as unresolved when competing answers would change a participant's
+responsibility, externally observable behavior, failure semantics, resource guarantees, or required
+verification. Record the decision in the owning feature, system, or package design before creating
+an implementation phase; do not defer it to `doc/plan.md`, a rework tracker, tests, or source code.
+
 ## Placement
 
 Create system docs at `doc/systems/<system>/design.md`.
@@ -97,7 +111,8 @@ After writing the system doc:
 - Update any project-declared documentation catalog or authority file if the system doc is a new authoritative entry point and the project requires such a catalog.
 - Update related feature docs only with user-visible consequences and links to the system doc.
 - Update related package docs only with local package responsibilities and consumed contracts.
-- Update `doc/plan.md` or active rework trackers only after target-state authority is clear.
+- Update `doc/plan.md` or active rework trackers only after the actionable slice passes the
+  architecture-readiness review.
 
 ## Conflict Handling
 

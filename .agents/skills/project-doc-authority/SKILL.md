@@ -111,6 +111,32 @@ Place each contract by asking who owns the fact:
 
 Do not duplicate shared rules in child docs unless needed to define child-owned behavior.
 
+## Architecture Readiness
+
+Before implementation planning can schedule an actionable code phase, review the applicable
+authority chain for the slice being planned. The architecture is ready when every unresolved choice
+whose alternatives would materially change the implementation boundary or its acceptance evidence
+has been decided in the document that owns that fact.
+
+Check the following dimensions when they are relevant to the slice:
+
+- ownership, responsibility splits, dependencies, and public boundaries;
+- identities, state transitions, lifecycle, dataflow, concurrency, and consistency;
+- failure, cancellation, retry, recovery, and partial-publication behavior;
+- supported resource, performance, security, privacy, and operating limits;
+- observable outcomes, verification seams, and evidence needed to distinguish success from an
+  invalid implementation.
+
+Do not require a design doc to choose implementation-private mechanics when every reasonable choice
+would satisfy the same authoritative contract and acceptance boundary. Conversely, do not treat a
+named component, phase heading, test name, mockup, or source shape as a design decision when the
+controlling behavior or ownership remains unstated.
+
+If a material choice is missing, contradictory, or recorded only in `doc/plan.md`, `REWORK.md`, a
+checklist, source, test, research note, or failure note, stop implementation planning for that slice
+and update the owning design authority first. Bounded research or diagnosis may gather the evidence
+needed for that update, but it does not authorize implementation against an unresolved target.
+
 ## Parent Consultation
 
 Before implementing in a workspace project or changing child docs, consult relevant feature, system, package, and project-declared parent or root authority docs. This is a workflow rule; do not add reminders such as "consult parent design" or "inherits parent contract" to design docs unless the operator explicitly asks for that wording.

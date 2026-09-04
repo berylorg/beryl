@@ -73,6 +73,10 @@ missing, retain only one short target-doc-gap item naming its owner or path, sto
 and correct that authority. Never make `REWORK.md` the temporary home of proposed or accepted
 target design.
 
+Apply the `project-doc-authority` architecture-readiness review to each target-doc slice before the
+tracker feeds it into the durable plan. A rework checkpoint may expose or point to an authority gap,
+but neither the checkpoint nor the plan may resolve that gap on behalf of the owning design doc.
+
 ## Discovery Rule
 
 On any architectural rework task, read the active durable plan before source edits.
