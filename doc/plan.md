@@ -18,17 +18,13 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 279: Requalify The Complete GPUI Text Input Focused Gate (finished)
+# Phase 280: Publish GPUI Text Input After Its Focused Gate Passes (finished)
 
-Accepted `gpui-text-input` commit `d8d04dd` passed 18 of 18 prepublication cases and the explicit
-eleven-target integration gate at 306 of 306 default and 309 of 309 `test-support` cases. The full
-108-case library run retained exactly five historical failures with no new failure, and fresh
-independent review reproduced that inventory with no blocking findings.
-
-# Phase 280: Publish GPUI Text Input After Its Focused Gate Passes (pending)
-
-Verify every required focused target from a clean canonical checkout, independently review the exact
-accepted graph and source, publish only the accepted commit, and remove all task-owned artifacts.
+Accepted `gpui-text-input` commit `d8d04dd` passed the clean detached-clone gate at 18 of 18
+prepublication, 306 of 306 default integration, 309 of 309 `test-support`, and 103 of 108 library
+cases with exactly five expected historical failures. Independent graph and source review found no
+blocking issue; canonical `origin/main` now names the exact accepted commit, and all Phase 280
+artifacts were removed.
 
 # Phase 281: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 

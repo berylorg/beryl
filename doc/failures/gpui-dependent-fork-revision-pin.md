@@ -412,10 +412,23 @@ integration cases. Its complete 108-case library run passed 103 and retained fiv
 failures with no new failure; the direct-history and exact-history-frontier cases from the older
 seven-name baseline now pass and must not remain listed as expected failures.
 
+Phase 280 invalidated remote-only clean-clone qualification before publication. The canonical remote
+correctly could not serve `d8d04dd` while that accepted object remained unpublished, so fetching the
+candidate from it made the publication gate circular. Prepublication qualification must instead
+create a clean detached `--no-local` clone from the sole accepted local checkout, verify the exact
+candidate tree and canonical dependency graph there, retarget that disposable clone to the canonical
+remote, and remove it before publishing the exact SHA to the remote ref. This preserves clean-tree
+evidence without making remote reachability a prerequisite for the operation that establishes it.
+The corrected clone matched tree `f93b4a5`, passed 18 prepublication, 306 default integration, 309
+`test-support`, and all but the exact five expected library cases, then was removed. Independent
+review found no blocking graph or source issue, and canonical `origin/main` advanced by a non-force
+fast-forward from `efa1e33` to exact accepted commit `d8d04dd` before remote-ref verification.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
   Phase 252's completed no-publish qualification, and Phases 253 through 279's focused partition,
-  correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
+  correction, remaining diagnosis, publication, propagation, and canonical-pin gates through Phase
+  280's clean-clone publication correction.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.
