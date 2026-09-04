@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to verify architecture readiness, create or update the authoritative plan, enforce # Scope and # Phase N status structure, keep one acceptance boundary per phase, pause and replan on material scope growth, maintain a compact sliding execution window, derive phase work and review from applicable design authority and engineering rigor, record blockers, and respect other active planning authorities."
+description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to verify architecture readiness before creating or updating the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive phase work, edge cases, verification, and proportionate completion review from applicable design authority and its effective engineering-rigor contract; record blockers; and respect other active planning authorities."
 ---
 
 # Implementation Planning

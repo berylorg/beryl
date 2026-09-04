@@ -1,6 +1,6 @@
 ---
 name: world-building
-description: Maintain authority, physical plausibility, causality, temporal state, and dependency integrity in physically grounded speculative-fiction and science-fiction world documentation. Use when creating, reviewing, reconciling, reorganizing, or changing world pillars, physics and fictional admissions, advancement tiers, biological or technological capabilities, environments, societies, economies, infrastructure, integrated designs, canonical world-document layouts, historical periods, entities, factions, places, populations, resources, chronology, or events.
+description: Maintain authority, physical plausibility, causality, temporal state, and dependency integrity in physically grounded speculative-fiction and science-fiction world documentation. Use when creating, reviewing, reconciling, reorganizing, or changing world pillars, physics and fictional admissions, approved advancements, biological or technological capabilities, environments, societies, economies, infrastructure, integrated designs, canonical world-document layouts, historical periods, entities, factions, places, populations, resources, chronology, or events.
 ---
 
 # World Building
@@ -50,13 +50,15 @@ Keep each hard rule, numeric limit, or bounded capability with the focused autho
 
 ## Canon Authoring Layout
 
-Before creating, editing, or restructuring canonical world documentation, changing canonical paths or document contracts, reviewing, validating, or reconciling structural conformance, or authoring and reorganizing temporal history authorities, read [Canon Authoring Layout](references/canon-authoring-layout.md) in full and follow it as normative. It owns the exact filesystem tree, placement rules, document contracts, and temporal authoring schemas. Do not improvise alternate structures.
+Before creating, editing, or restructuring canonical world documentation or structured dataset packages, changing canonical paths or document contracts, reviewing, validating, or reconciling structural conformance, or authoring and reorganizing temporal history authorities, read [Canon Authoring Layout](references/canon-authoring-layout.md) in full and follow it as normative. It owns the exact filesystem tree, placement rules, document contracts, structured dataset packages, and temporal authoring schemas. Do not improvise alternate structures.
+
+Treat that layout as a closed allowlist. Under `doc/world/`, create, move, or rename only a directory or file matching an explicit path form permitted by the layout. Absence from the layout is prohibition; never infer helper, navigation, registry, summary, convenience, or alternate package paths. If a task requires an unlisted path form, stop and request explicit Operator approval to amend the layout before changing the filesystem. Treat an existing unlisted path as a violation to report, not as precedent or implicit permission; do not remove it unless the task authorizes removal.
 
 ## Temporal History
 
-Treat history as the complete time-indexed realization of the world, including the latest documented period. Do not create a separate present-state authority and do not use unqualified terms such as `current` or `present` when the intended date or period can be named.
+Treat history as the complete time-indexed realization of the world, including the latest documented period. Do not create a separate present-state authority and do not use unqualified terms such as `current` or `present` when the intended date or period can be named. Locate applicable period authorities under `doc/world/history/periods/` by their declared temporal scopes.
 
-Use `doc/world/history/index.md` as the mandatory temporal entry point. A capability or design authority defines what is possible; history owns when, where, and by whom it was discovered, available, built, deployed, altered, or lost. Qualify changing claims with a narrower interval or divide the period rather than implying that a condition held throughout it.
+A capability or design authority defines what is possible; history owns when, where, and by whom it was discovered, available, built, deployed, altered, or lost. Qualify changing claims with a narrower interval or divide the period rather than implying that a condition held throughout it.
 
 ## Authority and Canon
 
@@ -76,9 +78,11 @@ Use these fixed inbox paths:
 ```text
 doc/inbox/idea/<idea-name>.md
 doc/inbox/intent/<intent-name>.md
+doc/inbox/idea/datasets/<dataset-name>/dataset.md
+doc/inbox/intent/datasets/<dataset-name>/dataset.md
 ```
 
-Do not create alternate rough-idea or design-intent silos. Move files out only through explicit promotion, admission, or rejection.
+Use the dataset package forms only for structured data that cannot reasonably be represented as ordinary prose. Read the structured-dataset contract in [Canon Authoring Layout](references/canon-authoring-layout.md) before creating or promoting one. Do not create loose JSON or CSV files or alternate rough-idea or design-intent silos. Move documents or complete dataset packages out only through explicit promotion, admission, or rejection.
 
 ### Dependency Layers
 
@@ -94,21 +98,23 @@ Before promoting an idea outcome to intent, verify that every retained dependenc
 
 ### Rough Ideas
 
-Store exploratory, noncanonical, undecided world proposals under `doc/inbox/idea/`. Keep each idea concise and human-readable: preserve the proposed outcome, meaningful specifics, important interdependencies, and a compact provenance pointer when prior material exists. Do not inflate an idea into atomic verification declarations, exhaustive boundary warnings, coverage proofs, research reports, or canon-compliance audits.
+Store exploratory, noncanonical, undecided world proposals under `doc/inbox/idea/`. Keep each ordinary idea concise and human-readable: preserve the proposed outcome, meaningful specifics, important interdependencies, and a compact provenance pointer when prior material exists. Use `doc/inbox/idea/datasets/<dataset-name>/` when the proposal is inherently structured data; its `dataset.md` remains the human-readable owner and its `data/` payloads carry the structured records. Do not inflate an idea into atomic verification declarations, exhaustive boundary warnings, coverage proofs, research reports, or canon-compliance audits.
 
 Choose idea boundaries and filenames by coherent concept and Operator direction rather than imposing a fixed subject taxonomy. An idea may cross technical, political, cartographic, historical, or story concerns when those concerns are materially interdependent.
 
-Only explicit Operator action may promote or reject an idea. An unselected idea remains an idea. Promotion removes the rough-idea artifact and creates or rewrites a concise design-intent artifact; do not retain parallel idea and intent copies. Rejection removes an idea only when the Operator explicitly chooses that outcome.
+Only explicit Operator action may promote or reject an idea. An unselected idea remains an idea. Promotion removes the rough-idea document or complete structured-dataset package and creates or rewrites the corresponding design-intent form; do not retain parallel idea and intent copies. Rejection removes an idea only when the Operator explicitly chooses that outcome.
 
 ### Design Intent
 
-Store Operator-accepted outcomes or directions under `doc/inbox/intent/`. Intent remains noncanonical pending technical validation, reconciliation, authority routing, and canonical integration. It protects the accepted outcome or direction, not every proposed mechanism, number, interpretation, or supporting claim.
+Store Operator-accepted outcomes or directions under `doc/inbox/intent/`. Intent remains noncanonical pending technical validation, reconciliation, authority routing, and canonical integration. It protects the accepted outcome or direction, not every proposed mechanism, number, interpretation, or supporting claim. Use `doc/inbox/intent/datasets/<dataset-name>/` for accepted structured data and keep its Markdown owner and payloads together as one package.
 
 Keep intent concise. Preserve dependencies, accepted boundaries, unresolved choices, and compact pointers to reusable prior work, but defer atomic claim decomposition and full proof until admission work begins. If an intent conflicts with upstream authority or another claim, surface the conflict and seek Operator resolution or a canon-compatible route without silently weakening the accepted outcome.
 
 ### Admission Evidence And Canon
 
-When admitting intent, identify the focused canonical owner or owners, decompose the material claims inside admission evidence, traverse their upstream dependencies, reuse sufficient prior work, and verify only uncovered, stale, or materially different claims. Create or update canon and its admission evidence together, update affected indexes and consumers, and remove the intent only after its accepted outcome is fully resolved.
+When admitting intent, identify the focused canonical owner or owners, decompose the material claims inside admission evidence, traverse their upstream dependencies, reuse sufficient prior work, and verify only uncovered, stale, or materially different claims. Create or update canon and its admission evidence together, update affected authority links and consumers, and remove the intent only after its accepted outcome is fully resolved. Admit an inherently structured dataset as the complete `doc/world/datasets/<dataset-name>/` package defined by the canonical layout; never transcribe its records into Markdown merely to make them canonical.
+
+Use only the exact owner-and-evidence package contracts defined by the canon-authoring layout. For an explicit fictional physics admission, the Operator's explicit decision is sufficient approval evidence; record the exact approved departure and its boundaries without inventing empirical support. For an advancement, identify its explicit Operator approval and exact grant, list every canonical physical authority that permits that grant, and explain their compatibility. Physical possibility never enlarges approval or establishes an unstated capability; an absent grant is not permission.
 
 Treat admission evidence as authoritative about why a canonical claim was admitted: its source basis, assumptions, calculations, dependency checks, conflicts considered, rejected stronger interpretations, approval basis, and verification result. Evidence does not own in-world truth. Every rule, limit, capability, configuration, or historical fact needed to understand the world must appear in its focused canonical owner; evidence must never become a hidden source of world rules.
 
@@ -125,7 +131,7 @@ Before answering, reviewing, or editing:
 3. Identify the focused owners for the task's claims.
 4. Traverse all relevant upstream dependencies before judging a derived claim.
 5. Read adjacent authorities when the claim crosses domains.
-6. For a time-dependent claim, enter through `history/index.md`, select the applicable period, and then read the focused entities and events.
+6. For a time-dependent claim, select the period authority under `doc/world/history/periods/` whose declared temporal scope applies, and then read the focused entities and events.
 7. If changing authority, search downstream consumers before editing.
 8. Bound the authority slice to material dependencies; do not survey unrelated sibling documents.
 
@@ -153,12 +159,12 @@ Distinguish clearly among:
 - a complete design implementing that capability;
 - a historical entity possessing or deploying that design during a stated interval.
 
-Do not let a shared word, evocative name, tier label, or nearby technology transfer capabilities between those levels.
+Do not let a shared word, evocative name, or nearby technology transfer capabilities between those levels.
 
 ## Change and Review Rules
 
 - Change the highest authority that is actually wrong before repairing dependent documents.
-- Require explicit approval before changing a locked foundation, fictional admission, or protected advancement catalog.
+- Require explicit Operator approval before changing a locked foundation or fictional admission, or adding, removing, renaming, or materially changing the exact grant of a protected advancement package.
 - Reconcile contradictions in authority before relying on either side.
 - Report downstream consequences of every upstream change, including configurations and affected historical periods, entities, and events.
 - Preserve uncertainty where the evidence supports possibility but not a specific mechanism or performance figure.
@@ -170,4 +176,4 @@ For completion, verify that no applicable upstream owner was skipped, every hard
 
 - For a human-performance target, consult the relevant pillar, physics, applicable advancements, focused biological and medical capabilities, and only then an integrated vehicle or habitat design.
 - For a reactor change, consult physics, the advancement envelope, the reactor authority, fuel logistics, conversion, thermal rejection, storage, structural limits, and every named installation that uses the reactor.
-- For a faction at a particular date, enter through the history index, read the containing period, the faction lifecycle, and relevant events, then consult the upstream institutions, technologies, designs, and resources that period makes available.
+- For a faction at a particular date, read the applicable period authority, the faction lifecycle, and relevant events, then consult the upstream institutions, technologies, designs, and resources that period makes available.
