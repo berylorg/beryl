@@ -381,10 +381,26 @@ lifecycle coverage and fresh independent review. Separate focused fixtures own r
 retry and post-transfer scheduled resumption; do not extend response lifetime, retain nonexistent
 coordinator work or manufacture an unreachable public state through a test seam.
 
+Phase 278 proved that a marked revision-two mutation retained exact composition and directed
+selection, but prepaint could replace its index job after an older `GeometryIndex` request was
+dispatched. Delivery then validated that obsolete response against the newer target job, reported
+`ExactGeometryWrongInputKind`, and terminally closed the only successor-publication path while the
+revision-one surface remained inert. The legacy helper hid both that accepted terminal rejection and
+driver-cap exhaustion. Accepted `gpui-text-input` commit
+`d8d04dd` instead identifies the obsolete response only after alias fanout, prevalidates its exact
+residency, dispatch, cancellation, and reserved queue slot, and converts cancellation to one release
+through a synchronous allocation-free settlement that leaves the newer candidate live. The revised
+fixture proves revision-two ownership, no rejection, exact dispatch-to-settlement correspondence,
+bounded quiescence, processing at the exact item cap, complete custody release, and atomic
+composition `150..156` with directed selection `152..156`; both full focused targets and fresh
+independent acceptance review passed. Obsolete response cleanup must not allocate a replacement
+queue or separately charged candidate: exact response-processing capacity may leave no additional
+headroom, and assuming one item or one struct of slack can panic and strand the reservation.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  Phase 252's completed no-publish qualification, and Phases 253 through 277's focused partition,
+  Phase 252's completed no-publish qualification, and Phases 253 through 278's focused partition,
   correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

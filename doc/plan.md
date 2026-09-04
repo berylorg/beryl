@@ -18,20 +18,13 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 277: Requalify Legacy Clipboard Saturation For Accepted Terminal Unwind (finished)
+# Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (finished)
 
-Accepted `gpui-text-input` commit `656a83a` requalifies the legacy saturated Cut for accepted empty-
-object delivery, exact terminal unwind, independent geometry settlement, and distinct Copy slot
-reuse without production changes. Exact nextest runs `084b21c2-ecea-4618-883e-eeff8bf2413c` and
-`2c2c6318-44f5-447b-adb1-18031f9c50f2` passed; adjacent lifecycle run
-`ae86fee2-0942-4dd5-83da-3a19ae356f61` passed 2 of 2, and independent review passed with no findings.
-
-# Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (pending)
-
-Require the fixture to prove revision-two binding, current interactive ownership, quiescence without
-driver-cap exhaustion, and no terminal response rejection before inspecting marked state. Correct the
-production publication boundary that prevents the coherent successor from becoming current, while
-preserving exact composition `150..156` and directed platform selection `152..156` atomically.
+Accepted `gpui-text-input` commit `d8d04dd` settles an obsolete revision-two geometry-index response
+without added ownership, preserves the live successor, and atomically publishes exact composition
+`150..156` with directed selection `152..156`. Exact ordinary and processing-cap cases passed twice;
+adjacent coverage passed 4 of 4, default and `test-support` range-widget targets passed 100 of 100 and
+103 of 103, and fresh independent acceptance review passed with no findings.
 
 # Phase 279: Requalify The Complete GPUI Text Input Focused Gate (pending)
 
