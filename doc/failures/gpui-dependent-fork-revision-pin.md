@@ -397,10 +397,25 @@ independent acceptance review passed. Obsolete response cleanup must not allocat
 queue or separately charged candidate: exact response-processing capacity may leave no additional
 headroom, and assuming one item or one struct of slack can panic and strand the reservation.
 
+Phase 279 invalidated count-only focused-gate reconstruction. The plan retained historical 181 and
+183 case totals but no target identities or filter expression; ten different unions of complete
+integration targets matched the default count, and a bare `range_widget` name filter crossed into
+the broad library instead of selecting the integration target. The accepted Phase 278 commit also
+added one `test-support`-only case, making the old superset total stale. Qualification now names all
+eleven integration targets explicitly and treats their current 306-case default and 309-case
+`test-support` inventories as evidence, while the broad library remains a separate gate. Preserve
+executable target or filter identity with future gates and recompute counts only after fixing that
+identity set. Exact failure-set comparisons must also disable nextest fail-fast; otherwise the first
+known failure cancels later cases and cannot establish additions, omissions, or repaired baselines.
+With those corrections, the accepted graph passed all 306 default and 309 `test-support`
+integration cases. Its complete 108-case library run passed 103 and retained five historical
+failures with no new failure; the direct-history and exact-history-frontier cases from the older
+seven-name baseline now pass and must not remain listed as expected failures.
+
 # Affected Authority And Work
 
 - `../plan.md`, Phase 247's completed deterministic response closure, Phases 248 and 249's completed
   clipboard diagnosis and correction, Phase 250's completed no-change object-realization diagnosis,
-  Phase 252's completed no-publish qualification, and Phases 253 through 278's focused partition,
+  Phase 252's completed no-publish qualification, and Phases 253 through 279's focused partition,
   correction, remaining diagnosis, publication, propagation, and canonical-pin gates.
 - `../rework/beryl-home/REWORK.md`, Checkpoint 4's owned-GPUI publication item.

@@ -18,27 +18,12 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (finished)
+# Phase 279: Requalify The Complete GPUI Text Input Focused Gate (finished)
 
-Accepted `gpui-text-input` commit `d8d04dd` settles an obsolete revision-two geometry-index response
-without added ownership, preserves the live successor, and atomically publishes exact composition
-`150..156` with directed selection `152..156`. Exact ordinary and processing-cap cases passed twice;
-adjacent coverage passed 4 of 4, default and `test-support` range-widget targets passed 100 of 100 and
-103 of 103, and fresh independent acceptance review passed with no findings.
-
-# Phase 279: Requalify The Complete GPUI Text Input Focused Gate (pending)
-
-Rerun the 18-case prepublication target, the complete 181-case default focused gate, and the strict
-183-case `test-support` focused superset. Then rerun the broad library and require its only failures
-to remain the historically reproduced baseline:
-
-- `range_widget::terminal_tests::committed_settlement_accepts_exact_fit_and_one_under_is_retryable`
-- `range_widget::terminal_tests::direct_history_commit_adopts_exact_successor_without_mutation_stream`
-- `range_widget::terminal_tests::exact_history_frontier_restoration_imports_only_on_coherent_publication`
-- `range_widget::terminal_tests::history_custody_capacity_exhaustion_releases_and_reuses_exact_slots`
-- `range_widget::terminal_tests::priority::active_interaction_and_scroll_anchor_are_runtime_realization_targets`
-- `range_widget::terminal_tests::priority::exact_priority_after_end_object_retains_proof_for_successive_edit`
-- `range_widget::terminal_tests::terminal_target_replacement_accepts_fixed_exact_caps_and_rejects_one_under`
+Accepted `gpui-text-input` commit `d8d04dd` passed 18 of 18 prepublication cases and the explicit
+eleven-target integration gate at 306 of 306 default and 309 of 309 `test-support` cases. The full
+108-case library run retained exactly five historical failures with no new failure, and fresh
+independent review reproduced that inventory with no blocking findings.
 
 # Phase 280: Publish GPUI Text Input After Its Focused Gate Passes (pending)
 
