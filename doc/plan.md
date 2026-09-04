@@ -18,41 +18,76 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 273: Correct Presentation-Transition Publication Atomicity (finished)
+# Phase 274: Diagnose The Rejected Complete GPUI Text Input Focused Gate (finished)
 
-Accepted `gpui-text-input` commit `1793f665fd938c1f6884f8493251ba30ffedc7be`.
-Exact-index presentation transitions now carry the retained surface's exact scroll position only
-when `ScrollAnchor` is the effective priority, while non-restoration caret, IME, directed-selection,
-and active-interaction targets clear the incompatible lower-priority preservation claim. The
-historical generation-two reproducer now publishes and activates the current object, preserves the
-exact `Superseded` loss and bounded quiescent ownership, and leaves stale-surface rejection intact.
-Fresh review rejected the first unconditional retained-scroll correction; distant active-interaction
-coexistence coverage closes that gap, and a new independent semantic review passes the corrected
-priority, lifecycle, publication, and stale-surface gates.
+At accepted `gpui-text-input` commit `1793f665fd938c1f6884f8493251ba30ffedc7be`,
+historical run `cbffaec9-a316-4788-a863-bc335d06951f` reproduced the exact seven-test library
+baseline and current run `b9889bff-dc08-4e4b-85ae-a7a36854660b` passed all 18 prepublication
+cases. Default focused run `5b8c9f01-015b-4e74-8ce1-901e84585511` passed 177 of 181 cases and
+rejected four. Independent read-only diagnosis separated one anchored-checkpoint production defect,
+two obsolete clipboard fixture expectations, and one marked-successor publication defect; existing
+package and widget authority fully determines all four correction boundaries.
 
-# Phase 274: Requalify The Complete GPUI Text Input Focused Gate (pending)
+# Phase 275: Correct Anchored Target Checkpoint Coverage (pending)
 
-After every proven and newly diagnosed correction has its own accepted phase, rerun the complete
-focused gate and preserve only the accepted unchanged seven-test library baseline.
+Use one exact target-predecessor rule in direct and prepared-transition paths: choose no checkpoint
+later than either the effective viewport-leading block or the active anchor, and never rewrite the
+requested target block to a later checkpoint. Publish the earlier wrapped objects, presentations,
+gaps, and terminal page exactly once, and reconcile the contradictory diagnostic assertions with the
+authoritative coherent-publication result.
 
-# Phase 275: Publish GPUI Text Input After Its Focused Gate Passes (pending)
+# Phase 276: Reconcile The Deferred Clipboard-Capacity Integration Fixture (pending)
+
+Update only the exact-fit/one-under integration fixture to recognize the authoritative post-transfer
+scheduled-capacity state: zero external response custody, exact retained dispatch identity, no
+redispatch, and precise clipboard ownership. Preserve atomic one-under failure, exact-fit success,
+rebind-failure ownership, and exact release behavior without changing production retry semantics.
+
+# Phase 277: Requalify Legacy Clipboard Saturation For Retained Response Custody (pending)
+
+Replace the obsolete legacy `Busy` expectation with accepted delivery into exact retained response
+custody. Prove one unchanged dispatched key, no release or redispatch, internal resumption after the
+competing residency charge is freed, and complete single unwind before any independent Copy begins.
+
+# Phase 278: Restore Current Marked-Successor Publication After Nonresident Replacement (pending)
+
+Require the fixture to prove revision-two binding, current interactive ownership, quiescence without
+driver-cap exhaustion, and no terminal response rejection before inspecting marked state. Correct the
+production publication boundary that prevents the coherent successor from becoming current, while
+preserving exact composition `150..156` and directed platform selection `152..156` atomically.
+
+# Phase 279: Requalify The Complete GPUI Text Input Focused Gate (pending)
+
+Rerun the 18-case prepublication target, the complete 181-case default focused gate, and the strict
+183-case `test-support` focused superset. Then rerun the broad library and require its only failures
+to remain the historically reproduced baseline:
+
+- `range_widget::terminal_tests::committed_settlement_accepts_exact_fit_and_one_under_is_retryable`
+- `range_widget::terminal_tests::direct_history_commit_adopts_exact_successor_without_mutation_stream`
+- `range_widget::terminal_tests::exact_history_frontier_restoration_imports_only_on_coherent_publication`
+- `range_widget::terminal_tests::history_custody_capacity_exhaustion_releases_and_reuses_exact_slots`
+- `range_widget::terminal_tests::priority::active_interaction_and_scroll_anchor_are_runtime_realization_targets`
+- `range_widget::terminal_tests::priority::exact_priority_after_end_object_retains_proof_for_successive_edit`
+- `range_widget::terminal_tests::terminal_target_replacement_accepts_fixed_exact_caps_and_rejects_one_under`
+
+# Phase 280: Publish GPUI Text Input After Its Focused Gate Passes (pending)
 
 Verify every required focused target from a clean canonical checkout, independently review the exact
 accepted graph and source, publish only the accepted commit, and remove all task-owned artifacts.
 
-# Phase 276: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+# Phase 281: Propagate The GPUI Revision Through GPUI Settings Window (pending)
 
 Update `gpui-settings-window` to the accepted GPUI revision and the published widget commits, verify
 its focused package boundary, and publish the accepted commit.
 
-# Phase 277: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+# Phase 282: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
 
 Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
 canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
 check, restart the language server after the manifest model is accepted, and close the active
 rework checklist item.
 
-# Phase 278: Build The Target-State Main-Window Shell Foundation (pending)
+# Phase 283: Build The Target-State Main-Window Shell Foundation (pending)
 
 Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
 one distinct window-local controller, and theme-aware ordinary shell composition over the declared
@@ -60,9 +95,9 @@ main-window slots. Prepare the exact claimed editor before GPUI construction, pu
 window, and use Phase 238 abandonment for construction failure or close-before-publication. The
 binary startup/bootstrap path remains outside this phase.
 
-# Phase 279: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 284: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 278 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 283 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
