@@ -18,23 +18,13 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 275: Correct Anchored Target Checkpoint Coverage (finished)
+# Phase 276: Reconcile The Deferred Clipboard-Capacity Integration Fixture (finished)
 
-Accepted `gpui-text-input` commit `3cc95b52433523b95d6634ead0392871ad9e8693`
-preserves the requested target while direct and prepared paths share the exact viewport-leading and
-active-anchor predecessor rule. Per-fragment retention now publishes required earlier inline objects,
-presentations, gaps, and the terminal page exactly once without broadening trailing-only public text;
-terminal publication capacity and fragment-edge ownership are causally exact. Independent review
-passed after exact geometry run `e6144b6b-4fb4-485c-b164-d100f78009f7` passed 40 of 40, range-widget
-run `8493fbf8-d9a1-438f-a615-349c40812b77` retained only the three Phase 276–278 failures, and library
-run `1e11fe9c-32cd-49d6-8d9a-48be7352aedc` retained only six accepted historical failures.
-
-# Phase 276: Reconcile The Deferred Clipboard-Capacity Integration Fixture (pending)
-
-Update only the exact-fit/one-under integration fixture to recognize the authoritative post-transfer
-scheduled-capacity state: zero external response custody, exact retained dispatch identity, no
-redispatch, and precise clipboard ownership. Preserve atomic one-under failure, exact-fit success,
-rebind-failure ownership, and exact release behavior without changing production retry semantics.
+Accepted `gpui-text-input` commit `d4bba63d` updates only the exact-fit/one-under fixture for the
+authoritative post-transfer scheduled-capacity state. Focused nextest run
+`48997980-0da6-4323-974d-fdc3d749b366` passed 1 of 1 and independent review passed with exact retained
+dispatch, no redispatch, precise clipboard ownership, rebind-failure preservation, and complete
+single cancellation and release verified without production changes.
 
 # Phase 277: Requalify Legacy Clipboard Saturation For Retained Response Custody (pending)
 
