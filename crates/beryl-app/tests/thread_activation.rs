@@ -176,6 +176,58 @@ fn unsupported_or_failed_usage_tree_read_does_not_fail_activation() {
 }
 
 #[test]
+fn direct_activation_failed_resume_can_retry_the_same_exact_thread() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response("thread_a", r"C:\work\alpha"),
+        Ok(empty_turn_page()),
+    );
+    backend.resume_error_once = Some("backend temporarily unavailable".to_string());
+
+    let error = activate_existing_thread_direct(
+        &mut backend,
+        &execution_target,
+        "thread_a",
+        "Thread A",
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+
+    match error {
+        ExistingThreadActivationError::Failed { message } => {
+            assert!(message.contains("could not reopen the requested thread"));
+            assert!(message.contains("backend temporarily unavailable"));
+        }
+        ExistingThreadActivationError::RequiresRebind { detail } => {
+            panic!("expected resume failure, got rebind: {detail}");
+        }
+    }
+    assert_eq!(backend.resume_calls, vec!["thread_a"]);
+    assert!(backend.turn_calls.is_empty());
+    assert!(backend.usage_tree_calls.is_empty());
+
+    let activation = activate_existing_thread_direct(
+        &mut backend,
+        &execution_target,
+        "thread_a",
+        "Thread A",
+        Duration::from_secs(5),
+    )
+    .unwrap();
+
+    assert_eq!(activation.thread.summary().id, "thread_a");
+    assert_eq!(backend.resume_calls, vec!["thread_a", "thread_a"]);
+    assert_eq!(
+        backend
+            .turn_calls
+            .iter()
+            .map(|(thread_id, _)| thread_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["thread_a"]
+    );
+}
+
+#[test]
 fn direct_activation_rejects_cwd_mismatch_as_rebind() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
@@ -354,6 +406,7 @@ fn initial_history_page_options_request_latest_bounded_page() {
 
 struct FakeActivationBackend {
     resume_response: Option<ThreadSessionResponse>,
+    resume_error_once: Option<String>,
     turn_response: Result<ThreadTurnsListResponse, String>,
     resume_calls: Vec<String>,
     turn_calls: Vec<(String, ThreadTurnsListOptions)>,
@@ -368,6 +421,7 @@ impl FakeActivationBackend {
     ) -> Self {
         Self {
             resume_response: Some(resume_response),
+            resume_error_once: None,
             turn_response,
             resume_calls: Vec::new(),
             turn_calls: Vec::new(),
@@ -388,6 +442,9 @@ impl ExistingThreadActivationBackend for FakeActivationBackend {
         _: Duration,
     ) -> Result<ThreadSessionResponse, Self::Error> {
         self.resume_calls.push(thread_id.to_string());
+        if let Some(error) = self.resume_error_once.take() {
+            return Err(error);
+        }
         self.resume_response
             .take()
             .ok_or_else(|| "resume called more than once".to_string())

@@ -23,7 +23,7 @@ Initialization runs the fatal upstream database migrators before opening the opt
 
 ## Accepted source correction
 
-Phase 15 added `codex-rs/state/.gitattributes` with `text eol=crlf` only for SQL in `migrations`, `goals_migrations`, `logs_migrations`, `memory_migrations`, and `queue_migrations`. The 59 covered working-tree files were rematerialized as CRLF; their Git-normalized contents remain unchanged. The accounting migration remains byte-identical to its Git blob, and thread-history migrations are outside the attribute scope. SQLx validation and shared-home ledgers were not changed. This is a temporary v0.1 Host-Windows build-compatibility fix, not general cross-platform checksum reconciliation.
+The accepted correction uses `codex-rs/state/.gitattributes` with `text eol=crlf` for upstream migration SQL. The original five-directory correction covered initialization but omitted `thread_history_migrations`, which is opened on thread-history access. The correction now includes that directory and materializes all six of its migrations as CRLF. Git-normalized SQL contents, accounting migrations, SQLx validation, and shared-home ledgers remain unchanged. This is a v0.1 Host-Windows build-compatibility fix, not general cross-platform checksum reconciliation.
 
 On 2026-09-05, a freshly compiled, temporary `codex-state` checksum probe passed against all 59 applied migration records across the five shared-home databases. Read-only connections compared version, description, success, and checksum to the production compiled migrators, including the published state version 1 CRLF checksum above. The focused `init_records_successful_sqlite_init_phases_to_explicit_telemetry` runtime regression also passed with cargo-nextest. Effective-attribute, working-tree byte, and normalized-diff checks passed; the temporary probe was removed after verification.
 
@@ -38,6 +38,14 @@ Phase 16 passed on 2026-09-05. The freshly built standalone executable initializ
 - The companion `unused_ephemeral_root_recognizes_only_exact_no_usage_tree_response` passed with `--run-ignored default`. The smoke's stale message expectation was corrected to require the exact root ID, method, and error code; wrong-root, unsupported-method, malformed-suffix, unrelated-error, and timeout cases remain rejected. Formatting, worker self-review, and main-thread source, artifact-digest, and scoped-diff review passed.
 
 The task-owned build cache was removed with Cargo clean (9,825 files, 7.4 GiB); the exact cache path is absent. Managed shutdown passed and no app-server process remained. Documentation verification used the filesystem under the existing no-install semantic-index exception.
+
+## Thread reopening regression evidence
+
+On 2026-09-05, `thread/resume` exposed the omitted thread-history directory with `migration 1 was previously applied but has been modified`. The new crate-root `codex-state` integration target `thread_history_migration_checksums` seeds all six established CRLF migrations into a disposable database and reopens it through `open_thread_history_db`. The positive test reproduced the exact error with the original LF files and passed after correction. Its companion test confirms an unrelated checksum mismatch remains rejected without changing the applied ledger. Focused nextest passed 2/2; all six checkout attributes and CRLF byte representations were verified. No private database was read or modified for this regression.
+
+Beryl independently misclassified every resume error as requiring rebinding before it had any backend record to validate. Those failures now report activation failure with the backend diagnostic. They never persisted a rebind requirement. The 11 `beryl-app` thread-activation integration tests passed, including exact-thread retry after failed resume and continued rejection of actual working-directory mismatch.
+
+Both development executables built successfully: Beryl `target/debug/beryl.exe` and fork `../codex-fork/codex-rs/target/debug/codex-app-server.exe`. The latter's SHA-256 is `8DECC8EFB0CEB265B2F4DD712E8FC4FD17082AFAEF15D87FAEBB217D7B060A8F`. Both command-line help smoke checks passed. The installed binaries and running processes were left unchanged; reopening the Operator's actual thread still requires restarting with these corrected builds.
 
 ## Known cleanup residue
 

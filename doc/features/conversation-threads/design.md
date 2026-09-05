@@ -19,6 +19,7 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Existing threads may change bound workspace member or runtime only through an explicit rebind decision. Beryl never silently hops an existing thread to another execution context.
 - Existing-thread activation resumes the selected backend thread by exact thread id. It must not enumerate all backend threads first, guess an alternate thread, or fall back to another runtime target.
 - Activation validates that the expected execution target is in current workspace scope and that the resumed thread's recorded working directory still matches that target. Mismatches produce a rebind-required or activation-failure state.
+- A failed backend resume request reports an activation failure with the backend error and leaves the recorded binding unchanged. It does not establish a binding mismatch or require rebinding; the same exact thread can be retried after the backend failure is resolved.
 - If no default runtime exists in a legacy or recovery workspace state, new thread creation and member attachment flows that need a runtime are unavailable until the user selects one.
 - Backend-unavailable states disable backend-required thread operations only for the affected runtime target.
 

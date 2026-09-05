@@ -96,12 +96,8 @@ where
     let resume_started = Instant::now();
     let response = backend
         .resume_thread_metadata(thread_id, timeout)
-        .map_err(|error| ExistingThreadActivationError::RequiresRebind {
-            detail: thread_rebind_detail(
-                label,
-                execution_target,
-                &format!("Beryl could not reopen the recorded thread: {error}."),
-            ),
+        .map_err(|error| ExistingThreadActivationError::Failed {
+            message: format!("Beryl could not reopen the requested thread: {error}"),
         })?;
     debug!(
         thread_id,
