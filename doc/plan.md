@@ -11,9 +11,8 @@ scrolling, optional activity and discussion surfaces, composer, status line, ove
 Settings entry. Reuse accepted live target-state services, hosts, projections, and widgets; keep
 unimplemented mounts visibly absent or unavailable until their owning bounded phase completes.
 
-Propagate the accepted owned-GPUI first-publication revision through the dependency order
-`gpui-scrollbar` to `gpui-text-input` to `gpui-settings-window`, then canonically pin the resulting
-single GPUI type universe in Beryl before shell implementation resumes. Keep startup restoration,
+Use the accepted, canonically pinned single GPUI dependency graph. Establish actual GPUI window-set
+appearance publication before shell implementation resumes. Keep startup restoration,
 onboarding, placement, close, Exit, later catalog/navigation/activity/status/notice/settings/
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
@@ -22,14 +21,28 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 288: Propagate And Pin Live-Appearance Dependencies (finished)
+# Phase 293: Identify The GPUI Appearance Publication Gap (finished)
 
-Published scrollbar `d2c7b90`, text-input `fc17c573`, and settings-window `e587fa78` over GPUI
-`b6939aa`, then pinned that single published graph in Beryl. Neutral package gates, locked metadata,
-the focused `beryl-app` check, analyzer restarts, and independent semantic review passed; text-input
-retains exactly five accepted historical library failures. The
-[dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves exact gates,
-revision identities, and policy-denied temporary-checkout cleanup. Phase 289 is ready.
+Source inspection and independent semantic review established the missing app-owned GPUI
+window-set publication boundary. Phase 294 is architecture-ready and precedes resumed shell work.
+The [publication-gap record](failures/theme-runtime-gpui-publication.md) preserves the evidence and
+unaccepted Phase 289 checkpoint; no shell implementation or test acceptance is claimed.
+
+# Phase 294: Establish Atomic GPUI Appearance Publication (pending)
+
+Connect every existing theme-runtime appearance publication path to one bounded GPUI window-set
+publication boundary. Keep repository access and appearance preparation off GPUI; prepare actual
+window adapters before committing, adopt one complete generation across their roots and mounted
+controls, and report success only after adoption. Derive this integration from the theme-runtime
+system's appearance publication and worker boundaries and the app's Settings and Themes adapter
+contract. Use minimal GPUI test roots independently of the unfinished Phase 289 shell.
+
+Verify initial registration, durable publication, external document refresh, preview replacement,
+Stop Preview, and retained durable retry through actual GPUI adapters. Exercise adapter rejection,
+stale generation or window-set epoch, creation or removal during preparation, and retirement;
+preserve the prior complete appearance on failure and release bounded preparation state. Use two
+GPUI windows to verify coherent root and composer adoption and unchanged editor state. Run focused
+Cargo and nextest checks, then independent semantic review.
 
 # Phase 289: Build The Target-State Main-Window Shell Foundation (pending)
 
@@ -46,8 +59,12 @@ through unresolved abandonment, and exact terminal release using the injected ho
 tests. Check shell slot layout and absent optional mounts against GUI integration. Run the focused
 Cargo check and nextest cases, then independent semantic review of publication and custody.
 
-The live-appearance prerequisites above resolve the gap recorded in
-[range-input live appearance](failures/range-input-live-appearance.md) before shell construction.
+Resume the retained, unaccepted shell implementation only after Phase 294 supplies actual GPUI
+appearance publication. Complete exact acquisition/editor binding, canonical adaptive layout,
+first-presentable and stale-selection publication gates, and the remaining fault tests recorded in
+the [publication-gap checkpoint](failures/theme-runtime-gpui-publication.md). The accepted
+[range-input live appearance](failures/range-input-live-appearance.md) capability remains a
+dependency prerequisite, not evidence of app-level atomic adoption.
 
 # Phase 290: Mount Bounded Independent Main-Window Creation (pending)
 
