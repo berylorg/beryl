@@ -3,9 +3,21 @@ use super::*;
 pub struct MainWindowShellUnpublished {
     pub(super) acquisition: RuntimeBackedWindowAcquisition,
     pub(super) reservation: RuntimeBackedWindowMainWindowReservation,
+    pub(super) initial_composer: Option<Box<InitialComposerCandidate>>,
 }
 
 impl MainWindowShellUnpublished {
+    pub(in crate::main_window) fn from_retired_initial_composer(
+        acquisition: RuntimeBackedWindowAcquisition,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+    ) -> Self {
+        Self {
+            acquisition,
+            reservation,
+            initial_composer: None,
+        }
+    }
+
     #[must_use]
     pub const fn window_id(&self) -> beryl_model::WindowId {
         self.acquisition.window_id()
@@ -13,13 +25,28 @@ impl MainWindowShellUnpublished {
 
     #[must_use]
     pub fn prepare_abandonment(
-        self,
+        mut self,
         service: &RuntimeBackedWindowAcquisitionService,
         cancellation: CommandCancellation,
     ) -> MainWindowShellAbandonmentPreparationOutcome {
+        if let Some(candidate) = self.initial_composer.as_mut() {
+            let error = match candidate.drive_retirement(cancellation.clone()) {
+                Ok(true) => None,
+                Ok(false) => Some("initial composer retirement remains pending".to_owned()),
+                Err(error) => Some(error),
+            };
+            if let Some(error) = error {
+                return MainWindowShellAbandonmentPreparationOutcome::InitialComposerPending {
+                    unpublished: self,
+                    error,
+                };
+            }
+            self.initial_composer = None;
+        }
         let Self {
             acquisition,
             reservation,
+            initial_composer: _,
         } = self;
         match service.prepare_abandonment(acquisition, cancellation) {
             RuntimeBackedWindowAbandonmentPreparationOutcome::NotCommitted {
@@ -29,6 +56,7 @@ impl MainWindowShellUnpublished {
                 unpublished: Self {
                     acquisition,
                     reservation,
+                    initial_composer: None,
                 },
                 evidence,
             },
@@ -48,6 +76,10 @@ impl MainWindowShellUnpublished {
 }
 
 pub enum MainWindowShellAbandonmentPreparationOutcome {
+    InitialComposerPending {
+        unpublished: MainWindowShellUnpublished,
+        error: String,
+    },
     NotCommitted {
         unpublished: MainWindowShellUnpublished,
         evidence: RuntimeBackedWindowAbandonmentNotCommitted,

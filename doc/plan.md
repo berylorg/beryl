@@ -21,29 +21,29 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 289: Build The Target-State Main-Window Shell Foundation (finished)
+# Phase 295: Establish Initial Composer Activation Custody (finished)
 
-The injectable hidden shell binds the exact acquired editor, adopts shared appearance generations,
-preserves usable pinned layout, and retains reservation custody until exact cleanup settlement.
-Focused Cargo verification and all 47 shell, reservation, selected-preparation, abandonment, and
-acquisition tests passed; independent semantic review accepted publication and custody. The
-[publication record](failures/theme-runtime-gpui-publication.md) preserves integration evidence.
+Initial activation now retains exact candidate and reservation custody through prepared-shell
+transfer or typed retirement. Independent review accepted the boundary; the final library check
+and all 11 initial-custody tests passed. The affected aggregate passed 71/73; its separate Phase 186
+fixture and release-fence findings are recorded in the [custody evidence](failures/initial-composer-custody.md).
+Phase 296 retains the unresolved release regression before New Window integration.
 
-# Phase 295: Establish Initial Composer Activation Custody (pending)
+# Phase 296: Restore Composer Release-Fence Progress (pending)
 
-Before Phase 290, establish bounded move-only custody for an acquired window's initial composer
-activation through exact selected-editor preparation and transfer or typed fresh-session retirement.
-Derive cancellation, preparation failure, stale completion, and ambiguous-outcome handling from
-the app [shell lifecycle](../crates/beryl-app/doc/design-shell-lifecycle.md); retain the exact
-candidate and reconciliation obligations before releasing window-acquisition cleanup custody.
-Reuse accepted Syndic abandonment and selected-editor preparation rather than replacement-only
-slot retirement or ordinary service disposal.
+Restore ordinary selected-composer release progress through the accepted exact widget and dispatch
+lifecycle, without waiting for remaining sparse indexing to finish. Follow the cancellable-work
+unmount contract adopted by [composer GUI](features/composer/gui.md) and the existing slot/owner
+semantic-settlement boundary. Preserve exact active-flight settlement, admitted mutations, source
+identity, obsolete-result rejection, and the coherent predecessor until successful promotion.
+Do not substitute restoration-seed quiescence or weaken the existing release assertion.
 
-Verify production activation and prepared-editor handoff, failure before and after durable open,
-reused-thread preservation, exact retry and pending reconciliation, foreign or stale rejection,
-and repeated bounded custody release. Run focused Cargo checks and affected host, slot, and new
-initial-activation tests, followed by independent semantic review. No implementation has begun;
-the [custody failure record](failures/initial-composer-custody.md) records the confirmed prerequisite.
+Verify `current_predecessor_release_does_not_wait_for_its_remaining_sparse_index` admits the exact
+successor while the predecessor is still nonquiescent with an estimated index. Retain the bounded
+fixture and its original admission limit, and cover active-flight completion and late-response
+cleanup through focused pending-activation and owner tests. Run the affected aggregate recorded in
+the [release-fence evidence](failures/composer-release-fence.md), a focused Cargo check, and independent
+semantic review. Diagnosis is complete; no release-fence production changes have been made.
 
 # Phase 290: Mount Bounded Independent Main-Window Creation (pending)
 
@@ -52,7 +52,6 @@ process registry, Phase 236 acquisition, Phase 289 hidden host, and exact public
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
 
-Blocked until Phase 295 is accepted: initial production activation can retain a fresh durable
-candidate after failure, while ordinary service disposal does not perform its typed abandonment.
-Independent source review confirmed the missing initial-retirement boundary; no Phase 290 source
-changes were made. Resume with Phase 295 before this integration phase.
+Phase 295 supplies the accepted initial-retirement and prepared-shell transfer boundary. Complete
+Phase 296's separate release regression gate before this integration; no Phase 290 source changes
+have been made. Resume with Phase 296.

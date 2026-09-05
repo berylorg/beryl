@@ -255,6 +255,23 @@ impl RuntimeBackedWindowAcquisitionService {
         {
             return Err("shell selection belongs to a different acquisition or home".to_owned());
         }
+        self.validate_initial_composer_claim(acquisition, selection.claim(), &self.store)
+    }
+
+    pub(crate) fn validate_initial_composer_claim(
+        &self,
+        acquisition: &RuntimeBackedWindowAcquisition,
+        claim: beryl_state::WindowClaimSelection,
+        store: &HomeStore,
+    ) -> Result<(), String> {
+        if !std::ptr::eq(store, self.store.as_ref())
+            || acquisition.home_id != store.home_id()
+            || claim.thread_id() != acquisition.thread_id
+        {
+            return Err(
+                "initial composer belongs to a different acquisition service or home".to_owned(),
+            );
+        }
         for _ in 0..=beryl_state::MAX_RESTORABLE_WINDOWS {
             let before = self
                 .store
@@ -273,8 +290,8 @@ impl RuntimeBackedWindowAcquisitionService {
                 return Err("shell acquisition no longer owns its exact claim".to_owned());
             };
             if !state_matches_acquisition(&state, acquisition)
-                || state.claim_generation() != selection.claim().generation()
-                || state.claim_revision() != selection.claim().revision()
+                || state.claim_generation() != claim.generation()
+                || state.claim_revision() != claim.revision()
             {
                 return Err(
                     "shell selection does not match the acquired runtime, root, and claim"

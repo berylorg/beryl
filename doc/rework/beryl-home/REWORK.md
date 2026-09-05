@@ -257,8 +257,10 @@
   before shell integration, with [publication evidence](../../failures/theme-runtime-gpui-publication.md).
 - [x] Built and independently accepted the injectable hidden main-window shell with exact editor
   binding, shared appearance adoption, adaptive layout, and reservation custody through cleanup.
-- [ ] Establish exact initial-composer activation and retirement custody before independent-window
-  creation, as identified in the [custody failure record](../../failures/initial-composer-custody.md).
+- [x] Established and independently accepted initial-composer activation, prepared-shell transfer,
+  and typed retirement with exact candidate and reservation custody.
+- [ ] Restore ordinary composer release-fence progress before independent-window integration, as
+  identified in the [release-fence evidence](../../failures/composer-release-fence.md).
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

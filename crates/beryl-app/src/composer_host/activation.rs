@@ -9,6 +9,15 @@ use syndic_storage::{
 use super::*;
 
 impl SyndicComposerHost {
+    pub(crate) fn validate_initial_request(
+        request: &ComposerHostActivationRequest,
+    ) -> Result<(), ComposerHostError> {
+        if request.first_demands().len() > COMPOSER_HOST_MAX_INITIAL_DEMANDS {
+            return Err(ComposerHostError::TooManyInitialDemands);
+        }
+        validate_initial_request_order(request.first_demands())
+    }
+
     #[cfg(any(test, feature = "test-faults"))]
     pub fn test_activate(
         &mut self,
@@ -103,6 +112,30 @@ impl SyndicComposerHost {
             &prepared,
             command_outcome,
         )?;
+        self.finish_initial_activation(
+            store,
+            request,
+            cancellation,
+            home_generation,
+            selector,
+            open_outcome,
+            retain_open_on_terminal,
+        )
+    }
+
+    pub(crate) fn finish_initial_activation(
+        &mut self,
+        store: &HomeStore,
+        request: ComposerHostActivationRequest,
+        cancellation: &CommandCancellation,
+        home_generation: beryl_home_store::HomeGeneration,
+        selector: syndic_storage::DraftEditorCurrentSelectorV1,
+        open_outcome: DraftEditorCandidateSessionOpenOutcomeV1,
+        retain_open_on_terminal: bool,
+    ) -> Result<ComposerHostActivationOutcome, ComposerHostError> {
+        if self.active.is_some() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         let (disposition, head) = match open_outcome {
             DraftEditorCandidateSessionOpenOutcomeV1::Opened(head) => {
                 (ComposerHostOpenDisposition::Opened, head)

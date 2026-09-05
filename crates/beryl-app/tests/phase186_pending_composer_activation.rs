@@ -66,6 +66,7 @@ impl Render for StableMountRoot {
     ) -> impl IntoElement {
         div()
             .w(px(320.))
+            .h(px(64.))
             .children(self.mount.read(cx).contribution())
     }
 }
@@ -78,7 +79,7 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
     let selected_thread = fixture.selected_thread;
     let target_thread = fixture.target_thread;
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -275,7 +276,7 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
     let target_thread = fixture.target_thread;
     seed_activation_published_draft(&fixture, target_thread);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -294,7 +295,7 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
         window_id,
         selected_claim,
         selected_host,
-        storage,
+        storage.clone(),
         marker_authority,
     )
     .unwrap();
@@ -466,7 +467,7 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
         .debug_bounds("conversation-composer-pending-realization")
         .unwrap();
     assert_eq!(pending_bounds.size, selected_bounds.size);
-    assert!(pending_bounds.origin.x >= selected_bounds.right());
+    assert_eq!(pending_bounds.origin, selected_bounds.origin);
     let pending_input = mount
         .read_with(cx, |mount, _| mount.test_pending_contribution())
         .unwrap()
@@ -632,7 +633,7 @@ fn prior_flush_failure_detaches_pending_presentation_while_retirement_is_pending
     let selected_thread = fixture.selected_thread;
     let target_thread = fixture.target_thread;
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -655,7 +656,7 @@ fn prior_flush_failure_detaches_pending_presentation_while_retirement_is_pending
         window_id,
         selected_claim,
         selected_host,
-        storage,
+        storage.clone(),
         marker_authority,
     )
     .unwrap();
@@ -893,7 +894,7 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
     let target_thread = fixture.target_thread;
     seed_activation_published_draft(&fixture, target_thread);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -1108,7 +1109,7 @@ fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
     let target_thread = fixture.target_thread;
     let predecessor_extent = seed_activation_published_draft_chunks(&fixture, selected_thread, 32);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -1327,7 +1328,7 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
     let target_thread = fixture.target_thread;
     seed_activation_published_draft(&fixture, target_thread);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -1528,7 +1529,7 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
     let target_thread = fixture.target_thread;
     seed_activation_published_draft(&fixture, target_thread);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(
@@ -1546,7 +1547,7 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
         window_id,
         selected_claim,
         selected_host,
-        storage,
+        storage.clone(),
         marker_authority,
     )
     .unwrap();
@@ -1819,7 +1820,7 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
         other => panic!("source-drift candidate was not active: {other:?}"),
     };
     let transaction = composer_base::transaction_for_session(
-        storage,
+        storage.clone(),
         &durable_store,
         session,
         73,
@@ -1919,7 +1920,7 @@ fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpu
     let target_thread = fixture.target_thread;
     seed_activation_published_draft(&fixture, target_thread);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage);
+    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
     assert!(matches!(
         selected_host
             .test_activate(

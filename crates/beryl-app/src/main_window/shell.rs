@@ -21,6 +21,7 @@ use crate::window_acquisition::{
 };
 
 mod appearance;
+use super::initial_composer::InitialComposerCandidate;
 use crate::theme_runtime::{AppearanceGeneration, GpuiAppearanceWindowSet};
 use appearance::MainWindowShellAppearance;
 
@@ -75,6 +76,7 @@ pub enum MainWindowShellPreparationFailure {
 pub struct MainWindowShellPrepared {
     acquisition: RuntimeBackedWindowAcquisition,
     reservation: RuntimeBackedWindowMainWindowReservation,
+    initial_composer: Option<Box<InitialComposerCandidate>>,
     composer: MainWindowConversationComposerPreparedSelection,
     composer_configurator: MainWindowShellComposerConfigurator,
     marker_seals: DraftMarkerSealService,
@@ -83,6 +85,28 @@ pub struct MainWindowShellPrepared {
 }
 
 impl MainWindowShellPrepared {
+    pub(in crate::main_window) fn from_initial_composer(
+        acquisition: RuntimeBackedWindowAcquisition,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+        composer: MainWindowConversationComposerPreparedSelection,
+        composer_configurator: MainWindowShellComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        appearance: Arc<AppearanceGeneration>,
+        initial_composer: Box<InitialComposerCandidate>,
+    ) -> Self {
+        Self {
+            acquisition,
+            reservation,
+            composer,
+            composer_configurator,
+            marker_seals,
+            submission_request_source,
+            appearance: MainWindowShellAppearance::prepare(appearance),
+            initial_composer: Some(initial_composer),
+        }
+    }
+
     pub fn prepare(
         registry: &RuntimeBackedWindowProcessRegistry,
         acquisition_service: &RuntimeBackedWindowAcquisitionService,
@@ -113,6 +137,7 @@ impl MainWindowShellPrepared {
                     unpublished: MainWindowShellUnpublished {
                         acquisition,
                         reservation,
+                        initial_composer: None,
                     },
                 });
             }
@@ -137,12 +162,14 @@ impl MainWindowShellPrepared {
                 unpublished: MainWindowShellUnpublished {
                     acquisition,
                     reservation,
+                    initial_composer: None,
                 },
             });
         }
         Ok(Self {
             acquisition,
             reservation,
+            initial_composer: None,
             composer,
             composer_configurator,
             marker_seals,
@@ -166,6 +193,7 @@ impl MainWindowShellPrepared {
         MainWindowShellUnpublished {
             acquisition: self.acquisition,
             reservation: self.reservation,
+            initial_composer: self.initial_composer,
         }
     }
 }

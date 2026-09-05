@@ -35,6 +35,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
         let MainWindowShellPrepared {
             acquisition,
             reservation,
+            initial_composer,
             composer,
             composer_configurator,
             marker_seals,
@@ -47,6 +48,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
             MainWindowShellController {
                 acquisition,
                 reservation,
+                initial_composer,
                 appearance,
                 selection,
                 minimum_size,
@@ -123,6 +125,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     prepared: MainWindowShellPrepared {
                         acquisition: controller.acquisition,
                         reservation: controller.reservation,
+                        initial_composer: controller.initial_composer,
                         composer: composer.0,
                         composer_configurator: composer.1,
                         marker_seals: composer.2,
@@ -201,6 +204,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                 unpublished: MainWindowShellUnpublished {
                     acquisition: controller.acquisition,
                     reservation: controller.reservation,
+                    initial_composer: controller.initial_composer,
                 },
             }),
         }
@@ -210,6 +214,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
 pub struct MainWindowShellController {
     acquisition: RuntimeBackedWindowAcquisition,
     reservation: RuntimeBackedWindowMainWindowReservation,
+    initial_composer: Option<Box<InitialComposerCandidate>>,
     pub(super) appearance: MainWindowShellAppearance,
     selection: crate::main_window::MainWindowComposerSelectionIdentity,
     minimum_size: gpui::Size<gpui::Pixels>,
@@ -240,6 +245,7 @@ impl MainWindowShellController {
         MainWindowShellUnpublished {
             acquisition: self.acquisition,
             reservation: self.reservation,
+            initial_composer: self.initial_composer,
         }
     }
 }
