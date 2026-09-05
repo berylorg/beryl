@@ -29,9 +29,30 @@ Focused Cargo verification and all 47 shell, reservation, selected-preparation, 
 acquisition tests passed; independent semantic review accepted publication and custody. The
 [publication record](failures/theme-runtime-gpui-publication.md) preserves integration evidence.
 
+# Phase 295: Establish Initial Composer Activation Custody (pending)
+
+Before Phase 290, establish bounded move-only custody for an acquired window's initial composer
+activation through exact selected-editor preparation and transfer or typed fresh-session retirement.
+Derive cancellation, preparation failure, stale completion, and ambiguous-outcome handling from
+the app [shell lifecycle](../crates/beryl-app/doc/design-shell-lifecycle.md); retain the exact
+candidate and reconciliation obligations before releasing window-acquisition cleanup custody.
+Reuse accepted Syndic abandonment and selected-editor preparation rather than replacement-only
+slot retirement or ordinary service disposal.
+
+Verify production activation and prepared-editor handoff, failure before and after durable open,
+reused-thread preservation, exact retry and pending reconciliation, foreign or stale rejection,
+and repeated bounded custody release. Run focused Cargo checks and affected host, slot, and new
+initial-activation tests, followed by independent semantic review. No implementation has begun;
+the [custody failure record](failures/initial-composer-custody.md) records the confirmed prerequisite.
+
 # Phase 290: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
 process registry, Phase 236 acquisition, Phase 289 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
+
+Blocked until Phase 295 is accepted: initial production activation can retain a fresh durable
+candidate after failure, while ordinary service disposal does not perform its typed abandonment.
+Independent source review confirmed the missing initial-retirement boundary; no Phase 290 source
+changes were made. Resume with Phase 295 before this integration phase.
