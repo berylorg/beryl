@@ -22,28 +22,14 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 292: Correct The Scrollbar Visibility Fixture (finished)
+# Phase 288: Propagate And Pin Live-Appearance Dependencies (finished)
 
-Accepted scrollbar `70a4dc2`: the fixture tolerates activation redraws while bounded test-support
-observation proves obsolete-frame rejection. The negative mutation failed the exact request-count
-assertion; restored source passed 62 default and 63 enabled package tests with independent semantic
-review. Production behavior is unchanged. The
-[dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves evidence and
-retained temporary-checkout state.
-
-# Phase 288: Propagate And Pin Live-Appearance Dependencies (pending)
-
-Publish accepted owned revisions in dependency order through scrollbar, text-input, and settings-
-window, then canonically pin one GPUI type universe in Beryl. Verify tracked-lock metadata and
-focused checks from neutral working directories before restarting the analyzer.
-
-GPUI `b6939aa0a2d78be59facd12a909a4ada3b6f6a64` is published on `origin/gpui-fork` after
-45 focused tests and independent review. Accepted local scrollbar correction `70a4dc2` clears the
-visibility gate described in [dependency propagation](failures/gpui-dependent-fork-revision-pin.md).
-Retain both default and `--features test-support` scrollbar package gates during propagation.
-Scrollbar's canonical manifest and lock still use the prior published GPUI pin; the retained neutral
-candidate uses the accepted GPUI revision and correction. Beryl's existing Cargo edits and accepted
-text-input appearance work remain unmodified for resumption.
+Published scrollbar `d2c7b90`, text-input `fc17c573`, and settings-window `e587fa78` over GPUI
+`b6939aa`, then pinned that single published graph in Beryl. Neutral package gates, locked metadata,
+the focused `beryl-app` check, analyzer restarts, and independent semantic review passed; text-input
+retains exactly five accepted historical library failures. The
+[dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves exact gates,
+revision identities, and policy-denied temporary-checkout cleanup. Phase 289 is ready.
 
 # Phase 289: Build The Target-State Main-Window Shell Foundation (pending)
 

@@ -57,16 +57,62 @@ mutation was restored before `cargo nextest run -j 2 -p gpui-scrollbar --no-fail
 check, formatting, and the subsequent analyzer restart passed. Independent semantic review accepted
 the restored correction and matching canonical/neutral source, test, and design artifacts. Keep
 both default and enabled package gates: the enabled gate owns the decisive request observation.
-Canonical dependency pins remain unchanged until Phase 288 propagation.
+Canonical dependency pins were unchanged at Phase 292 acceptance.
 
-Two task-owned neutral clones remain at
-`C:/Users/user/p/berylorg/.phase288-scrollbar-neutral` (8,349,639,943 bytes) and
-`C:/Users/user/p/berylorg/.phase288-scrollbar-baseline` (4,831,203,940 bytes). Both are ordinary
-directories with no link target; automatic command policy rejected their verified exact native
-PowerShell recursive removal. No alternate deletion was attempted and no task workers remain.
-The baseline is clean; the candidate retains the accepted correction, GPUI manifest/lock delta,
-and reused check/test artifacts. These are reusable Phase 288 intermediates, not accepted permanent
-artifacts; cleanup remains owned by this work.
+Phase 288 published the accepted chain by non-force fast-forward, verifying each exact remote ref:
+
+- GPUI `b6939aa0a2d78be59facd12a909a4ada3b6f6a64` on `origin/gpui-fork`.
+- Scrollbar `d2c7b90ba54f9d7cfa858469c62b4b1338dd47a4` on `origin/main`.
+- Text-input `fc17c5738c35350e58e32437cdae74e28ebc31af` on `origin/main`.
+- Settings-window `e587fa78e151e80f03a1d18504ef804e3b53c20d` on `origin/main`.
+
+Neutral scrollbar qualification proved complete candidate worktree identity, one canonical GPUI
+source, and passing locked metadata, enabled all-target check, formatting, and both package nextest
+gates: 62 default and 63 `test-support` cases. Text-input's clean neutral candidate passed the
+enabled all-target check and `cargo nextest run -j 2 -p gpui-text-input --no-fail-fast` with each
+of these explicit `--test` targets: `exact_geometry`, `prepublication`, `range_atoms`,
+`range_clipboard`, `range_mutations`, `range_objects`, `range_residency`, `range_segmentation`,
+`range_widget`, `text_model`, and `widget`. All 310 default and 313 `--features test-support` cases
+passed, including the 18 prepublication cases and four accepted appearance cases. The separate
+`--lib --no-fail-fast` run completed all 108 cases with 103 passing and exactly these five historical
+failures:
+
+- `committed_settlement_accepts_exact_fit_and_one_under_is_retryable`
+- `history_custody_capacity_exhaustion_releases_and_reuses_exact_slots`
+- `active_interaction_and_scroll_anchor_are_runtime_realization_targets`
+- `exact_priority_after_end_object_retains_proof_for_successive_edit`
+- `terminal_target_replacement_accepts_fixed_exact_caps_and_rejects_one_under`
+
+Text-input semantic candidate `7ce0cdc` was followed by `fc17c573`, which only formats
+`tests/range_widget.rs`. Independent review proved its blob equals rustfmt's transformation of the
+parent; the clean neutral final tree passed formatting without repeating semantic tests for that
+mechanical delta. Settings-window's neutral all-target check and complete package nextest gate
+passed all 109 cases across eight integration binaries. All three fork candidates passed independent
+source and graph review before publication.
+
+Beryl's four manifest pins and tracked lock now resolve exactly one package identity for each owned
+UI dependency above. Full locked metadata and `cargo check -j 2 --manifest-path
+C:\Users\user\p\berylorg\beryl\Cargo.toml -p beryl-app --locked` passed from the neutral Beryl
+directory, compiling the current working Beryl source rather than the neutral clone's source.
+No-deps locked metadata and focused checks preceded successful analyzer restarts. Independent
+review accepted the complete Cargo delta, including consolidation of the old duplicate text-input
+entries, with no new patch, feature, or unrelated dependency changes.
+
+Five task-owned neutral clones remain under `C:/Users/user/p/berylorg/`:
+
+- `.phase288-scrollbar-neutral`: 8,420,519,694 bytes.
+- `.phase288-scrollbar-baseline`: 4,831,203,940 bytes.
+- `.phase288-text-input-neutral`: 10,970,860,237 bytes.
+- `.phase288-settings-neutral`: 6,372,628,039 bytes.
+- `.phase288-beryl-neutral`: 40,911,845 bytes.
+
+Automatic command policy rejected verified exact native PowerShell recursive removal of the first
+two paths previously and of the three new paths during Phase 288 (`blocked by policy`). No alternate
+deletion was attempted; no task-owned Cargo or rustc process remained at handoff. The canonical
+scrollbar target also reached 7,345,479,207 bytes during a preliminary check that was not counted as
+neutral qualification. These are retained build intermediates, not permanent accepted artifacts;
+cleanup remains owned by this work. Their inactive retention does not weaken exact candidate-tree,
+canonical graph, or verified remote-ref publication evidence.
 
 Canonical locked metadata accepted the direct revision, but the focused `beryl-app` check resolved
 both the new direct GPUI revision and the prior revision still named by `gpui-scrollbar`,
