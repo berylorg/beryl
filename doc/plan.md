@@ -21,21 +21,43 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 290: Mount Bounded Independent Main-Window Creation (finished)
+# Phase 299: Establish The Bounded Main-Window Notice Arbiter (finished)
 
-Mounted New Window and Ctrl+Shift+N through exact target acquisition, bounded preparation, and
-coherent publication or abandonment. Independent semantic review accepted the implementation;
-all 64 affected tests have passing evidence across the aggregate and targeted rerun, and the
-library check passed. The [creation record](failures/main-window-creation.md) preserves the
-progress correction, verification caveat, and retained test resources.
+Established and independently accepted the bounded per-window notice arbiter with exact identity,
+priority/FIFO, protected-condition capacity, stale-action rejection, and bounded display records.
+All 16 focused integration tests, the library check, and formatting checks passed. The
+[notification record](failures/notifications.md) identifies the retained temporary test config.
+
+# Phase 300: Implement The Main-Window Notice Widget (pending)
+
+Implement and verify the existing [notice widget contract](gui/widgets/main-window-notice/spec.md)
+against bounded owner-supplied records, independently of feature queue policy and shell mounting.
+
+# Phase 301: Mount The Per-Window Notice Projection (pending)
+
+Connect the accepted arbiter and widget through the
+[notification GUI contract](features/notifications/gui.md), with exact window ownership and a
+single stable overlay projection. Feature-owned event contributions remain separate where missing.
+
+# Phase 302: Preserve The Resident Editor Through Close Flush (pending)
+
+Establish and verify a close flush that freezes mutations while preserving the resident editor and
+read-only interaction until later close obligations settle, under
+[composer behavior](features/composer/design.md) and
+[ordinary close](features/main-windows/design.md). The existing WindowClose flush disposes the
+editor before a subsequent session failure can be known; the
+[readiness finding](failures/main-window-close-readiness.md) records why it cannot be used unchanged.
 
 # Phase 298: Mount Ordinary Main-Window Close (pending)
 
 Mount ordinary close under [main-window behavior](features/main-windows/design.md), preserving
 the visible window and claim until exact active work, dirty draft, and durable session removal
-settle. Verify duplicate close admission, exact stop and continuation cancellation, failure return
+settle. Await the notice and resident-preserving flush prerequisites above. Verify duplicate close
+admission, exact stop and continuation cancellation, failure return
 to the coherent open state, independent-window preservation, and final-window empty-restore
 termination. Inspect accepted stop, composer, session, and notice dependencies before activating;
-split any independently missing component into its own prerequisite phase.
+split any independently missing component into its own prerequisite phase. Exact-stop and typed
+session-removal primitives exist; noninterruptible active-work waiting and close-time continuation
+cancellation still require a focused readiness check before activation.
 
 Startup, Exit, restoration, onboarding, and the other deferred mounts remain in the rework tracker.

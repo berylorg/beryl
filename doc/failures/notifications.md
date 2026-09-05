@@ -15,3 +15,13 @@ Manual live testing showed the first configured WAV began playing for a few mill
 The invalid assumption was that a fresh per-sound `rodio::Player` could be created, appended to, waited with `sleep_until_end()`, and dropped for each notification without affecting first playback. In rodio 0.22.2, dropping a `Player` stops its sounds, and the first cold Windows stream/player path can reach the player end signal before the audible output path has fully settled.
 
 The course adjustment is to keep one persistent `rodio::Player` alive with the worker-owned `MixerDeviceSink`, append each notification WAV to that player, and continue waiting for each appended source on the audio worker thread.
+
+## 2026-09-06: Notice-arbiter test configuration cleanup blocked
+
+Phase 299 passed its library check and all 16 serial nextest integration tests, including priority,
+capacity, identity, bounded text, and repeated release behavior. Independent semantic review found
+no blocking issue. Automatic approval review then rejected removal of the exact task-owned
+`crates/beryl-app/tests/phase299_notice_arbiter/nextest.toml` before execution with only
+`blocked by policy`. The 73-byte timeout configuration remains untracked; no task process,
+fixture, or environment mutation remains. Cleanup was not retried or bypassed. This residue is
+separate from the accepted production result and remains for Operator disposition.
