@@ -250,7 +250,8 @@
 - [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.
 - [x] Established synchronous range-input live appearance with verified retained scene colors, editor-state preservation, and unchanged host-work custody.
 - [x] Identified the stale scrollbar visibility fixture and its obsolete-frame admission evidence gap without changing production behavior.
-- [ ] Correct and accept the scrollbar visibility fixture before propagating and canonically pinning the accepted live-appearance dependency chain.
+- [x] Corrected and independently accepted the scrollbar visibility fixture with mutation-sensitive obsolete-frame admission evidence.
+- [ ] Propagate and canonically pin the accepted live-appearance dependency chain.
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

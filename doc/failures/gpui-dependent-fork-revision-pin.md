@@ -41,13 +41,32 @@ that obsolete frame work was never enqueued. Require mutation-sensitive obsolete
 evidence, then the unchanged complete scrollbar publication gate; no gate waiver or GPUI scheduling
 redesign follows from this diagnosis.
 
+Phase 292 accepted scrollbar correction `70a4dc2`. The fixture requires the initial scrollbar
+driver and permits ordinary activation redraws only after replacement has made the old provider
+ineligible. It preserves exact retired and replacement keys, zero owner updates, hidden replacement
+state, and post-drain stability. The opt-in `test-support` probe counts actual canvas-driver
+execution and records requests immediately after the real GPUI frame-request call; a current-key
+mounted control proves that the observation is wired to real admission. Production guards and GPUI
+scheduling remain unchanged.
+
+In the retained neutral candidate with GPUI `b6939aa`, temporarily bypassing the admission guard
+failed the exact mounted snapshot assertion with one obsolete-key request instead of zero. The
+mutation was restored before `cargo nextest run -j 2 -p gpui-scrollbar --no-fail-fast` passed all
+62 cases and the same command with `--features test-support` passed all 63. The enabled
+`--test visibility` target passed all 12 cases. Locked metadata, the focused all-targets enabled
+check, formatting, and the subsequent analyzer restart passed. Independent semantic review accepted
+the restored correction and matching canonical/neutral source, test, and design artifacts. Keep
+both default and enabled package gates: the enabled gate owns the decisive request observation.
+Canonical dependency pins remain unchanged until Phase 288 propagation.
+
 Two task-owned neutral clones remain at
-`C:/Users/user/p/berylorg/.phase288-scrollbar-neutral` (4,833,852,178 bytes) and
+`C:/Users/user/p/berylorg/.phase288-scrollbar-neutral` (8,349,639,943 bytes) and
 `C:/Users/user/p/berylorg/.phase288-scrollbar-baseline` (4,831,203,940 bytes). Both are ordinary
 directories with no link target; automatic command policy rejected their verified exact native
 PowerShell recursive removal. No alternate deletion was attempted and no task workers remain.
-The baseline is clean; the candidate retains only its GPUI manifest/lock delta. These are reusable
-Phase 292 intermediates, not accepted permanent artifacts; cleanup remains owned by this work.
+The baseline is clean; the candidate retains the accepted correction, GPUI manifest/lock delta,
+and reused check/test artifacts. These are reusable Phase 288 intermediates, not accepted permanent
+artifacts; cleanup remains owned by this work.
 
 Canonical locked metadata accepted the direct revision, but the focused `beryl-app` check resolved
 both the new direct GPUI revision and the prior revision still named by `gpui-scrollbar`,

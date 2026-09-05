@@ -22,25 +22,14 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 291: Diagnose The Scrollbar Visibility Publication Gate (finished)
+# Phase 292: Correct The Scrollbar Visibility Fixture (finished)
 
-Proved that ordinary activation redraw reaches the fixture after owner replacement, where its
-unconditional old-owner render expectation fails. Bounded fixture probes passed on both exact GPUI
-graphs; independent semantic review accepted the test-owned cause and identified the need for
-observable obsolete-frame admission evidence. Probes were restored without production changes;
-the [dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves evidence
-and the exact retained temporary-checkout cleanup blocker.
-
-# Phase 292: Correct The Scrollbar Visibility Fixture (pending)
-
-Correct the mounted fixture to tolerate ordinary activation redraw while explicitly exercising
-owner replacement. Preserve first-driver existence, exact obsolete and replacement keys, zero
-owner-update callbacks, and hidden replacement state. Establish a mutation-sensitive assertion for
-obsolete animation-frame admission; parked render counts alone are insufficient with the current
-test platform. Keep production visibility and GPUI scheduling behavior unchanged. Verify the exact
-visibility case and neighboring lifecycle cases, then the complete unchanged scrollbar package gate
-from a neutral working directory with the accepted GPUI revision. Obtain independent semantic review
-of the fixture and its frame-admission evidence before resuming Phase 288.
+Accepted scrollbar `70a4dc2`: the fixture tolerates activation redraws while bounded test-support
+observation proves obsolete-frame rejection. The negative mutation failed the exact request-count
+assertion; restored source passed 62 default and 63 enabled package tests with independent semantic
+review. Production behavior is unchanged. The
+[dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves evidence and
+retained temporary-checkout state.
 
 # Phase 288: Propagate And Pin Live-Appearance Dependencies (pending)
 
@@ -49,10 +38,12 @@ window, then canonically pin one GPUI type universe in Beryl. Verify tracked-loc
 focused checks from neutral working directories before restarting the analyzer.
 
 GPUI `b6939aa0a2d78be59facd12a909a4ada3b6f6a64` is published on `origin/gpui-fork` after
-45 focused tests and independent review. Scrollbar and downstream publication remain blocked by
-the visibility test gate described in [dependency propagation](failures/gpui-dependent-fork-revision-pin.md).
-Scrollbar's candidate manifest and lock were restored to the prior published pin; Beryl's existing
-Cargo edits and accepted text-input appearance work remain unmodified for resumption.
+45 focused tests and independent review. Accepted local scrollbar correction `70a4dc2` clears the
+visibility gate described in [dependency propagation](failures/gpui-dependent-fork-revision-pin.md).
+Retain both default and `--features test-support` scrollbar package gates during propagation.
+Scrollbar's canonical manifest and lock still use the prior published GPUI pin; the retained neutral
+candidate uses the accepted GPUI revision and correction. Beryl's existing Cargo edits and accepted
+text-input appearance work remain unmodified for resumption.
 
 # Phase 289: Build The Target-State Main-Window Shell Foundation (pending)
 
