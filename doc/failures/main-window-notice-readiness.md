@@ -1,10 +1,10 @@
 # Main-Window Notice Readiness
 
-## 2026-09-06: Existing Detail And Theme Boundaries Do Not Complete The Widget Contract
+## 2026-09-06: An Optional Text-Control Candidate Was Mistaken For A Widget Blocker
 
-Phase 300 readiness inspection invalidated unchanged reuse of the owned-value `TextInput` as the
-notice's complete selectable-detail implementation. This is source evidence; no GPUI behavior test
-or production implementation was performed in this slice.
+The [notice contract](../gui/widgets/main-window-notice/spec.md) requires bounded selectable
+readonly detail. Notifications contain no editable text input. Its direct dependencies are command
+buttons and the external scrollbar; the widget owns detail selection, scrolling, and inert behavior.
 
 The pinned `gpui-text-input` revision `fc17c5738c35350e58e32437cdae74e28ebc31af` matches the inspected
 sibling checkout. Its [widget contract](../../../gpui-text-input/doc/gui/widgets/text-input/spec.md)
@@ -28,13 +28,13 @@ The [theme runtime contract](../systems/theme-runtime/design.md) requires canoni
 role ids. The notice spec's anatomy, state, severity, and layout roles need schema coverage before
 the widget can consume them through complete resolved appearances.
 
-The plan now separates canonical theme-role implementation as Phase 303 and keeps Phase 300
-pending. The notice spec references command buttons and the external scrollbar; it does not require
-`text-input`. Widget-local readonly mechanics are permitted in principle, but this investigation
-did not establish an accepted complete detail primitive. Resolve that boundary explicitly before
-activation; do not conceal the dependency defects with input interception or claim scroll
-preservation by resetting it. Any independent dependency repair or new component needs its own
-bounded phase and applicable authority.
+These findings reject optional unchanged `TextInput` reuse. They do not establish a notification
+architecture gap or make repairing `TextInput` a prerequisite. Pausing Phase 300 on that basis
+incorrectly promoted an implementation candidate into a required dependency. Implement the
+notice-owned readonly detail mechanics under the existing widget authority; do not introduce
+editable fields or dependency repair solely to preserve that candidate. The source findings remain
+unverified by behavior tests and do not authorize unrelated dependency work. Phase 303 supplies
+the independently missing canonical theme roles before Phase 300 consumes them.
 
 Accepted command/focus examples exist in
 `crates/beryl-app/src/main_window/creation/command.rs` and

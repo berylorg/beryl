@@ -42,14 +42,12 @@ and semantic review before widget integration.
 Implement and verify the existing [notice widget contract](gui/widgets/main-window-notice/spec.md)
 against bounded owner-supplied records, independently of feature queue policy and shell mounting.
 
-Activation is paused at the [widget readiness finding](failures/main-window-notice-readiness.md).
-The canonical theme role family is missing and is scheduled above. Unchanged owned-value
-`TextInput` reuse cannot satisfy inert input rejection or same-identity revision scroll
-preservation. Before activating, establish a conforming bounded readonly detail boundary and its
-focused GPUI verification seam; the widget contract permits local detail mechanics but does not
-require `TextInput`. A dependency repair or independently verifiable new component must receive its
-own prerequisite phase, with any necessary owning authority resolved first. No widget source has
-been implemented in this slice.
+After the canonical theme roles above, implement the widget-owned bounded selectable detail,
+selection/copy, scrolling, commands, focus continuity, and inert input rejection from the existing
+contract. Verify same-identity content revisions, exact replacement and dismissal, bounded layout,
+diagnostics privacy, and themed rendering through focused GPUI tests and semantic review.
+The [readiness correction](failures/main-window-notice-readiness.md) records why an unsuitable
+optional text-control reuse candidate is not a widget blocker or a dependency-repair prerequisite.
 
 # Phase 301: Mount The Per-Window Notice Projection (pending)
 
