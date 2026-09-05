@@ -9,6 +9,46 @@ assume each dependent fork can propagate that revision through manifest and lock
 
 # Evidence
 
+The live-appearance propagation candidate used published GPUI
+`b6939aa0a2d78be59facd12a909a4ada3b6f6a64` with unchanged scrollbar source at `f0bd3ab`.
+Neutral locked metadata passed, but `cargo nextest run -j 2 -p gpui-scrollbar --no-fail-fast`
+passed 61 of 62 cases; `mounted_render_frame_driver_cannot_resurrect_obsolete_visibility`
+failed at `tests/visibility.rs:50`, expecting an active fade-animation frame driver. The exact case
+also failed in a fresh neutral baseline with unchanged `f0bd3ab` and prior GPUI `f013db`.
+This does not attribute a regression to the new revision or waive the package-contract gate.
+Scrollbar's candidate pins were restored without publication, and a bounded test diagnosis now
+precedes further propagation; GPUI itself is published and its 45 streaming-layout cases passed.
+
+Bounded diagnosis proved the fixture's first render succeeds, replacing owner `(41,9)` at sequence
+1 with `(42,1)` at sequence 2 before the old canvas runs. The production frame-driver gate rejects
+that obsolete key. Queued test-platform activation then refreshes and draws the window during
+`add_window_view`'s executor drain. The provider still supplies old-owner geometry, so
+`render_scrollbar` correctly returns `None` on render 2 and the fixture's unconditional expectation
+panics. The relevant scheduling source is unchanged between the two GPUI revisions.
+
+The exact probe command was `cargo nextest run -j 2 -p gpui-scrollbar --test visibility -E
+'test(=mounted_render_frame_driver_cannot_resurrect_obsolete_visibility)' --no-fail-fast
+--success-output immediate`, run in neutral clones of scrollbar
+`f0bd3ab07399374f6cc439c257a898cde8ef1247`. A temporary fixture branch accepting chrome only before
+replacement and its absence afterward passed twice with GPUI `b6939aa` and once with `f013db`.
+Independent semantic review accepted the fixture-owned cause. All probes were restored; no
+production correction or permanent test correction was made.
+
+The durable correction must tolerate ordinary mount redraws and preserve the exact owner/key and
+terminal assertions. Merely changing the mount count from one to two is insufficient:
+`TestWindow::on_request_frame` discards its callback, so a stable parked render count cannot prove
+that obsolete frame work was never enqueued. Require mutation-sensitive obsolete-frame admission
+evidence, then the unchanged complete scrollbar publication gate; no gate waiver or GPUI scheduling
+redesign follows from this diagnosis.
+
+Two task-owned neutral clones remain at
+`C:/Users/user/p/berylorg/.phase288-scrollbar-neutral` (4,833,852,178 bytes) and
+`C:/Users/user/p/berylorg/.phase288-scrollbar-baseline` (4,831,203,940 bytes). Both are ordinary
+directories with no link target; automatic command policy rejected their verified exact native
+PowerShell recursive removal. No alternate deletion was attempted and no task workers remain.
+The baseline is clean; the candidate retains only its GPUI manifest/lock delta. These are reusable
+Phase 292 intermediates, not accepted permanent artifacts; cleanup remains owned by this work.
+
 Canonical locked metadata accepted the direct revision, but the focused `beryl-app` check resolved
 both the new direct GPUI revision and the prior revision still named by `gpui-scrollbar`,
 `gpui-text-input`, and `gpui-settings-window`. Rust then rejected GPUI values and contexts crossing

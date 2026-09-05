@@ -18,37 +18,63 @@ onboarding, placement, close, Exit, later catalog/navigation/activity/status/not
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
 
-# Phase 280: Publish GPUI Text Input After Its Focused Gate Passes (finished)
+Marker-operation admission and visible refusal, diagnostic activation, and compact repair-media
+implementation and acceptance remain in their owning
+rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-Accepted `gpui-text-input` commit `d8d04dd` passed the clean detached-clone gate at 18 of 18
-prepublication, 306 of 306 default integration, 309 of 309 `test-support`, and 103 of 108 library
-cases with exactly five expected historical failures. Independent graph and source review found no
-blocking issue; canonical `origin/main` now names the exact accepted commit, and all Phase 280
-artifacts were removed.
+# Phase 291: Diagnose The Scrollbar Visibility Publication Gate (finished)
 
-# Phase 281: Propagate The GPUI Revision Through GPUI Settings Window (pending)
+Proved that ordinary activation redraw reaches the fixture after owner replacement, where its
+unconditional old-owner render expectation fails. Bounded fixture probes passed on both exact GPUI
+graphs; independent semantic review accepted the test-owned cause and identified the need for
+observable obsolete-frame admission evidence. Probes were restored without production changes;
+the [dependency-propagation record](failures/gpui-dependent-fork-revision-pin.md) preserves evidence
+and the exact retained temporary-checkout cleanup blocker.
 
-Update `gpui-settings-window` to the accepted GPUI revision and the published widget commits, verify
-its focused package boundary, and publish the accepted commit.
+# Phase 292: Correct The Scrollbar Visibility Fixture (pending)
 
-# Phase 282: Canonically Pin The Unified GPUI Dependency Chain In Beryl (pending)
+Correct the mounted fixture to tolerate ordinary activation redraw while explicitly exercising
+owner replacement. Preserve first-driver existence, exact obsolete and replacement keys, zero
+owner-update callbacks, and hidden replacement state. Establish a mutation-sensitive assertion for
+obsolete animation-frame admission; parked render counts alone are insufficient with the current
+test platform. Keep production visibility and GPUI scheduling behavior unchanged. Verify the exact
+visibility case and neighboring lifecycle cases, then the complete unchanged scrollbar package gate
+from a neutral working directory with the accepted GPUI revision. Obtain independent semantic review
+of the fixture and its frame-admission evidence before resuming Phase 288.
 
-Pin GPUI and all three owned widget forks to the accepted propagation commits, regenerate the
-canonical lockfile outside local path-patch scope, verify locked metadata and the focused Beryl app
-check, restart the language server after the manifest model is accepted, and close the active
-rework checklist item.
+# Phase 288: Propagate And Pin Live-Appearance Dependencies (pending)
 
-# Phase 283: Build The Target-State Main-Window Shell Foundation (pending)
+Publish accepted owned revisions in dependency order through scrollbar, text-input, and settings-
+window, then canonically pin one GPUI type universe in Beryl. Verify tracked-lock metadata and
+focused checks from neutral working directories before restarting the analyzer.
 
-Build the app-owned process registry, move-only 256-slot reservation, injectable hidden window host,
-one distinct window-local controller, and theme-aware ordinary shell composition over the declared
-main-window slots. Prepare the exact claimed editor before GPUI construction, publish no partial OS
-window, and use Phase 238 abandonment for construction failure or close-before-publication. The
-binary startup/bootstrap path remains outside this phase.
+GPUI `b6939aa0a2d78be59facd12a909a4ada3b6f6a64` is published on `origin/gpui-fork` after
+45 focused tests and independent review. Scrollbar and downstream publication remain blocked by
+the visibility test gate described in [dependency propagation](failures/gpui-dependent-fork-revision-pin.md).
+Scrollbar's candidate manifest and lock were restored to the prior published pin; Beryl's existing
+Cargo edits and accepted text-input appearance work remain unmodified for resumption.
 
-# Phase 284: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 289: Build The Target-State Main-Window Shell Foundation (pending)
+
+Use Phase 284 reservations and Phase 285 editor preparation to build the injectable hidden window
+host, one distinct window-local controller, and theme-aware ordinary shell composition over the
+declared main-window slots. Prepare
+the exact claimed editor before GPUI construction, publish no partial OS window, and retain the
+reservation through Phase 238 abandonment or reconciliation after construction failure or
+close-before-publication. The binary startup/bootstrap path remains outside this phase.
+
+Verify exact editor and appearance preparation, distinct controller ownership, hidden construction
+and first publication, construction failure and close-before-publication, retained reservation
+through unresolved abandonment, and exact terminal release using the injected host and focused GPUI
+tests. Check shell slot layout and absent optional mounts against GUI integration. Run the focused
+Cargo check and nextest cases, then independent semantic review of publication and custody.
+
+The live-appearance prerequisites above resolve the gap recorded in
+[range-input live appearance](failures/range-input-live-appearance.md) before shell construction.
+
+# Phase 290: Mount Bounded Independent Main-Window Creation (pending)
 
 Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 283 hidden host, and exact publication or
+process registry, Phase 236 acquisition, Phase 289 hidden host, and exact publication or
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.

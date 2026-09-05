@@ -105,8 +105,8 @@
   remains successor-gated and undispatched because the historical request may be the first complete
   media proof. Runtime consumes no durable repair-request claim, fixes no incomplete outcome merely
   because the target slice is absent, and admits no media-less fallback.
-- Large drafts and marker collections remain logically unbounded. Their final editor, storage, and
-  presentation paths must be range-backed and paged; no whole-value compatibility path is allowed.
+- No whole-value compatibility path may conceal missing range-backed editor, storage, or
+  presentation boundaries; declared individual-operation limits do not authorize such a path.
 - During the active cutover, Syndic V7 registers only implemented families; deferred materializer
   and repair families join in their owning phases rather than existing as empty placeholders.
 
@@ -195,7 +195,7 @@
   and atomic text, object, and geometry-index delivery through the accepted staged-publication
   boundary without an accessibility payload or integration.
 - [x] Published and canonically pinned the accepted `gpui-text-input` boundary and its owned GPUI dependency chain.
-- [ ] Establish, verify, publish, and canonically pin owned GPUI hidden-window first publication before main-window shell construction.
+- [x] Established, verified, published, and canonically pinned owned GPUI hidden-window first publication and its unified widget dependency chain before main-window shell construction.
 - [x] Replaced the fixed domain-family ceiling with the exact encoded-metadata-derived capacity
   needed by registered domains.
 - [x] Established persistent composite draft roots with exact candidate-session, logical-line,
@@ -241,6 +241,16 @@
   and atomic admission boundary without a whole-value path.
 - [x] Mount native-lineage recovery loading, unavailable, failure, and ready states; unmount and
   rebind the composer through the bounded compact restoration seed without retaining whole values.
+- [x] Reconciled and independently accepted growable-content limits, compact repair-media
+  publication, diagnostic activation, and repair/recovery outcome authority.
+- [ ] Implement and verify marker-operation size refusal, shared-capacity refusal, and storage-failure
+  feedback while preserving large drafts, bounded residency, and atomic edit outcomes.
+- [x] Established and verified bounded process main-window reservations with exact release and independent acquisition/abandonment flight custody.
+- [x] Established bounded selected-editor preparation before native construction, exact stale-selection rejection, and canonical first-presentable readiness with supported configuration verification.
+- [x] Established immutable GPUI streaming-fragment paint-color overrides with verified geometry and default-rendering preservation.
+- [x] Established synchronous range-input live appearance with verified retained scene colors, editor-state preservation, and unchanged host-work custody.
+- [x] Identified the stale scrollbar visibility fixture and its obsolete-frame admission evidence gap without changing production behavior.
+- [ ] Correct and accept the scrollbar visibility fixture before propagating and canonically pinning the accepted live-appearance dependency chain.
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
@@ -250,6 +260,8 @@
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
+- [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
+  bounded media preparation without a stronger readiness gate.
 - [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release
   before Checkpoint 5.
 
@@ -268,7 +280,7 @@
 - [ ] Add the prioritized outage buffer for already-active exact targets without making buffered
   content canonical history.
 - [ ] Rebuild running-session same-home recovery through old-service disposal, an unpublished fresh
-  candidate stack, durable startup convergence, supervisor attachment, and atomic publication.
+  candidate stack, valid-successor-aware durable convergence, supervisor attachment, and atomic publication.
 - [ ] Gate: verify terminal repair, fail-closed successor gating, outage capture, and fresh same-home
   recovery before branch-discussion implementation begins.
 
@@ -289,10 +301,12 @@
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,
   CPU surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss
   recovery.
-- [ ] Complete generated-image repair from authenticated `savedPath` through inert sidecar/asset
-  staging and one atomic cross-domain Beryl-state/Syndic publication cut; missing or unusable media
-  resolves the owning turn incomplete without retaining inline base64, then mount the durable claim
-  and exact repair-dispatch path for all eligible targets.
+- [ ] Implement and verify authenticated repair-media staging, sealed paged Asset sets, and bounded
+  owner-qualified resource lookup.
+- [ ] Integrate and verify compact atomic Asset/Syndic repair selection and complete-only recovery
+  with final-command work independent of the staged media count.
+- [ ] Mount the durable claim and exact repair-dispatch path for eligible targets, with explicit
+  incomplete outcomes for missing or unusable media and no inline-base64 fallback.
 - [ ] Mount generated-title maintenance and successful branch-archive presentation through their
   established Syndic authority and bounded Beryl projections.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-
@@ -306,9 +320,8 @@
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
   membership edge, and forbidden API reference.
 - [ ] Close evidence gaps, if any remain after owning phases, for named Beryl-owned queues, caches,
-  pools, page sets, editor and transcript windows, media resources, and workers. Require configured
-  limits and owned-capacity release or eviction; treat process RSS and renderer counters as
-  observational diagnostics rather than exact global accounting.
+  pools, page sets, editor and transcript windows, media resources, and workers using representative
+  dataset growth and repeated-operation release checks rather than exact global RSS accounting.
 - [ ] Run end-to-end storage, runtime/CAS, multi-window, conversation, branch, asset, recovery, and
   Windows functional verification.
 - [ ] Run sustained stress or performance measurement only for a concrete unresolved supported-
