@@ -193,3 +193,12 @@ Checklist-affecting graph mutations update the sidebar in place when the selecte
 Right-clicking a checklist-item row opens a context menu with `Start New Codex Thread`. That command creates and activates a new Codex thread attached to the existing checklist-item node rather than creating a new semantic child node.
 
 Surface notices report graph recovery, invalid thread refs, invalid markdown refs, backend-unavailable graph actions, and graph mutation failures without replacing the graph overlay or checklist sidebar.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

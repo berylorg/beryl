@@ -69,3 +69,14 @@ Keep acceptance evidence attributable to one run while retaining exact ownership
 - Dropping an unconsumed retained startup owner performs fail-safe handle closure, including the kill-on-close Job, but never starts another timed retry. Callers use the explicit cleanup operation when they require a verified reap and joined transport.
 - Dropping an unfinished session performs the configured bounded cleanup attempt once, performs only non-waiting fail-safe release if that attempt remains indeterminate, and does not publish incomplete success evidence. It must not fall through to ordinary supervisor timeout defaults.
 - Startup incompatibility, protocol failure, request timeout, malformed or oversized output, interruption, cleanup failure, and evidence-publication failure remain distinguishable bounded outcomes.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`
+
+The affected boundaries are evidence publication, request-plan input, and child-protocol input. Existing evidence must survive failed publication; exact child ownership and bounded cleanup remain required by the decisions above.

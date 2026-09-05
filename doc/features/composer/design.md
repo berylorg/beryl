@@ -102,3 +102,12 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 - Developer instructions must not become transcript-visible user messages, queued input fragments, semantic graph state, or backend-owned Codex configuration.
 - Developer instructions are not sent to subagent requests, active-turn steering, title-generation maintenance, inventory refreshes, lazy metadata reads, context-compaction requests themselves, or other background/status-only work.
 - If the app-server mechanism requires an effective model and Beryl cannot determine it from exact backend metadata or GUI-held pending defaults, Beryl omits hidden developer-instructions request data rather than guessing.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

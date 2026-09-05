@@ -58,7 +58,7 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 
 - A fenced transcript code block with language `beryl-theme` is ordinary Codex transcript content rendered through the shared code panel widget.
 - A valid `beryl-theme` panel may expose Beryl-owned `Preview` and `Install Theme` actions.
-- Preview validates and applies the candidate transiently for the running Beryl instance without installing or persisting it.
+- Preview validates and applies the candidate transiently for the running Beryl instance without installing or persisting it. A validation failure, including an installation request with no usable name, preserves any current valid candidate preview and reports the failure only at the originating candidate action.
 - The originating code panel can expose Stop Preview while its candidate is active.
 - Install validates the candidate, asks for a durable theme name, and writes it into the theme repository.
 - Activation remains an installed-theme operation after install.
@@ -80,3 +80,12 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - Accepted theme tool writes flow through the same validation, active update, cache invalidation, and persistence paths used by settings-window theme operations.
 - Theme tool calls must cross bounded shell-owned request/response bridges. Turn workers must not hold direct access to `ShellView`, GPUI handles, settings-window internals, or repository mutation handles.
 - Tool calls that target unknown roles, unsupported properties, invalid values, unavailable sections, stale theme ids, or unsafe draft conflicts reject with bounded structured errors and must not partially apply.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

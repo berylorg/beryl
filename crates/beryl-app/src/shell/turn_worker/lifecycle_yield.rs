@@ -95,12 +95,15 @@ impl ActiveTurnLifecycleYieldCapture {
             );
         }
 
-        if self.accepted.is_some() {
+        if let Some(accepted) = &self.accepted {
             warn!(
                 tool_call = %request.summary(),
                 "ignoring duplicate lifecycle yield for active turn"
             );
-            return ActiveTurnDynamicToolCallResult::new(handled.into_response(), None);
+            return ActiveTurnDynamicToolCallResult::new(
+                duplicate_lifecycle_yield_response(accepted.outcome),
+                None,
+            );
         }
 
         let accepted = AcceptedLifecycleYield {
@@ -111,6 +114,19 @@ impl ActiveTurnLifecycleYieldCapture {
         self.accepted = Some(accepted.clone());
         ActiveTurnDynamicToolCallResult::new(handled.into_response(), Some(accepted))
     }
+}
+
+fn duplicate_lifecycle_yield_response(
+    controlling_outcome: LifecycleYieldOutcome,
+) -> DynamicToolCallResponse {
+    DynamicToolCallResponse::success_text(compact_json(json!({
+        "ok": true,
+        "result": {
+            "accepted": false,
+            "reason": "already_yielded",
+            "outcome": controlling_outcome.as_str(),
+        }
+    })))
 }
 
 fn uncorrelated_lifecycle_yield_response(

@@ -252,8 +252,6 @@ pub struct ImageGenerationItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revised_prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub result: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub saved_path: Option<String>,
 }
 

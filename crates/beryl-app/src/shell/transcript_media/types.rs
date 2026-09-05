@@ -1,12 +1,10 @@
 use std::{
-    fmt,
     hash::{Hash, Hasher},
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use beryl_backend::ManagedBackendSession;
 use beryl_model::workspace::WorkspaceId;
 use gpui::{Image, ImageFormat, ImageSource as GpuiImageSource, hash as gpui_hash};
 
@@ -25,7 +23,6 @@ pub(crate) enum TranscriptMediaSource {
     NativeImageGeneration {
         id: String,
         revised_prompt: Option<String>,
-        result: Option<Arc<String>>,
         saved_path: Option<String>,
         complete: bool,
     },
@@ -52,14 +49,14 @@ pub(crate) struct TranscriptMediaLoadedImage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum TranscriptMediaLoadedImageData {
-    RetainedBytes { bytes: Arc<[u8]>, image: Arc<Image> },
-    SourceBackedFile { path: PathBuf },
-}
-
-pub(crate) trait TranscriptMediaFileReader {
-    type Error: fmt::Display;
-
-    fn read_file_bytes(&mut self, path: &str, timeout: Duration) -> Result<Vec<u8>, Self::Error>;
+    RetainedBytes {
+        bytes: Arc<[u8]>,
+        image: Arc<Image>,
+        action_file_path: Option<PathBuf>,
+    },
+    SourceBackedFile {
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug)]
@@ -127,14 +124,12 @@ impl TranscriptMediaSource {
     pub(crate) fn native_image_generation(
         id: impl Into<String>,
         revised_prompt: Option<String>,
-        result: Option<Arc<String>>,
         saved_path: Option<String>,
         complete: bool,
     ) -> Self {
         Self::NativeImageGeneration {
             id: id.into(),
             revised_prompt,
-            result,
             saved_path,
             complete,
         }
@@ -196,6 +191,7 @@ impl TranscriptMediaLoadedImage {
         image: Arc<Image>,
         natural_dimensions: TranscriptMediaNaturalDimensions,
         source_path: Option<String>,
+        action_file_path: Option<PathBuf>,
     ) -> Self {
         Self {
             alt,
@@ -203,6 +199,7 @@ impl TranscriptMediaLoadedImage {
             data: TranscriptMediaLoadedImageData::RetainedBytes {
                 bytes: Arc::from(bytes),
                 image,
+                action_file_path,
             },
             natural_dimensions,
             source_path,
@@ -276,6 +273,15 @@ impl TranscriptMediaLoadedImage {
         }
     }
 
+    pub(crate) fn action_file_path(&self) -> Option<&PathBuf> {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes {
+                action_file_path, ..
+            } => action_file_path.as_ref(),
+            TranscriptMediaLoadedImageData::SourceBackedFile { path } => Some(path),
+        }
+    }
+
     pub(crate) fn gpui_image_source(&self) -> GpuiImageSource {
         match &self.data {
             TranscriptMediaLoadedImageData::RetainedBytes { image, .. } => {
@@ -323,22 +329,10 @@ impl TranscriptMediaLoadedImage {
     }
 }
 
-impl TranscriptMediaFileReader for ManagedBackendSession {
-    type Error = beryl_backend::ManagedBackendError;
-
-    fn read_file_bytes(&mut self, path: &str, timeout: Duration) -> Result<Vec<u8>, Self::Error> {
-        ManagedBackendSession::read_file_bytes(self, path, timeout)
-    }
-}
-
 impl TranscriptMediaLoadRequest {
-    pub(crate) fn load<R>(self, reader: &mut R) -> TranscriptMediaLoadCompletion
-    where
-        R: TranscriptMediaFileReader,
-    {
+    pub(crate) fn load(self) -> TranscriptMediaLoadCompletion {
         let started_at = Instant::now();
-        let outcome =
-            load_transcript_media(&self.source, &self.execution_target, reader, self.timeout);
+        let outcome = load_transcript_media(&self.source, &self.execution_target);
         TranscriptMediaLoadCompletion {
             key: self.key,
             fingerprint: self.fingerprint,
@@ -372,7 +366,6 @@ impl TranscriptMediaSourceFingerprint {
             TranscriptMediaSource::NativeImageGeneration {
                 id,
                 revised_prompt,
-                result,
                 saved_path,
                 complete,
             } => {
@@ -381,21 +374,6 @@ impl TranscriptMediaSourceFingerprint {
                 revised_prompt.hash(&mut hasher);
                 saved_path.hash(&mut hasher);
                 complete.hash(&mut hasher);
-                if saved_path
-                    .as_deref()
-                    .is_none_or(|path| path.trim().is_empty())
-                {
-                    match result {
-                        Some(result) => {
-                            true.hash(&mut hasher);
-                            result.len().hash(&mut hasher);
-                            Arc::as_ptr(result).hash(&mut hasher);
-                        }
-                        None => false.hash(&mut hasher),
-                    }
-                } else {
-                    false.hash(&mut hasher);
-                }
             }
         }
         execution_target.hash(&mut hasher);

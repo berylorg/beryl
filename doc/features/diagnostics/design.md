@@ -102,3 +102,12 @@ Support bounded operator debugging, live testing, and resource investigation thr
 - Diagnostic child GUI-control commands must not edit backend history, apply settings, mutate semantic graph data, mutate the supervisor instance, bypass availability checks, or use direct app-server calls when a child-owned UI/application path defines the behavior.
 - Diagnostic child control is independent of the child app-server turn lifecycle. Supervisor commands reach the child over the child control channel rather than through that child's dynamic-tool stream.
 - Beryl-owned dynamic-tool results use the existing app-server dynamic tool-call response contract for the supervisor-facing call. The child-control protocol remains an internal Beryl process boundary.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

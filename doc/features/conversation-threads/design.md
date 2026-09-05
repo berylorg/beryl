@@ -133,3 +133,11 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Editing depends on app-server rollback and turn-start primitives. When unavailable or when exact rollback scope cannot be proven, Beryl must not emulate editing locally.
 - On-demand title updates depend on app-server ephemeral-thread creation, turn-start, turn-stream observation, maintenance-thread cleanup, and `thread/name/set`. When those primitives or a backend client for the exact target runtime are unavailable, Beryl must not emulate retitling through GUI-local title metadata.
 - Thread selector and link-thread menus must render from inventory snapshots and stay responsive while refresh or activation work is pending.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`

@@ -45,3 +45,11 @@ Search tools expose bounded result sets rather than whole-workspace index dumps.
 Search indexing, embedding generation, vector index updates, source parsing, summary-card generation, and query execution must not block the `gpui` thread.
 
 Search index freshness checks compare recorded hashes and fingerprints against current source records. Stale, missing, corrupt, or partially rebuilt search indexes degrade query quality or fall back to lexical and graph-neighborhood reads rather than corrupting durable workspace state.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`

@@ -182,8 +182,6 @@ fn run_transcript_edit_commit_worker(
                 request.workspace_id(),
                 request.execution_target().runtime_mode(),
                 &thread.turns,
-                &mut session,
-                timeout,
             ) {
                 Ok(resolver) => resolver,
                 Err(error) => {

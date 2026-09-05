@@ -52,7 +52,7 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 ## Required Capabilities And Disabled Paths
 
 - Beryl probes backend compatibility when a managed backend is launched or explicitly probed for a runtime target.
-- Required capabilities include exact thread resume by id, metadata-only resume, paginated turn history reads, paginated thread summary listing, thread summary filters for member inventory, model listing, cwd-scoped config reads, ordered text and local-image user input on turn start/steering, developer-instructions payloads, filesystem reads for runtime-readable transcript media, active-turn steering by expected turn id, active-turn interruption, thread compaction, dynamic tool registration, and reverse dynamic tool calls.
+- Required capabilities include exact thread resume by id, metadata-only resume, paginated turn history reads, paginated thread summary listing, thread summary filters for member inventory, model listing, cwd-scoped config reads, ordered text and local-image user input on turn start/steering, developer-instructions payloads, active-turn steering by expected turn id, active-turn interruption, thread compaction, dynamic tool registration, and reverse dynamic tool calls.
 - Branch actions depend on app-server fork and rollback primitives. When missing, branch actions are disabled rather than emulated.
 - Edit actions depend on app-server rollback and turn-start primitives plus exact rollback-scope proof. When missing or unprovable, edit actions are disabled rather than emulated.
 - Hard-stop backend primitives are probed separately. Missing hard-stop support disables only affected hard-stop escalation targets and must not disable soft interruption.
@@ -84,3 +84,11 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 - Authentication, session storage, agent execution, subagents, configuration, skills, MCP, and other non-UI agent state remain backend-owned.
 - Backend conversation thread contents and execution event streams remain backend-owned.
 - Turn execution stream inactivity is not itself backend failure. Request/probe timeouts apply to bounded JSON-RPC requests; active turn streams may remain quiet until terminal events, protocol error, transport disconnect, or backend exit.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`

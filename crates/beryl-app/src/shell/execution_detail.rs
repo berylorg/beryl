@@ -28,8 +28,6 @@ use transcript_images::{
 };
 
 static NEXT_USER_INPUT_FRAGMENT_ID: AtomicU64 = AtomicU64::new(1);
-const MAX_HISTORY_INLINE_GENERATED_IMAGE_RESULT_BYTES: usize = 256 * 1024;
-pub(crate) const MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_REASONING_CONTENT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_REASONING_SUMMARY_BYTES: usize = 512 * 1024;
 pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
@@ -159,7 +157,6 @@ pub(super) struct GeneratedImageDetail {
     pub id: String,
     pub status: Option<String>,
     pub revised_prompt: Option<String>,
-    pub result: Option<Arc<String>>,
     pub saved_path: Option<String>,
     pub complete: bool,
 }
@@ -575,10 +572,6 @@ impl ExecutionDetailState {
             history_turn_count = thread.turns.len(),
             history_item_count = history_stats.item_count,
             history_generated_image_saved_path_count = history_stats.saved_path_count,
-            history_generated_image_inline_retained_count = history_stats.inline_retained_count,
-            history_generated_image_inline_dropped_count = history_stats.inline_dropped_count,
-            history_inline_result_bytes_retained = history_stats.inline_bytes_retained,
-            history_inline_result_bytes_dropped = history_stats.inline_bytes_dropped,
             load_thread_history_ms = elapsed_ms(load_started.elapsed()),
             "loaded thread history into execution detail state"
         );
@@ -655,10 +648,6 @@ impl ExecutionDetailState {
             added_turn_count = added,
             history_item_count = history_stats.item_count,
             history_generated_image_saved_path_count = history_stats.saved_path_count,
-            history_generated_image_inline_retained_count = history_stats.inline_retained_count,
-            history_generated_image_inline_dropped_count = history_stats.inline_dropped_count,
-            history_inline_result_bytes_retained = history_stats.inline_bytes_retained,
-            history_inline_result_bytes_dropped = history_stats.inline_bytes_dropped,
             prepend_thread_history_ms = elapsed_ms(prepend_started.elapsed()),
             "prepended thread history page into execution detail state"
         );
@@ -1385,7 +1374,7 @@ impl TurnExecutionRecord {
             ThreadItem::Reasoning(item) => self.upsert_reasoning(item, complete),
             ThreadItem::CommandExecution(item) => self.upsert_command_execution(item),
             ThreadItem::FileChange(item) => self.upsert_file_change(item),
-            ThreadItem::ImageGeneration(item) => self.upsert_generated_image(item, complete, false),
+            ThreadItem::ImageGeneration(item) => self.upsert_generated_image(item, complete),
             ThreadItem::Generic(item) => self.upsert_generic(item.id, item.item_type, complete),
         }
     }
@@ -1396,7 +1385,7 @@ impl TurnExecutionRecord {
         image_resolver: &TranscriptImagePathResolver,
     ) {
         match item {
-            ThreadItem::ImageGeneration(item) => self.upsert_generated_image(item, true, true),
+            ThreadItem::ImageGeneration(item) => self.upsert_generated_image(item, true),
             item => self.upsert_item(item, true, image_resolver),
         }
     }
@@ -1477,32 +1466,20 @@ impl TurnExecutionRecord {
             .collect();
     }
 
-    fn upsert_generated_image(
-        &mut self,
-        item: ImageGenerationItem,
-        complete: bool,
-        history_item: bool,
-    ) {
+    fn upsert_generated_image(&mut self, item: ImageGenerationItem, complete: bool) {
         let item_id = item.id.clone();
         self.ensure_item(item_id.clone(), |id| {
             ExecutionItem::GeneratedImage(GeneratedImageDetail {
                 id,
                 status: None,
                 revised_prompt: None,
-                result: None,
                 saved_path: None,
                 complete,
             })
         });
         if let Some(ExecutionItem::GeneratedImage(target)) = self.find_item_mut(&item_id) {
-            let result = retain_generated_image_result(
-                item.result,
-                item.saved_path.as_deref(),
-                history_item,
-            );
             target.status = item.status;
             target.revised_prompt = item.revised_prompt;
-            update_generated_image_result(&mut target.result, result);
             target.saved_path = item.saved_path;
             target.complete = complete;
         }
@@ -1617,48 +1594,10 @@ fn floor_char_boundary(text: &str, limit: usize) -> usize {
     boundary
 }
 
-fn update_generated_image_result(current: &mut Option<Arc<String>>, next: Option<String>) {
-    match next {
-        Some(next) => {
-            if current
-                .as_ref()
-                .is_some_and(|current| current.as_str() == next)
-            {
-                return;
-            }
-            *current = Some(Arc::new(next));
-        }
-        None => *current = None,
-    }
-}
-
-fn retain_generated_image_result(
-    result: Option<String>,
-    saved_path: Option<&str>,
-    _history_item: bool,
-) -> Option<String> {
-    if saved_path.is_some_and(|path| !path.trim().is_empty()) {
-        return None;
-    }
-
-    if result
-        .as_ref()
-        .is_some_and(|result| result.len() > MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES)
-    {
-        return None;
-    }
-
-    result
-}
-
 #[derive(Clone, Copy, Debug, Default)]
 struct HistoryGeneratedImageProjectionStats {
     item_count: usize,
     saved_path_count: usize,
-    inline_retained_count: usize,
-    inline_dropped_count: usize,
-    inline_bytes_retained: usize,
-    inline_bytes_dropped: usize,
 }
 
 fn history_generated_image_projection_stats(
@@ -1672,25 +1611,12 @@ fn history_generated_image_projection_stats(
                 continue;
             };
 
-            let result_bytes = item.result.as_ref().map_or(0, String::len);
             let has_saved_path = item
                 .saved_path
                 .as_deref()
                 .is_some_and(|path| !path.trim().is_empty());
             if has_saved_path {
                 stats.saved_path_count += 1;
-            }
-
-            if result_bytes == 0 {
-                continue;
-            }
-
-            if has_saved_path || result_bytes > MAX_HISTORY_INLINE_GENERATED_IMAGE_RESULT_BYTES {
-                stats.inline_dropped_count += 1;
-                stats.inline_bytes_dropped += result_bytes;
-            } else {
-                stats.inline_retained_count += 1;
-                stats.inline_bytes_retained += result_bytes;
             }
         }
     }
@@ -1745,9 +1671,6 @@ impl TurnPayloadRetainedCounts {
                     .saturating_add(item.status.as_ref().map_or(0, String::len))
                     .saturating_add(item.revised_prompt.as_ref().map_or(0, String::len))
                     .saturating_add(item.saved_path.as_ref().map_or(0, String::len));
-                self.generated_image_inline_bytes = self
-                    .generated_image_inline_bytes
-                    .saturating_add(item.result.as_ref().map_or(0, |result| result.len()));
             }
             ExecutionItem::Generic(item) => {
                 self.identity_bytes = self

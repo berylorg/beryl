@@ -54,7 +54,7 @@ Own Beryl's integration boundary with `codex app-server`.
 - The JSON-RPC session layer owns request id allocation, outstanding-method correlation, notification buffering, response routing, initialize handshake behavior, compatibility probing, and session-level cancellation semantics.
 - Method-aware response sanitization is a separate JSON layer selected only from known outstanding request methods whose response shape is explicitly supported.
 - Method-aware response sanitization may rewrite generated-image history payload fields only for supported history response schemas, and must preserve turn order, item identity, status, prompts, saved generated-image paths, pagination metadata, and structured protocol errors needed by downstream callers.
-- Inline generated-image byte payloads in history responses are intentionally treated as transfer-time payload bloat when the supported response schema also provides the metadata or saved generated-image path needed for downstream transcript rendering. Sanitization may drop those inline bytes before typed normalization so callers do not retain or parse image bytes they do not consume.
+- Inline generated-image byte payloads in history responses are always stripped before typed normalization. Callers retain or parse no generated-image inline bytes; a missing saved path remains an honest unavailable or pending image state rather than a reason to reconstruct or obtain image bytes through another backend RPC.
 - Method-aware response sanitization must fail explicitly for unsupported method schemas, malformed JSON, and unexpected response shapes instead of performing generic lossy rewriting.
 - Existing typed backend normalization remains the caller-facing boundary after transport reads, JSON-RPC routing, and any selected method-aware sanitization complete.
 - Thread-list normalization preserves backend thread identity, recorded working directory, optional backend-provided thread name metadata, optional backend-provided fork parent thread id metadata when present on list rows, and created/updated timestamps for downstream GUI use without owning workspace-member grouping policy.
@@ -121,3 +121,13 @@ Own Beryl's integration boundary with `codex app-server`.
 
 - This crate must not depend on `gpui`.
 - Shared workspace and conversation identity data consumed across crates belongs in `beryl-model`.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`
+
+The app-server transport and protocol boundary validates malformed or hostile frames, messages, and typed payloads before use. Its bounded failures preserve the existing exact-target, correlation, and cleanup guarantees.

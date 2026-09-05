@@ -2429,7 +2429,6 @@ fn thread_history_deserializes_saved_path_image_generation_without_inline_result
         item.revised_prompt.as_deref(),
         Some("A small blue glass bird on a desk")
     );
-    assert_eq!(item.result, None);
     assert_eq!(
         item.saved_path.as_deref(),
         Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
@@ -2531,7 +2530,7 @@ fn thread_turns_list_response_deserializes_page_cursors() {
 }
 
 #[test]
-fn thread_turns_list_response_deserializes_image_generation_items() {
+fn thread_turns_list_response_discards_inline_image_results() {
     let response: ThreadTurnsListResponse = serde_json::from_value(json!({
         "data": [
             {
@@ -2562,7 +2561,6 @@ fn thread_turns_list_response_deserializes_image_generation_items() {
         item.revised_prompt.as_deref(),
         Some("A small blue glass bird on a desk")
     );
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
     assert_eq!(item.saved_path, None);
 }
 
@@ -2600,7 +2598,6 @@ fn image_generation_stream_event_deserializes_saved_path_without_inline_result()
     assert_eq!(thread_id, "thread_123");
     assert_eq!(turn_id, "turn_123");
     assert_eq!(item.status.as_deref(), Some("generating"));
-    assert_eq!(item.result, None);
     assert_eq!(
         item.saved_path.as_deref(),
         Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")

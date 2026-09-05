@@ -48,8 +48,8 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 
 - Transcript image markers derived from Beryl-submitted local images remain compact atomic labels in user blocks. Activating a marker opens Beryl's preview popup when durable image bytes are available.
 - Historical image markers remain visible even if their image bytes cannot be recovered; unavailable preview state is reported without replacing the marker with plain text.
-- Native app-server generated-image output renders as transcript media. Pending generation may show a stable placeholder; completed output renders from embedded bytes or a readable saved path.
-- A generated-image saved path is the authoritative generated image artifact while readable. Beryl may retain bounded presentation state but must not create a Beryl-side durable copy solely to preserve generated images when the saved path becomes unreadable.
+- Native app-server generated-image output renders as transcript media only when it has a directly readable host or WSL saved path. Pending generation may show a stable placeholder; missing, unreadable, or unsupported saved paths render unavailable state.
+- A generated-image saved path is the authoritative generated image artifact while readable. Beryl retains no generated-image inline bytes, decodes no generated-image inline bytes, and does not use backend JSON-RPC image-byte reads as a fallback, including for historical Markdown image sources. Beryl may retain bounded presentation state but must not create a Beryl-side durable copy solely to preserve generated images when the saved path becomes unreadable.
 - Markdown image syntax with a local filesystem target is a transcript media request. Relative paths resolve against the conversation thread's recorded execution target, not the GUI process working directory.
 - File bytes referenced by Markdown remain filesystem state and may disappear or change outside Beryl. Beryl renders unavailable or updated filesystem state honestly rather than treating the Markdown reference as an attached artifact.
 - Absolute Markdown image targets render only when proven to belong to the selected thread's expected runtime/member boundary.
@@ -62,7 +62,7 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - Activating a loaded item in a multi-item run toggles UI-local promotion for that item. Promotion gives it a single-image row at its transcript position while non-promoted siblings remain compact before or after it.
 - Media promotion is presentation state only. It must not mutate backend history, Markdown source, generated-image records, media cache ownership, selection semantics, or workspace persistence.
 - Secondary-clicking a loaded transcript media item opens the owning turn context menu plus `Copy image` and `Save image as` for that item.
-- Media image actions derive full-resolution bytes from the authoritative file-backed or byte-backed source at action time, not from retained preview pixels.
+- Media image actions derive full-resolution bytes from the authoritative directly readable file-backed source at action time, not from retained preview pixels.
 - Pending placeholders, unsupported fallbacks, unavailable files, and path-rejected fallbacks do not expose image-specific actions.
 
 ## Selection, Copying, And Quote Harvesting
@@ -110,3 +110,11 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - While the selected thread has an active parent turn, the transcript renders a non-interactive block activity caret at the end of the parent conversation narrative.
 - The activity caret is not transcript content, Markdown source, selectable text, copyable text, quoteable text, or draft-caret state.
 - The caret has stable geometry while blinking, does not cause reflow, disappears when the parent turn stops working, and follows platform text-caret blink policy when available. When blinking is disabled or reduced-motion requests apply, it renders steadily.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`

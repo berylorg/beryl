@@ -1207,7 +1207,6 @@ fn assert_generated_image_item(
         panic!("expected imageGeneration item, got {}", item.item_type());
     };
     assert_eq!(item.id, expected_id);
-    assert_eq!(item.result, None);
     assert_eq!(item.saved_path.as_deref(), expected_saved_path);
     assert_eq!(item.revised_prompt.as_deref(), expected_revised_prompt);
 }

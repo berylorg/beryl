@@ -7,9 +7,9 @@ use beryl_backend::{
 };
 use execution_detail::{
     ExecutionDetailState, ExecutionItem, LastTurnState, MAX_COMMAND_OUTPUT_BYTES,
-    MAX_ERROR_MESSAGE_BYTES, MAX_FILE_CHANGE_OUTPUT_BYTES, MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES,
-    MAX_REASONING_CONTENT_BYTES, TranscriptImagePathResolver, TranscriptImagePreviewState,
-    TranscriptImageSourceResolution, TurnExecutionRecord, TurnExecutionStatus, TurnNarrativeEntry,
+    MAX_ERROR_MESSAGE_BYTES, MAX_FILE_CHANGE_OUTPUT_BYTES, MAX_REASONING_CONTENT_BYTES,
+    TranscriptImagePathResolver, TranscriptImagePreviewState, TranscriptImageSourceResolution,
+    TurnExecutionRecord, TurnExecutionStatus, TurnNarrativeEntry,
 };
 use serde_json::json;
 
@@ -1676,7 +1676,6 @@ fn image_generation_history_turn_is_preserved_as_generated_image_item() {
     assert_eq!(item.id, "image_generation_1");
     assert_eq!(item.status.as_deref(), Some("generating"));
     assert_eq!(item.revised_prompt.as_deref(), Some("A small glass cat"));
-    assert!(item.result.is_none());
     assert_eq!(item.saved_path.as_deref(), Some("C:/work/beryl/cat.png"));
     assert!(item.complete);
 }
@@ -1737,7 +1736,6 @@ fn saved_path_only_image_generation_history_stays_complete_without_inline_result
         item.saved_path.as_deref(),
         Some("C:/work/beryl/saved-only-cat.png")
     );
-    assert!(item.result.is_none());
     assert!(item.complete);
 }
 
@@ -1761,7 +1759,6 @@ fn saved_path_only_live_image_generation_stays_complete_without_inline_result() 
             id: "saved_only".to_string(),
             status: Some("completed".to_string()),
             revised_prompt: Some("Saved cat".to_string()),
-            result: None,
             saved_path: Some("C:/work/beryl/saved-cat.png".to_string()),
         }),
     });
@@ -1774,12 +1771,11 @@ fn saved_path_only_live_image_generation_stays_complete_without_inline_result() 
         image.saved_path.as_deref(),
         Some("C:/work/beryl/saved-cat.png")
     );
-    assert!(image.result.is_none());
     assert!(image.complete);
 }
 
 #[test]
-fn image_generation_history_without_saved_path_keeps_only_bounded_inline_result() {
+fn image_generation_history_without_saved_path_drops_inline_results() {
     let large_result = "A".repeat(300 * 1024);
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
@@ -1838,17 +1834,12 @@ fn image_generation_history_without_saved_path_keeps_only_bounded_inline_result(
     else {
         panic!("expected generated image history items to stay typed");
     };
-    assert_eq!(
-        small.result.as_ref().map(|result| result.as_str()),
-        Some("iVBORw0KGgo=")
-    );
     assert!(small.saved_path.is_none());
-    assert!(large.result.is_none());
     assert!(large.saved_path.is_none());
 }
 
 #[test]
-fn live_image_generation_without_saved_path_keeps_small_inline_result_and_drops_oversized_result() {
+fn live_image_generation_without_saved_path_has_no_inline_result_field() {
     let mut state = ExecutionDetailState::default();
     state.begin_turn("Generate an image".to_string());
     state.apply_stream_event(TurnStreamEvent::TurnStarted {
@@ -1868,7 +1859,6 @@ fn live_image_generation_without_saved_path_keeps_small_inline_result_and_drops_
             id: "small_inline".to_string(),
             status: Some("completed".to_string()),
             revised_prompt: Some("Tiny inline image".to_string()),
-            result: Some("iVBORw0KGgo=".to_string()),
             saved_path: None,
         }),
     });
@@ -1879,7 +1869,6 @@ fn live_image_generation_without_saved_path_keeps_small_inline_result_and_drops_
             id: "large_inline".to_string(),
             status: Some("completed".to_string()),
             revised_prompt: Some("Huge inline image".to_string()),
-            result: Some("A".repeat(MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES + 1)),
             saved_path: None,
         }),
     });
@@ -1892,14 +1881,9 @@ fn live_image_generation_without_saved_path_keeps_small_inline_result_and_drops_
         panic!("expected generated image items");
     };
     assert_eq!(small.id, "small_inline");
-    assert_eq!(
-        small.result.as_ref().map(|result| result.as_str()),
-        Some("iVBORw0KGgo=")
-    );
     assert!(small.saved_path.is_none());
     assert!(small.complete);
     assert_eq!(large.id, "large_inline");
-    assert!(large.result.is_none());
     assert!(large.saved_path.is_none());
     assert!(large.complete);
 }

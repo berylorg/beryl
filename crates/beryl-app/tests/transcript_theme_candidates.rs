@@ -91,7 +91,7 @@ fn unnamed_theme_candidate_can_preview_but_cannot_install() {
 }
 
 #[test]
-fn invalid_theme_candidates_fail_with_validation_errors_without_state_mutation() {
+fn candidate_validation_error_handling_preserves_the_active_preview() {
     let mut state = ThemeCandidateState::default();
     let durable = ActiveThemeProjection::built_in();
     state.start_preview(
@@ -100,13 +100,28 @@ fn invalid_theme_candidates_fail_with_validation_errors_without_state_mutation()
         durable.clone(),
     );
 
-    for source in [
-        "schema = 2\n",
-        "schema = 1\n[[role]]\nid = \"app.window\"\nforeground = { value = 12 }\n",
-        "schema = 1\n[[role]]\nid = \"not.a.role\"\nforeground = { value = \"#112233\" }\n",
-        "schema = 1\n[[role]]\nid = \"app.window\"\nnot_a_property = { value = \"#112233\" }\n",
-        "schema = 1\n[[role]]\nid = \"main.separator\"\nborder = { value = \"#112233\" }\n",
-        "schema = 1\n[[role]]\nid = \"app.window\"\ncolor = { value = \"#112233\" }\n",
+    for (panel_id, source) in [
+        ("failed-preview", "schema = 2\n"),
+        (
+            "failed-install-validation",
+            "schema = 1\n[[role]]\nid = \"app.window\"\nforeground = { value = 12 }\n",
+        ),
+        (
+            "failed-install-role",
+            "schema = 1\n[[role]]\nid = \"not.a.role\"\nforeground = { value = \"#112233\" }\n",
+        ),
+        (
+            "failed-install-property",
+            "schema = 1\n[[role]]\nid = \"app.window\"\nnot_a_property = { value = \"#112233\" }\n",
+        ),
+        (
+            "failed-install-supported-property",
+            "schema = 1\n[[role]]\nid = \"main.separator\"\nborder = { value = \"#112233\" }\n",
+        ),
+        (
+            "failed-install-value",
+            "schema = 1\n[[role]]\nid = \"app.window\"\ncolor = { value = \"#112233\" }\n",
+        ),
     ] {
         let error = theme_candidates::validate_theme_candidate(
             source,
@@ -118,12 +133,35 @@ fn invalid_theme_candidates_fail_with_validation_errors_without_state_mutation()
             ThemeCandidateValidationError::Document { .. }
                 | ThemeCandidateValidationError::InvalidDefinition { .. }
         ));
+        state.record_validation_failure(panel_id.to_string(), &error);
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.active_preview_panel_id(), Some("previewed"));
+        assert_eq!(
+            snapshot.feedback(panel_id).unwrap().kind(),
+            ThemeCandidateFeedbackKind::Error
+        );
     }
 
+    let unnamed_candidate = theme_candidates::validate_theme_candidate(
+        candidate_document(None, None, "#abcdef").as_str(),
+        &ThemeRepositorySnapshot::built_in(),
+    )
+    .unwrap();
+    let missing_name = unnamed_candidate.install_name().unwrap_err();
+    state.record_validation_failure("failed-install-name".to_string(), &missing_name);
+    let snapshot = state.snapshot();
+    assert_eq!(snapshot.active_preview_panel_id(), Some("previewed"));
+    let feedback = snapshot.feedback("failed-install-name").unwrap();
+    assert_eq!(feedback.kind(), ThemeCandidateFeedbackKind::Error);
     assert_eq!(
-        state.snapshot().active_preview_panel_id(),
-        Some("previewed")
+        feedback.message(),
+        "Add a top-level name before installing this theme candidate."
     );
+    let preview_feedback = snapshot.feedback("previewed").unwrap();
+    assert_eq!(preview_feedback.kind(), ThemeCandidateFeedbackKind::Success);
+    assert_eq!(preview_feedback.message(), "Preview active");
+    assert!(state.restore_if_thread_changed(Some("thread-a")).is_none());
+
     let restored = state.stop_active_preview().unwrap();
     assert_eq!(restored.style_revision(), durable.style_revision());
 }

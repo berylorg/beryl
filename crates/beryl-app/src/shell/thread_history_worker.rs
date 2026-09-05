@@ -89,8 +89,6 @@ fn run_thread_history_page_worker(
                     &workspace_id,
                     &runtime_mode,
                     &page.turns,
-                    &mut session,
-                    timeout,
                 ) {
                     Ok(resolver) => resolver,
                     Err(_) => TranscriptImagePathResolver::default(),

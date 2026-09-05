@@ -143,6 +143,7 @@ fn lifecycle_yield_success(outcome: LifecycleYieldOutcome) -> DynamicToolCallRes
     DynamicToolCallResponse::success_text(compact_json(json!({
         "ok": true,
         "result": {
+            "accepted": true,
             "outcome": outcome.as_str()
         }
     })))

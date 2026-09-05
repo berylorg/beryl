@@ -51,7 +51,7 @@ The normative GUI composition for this feature is [Status Line GUI](gui.md).
 - Counter formatting uses base-1000 thresholds. Values below `1000` display as integers. At or above a threshold, Beryl uses the largest applicable supported scale (`k`, `M`, then `B`) and rounds the scaled value to the nearest tenth, with halfway values rounding upward. When rounding reaches `1000` and a larger suffix exists, Beryl promotes the value to that suffix; `B` is the highest suffix. Beryl removes an unnecessary trailing `.0`.
 - A complete schema-version-1 usage-tree snapshot supplies both groups. A confirmed complete tree with no descendant usage displays `sub: 0/0/0`.
 - When no complete tree snapshot is available, `main` may use independently exact selected-root cumulative usage from the legacy token-usage projection while `sub` displays `—/—/—`. A `legacyPartial` tree snapshot is not presented as complete. If neither a complete tree nor independently exact legacy root usage is available, both groups display `—/—/—`.
-- Usage-tree snapshots are keyed by exact root thread id and accepted only when their durable revision is newer than the retained snapshot. Switching to or restoring a thread replaces the readout with that root's newest exact in-memory or read-through snapshot; stale updates and snapshots for another root cannot overwrite it. A pending new-thread draft does not inherit counters from another thread.
+- Beryl retains only one usage-tree snapshot, for the exact currently selected root thread. Selecting another root or a pending new-thread draft clears the retained tree before any replacement read or update is accepted. Activation reads through for the selected root; a late result is accepted only when its root and newer durable revision still match the current selection. A legacy or unavailable read uses only independently exact selected-root usage when known and otherwise presents the documented unavailable counters. A pending new-thread draft does not inherit counters from another thread.
 - Context space continues to use only the selected root's current-context fields from root `self` usage. Descendant totals and tree totals do not affect the context-space percentage.
 - Activating the context cell opens the context operations popup only when a backend conversation thread is selected, idle, and backend-available.
 - With no selected thread, an active selected-thread turn, or a backend-unavailable selected runtime target, the cell is non-clickable.
@@ -75,3 +75,9 @@ The normative GUI composition for this feature is [Status Line GUI](gui.md).
 - While in flight, stop rows suppress duplicate submissions until the request finishes or fails.
 - Partial hard-stop failures and unsupported targets are surfaced through status-operation feedback.
 - User input fragments queued before or during stop remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers: none

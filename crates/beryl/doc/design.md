@@ -40,3 +40,13 @@ Provide the Beryl executable entry point and composition root.
 - High-level application-shell behavior belongs in `beryl-app`.
 - Shared pure-data types belong in `beryl-model`.
 - Diagnostic-target command execution against live GUI state belongs in `beryl-app`; this crate only selects the startup mode and passes the normalized bootstrap configuration into that boundary.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `untrusted-input/v1`
+
+The command-line, startup-gate, and acceptance request-plan boundaries validate malformed input before it can start or control a process. Their bounded, fail-closed behavior preserves the existing exact-target and cleanup guarantees.

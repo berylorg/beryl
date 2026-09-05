@@ -102,7 +102,6 @@ fn direct_activation_preserves_generated_image_saved_path_from_latest_page() {
         item.saved_path.as_deref(),
         Some(r"C:\work\alpha\generated-3.png")
     );
-    assert!(item.result.is_none());
     assert!(activation.history_window.has_older_pages());
     assert!(activation.usage_tree_snapshot.is_some());
 }
@@ -473,7 +472,6 @@ fn generated_image_turn(id: &str, image_id: &str, saved_path: &str) -> TurnInfo 
             id: image_id.to_string(),
             status: Some("completed".to_string()),
             revised_prompt: Some("A generated activation image".to_string()),
-            result: None,
             saved_path: Some(saved_path.to_string()),
         })],
         error: None,

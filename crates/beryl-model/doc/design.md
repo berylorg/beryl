@@ -1,7 +1,9 @@
 # Goals
+
 Provide shared pure-data types used across the Beryl workspace.
 
 ## Non-goals
+
 - Owning process launch, transport I/O, or protocol parsing.
 - Owning `gpui` rendering types or window lifecycle logic.
 - Owning persistence engine implementation details.
@@ -10,10 +12,12 @@ Provide shared pure-data types used across the Beryl workspace.
 # Decisions
 
 ## Purity
+
 - This crate defines cross-crate semantic-workspace, execution-target, conversation, provenance, and semantic-graph data types that can be reused without pulling in UI or backend runtime code.
 - This crate must not depend on `gpui`, Tokio, or process-management APIs.
 
 ## Runtime Environments, Workspace Members, and Execution Targets
+
 
 - Workspace id values for named workspaces are filesystem-friendly slugs derived from display titles by pure transliteration and normalization rules owned by this crate.
 - Slug derivation is deterministic and rejects titles that produce an empty slug. Slug uniqueness across persisted workspaces is enforced by the persistence boundary rather than by this pure model crate.
@@ -28,6 +32,7 @@ Provide shared pure-data types used across the Beryl workspace.
 - Primary-member designation is durable workspace state. If the designated explicit member is unavailable or detached, the model state may persist a deterministic fallback designation to another available explicit member or to the implicit home member for the default runtime.
 
 ## Semantic Graph
+
 
 - This crate owns the pure semantic-graph model for Beryl workspaces, including semantic nodes, constrained V1 semantic facets, hard parent/child structure, soft typed links, thread refs, markdown refs, provenance-bearing graph records, and batched patch application types.
 - This crate also owns the pure read-side query helpers used to build bounded, node-centered graph neighborhoods, checklist reads, and other targeted graph projections without exposing persistence details.
@@ -51,5 +56,12 @@ Provide shared pure-data types used across the Beryl workspace.
 
 ## Provenance
 
+
 - Mutation provenance records distinguish workspace actions, conversation turns, generic tool actions, and app-server dynamic tool calls.
 - Dynamic tool-call provenance stores the app-server thread id, turn id, tool name, and tool-call id so GUI-owned graph mutations can be traced to the exact reverse tool request that caused them.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers: none

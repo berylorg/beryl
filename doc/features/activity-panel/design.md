@@ -34,7 +34,8 @@ Show bounded live and recent backend activity for the selected conversation with
 - A completed multi-agent v2 `subAgentActivity` record keeps the parent event's backend thread, turn, and item identity for correlation, retention, and selected-parent visibility, while its agent label is attributed to the exact child `agentThreadId` carried by that event.
 - A v2 lifecycle record with a valid child attribution uses its exact non-empty `agentPath` as the child display label immediately. The path is presentation metadata only; the exact child `agentThreadId` remains the correlation and ownership key.
 - Completed-only v2 lifecycle records report the completed collaboration operation; they do not synthesize a running child lifecycle or imply that the child turn has completed.
-- Running activity is retained until terminal state. Completed activity may be pruned by deterministic row, byte, and selected-thread retention windows.
+- Active Activity retains every attribution record until it reaches terminal state or the workspace/backend-session teardown clears the projection. It has no active-record count or aggregate-byte cap and does not evict active attribution state.
+- Completed Activity may be pruned by deterministic selected-thread retention windows, with a display budget of at most 2,000 rows and 8 MiB of display payload.
 - Activity presentation does not issue background metadata requests to resolve backend-generated subagent nicknames.
 
 ## Row Presentation
@@ -76,3 +77,9 @@ Show bounded live and recent backend activity for the selected conversation with
 - Exact subagent model/reasoning metadata may come from normalized activity events or later read-only metadata responses.
 - Beryl does not issue `thread/read` requests merely to decorate activity rows with backend-generated subagent nicknames.
 - Beryl does not issue `thread/resume` or another activation or subscription operation solely to discover child model/reasoning metadata or decorate Activity rows. When no exact event or genuinely read-only metadata source provides those values, the suffix remains absent.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers: none

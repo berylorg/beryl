@@ -367,7 +367,6 @@ pub(super) fn generated_image_media_item(
     let source = TranscriptMediaSource::native_image_generation(
         image.id.clone(),
         image.revised_prompt.clone(),
-        image.result.clone(),
         image.saved_path.clone(),
         image.complete,
     );

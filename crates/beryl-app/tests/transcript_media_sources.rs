@@ -1,967 +1,478 @@
-use std::{collections::HashMap, fs, sync::Arc, time::Duration};
+#[path = "support/tempdir.rs"]
+mod tempdir_support;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use std::{fs, path::Path, time::Duration};
+
 use beryl_model::workspace::WorkspaceId;
 use gpui::ImageFormat;
 
 #[path = "../src/shell/transcript_media.rs"]
 mod transcript_media;
 
-use transcript_media::{
-    TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE, TranscriptMediaCache,
-    TranscriptMediaCacheKey, TranscriptMediaFileReader, TranscriptMediaSource,
-};
+use transcript_media::{TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaSource};
 
 #[test]
-fn markdown_png_target_resolves_relative_to_thread_execution_target() {
-    let workspace = host_workspace();
+fn markdown_image_reads_the_direct_host_file_and_keeps_a_byte_backed_presentation() {
+    let root = unique_temp_dir();
+    let image_path = root.join("images/cat.png");
+    write_png(&image_path, 3, 2);
+    let workspace = WorkspaceId::host_windows(root.path());
     let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
-    let expected_path = r"c:\work\member\images\cat.png";
-    let bytes = png_bytes();
-    let mut reader = FakeReader::with_file(expected_path, bytes.clone());
     let mut cache = TranscriptMediaCache::new(8);
 
-    let lookup = cache.lookup(
-        cache_key("cat"),
+    complete(
+        &mut cache,
+        cache_key("markdown"),
+        source.clone(),
+        workspace.clone(),
+    );
+    let ready = cache.lookup(cache_key("markdown"), source, workspace, timeout());
+    let image = ready
+        .outcome
+        .loaded()
+        .expect("directly readable Markdown image should load");
+
+    assert_eq!(image.format(), ImageFormat::Png);
+    assert_eq!(image.source_backed_file_path(), None);
+    assert_eq!(image.action_file_path(), Some(&image_path));
+    assert!(image.retained_bytes().is_some());
+    assert_eq!(image.natural_dimensions().width(), 3);
+    assert_eq!(image.natural_dimensions().height(), 2);
+    assert_eq!(cache.stats().loaded_retained_byte_entries, 1);
+    cleanup(root);
+}
+
+#[test]
+fn markdown_image_rejects_outside_paths_and_marks_missing_direct_files_unavailable() {
+    let root = unique_temp_dir();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let mut cache = TranscriptMediaCache::new(8);
+    let outside = TranscriptMediaSource::markdown_image("outside", r"C:\\other\\cat.png", None);
+    complete(
+        &mut cache,
+        cache_key("outside"),
+        outside.clone(),
+        workspace.clone(),
+    );
+    assert_eq!(
+        cache
+            .lookup(cache_key("outside"), outside, workspace.clone(), timeout())
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("outside (path not allowed)")
+    );
+
+    let missing = TranscriptMediaSource::markdown_image("missing", "images/missing.png", None);
+    complete(
+        &mut cache,
+        cache_key("missing"),
+        missing.clone(),
+        workspace.clone(),
+    );
+    assert_eq!(
+        cache
+            .lookup(cache_key("missing"), missing, workspace, timeout())
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("missing (file unavailable)")
+    );
+    cleanup(root);
+}
+
+#[test]
+fn generated_image_uses_a_readable_saved_path_even_while_generating() {
+    let root = unique_temp_dir();
+    let image_path = root.join("generated.png");
+    write_png(&image_path, 2, 1);
+    let workspace = WorkspaceId::host_windows(root.path());
+    let source = TranscriptMediaSource::native_image_generation(
+        "generated_1",
+        Some("a glass cat".to_string()),
+        Some(image_path.display().to_string()),
+        false,
+    );
+    let mut cache = TranscriptMediaCache::new(8);
+
+    complete(
+        &mut cache,
+        cache_key("generated"),
+        source.clone(),
+        workspace.clone(),
+    );
+    let ready = cache.lookup(cache_key("generated"), source, workspace, timeout());
+    let image = ready
+        .outcome
+        .loaded()
+        .expect("saved generated source should load before completion");
+    assert_eq!(image.source_backed_file_path(), Some(&image_path));
+    assert_eq!(image.retained_bytes(), None);
+    cleanup(root);
+}
+
+#[test]
+fn direct_file_loading_rejects_oversized_compressed_sources_before_decoding() {
+    let root = unique_temp_dir();
+    let image_path = root.join("oversized.png");
+    let file = fs::File::create(&image_path).unwrap();
+    file.set_len((transcript_media::TRANSCRIPT_MEDIA_CACHE_MAX_COMPRESSED_IMAGE_BYTES + 1) as u64)
+        .unwrap();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let source = TranscriptMediaSource::native_image_generation(
+        "oversized_generated",
+        Some("oversized".to_string()),
+        Some(image_path.display().to_string()),
+        true,
+    );
+    let mut cache = TranscriptMediaCache::new(8);
+
+    complete(
+        &mut cache,
+        cache_key("oversized"),
+        source.clone(),
+        workspace.clone(),
+    );
+    assert_eq!(
+        cache
+            .lookup(cache_key("oversized"), source, workspace, timeout())
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("oversized (image too large)")
+    );
+    cleanup(root);
+}
+
+#[test]
+fn markdown_revalidation_reloads_changed_pixels_and_reports_deleted_files() {
+    let root = unique_temp_dir();
+    let image_path = root.join("images/cat.png");
+    write_png_with_pixel(&image_path, 1, 1, [0, 0, 0, 255]);
+    let workspace = WorkspaceId::host_windows(root.path());
+    let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
+    let mut cache = TranscriptMediaCache::new_with_markdown_revalidate_after(8, Duration::ZERO);
+
+    complete(
+        &mut cache,
+        cache_key("revalidate"),
+        source.clone(),
+        workspace.clone(),
+    );
+    let first_bytes = fs::read(&image_path).unwrap();
+    write_png_with_pixel(&image_path, 1, 1, [255, 0, 0, 255]);
+    let revalidation = cache.lookup(
+        cache_key("revalidate"),
         source.clone(),
         workspace.clone(),
         timeout(),
     );
-    assert!(lookup.outcome.is_pending());
-    let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert!(revalidation.load_request.is_some());
+    let completion = revalidation.load_request.unwrap().load();
+    let refreshed = completion.loaded_image().unwrap();
+    assert_eq!(refreshed.natural_dimensions().width(), 1);
+    assert_eq!(refreshed.natural_dimensions().height(), 1);
+    assert_ne!(refreshed.retained_bytes(), Some(first_bytes.as_slice()));
+    assert!(cache.complete_load(completion).display_changed);
 
-    let result = cache.complete_load(completion);
-    assert!(result.display_changed);
-    assert!(!result.stale);
-    assert_eq!(reader.calls, vec![expected_path.to_string()]);
-
-    let ready = cache.lookup(cache_key("cat"), source, workspace, timeout());
-    let image = ready.outcome.loaded().expect("relative PNG should load");
-    assert_eq!(image.alt(), "cat");
-    assert_eq!(image.format(), ImageFormat::Png);
-    assert_eq!(image.bytes(), bytes.as_slice());
-    assert_eq!(image.natural_dimensions().width(), 1);
-    assert_eq!(image.natural_dimensions().height(), 1);
-    assert_eq!(image.source_path(), Some(expected_path));
-    assert_eq!(image.image().format(), ImageFormat::Png);
-    assert!(ready.load_request.is_none());
-}
-
-#[test]
-fn loaded_image_records_decoded_natural_dimensions() {
-    let path = r"c:\work\member\images\wide.png";
-    let bytes = png_bytes_with_dimensions(3, 2, [0, 0, 0, 255]);
-    let source = TranscriptMediaSource::markdown_image("wide", "images/wide.png", None);
-    let mut reader = FakeReader::with_file(path, bytes);
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("wide"),
+    fs::remove_file(&image_path).unwrap();
+    let deleted = cache.lookup(
+        cache_key("revalidate"),
         source.clone(),
-        host_workspace(),
+        workspace.clone(),
         timeout(),
     );
     assert!(
         cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .complete_load(deleted.load_request.unwrap().load())
             .display_changed
     );
-    let ready = cache.lookup(cache_key("wide"), source, host_workspace(), timeout());
-    let image = ready.outcome.loaded().expect("wide PNG should load");
-
-    assert_eq!(image.natural_dimensions().width(), 3);
-    assert_eq!(image.natural_dimensions().height(), 2);
+    assert_eq!(
+        cache
+            .lookup(cache_key("revalidate"), source, workspace, timeout())
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("cat (file unavailable)")
+    );
+    cleanup(root);
 }
 
 #[test]
-fn media_cache_stats_report_loaded_image_bytes_and_decoded_estimate() {
-    let path = r"c:\work\member\images\wide.png";
-    let bytes = png_bytes_with_dimensions(3, 2, [0, 0, 0, 255]);
-    let source = TranscriptMediaSource::markdown_image("wide", "images/wide.png", None);
-    let mut reader = FakeReader::with_file(path, bytes.clone());
+fn direct_file_loading_rejects_malformed_and_pixel_oversized_rasters() {
+    let root = unique_temp_dir();
+    let malformed_path = root.join("malformed.png");
+    let oversized_path = root.join("oversized.bmp");
+    fs::write(&malformed_path, &[137, 80, 78, 71]).unwrap();
+    fs::write(&oversized_path, oversized_bmp_header(6000, 6000)).unwrap();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let malformed = TranscriptMediaSource::native_image_generation(
+        "malformed",
+        Some("malformed".to_string()),
+        Some(malformed_path.display().to_string()),
+        true,
+    );
+    let oversized = TranscriptMediaSource::native_image_generation(
+        "oversized",
+        Some("pixel oversized".to_string()),
+        Some(oversized_path.display().to_string()),
+        true,
+    );
     let mut cache = TranscriptMediaCache::new(8);
 
-    let lookup = cache.lookup(
-        cache_key("wide-stats"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
+    complete(
+        &mut cache,
+        cache_key("malformed"),
+        malformed.clone(),
+        workspace.clone(),
     );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
+    complete(
+        &mut cache,
+        cache_key("pixel-oversized"),
+        oversized.clone(),
+        workspace.clone(),
     );
-    let _ready = cache.lookup(cache_key("wide-stats"), source, host_workspace(), timeout());
-
-    let stats = cache.stats();
-    assert_eq!(stats.entries, 1);
-    assert_eq!(stats.pending_entries, 0);
-    assert_eq!(stats.loaded_entries, 1);
-    assert_eq!(stats.loaded_retained_byte_entries, 1);
-    assert_eq!(stats.loaded_source_backed_file_entries, 0);
-    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 0);
-    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 0);
-    assert_eq!(stats.loaded_image_bytes, bytes.len());
-    assert_eq!(stats.decoded_image_bytes_estimate, 3 * 2 * 4);
-    assert_eq!(stats.thumbnail_count, 0);
-}
-
-#[test]
-fn media_cache_evicts_loaded_images_by_compressed_byte_budget() {
-    let first_path = r"c:\work\member\images\first.png";
-    let second_path = r"c:\work\member\images\second.png";
-    let first_bytes = png_bytes_with_pixel([1, 0, 0, 255]);
-    let second_bytes = png_bytes_with_pixel([2, 0, 0, 255]);
-    let budget = first_bytes.len().saturating_add(second_bytes.len() - 1);
-    let mut reader = FakeReader::default()
-        .with_file_added(first_path, first_bytes)
-        .with_file_added(second_path, second_bytes.clone());
-    let mut cache = TranscriptMediaCache::new_with_byte_budgets(
-        8,
-        budget,
-        TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE,
-    );
-
-    let first_source = TranscriptMediaSource::markdown_image("first", "images/first.png", None);
-    let first_lookup = cache.lookup(
-        cache_key("first"),
-        first_source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(first_lookup.load_request.unwrap().load(&mut reader))
-            .evicted_images
-            .is_empty()
-    );
-    let second_source = TranscriptMediaSource::markdown_image("second", "images/second.png", None);
-    let second_lookup = cache.lookup(
-        cache_key("second"),
-        second_source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    let second_result = cache.complete_load(second_lookup.load_request.unwrap().load(&mut reader));
-
-    assert_eq!(second_result.evicted_images.len(), 1);
-    assert_eq!(cache.stats().loaded_entries, 1);
     assert_eq!(
         cache
             .lookup(
-                cache_key("second"),
-                second_source,
-                host_workspace(),
+                cache_key("malformed"),
+                malformed,
+                workspace.clone(),
                 timeout()
             )
             .outcome
-            .loaded()
-            .map(|image| image.bytes()),
-        Some(second_bytes.as_slice())
+            .fallback_text()
+            .as_deref(),
+        Some("malformed (render not supported)")
     );
+    assert_eq!(
+        cache
+            .lookup(
+                cache_key("pixel-oversized"),
+                oversized,
+                workspace,
+                timeout()
+            )
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("pixel oversized (image too large)")
+    );
+    cleanup(root);
 }
 
 #[test]
-fn evicted_pending_media_completion_is_stale() {
-    let mut reader = FakeReader::default()
-        .with_file_added(r"c:\work\member\images\first.png", png_bytes())
-        .with_file_added(r"c:\work\member\images\second.png", png_bytes());
-    let mut cache = TranscriptMediaCache::new(1);
-    let first = TranscriptMediaSource::markdown_image("first", "images/first.png", None);
-    let second = TranscriptMediaSource::markdown_image("second", "images/second.png", None);
-
-    let first_lookup = cache.lookup(cache_key("first"), first, host_workspace(), timeout());
-    let first_completion = first_lookup.load_request.unwrap().load(&mut reader);
-    let second_lookup = cache.lookup(cache_key("second"), second, host_workspace(), timeout());
-    assert_eq!(second_lookup.evicted_images.len(), 0);
-
-    let stale = cache.complete_load(first_completion);
-
+fn stale_loads_cannot_replace_a_new_source_or_a_cleared_scope() {
+    let root = unique_temp_dir();
+    write_png(&root.join("images/old.png"), 1, 1);
+    write_png(&root.join("images/new.png"), 2, 1);
+    let workspace = WorkspaceId::host_windows(root.path());
+    let old = TranscriptMediaSource::markdown_image("old", "images/old.png", None);
+    let new = TranscriptMediaSource::markdown_image("new", "images/new.png", None);
+    let mut cache = TranscriptMediaCache::new(8);
+    let old_request = cache
+        .lookup(cache_key("replacement"), old, workspace.clone(), timeout())
+        .load_request
+        .unwrap();
+    let pending_new = cache.lookup(
+        cache_key("replacement"),
+        new.clone(),
+        workspace.clone(),
+        timeout(),
+    );
+    assert!(pending_new.load_request.is_none());
+    let stale = cache.complete_load(old_request.load());
     assert!(stale.stale);
-    assert!(stale.follow_up_request.is_none());
-}
-
-#[test]
-fn oversized_media_renders_too_large_fallback_without_gpui_image() {
-    let path = r"c:\work\member\images\huge.bmp";
-    let source = TranscriptMediaSource::markdown_image("huge", "images/huge.bmp", None);
-    let mut reader = FakeReader::with_file(path, oversized_bmp_header(6000, 6000));
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("huge"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    let completion = lookup.load_request.unwrap().load(&mut reader);
-    assert!(cache.complete_load(completion).display_changed);
-    let ready = cache.lookup(cache_key("huge"), source, host_workspace(), timeout());
-
+    let follow_up = stale.follow_up_request.unwrap();
+    assert!(cache.complete_load(follow_up.load()).display_changed);
     assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("huge (image too large)")
-    );
-    assert_eq!(cache.stats().loaded_entries, 0);
-}
-
-#[test]
-fn absolute_path_outside_bound_member_is_rejected_before_reading() {
-    let source = TranscriptMediaSource::markdown_image("outside", r"C:\other\cat.png", None);
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(cache_key("outside"), source, host_workspace(), timeout());
-    let result = lookup.load_request.unwrap().load(&mut reader);
-    assert!(cache.complete_load(result).display_changed);
-
-    let ready = cache.lookup(
-        cache_key("outside"),
-        TranscriptMediaSource::markdown_image("outside", r"C:\other\cat.png", None),
-        host_workspace(),
-        timeout(),
-    );
-    assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("outside (path not allowed)")
-    );
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn missing_or_unreadable_markdown_file_renders_unavailable_fallback() {
-    let source = TranscriptMediaSource::markdown_image("missing", "images/missing.png", None);
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("missing"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    let completion = lookup.load_request.unwrap().load(&mut reader);
-    assert!(cache.complete_load(completion).display_changed);
-
-    let ready = cache.lookup(cache_key("missing"), source, host_workspace(), timeout());
-    assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("missing (file unavailable)")
-    );
-    assert_eq!(
-        reader.calls,
-        vec![r"c:\work\member\images\missing.png".to_string()]
-    );
-}
-
-#[test]
-fn svg_and_non_image_markdown_targets_render_unsupported_without_reading() {
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let svg = TranscriptMediaSource::markdown_image("vector", "images/vector.svg", None);
-    let svg_lookup = cache.lookup(cache_key("svg"), svg.clone(), host_workspace(), timeout());
-    assert!(
         cache
-            .complete_load(svg_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready_svg = cache.lookup(cache_key("svg"), svg, host_workspace(), timeout());
-    assert_eq!(
-        ready_svg.outcome.fallback_text().as_deref(),
-        Some("vector (render not supported)")
+            .lookup(cache_key("replacement"), new, workspace.clone(), timeout())
+            .outcome
+            .loaded()
+            .unwrap()
+            .alt(),
+        "new"
     );
 
-    let text = TranscriptMediaSource::markdown_image("notes", "notes/readme.txt", None);
-    let text_lookup = cache.lookup(cache_key("text"), text.clone(), host_workspace(), timeout());
-    assert!(
-        cache
-            .complete_load(text_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready_text = cache.lookup(cache_key("text"), text, host_workspace(), timeout());
-    assert_eq!(
-        ready_text.outcome.fallback_text().as_deref(),
-        Some("notes (render not supported)")
-    );
-    assert!(reader.calls.is_empty());
+    let source = TranscriptMediaSource::markdown_image("cat", "images/old.png", None);
+    let request = cache
+        .lookup(cache_key("cleared"), source, workspace, timeout())
+        .load_request
+        .unwrap();
+    cache.clear();
+    assert!(cache.complete_load(request.load()).stale);
+    cleanup(root);
 }
 
 #[test]
-fn native_generated_image_prefers_saved_path_over_inline_result() {
-    let inline_bytes = png_bytes_with_pixel([255, 0, 0, 255]);
-    let saved_bytes = png_bytes_with_dimensions(3, 2, [0, 0, 255, 255]);
-    let temp = tempfile::tempdir().expect("temp dir should be created");
-    let saved_path = temp.path().join("fresh.png");
-    fs::write(&saved_path, &saved_bytes).expect("saved image fixture should be written");
-    let path = saved_path.to_string_lossy().to_string();
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        Some(Arc::new(BASE64_STANDARD.encode(&inline_bytes))),
-        Some(path.to_string()),
-        true,
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(cache_key("native"), source, host_workspace(), timeout());
-
-    let image = ready
-        .outcome
-        .loaded()
-        .expect("native saved path should load before inline result bytes");
-    assert_eq!(image.alt(), "Cheshire cat");
-    assert_eq!(image.format(), ImageFormat::Png);
-    assert_eq!(image.retained_bytes(), None);
-    assert_eq!(image.source_backed_file_path(), Some(&saved_path));
-    assert_eq!(image.natural_dimensions().width(), 3);
-    assert_eq!(image.natural_dimensions().height(), 2);
-    assert_eq!(image.source_path(), Some(path.as_str()));
-    assert!(reader.calls.is_empty());
-    let stats = cache.stats();
-    assert_eq!(stats.loaded_image_bytes, 0);
-    assert_eq!(stats.decoded_image_bytes_estimate, 0);
-    assert_eq!(stats.loaded_retained_byte_entries, 0);
-    assert_eq!(stats.loaded_source_backed_file_entries, 1);
-    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 1);
-    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 0);
-}
-
-#[test]
-fn native_generated_image_saved_path_loads_without_markdown_path_policy() {
-    let temp = tempfile::tempdir().expect("temp dir should be created");
-    let saved_path = temp.path().join("cat.png");
-    let bytes = png_bytes_with_dimensions(2, 1, [0, 0, 0, 255]);
-    fs::write(&saved_path, &bytes).expect("saved image fixture should be written");
-    let path = saved_path.to_string_lossy().to_string();
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        None::<Arc<String>>,
-        Some(path.to_string()),
-        true,
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native-path"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(
-        cache_key("native-path"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-
-    let image = ready
-        .outcome
-        .loaded()
-        .expect("native saved path should load outside the workspace member");
-    assert_eq!(image.alt(), "Cheshire cat");
-    assert_eq!(image.retained_bytes(), None);
-    assert_eq!(image.source_backed_file_path(), Some(&saved_path));
-    assert_eq!(image.natural_dimensions().width(), 2);
-    assert_eq!(image.natural_dimensions().height(), 1);
-    assert_eq!(image.source_path(), Some(path.as_str()));
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn source_backed_preload_candidates_exclude_markdown_and_inline_generated_bytes() {
-    let markdown = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
-    let inline_generated = TranscriptMediaSource::native_image_generation(
-        "image_generation_inline",
-        Some("Inline cat".to_string()),
-        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
-        None,
-        true,
-    );
-    let blank_saved_path = TranscriptMediaSource::native_image_generation(
-        "image_generation_blank",
-        Some("Blank cat".to_string()),
-        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
-        Some("  ".to_string()),
-        true,
-    );
-    let saved_path = TranscriptMediaSource::native_image_generation(
-        "image_generation_saved",
-        Some("Saved cat".to_string()),
-        None::<Arc<String>>,
-        Some(r"c:\generated\cat.png".to_string()),
-        true,
-    );
-
-    assert!(!markdown.is_source_backed_preload_candidate());
-    assert!(!inline_generated.is_source_backed_preload_candidate());
-    assert!(!blank_saved_path.is_source_backed_preload_candidate());
-    assert!(saved_path.is_source_backed_preload_candidate());
-}
-
-#[test]
-fn missing_native_generated_image_saved_path_renders_unavailable_without_backend_read() {
-    let temp = tempfile::tempdir().expect("temp dir should be created");
-    let saved_path = temp.path().join("missing.png");
-    let path = saved_path.to_string_lossy().to_string();
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Missing cat".to_string()),
-        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
-        Some(path),
-        true,
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native-missing-path"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(
-        cache_key("native-missing-path"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-
-    assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("Missing cat (file unavailable)")
-    );
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn malformed_native_generated_image_saved_path_renders_unsupported_without_backend_read() {
-    let temp = tempfile::tempdir().expect("temp dir should be created");
-    let saved_path = temp.path().join("truncated.png");
-    fs::write(&saved_path, truncated_png_with_dimensions(2, 1))
-        .expect("malformed saved image fixture should be written");
-    let path = saved_path.to_string_lossy().to_string();
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Broken cat".to_string()),
-        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
-        Some(path),
-        true,
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native-malformed-path"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(
-        cache_key("native-malformed-path"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-
-    assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("Broken cat (render not supported)")
-    );
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn completed_native_generated_image_without_bytes_reports_unavailable() {
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Vanished image".to_string()),
-        None::<Arc<String>>,
-        None,
-        true,
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native-missing"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(lookup.outcome.is_pending());
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(
-        cache_key("native-missing"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-
-    assert_eq!(
-        ready.outcome.fallback_text().as_deref(),
-        Some("Vanished image (file unavailable)")
-    );
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn incomplete_native_generated_image_without_source_stays_pending() {
-    let source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Still generating".to_string()),
-        None::<Arc<String>>,
+fn generated_image_without_a_saved_path_is_pending_then_unavailable() {
+    let root = unique_temp_dir();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let pending = TranscriptMediaSource::native_image_generation(
+        "generated_pending",
+        Some("pending cat".to_string()),
         None,
         false,
     );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-
-    let lookup = cache.lookup(
-        cache_key("native-incomplete"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(lookup.outcome.is_pending());
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let pending = cache.lookup(
-        cache_key("native-incomplete"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-
-    assert!(pending.outcome.is_pending());
-    assert!(pending.load_request.is_none());
-    assert_eq!(cache.stats().loaded_entries, 0);
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn native_generated_image_cache_identity_ignores_inline_result_when_saved_path_is_present() {
-    let temp = tempfile::tempdir().expect("temp dir should be created");
-    let saved_path = temp.path().join("cat.png");
-    let saved_bytes = png_bytes_with_dimensions(2, 2, [0, 0, 0, 255]);
-    fs::write(&saved_path, &saved_bytes).expect("saved image fixture should be written");
-    let path = saved_path.to_string_lossy().to_string();
-    let first_result = Arc::new(BASE64_STANDARD.encode(png_bytes_with_pixel([0, 0, 0, 255])));
-    let second_result = Arc::new(BASE64_STANDARD.encode(png_bytes_with_pixel([255, 0, 0, 255])));
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-    let key = cache_key("native-path-result");
-    let first_source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        Some(first_result),
-        Some(path.to_string()),
-        true,
-    );
-
-    let first_lookup = cache.lookup(
-        key.clone(),
-        first_source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(first_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(key.clone(), first_source, host_workspace(), timeout());
-    let ready_image = ready.outcome.loaded().expect("saved path should load");
-    assert_eq!(ready_image.source_backed_file_path(), Some(&saved_path));
-    assert_eq!(ready_image.natural_dimensions().width(), 2);
-    assert_eq!(ready_image.natural_dimensions().height(), 2);
-
-    let second_source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        Some(second_result),
-        Some(path.to_string()),
-        true,
-    );
-    let unchanged = cache.lookup(key, second_source, host_workspace(), timeout());
-    assert!(unchanged.load_request.is_none());
-    assert_eq!(
-        unchanged
-            .outcome
-            .loaded()
-            .and_then(|image| image.source_backed_file_path()),
-        Some(&saved_path)
-    );
-    assert!(reader.calls.is_empty());
-}
-
-#[test]
-fn native_generated_image_cache_identity_uses_shared_result_payload_without_saved_path() {
-    let first_bytes = png_bytes_with_pixel([0, 0, 0, 255]);
-    let second_bytes = png_bytes_with_pixel([255, 0, 0, 255]);
-    let first_result = Arc::new(BASE64_STANDARD.encode(&first_bytes));
-    let second_result = Arc::new(BASE64_STANDARD.encode(&second_bytes));
-    assert_eq!(
-        first_result.len(),
-        second_result.len(),
-        "fixture should isolate result identity from payload length"
-    );
-    let mut reader = FakeReader::default();
-    let mut cache = TranscriptMediaCache::new(8);
-    let key = cache_key("native-result");
-    let first_source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        Some(first_result.clone()),
+    let complete_source = TranscriptMediaSource::native_image_generation(
+        "generated_missing",
+        Some("missing cat".to_string()),
         None,
         true,
     );
-
-    let first_lookup = cache.lookup(
-        key.clone(),
-        first_source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(first_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(key.clone(), first_source, host_workspace(), timeout());
-    assert!(ready.load_request.is_none());
-    assert_eq!(
-        ready.outcome.loaded().map(|image| image.bytes()),
-        Some(first_bytes.as_slice())
-    );
-
-    let second_source = TranscriptMediaSource::native_image_generation(
-        "image_generation_1",
-        Some("Cheshire cat".to_string()),
-        Some(second_result),
-        None,
-        true,
-    );
-    let changed = cache.lookup(
-        key.clone(),
-        second_source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(changed.outcome.is_pending());
-    let changed_request = changed
-        .load_request
-        .expect("new generated-image result payload should invalidate cached media");
-    assert!(
-        cache
-            .complete_load(changed_request.load(&mut reader))
-            .display_changed
-    );
-    let ready = cache.lookup(key, second_source, host_workspace(), timeout());
-    assert_eq!(
-        ready.outcome.loaded().map(|image| image.bytes()),
-        Some(second_bytes.as_slice())
-    );
-    assert!(reader.calls.is_empty());
-    let stats = cache.stats();
-    assert_eq!(stats.loaded_retained_byte_entries, 1);
-    assert_eq!(stats.loaded_source_backed_file_entries, 0);
-    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 1);
-    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 0);
-}
-
-#[test]
-fn markdown_image_revalidation_updates_changed_or_deleted_file_state() {
-    let path = r"c:\work\member\images\cat.png";
-    let first_bytes = png_bytes_with_pixel([0, 0, 0, 255]);
-    let second_bytes = png_bytes_with_pixel([255, 0, 0, 255]);
-    let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
-    let mut reader = FakeReader::with_file(path, first_bytes.clone());
-    let mut cache = TranscriptMediaCache::new_with_markdown_revalidate_after(8, Duration::ZERO);
-
-    let first_lookup = cache.lookup(
-        cache_key("markdown-refresh"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(first_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    reader.replace_file(path, second_bytes.clone());
-    let revalidate_changed = cache.lookup(
-        cache_key("markdown-refresh"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert_eq!(
-        revalidate_changed
-            .outcome
-            .loaded()
-            .expect("old image should remain visible while revalidation runs")
-            .bytes(),
-        first_bytes.as_slice()
-    );
-    assert!(
-        cache
-            .complete_load(revalidate_changed.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let changed_ready = cache.lookup(
-        cache_key("markdown-refresh"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert_eq!(
-        changed_ready
-            .outcome
-            .loaded()
-            .expect("changed bytes should become visible after revalidation")
-            .bytes(),
-        second_bytes.as_slice()
-    );
-    assert!(
-        cache
-            .complete_load(changed_ready.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-
-    reader.remove_file(path);
-    let revalidate_deleted = cache.lookup(
-        cache_key("markdown-refresh"),
-        source.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(revalidate_deleted.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let deleted_ready = cache.lookup(
-        cache_key("markdown-refresh"),
-        source,
-        host_workspace(),
-        timeout(),
-    );
-    assert_eq!(
-        deleted_ready.outcome.fallback_text().as_deref(),
-        Some("cat (file unavailable)")
-    );
-    assert_eq!(
-        reader.calls,
-        vec![
-            path.to_string(),
-            path.to_string(),
-            path.to_string(),
-            path.to_string()
-        ]
-    );
-}
-
-#[test]
-fn empty_alt_markdown_fallbacks_omit_label_prefix() {
-    let mut reader = FakeReader::default();
     let mut cache = TranscriptMediaCache::new(8);
 
-    let unsupported = TranscriptMediaSource::markdown_image("", "images/vector.svg", None);
-    let unsupported_lookup = cache.lookup(
-        cache_key("empty-alt-unsupported"),
+    complete(
+        &mut cache,
+        cache_key("pending"),
+        pending.clone(),
+        workspace.clone(),
+    );
+    assert!(
+        cache
+            .lookup(cache_key("pending"), pending, workspace.clone(), timeout())
+            .outcome
+            .is_pending()
+    );
+    complete(
+        &mut cache,
+        cache_key("complete"),
+        complete_source.clone(),
+        workspace.clone(),
+    );
+    assert_eq!(
+        cache
+            .lookup(cache_key("complete"), complete_source, workspace, timeout())
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("missing cat (file unavailable)")
+    );
+    cleanup(root);
+}
+
+#[test]
+fn generated_image_with_an_unreadable_or_unsupported_saved_path_is_unavailable_or_unsupported() {
+    let root = unique_temp_dir();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let missing_path = root.join("missing.png");
+    let unsupported_path = root.join("generated.svg");
+    fs::write(&unsupported_path, "<svg/>").unwrap();
+    let mut cache = TranscriptMediaCache::new(8);
+    let missing = TranscriptMediaSource::native_image_generation(
+        "generated_missing_path",
+        Some("missing".to_string()),
+        Some(missing_path.display().to_string()),
+        true,
+    );
+    let unsupported = TranscriptMediaSource::native_image_generation(
+        "generated_unsupported_path",
+        Some("unsupported".to_string()),
+        Some(unsupported_path.display().to_string()),
+        true,
+    );
+    complete(
+        &mut cache,
+        cache_key("missing-path"),
+        missing.clone(),
+        workspace.clone(),
+    );
+    complete(
+        &mut cache,
+        cache_key("unsupported-path"),
         unsupported.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(unsupported_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let unsupported_ready = cache.lookup(
-        cache_key("empty-alt-unsupported"),
-        unsupported,
-        host_workspace(),
-        timeout(),
+        workspace.clone(),
     );
     assert_eq!(
-        unsupported_ready.outcome.fallback_text().as_deref(),
-        Some("(render not supported)")
+        cache
+            .lookup(
+                cache_key("missing-path"),
+                missing,
+                workspace.clone(),
+                timeout()
+            )
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("missing (file unavailable)")
     );
+    assert_eq!(
+        cache
+            .lookup(
+                cache_key("unsupported-path"),
+                unsupported,
+                workspace,
+                timeout()
+            )
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("unsupported (render not supported)")
+    );
+    cleanup(root);
+}
 
+#[test]
+fn empty_markdown_alt_keeps_path_and_file_fallbacks() {
+    let root = unique_temp_dir();
+    let workspace = WorkspaceId::host_windows(root.path());
+    let rejected = TranscriptMediaSource::markdown_image("", r"C:\\other\\cat.png", None);
     let unavailable = TranscriptMediaSource::markdown_image("", "images/missing.png", None);
-    let unavailable_lookup = cache.lookup(
-        cache_key("empty-alt-unavailable"),
-        unavailable.clone(),
-        host_workspace(),
-        timeout(),
-    );
-    assert!(
-        cache
-            .complete_load(unavailable_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let unavailable_ready = cache.lookup(
-        cache_key("empty-alt-unavailable"),
-        unavailable,
-        host_workspace(),
-        timeout(),
-    );
-    assert_eq!(
-        unavailable_ready.outcome.fallback_text().as_deref(),
-        Some("(file unavailable)")
-    );
+    let mut cache = TranscriptMediaCache::new(8);
 
-    let rejected = TranscriptMediaSource::markdown_image("", r"C:\other\cat.png", None);
-    let rejected_lookup = cache.lookup(
-        cache_key("empty-alt-rejected"),
+    complete(
+        &mut cache,
+        cache_key("empty-rejected"),
         rejected.clone(),
-        host_workspace(),
-        timeout(),
+        workspace.clone(),
     );
-    assert!(
-        cache
-            .complete_load(rejected_lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
-    let rejected_ready = cache.lookup(
-        cache_key("empty-alt-rejected"),
-        rejected,
-        host_workspace(),
-        timeout(),
+    complete(
+        &mut cache,
+        cache_key("empty-unavailable"),
+        unavailable.clone(),
+        workspace.clone(),
     );
     assert_eq!(
-        rejected_ready.outcome.fallback_text().as_deref(),
+        cache
+            .lookup(
+                cache_key("empty-rejected"),
+                rejected,
+                workspace.clone(),
+                timeout()
+            )
+            .outcome
+            .fallback_text()
+            .as_deref(),
         Some("(path not allowed)")
     );
+    assert_eq!(
+        cache
+            .lookup(
+                cache_key("empty-unavailable"),
+                unavailable,
+                workspace,
+                timeout()
+            )
+            .outcome
+            .fallback_text()
+            .as_deref(),
+        Some("(file unavailable)")
+    );
+    cleanup(root);
 }
 
-#[test]
-fn stale_load_cannot_update_replaced_media_source() {
-    let mut reader = FakeReader::default()
-        .with_file_added(r"c:\work\member\images\old.png", png_bytes())
-        .with_file_added(r"c:\work\member\images\new.png", png_bytes());
-    let mut cache = TranscriptMediaCache::new(8);
-    let key = cache_key("replace");
-    let old = TranscriptMediaSource::markdown_image("old", "images/old.png", None);
-    let new = TranscriptMediaSource::markdown_image("new", "images/new.png", None);
-
-    let old_lookup = cache.lookup(key.clone(), old, host_workspace(), timeout());
-    let new_lookup = cache.lookup(key.clone(), new.clone(), host_workspace(), timeout());
-    assert!(new_lookup.load_request.is_none());
-    assert!(new_lookup.outcome.is_pending());
-
-    let stale = cache.complete_load(old_lookup.load_request.unwrap().load(&mut reader));
-    assert!(stale.stale);
-    let follow_up = stale
-        .follow_up_request
-        .expect("latest media source should be scheduled after stale completion");
-
-    let pending = cache.lookup(key.clone(), new.clone(), host_workspace(), timeout());
-    assert!(pending.outcome.is_pending());
-    assert!(pending.load_request.is_none());
-
-    let fresh = cache.complete_load(follow_up.load(&mut reader));
-    assert!(fresh.display_changed);
-    assert!(!fresh.stale);
-
-    let ready = cache.lookup(key, new, host_workspace(), timeout());
-    assert_eq!(ready.outcome.loaded().map(|image| image.alt()), Some("new"));
-}
-
-#[test]
-fn stale_load_after_scope_clear_cannot_update_different_thread() {
-    let mut reader = FakeReader::with_file(r"c:\work\member\images\cat.png", png_bytes());
-    let mut cache = TranscriptMediaCache::new(8);
-    let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
-    let lookup = cache.lookup(cache_key("thread-a"), source, host_workspace(), timeout());
-    let completion = lookup.load_request.unwrap().load(&mut reader);
-
-    cache.clear();
-    let result = cache.complete_load(completion);
-    assert!(result.stale);
-    assert!(result.follow_up_request.is_none());
-    assert_eq!(cache.stats().entries, 0);
-}
-
-#[derive(Default)]
-struct FakeReader {
-    files: HashMap<String, Vec<u8>>,
-    calls: Vec<String>,
-}
-
-impl FakeReader {
-    fn with_file(path: &str, bytes: Vec<u8>) -> Self {
-        Self::default().with_file_added(path, bytes)
-    }
-
-    fn with_file_added(mut self, path: &str, bytes: Vec<u8>) -> Self {
-        self.files.insert(path.to_string(), bytes);
-        self
-    }
-
-    fn replace_file(&mut self, path: &str, bytes: Vec<u8>) {
-        self.files.insert(path.to_string(), bytes);
-    }
-
-    fn remove_file(&mut self, path: &str) {
-        self.files.remove(path);
-    }
-}
-
-impl TranscriptMediaFileReader for FakeReader {
-    type Error = String;
-
-    fn read_file_bytes(&mut self, path: &str, _timeout: Duration) -> Result<Vec<u8>, Self::Error> {
-        self.calls.push(path.to_string());
-        self.files
-            .get(path)
-            .cloned()
-            .ok_or_else(|| format!("missing {path}"))
-    }
-}
-
-fn host_workspace() -> WorkspaceId {
-    WorkspaceId::host_windows(r"C:\work\member")
+fn complete(
+    cache: &mut TranscriptMediaCache,
+    key: TranscriptMediaCacheKey,
+    source: TranscriptMediaSource,
+    workspace: WorkspaceId,
+) {
+    let request = cache
+        .lookup(key, source, workspace, timeout())
+        .load_request
+        .unwrap();
+    assert!(cache.complete_load(request.load()).display_changed);
 }
 
 fn cache_key(value: &str) -> TranscriptMediaCacheKey {
@@ -972,31 +483,18 @@ fn timeout() -> Duration {
     Duration::from_secs(1)
 }
 
-fn png_bytes() -> Vec<u8> {
-    png_bytes_with_pixel([0, 0, 0, 0])
+fn write_png(path: &Path, width: u32, height: u32) {
+    write_png_with_pixel(path, width, height, [0, 0, 0, 255]);
 }
 
-fn png_bytes_with_pixel(rgba: [u8; 4]) -> Vec<u8> {
-    png_bytes_with_dimensions(1, 1, rgba)
-}
-
-fn png_bytes_with_dimensions(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> {
+fn write_png_with_pixel(path: &Path, width: u32, height: u32, pixel: [u8; 4]) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
     let image = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
         width,
         height,
-        image::Rgba(rgba),
+        image::Rgba(pixel),
     ));
-    let mut bytes = std::io::Cursor::new(Vec::new());
-    image
-        .write_to(&mut bytes, image::ImageFormat::Png)
-        .expect("embedded PNG fixture should encode");
-    bytes.into_inner()
-}
-
-fn truncated_png_with_dimensions(width: u32, height: u32) -> Vec<u8> {
-    let mut bytes = png_bytes_with_dimensions(width, height, [0, 0, 0, 255]);
-    bytes.truncate(33);
-    bytes
+    image.save(path).unwrap();
 }
 
 fn oversized_bmp_header(width: u32, height: u32) -> Vec<u8> {
@@ -1011,4 +509,12 @@ fn oversized_bmp_header(width: u32, height: u32) -> Vec<u8> {
     bytes[26..28].copy_from_slice(&(1_u16).to_le_bytes());
     bytes[28..30].copy_from_slice(&(32_u16).to_le_bytes());
     bytes
+}
+
+fn unique_temp_dir() -> tempdir_support::TestTempDir {
+    tempdir_support::temp_dir("beryl-transcript-media-sources-test-")
+}
+
+fn cleanup(root: tempdir_support::TestTempDir) {
+    root.close().unwrap();
 }

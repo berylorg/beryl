@@ -1253,11 +1253,22 @@ fn usage_tree_guard_accepts_only_newer_exact_selected_root_snapshots() {
 }
 
 #[test]
-fn usage_tree_cache_survives_selected_root_switches_without_accepting_late_cross_root_data() {
+fn usage_tree_selection_switch_evicts_prior_root_and_accepts_new_selected_read() {
     let mut state = StatusLineState::default();
     let root_a = usage_tree_snapshot("root_a", 4, UsageTreeAccountingStatus::Complete, 400);
     let root_b = usage_tree_snapshot("root_b", 2, UsageTreeAccountingStatus::Complete, 200);
     assert!(state.apply_usage_tree_snapshot(Some("root_a"), root_a.clone()));
+
+    state.clear_usage_tree_snapshot_unless_root(Some("root_a"));
+    assert_eq!(
+        state.selected_root_usage(Some("root_a")),
+        SelectedRootUsage::Complete(&root_a)
+    );
+    state.clear_usage_tree_snapshot_unless_root(Some("root_b"));
+    assert_eq!(
+        state.selected_root_usage(Some("root_a")),
+        SelectedRootUsage::Unavailable
+    );
     assert!(state.apply_usage_tree_snapshot(Some("root_b"), root_b.clone()));
 
     assert!(!state.apply_usage_tree_snapshot(
@@ -1268,13 +1279,72 @@ fn usage_tree_cache_survives_selected_root_switches_without_accepting_late_cross
         state.selected_root_usage(Some("root_b")),
         SelectedRootUsage::Complete(&root_b)
     );
+    state.clear_usage_tree_snapshot_unless_root(Some("root_a"));
     assert_eq!(
         state.selected_root_usage(Some("root_a")),
-        SelectedRootUsage::Complete(&root_a)
+        SelectedRootUsage::Unavailable
+    );
+    assert!(state.apply_usage_tree_snapshot(
+        Some("root_a"),
+        usage_tree_snapshot("root_a", 1, UsageTreeAccountingStatus::Complete, 100)
+    ));
+    assert_eq!(
+        state.selected_root_usage(None),
+        SelectedRootUsage::Unavailable
+    );
+}
+
+#[test]
+fn pending_new_thread_draft_clears_selected_usage_tree() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_usage_tree_snapshot(
+        Some("root_a"),
+        usage_tree_snapshot("root_a", 1, UsageTreeAccountingStatus::Complete, 400)
+    ));
+
+    state.clear_usage_tree_snapshot_unless_root(None);
+
+    assert_eq!(
+        state.selected_root_usage(Some("root_a")),
+        SelectedRootUsage::Unavailable
     );
     assert_eq!(
         state.selected_root_usage(None),
         SelectedRootUsage::Unavailable
+    );
+    assert!(!state.apply_usage_tree_snapshot(
+        None,
+        usage_tree_snapshot("root_a", 2, UsageTreeAccountingStatus::Complete, 500)
+    ));
+    assert_eq!(
+        state.projection(None, "ok").context_space_left,
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
+    );
+}
+
+#[test]
+fn unavailable_usage_tree_read_uses_only_exact_legacy_root_usage() {
+    let mut state = StatusLineState::default();
+    assert!(state.apply_token_usage(
+        true,
+        "root_a".to_string(),
+        "turn_a".to_string(),
+        token_usage_with_totals(250, 1_000, 200, 300, Some(1_000)),
+    ));
+    assert!(state.apply_usage_tree_snapshot(
+        Some("root_a"),
+        usage_tree_snapshot("root_a", 1, UsageTreeAccountingStatus::Complete, 400)
+    ));
+
+    state.clear_usage_tree_snapshot_unless_root(Some("root_b"));
+
+    assert_eq!(
+        state.projection(Some("root_a"), "ok").context_space_left,
+        "75% I/IC/O: main: 800/200/300 sub: —/—/—"
+    );
+    assert_eq!(
+        state.projection(Some("root_b"), "ok").context_space_left,
+        "Unknown I/IC/O: main: —/—/— sub: —/—/—"
     );
 }
 

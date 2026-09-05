@@ -68,3 +68,12 @@ Applying graph upkeep instructions updates the workspace-scoped active graph pol
 When no workspace is selected, the `Graph` tab remains visible but the graph upkeep instructions row is disabled with a workspace-required state and cannot apply a draft. During a workspace switch, unapplied graph-upkeep drafts for the previous workspace are discarded and the row is rebound to the newly selected workspace's applied policy. If workspace persistence is unavailable or an apply attempt cannot prove the target workspace still matches the selected workspace, applying graph-upkeep instructions fails without mutating the active policy.
 
 Stale-ref repair failures, source-read failures, and mechanically rejected upkeep writes are reported through localized notices or bounded surface state without replacing the graph overlay or checklist sidebar.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

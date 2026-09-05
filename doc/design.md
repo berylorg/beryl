@@ -72,7 +72,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
 - Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
 - User-facing backend status metadata is presentation state derived from exact app-server responses, notifications, and GUI-held projections. Missing backend fields render as unknown or are omitted rather than guessed.
-- User-facing activity is transient presentation state derived from backend execution stream notifications and bounded GUI-derived records. It is not backend conversation history or durable workspace content.
+- User-facing activity is transient presentation state derived from backend execution stream notifications and GUI-derived records, subject to the completed-record budgets and the ongoing-execution exception below. It is not backend conversation history or durable workspace content.
 - User-visible turn-completion and lifecycle notifications are GUI-local desktop notification side effects and must not affect backend turn completion semantics.
 
 ## Cross-Feature Safety Rules
@@ -106,6 +106,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Interactive code paths must avoid avoidable algorithmic complexity cliffs as transcript size, semantic graph size, workspace count, or backend event volume grows.
 - Any Beryl-owned runtime data structure retaining data derived from user input, backend events, filesystem contents, workspace contents, generated output, dependency callbacks, or other externally variable sources must have deterministic growth bounds unless the retained data is exact durable domain state.
 - Caches, queues, projections, maps, histories, retry sets, diagnostic buffers, media stores, and dependency-facing handles must either enforce deterministic limits or be documented as exact durable domain state.
+- V0.1 permits a narrow exception for Activity records and attribution metadata associated with ongoing execution: they remain until terminal or backend-session cleanup without an absolute active-record count or aggregate-byte bound. Completed Activity retains its deterministic budgets. This exception does not apply to usage snapshots or other caches.
 - Expensive recomputation on hot paths should be replaced with reasonable caching or incremental maintenance when necessary for responsiveness.
 - Background backend clients must be bounded, cancellable, and lower priority than foreground turn streaming and transcript activation.
 - Implementation work must prefer predictable latency and bounded resource use over shortcuts that compromise responsiveness.
@@ -114,3 +115,11 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 - Windows is the primary target platform for product quality and developer attention.
 - The design must preserve the ability to run the GUI on other platforms supported by `gpui` when the backend boundary permits it.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers: none
+
+Beryl v0.1 serves a cooperative Operator and a small trusted technical audience on local desktops. Maintenance consists of localized bug fixes and lightweight improvements within the documented workflows. Focused verification should cover the changed behavior and its relevant failure boundary; this profile does not authorize weakening existing exact-target, persisted-state, input-validation, or process-cleanup guarantees.

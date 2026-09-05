@@ -17,8 +17,8 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - The tool accepts one required `outcome` value.
 - Supported outcomes are `phase_needs_review`, `blocked_needs_operator`, `phase_continue`, `phase_continue_new_thread`, and `plan_complete`.
 - The model chooses only the semantic outcome. Beryl owns the mapping to stopping, notification, context compaction, automatic resume, and exact continuation text.
-- A successful tool response acknowledges that Beryl accepted the lifecycle request. It is not turn completion, compaction completion, resumed-turn start, or validation of the reported phase/plan status.
-- At most one lifecycle yield outcome may control one backend turn. If multiple yield calls occur in one turn, Beryl applies a deterministic host-owned policy.
+- The first valid lifecycle yield for an exact active turn is accepted and its outcome controls that turn. Its tool result reports `accepted = true` and the controlling outcome; acceptance is not turn completion, compaction completion, resumed-turn start, or validation of the reported phase/plan status.
+- Later valid yield calls for that same turn are ignored. Each result reports `accepted = false`, `reason = already_yielded`, and the controlling outcome rather than the ignored call's outcome. Correlation requirements remain exact.
 
 ## Outcomes
 
@@ -83,3 +83,12 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - Accepting a lifecycle yield tool call does not mutate transcript history, semantic graph state, workspace persistence, settings, or backend-owned Codex configuration by itself. After successful source-turn and worker completion, `phase_continue_new_thread` may mutate only the new backend child's inherited history through the defined fork-and-rollback preparation flow.
 - Lifecycle notifications are GUI-local side effects and are governed by the notifications feature.
 - Yield handling must not depend on ordinary end-turn sound eligibility.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

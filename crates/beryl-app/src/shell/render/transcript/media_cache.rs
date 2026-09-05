@@ -14,8 +14,8 @@ use crate::diagnostic_dynamic_tools::{
     MediaDiagnosticEvent, MediaDiagnosticLog, VisibleMediaDiagnostics,
 };
 use crate::shell::transcript_media::{
-    TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaFileReader,
-    TranscriptMediaLoadOutcome, TranscriptMediaLoadRequest, TranscriptMediaSource,
+    TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaLoadOutcome,
+    TranscriptMediaLoadRequest, TranscriptMediaSource,
 };
 
 use super::{
@@ -160,28 +160,8 @@ fn schedule_media_load(
 ) {
     let follow_up_connector = connector.clone();
     let load_task = cx.background_executor().spawn(async move {
-        match connector {
-            Some(connector) => {
-                let connect_started = Instant::now();
-                match connector.connect_request_client(timeout) {
-                    Ok(mut session) => {
-                        debug!(
-                            backend_connect_ms = elapsed_ms(connect_started.elapsed()),
-                            "connected transcript media backend reader"
-                        );
-                        request.load(&mut session)
-                    }
-                    Err(_) => {
-                        debug!(
-                            backend_connect_ms = elapsed_ms(connect_started.elapsed()),
-                            "failed to connect transcript media backend reader"
-                        );
-                        request.load(&mut UnavailableMediaFileReader)
-                    }
-                }
-            }
-            None => request.load(&mut UnavailableMediaFileReader),
-        }
+        let _ = (connector, timeout);
+        request.load()
     });
     cx.spawn(move |cx: &mut AsyncApp| {
         let mut cx = cx.clone();
@@ -325,14 +305,4 @@ fn release_evicted_media_images(
     let mut event = MediaDiagnosticEvent::new("gpui_media_images_released");
     event.image_count = Some(image_count);
     events.borrow_mut().record(event);
-}
-
-struct UnavailableMediaFileReader;
-
-impl TranscriptMediaFileReader for UnavailableMediaFileReader {
-    type Error = &'static str;
-
-    fn read_file_bytes(&mut self, _path: &str, _timeout: Duration) -> Result<Vec<u8>, Self::Error> {
-        Err("backend file reader unavailable")
-    }
 }

@@ -1,13 +1,11 @@
 use std::{
-    fs::File,
-    io::BufReader,
-    io::Cursor,
+    fs::{self, File},
+    io::{BufReader, Cursor, Read},
     path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use beryl_model::workspace::WorkspaceId;
 use gpui::{Image, ImageFormat};
 use tracing::debug;
@@ -15,38 +13,23 @@ use tracing::debug;
 use super::{
     path_policy::{RuntimePathResolution, resolve_markdown_runtime_path},
     sizing::TranscriptMediaNaturalDimensions,
-    types::{
-        TranscriptMediaFileReader, TranscriptMediaLoadOutcome, TranscriptMediaLoadedImage,
-        TranscriptMediaSource, fallback_alt,
-    },
+    types::{TranscriptMediaLoadOutcome, TranscriptMediaLoadedImage, TranscriptMediaSource},
 };
 
 pub(crate) const TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
 pub(crate) const TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) const TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES: usize = 64 * 1024 * 1024;
 
-pub(super) fn load_transcript_media<R>(
+pub(super) fn load_transcript_media(
     source: &TranscriptMediaSource,
     execution_target: &WorkspaceId,
-    reader: &mut R,
-    timeout: Duration,
-) -> TranscriptMediaLoadOutcome
-where
-    R: TranscriptMediaFileReader,
-{
+) -> TranscriptMediaLoadOutcome {
     match source {
         TranscriptMediaSource::MarkdownImage {
             alt, destination, ..
-        } => load_markdown_image(
-            alt.trim().to_string(),
-            destination,
-            execution_target,
-            reader,
-            timeout,
-        ),
+        } => load_markdown_image(alt.trim().to_string(), destination, execution_target),
         TranscriptMediaSource::NativeImageGeneration {
             revised_prompt,
-            result,
             saved_path,
             complete,
             ..
@@ -57,26 +40,18 @@ where
                 .filter(|alt| !alt.is_empty())
                 .unwrap_or("generated image")
                 .to_string(),
-            result.as_deref().map(String::as_str),
             saved_path.as_deref(),
             *complete,
             execution_target,
-            reader,
-            timeout,
         ),
     }
 }
 
-fn load_markdown_image<R>(
+fn load_markdown_image(
     alt: String,
     destination: &str,
     execution_target: &WorkspaceId,
-    reader: &mut R,
-    timeout: Duration,
-) -> TranscriptMediaLoadOutcome
-where
-    R: TranscriptMediaFileReader,
-{
+) -> TranscriptMediaLoadOutcome {
     let load_started = Instant::now();
     let path = match resolve_markdown_runtime_path(destination, execution_target) {
         RuntimePathResolution::Allowed { backend_path } => backend_path,
@@ -90,42 +65,132 @@ where
     let Some(format) = raster_image_format_from_path(path.as_str()) else {
         return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
     };
-    let read_started = Instant::now();
-    let bytes = match reader.read_file_bytes(path.as_str(), timeout) {
-        Ok(bytes) => bytes,
-        Err(_) => return TranscriptMediaLoadOutcome::FileUnavailable { alt },
-    };
-    let read_elapsed = read_started.elapsed();
-    let bytes_len = bytes.len();
-    loaded_image(
-        fallback_alt(&alt),
+    // Markdown remains byte-backed so a revalidation creates a fresh GPUI
+    // image even when the file changes without changing its path or dimensions.
+    // Acquisition is still from the directly readable host file; no backend
+    // image-byte RPC is involved.
+    load_byte_backed_file(
+        alt,
         format,
-        bytes,
+        execution_target.host_openable_path(Path::new(&path)),
         Some(path),
-        LoadedImageTimingContext {
-            source: "markdown_image",
-            branch: "file_path",
-            complete: true,
-            load_started,
-            saved_path_read: Some(read_elapsed),
-            inline_base64_decode: None,
-            bytes_len,
-        },
+        "markdown_image",
+        true,
+        load_started,
     )
 }
 
-fn load_native_generated_image<R>(
+fn load_byte_backed_file(
     alt: String,
-    result: Option<&str>,
+    format: ImageFormat,
+    host_path: std::path::PathBuf,
+    source_path: Option<String>,
+    source: &'static str,
+    complete: bool,
+    load_started: Instant,
+) -> TranscriptMediaLoadOutcome {
+    let compressed_bytes = match fs::metadata(&host_path) {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return TranscriptMediaLoadOutcome::FileUnavailable { alt },
+    };
+    if compressed_bytes > TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES as u64 {
+        debug!(
+            source,
+            branch = "direct_file_bytes",
+            complete,
+            outcome = "too_large",
+            host_path = %host_path.display(),
+            bytes = compressed_bytes,
+            max_bytes = TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES,
+            total_ms = elapsed_ms(load_started.elapsed()),
+            "transcript media load rejected before decode"
+        );
+        return TranscriptMediaLoadOutcome::TooLarge { alt };
+    }
+    let mut file = match File::open(&host_path) {
+        Ok(file) => file,
+        Err(_) => return TranscriptMediaLoadOutcome::FileUnavailable { alt },
+    };
+    let mut bytes = Vec::new();
+    if file
+        .by_ref()
+        .take((TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .is_err()
+    {
+        return TranscriptMediaLoadOutcome::FileUnavailable { alt };
+    }
+    if bytes.len() > TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES {
+        debug!(
+            source,
+            branch = "direct_file_bytes",
+            complete,
+            outcome = "too_large",
+            host_path = %host_path.display(),
+            bytes = bytes.len(),
+            max_bytes = TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES,
+            total_ms = elapsed_ms(load_started.elapsed()),
+            "transcript media load rejected after bounded source read"
+        );
+        return TranscriptMediaLoadOutcome::TooLarge { alt };
+    }
+    let dimensions_started = Instant::now();
+    let natural_dimensions = match decoded_raster_dimensions(format, &bytes) {
+        Ok(dimensions) => dimensions,
+        Err(RasterAdmissionError::Unsupported) => {
+            return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
+        }
+        Err(RasterAdmissionError::TooLarge {
+            pixels,
+            decoded_bytes,
+        }) => {
+            debug!(
+                source,
+                branch = "direct_file_bytes",
+                complete,
+                outcome = "too_large",
+                host_path = %host_path.display(),
+                pixels,
+                decoded_bytes,
+                max_pixels = TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS,
+                max_decoded_bytes = TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES,
+                raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+                total_ms = elapsed_ms(load_started.elapsed()),
+                "transcript media load rejected after decode"
+            );
+            return TranscriptMediaLoadOutcome::TooLarge { alt };
+        }
+    };
+    let image = Arc::new(Image::from_bytes(format, bytes.clone()));
+    debug!(
+        source,
+        branch = "direct_file_bytes",
+        complete,
+        outcome = "loaded",
+        host_path = %host_path.display(),
+        width = natural_dimensions.width(),
+        height = natural_dimensions.height(),
+        raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+        total_ms = elapsed_ms(load_started.elapsed()),
+        "transcript media load finished"
+    );
+    TranscriptMediaLoadOutcome::Loaded(TranscriptMediaLoadedImage::new(
+        alt,
+        format,
+        bytes,
+        image,
+        natural_dimensions,
+        source_path,
+        Some(host_path),
+    ))
+}
+
+fn load_native_generated_image(
+    alt: String,
     saved_path: Option<&str>,
     complete: bool,
     execution_target: &WorkspaceId,
-    _reader: &mut R,
-    _timeout: Duration,
-) -> TranscriptMediaLoadOutcome
-where
-    R: TranscriptMediaFileReader,
-{
+) -> TranscriptMediaLoadOutcome {
     let load_started = Instant::now();
     if let Some(saved_path) = saved_path.filter(|path| !path.trim().is_empty()) {
         let saved_path = saved_path.trim();
@@ -141,233 +206,108 @@ where
             return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
         };
         let host_path = execution_target.host_openable_path(Path::new(saved_path));
-        let dimensions_started = Instant::now();
-        let natural_dimensions = match decoded_raster_file_dimensions(format, &host_path) {
-            Ok(dimensions) => dimensions,
-            Err(RasterFileAdmissionError::Unavailable) => {
-                debug!(
-                    source = "native_generated_image",
-                    branch = "saved_path",
-                    complete,
-                    outcome = "file_unavailable",
-                    host_path = %host_path.display(),
-                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-                    total_ms = elapsed_ms(load_started.elapsed()),
-                    "generated-image media load finished"
-                );
-                return TranscriptMediaLoadOutcome::FileUnavailable { alt };
-            }
-            Err(RasterFileAdmissionError::Unsupported) => {
-                debug!(
-                    source = "native_generated_image",
-                    branch = "saved_path",
-                    complete,
-                    outcome = "render_not_supported",
-                    host_path = %host_path.display(),
-                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-                    total_ms = elapsed_ms(load_started.elapsed()),
-                    "generated-image media load finished"
-                );
-                return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
-            }
-            Err(RasterFileAdmissionError::TooLarge {
-                pixels,
-                decoded_bytes,
-            }) => {
-                debug!(
-                    source = "native_generated_image",
-                    branch = "saved_path",
-                    complete,
-                    outcome = "too_large",
-                    host_path = %host_path.display(),
-                    pixels,
-                    decoded_bytes,
-                    max_pixels = TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS,
-                    max_decoded_bytes = TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES,
-                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-                    total_ms = elapsed_ms(load_started.elapsed()),
-                    "transcript media load rejected after dimension decode"
-                );
-                return TranscriptMediaLoadOutcome::TooLarge { alt };
-            }
-        };
-        debug!(
-            source = "native_generated_image",
-            branch = "saved_path",
+        return load_source_backed_file(
+            alt,
+            format,
+            host_path,
+            Some(saved_path.to_string()),
+            "native_generated_image",
             complete,
-            outcome = "loaded",
-            host_path = %host_path.display(),
-            width = natural_dimensions.width(),
-            height = natural_dimensions.height(),
-            raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-            total_ms = elapsed_ms(load_started.elapsed()),
-            "generated-image media load finished"
-        );
-        return TranscriptMediaLoadOutcome::Loaded(
-            TranscriptMediaLoadedImage::new_source_backed_file(
-                alt,
-                format,
-                host_path,
-                natural_dimensions,
-                Some(saved_path.to_string()),
-            ),
+            load_started,
         );
     }
 
-    let Some(result) = result.filter(|result| !result.trim().is_empty()) else {
-        return if complete {
-            debug!(
-                source = "native_generated_image",
-                branch = "inline_result_missing",
-                complete,
-                outcome = "file_unavailable",
-                total_ms = elapsed_ms(load_started.elapsed()),
-                "generated-image media load finished"
-            );
-            TranscriptMediaLoadOutcome::FileUnavailable { alt }
-        } else {
-            debug!(
-                source = "native_generated_image",
-                branch = "inline_result_missing",
-                complete,
-                outcome = "pending",
-                total_ms = elapsed_ms(load_started.elapsed()),
-                "generated-image media load finished"
-            );
-            TranscriptMediaLoadOutcome::Pending { alt }
-        };
-    };
-    let decode_started = Instant::now();
-    let Ok(bytes) = BASE64_STANDARD.decode(result.trim()) else {
-        debug!(
-            source = "native_generated_image",
-            branch = "inline_result",
-            complete,
-            outcome = "file_unavailable",
-            inline_base64_decode_ms = elapsed_ms(decode_started.elapsed()),
-            total_ms = elapsed_ms(load_started.elapsed()),
-            "generated-image media load finished"
-        );
-        return TranscriptMediaLoadOutcome::FileUnavailable { alt };
-    };
-    let decode_elapsed = decode_started.elapsed();
-    let bytes_len = bytes.len();
-    loaded_image(
-        alt,
-        ImageFormat::Png,
-        bytes,
-        None,
-        LoadedImageTimingContext {
-            source: "native_generated_image",
-            branch: "inline_result",
-            complete,
-            load_started,
-            saved_path_read: None,
-            inline_base64_decode: Some(decode_elapsed),
-            bytes_len,
-        },
-    )
+    if complete {
+        TranscriptMediaLoadOutcome::FileUnavailable { alt }
+    } else {
+        TranscriptMediaLoadOutcome::Pending { alt }
+    }
 }
 
-struct LoadedImageTimingContext {
-    source: &'static str,
-    branch: &'static str,
-    complete: bool,
-    load_started: Instant,
-    saved_path_read: Option<Duration>,
-    inline_base64_decode: Option<Duration>,
-    bytes_len: usize,
-}
-
-fn loaded_image(
+fn load_source_backed_file(
     alt: String,
     format: ImageFormat,
-    bytes: Vec<u8>,
+    host_path: std::path::PathBuf,
     source_path: Option<String>,
-    timing: LoadedImageTimingContext,
+    source: &'static str,
+    complete: bool,
+    load_started: Instant,
 ) -> TranscriptMediaLoadOutcome {
-    if timing.bytes_len > TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES {
+    let compressed_bytes = match fs::metadata(&host_path) {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return TranscriptMediaLoadOutcome::FileUnavailable { alt },
+    };
+    if compressed_bytes > TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES as u64 {
         debug!(
-            source = timing.source,
-            branch = timing.branch,
-            complete = timing.complete,
+            source,
+            branch = "file_path",
+            complete,
             outcome = "too_large",
-            bytes = timing.bytes_len,
+            host_path = %host_path.display(),
+            bytes = compressed_bytes,
             max_bytes = TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES,
-            saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
-            inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
-            total_ms = elapsed_ms(timing.load_started.elapsed()),
+            total_ms = elapsed_ms(load_started.elapsed()),
             "transcript media load rejected before decode"
         );
         return TranscriptMediaLoadOutcome::TooLarge { alt };
     }
-
     let dimensions_started = Instant::now();
-    let natural_dimensions = match decoded_raster_dimensions(format, bytes.as_slice()) {
+    let natural_dimensions = match decoded_raster_file_dimensions(format, &host_path) {
         Ok(dimensions) => dimensions,
-        Err(RasterAdmissionError::Unsupported) => {
+        Err(RasterFileAdmissionError::Unavailable) => {
             debug!(
-                source = timing.source,
-                branch = timing.branch,
-                complete = timing.complete,
-                outcome = "render_not_supported",
-                bytes = timing.bytes_len,
-                saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
-                inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
+                source,
+                branch = "file_path",
+                complete,
+                outcome = "file_unavailable",
+                host_path = %host_path.display(),
                 raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-                total_ms = elapsed_ms(timing.load_started.elapsed()),
+                total_ms = elapsed_ms(load_started.elapsed()),
                 "transcript media load finished"
             );
+            return TranscriptMediaLoadOutcome::FileUnavailable { alt };
+        }
+        Err(RasterFileAdmissionError::Unsupported) => {
             return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
         }
-        Err(RasterAdmissionError::TooLarge {
+        Err(RasterFileAdmissionError::TooLarge {
             pixels,
             decoded_bytes,
         }) => {
             debug!(
-                source = timing.source,
-                branch = timing.branch,
-                complete = timing.complete,
+                source,
+                branch = "file_path",
+                complete,
                 outcome = "too_large",
-                bytes = timing.bytes_len,
+                host_path = %host_path.display(),
                 pixels,
                 decoded_bytes,
                 max_pixels = TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS,
                 max_decoded_bytes = TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES,
-                saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
-                inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
                 raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
-                total_ms = elapsed_ms(timing.load_started.elapsed()),
+                total_ms = elapsed_ms(load_started.elapsed()),
                 "transcript media load rejected after dimension decode"
             );
             return TranscriptMediaLoadOutcome::TooLarge { alt };
         }
     };
-    let dimensions_elapsed = dimensions_started.elapsed();
-    let image_started = Instant::now();
-    let image = Arc::new(Image::from_bytes(format, bytes.clone()));
-    let image_elapsed = image_started.elapsed();
     debug!(
-        source = timing.source,
-        branch = timing.branch,
-        complete = timing.complete,
+        source,
+        branch = "file_path",
+        complete,
         outcome = "loaded",
-        bytes = timing.bytes_len,
+        host_path = %host_path.display(),
         width = natural_dimensions.width(),
         height = natural_dimensions.height(),
-        saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
-        inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
-        raster_dimensions_decode_ms = elapsed_ms(dimensions_elapsed),
-        gpui_image_from_bytes_ms = elapsed_ms(image_elapsed),
-        total_ms = elapsed_ms(timing.load_started.elapsed()),
+        raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+        total_ms = elapsed_ms(load_started.elapsed()),
         "transcript media load finished"
     );
 
-    TranscriptMediaLoadOutcome::Loaded(TranscriptMediaLoadedImage::new(
+    TranscriptMediaLoadOutcome::Loaded(TranscriptMediaLoadedImage::new_source_backed_file(
         alt,
         format,
-        bytes,
-        image,
+        host_path,
         natural_dimensions,
         source_path,
     ))
@@ -390,13 +330,12 @@ fn decoded_raster_dimensions(
     format: ImageFormat,
     bytes: &[u8],
 ) -> Result<TranscriptMediaNaturalDimensions, RasterAdmissionError> {
-    let image_format = image_format(format);
-    let dimensions = image::ImageReader::with_format(Cursor::new(bytes), image_format)
+    let dimensions = image::ImageReader::with_format(Cursor::new(bytes), image_format(format))
         .into_dimensions()
         .map_err(|_| RasterAdmissionError::Unsupported)?;
     let natural_dimensions = admit_raster_dimensions(dimensions)?;
 
-    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image_format(format));
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES as u64);
     reader.limits(limits);

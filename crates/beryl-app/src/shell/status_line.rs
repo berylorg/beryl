@@ -26,7 +26,7 @@ pub(crate) struct StatusLineState {
     effective_turn_defaults_by_thread: HashMap<String, ThreadTurnDefaults>,
     turn_state_overrides_by_thread: HashMap<String, StatusLineTurnStateOverride>,
     token_usage_by_thread: HashMap<String, ThreadTokenUsage>,
-    usage_tree_by_root: HashMap<String, UsageTreeSnapshot>,
+    usage_tree_snapshot: Option<UsageTreeSnapshot>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -583,17 +583,28 @@ impl StatusLineState {
         if snapshot.root_thread_id != selected_thread_id {
             return false;
         }
-        if self
-            .usage_tree_by_root
-            .get(selected_thread_id)
-            .is_some_and(|retained| retained.revision >= snapshot.revision)
-        {
+        if self.usage_tree_snapshot.as_ref().is_some_and(|retained| {
+            retained.root_thread_id == snapshot.root_thread_id
+                && retained.revision >= snapshot.revision
+        }) {
             return false;
         }
 
-        self.usage_tree_by_root
-            .insert(selected_thread_id.to_string(), snapshot);
+        self.usage_tree_snapshot = Some(snapshot);
         true
+    }
+
+    pub(crate) fn clear_usage_tree_snapshot_unless_root(
+        &mut self,
+        selected_thread_id: Option<&str>,
+    ) {
+        if self
+            .usage_tree_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| Some(snapshot.root_thread_id.as_str()) != selected_thread_id)
+        {
+            self.usage_tree_snapshot = None;
+        }
     }
 
     pub(crate) fn selected_root_usage(
@@ -604,7 +615,8 @@ impl StatusLineState {
             return SelectedRootUsage::Unavailable;
         };
 
-        if let Some(snapshot) = self.usage_tree_by_root.get(selected_thread_id)
+        if let Some(snapshot) = self.usage_tree_snapshot.as_ref()
+            && snapshot.root_thread_id == selected_thread_id
             && matches!(
                 snapshot.accounting_status,
                 UsageTreeAccountingStatus::Complete
@@ -733,16 +745,19 @@ impl StatusLineState {
 
     fn context_space_left_percent(&self, selected_thread_id: Option<&str>) -> Option<u8> {
         let selected_thread_id = selected_thread_id?;
-        let (last_input_tokens, model_context_window) =
-            if let Some(snapshot) = self.usage_tree_by_root.get(selected_thread_id) {
-                (
-                    snapshot.self_usage.last.input_tokens,
-                    snapshot.self_usage.model_context_window?,
-                )
-            } else {
-                let usage = self.token_usage_by_thread.get(selected_thread_id)?;
-                (usage.last.input_tokens, usage.model_context_window?)
-            };
+        let (last_input_tokens, model_context_window) = if let Some(snapshot) = self
+            .usage_tree_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.root_thread_id == selected_thread_id)
+        {
+            (
+                snapshot.self_usage.last.input_tokens,
+                snapshot.self_usage.model_context_window?,
+            )
+        } else {
+            let usage = self.token_usage_by_thread.get(selected_thread_id)?;
+            (usage.last.input_tokens, usage.model_context_window?)
+        };
         if model_context_window <= 0 {
             return None;
         }

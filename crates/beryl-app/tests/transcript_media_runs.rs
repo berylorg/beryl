@@ -11,7 +11,6 @@ use shell::transcript_media::{TranscriptMediaLoadOutcome, TranscriptMediaSource}
 use shell::transcript_media_runs::{
     TranscriptMediaRunSegment, markdown_media_run_segments, media_run_copy_line,
 };
-use std::sync::Arc;
 
 #[test]
 fn one_markdown_image_in_prose_splits_to_text_media_text() {
@@ -137,7 +136,6 @@ fn media_copy_line_keeps_native_generated_image_prompt() {
     let source = TranscriptMediaSource::native_image_generation(
         "image_1",
         Some("A glass cat".to_string()),
-        None::<Arc<String>>,
         None,
         false,
     );

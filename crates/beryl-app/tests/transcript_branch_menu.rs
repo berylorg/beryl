@@ -815,6 +815,26 @@ fn image_target_file_source_save_copies_authoritative_file_on_demand() {
 }
 
 #[test]
+fn image_target_file_source_reports_deleted_authoritative_file() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let source_path = temp.path().join("rendered.png");
+    let output_path = temp.path().join("copy.png");
+    fs::write(&source_path, b"previewed image bytes").expect("source image should be written");
+    let target = TranscriptImageMenuTarget::new_file(
+        "thread:thread_a:turn:turn_2",
+        "media:rendered-image",
+        "Rendered image",
+        ImageFormat::Png,
+        source_path.clone(),
+        Some(source_path.to_string_lossy().to_string()),
+    );
+    fs::remove_file(&source_path).expect("source image should be removed after preview");
+
+    assert!(target.clipboard_item().is_err());
+    assert!(target.save_to_path(output_path).is_err());
+}
+
+#[test]
 fn clearing_stale_image_target_preserves_turn_actions() {
     let branch_target = shell::TranscriptBranchTarget::for_test(
         "thread_a",

@@ -884,6 +884,33 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
         "call_2",
         YIELD_TOOL,
         json!({
+            "outcome": "phase_continue_new_thread"
+        }),
+    );
+    let third = dynamic_tool_call_request_with_identity(
+        "thread_1",
+        "turn_1",
+        "call_3",
+        YIELD_TOOL,
+        json!({
+            "outcome": "plan_complete"
+        }),
+    );
+    let wrong_thread = dynamic_tool_call_request_with_identity(
+        "other_thread",
+        "turn_1",
+        "call_4",
+        YIELD_TOOL,
+        json!({
+            "outcome": "plan_complete"
+        }),
+    );
+    let wrong_turn = dynamic_tool_call_request_with_identity(
+        "thread_1",
+        "other_turn",
+        "call_5",
+        YIELD_TOOL,
+        json!({
             "outcome": "plan_complete"
         }),
     );
@@ -893,6 +920,15 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
         ))),
         Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
             second.clone(),
+        ))),
+        Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
+            third.clone(),
+        ))),
+        Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
+            wrong_thread.clone(),
+        ))),
+        Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
+            wrong_turn.clone(),
         ))),
         Ok(Some(turn_completed("thread_1", "turn_1"))),
         Ok(None),
@@ -929,15 +965,51 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
         lifecycle_yields[0].outcome,
         LifecycleYieldOutcome::PhaseContinueNewThread
     );
-    assert_eq!(backend.dynamic_tool_responses.len(), 2);
+    assert_eq!(backend.dynamic_tool_responses.len(), 5);
     assert_eq!(backend.dynamic_tool_responses[0].0, first);
     assert_eq!(backend.dynamic_tool_responses[1].0, second);
+    assert_eq!(backend.dynamic_tool_responses[2].0, third);
+    assert_eq!(backend.dynamic_tool_responses[3].0, wrong_thread);
+    assert_eq!(backend.dynamic_tool_responses[4].0, wrong_turn);
     assert!(backend.dynamic_tool_responses[0].1.success);
     assert!(backend.dynamic_tool_responses[1].1.success);
+    assert!(backend.dynamic_tool_responses[2].1.success);
+    assert!(!backend.dynamic_tool_responses[3].1.success);
+    assert!(!backend.dynamic_tool_responses[4].1.success);
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[0].1)["result"]["accepted"],
+        true
+    );
     assert_eq!(
         response_json(&backend.dynamic_tool_responses[1].1)["result"]["outcome"],
-        "plan_complete"
+        "phase_continue_new_thread"
     );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[1].1)["result"]["accepted"],
+        false
+    );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[1].1)["result"]["reason"],
+        "already_yielded"
+    );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[2].1)["result"]["outcome"],
+        "phase_continue_new_thread"
+    );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[2].1)["result"]["accepted"],
+        false
+    );
+    assert_eq!(
+        response_json(&backend.dynamic_tool_responses[2].1)["result"]["reason"],
+        "already_yielded"
+    );
+    for response in &backend.dynamic_tool_responses[3..] {
+        assert_eq!(
+            response_json(&response.1)["error"]["kind"],
+            "uncorrelated_lifecycle_yield"
+        );
+    }
     assert_eq!(emitted, vec![turn_completed("thread_1", "turn_1")]);
 
     root.close().unwrap();

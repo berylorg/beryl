@@ -82,3 +82,12 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - AI-control preferences that govern model authority are read-only to the model unless a later design adds an operator-confirmed write operation.
 - Tool calls must cross bounded shell-owned request/response bridges. Turn workers must not hold direct access to `ShellView`, GPUI handles, settings-window internals, or repository mutation handles.
 - Tool calls that cannot be correlated to the active app-server thread/turn context, fail validation, target unavailable settings, or conflict with unapplied settings-window drafts reject with bounded structured results.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

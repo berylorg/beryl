@@ -695,7 +695,7 @@ fn transcript_image_menu_target_from_loaded_image(
     let row_identity = identity.row_identity().to_string();
     let media_identity = identity.image_menu_identity();
     let source_path = image.source_path().map(str::to_string);
-    if let Some(path) = image.source_backed_file_path() {
+    if let Some(path) = image.action_file_path() {
         TranscriptImageMenuTarget::new_file(
             row_identity,
             media_identity,

@@ -2,10 +2,9 @@ use std::{
     collections::HashSet,
     fs, io,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
-use beryl_backend::{ManagedBackendSession, ThreadItem, TurnInfo, UserInput};
+use beryl_backend::{ThreadItem, TurnInfo, UserInput};
 use beryl_model::workspace::{BerylWorkspaceId, RuntimeMode};
 use gpui::ImageFormat;
 use tracing::warn;
@@ -21,31 +20,12 @@ use crate::{
 
 const MAX_EXTERNAL_IMPORTS_PER_HISTORY_PAGE: usize = 16;
 
-pub(crate) trait TranscriptImageExternalReader {
-    type Error: std::fmt::Display;
-
-    fn read_file_bytes(&mut self, path: &str, timeout: Duration) -> Result<Vec<u8>, Self::Error>;
-}
-
-impl TranscriptImageExternalReader for ManagedBackendSession {
-    type Error = beryl_backend::ManagedBackendError;
-
-    fn read_file_bytes(&mut self, path: &str, timeout: Duration) -> Result<Vec<u8>, Self::Error> {
-        ManagedBackendSession::read_file_bytes(self, path, timeout)
-    }
-}
-
-pub(crate) fn transcript_image_path_resolver_for_turns<R>(
+pub(crate) fn transcript_image_path_resolver_for_turns(
     persistence: &BerylWorkspacePersistence,
     workspace_id: &BerylWorkspaceId,
     runtime_mode: &RuntimeMode,
     turns: &[TurnInfo],
-    backend: &mut R,
-    timeout: Duration,
-) -> Result<TranscriptImagePathResolver, WorkspacePersistenceError>
-where
-    R: TranscriptImageExternalReader,
-{
+) -> Result<TranscriptImagePathResolver, WorkspacePersistenceError> {
     let assets = persistence.load_workspace_image_assets(workspace_id)?;
     let mut resolver = transcript_image_path_resolver_for_assets(runtime_mode, &assets);
     let external_paths = unresolved_historical_local_image_paths(turns, &resolver);
@@ -54,14 +34,9 @@ where
         .into_iter()
         .take(MAX_EXTERNAL_IMPORTS_PER_HISTORY_PAGE)
     {
-        let Some(asset) = import_historical_image_path(
-            persistence,
-            workspace_id,
-            runtime_mode,
-            backend,
-            timeout,
-            &path,
-        ) else {
+        let Some(asset) =
+            import_historical_image_path(persistence, workspace_id, runtime_mode, &path)
+        else {
             continue;
         };
         insert_asset_paths(runtime_mode, &asset, &mut resolver);
@@ -140,47 +115,22 @@ fn unresolved_historical_local_image_paths(
     paths
 }
 
-fn import_historical_image_path<R>(
+fn import_historical_image_path(
     persistence: &BerylWorkspacePersistence,
     workspace_id: &BerylWorkspaceId,
     runtime_mode: &RuntimeMode,
-    backend: &mut R,
-    timeout: Duration,
     backend_path: &str,
-) -> Option<WorkspaceImageAsset>
-where
-    R: TranscriptImageExternalReader,
-{
+) -> Option<WorkspaceImageAsset> {
     let format = image_format_from_path(backend_path)?;
-    if let Some(host_path) = trusted_host_path_for_backend_path(runtime_mode, backend_path) {
-        match fs::read(&host_path) {
-            Ok(bytes) => {
-                return persist_imported_asset(
-                    persistence,
-                    workspace_id,
-                    format,
-                    bytes,
-                    backend_path,
-                );
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                warn!(
-                    path = %host_path.display(),
-                    error = %error,
-                    "failed to read host-visible historical transcript image"
-                );
-            }
-        }
-    }
-
-    match backend.read_file_bytes(backend_path, timeout) {
+    let host_path = trusted_host_path_for_backend_path(runtime_mode, backend_path)?;
+    match fs::read(&host_path) {
         Ok(bytes) => persist_imported_asset(persistence, workspace_id, format, bytes, backend_path),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => {
             warn!(
-                path = %backend_path,
+                path = %host_path.display(),
                 error = %error,
-                "failed to import historical transcript image through backend fs/readFile"
+                "failed to read host-visible historical transcript image"
             );
             None
         }
@@ -223,7 +173,7 @@ fn persist_imported_asset(
     }
 }
 
-fn trusted_host_path_for_backend_path(
+pub(crate) fn trusted_host_path_for_backend_path(
     runtime_mode: &RuntimeMode,
     backend_path: &str,
 ) -> Option<PathBuf> {
@@ -232,7 +182,16 @@ fn trusted_host_path_for_backend_path(
             let path = PathBuf::from(backend_path);
             path.is_absolute().then_some(path)
         }
-        RuntimeMode::WslLinux { .. } => host_path_from_wsl_mount_path(backend_path),
+        RuntimeMode::WslLinux { distro_name } => host_path_from_wsl_mount_path(backend_path)
+            .or_else(|| {
+                backend_path.starts_with('/').then(|| {
+                    let normalized = backend_path
+                        .replace('/', "\\")
+                        .trim_start_matches('\\')
+                        .to_string();
+                    PathBuf::from(format!(r"\\wsl.localhost\{distro_name}\{normalized}"))
+                })
+            }),
     }
 }
 

@@ -78,3 +78,12 @@ Let users organize Beryl work into durable semantic workspaces that can span hos
 - Shared cross-workspace metadata may use last-write-wins or atomic-replace semantics across GUI instances.
 - Opening a workspace requires GUI-owned workspace state only. Backend launch, compatibility probing, and backend thread enumeration are not prerequisites for rendering the workspace shell.
 - Missing or unavailable member paths do not make a workspace unavailable. Beryl opens the workspace, keeps those members attached, marks them unavailable, and applies primary fallback rules.
+
+# Engineering Rigor
+
+Profile: `personal-utility/v1`
+
+Modifiers:
+
+- `persistent-state-integrity/v1`
+- `untrusted-input/v1`

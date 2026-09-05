@@ -380,7 +380,6 @@ fn generated_image_turn(id: &str, index: usize, has_result: bool) -> TurnInfo {
                 .to_string(),
             ),
             revised_prompt: Some(format!("Generated media row {index}")),
-            result: has_result.then(|| "iVBORw0KGgo=".to_string()),
             saved_path: Some(format!("C:\\repo\\generated\\image_{index}.png")),
         })],
         error: None,

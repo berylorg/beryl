@@ -202,6 +202,17 @@ impl ThemeCandidateState {
         self.active_preview = None;
     }
 
+    pub(super) fn record_validation_failure(
+        &mut self,
+        panel_id: String,
+        error: &ThemeCandidateValidationError,
+    ) {
+        self.set_feedback(
+            panel_id,
+            ThemeCandidatePanelFeedback::error(candidate_validation_message(error)),
+        );
+    }
+
     pub(super) fn restore_if_thread_changed(
         &mut self,
         selected_thread_id: Option<&str>,
@@ -259,6 +270,15 @@ pub(super) fn validate_theme_candidate(
         install_name,
         preview_projection,
     })
+}
+
+fn candidate_validation_message(error: &ThemeCandidateValidationError) -> String {
+    match error {
+        ThemeCandidateValidationError::MissingInstallName => {
+            "Add a top-level name before installing this theme candidate.".to_string()
+        }
+        _ => error.to_string(),
+    }
 }
 
 pub(super) fn spawn_theme_candidate_install_worker(

@@ -126,7 +126,6 @@ use self::render_theme::{
 };
 use self::theme_candidates::{
     ThemeCandidateInstallUpdate, ThemeCandidatePanelFeedback, ThemeCandidateState,
-    ThemeCandidateValidationError,
 };
 const COMPOSER_KEY_CONTEXT: &str = "ConversationComposer";
 const APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1700,15 +1699,6 @@ fn composer_history_text_input_atom(atom: &ComposerDraftImageAtom) -> TextInputS
     )
 }
 
-fn candidate_validation_message(error: &ThemeCandidateValidationError) -> String {
-    match error {
-        ThemeCandidateValidationError::MissingInstallName => {
-            "Add a top-level name before installing this theme candidate.".to_string()
-        }
-        _ => error.to_string(),
-    }
-}
-
 impl LoadedWorkspaceState {
     fn new(
         workspace: BerylWorkspaceManifest,
@@ -2174,6 +2164,8 @@ impl ConversationSurfaceState {
     fn set_selected_thread_index(&mut self, selected_thread: Option<usize>) {
         self.selected_thread = selected_thread;
         let selected_thread_id = self.selected_thread_id().map(str::to_string);
+        self.status_line
+            .clear_usage_tree_snapshot_unless_root(selected_thread_id.as_deref());
         self.tool_activity
             .set_selected_thread_id(selected_thread_id.as_deref());
     }
@@ -8928,11 +8920,8 @@ impl ShellView {
                 self.refresh_theme_candidate_surfaces(cx);
             }
             Err(error) => {
-                self.restore_active_theme_candidate_preview_if_needed(cx);
-                self.theme_candidate_state.set_feedback(
-                    panel_id,
-                    ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
-                );
+                self.theme_candidate_state
+                    .record_validation_failure(panel_id, &error);
                 self.notify_conversation_model_refresh(cx);
             }
         }
@@ -8977,11 +8966,8 @@ impl ShellView {
             match theme_candidates::validate_theme_candidate(source.as_str(), &repository) {
                 Ok(candidate) => candidate,
                 Err(error) => {
-                    self.restore_active_theme_candidate_preview_if_needed(cx);
-                    self.theme_candidate_state.set_feedback(
-                        panel_id,
-                        ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
-                    );
+                    self.theme_candidate_state
+                        .record_validation_failure(panel_id, &error);
                     self.notify_conversation_model_refresh(cx);
                     return;
                 }
@@ -8989,11 +8975,8 @@ impl ShellView {
         let name = match candidate.install_name() {
             Ok(name) => name.to_string(),
             Err(error) => {
-                self.restore_active_theme_candidate_preview_if_needed(cx);
-                self.theme_candidate_state.set_feedback(
-                    panel_id,
-                    ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
-                );
+                self.theme_candidate_state
+                    .record_validation_failure(panel_id, &error);
                 self.notify_conversation_model_refresh(cx);
                 return;
             }

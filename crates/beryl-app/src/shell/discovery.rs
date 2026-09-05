@@ -619,12 +619,10 @@ fn load_selected_thread_history(
                 selected_thread_id: Some(thread_id.clone()),
                 thread_session_metadata: Some(activation.session_metadata),
                 image_resolver: selected_thread_image_resolver(
-                    session,
                     persistence,
                     workspace_id,
                     execution_target,
                     &activation.thread.turns,
-                    timeout,
                 ),
                 thread_history: Some(activation.thread),
                 thread_history_window: Some(activation.history_window),
@@ -675,12 +673,10 @@ fn load_selected_thread_history(
                     selected_thread_id: Some(thread_id),
                     thread_session_metadata: Some(activation.session_metadata),
                     image_resolver: selected_thread_image_resolver(
-                        session,
                         persistence,
                         workspace_id,
                         execution_target,
                         &activation.thread.turns,
-                        timeout,
                     ),
                     thread_history: Some(activation.thread),
                     thread_history_window: Some(activation.history_window),
@@ -738,20 +734,16 @@ fn load_selected_thread_history(
 }
 
 fn selected_thread_image_resolver(
-    session: &mut ManagedBackendSession,
     persistence: &BerylWorkspacePersistence,
     workspace_id: &BerylWorkspaceId,
     execution_target: &WorkspaceId,
     turns: &[beryl_backend::TurnInfo],
-    timeout: Duration,
 ) -> TranscriptImagePathResolver {
     match transcript_image_path_resolver_for_turns(
         persistence,
         workspace_id,
         execution_target.runtime_mode(),
         turns,
-        session,
-        timeout,
     ) {
         Ok(resolver) => resolver,
         Err(error) => {

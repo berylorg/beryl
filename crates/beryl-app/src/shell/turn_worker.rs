@@ -945,8 +945,6 @@ fn run_thread_activation_worker(
                 &beryl_workspace_id,
                 workspace.runtime_mode(),
                 &activation.thread.turns,
-                &mut session,
-                timeout,
             ) {
                 Ok(resolver) => resolver,
                 Err(error) => {
