@@ -64,7 +64,13 @@ impl MainWindowConversationComposer {
             self.input.update(cx, |input, input_cx| {
                 gpui::EntityInputHandler::unmark_text(input, window, input_cx)
             });
-            if self.input.update(cx, |input, _| input.is_quiescent()) {
+            if self.input.update(cx, |input, _| {
+                if self.release_fence_requires_restoration {
+                    input.is_quiescent()
+                } else {
+                    input.is_semantically_quiescent()
+                }
+            }) {
                 return;
             }
         }

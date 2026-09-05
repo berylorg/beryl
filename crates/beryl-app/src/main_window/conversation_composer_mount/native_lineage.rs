@@ -131,7 +131,7 @@ impl MainWindowConversationComposerMount {
             self.suspend_autosave()?;
             let contribution = self.native_lineage_contribution(selection, cx)?;
             contribution.update(cx, |composer, composer_cx| {
-                composer.begin_widget_release_fence(window, composer_cx)
+                composer.begin_native_lineage_release_fence(window, composer_cx)
             })?;
             cx.notify();
         } else {

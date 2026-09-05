@@ -1102,6 +1102,134 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
 fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
     cx: &mut gpui::TestAppContext,
 ) {
+    assert_predecessor_release_before_index_completion(cx, false);
+}
+
+#[gpui::test]
+fn ordinary_release_fence_settles_the_exact_admitted_edit_and_active_flight(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("phase296-admitted-edit-fence", 191);
+    let window_id = fixture.window_id;
+    let (claim, _) = fixture.claims();
+    let mut host = SyndicComposerHost::new(fixture.storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &fixture.store,
+            activation(fixture.selected_thread, 121, 122, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let slot = MainWindowComposerSlot::new(window_id, claim, host, storage, authority).unwrap();
+    let before = slot.selected_identity().unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    let (root, cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                service.clone(),
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        StableMountRoot { mount }
+    });
+    drive(cx, 16);
+    let composer = root.read_with(cx, |root, app| root.mount.read(app).contribution().unwrap());
+    let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    cx.update(|window, app| {
+        input.update(app, |input, cx| {
+            input.replace_text_in_range(None, "admitted", window, cx)
+        })
+    });
+    for _ in 0..32 {
+        if composer.read_with(cx, |composer, _| composer.test_has_active_flight()) {
+            break;
+        }
+        let _ = cx.executor().tick();
+        cx.update(|window, app| window.draw(app).clear());
+    }
+    assert!(composer.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    assert!(!input.read_with(cx, |input, _| input.is_semantically_quiescent()));
+    assert!(
+        !cx.update(|window, app| composer.update(app, |composer, cx| composer
+            .begin_widget_release_fence(window, cx)))
+            .unwrap()
+    );
+    assert!(!input.read_with(cx, |input, _| input.is_enabled()));
+    let mut ready = false;
+    for _ in 0..32 {
+        drive(cx, 1);
+        ready = cx
+            .update(|window, app| {
+                composer.update(app, |composer, cx| {
+                    composer.begin_widget_release_fence(window, cx)
+                })
+            })
+            .unwrap();
+        if ready {
+            break;
+        }
+    }
+    assert!(ready);
+    assert!(!composer.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    assert!(input.read_with(cx, |input, _| input.is_semantically_quiescent()));
+    let after = service.selected_identity().unwrap();
+    assert_ne!(after, before);
+    assert_eq!(after.window_id(), before.window_id());
+    assert_eq!(after.claim().thread_id(), before.claim().thread_id());
+    assert_eq!(
+        after.binding().candidate().session_id(),
+        before.binding().candidate().session_id()
+    );
+    assert_eq!(after.binding().logical_extent().logical_utf8_bytes(), 8);
+    assert_eq!(
+        composer.read_with(cx, |composer, _| composer.selection_identity()),
+        after
+    );
+    assert!(composer.read_with(cx, |composer, _| composer.last_error().is_none()));
+    cx.update(|window, app| {
+        composer.update(app, |composer, cx| {
+            composer.resume_after_widget_release_fence(window, cx)
+        })
+    })
+    .unwrap();
+    assert!(input.read_with(cx, |input, _| input.is_enabled()));
+    assert_eq!(service.selected_identity(), Some(after));
+}
+
+#[gpui::test]
+fn aborted_restoration_fence_does_not_make_later_ordinary_release_wait_for_indexing(
+    cx: &mut gpui::TestAppContext,
+) {
+    assert_predecessor_release_before_index_completion(cx, true);
+}
+
+fn assert_predecessor_release_before_index_completion(
+    cx: &mut gpui::TestAppContext,
+    abort_restoration: bool,
+) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("phase187-predecessor-index-release", 189);
     let window_id = fixture.window_id;
@@ -1198,6 +1326,25 @@ fn current_predecessor_release_does_not_wait_for_its_remaining_sparse_index(
         predecessor_input.read_with(cx, |input, _| input.realization_diagnostics())
     );
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
+
+    if abort_restoration {
+        assert!(
+            !cx.update(|window, app| {
+                predecessor.update(app, |composer, composer_cx| {
+                    composer.test_begin_native_lineage_release_fence(window, composer_cx)
+                })
+            })
+            .unwrap()
+        );
+        cx.update(|window, app| {
+            predecessor.update(app, |composer, composer_cx| {
+                composer.resume_after_widget_release_fence(window, composer_cx)
+            })
+        })
+        .unwrap();
+        assert_eq!(service.selected_identity(), Some(predecessor_selection));
+        assert!(!predecessor_input.read_with(cx, |input, _| input.is_quiescent()));
+    }
 
     let MainWindowComposerActivationAdvance::Ready(receipt) = mount
         .update(cx, |mount, mount_cx| {

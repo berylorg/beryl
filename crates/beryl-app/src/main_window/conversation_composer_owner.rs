@@ -129,6 +129,7 @@ pub struct MainWindowConversationComposer {
     next_flight: u64,
     active_flight: Option<u64>,
     phase: MainWindowConversationComposerPhase,
+    release_fence_requires_restoration: bool,
     scheduled: bool,
     last_error: Option<String>,
     _input_subscription: Option<Subscription>,

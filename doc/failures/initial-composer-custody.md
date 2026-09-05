@@ -60,9 +60,9 @@ claim rejection, foreign-service isolation, and repeated reused-thread preservat
 
 Both failures were in the existing Phase 186 target. Its obsolete offscreen geometry assertion was
 corrected to the accepted full-size hidden overlay and passed targeted verification. Its zero-height
-root received a finite height, but the separate sparse-index release regression remains unresolved;
-the [release-fence record](composer-release-fence.md) preserves that gate for Phase 296. The aggregate
-is not reported as fully passing. Review confirmed that the failing dispatch/fence production files
+root received a finite height; Phase 296 subsequently corrected and accepted the separate sparse-index
+release regression, as recorded in the [release-fence record](composer-release-fence.md). The Phase 295
+aggregate is not reported as fully passing. Review confirmed that the failing dispatch/fence production files
 are unchanged by Phase 295 and that its shared activation-tail extraction does not alter their path.
 
 The Phase 186 fixture also includes the previously uncommitted `SyndicStorage::clone()` adjustments

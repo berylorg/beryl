@@ -197,6 +197,7 @@ impl MainWindowConversationComposer {
             next_flight: 1,
             active_flight: None,
             phase: MainWindowConversationComposerPhase::Live,
+            release_fence_requires_restoration: false,
             scheduled: false,
             last_error: None,
             _input_subscription: None,

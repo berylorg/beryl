@@ -295,6 +295,7 @@ impl MainWindowConversationComposer {
         match self.phase {
             MainWindowConversationComposerPhase::Live => {
                 self.phase = MainWindowConversationComposerPhase::Fencing;
+                self.release_fence_requires_restoration = false;
                 if let Some(clipboard) = self.propagated_clipboard.take() {
                     clipboard.cancel();
                 }
@@ -326,6 +327,26 @@ impl MainWindowConversationComposer {
             }
         }
         Ok(self.widget_release_ready(cx))
+    }
+
+    pub(in crate::main_window) fn begin_native_lineage_release_fence(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        self.begin_widget_release_fence(window, cx)?;
+        self.release_fence_requires_restoration = true;
+        self.schedule_pump(window, cx);
+        Ok(self.native_lineage_release_ready(cx))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_begin_native_lineage_release_fence(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, String> {
+        self.begin_native_lineage_release_fence(window, cx)
     }
 
     pub fn widget_release_ready(&self, cx: &mut Context<Self>) -> bool {
@@ -379,6 +400,7 @@ impl MainWindowConversationComposer {
             return Err("conversation composer widget is not fenced".to_owned());
         }
         self.phase = MainWindowConversationComposerPhase::Live;
+        self.release_fence_requires_restoration = false;
         self.input
             .update(cx, |input, input_cx| input.set_enabled(true, input_cx));
         self.schedule_pump(window, cx);

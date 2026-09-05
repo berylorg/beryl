@@ -43,7 +43,7 @@ use beryl_state::{AssetMediaType, PublishAssetMetadata};
 use gpui::{
     AppContext, Entity, EntityInputHandler, Focusable, InteractiveElement, IntoElement,
     ParentElement, Render, SharedString, StreamingLayoutBinding, StreamingLayoutLimits,
-    StreamingLayoutPosition, TextRun, black, div, font, px,
+    StreamingLayoutPosition, Styled, TextRun, black, div, font, px,
 };
 use gpui_scrollbar::ScrollbarStyle;
 use gpui_text_input::{
@@ -86,7 +86,11 @@ impl Render for NativeLineageMountRoot {
         _window: &mut gpui::Window,
         _cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        div().child(self.mount.clone())
+        div()
+            .flex()
+            .w(px(320.))
+            .h(px(64.))
+            .child(self.mount.clone())
     }
 }
 
@@ -2559,8 +2563,10 @@ fn wait_for_native_lineage_prompt(
     stage: &str,
 ) {
     for _ in 0..64 {
-        cx.executor().advance_clock(Duration::from_millis(100));
-        drive(cx, 2);
+        for _ in 0..2 {
+            let _ = cx.executor().tick();
+            cx.update(|window, app| window.draw(app).clear());
+        }
         if cx.debug_bounds("native-lineage-recovery-prompt").is_some()
             && mount.read_with(cx, |mount, _| mount.contribution().is_none())
         {
@@ -2576,6 +2582,7 @@ fn wait_for_native_lineage_prompt(
                 composer.test_has_active_flight(),
                 input.read(app).is_quiescent(),
                 input.read(app).surface().is_some(),
+                input.read(app).realization_diagnostics(),
             )
         })
     });
@@ -2597,8 +2604,10 @@ fn wait_for_native_lineage_composer(
     stage: &str,
 ) {
     for _ in 0..64 {
-        cx.executor().advance_clock(Duration::from_millis(100));
-        drive(cx, 2);
+        for _ in 0..2 {
+            let _ = cx.executor().tick();
+            cx.update(|window, app| window.draw(app).clear());
+        }
         if mount.read_with(cx, |mount, _| {
             mount.contribution().is_some() && mount.native_lineage_recovery_snapshot().is_none()
         }) {

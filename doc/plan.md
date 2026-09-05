@@ -21,29 +21,29 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 295: Establish Initial Composer Activation Custody (finished)
+# Phase 296: Restore Composer Release-Fence Progress (finished)
 
-Initial activation now retains exact candidate and reservation custody through prepared-shell
-transfer or typed retirement. Independent review accepted the boundary; the final library check
-and all 11 initial-custody tests passed. The affected aggregate passed 71/73; its separate Phase 186
-fixture and release-fence findings are recorded in the [custody evidence](failures/initial-composer-custody.md).
-Phase 296 retains the unresolved release regression before New Window integration.
+Ordinary fencing now permits release after semantic and active-flight settlement without draining
+remaining indexing; native-lineage fencing retains full quiescence. Independent review accepted
+the distinction, reset behavior, and exact settlement. The library check and 75-test aggregate
+passed; [release evidence](failures/composer-release-fence.md) records supplemental verification limits.
+Phase 297 retains the separately diagnosed native-lineage suspension-publication failure.
 
-# Phase 296: Restore Composer Release-Fence Progress (pending)
+# Phase 297: Settle Native-Lineage Seed Publication (pending)
 
-Restore ordinary selected-composer release progress through the accepted exact widget and dispatch
-lifecycle, without waiting for remaining sparse indexing to finish. Follow the cancellable-work
-unmount contract adopted by [composer GUI](features/composer/gui.md) and the existing slot/owner
-semantic-settlement boundary. Preserve exact active-flight settlement, admitted mutations, source
-identity, obsolete-result rejection, and the coherent predecessor until successful promotion.
-Do not substitute restoration-seed quiescence or weaken the existing release assertion.
+Complete or safely unwind exact suspension acquisition when native-lineage seed publication cannot
+release the editor after asynchronous validation. Follow the [composer GUI](features/composer/gui.md)
+quiescent-seed contract and [native-lineage recovery decision](features/backend-runtime-recovery/design.md).
+Recheck the exact publication readiness and preserve the selected editor, seed, and suspension
+custody across failure, retry, cancellation, and stale completion. Do not let a failed release
+strand suspension or drive repeated stale-receipt validation loops.
 
-Verify `current_predecessor_release_does_not_wait_for_its_remaining_sparse_index` admits the exact
-successor while the predecessor is still nonquiescent with an estimated index. Retain the bounded
-fixture and its original admission limit, and cover active-flight completion and late-response
-cleanup through focused pending-activation and owner tests. Run the affected aggregate recorded in
-the [release-fence evidence](failures/composer-release-fence.md), a focused Cargo check, and independent
-semantic review. Diagnosis is complete; no release-fence production changes have been made.
+Verify the two failing repeated-route and late-flight cases in `phase181_main_window_composer_mount`
+with their original gate ordering and cleanup assertions, plus focused failure-after-validation,
+readiness-loss, retry, and cancellation coverage. Retain finite fixture geometry and bounded
+executor-step/draw polling. Run the complete native-lineage subset, affected aggregate, focused
+Cargo check, and independent semantic review. The [publication record](failures/native-lineage-seed-publication.md)
+preserves confirmed diagnosis and retained resources; no publication or rollback fix has been made.
 
 # Phase 290: Mount Bounded Independent Main-Window Creation (pending)
 
@@ -52,6 +52,6 @@ process registry, Phase 236 acquisition, Phase 289 hidden host, and exact public
 abandonment. Verify two isolated visible windows, command and disabled states, capacity and
 duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
 
-Phase 295 supplies the accepted initial-retirement and prepared-shell transfer boundary. Complete
-Phase 296's separate release regression gate before this integration; no Phase 290 source changes
-have been made. Resume with Phase 296.
+Phases 295 and 296 supply accepted initial-retirement, prepared-shell transfer, and ordinary release
+boundaries. Complete Phase 297 before this integration; no Phase 290 source changes have been made.
+Resume with Phase 297.
