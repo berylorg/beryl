@@ -1,4 +1,0 @@
-interface:
-  display_name: "rag-rat Project Docs"
-  short_description: "Semantic retrieval for fresh AIPM documents."
-  default_prompt: "Use $rag-rat-project-docs to retrieve and maintain this project's AIPM documents with a fresh rag-rat index."
