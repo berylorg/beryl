@@ -209,6 +209,16 @@ fn supported_properties(id: &str) -> &'static [ThemePropertyId] {
         "input.selection" | "settings.input.selection" => TEXT_BACKGROUND,
         "transcript.selection" | "transcript.image_marker" => FOREGROUND_TEXT_BACKGROUND,
 
+        "main-window-notice.variant-marker"
+        | "main-window-notice.variant-marker.warning"
+        | "main-window-notice.variant-marker.error"
+        | "main-window-notice.variant-marker.info" => BACKGROUND,
+
+        "main-window-notice.close"
+        | "main-window-notice.close.warning"
+        | "main-window-notice.close.error"
+        | "main-window-notice.close.info" => FOREGROUND,
+
         "row.selected"
         | "row.pending"
         | "row.unavailable"
@@ -267,6 +277,13 @@ fn is_text_role(id: &str) -> bool {
                 | "transcript.turn.assistant.commentary"
                 | "transcript.turn.assistant.reasoning"
                 | "media.caption"
+                | "main-window-notice.detail-viewport"
+                | "main-window-notice.title.warning"
+                | "main-window-notice.title.error"
+                | "main-window-notice.title.info"
+                | "main-window-notice.detail-viewport.warning"
+                | "main-window-notice.detail-viewport.error"
+                | "main-window-notice.detail-viewport.info"
         )
 }
 
@@ -304,6 +321,9 @@ const fn rgb(value: [u8; 3]) -> ThemeColor {
 }
 
 fn palette(id: &str) -> Palette {
+    if let Some(palette) = notice_palette(id) {
+        return palette;
+    }
     let code = id.starts_with("syntax.")
         || id.starts_with("code_panel.")
         || id == "text.code"
@@ -373,6 +393,104 @@ fn palette(id: &str) -> Palette {
     value
 }
 
+fn notice_palette(id: &str) -> Option<Palette> {
+    let base = Palette {
+        background: [0x11, 0x18, 0x27],
+        border: [0x33, 0x41, 0x55],
+        foreground: [0xe5, 0xe7, 0xeb],
+        font_family: "Inter",
+        font_size: 14.0,
+        font_weight: 400,
+    };
+    match id {
+        "main-window-notice" => Some(base),
+        "main-window-notice.title" => Some(Palette {
+            foreground: [0xf8, 0xfa, 0xfc],
+            font_size: 13.0,
+            font_weight: 650,
+            ..base
+        }),
+        "main-window-notice.variant-marker" => Some(Palette {
+            background: [0x38, 0xbd, 0xf8],
+            ..base
+        }),
+        "main-window-notice.detail-viewport" | "main-window-notice.close" => Some(Palette {
+            foreground: [0xcb, 0xd5, 0xe1],
+            ..base
+        }),
+        _ => notice_severity_palette(id),
+    }
+}
+
+fn notice_severity_palette(id: &str) -> Option<Palette> {
+    let (base, title, marker) = match id {
+        "main-window-notice.warning"
+        | "main-window-notice.title.warning"
+        | "main-window-notice.variant-marker.warning"
+        | "main-window-notice.detail-viewport.warning"
+        | "main-window-notice.close.warning" => (
+            Palette {
+                background: [0x2b, 0x21, 0x10],
+                border: [0xa1, 0x62, 0x07],
+                foreground: [0xfd, 0xe6, 0x8a],
+                font_family: "Inter",
+                font_size: 14.0,
+                font_weight: 400,
+            },
+            [0xfe, 0xf3, 0xc7],
+            [0xf5, 0x9e, 0x0b],
+        ),
+        "main-window-notice.error"
+        | "main-window-notice.title.error"
+        | "main-window-notice.variant-marker.error"
+        | "main-window-notice.detail-viewport.error"
+        | "main-window-notice.close.error" => (
+            Palette {
+                background: [0x2b, 0x15, 0x18],
+                border: [0xb9, 0x1c, 0x1c],
+                foreground: [0xfe, 0xca, 0xca],
+                font_family: "Inter",
+                font_size: 14.0,
+                font_weight: 400,
+            },
+            [0xfe, 0xe2, 0xe2],
+            [0xef, 0x44, 0x44],
+        ),
+        "main-window-notice.info"
+        | "main-window-notice.title.info"
+        | "main-window-notice.variant-marker.info"
+        | "main-window-notice.detail-viewport.info"
+        | "main-window-notice.close.info" => (
+            Palette {
+                background: [0x10, 0x24, 0x3a],
+                border: [0x03, 0x69, 0xa1],
+                foreground: [0xba, 0xe6, 0xfd],
+                font_family: "Inter",
+                font_size: 14.0,
+                font_weight: 400,
+            },
+            [0xe0, 0xf2, 0xfe],
+            [0x38, 0xbd, 0xf8],
+        ),
+        _ => return None,
+    };
+    Some(if id.starts_with("main-window-notice.title.") {
+        Palette {
+            foreground: title,
+            font_size: 13.0,
+            font_weight: 650,
+            ..base
+        }
+    } else if id.starts_with("main-window-notice.variant-marker.") {
+        Palette {
+            background: marker,
+            ..base
+        }
+    } else {
+        base
+    })
+}
+
 const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
     ("root", None),
     ("text", Some("root")),
@@ -414,6 +532,65 @@ const ROLE_INVENTORY: &[(&str, Option<&str>)] = &[
     ("notice", Some("control")),
     ("notice.title", Some("text")),
     ("notice.detail", Some("text.subtle")),
+    ("main-window-notice", Some("notice")),
+    ("main-window-notice.title", Some("notice.title")),
+    (
+        "main-window-notice.variant-marker",
+        Some("main-window-notice"),
+    ),
+    ("main-window-notice.detail-viewport", Some("notice.detail")),
+    ("main-window-notice.close", Some("notice.detail")),
+    ("main-window-notice.warning", Some("main-window-notice")),
+    (
+        "main-window-notice.title.warning",
+        Some("main-window-notice.title"),
+    ),
+    (
+        "main-window-notice.variant-marker.warning",
+        Some("main-window-notice.variant-marker"),
+    ),
+    (
+        "main-window-notice.detail-viewport.warning",
+        Some("main-window-notice.detail-viewport"),
+    ),
+    (
+        "main-window-notice.close.warning",
+        Some("main-window-notice.close"),
+    ),
+    ("main-window-notice.error", Some("main-window-notice")),
+    (
+        "main-window-notice.title.error",
+        Some("main-window-notice.title"),
+    ),
+    (
+        "main-window-notice.variant-marker.error",
+        Some("main-window-notice.variant-marker"),
+    ),
+    (
+        "main-window-notice.detail-viewport.error",
+        Some("main-window-notice.detail-viewport"),
+    ),
+    (
+        "main-window-notice.close.error",
+        Some("main-window-notice.close"),
+    ),
+    ("main-window-notice.info", Some("main-window-notice")),
+    (
+        "main-window-notice.title.info",
+        Some("main-window-notice.title"),
+    ),
+    (
+        "main-window-notice.variant-marker.info",
+        Some("main-window-notice.variant-marker"),
+    ),
+    (
+        "main-window-notice.detail-viewport.info",
+        Some("main-window-notice.detail-viewport"),
+    ),
+    (
+        "main-window-notice.close.info",
+        Some("main-window-notice.close"),
+    ),
     ("status", Some("control")),
     ("status.label", Some("text.muted")),
     ("status.value", Some("text.value")),

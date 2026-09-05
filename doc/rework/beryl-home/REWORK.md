@@ -270,7 +270,8 @@
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
-- [ ] Implement the notice widget and its canonical theme roles under the existing widget contract.
+- [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
+- [ ] Implement the notice widget under the existing widget contract.
 - [ ] Mount the accepted notice arbiter and widget, warned best-effort-home startup notice, exact soft-stop
   feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.

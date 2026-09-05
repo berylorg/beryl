@@ -21,21 +21,12 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 299: Establish The Bounded Main-Window Notice Arbiter (finished)
+# Phase 303: Establish Canonical Notice Theme Roles (finished)
 
-Established and independently accepted the bounded per-window notice arbiter with exact identity,
-priority/FIFO, protected-condition capacity, stale-action rejection, and bounded display records.
-All 16 focused integration tests, the library check, and formatting checks passed. The
-[notification record](failures/notifications.md) identifies the retained temporary test config.
-
-# Phase 303: Establish Canonical Notice Theme Roles (pending)
-
-Implement the complete role family declared by the
-[notice widget contract](gui/widgets/main-window-notice/spec.md) in the canonical theme schema,
-under [theme runtime ownership](systems/theme-runtime/design.md) and
-[theme state](../crates/beryl-state/doc/design-theme-settings.md). Verify supported properties,
-built-in fallbacks, severity and state variants, and complete resolution with focused schema tests
-and semantic review before widget integration.
+Added and independently accepted 20 canonical notice color and typography roles with exact
+supported fallbacks and severity variants. Both focused integration tests, the locked library
+check, and formatting checks passed. Widget-local geometry, transparency, shadow, and opacity
+retain their specified rendering defaults.
 
 # Phase 300: Implement The Main-Window Notice Widget (pending)
 

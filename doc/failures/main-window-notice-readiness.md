@@ -22,19 +22,21 @@ setter or shared scroll handle; selection setters request cursor reveal. Unchang
 `set_text` cannot preserve valid top-visible text geometry when the same notice identity receives
 newer detail, as the [notice spec](../gui/widgets/main-window-notice/spec.md) requires.
 
-The finite Beryl theme inventory in `crates/beryl-state/src/theme/schema.rs` contains
+The inspected Beryl theme inventory in `crates/beryl-state/src/theme/schema.rs` contained
 `notice.title`, `notice.detail`, and severity surface roles, but no `main-window-notice` family.
 The [theme runtime contract](../systems/theme-runtime/design.md) requires canonical widget-owned
-role ids. The notice spec's anatomy, state, severity, and layout roles need schema coverage before
-the widget can consume them through complete resolved appearances.
+role ids. Phase 303 added the 20 supported color and typography roles, verified exact fallbacks and
+severity overrides through the canonical resolver, and passed independent semantic review. The
+existing theme values support RGB colors and typography; widget-local geometry, transparent paint,
+shadow, and opacity retain the widget spec's rendering defaults rather than expanding that model.
 
 These findings reject optional unchanged `TextInput` reuse. They do not establish a notification
 architecture gap or make repairing `TextInput` a prerequisite. Pausing Phase 300 on that basis
 incorrectly promoted an implementation candidate into a required dependency. Implement the
 notice-owned readonly detail mechanics under the existing widget authority; do not introduce
 editable fields or dependency repair solely to preserve that candidate. The source findings remain
-unverified by behavior tests and do not authorize unrelated dependency work. Phase 303 supplies
-the independently missing canonical theme roles before Phase 300 consumes them.
+unverified by behavior tests and do not authorize unrelated dependency work. Phase 300 can consume
+the accepted canonical theme roles and implement its own bounded selectable detail.
 
 Accepted command/focus examples exist in
 `crates/beryl-app/src/main_window/creation/command.rs` and
