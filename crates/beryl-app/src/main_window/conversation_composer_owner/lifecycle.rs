@@ -1,6 +1,27 @@
 use super::*;
 
 impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn appearance_applicable(&self) -> bool {
+        matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::Live
+                | MainWindowConversationComposerPhase::Fencing
+        )
+    }
+
+    pub(in crate::main_window) fn apply_appearance(
+        &mut self,
+        theme: gpui_text_input::TextInputTheme,
+        scrollbar_style: gpui_scrollbar::ScrollbarStyle,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.input
+            .update(cx, |input, input_cx| {
+                input.set_appearance(theme, scrollbar_style, input_cx)
+            })
+            .map_err(|error| error.to_string())
+    }
+
     pub fn gpui_input(&self) -> Entity<RangeTextInput> {
         self.input.clone()
     }
@@ -29,8 +50,14 @@ impl MainWindowConversationComposer {
     }
 
     pub(in crate::main_window) fn native_lineage_restoration_ready(&self, cx: &App) -> bool {
+        self.selected_first_presentable(cx)
+    }
+
+    pub fn selected_first_presentable(&self, cx: &App) -> bool {
         !self.is_pending_target()
+            && self.is_live()
             && self.last_error.is_none()
+            && self.service.selected_identity() == Some(self.selection)
             && self
                 .input
                 .read_with(cx, |input, _| input.is_surface_current_and_interactive())

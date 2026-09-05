@@ -28,6 +28,13 @@ pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
 }
 
 #[cfg(feature = "test-faults")]
+pub enum MainWindowSelectedComposerPreparationTestFault {
+    HostUnavailable,
+    ResponseKind,
+    ResponseBinding(crate::composer_host::ComposerHostBinding),
+}
+
+#[cfg(feature = "test-faults")]
 #[derive(Clone)]
 pub struct MainWindowNativeLineageCleanupTestWitness(
     Arc<Mutex<MainWindowNativeLineageCleanupTestWitnessState>>,
@@ -212,6 +219,8 @@ pub struct MainWindowConversationComposerService {
     test_fail_next_native_lineage_disposal_advance: AtomicBool,
     #[cfg(feature = "test-faults")]
     test_append_impossible_pending_initial_response: AtomicBool,
+    #[cfg(feature = "test-faults")]
+    test_selected_preparation_fault: Mutex<Option<MainWindowSelectedComposerPreparationTestFault>>,
 }
 
 impl MainWindowConversationComposerService {
@@ -321,6 +330,8 @@ impl MainWindowConversationComposerService {
             test_fail_next_native_lineage_disposal_advance: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
             test_append_impossible_pending_initial_response: AtomicBool::new(false),
+            #[cfg(feature = "test-faults")]
+            test_selected_preparation_fault: Mutex::new(None),
         }
     }
 
@@ -1200,12 +1211,71 @@ impl MainWindowConversationComposerService {
         &self,
         selection: MainWindowComposerSelectionIdentity,
     ) -> Result<Box<[crate::composer_host::ComposerHostResponse]>, String> {
-        self.slot
+        #[cfg(feature = "test-faults")]
+        let fault = self.test_selected_preparation_fault.lock().unwrap().take();
+        #[cfg(feature = "test-faults")]
+        if matches!(
+            fault,
+            Some(MainWindowSelectedComposerPreparationTestFault::HostUnavailable)
+        ) {
+            return Err("selected composer host preparation unavailable".to_owned());
+        }
+        let responses = self
+            .slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
             .take_selected_initial_presentation(selection)
             .map(|presentation| presentation.into_responses())
-            .map_err(|_| "conversation composer service operation failed".to_owned())
+            .map_err(|error| format!("selected composer preparation failed: {error:?}"))?;
+        #[cfg(feature = "test-faults")]
+        let responses = match fault {
+            Some(MainWindowSelectedComposerPreparationTestFault::ResponseKind) => {
+                let mut responses = responses.into_vec();
+                let response = responses.first().expect("selected test seed");
+                let crate::composer_host::ComposerHostResponseValue::CandidateText(candidate) =
+                    response.value()
+                else {
+                    panic!("selected test seed is candidate text");
+                };
+                responses[0] = crate::composer_host::ComposerHostResponse::new(
+                    response.key(),
+                    crate::composer_host::ComposerHostResponseValue::HistoricalText(
+                        candidate.value().clone(),
+                    ),
+                );
+                responses.into_boxed_slice()
+            }
+            Some(MainWindowSelectedComposerPreparationTestFault::ResponseBinding(binding)) => {
+                let mut responses = responses.into_vec();
+                let response = responses.first().expect("selected test seed");
+                let key = response.key();
+                responses[0] = crate::composer_host::ComposerHostResponse::new(
+                    crate::composer_host::ComposerHostRequestKey::new(
+                        binding,
+                        key.request_id(),
+                        key.purpose(),
+                    ),
+                    response.value().clone(),
+                );
+                responses.into_boxed_slice()
+            }
+            _ => responses,
+        };
+        Ok(responses)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_selected_preparation(
+        &self,
+        fault: MainWindowSelectedComposerPreparationTestFault,
+    ) {
+        assert!(
+            self.test_selected_preparation_fault
+                .lock()
+                .unwrap()
+                .replace(fault)
+                .is_none()
+        );
     }
 
     pub(super) fn take_pending_initial_presentation(

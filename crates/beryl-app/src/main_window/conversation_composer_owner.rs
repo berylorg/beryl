@@ -34,6 +34,7 @@ mod lifecycle;
 mod prepublication;
 mod realization;
 mod render;
+mod selected_preparation;
 mod service;
 
 #[cfg(feature = "test-faults")]
@@ -43,11 +44,13 @@ pub(in crate::main_window) use prepublication::{
     MainWindowNativeLineagePrepublicationWork,
 };
 pub use realization::*;
+pub use selected_preparation::MainWindowConversationComposerPreparedSelection;
 pub use service::MainWindowConversationComposerService;
 pub(in crate::main_window) use service::MainWindowNativeLineageSourceRetentionError;
 #[cfg(feature = "test-faults")]
 pub use service::{
     MainWindowNativeLineageCleanupTestWitness, MainWindowNativeLineageCleanupTestWitnessSnapshot,
+    MainWindowSelectedComposerPreparationTestFault,
 };
 
 pub type ComposerClipboardWriter =

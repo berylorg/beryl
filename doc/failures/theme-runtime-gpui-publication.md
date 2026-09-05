@@ -55,31 +55,45 @@ changes. These corrections passed independent semantic review.
 `tests/theme_runtime_cases/production/gpui.rs`, with `gpui_fixture.rs`, cover root and composer
 scene colors, unchanged editor state, all appearance sources, rejection, reentrant callbacks,
 pending capacity, creation/removal epoch invalidation, and retirement release. Minimal test roots
-establish this boundary independently; Phase 289 still must integrate the ordinary shell.
+establish this boundary independently of ordinary shell integration.
 
-## Retained Shell Checkpoint
+## Accepted Shell Integration
 
-Phase 289 remains unaccepted. Its working material is retained, not included in the diagnosis
-commit:
+Phase 289 completed the ordinary shell in `main_window/shell.rs` and its `host`, `appearance`, and
+`custody` modules. Preparation verifies exact home, runtime, root, claim, and editor facts off GPUI.
+Hidden roots register with the shared appearance owner and require the current generation and exact
+first-presentable editor before native publication. The complete composer mount retains its ordinary
+subscriptions and autosave initialization. Empty optional mounts consume no space.
 
-- `crates/beryl-app/src/main_window/shell.rs` and its export in `main_window/mod.rs`.
-- `crates/beryl-app/tests/phase289_main_window_shell.rs`.
-- Narrow constructor integration in `main_window/conversation_composer_mount.rs` and appearance
-  forwarding in `main_window/conversation_composer_owner/lifecycle.rs`.
-
-The worker reported that `cargo check -p beryl-app --test phase289_main_window_shell --features
-test-faults` passed. No nextest result is accepted: the invocation ended but its result was not
-retained. Initial review found required corrections for full acquisition/editor identity,
-coordinator-owned appearance, canonical adaptive sizing and minimum window geometry, readiness
-before native publication, and reuse of the complete composer mount. The constructor and readiness
-changes have not received completion review; unresolved abandonment/reconciliation, distinct
-controller ownership, production construction failure, stale selection, and appearance tests remain.
+Review invalidated three incomplete integration checks. Matching natural acquisition identifiers
+cannot establish home provenance: the token now retains its home, and both preparation and cleanup
+reject a foreign token before local mutation. A retained composer contribution does not prove its
+editor is mounted: final appearance validation checks the canonical owner lifecycle before the
+whole-set adoption cut. Panel padding alone is not a usable window minimum: minimum geometry now
+includes the prepared editor's configured text and scrollbar allocation. Focused regressions cover
+all three corrections, and independent semantic review accepted the result.
 
 GPUI entity construction is infallible, but a clean fallible Beryl mount factory is available:
 prepare the contribution, construct the ordinary complete entity, then initialize subscriptions
 and autosave through entity update, dropping a failed entity and returning unpublished custody.
 An inert error-bearing placeholder mount is unnecessary and was not implemented.
 
-No task-owned build process remained at the handoff. Existing unrelated build processes and the
-previous phase's retained neutral checkouts were left untouched. Resume only the recorded paths and
-acceptance boundaries; do not infer passing tests or finished shell behavior from compilation.
+`cargo check -p beryl-app --lib --features test-faults --locked` passed. The final gate was:
+
+```text
+cargo nextest run -p beryl-app --test phase289_main_window_shell --test main_window_reservations --test phase285_selected_composer_preparation --test phase238_window_abandonment --test phase236_window_acquisition --features test-faults --locked --test-threads 1 --no-fail-fast --status-level pass
+```
+
+All 47 tests passed with none skipped (run `cb0d46b7-ba9d-4926-a3a0-6415df852978`): nine shell,
+five reservation, six selected-preparation, eight abandonment, and nineteen acquisition cases.
+The Windows run used process-scoped `RUST_MIN_STACK=16777216` for existing populated preparation
+fixtures; the prior environment was restored afterward. Real GPUI cases verify distinct controllers
+and editors, current preview and later atomic adoption, preserved editor state, released-editor
+rejection, usable minimum layout, post-native construction failure, and unready or stale selection
+refusal before visibility. Custody tests verify unresolved cleanup retains the reservation and exact
+terminal settlement releases it.
+
+The integration includes the previously accepted reservation and selected-preparation working
+material. No task-owned build process or permanent environment change remained at handoff. Shared
+build artifacts and prior retained neutral checkouts were left untouched. Binary bootstrap and
+ordinary New Window command integration remain later plan boundaries.

@@ -472,6 +472,41 @@ fn repeated_created_cycles_release_the_shared_flight_and_leave_no_partial_closur
 }
 
 #[test]
+fn main_window_reservation_coexists_with_acquisition_and_abandonment_custody() {
+    let fixture = Fixture::new(131);
+    let request = fixture.request(141);
+    let window_id = request.window_id();
+    let reservation = fixture
+        .process
+        .reserve_main_window(window_id)
+        .expect("main-window reservation");
+    let cancellation = CommandCancellation::new();
+    cancellation.cancel();
+    assert!(matches!(
+        fixture.service.acquire(request.clone(), cancellation),
+        RuntimeBackedWindowAcquisitionOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(fixture.process.main_window_occupancy(), 1);
+
+    let acquisition = match fixture.service.acquire(request, CommandCancellation::new()) {
+        RuntimeBackedWindowAcquisitionOutcome::Committed { acquisition, .. } => acquisition,
+        outcome => panic!("acquisition must preserve its independent flight: {outcome:?}"),
+    };
+
+    let abandonment = fixture.prepare(acquisition);
+    assert!(matches!(
+        fixture
+            .service
+            .abandon(abandonment, CommandCancellation::new()),
+        RuntimeBackedWindowAbandonmentOutcome::Committed { .. }
+    ));
+    assert_eq!(fixture.process.main_window_occupancy(), 1);
+
+    drop(reservation);
+    assert_eq!(fixture.process.main_window_occupancy(), 0);
+}
+
+#[test]
 fn active_job_and_reverse_claim_disagreement_reject_without_cleanup() {
     let active = Fixture::new(160);
     let acquisition = active.acquire(170);

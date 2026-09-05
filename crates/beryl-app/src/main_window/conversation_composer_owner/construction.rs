@@ -8,18 +8,38 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
-        let selection = config.selection();
-        if service.selected_identity() != Some(selection) {
-            return Err("conversation composer selection is stale".to_owned());
-        }
-        let initial = service.take_initial_presentation(selection)?;
-        let activation_seeds = Self::activation_seeds(selection, initial)?;
+        let prepared = MainWindowConversationComposerPreparedSelection::new(config, service)?;
+        Self::from_prepared(prepared, clipboard_writer, window, cx)
+    }
+
+    pub fn from_prepared(
+        prepared: MainWindowConversationComposerPreparedSelection,
+        clipboard_writer: ComposerClipboardWriter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        prepared.validate_current()?;
+        Ok(Self::consume_prepared(
+            prepared,
+            clipboard_writer,
+            window,
+            cx,
+        ))
+    }
+
+    pub(super) fn consume_prepared(
+        prepared: MainWindowConversationComposerPreparedSelection,
+        clipboard_writer: ComposerClipboardWriter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self::construct(
-            config,
-            service,
+            prepared.config,
+            prepared.service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Selected,
-            activation_seeds,
+            prepared.activation_seeds,
+            prepared.residency_bound,
             None,
             window,
             cx,
@@ -54,16 +74,18 @@ impl MainWindowConversationComposer {
         if service.pending_identity(receipt) != Some(selection) {
             return Err("pending conversation composer selection is stale".to_owned());
         }
-        Self::construct(
+        let residency_bound = config.residency_bound()?;
+        Ok(Self::construct(
             config,
             service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Pending(receipt),
             activation_seeds,
+            residency_bound,
             None,
             window,
             cx,
-        )
+        ))
     }
 
     pub(in crate::main_window) fn new_restored(
@@ -83,16 +105,18 @@ impl MainWindowConversationComposer {
         {
             return Err("restored conversation composer selection is stale".to_owned());
         }
-        Self::construct(
+        let residency_bound = config.residency_bound()?;
+        Ok(Self::construct(
             config,
             service,
             clipboard_writer,
             MainWindowConversationComposerRoute::Selected,
             VecDeque::new(),
+            residency_bound,
             Some((environment, candidate, current)),
             window,
             cx,
-        )
+        ))
     }
 
     fn construct(
@@ -101,6 +125,7 @@ impl MainWindowConversationComposer {
         clipboard_writer: ComposerClipboardWriter,
         route: MainWindowConversationComposerRoute,
         activation_seeds: VecDeque<MainWindowConversationComposerActivationSeed>,
+        residency_bound: MainWindowComposerResidencyBound,
         prepublication: Option<(
             gpui_text_input::RangePrepublicationEnvironment,
             gpui_text_input::RangePrepublicationCandidate,
@@ -108,12 +133,11 @@ impl MainWindowConversationComposer {
         )>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Result<Self, String> {
+    ) -> Self {
         let selection = config.selection();
         let proof_limits = config.successor_proof_limits();
         let clipboard_limits = config.clipboard_limits();
         let mutation_limits = config.mutation_limits();
-        let residency_bound = config.residency_bound()?;
         let prepublication_adoption = prepublication.is_some();
         let input = if let Some((environment, candidate, current)) = prepublication {
             cx.new(|input_cx| {
@@ -148,7 +172,7 @@ impl MainWindowConversationComposer {
                         selection.binding().range_history_frontier(),
                     )
                 })
-                .map_err(|_| "initial composer history frontier was rejected".to_owned())?;
+                .expect("exact initial composer history frontier");
         }
         let mut this = Self {
             input,
@@ -186,10 +210,10 @@ impl MainWindowConversationComposer {
             this.install_interactive_subscription(window, cx);
         }
         this.schedule_pump(window, cx);
-        Ok(this)
+        this
     }
 
-    fn activation_seeds(
+    pub(super) fn activation_seeds(
         selection: MainWindowComposerSelectionIdentity,
         initial: Box<[crate::composer_host::ComposerHostResponse]>,
     ) -> Result<VecDeque<MainWindowConversationComposerActivationSeed>, String> {

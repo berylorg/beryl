@@ -240,12 +240,88 @@ impl RuntimeBackedWindowAbandonmentReconciliation {
 }
 
 impl RuntimeBackedWindowAcquisitionService {
+    pub(crate) fn validate_shell_selection(
+        &self,
+        acquisition: &RuntimeBackedWindowAcquisition,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        let binding = selection.binding();
+        if acquisition.home_id != self.store.home_id()
+            || binding.home_id() != acquisition.home_id
+            || self.store.health().generation() != Some(binding.home_generation())
+            || selection.window_id() != acquisition.window_id
+            || selection.claim().thread_id() != acquisition.thread_id
+            || binding.candidate().draft_id() != acquisition.draft_id
+        {
+            return Err("shell selection belongs to a different acquisition or home".to_owned());
+        }
+        for _ in 0..=beryl_state::MAX_RESTORABLE_WINDOWS {
+            let before = self
+                .store
+                .home_revision()
+                .map_err(|error| error.to_string())?;
+            let state = self
+                .state
+                .audit_window_acquisition_for_thread_with_cancellation(
+                    &self.store,
+                    acquisition.window_id,
+                    acquisition.thread_id,
+                    &CommandCancellation::new(),
+                )
+                .map_err(|error| error.to_string())?;
+            let WindowAcquisitionNaturalState::Committed(state) = state else {
+                return Err("shell acquisition no longer owns its exact claim".to_owned());
+            };
+            if !state_matches_acquisition(&state, acquisition)
+                || state.claim_generation() != selection.claim().generation()
+                || state.claim_revision() != selection.claim().revision()
+            {
+                return Err(
+                    "shell selection does not match the acquired runtime, root, and claim"
+                        .to_owned(),
+                );
+            }
+            let candidate = self
+                .syndic
+                .audit_pristine_thread(
+                    &self.store,
+                    acquisition.thread_id,
+                    &acquisition.fallback_execution,
+                )
+                .map_err(|error| error.to_string())?;
+            if !matches!(candidate, PristineThreadAudit::Exact(ref candidate) if candidate_matches_acquisition(candidate, acquisition))
+            {
+                return Err(
+                    "shell editor does not match the acquired draft and execution binding"
+                        .to_owned(),
+                );
+            }
+            if before
+                == self
+                    .store
+                    .home_revision()
+                    .map_err(|error| error.to_string())?
+            {
+                return Ok(());
+            }
+        }
+        Err("shell binding preparation exceeded its revision retry bound".to_owned())
+    }
+
     #[must_use]
     pub fn prepare_abandonment(
         &self,
         acquisition: RuntimeBackedWindowAcquisition,
         cancellation: CommandCancellation,
     ) -> RuntimeBackedWindowAbandonmentPreparationOutcome {
+        if acquisition.home_id != self.store.home_id() {
+            return abandonment_preparation_not_committed(
+                acquisition,
+                abandonment_audit(AbandonmentInvariant(
+                    "acquisition belongs to a different home",
+                )),
+            );
+        }
         let window_id = acquisition.window_id;
         let flight = match AcquisitionFlight::acquire(self.flights.clone(), window_id) {
             Ok(flight) => flight,

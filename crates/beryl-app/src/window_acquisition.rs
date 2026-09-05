@@ -132,6 +132,7 @@ pub enum RuntimeBackedWindowAcquisitionDisposition {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RuntimeBackedWindowAcquisition {
+    home_id: beryl_model::BerylHomeId,
     window_id: WindowId,
     thread_id: SyndicThreadId,
     draft_id: SyndicDraftId,
@@ -409,12 +410,84 @@ pub struct RuntimeBackedWindowProcessRegistry {
     flights: Arc<Mutex<AcquisitionFlights>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeBackedWindowMainWindowReservationError {
+    DuplicateWindowIdentity,
+    Capacity,
+}
+
+pub struct RuntimeBackedWindowMainWindowReservation {
+    flights: Arc<Mutex<AcquisitionFlights>>,
+    window_id: WindowId,
+}
+
+impl std::fmt::Debug for RuntimeBackedWindowMainWindowReservation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RuntimeBackedWindowMainWindowReservation")
+            .field("window_id", &self.window_id)
+            .finish_non_exhaustive()
+    }
+}
+
 impl RuntimeBackedWindowProcessRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
             flights: Arc::new(Mutex::new(AcquisitionFlights::default())),
         }
+    }
+
+    pub fn reserve_main_window(
+        &self,
+        window_id: WindowId,
+    ) -> Result<
+        RuntimeBackedWindowMainWindowReservation,
+        RuntimeBackedWindowMainWindowReservationError,
+    > {
+        {
+            let mut registry = self
+                .flights
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if registry.main_window_reservations.contains(&window_id) {
+                return Err(RuntimeBackedWindowMainWindowReservationError::DuplicateWindowIdentity);
+            }
+            if registry.main_window_reservations.len() >= MAX_RESTORABLE_WINDOWS {
+                return Err(RuntimeBackedWindowMainWindowReservationError::Capacity);
+            }
+            registry.main_window_reservations.insert(window_id);
+        }
+        Ok(RuntimeBackedWindowMainWindowReservation {
+            flights: Arc::clone(&self.flights),
+            window_id,
+        })
+    }
+
+    #[must_use]
+    pub fn main_window_occupancy(&self) -> usize {
+        self.flights
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .main_window_reservations
+            .len()
+    }
+}
+
+impl RuntimeBackedWindowMainWindowReservation {
+    #[must_use]
+    pub const fn window_id(&self) -> WindowId {
+        self.window_id
+    }
+}
+
+impl Drop for RuntimeBackedWindowMainWindowReservation {
+    fn drop(&mut self) {
+        self.flights
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .main_window_reservations
+            .remove(&self.window_id);
     }
 }
 
@@ -581,6 +654,7 @@ impl RuntimeBackedWindowAcquisitionService {
                                 match disposition {
                                     Some(disposition) => NaturalAcquisitionAudit::ExactCommitted(
                                         RuntimeBackedWindowAcquisition {
+                                            home_id: self.store.home_id(),
                                             window_id,
                                             thread_id: candidate.thread_id(),
                                             draft_id: candidate.draft_id(),
@@ -877,6 +951,7 @@ impl RuntimeBackedWindowAcquisitionService {
             }
         };
         let acquisition = RuntimeBackedWindowAcquisition {
+            home_id: self.store.home_id(),
             window_id: request.window_id,
             thread_id,
             draft_id,
@@ -1199,6 +1274,7 @@ fn project_unclaimed_facts(
 #[derive(Default)]
 struct AcquisitionFlights {
     active: HashSet<WindowId>,
+    main_window_reservations: HashSet<WindowId>,
 }
 
 struct AcquisitionFlight {

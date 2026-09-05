@@ -255,6 +255,8 @@
   package qualification and independent review.
 - [x] Established and independently accepted actual atomic GPUI window-set appearance publication
   before shell integration, with [publication evidence](../../failures/theme-runtime-gpui-publication.md).
+- [x] Built and independently accepted the injectable hidden main-window shell with exact editor
+  binding, shared appearance adoption, adaptive layout, and reservation custody through cleanup.
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

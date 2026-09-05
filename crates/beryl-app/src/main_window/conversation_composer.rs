@@ -219,6 +219,15 @@ impl MainWindowComposerActivationResidency {
 }
 
 impl MainWindowConversationComposerConfig {
+    pub(in crate::main_window) fn shell_minimum_size(&self) -> gpui::Size<gpui::Pixels> {
+        gpui::size(
+            self.widget.layout.font_size.max(gpui::px(1.))
+                + self.widget.scrollbar_style.hit_lane_thickness
+                + gpui::px(26.),
+            (self.widget.layout.line_height + gpui::px(22.)).max(gpui::px(48.)) * 2.,
+        )
+    }
+
     pub fn new(
         selection: MainWindowComposerSelectionIdentity,
         widget: RangeTextInputConfig,
@@ -242,8 +251,8 @@ impl MainWindowConversationComposerConfig {
             || widget.limits.max_realization_work_per_frame == 0
             || widget.limits.max_realized_block_extent <= gpui::Pixels::ZERO
             || !f32::from(widget.limits.max_realized_block_extent).is_finite()
-            || widget.limits.page_bytes == 0
-            || widget.limits.platform_bytes == 0
+            || widget.limits.page_bytes < 4
+            || widget.limits.platform_bytes < 4
             || widget.limits.max_intra_anchor < gpui::Pixels::ZERO
             || !f32::from(widget.limits.max_intra_anchor).is_finite()
             || widget.viewport_extent <= gpui::Pixels::ZERO

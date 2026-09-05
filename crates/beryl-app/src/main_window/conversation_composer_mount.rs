@@ -20,7 +20,8 @@ use super::{
     MainWindowComposerRetirementAdvance, MainWindowComposerSelectionIdentity,
     MainWindowComposerWidgetRelease, MainWindowConversationComposer,
     MainWindowConversationComposerCompositeHit, MainWindowConversationComposerConfig,
-    MainWindowConversationComposerPendingRealizerToken, MainWindowConversationComposerService,
+    MainWindowConversationComposerPendingRealizerToken,
+    MainWindowConversationComposerPreparedSelection, MainWindowConversationComposerService,
     MainWindowConversationComposerSurfaceSnapshot, MainWindowNativeLineagePrepublicationSource,
 };
 
@@ -221,22 +222,102 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
-        let assets = service.assets()?;
+        let prepared = Self::prepare_selected(service, &mut configurator)?;
+        Self::from_prepared(
+            prepared,
+            configurator,
+            marker_seals,
+            submission_request_source,
+            window,
+            cx,
+        )
+    }
+
+    pub fn prepare_selected(
+        service: Arc<MainWindowConversationComposerService>,
+        configurator: &mut impl FnMut(
+            MainWindowComposerSelectionIdentity,
+        ) -> Result<MainWindowConversationComposerConfig, String>,
+    ) -> Result<MainWindowConversationComposerPreparedSelection, String> {
         let selection = service
             .selected_identity()
             .ok_or_else(|| "conversation composer mount has no selected slot".to_owned())?;
         let config = configurator(selection)?;
-        let contribution = cx.new(|composer_cx| {
-            MainWindowConversationComposer::new(
-                config,
-                service.clone(),
-                MainWindowConversationComposer::production_clipboard_writer(),
-                window,
-                composer_cx,
+        MainWindowConversationComposerPreparedSelection::new(config, service)
+    }
+
+    pub fn from_prepared(
+        prepared: MainWindowConversationComposerPreparedSelection,
+        configurator: MainWindowConversationComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        let service = prepared.service();
+        let assets = prepared.assets();
+        let contribution = prepared.mount(
+            MainWindowConversationComposer::production_clipboard_writer(),
+            window,
+            cx,
+        )?;
+        let mut this = Self::complete(
+            service,
+            configurator,
+            assets,
+            marker_seals,
+            submission_request_source,
+            contribution,
+            cx,
+        );
+        this.subscribe_to_contribution(window, cx)?;
+        this.initialize_autosave(window, cx)?;
+        Ok(this)
+    }
+
+    pub fn from_prepared_entity(
+        prepared: MainWindowConversationComposerPreparedSelection,
+        configurator: MainWindowConversationComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Entity<Self>, String> {
+        let service = prepared.service();
+        let assets = prepared.assets();
+        let contribution = prepared.mount(
+            MainWindowConversationComposer::production_clipboard_writer(),
+            window,
+            cx,
+        )?;
+        let mount = cx.new(|mount_cx| {
+            Self::complete(
+                service,
+                configurator,
+                assets,
+                marker_seals,
+                submission_request_source,
+                contribution,
+                mount_cx,
             )
-            .expect("validated selected composer contribution")
         });
-        let mut this = Self {
+        mount.update(cx, |mount, mount_cx| {
+            mount.subscribe_to_contribution(window, mount_cx)?;
+            mount.initialize_autosave(window, mount_cx)
+        })?;
+        Ok(mount)
+    }
+
+    fn complete(
+        service: Arc<MainWindowConversationComposerService>,
+        configurator: MainWindowConversationComposerConfigurator,
+        assets: beryl_state::AssetState,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        contribution: Entity<MainWindowConversationComposer>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self {
             service,
             configurator,
             contribution: Some(contribution),
@@ -275,10 +356,28 @@ impl MainWindowConversationComposerMount {
             native_lineage_recovery_focus: cx.focus_handle(),
             native_lineage_pending_focus: None,
             native_lineage_refresh_task: None,
-        };
-        this.subscribe_to_contribution(window, cx)?;
-        this.initialize_autosave(window, cx)?;
-        Ok(this)
+        }
+    }
+
+    pub fn selected_first_presentable(&self, cx: &App) -> bool {
+        self.contribution.as_ref().is_some_and(|contribution| {
+            contribution.read_with(cx, |composer, cx| composer.selected_first_presentable(cx))
+        })
+    }
+
+    pub(in crate::main_window) fn apply_appearance(
+        &mut self,
+        theme: gpui_text_input::TextInputTheme,
+        scrollbar_style: gpui_scrollbar::ScrollbarStyle,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let contribution = self
+            .contribution
+            .as_ref()
+            .ok_or_else(|| "conversation composer mount has no contribution".to_owned())?;
+        contribution.update(cx, |composer, composer_cx| {
+            composer.apply_appearance(theme, scrollbar_style, composer_cx)
+        })
     }
 
     pub fn contribution(&self) -> Option<Entity<MainWindowConversationComposer>> {
