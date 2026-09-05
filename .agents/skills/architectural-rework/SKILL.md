@@ -1,6 +1,6 @@
 ---
 name: architectural-rework
-description: Manage clean architectural replacement work with concise rework trackers and without incremental migratory compatibility. Use when a project, feature, system, or subproject is under rework, old docs or source must be archived and removed from live authority, target design must remain in authoritative docs, the durable plan must consume bounded tracker slices, completed tracker work must be compacted, or Codex must avoid migration adapters while replacing architecture.
+description: Manage clean architectural replacement work with concise rework trackers and without incremental migratory compatibility. Use when a project, feature, system, or subproject is under rework, old docs or source must be archived and removed from live authority, target design must remain in authoritative docs, the durable plan must consume bounded tracker slices, completed tracker work must be compacted, a completed rework must be sealed, or Codex must avoid migration adapters while replacing architecture.
 ---
 
 # Architectural Rework
@@ -58,6 +58,8 @@ Obsolete material moves under the rework archive:
 
 The rework tracker is `doc/rework/<name>/REWORK.md`.
 
+A closed rework is sealed as `doc/rework/<name>.zip`; no live sibling `doc/rework/<name>/` directory remains. The ZIP is inert and nonreferable: the changed live repository is the result, and only explicit Operator-directed forensics may inspect the archive.
+
 The active durable plan must point to the active `doc/rework/<name>/REWORK.md`. The project's planning authority owns the durable-plan location and pointer format.
 
 `REWORK.md` feeds the durable plan; it does not replace the project's planning authority or define that authority's work-item format.
@@ -70,6 +72,10 @@ complete and non-contradictory in an authoritative doc linked under `# Target Do
 missing, retain only one short target-doc-gap item naming its owner or path, stop implementation,
 and correct that authority. Never make `REWORK.md` the temporary home of proposed or accepted
 target design.
+
+Apply the `project-doc-authority` architecture-readiness review to each target-doc slice before the
+tracker feeds it into the durable plan. A rework checkpoint may expose or point to an authority gap,
+but neither the checkpoint nor the plan may resolve that gap on behalf of the owning design doc.
 
 ## Discovery Rule
 

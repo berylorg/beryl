@@ -1,6 +1,6 @@
 ---
 name: feature-design-docs
-description: Create and maintain authoritative feature-level design docs for user-visible product behavior at doc/features/<feature>/design.md. Use when defining product workflows, UI behavior, visible states, disabled/error states, acceptance rules, feature-owned user interactions, supplemental feature docs, or mockups; use system-design-docs instead for internal cross-package architecture.
+description: Create and maintain authoritative feature-level design docs for user-visible product behavior at doc/features/<feature>/design.md. Use when defining product workflows, UI behavior, visible states, disabled/error states, acceptance rules, feature engineering rigor, feature-owned user interactions, supplemental feature docs, or mockups; use system-design-docs instead for internal cross-package architecture.
 ---
 
 # Feature Design Docs
@@ -20,8 +20,14 @@ Use this design structure:
 1. First mandatory section: `# Goals`.
 2. Optional section under goals: `## Non-goals`.
 3. Second mandatory section: `# Decisions`.
+4. Third mandatory section: `# Engineering Rigor`.
 
 State goals as what product problem the feature solves, not how. Put only target-state decisions under `# Decisions`. Exclude implementation phases, migration steps, status notes, current-state excuses, process reminders, and historical commentary.
+
+In `# Engineering Rigor`, select the feature scope's versioned rigor profile and modifiers using
+the `engineering-rigor` skill. Put user-visible consequence, recovery, trust, and exposure
+requirements here when they cannot be expressed by catalog identifiers. Do not duplicate generic
+profile definitions or package-local implementation constraints.
 
 ## Feature Scope
 
@@ -53,9 +59,17 @@ Put internal dataflow, storage, schema, protocol, provider, cache, lifecycle, an
 
 Create supplemental feature files only when they reduce entry-point size or improve review quality. Common supplements include UI details, user-flow details, visible state details, mockups, and decision appendices.
 
+When a supplement redistributes normative contracts or an existing feature authority needs
+decomposition, apply the `project-doc-authority` skill's authority-decomposition workflow before
+editing. It governs review signals, co-reading groups, entry-point routing, contract preservation,
+and selective-read validation. Adding a purely illustrative file without redistributing authority
+does not require that workflow.
+
 When adding a supplemental file:
 
 - Link it from `doc/features/<feature>/design.md`.
 - State whether it is normative, illustrative, or historical.
 - Keep normative decisions consistent with the feature entry point and higher authority.
+- Keep normative rigor details consistent with the profile and modifiers named in the feature entry
+  point.
 - Do not let mockups override written behavior unless the feature entry point explicitly says they do.

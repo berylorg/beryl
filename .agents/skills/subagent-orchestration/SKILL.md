@@ -17,6 +17,11 @@ Treat this root-only rule as authoritative rather than relying on a client-side 
 
 Delegating work transfers execution responsibility, never authority. A subagent may investigate, draft, edit, implement, verify, or review, but the main thread remains responsible for validating decision-relevant evidence and integrating the result.
 
+Before routing implementation verification or review, resolve the effective engineering-rigor
+contract from the applicable design authorities. It determines the required review method and
+evidence threshold; it does not provide a rigor-profile-to-model mapping. Treat a missing, unknown,
+or incompatible required declaration as incomplete design and report it rather than guessing.
+
 ## Delegation Gate
 
 Delegate a work unit when all of these conditions hold:
@@ -48,7 +53,9 @@ Other skills may classify domain-local work by the generic routing criteria in t
 
 Prefer a balanced worker profile when the contract is explicit, controlling sources are known, the required judgment is limited, and correctness has a strong verifier.
 
-Prefer a frontier profile when the work requires novel or semantically subtle judgment, conflicting-authority reconciliation, architecture or causality decisions, adversarial review, or weakly verifiable synthesis.
+Prefer a frontier profile when the work requires novel or semantically subtle judgment,
+conflicting-authority reconciliation, architecture or causality decisions, adversarial review
+required by the effective rigor contract or a concrete consequence, or weakly verifiable synthesis.
 
 Choose reasoning depth independently from model capability. Use shallow reasoning for bounded one-pass work, normal reasoning for ordinary multi-step work, deep reasoning for several interacting constraints or alternatives, and critical reasoning for adversarial, deeply coupled, or high-impact analysis.
 
@@ -61,7 +68,8 @@ Select the model family and reasoning depth separately:
 - **Shallow reasoning:** Bounded one-pass work with few interacting constraints.
 - **Normal reasoning:** Ordinary multi-step work with a clear evidence or verification path.
 - **Deep reasoning:** Several interacting constraints, alternatives, or causal steps.
-- **Critical reasoning:** Adversarial, deeply coupled, high-impact, safety-sensitive, security-sensitive, or irreversible work.
+- **Critical reasoning:** Adversarial review required by applicable authority or concrete consequence,
+  or deeply coupled, high-impact, safety-sensitive, security-sensitive, or irreversible work.
 
 ## Exceptional Route
 
@@ -104,13 +112,26 @@ Reuse the same agent for corrections within its existing work unit. Use a fresh 
 
 ## Review Routing
 
-Use a fresh reviewer context and provide the artifact, controlling sources, acceptance boundary, and required evidence without leaking the expected verdict or prior diagnosis.
+Use a fresh reviewer context and provide the artifact, controlling sources, acceptance boundary,
+effective engineering-rigor contract or its relevant derived requirements, supported operating
+envelope, and required evidence without leaking the expected verdict or prior diagnosis.
 
-Spawn an independent reviewer when required by risk, weak objective verification, applicable instructions, or an explicit acceptance plan. Let routine objective verification remain with the worker plus targeted main-thread validation when no independent review requirement applies.
+Spawn an independent reviewer only when the effective rigor contract, a concrete consequence, weak
+objective verification, applicable instructions, or an explicit acceptance plan requires it. Let
+routine objective verification remain with the worker plus targeted main-thread validation when no
+independent review requirement applies.
 
-Choose reviewer strength from the consequence and verifiability of the reviewed decision, not from the artifact's format or the author's profile. Use a frontier model with normal reasoning for ordinary semantic review, deep reasoning for authoritative or architectural review, and critical reasoning for adversarial, deeply coupled, weakly verifiable, or materially costly review.
+Choose reviewer strength from the consequence and verifiability of the reviewed decision, not from
+the artifact's format, the author's profile, or a rigor-profile-to-model mapping. Use a frontier
+model with normal reasoning for ordinary semantic review, deep reasoning for authoritative or
+architectural review, and critical reasoning only for adversarial, deeply coupled, weakly
+verifiable, or materially costly review required by the effective contract or concrete consequence.
 
-A reviewer reports findings and evidence. It does not inherit the main thread's authority, and the main thread must not rubber-stamp a stronger model's conclusion.
+A reviewer reports findings and evidence. Classify a finding as blocking only when it identifies an
+unmet applicable guarantee, a concrete consequence inside the supported operating envelope, or an
+undeclared exposure or consequence requiring design-authority correction. Speculative hardening
+outside the effective contract is non-blocking. A reviewer does not inherit the main thread's
+authority, and the main thread must not rubber-stamp a stronger model's conclusion.
 
 ## Parallelism
 

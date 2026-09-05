@@ -20,7 +20,7 @@ Widgets:
 
 # Anatomy
 
-The anchored context menu consists of an anchor, a bordered menu panel, a vertical scroll container, and menu rows.
+The anchored context menu consists of an anchor, a bordered menu panel, a vertical scroll container, and menu rows. Its virtualized-collection variant uses the referenced context menu's fixed-row realization window inside the same anchored panel.
 
 Menu rows are rendered full-width.
 
@@ -34,7 +34,7 @@ The menu appears near its anchor and reads as visually connected to the control,
 
 # States
 
-Closed, open, anchored, focused, scrollable, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
+Closed, open, anchored, focused, scrollable, static-full-render, virtualized-collection, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
 
 # Interaction
 
@@ -52,6 +52,8 @@ Home and End move focus to the first and last interactive rows.
 
 Enter and Space activate the focused interactive row.
 
+Stable row ids, logical focus, selected-row reveal, scroll preservation, bounded overscan, range reconciliation, and offscreen row-anchor behavior follow the referenced context menu contract. Virtualization does not change focus return to the stable outer anchor when the menu closes.
+
 Disabled command rows must satisfy `disabled-command-tooltip`.
 
 Escape, outside click, anchor reactivation, or an equivalent dismissal action closes the flyout unless the owning environment defines a stricter dismissal rule.
@@ -65,6 +67,12 @@ The menu is positioned relative to its anchor.
 The preferred placement is near the anchor without obscuring the anchor more than necessary.
 
 If the preferred placement would overflow the viewport or containing region, the menu may flip, shift, or clamp while remaining associated with the anchor.
+
+The anchored context menu defaults to the referenced context menu's static full-render strategy. Its caller must document and enforce a small maximum row count for the complete command or selection set.
+
+For caller-unbounded selectable options, the caller uses the virtualized-collection variant. It retains the same anchored panel and placement behavior while the referenced context-menu viewport realizes only a fixed-height visible row range plus bounded overscan.
+
+Caller-unbounded command sets or collections needing richer picker behavior use a separate purpose-built virtualized picker or selector. Anchoring and internal scrolling alone do not relax the default static row-count bound.
 
 The CSS block defines content-derived menu sizing, row sizing, clamping, and internal scrolling.
 
@@ -152,9 +160,9 @@ Spec CSS:
 
 # Variants
 
-Above-anchor, below-anchor, leading-edge aligned, trailing-edge aligned, flipped, shifted, and clamped.
+Above-anchor, below-anchor, leading-edge aligned, trailing-edge aligned, flipped, shifted, clamped, static-full-render, and virtualized-collection.
 
-Default variant: below-anchor, leading-edge aligned.
+Default variant: below-anchor, leading-edge aligned, static-full-render.
 
 # UI Roles
 

@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive edge cases from design docs; record blockers; respect other active planning authorities; and review every phase before completion.
+description: "Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to verify architecture readiness, create or update the authoritative plan, enforce # Scope and # Phase N status structure, keep one acceptance boundary per phase, pause and replan on material scope growth, maintain a compact sliding execution window, derive phase work and review from applicable design authority and engineering rigor, record blockers, and respect other active planning authorities."
 ---
 
 # Implementation Planning
@@ -40,11 +40,42 @@ Reflect planning scope, input, sequencing, or continuation constraints from anot
 ## Planning Workflow
 
 1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus project-declared root or parent authorities.
-2. Stop if the request contradicts design authority; otherwise derive scope from it.
-3. Split the work into small coherent phases.
+2. Stop if the request contradicts design authority; otherwise apply the architecture-readiness gate
+   to the actionable slice.
+3. Split only architecture-ready implementation work into small coherent phases.
 4. Mark the active phase `wip` and future phases `pending`.
 5. Include phase tasks, edge cases, verification, and resumable milestone details.
 6. Record any blocker in its phase before stopping.
+
+## Architecture-Readiness Gate
+
+Apply the `project-doc-authority` architecture-readiness review before authoring an implementation
+scope or phase, and repeat it when scope growth, diagnosis, or review exposes a previously hidden
+material choice.
+
+An actionable phase must be derivable from authoritative decisions without using the plan to choose
+among materially different architectures. Phase text may translate those decisions into ordering,
+work, edge cases, verification, and review, but it must not become the only place that defines
+ownership, public boundaries, lifecycle or state semantics, cross-boundary dataflow, failure or
+recovery behavior, supported limits, or acceptance evidence.
+
+If any such choice remains missing or contradictory, stop implementation planning for that slice and
+update the owning feature, system, package, subproject, GUI, API, or project-declared design authority
+first. Do not use an implementation phase, rework item, test expectation, or source experiment as a
+temporary architecture decision. A bounded research or diagnosis phase may gather evidence only when
+its acceptance boundary is the evidence itself and it does not authorize production implementation.
+
+Implementation-private choices may remain open when every allowed choice satisfies the same
+authoritative contract and would not change phase boundaries or completion evidence.
+
+Resolve the effective engineering-rigor contract across every applicable design scope before
+splitting phases. Read the engineering-rigor authority and profile catalog as required there. Treat
+a missing, unknown, or incompatible required declaration as incomplete design and stop planning
+until its owning design authority is corrected.
+
+Translate the contract's supported operating envelope, defensive behavior, failure handling,
+verification evidence, and review requirements into concrete phase work. Do not copy profile,
+modifier, or catalog declarations into `doc/plan.md`.
 
 Before creating a plan, authoring or revising scope or phase content, or reviewing authoring completeness, read [Plan Authoring Template and Edge-Case Prompts](references/plan-authoring.md) in full as normative. Status-only updates, blocker recording, phase compaction, and clearing use this file alone.
 
@@ -82,6 +113,10 @@ minor implementation details within the active phase only when they remain neces
 acceptance boundary and do not create an independently implementable, verifiable, reviewable, or
 resumable unit.
 
+If scope growth reveals an unresolved architectural choice rather than merely another accepted-design
+task, apply the architecture-readiness gate before adding implementation phases. Correct the owning
+design authority first, then derive the new phases from it.
+
 ## Execution Rules
 
 When executing the plan:
@@ -99,15 +134,26 @@ When executing the plan:
 
 ## Completion Review
 
-When one phase's implementation and verification are complete, get a reviewer subagent review
-before marking that phase `finished` or beginning the next phase. This review is required for every
-phase, including documentation-only, verification-only, integration, and no-change outcomes.
+Perform a completion review for every phase, including documentation-only, verification-only,
+integration, and no-change outcomes, before marking it `finished` or beginning the next phase.
+Review the completed work and evidence against the phase acceptance boundary and effective
+engineering-rigor contract.
 
-If the reviewer finds issues within the phase's acceptance boundary, keep the phase `wip`, record
-the corrective work in that phase, and address it before repeating review. If a finding reveals a
-new hard task or acceptance boundary, apply the scope-growth rule and create a separate phase.
+Use an independent reviewer only when the effective rigor contract, a concrete consequence, weak
+objective verification, another applicable authority, or the phase acceptance plan requires it.
+Otherwise, objective verification plus worker self-review and targeted main-thread validation may
+satisfy the completion review.
 
-After review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
+Treat a finding as blocking only when it identifies an unmet applicable guarantee, a concrete
+consequence inside the supported operating envelope, or an undeclared trust, exposure, blast
+radius, or irreversibility condition. Keep speculative hardening outside the effective contract
+non-blocking. Escalate an undeclared condition to the owning design authority; apply the scope-growth
+rule only if the corrected authority creates another hard task or acceptance boundary.
+
+When completion review finds a blocking issue within the phase's acceptance boundary, keep the
+phase `wip`, record the corrective work in that phase, and address it before repeating review.
+
+After completion review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
 few-line outcome that includes the verification result or a durable evidence link. Remove detailed
 tasks, edge cases, verification logs, investigation history, and resumable diary content. Perform
 this compaction before starting or expanding another phase.

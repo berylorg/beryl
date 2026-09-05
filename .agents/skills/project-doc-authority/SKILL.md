@@ -1,6 +1,6 @@
 ---
 name: project-doc-authority
-description: Maintain project documentation authority. Use when deciding or reconciling where feature, system, package or subproject, additional project-declared, root or parent, plan, rework, research, failure, dependency, API, module, or process rules belong; preserving Goals/Decisions structure; resolving contradictions; or identifying what controls implementation.
+description: Maintain project documentation authority. Use when deciding or reconciling where feature, system, package or subproject, additional project-declared, root or parent, plan, rework, research, failure, dependency, API, module, process, or engineering-rigor rules belong; preserving required Goals/Decisions/Engineering Rigor structure; resolving contradictions; or identifying what controls implementation.
 ---
 
 # Project Doc Authority
@@ -52,8 +52,26 @@ Every authoritative `design.md` governed by this taxonomy has:
 1. `# Goals` first.
 2. Optional `## Non-goals` under goals.
 3. `# Decisions` second.
+4. `# Engineering Rigor` third.
 
 State goals as the high-level problem the authority solves: what, not how. Put only target-state design decisions under `# Decisions`; exclude migration or transition steps, history, current-state excuses, and implementation diaries.
+
+Use `# Engineering Rigor` to select the versioned rigor profile and modifiers governing the doc's
+scope. Apply the `engineering-rigor` skill for its declaration format, catalog, composition, and
+conflict rules. Keep generic profile definitions in that skill and scope-specific requirements in
+the owning design entry point or a normative supplement linked from it.
+
+## Authority Decomposition
+
+Treat document size as a signal to review whether an authority can be read selectively, not as a
+split threshold or a reason to weaken its contract. Keep decisions together when the same task or
+consumer normally needs them together. Keep each authoritative entry point responsible for routing
+to bounded supplements and for shared rules that must not be redefined by one supplement.
+
+Before splitting, merging, substantially pruning, or reviewing the decomposition of an
+authoritative design entry point or its normative supplements, read [Authority Decomposition
+Workflow](references/authority-decomposition.md) in full and follow it as normative. It owns the
+contract-preservation, co-reading, entry-routing, pruning, and selective-read validation rules.
 
 ## Feature Docs
 
@@ -84,12 +102,40 @@ Place each contract by asking who owns the fact:
 - User-visible product behavior belongs to the feature doc.
 - Internal technical rules shared across features, peer or sibling projects, parent-level orchestration, runtime boundaries, or anything no single project boundary owns belong to the system doc.
 - One workspace project's boundary contract belongs to its `doc/design.md`.
+- The rigor contract for a feature, system, or workspace project belongs to that scope's
+  `# Engineering Rigor` section; applicable guarantees compose across the authority chain.
 - Bounded non-product, non-architecture truth that no package can own belongs to a declared additional authority.
 - Temporary replacement progress belongs to the rework tracker, which points to target-state design authority.
 - Implementation order belongs to root `doc/plan.md`, derived from design authority.
 - Root or parent docs own a contract only when the project explicitly assigns them that role.
 
 Do not duplicate shared rules in child docs unless needed to define child-owned behavior.
+
+## Architecture Readiness
+
+Before implementation planning can schedule an actionable code phase, review the applicable
+authority chain for the slice being planned. The architecture is ready when every unresolved choice
+whose alternatives would materially change the implementation boundary or its acceptance evidence
+has been decided in the document that owns that fact.
+
+Check the following dimensions when they are relevant to the slice:
+
+- ownership, responsibility splits, dependencies, and public boundaries;
+- identities, state transitions, lifecycle, dataflow, concurrency, and consistency;
+- failure, cancellation, retry, recovery, and partial-publication behavior;
+- supported resource, performance, security, privacy, and operating limits;
+- observable outcomes, verification seams, and evidence needed to distinguish success from an
+  invalid implementation.
+
+Do not require a design doc to choose implementation-private mechanics when every reasonable choice
+would satisfy the same authoritative contract and acceptance boundary. Conversely, do not treat a
+named component, phase heading, test name, mockup, or source shape as a design decision when the
+controlling behavior or ownership remains unstated.
+
+If a material choice is missing, contradictory, or recorded only in `doc/plan.md`, `REWORK.md`, a
+checklist, source, test, research note, or failure note, stop implementation planning for that slice
+and update the owning design authority first. Bounded research or diagnosis may gather the evidence
+needed for that update, but it does not authorize implementation against an unresolved target.
 
 ## Parent Consultation
 

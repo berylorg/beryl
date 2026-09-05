@@ -17,7 +17,7 @@ Do not introduce formal slot or mount parameters beyond the section shapes in th
 
 ## Implementation Authority
 
-When implementing or reviewing project GUI code, treat `doc/gui/` and linked `doc/features/<feature>/gui.md` files as authoritative GUI contracts.
+When implementing or reviewing Beryl GUI code, treat `doc/gui/` and linked `doc/features/<feature>/gui.md` files as authoritative GUI contracts.
 
 GUI implementation must conform to:
 

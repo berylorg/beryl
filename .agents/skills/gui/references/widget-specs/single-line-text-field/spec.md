@@ -36,11 +36,11 @@ The field does not accept newline input. Enter may commit or submit the owning f
 
 Horizontal scrolling is implied when the text exceeds the visible width.
 
-The field supports ordinary platform text-editing behavior. On platforms that use Ctrl bindings,
-this includes Home and End for line start and line end, Ctrl+Left and Ctrl+Right for previous and
-next word, Shift selection extension, Ctrl+A selection, Ctrl+C copy, Ctrl+X cut, Ctrl+V paste,
-Ctrl+Z undo, Ctrl+Y redo, Backspace and Delete, Ctrl+Backspace, and Ctrl+Delete. Other platforms use
-their equivalent conventional bindings.
+The field supports Beryl's Windows-first single-line text-editing behavior, including Home and End
+for line start and line end, Ctrl+Left and Ctrl+Right for previous and next word, Shift selection
+extension, Ctrl+A selection, Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+Z undo, Ctrl+Y redo,
+Backspace and Delete, Ctrl+Backspace, and Ctrl+Delete. Other platforms use their equivalent
+conventional bindings.
 
 Mouse or touch interaction may place the caret, drag-select text, and use platform text selection behavior.
 

@@ -34,12 +34,11 @@ Typing inserts text at the caret.
 
 Enter inserts a newline unless the owning feature defines a command-specific override.
 
-The field supports ordinary platform multiline text-editing behavior. On platforms that use Ctrl
-bindings, this includes Home and End for line start and line end, Ctrl+Home and Ctrl+End for document
-start and document end, Ctrl+Left and Ctrl+Right for previous and next word, Shift selection
-extension, Ctrl+A selection, Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+Z undo, Ctrl+Y redo,
-Backspace and Delete, Ctrl+Backspace, Ctrl+Delete, Page Up, and Page Down. Other platforms use their
-equivalent conventional bindings.
+The field supports Beryl's Windows-first multiline text-editing behavior, including Home and End for
+line start and line end, Ctrl+Home and Ctrl+End for document start and document end, Ctrl+Left and
+Ctrl+Right for previous and next word, Shift selection extension, Ctrl+A selection, Ctrl+C copy,
+Ctrl+X cut, Ctrl+V paste, Ctrl+Z undo, Ctrl+Y redo, Backspace and Delete, Ctrl+Backspace, Ctrl+Delete,
+Page Up, and Page Down. Other platforms use their equivalent conventional bindings.
 
 Mouse or touch interaction may place the caret, drag-select text, and use platform text selection behavior.
 
