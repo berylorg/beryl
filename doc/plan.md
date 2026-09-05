@@ -28,10 +28,28 @@ priority/FIFO, protected-condition capacity, stale-action rejection, and bounded
 All 16 focused integration tests, the library check, and formatting checks passed. The
 [notification record](failures/notifications.md) identifies the retained temporary test config.
 
+# Phase 303: Establish Canonical Notice Theme Roles (pending)
+
+Implement the complete role family declared by the
+[notice widget contract](gui/widgets/main-window-notice/spec.md) in the canonical theme schema,
+under [theme runtime ownership](systems/theme-runtime/design.md) and
+[theme state](../crates/beryl-state/doc/design-theme-settings.md). Verify supported properties,
+built-in fallbacks, severity and state variants, and complete resolution with focused schema tests
+and semantic review before widget integration.
+
 # Phase 300: Implement The Main-Window Notice Widget (pending)
 
 Implement and verify the existing [notice widget contract](gui/widgets/main-window-notice/spec.md)
 against bounded owner-supplied records, independently of feature queue policy and shell mounting.
+
+Activation is paused at the [widget readiness finding](failures/main-window-notice-readiness.md).
+The canonical theme role family is missing and is scheduled above. Unchanged owned-value
+`TextInput` reuse cannot satisfy inert input rejection or same-identity revision scroll
+preservation. Before activating, establish a conforming bounded readonly detail boundary and its
+focused GPUI verification seam; the widget contract permits local detail mechanics but does not
+require `TextInput`. A dependency repair or independently verifiable new component must receive its
+own prerequisite phase, with any necessary owning authority resolved first. No widget source has
+been implemented in this slice.
 
 # Phase 301: Mount The Per-Window Notice Projection (pending)
 
