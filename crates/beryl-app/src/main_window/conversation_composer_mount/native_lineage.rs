@@ -25,6 +25,13 @@ pub(super) enum NativeLineageHostResult {
 }
 
 impl MainWindowConversationComposerMount {
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_lineage_restoration_seed(
+        &self,
+    ) -> Option<gpui_text_input::RangeRestorationSeed> {
+        self.native_lineage_seed
+    }
+
     pub fn attach_native_lineage_recovery(
         &mut self,
         control: NativeLineageRecoveryControl,
@@ -143,6 +150,10 @@ impl MainWindowConversationComposerMount {
                 return Ok(false);
             };
             let previous = self.native_lineage_snapshot;
+            if previous.is_some_and(|previous| previous.key() != snapshot.key()) {
+                self.finish_native_lineage_route_loss(window, cx)?;
+                return Ok(true);
+            }
             self.native_lineage_snapshot = Some(snapshot);
             if self.native_lineage_prompt_published
                 && previous.map(NativeLineageRecoverySnapshot::status) != Some(snapshot.status())
@@ -156,11 +167,11 @@ impl MainWindowConversationComposerMount {
             }
         }
 
-        if self.native_lineage_seed.is_none() {
-            self.finish_or_start_native_lineage_seed_validation(window, cx)?;
+        if self.native_lineage_failure.is_some() {
             return Ok(true);
         }
-        if self.native_lineage_failure.is_some() {
+        if self.native_lineage_seed.is_none() {
+            self.finish_or_start_native_lineage_seed_validation(window, cx)?;
             return Ok(true);
         }
         let snapshot = self
@@ -238,17 +249,11 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if let Some((key, selection, seed, result)) = self.native_lineage_validation.take() {
+        if let Some((key, selection, seed, result)) = self.native_lineage_validation.clone() {
             self.native_lineage_validation_task = None;
-            let current = self
-                .native_lineage_snapshot
-                .ok_or_else(|| "native lineage recovery snapshot is unavailable".to_owned())?;
-            if current.key() != key || self.native_lineage_selection != Some(selection) {
-                return self.fail_native_lineage_mount(
-                    "Recovery validation completed for an obsolete selection.".to_owned(),
-                    window,
-                    cx,
-                );
+            if !self.native_lineage_validation_is_current(key, selection) {
+                self.native_lineage_validation = None;
+                return Ok(());
             }
             if let Err(error) = result {
                 return self.fail_native_lineage_mount(
@@ -257,13 +262,43 @@ impl MainWindowConversationComposerMount {
                     cx,
                 );
             }
-            let config = (self.configurator)(selection)?;
-            self.service
-                .begin_native_lineage_suspension(selection, seed)?;
             let contribution = self.native_lineage_contribution(selection, cx)?;
-            let release = contribution.update(cx, |composer, composer_cx| {
-                composer.release_widget(window, composer_cx)
+            let current_seed = contribution.update(cx, |composer, composer_cx| {
+                if composer.native_lineage_release_ready(composer_cx) {
+                    composer
+                        .export_native_lineage_restoration(composer_cx)
+                        .map(Some)
+                } else {
+                    Ok(None)
+                }
             })?;
+            let Some(current_seed) = current_seed else {
+                return Ok(());
+            };
+            if current_seed != seed {
+                self.native_lineage_validation = None;
+                self.start_native_lineage_validation(key, selection, current_seed, window, cx);
+                return Ok(());
+            }
+            let config = match (self.configurator)(selection) {
+                Ok(config) => config,
+                Err(error) => return self.fail_native_lineage_mount(error, window, cx),
+            };
+            let release = match contribution.update(cx, |composer, composer_cx| {
+                composer.release_native_lineage_widget(seed, window, composer_cx)
+            }) {
+                Ok(Some(release)) => release,
+                Ok(None) => return Ok(()),
+                Err(error) => {
+                    if contribution.read(cx).widget_release_failed() {
+                        self.native_lineage_failure = Some(error.clone());
+                        cx.notify();
+                        return Err(error);
+                    }
+                    return self.fail_native_lineage_mount(error, window, cx);
+                }
+            };
+            self.native_lineage_validation = None;
             self.native_lineage_widget_release = Some(release);
             self.contribution_subscription = None;
             self.contribution = None;
@@ -306,17 +341,41 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) {
         let service = self.service.clone();
-        let validation = cx
-            .background_executor()
-            .spawn(async move { service.validate_native_lineage_restoration(selection, seed) });
+        let validation = cx.background_executor().spawn(async move {
+            let result = service.validate_native_lineage_restoration(selection, seed);
+            #[cfg(feature = "test-faults")]
+            if let Some(gate) = service.take_test_native_lineage_seed_validation_gate() {
+                gate.await;
+            }
+            result
+        });
         self.native_lineage_validation_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = validation.await;
             let _ = this.update_in(cx, |this, window, cx| {
+                if !this.native_lineage_validation_is_current(key, selection) {
+                    return;
+                }
                 this.native_lineage_validation = Some((key, selection, seed, result));
                 let _ = this.refresh_native_lineage_recovery(window, cx);
                 cx.notify();
             });
         }));
+    }
+
+    fn native_lineage_validation_is_current(
+        &self,
+        key: NativeLineageRecoveryKey,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> bool {
+        self.native_lineage_selection == Some(selection)
+            && self.service.selected_identity() == Some(selection)
+            && self.native_lineage_snapshot.map(|snapshot| snapshot.key()) == Some(key)
+            && self
+                .native_lineage_recovery
+                .as_ref()
+                .and_then(|control| control.snapshot_for_thread(selection.claim().thread_id()))
+                .map(|snapshot| snapshot.key())
+                == Some(key)
     }
 
     fn finish_native_lineage_leaving(

@@ -229,6 +229,56 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowComposerWidgetRelease, String> {
+        let service = self.service.clone();
+        let selection = self.selection;
+        self.release_widget_with(window, cx, |requests| {
+            service.release_widget_work(selection, requests)
+        })
+    }
+
+    pub(in crate::main_window) fn release_native_lineage_widget(
+        &mut self,
+        seed: gpui_text_input::RangeRestorationSeed,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<MainWindowComposerWidgetRelease>, String> {
+        if !self.native_lineage_release_ready(cx) {
+            return Ok(None);
+        }
+        let service = self.service.clone();
+        let selection = self.selection;
+        let mut slot = service
+            .slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?;
+        slot.begin_native_lineage_suspension(selection, seed)
+            .map_err(|error| error.to_string())?;
+        let release = self.release_widget_with(window, cx, |requests| {
+            slot.release_selected_widget_work(selection, requests)
+                .map_err(|error| error.to_string())
+        });
+        if let Err(error) = &release {
+            slot.cancel_native_lineage_suspension(selection)
+                .map_err(|rollback| format!("{error}; suspension release failed: {rollback}"))?;
+        }
+        release.map(Some)
+    }
+
+    pub(in crate::main_window) fn widget_release_failed(&self) -> bool {
+        matches!(
+            self.phase,
+            MainWindowConversationComposerPhase::ReleaseFailed
+        )
+    }
+
+    fn release_widget_with(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        settle: impl FnOnce(
+            Vec<gpui_text_input::RangeTextInputRequest>,
+        ) -> Result<MainWindowComposerWidgetRelease, String>,
+    ) -> Result<MainWindowComposerWidgetRelease, String> {
         match self.phase {
             MainWindowConversationComposerPhase::Released(release) => return Ok(release),
             MainWindowConversationComposerPhase::Fencing => {}
@@ -262,7 +312,7 @@ impl MainWindowConversationComposer {
         let requests = self
             .input
             .update(cx, |input, input_cx| input.dispose(window, input_cx));
-        match self.service.release_widget_work(self.selection, requests) {
+        match settle(requests) {
             Ok(release) => {
                 self.phase = MainWindowConversationComposerPhase::Released(release);
                 Ok(release)

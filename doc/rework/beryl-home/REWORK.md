@@ -261,8 +261,8 @@
   and typed retirement with exact candidate and reservation custody.
 - [x] Restored and independently accepted ordinary composer release-fence progress while preserving
   exact semantic settlement and the separate native-lineage quiescence requirement.
-- [ ] Settle native-lineage seed publication without stranded suspension before independent-window
-  integration, as identified in the [publication record](../../failures/native-lineage-seed-publication.md).
+- [x] Settled and independently accepted native-lineage seed publication, exact suspension release,
+  and stale-route fencing, with [publication evidence](../../failures/native-lineage-seed-publication.md).
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

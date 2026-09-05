@@ -204,6 +204,8 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
+    test_native_lineage_seed_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
     test_native_lineage_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
     test_native_lineage_page_gate: Mutex<Option<PendingCompletionTestGate>>,
@@ -314,6 +316,8 @@ impl MainWindowConversationComposerService {
             test_pending_completion_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_dispatch_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_native_lineage_seed_validation_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_native_lineage_validation_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
@@ -491,6 +495,30 @@ impl MainWindowConversationComposerService {
             total.cleanup_awaiting_acknowledgement += diagnostics.cleanup_awaiting_acknowledgement;
         }
         total
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_native_lineage_suspension_active(&self) -> bool {
+        let slot = self.slot.lock().unwrap();
+        slot.selected_identity()
+            .is_some_and(|selection| slot.native_lineage_prepublication_active(selection))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_gate_next_native_lineage_seed_validation(
+        &self,
+    ) -> Option<MainWindowComposerPendingCompletionTestRelease> {
+        install_pending_test_gate(&self.test_native_lineage_seed_validation_gate)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::main_window) fn take_test_native_lineage_seed_validation_gate(
+        &self,
+    ) -> Option<PendingCompletionTestGate> {
+        self.test_native_lineage_seed_validation_gate
+            .lock()
+            .ok()?
+            .take()
     }
 
     #[cfg(feature = "test-faults")]
