@@ -1,4 +1,5 @@
 use super::*;
+use crate::main_window::{MainWindowCreationOwner, NewWindow};
 
 pub struct GpuiMainWindowShellHost<'a> {
     app: &'a mut App,
@@ -101,16 +102,24 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     match mounted {
                         Ok(composer) => {
                             controller.composer_mount = Some(composer);
-                            cx.new(|_| MainWindowShellRoot {
+                            cx.new(|cx| MainWindowShellRoot {
                                 controller: Some(controller),
                                 construction_error: None,
                                 composer_observer: None,
+                                creation: None,
+                                creation_observer: None,
+                                appearance_release: None,
+                                command_focus: cx.focus_handle(),
                             })
                         }
-                        Err(error) => cx.new(|_| MainWindowShellRoot {
+                        Err(error) => cx.new(|cx| MainWindowShellRoot {
                             controller: Some(controller),
                             construction_error: Some(error),
                             composer_observer: None,
+                            creation: None,
+                            creation_observer: None,
+                            appearance_release: None,
+                            command_focus: cx.focus_handle(),
                         }),
                     }
                 },
@@ -222,6 +231,10 @@ pub struct MainWindowShellController {
 }
 
 impl MainWindowShellController {
+    pub fn acquisition(&self) -> &RuntimeBackedWindowAcquisition {
+        &self.acquisition
+    }
+
     pub fn minimum_size(&self) -> gpui::Size<gpui::Pixels> {
         self.minimum_size
     }
@@ -273,10 +286,21 @@ impl MainWindowShell {
         if self.published {
             return Ok(());
         }
+        if !self.ready_to_publish(app) {
+            return Err("hidden main-window composer is not first-presentable".to_owned());
+        }
+        self.window
+            .update(app, |_, window, cx| window.publish(cx))
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+        self.published = true;
+        Ok(())
+    }
+
+    pub fn ready_to_publish(&self, app: &App) -> bool {
         use crate::theme_runtime::AppearancePublicationTarget;
         let appearance = self.appearance_owner.read(app).target().snapshot();
-        let presentable = self
-            .window
+        self.window
             .read_with(app, |root, app| {
                 root.controller.as_ref().is_some_and(|controller| {
                     appearance.active
@@ -290,15 +314,31 @@ impl MainWindowShell {
                         })
                 })
             })
-            .map_err(|error| error.to_string())?;
-        if !presentable {
-            return Err("hidden main-window composer is not first-presentable".to_owned());
+            .unwrap_or(false)
+    }
+
+    pub fn attach_creation(&self, owner: Entity<MainWindowCreationOwner>, app: &mut App) {
+        self.root.update(app, |root, cx| {
+            root.creation = Some(owner.downgrade());
+            root.creation_observer = Some(cx.observe(&owner, |_, _, cx| cx.notify()));
+            cx.notify();
+        });
+    }
+
+    pub fn release_published_handle(self, app: &mut App) -> Result<(), Self> {
+        if !self.published {
+            return Err(self);
         }
-        self.window
-            .update(app, |_, window, cx| window.publish(cx))
-            .map_err(|error| error.to_string())?
-            .map_err(|error| error.to_string())?;
-        self.published = true;
+        let owner = self.appearance_owner.clone();
+        let adapter_id = self.adapter_id;
+        self.root.update(app, |root, cx| {
+            root.appearance_release = Some(cx.on_release(move |root, app| {
+                let _ = owner.update(app, |owner, _| owner.unregister(adapter_id));
+                if let Some(creation) = root.creation.as_ref().and_then(|owner| owner.upgrade()) {
+                    creation.update(app, |_, cx| cx.notify());
+                }
+            }));
+        });
         Ok(())
     }
 
@@ -331,12 +371,62 @@ pub struct MainWindowShellRoot {
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,
+    creation: Option<gpui::WeakEntity<MainWindowCreationOwner>>,
+    creation_observer: Option<gpui::Subscription>,
+    appearance_release: Option<gpui::Subscription>,
+    command_focus: gpui::FocusHandle,
 }
 
 impl MainWindowShellRoot {
     #[must_use]
     pub fn controller(&self) -> Option<&MainWindowShellController> {
         self.controller.as_ref()
+    }
+
+    pub(in crate::main_window) fn creation_target(
+        &self,
+        app: &App,
+    ) -> Option<(
+        crate::main_window::MainWindowComposerSelectionIdentity,
+        beryl_state::RememberedTarget,
+    )> {
+        let controller = self.controller.as_ref()?;
+        let mount = controller.composer_mount.as_ref()?.read(app);
+        let composer = mount.contribution()?.read(app);
+        (composer.selection_identity() == controller.selection
+            && mount.selected_first_presentable(app))
+        .then_some((controller.selection, controller.acquisition.target()))
+    }
+
+    pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {
+        let Some(owner) = self.creation.as_ref().and_then(|owner| owner.upgrade()) else {
+            return Some("New Window is not available.".to_owned());
+        };
+        let Some(controller) = self.controller.as_ref() else {
+            return Some("The selected thread is unavailable.".to_owned());
+        };
+        if let Some(reason) = owner.read(app).disabled_reason(controller.window_id()) {
+            return Some(reason.to_owned());
+        }
+        self.creation_target(app)
+            .is_none()
+            .then(|| "The selected thread is not ready for New Window.".to_owned())
+    }
+
+    pub(in crate::main_window) fn invoke_new_window(&mut self, cx: &mut Context<Self>) {
+        if self.new_window_disabled_reason(cx).is_some() {
+            return;
+        }
+        let Some(owner) = self.creation.as_ref().and_then(|owner| owner.upgrade()) else {
+            return;
+        };
+        let Some((selection, target)) = self.creation_target(cx) else {
+            return;
+        };
+        let source = cx.weak_entity();
+        let _ = owner.update(cx, |owner, cx| {
+            owner.activate_captured(source, selection, target, cx)
+        });
     }
 }
 
@@ -363,8 +453,14 @@ impl Render for MainWindowShellRoot {
         let composer_height = (content_height + px(22.))
             .max(minimum_panel_height)
             .min((window.viewport_size().height * 0.5).max(minimum_panel_height));
+        let command = self
+            .creation
+            .as_ref()
+            .map(|_| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         div()
             .id("main-window-shell")
+            .key_context("MainWindow")
+            .on_action(cx.listener(|root, _: &NewWindow, _, cx| root.invoke_new_window(cx)))
             .size_full()
             .flex()
             .flex_col()
@@ -372,9 +468,14 @@ impl Render for MainWindowShellRoot {
             .child(
                 div()
                     .id("main-window-toolbar")
-                    .h(px(0.))
+                    .h(if command.is_some() { px(44.) } else { px(0.) })
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .px(px(12.))
                     .flex_none()
-                    .bg(appearance.toolbar),
+                    .bg(appearance.toolbar)
+                    .children(command),
             )
             .child(
                 div()

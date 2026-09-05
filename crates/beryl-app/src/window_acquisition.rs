@@ -492,6 +492,12 @@ impl Drop for RuntimeBackedWindowMainWindowReservation {
 }
 
 impl RuntimeBackedWindowAcquisitionService {
+    pub fn process_registry(&self) -> RuntimeBackedWindowProcessRegistry {
+        RuntimeBackedWindowProcessRegistry {
+            flights: Arc::clone(&self.flights),
+        }
+    }
+
     #[must_use]
     pub fn new(
         process: &RuntimeBackedWindowProcessRegistry,

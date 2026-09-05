@@ -21,20 +21,21 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 297: Settle Native-Lineage Seed Publication (finished)
+# Phase 290: Mount Bounded Independent Main-Window Creation (finished)
 
-Native-lineage publication now retains validated seed custody through readiness loss and acquires
-suspension at exact editor release, with failure unwind and stale-route fencing. Independent
-semantic review accepted the correction; all 85 tests and the focused library check passed.
-The [publication record](failures/native-lineage-seed-publication.md) preserves diagnosis and evidence.
+Mounted New Window and Ctrl+Shift+N through exact target acquisition, bounded preparation, and
+coherent publication or abandonment. Independent semantic review accepted the implementation;
+all 64 affected tests have passing evidence across the aggregate and targeted rerun, and the
+library check passed. The [creation record](failures/main-window-creation.md) preserves the
+progress correction, verification caveat, and retained test resources.
 
-# Phase 290: Mount Bounded Independent Main-Window Creation (pending)
+# Phase 298: Mount Ordinary Main-Window Close (pending)
 
-Mount `New Window` and `Ctrl+Shift+N` through the invoking controller's exact runtime/root, the
-process registry, Phase 236 acquisition, Phase 289 hidden host, and exact publication or
-abandonment. Verify two isolated visible windows, command and disabled states, capacity and
-duplicate admission, failure and late settlement, focus isolation, and repeated creation/release.
+Mount ordinary close under [main-window behavior](features/main-windows/design.md), preserving
+the visible window and claim until exact active work, dirty draft, and durable session removal
+settle. Verify duplicate close admission, exact stop and continuation cancellation, failure return
+to the coherent open state, independent-window preservation, and final-window empty-restore
+termination. Inspect accepted stop, composer, session, and notice dependencies before activating;
+split any independently missing component into its own prerequisite phase.
 
-Phases 295 through 297 supply accepted initial-retirement, prepared-shell transfer, ordinary release,
-and native-lineage publication boundaries. No Phase 290 source changes have been made.
-Resume with Phase 290.
+Startup, Exit, restoration, onboarding, and the other deferred mounts remain in the rework tracker.

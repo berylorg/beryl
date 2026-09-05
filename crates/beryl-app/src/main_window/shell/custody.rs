@@ -7,6 +7,17 @@ pub struct MainWindowShellUnpublished {
 }
 
 impl MainWindowShellUnpublished {
+    pub(in crate::main_window) fn from_acquired(
+        acquisition: RuntimeBackedWindowAcquisition,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+    ) -> Self {
+        Self {
+            acquisition,
+            reservation,
+            initial_composer: None,
+        }
+    }
+
     pub(in crate::main_window) fn from_retired_initial_composer(
         acquisition: RuntimeBackedWindowAcquisition,
         reservation: RuntimeBackedWindowMainWindowReservation,

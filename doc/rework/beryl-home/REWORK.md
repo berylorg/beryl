@@ -263,8 +263,10 @@
   exact semantic settlement and the separate native-lineage quiescence requirement.
 - [x] Settled and independently accepted native-lineage seed publication, exact suspension release,
   and stale-route fencing, with [publication evidence](../../failures/native-lineage-seed-publication.md).
-- [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
-  bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
+- [x] Mounted and independently accepted bounded independent main-window creation with exact claims,
+  coherent publication, cancellation settlement, and [verification evidence](../../failures/main-window-creation.md).
+- [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
+  creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [ ] Mount the bounded notice queue, warned best-effort-home startup notice, exact soft-stop
