@@ -33,6 +33,10 @@ use crate::support::TestAdapter;
 #[path = "production/corrections.rs"]
 mod corrections;
 
+#[cfg(feature = "test-faults")]
+#[path = "production/gpui.rs"]
+mod gpui_publication;
+
 const ACTIVE_DOCUMENT: &[u8] = br##"schema = 1
 id = "active"
 name = "Active"

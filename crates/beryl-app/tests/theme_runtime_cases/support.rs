@@ -8,8 +8,8 @@ use std::{
 
 use beryl_app::theme_runtime::{
     AdapterFailureClass, AppearanceCoordinator, AppearanceCoordinatorConfig, AppearanceGeneration,
-    AppearanceWindowAdapter, DurablePublicationIdentity, PreparedPreviewAppearance,
-    PreparedWindowAppearance, PreviewPublicationRequest, WindowAdapterId,
+    DurablePublicationIdentity, PreparedPreviewAppearance, PreviewPublicationRequest,
+    WindowAdapterId,
 };
 use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::DomainRevision;
@@ -50,11 +50,15 @@ impl StateFixture {
     }
 }
 
-pub fn coordinator(fixture: &StateFixture, capacity: usize) -> AppearanceCoordinator {
-    AppearanceCoordinator::new(
+#[path = "window_set.rs"]
+mod window_set;
+pub use window_set::{TestCoordinator, attach_test_adapter};
+
+pub fn coordinator(fixture: &StateFixture, capacity: usize) -> TestCoordinator {
+    TestCoordinator::new(AppearanceCoordinator::new(
         AppearanceCoordinatorConfig::new(NonZeroUsize::new(capacity).unwrap()),
         fixture.prepared(1),
-    )
+    ))
 }
 
 pub fn settings_identity(
@@ -131,30 +135,26 @@ struct PreparedAdapterPublication {
     generation: Arc<AppearanceGeneration>,
 }
 
-impl PreparedWindowAppearance for PreparedAdapterPublication {
-    fn commit(self: Box<Self>) {
+impl PreparedAdapterPublication {
+    fn commit(self) {
         *self.state.current.lock().unwrap() = Some(Arc::clone(&self.generation));
         self.state.history.lock().unwrap().push(self.generation);
         self.state.commit_count.fetch_add(1, Ordering::SeqCst);
     }
 }
 
-impl AppearanceWindowAdapter for TestAdapter {
-    fn id(&self) -> WindowAdapterId {
-        self.id
-    }
-
+impl TestAdapter {
     fn prepare(
         &self,
         generation: Arc<AppearanceGeneration>,
-    ) -> Result<Box<dyn PreparedWindowAppearance>, AdapterFailureClass> {
+    ) -> Result<PreparedAdapterPublication, AdapterFailureClass> {
         self.state.prepare_count.fetch_add(1, Ordering::SeqCst);
         if self.state.reject.load(Ordering::SeqCst) {
             return Err(AdapterFailureClass::Rejected);
         }
-        Ok(Box::new(PreparedAdapterPublication {
+        Ok(PreparedAdapterPublication {
             state: Arc::clone(&self.state),
             generation,
-        }))
+        })
     }
 }

@@ -1,6 +1,6 @@
 use std::{num::NonZeroU64, sync::Arc};
 
-use super::{AdapterFailureClass, AppearanceGeneration};
+use super::{AdapterFailureClass, AppearanceGeneration, StalePublicationReason, WindowSetEpoch};
 
 /// Stable process-local identity of one eligible window adapter.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -18,21 +18,38 @@ impl WindowAdapterId {
     }
 }
 
-/// An adapter-owned publication whose commit cannot report failure.
-///
-/// Implementations perform every fallible operation during `prepare`. The
-/// coordinator calls `commit` only after every adapter in the captured epoch
-/// has accepted the exact same immutable generation.
-pub trait PreparedWindowAppearance: Send {
-    fn commit(self: Box<Self>);
+#[derive(Clone)]
+pub struct AppearanceWindowSetSnapshot {
+    pub epoch: WindowSetEpoch,
+    pub count: usize,
+    pub capacity: usize,
+    pub current: Arc<AppearanceGeneration>,
+    pub active: bool,
 }
 
-/// Pure pre-GUI boundary implemented later by window-local presentation code.
-pub trait AppearanceWindowAdapter: Send + Sync {
-    fn id(&self) -> WindowAdapterId;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppearancePublicationFailure {
+    Unavailable,
+    Reentrant,
+    CapacityReached,
+    Stale(StalePublicationReason),
+    Adapter {
+        adapter: WindowAdapterId,
+        class: AdapterFailureClass,
+    },
+}
 
-    fn prepare(
+pub trait AppearancePublicationTarget: Send + Sync {
+    fn snapshot(&self) -> AppearanceWindowSetSnapshot;
+
+    fn publish(
         &self,
+        epoch: WindowSetEpoch,
+        previous: Arc<AppearanceGeneration>,
         generation: Arc<AppearanceGeneration>,
-    ) -> Result<Box<dyn PreparedWindowAppearance>, AdapterFailureClass>;
+    ) -> Result<(), AppearancePublicationFailure>;
+
+    fn is_publication_thread(&self) -> bool;
+
+    fn retire(&self);
 }

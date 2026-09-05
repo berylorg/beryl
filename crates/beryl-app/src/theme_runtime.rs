@@ -12,11 +12,15 @@
 mod adapter;
 mod coordinator;
 mod error;
+mod gpui_publication;
 mod identity;
 mod publication;
 mod service;
 
-pub use adapter::{AppearanceWindowAdapter, PreparedWindowAppearance, WindowAdapterId};
+pub use adapter::{
+    AppearancePublicationFailure, AppearancePublicationTarget, AppearanceWindowSetSnapshot,
+    WindowAdapterId,
+};
 pub use coordinator::{
     AppearanceCoordinator, AppearanceCoordinatorConfig, AppearanceDiagnostics,
     DurablePublicationOutcome, DurablePublicationRequest, DurableRetryOutcome,
@@ -27,6 +31,10 @@ pub use error::{
     AdapterFailureClass, AdapterRegistrationError, DurablePublicationError, GenerationExhausted,
     PreviewPublicationError, PreviewSequenceExhausted, PreviewSourceError, PublicationFailureClass,
     StalePublicationReason, WindowEpochExhausted,
+};
+pub use gpui_publication::{
+    AppearanceWindowAdapter, GpuiAppearancePublicationTarget, GpuiAppearanceWindowSet,
+    PreparedWindowAppearance,
 };
 pub use identity::{
     AppearanceGeneration, AppearanceGenerationNumber, AppearancePublication,

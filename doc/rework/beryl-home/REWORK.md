@@ -253,10 +253,8 @@
 - [x] Corrected and independently accepted the scrollbar visibility fixture with mutation-sensitive obsolete-frame admission evidence.
 - [x] Published and canonically pinned the accepted live-appearance dependency chain with neutral
   package qualification and independent review.
-- [x] Identified and independently reviewed the missing actual GPUI appearance publication boundary
-  in the [publication-gap diagnosis](../../failures/theme-runtime-gpui-publication.md).
-- [ ] Establish actual GPUI window-set appearance publication before shell acceptance, as identified
-  in the [publication-gap diagnosis](../../failures/theme-runtime-gpui-publication.md).
+- [x] Established and independently accepted actual atomic GPUI window-set appearance publication
+  before shell integration, with [publication evidence](../../failures/theme-runtime-gpui-publication.md).
 - [ ] Implement independent main windows, exact claims, close versus Exit, restoration, progressive
   bootstrap, runtime/root creation, zero-runtime onboarding, and a practical window-count limit.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

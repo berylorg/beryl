@@ -32,7 +32,7 @@ fn confirmed_settings_durable_base_survives_adapter_rejection_and_retries_exactl
     )
     .unwrap();
     let adapter = TestAdapter::new(41);
-    runtime.register_adapter(adapter.clone()).unwrap();
+    crate::support::attach_test_adapter(&mut runtime, adapter.clone());
     let initial = runtime.current().unwrap();
     let committed = fixture
         .state
@@ -214,7 +214,7 @@ fn rejected_full_refresh_discards_candidate_and_requires_fresh_reread() {
     let fixture = RuntimeFixture::new();
     let mut runtime = start_active_runtime(&fixture);
     let adapter = TestAdapter::new(51);
-    runtime.register_adapter(adapter.clone()).unwrap();
+    crate::support::attach_test_adapter(&mut runtime, adapter.clone());
     let prior_current = runtime.current().unwrap();
     let prior = runtime.diagnostics();
     install_theme(&fixture, "other", "Other", OTHER_DOCUMENT);
@@ -274,7 +274,7 @@ fn rejected_live_refresh_discards_candidate_and_requires_fresh_reread() {
     let fixture = RuntimeFixture::new();
     let mut runtime = start_active_runtime(&fixture);
     let adapter = TestAdapter::new(52);
-    runtime.register_adapter(adapter.clone()).unwrap();
+    crate::support::attach_test_adapter(&mut runtime, adapter.clone());
     let prior_current = runtime.current().unwrap();
     let prior = runtime.diagnostics();
     replace_active_bytes(&fixture, UPDATED_DOCUMENT);

@@ -10,6 +10,8 @@ adoption step after coordinator success cannot satisfy atomic publication.
 
 ## Decisive Evidence
 
+At the Phase 293 diagnosis boundary:
+
 - `crates/beryl-app/src/theme_runtime/adapter.rs` prepares adapters from an immutable generation;
   the prepared adapter's commit receives no GPUI context.
 - The free `commit_adapters` function in `theme_runtime/publication.rs` invokes adapter commits;
@@ -32,12 +34,28 @@ Phase 293 completion review accepted this diagnosis and the Phase 294 prerequisi
 
 ## Correction
 
-Phase 294 separates off-GPUI preparation from one bounded app-owned GPUI window-set publication
-boundary. Every appearance source must use the same barrier; actual adapters finish fallible
-preparation before complete root and mounted-control adoption, and success follows adoption.
-Registration, removal, stale identity, rejection, and retirement retain their existing epoch,
-prior-generation preservation, and release guarantees. Minimal GPUI roots allow independent
-acceptance before Phase 289 integrates that boundary into the ordinary shell.
+Phase 294 replaced per-adapter coordinator dispatch with one bounded app-owned GPUI window-set
+publication boundary in `theme_runtime/gpui_publication.rs`. Every existing appearance source uses
+that target. Workers retain finite appearance facts and receive acknowledgement after actual
+root and mounted-control adoption; repository preparation remains off GPUI. Registration supplies
+the exact current appearance, and window changes invalidate captured epochs.
+
+Adapter callbacks must not run under the mailbox mutex: reentrant snapshot or retirement would
+deadlock GPUI and strand the waiting worker. All adapters prepare outside that lock, every prepared
+root passes final validation, and the exact active/current/epoch checks precede the whole-set
+adoption cut. Retirement before that cut rejects the attempt; retirement after it orders after
+the complete infallible adoption. Retirement itself does not synchronously wait for adoption.
+Closing an earlier root during a later adapter's preparation rejects before any surviving root
+changes. These corrections passed independent semantic review.
+
+`cargo check -p beryl-app --lib --features test-faults --locked` passed. The final
+`cargo nextest run -p beryl-app --test theme_runtime --features test-faults --locked --test-threads 1
+--no-fail-fast --status-level pass` run passed all 33 tests with none skipped (run
+`c8e74459-39d9-428d-983a-ea0738fc20fd`). Five actual GPUI tests in
+`tests/theme_runtime_cases/production/gpui.rs`, with `gpui_fixture.rs`, cover root and composer
+scene colors, unchanged editor state, all appearance sources, rejection, reentrant callbacks,
+pending capacity, creation/removal epoch invalidation, and retirement release. Minimal test roots
+establish this boundary independently; Phase 289 still must integrate the ordinary shell.
 
 ## Retained Shell Checkpoint
 

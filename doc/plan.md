@@ -11,8 +11,8 @@ scrolling, optional activity and discussion surfaces, composer, status line, ove
 Settings entry. Reuse accepted live target-state services, hosts, projections, and widgets; keep
 unimplemented mounts visibly absent or unavailable until their owning bounded phase completes.
 
-Use the accepted, canonically pinned single GPUI dependency graph. Establish actual GPUI window-set
-appearance publication before shell implementation resumes. Keep startup restoration,
+Use the accepted, canonically pinned single GPUI dependency graph and atomic GPUI window-set
+appearance publication when shell implementation resumes. Keep startup restoration,
 onboarding, placement, close, Exit, later catalog/navigation/activity/status/notice/settings/
 transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
 active rework tracker until their own bounded slices are ready.
@@ -21,28 +21,13 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-# Phase 293: Identify The GPUI Appearance Publication Gap (finished)
+# Phase 294: Establish Atomic GPUI Appearance Publication (finished)
 
-Source inspection and independent semantic review established the missing app-owned GPUI
-window-set publication boundary. Phase 294 is architecture-ready and precedes resumed shell work.
-The [publication-gap record](failures/theme-runtime-gpui-publication.md) preserves the evidence and
-unaccepted Phase 289 checkpoint; no shell implementation or test acceptance is claimed.
-
-# Phase 294: Establish Atomic GPUI Appearance Publication (pending)
-
-Connect every existing theme-runtime appearance publication path to one bounded GPUI window-set
-publication boundary. Keep repository access and appearance preparation off GPUI; prepare actual
-window adapters before committing, adopt one complete generation across their roots and mounted
-controls, and report success only after adoption. Derive this integration from the theme-runtime
-system's appearance publication and worker boundaries and the app's Settings and Themes adapter
-contract. Use minimal GPUI test roots independently of the unfinished Phase 289 shell.
-
-Verify initial registration, durable publication, external document refresh, preview replacement,
-Stop Preview, and retained durable retry through actual GPUI adapters. Exercise adapter rejection,
-stale generation or window-set epoch, creation or removal during preparation, and retirement;
-preserve the prior complete appearance on failure and release bounded preparation state. Use two
-GPUI windows to verify coherent root and composer adoption and unchanged editor state. Run focused
-Cargo and nextest checks, then independent semantic review.
+All existing theme-runtime publication routes use one bounded GPUI window-set adoption boundary.
+Focused Cargo verification and all 33 theme-runtime tests passed, including actual root/composer
+painting, editor preservation, rejection, window-set changes, and retirement; independent semantic
+review accepted the result. The [publication record](failures/theme-runtime-gpui-publication.md)
+preserves evidence and the unaccepted Phase 289 checkpoint, which is ready to resume.
 
 # Phase 289: Build The Target-State Main-Window Shell Foundation (pending)
 

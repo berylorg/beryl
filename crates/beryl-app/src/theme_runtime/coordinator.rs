@@ -3,11 +3,11 @@ use std::{num::NonZeroUsize, sync::Arc};
 use beryl_state::{PreparedThemeAppearance, ThemeHomeIdentity};
 
 use super::{
-    AdapterRegistrationError, AppearanceGeneration, AppearanceGenerationNumber,
-    AppearancePublication, AppearanceWindowAdapter, DurablePublicationError,
+    AppearanceGeneration, AppearanceGenerationNumber, AppearancePublication,
+    AppearancePublicationFailure, AppearancePublicationTarget, DurablePublicationError,
     DurablePublicationIdentity, PreviewCandidateIdentity, PreviewPublicationError, PreviewSequence,
-    PreviewSource, PreviewSourceKind, PublicationFailureClass, WindowAdapterId,
-    WindowEpochExhausted, WindowSetEpoch,
+    PreviewSource, PreviewSourceKind, PublicationFailureClass, StalePublicationReason,
+    WindowSetEpoch,
 };
 
 /// Fixed process-local adapter capacity.
@@ -228,8 +228,7 @@ pub struct AppearanceCoordinator {
     pub(super) current: Arc<AppearanceGeneration>,
     pub(super) durable: Arc<AppearanceGeneration>,
     pub(super) last_generation: AppearanceGenerationNumber,
-    pub(super) window_epoch: WindowSetEpoch,
-    pub(super) adapters: Vec<Arc<dyn AppearanceWindowAdapter>>,
+    pub(super) publication_target: Option<Arc<dyn AppearancePublicationTarget>>,
     pub(super) last_preview_sequence: Option<PreviewSequence>,
     pub(super) pending_preview: Option<PreviewDiagnostic>,
     pub(super) last_durable_attempt: u64,
@@ -256,8 +255,7 @@ impl AppearanceCoordinator {
             current: Arc::clone(&generation),
             durable: generation,
             last_generation: number,
-            window_epoch: WindowSetEpoch::initial(),
-            adapters: Vec::with_capacity(config.adapter_capacity().get()),
+            publication_target: None,
             last_preview_sequence: None,
             pending_preview: None,
             last_durable_attempt: 0,
@@ -284,41 +282,36 @@ impl AppearanceCoordinator {
         Arc::clone(&self.durable)
     }
 
-    pub fn register_adapter(
+    pub fn attach_publication_target(
         &mut self,
-        adapter: Arc<dyn AppearanceWindowAdapter>,
-    ) -> Result<(), AdapterRegistrationError> {
-        if self.adapters.len() == self.config.adapter_capacity().get() {
-            return Err(AdapterRegistrationError::CapacityReached);
+        target: Arc<dyn AppearancePublicationTarget>,
+    ) -> Result<(), AppearancePublicationFailure> {
+        let snapshot = target.snapshot();
+        if self.publication_target.is_some() || !snapshot.active {
+            return Err(AppearancePublicationFailure::Unavailable);
         }
-        let id = adapter.id();
-        if self.adapters.iter().any(|existing| existing.id() == id) {
-            return Err(AdapterRegistrationError::DuplicateIdentity(id));
+        if !Arc::ptr_eq(&snapshot.current, &self.current) {
+            return Err(AppearancePublicationFailure::Stale(
+                StalePublicationReason::CurrentGeneration,
+            ));
         }
-        let next_epoch = self
-            .window_epoch
-            .checked_next()
-            .map_err(|_| AdapterRegistrationError::WindowEpochExhausted)?;
-        let prepared = adapter
-            .prepare(Arc::clone(&self.current))
-            .map_err(|class| AdapterRegistrationError::Preparation { adapter: id, class })?;
-        prepared.commit();
-        self.adapters.push(adapter);
-        self.window_epoch = next_epoch;
+        if snapshot.capacity != self.config.adapter_capacity().get() {
+            return Err(AppearancePublicationFailure::CapacityReached);
+        }
+        self.publication_target = Some(target);
         Ok(())
     }
 
-    pub fn unregister_adapter(
-        &mut self,
-        id: WindowAdapterId,
-    ) -> Result<bool, WindowEpochExhausted> {
-        let Some(index) = self.adapters.iter().position(|adapter| adapter.id() == id) else {
-            return Ok(false);
-        };
-        let next_epoch = self.window_epoch.checked_next()?;
-        self.adapters.remove(index);
-        self.window_epoch = next_epoch;
-        Ok(true)
+    pub fn is_publication_thread(&self) -> bool {
+        self.publication_target
+            .as_ref()
+            .is_some_and(|target| target.is_publication_thread())
+    }
+
+    pub(super) fn window_epoch(&self) -> WindowSetEpoch {
+        self.publication_target
+            .as_ref()
+            .map_or(WindowSetEpoch::initial(), |target| target.snapshot().epoch)
     }
 
     #[must_use]
@@ -326,8 +319,11 @@ impl AppearanceCoordinator {
         AppearanceDiagnostics {
             current_generation: self.current.number(),
             durable_generation: self.durable.number(),
-            window_epoch: self.window_epoch,
-            adapter_count: self.adapters.len(),
+            window_epoch: self.window_epoch(),
+            adapter_count: self
+                .publication_target
+                .as_ref()
+                .map_or(0, |target| target.snapshot().count),
             adapter_capacity: self.config.adapter_capacity(),
             current_preview: self.current_preview_diagnostic(),
             pending_preview: self.pending_preview,
@@ -337,7 +333,11 @@ impl AppearanceCoordinator {
         }
     }
 
-    pub fn retire(self) {}
+    pub fn retire(self) {
+        if let Some(target) = self.publication_target {
+            target.retire();
+        }
+    }
 
     fn current_preview_diagnostic(&self) -> Option<PreviewDiagnostic> {
         let AppearancePublication::Preview {

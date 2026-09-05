@@ -66,6 +66,16 @@ impl From<AdapterFailureClass> for PublicationFailureClass {
     }
 }
 
+impl From<super::AppearancePublicationFailure> for PublicationFailureClass {
+    fn from(value: super::AppearancePublicationFailure) -> Self {
+        match value {
+            super::AppearancePublicationFailure::Adapter { class, .. } => class.into(),
+            super::AppearancePublicationFailure::Stale(_) => Self::Stale,
+            _ => Self::AdapterUnavailable,
+        }
+    }
+}
+
 /// Exact freshness fence that rejected a completion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StalePublicationReason {
@@ -107,6 +117,7 @@ impl Error for AdapterRegistrationError {}
 /// Durable-base preparation or all-window publication failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DurablePublicationError {
+    WindowSet(super::AppearancePublicationFailure),
     AttemptExhausted,
     GenerationExhausted,
     PreviewSequenceExhausted,
@@ -121,6 +132,7 @@ pub enum DurablePublicationError {
 impl fmt::Display for DurablePublicationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::WindowSet(_) => formatter.write_str("appearance window-set publication failed"),
             Self::AttemptExhausted => formatter.write_str("durable publication attempt exhausted"),
             Self::GenerationExhausted => formatter.write_str("appearance generation exhausted"),
             Self::PreviewSequenceExhausted => formatter.write_str("preview sequence exhausted"),
@@ -138,6 +150,7 @@ impl Error for DurablePublicationError {}
 /// Preview arbitration or all-window publication failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PreviewPublicationError {
+    WindowSet(super::AppearancePublicationFailure),
     SequenceExhausted,
     GenerationExhausted,
     Stale(StalePublicationReason),
@@ -151,6 +164,7 @@ pub enum PreviewPublicationError {
 impl fmt::Display for PreviewPublicationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::WindowSet(_) => formatter.write_str("appearance window-set publication failed"),
             Self::SequenceExhausted => formatter.write_str("preview sequence exhausted"),
             Self::GenerationExhausted => formatter.write_str("appearance generation exhausted"),
             Self::Stale(_) => formatter.write_str("stale preview completion"),

@@ -3,9 +3,9 @@ use std::sync::Arc;
 use beryl_state::{PreparedThemeAppearance, ThemeAppearanceSource, ThemeHomeIdentity};
 
 use super::{
-    AdapterFailureClass, AppearanceCoordinator, AppearanceGeneration, AppearancePublication,
-    DurablePublicationError, DurablePublicationIdentity, DurablePublicationOutcome,
-    DurableRetryOutcome, PreparedPreviewAppearance, PreparedWindowAppearance,
+    AppearanceCoordinator, AppearanceGeneration, AppearancePublication,
+    AppearancePublicationFailure, DurablePublicationError, DurablePublicationIdentity,
+    DurablePublicationOutcome, DurableRetryOutcome, PreparedPreviewAppearance,
     PreviewCandidateIdentity, PreviewDiagnostic, PreviewPublicationError,
     PreviewPublicationRequest, PreviewPublicationResult, PreviewSequence, PreviewSource,
     PublicationFailureClass, StalePublicationReason, StopPreviewResult,
@@ -16,6 +16,11 @@ impl AppearanceCoordinator {
         &mut self,
         identity: DurablePublicationIdentity,
     ) -> Result<super::DurablePublicationRequest, DurablePublicationError> {
+        if self.is_publication_thread() {
+            return Err(DurablePublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         if let Some(home) = durable_identity_home(&identity)
             && home != self.home
         {
@@ -35,7 +40,7 @@ impl AppearanceCoordinator {
             home: self.home,
             durable_generation: self.durable.number(),
             current_generation: self.current.number(),
-            window_epoch: self.window_epoch,
+            window_epoch: self.window_epoch(),
             preview_sequence: self.last_preview_sequence,
             identity,
         })
@@ -46,6 +51,11 @@ impl AppearanceCoordinator {
         source: PreviewSource,
         candidate: PreviewCandidateIdentity,
     ) -> Result<PreviewPublicationRequest, PreviewPublicationError> {
+        if self.is_publication_thread() {
+            return Err(PreviewPublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         if let PreviewCandidateIdentity::Document(document) = &candidate
             && document.manifest().home() != self.home
         {
@@ -64,7 +74,7 @@ impl AppearanceCoordinator {
             home: self.home,
             durable_generation: self.durable.number(),
             current_generation: self.current.number(),
-            window_epoch: self.window_epoch,
+            window_epoch: self.window_epoch(),
             sequence,
             source,
             candidate,
@@ -93,6 +103,11 @@ impl AppearanceCoordinator {
         prepared: PreparedThemeAppearance,
         retain_rejected: bool,
     ) -> Result<DurablePublicationOutcome, DurablePublicationError> {
+        if self.is_publication_thread() {
+            return Err(DurablePublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         self.validate_durable_request(&request)?;
         if !durable_candidate_matches(&request.identity, &prepared, self.home) {
             self.latest_durable_attempt = None;
@@ -117,23 +132,7 @@ impl AppearanceCoordinator {
             return Ok(DurablePublicationOutcome::HiddenBaseReplaced(generation));
         }
 
-        let adapter_publications = match self.prepare_adapters(Arc::clone(&generation)) {
-            Ok(publications) => publications,
-            Err((adapter, class)) => {
-                if retain_rejected {
-                    self.durable = generation;
-                    self.pending_durable_application = true;
-                    self.pending_durable_ends_preview = request.identity.ends_preview();
-                }
-                self.latest_durable_attempt = None;
-                self.last_failure = Some(class.into());
-                return Err(DurablePublicationError::Adapter { adapter, class });
-            }
-        };
         self.validate_durable_request(&request)?;
-        self.durable = Arc::clone(&generation);
-        self.pending_durable_application = true;
-        self.pending_durable_ends_preview = request.identity.ends_preview();
 
         let preview_end_sequence = if request.identity.ends_preview()
             && (self.current.is_preview() || self.pending_preview.is_some())
@@ -146,7 +145,18 @@ impl AppearanceCoordinator {
             None
         };
 
-        commit_adapters(adapter_publications);
+        if let Err(failure) = self.publish_window_set(request.window_epoch, Arc::clone(&generation))
+        {
+            if retain_rejected {
+                self.durable = generation;
+                self.pending_durable_application = true;
+                self.pending_durable_ends_preview = request.identity.ends_preview();
+            }
+            self.latest_durable_attempt = None;
+            self.last_failure = Some(failure.into());
+            return Err(durable_window_set_error(failure));
+        }
+        self.durable = Arc::clone(&generation);
         self.current = Arc::clone(&generation);
         self.pending_durable_application = false;
         self.pending_durable_ends_preview = false;
@@ -162,6 +172,11 @@ impl AppearanceCoordinator {
     pub fn retry_durable_publication(
         &mut self,
     ) -> Result<DurableRetryOutcome, DurablePublicationError> {
+        if self.is_publication_thread() {
+            return Err(DurablePublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         if !self.pending_durable_application {
             return Ok(DurableRetryOutcome::NotPending);
         }
@@ -173,12 +188,6 @@ impl AppearanceCoordinator {
             )));
         }
         let generation = Arc::clone(&self.durable);
-        let adapter_publications =
-            self.prepare_adapters(Arc::clone(&generation))
-                .map_err(|(adapter, class)| {
-                    self.last_failure = Some(class.into());
-                    DurablePublicationError::Adapter { adapter, class }
-                })?;
         let preview_end_sequence = if self.pending_durable_ends_preview
             && (self.current.is_preview() || self.pending_preview.is_some())
         {
@@ -189,7 +198,11 @@ impl AppearanceCoordinator {
         } else {
             None
         };
-        commit_adapters(adapter_publications);
+        self.publish_window_set(self.window_epoch(), Arc::clone(&generation))
+            .map_err(|failure| {
+                self.last_failure = Some(failure.into());
+                durable_window_set_error(failure)
+            })?;
         self.current = Arc::clone(&generation);
         self.pending_preview = None;
         self.pending_durable_application = false;
@@ -206,6 +219,11 @@ impl AppearanceCoordinator {
         request: PreviewPublicationRequest,
         completion: PreparedPreviewAppearance,
     ) -> Result<PreviewPublicationResult, PreviewPublicationError> {
+        if self.is_publication_thread() {
+            return Err(PreviewPublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         self.validate_preview_request(&request)?;
         if request.candidate != completion.candidate
             || !preview_candidate_matches(&completion.candidate, &completion.prepared, self.home)
@@ -230,14 +248,12 @@ impl AppearanceCoordinator {
                 );
                 PreviewPublicationError::GenerationExhausted
             })?;
-        let adapter_publications =
-            self.prepare_adapters(Arc::clone(&generation))
-                .map_err(|(adapter, class)| {
-                    self.finish_failed_preview(request.sequence, class.into());
-                    PreviewPublicationError::Adapter { adapter, class }
-                })?;
         self.validate_preview_request(&request)?;
-        commit_adapters(adapter_publications);
+        self.publish_window_set(request.window_epoch, Arc::clone(&generation))
+            .map_err(|failure| {
+                self.finish_failed_preview(request.sequence, failure.into());
+                preview_window_set_error(failure)
+            })?;
         self.current = Arc::clone(&generation);
         self.pending_preview = None;
         self.last_failure = None;
@@ -245,6 +261,11 @@ impl AppearanceCoordinator {
     }
 
     pub fn stop_preview(&mut self) -> Result<StopPreviewResult, PreviewPublicationError> {
+        if self.is_publication_thread() {
+            return Err(PreviewPublicationError::WindowSet(
+                AppearancePublicationFailure::Reentrant,
+            ));
+        }
         let sequence = self
             .next_preview_sequence()
             .map_err(|_| PreviewPublicationError::SequenceExhausted)?;
@@ -267,13 +288,11 @@ impl AppearanceCoordinator {
                 PreviewPublicationError::GenerationExhausted
             })?
         };
-        let adapter_publications =
-            self.prepare_adapters(Arc::clone(&restoration))
-                .map_err(|(adapter, class)| {
-                    self.last_failure = Some(class.into());
-                    PreviewPublicationError::Adapter { adapter, class }
-                })?;
-        commit_adapters(adapter_publications);
+        self.publish_window_set(self.window_epoch(), Arc::clone(&restoration))
+            .map_err(|failure| {
+                self.last_failure = Some(failure.into());
+                preview_window_set_error(failure)
+            })?;
         self.current = Arc::clone(&restoration);
         self.durable = Arc::clone(&restoration);
         self.pending_durable_application = false;
@@ -294,7 +313,7 @@ impl AppearanceCoordinator {
             Some(StalePublicationReason::DurableGeneration)
         } else if request.current_generation != self.current.number() {
             Some(StalePublicationReason::CurrentGeneration)
-        } else if request.window_epoch != self.window_epoch {
+        } else if request.window_epoch != self.window_epoch() {
             Some(StalePublicationReason::WindowSetEpoch)
         } else if request.preview_sequence != self.last_preview_sequence {
             Some(StalePublicationReason::PreviewSequence)
@@ -318,7 +337,7 @@ impl AppearanceCoordinator {
             Some(StalePublicationReason::DurableGeneration)
         } else if request.current_generation != self.current.number() {
             Some(StalePublicationReason::CurrentGeneration)
-        } else if request.window_epoch != self.window_epoch {
+        } else if request.window_epoch != self.window_epoch() {
             Some(StalePublicationReason::WindowSetEpoch)
         } else if self.last_preview_sequence != Some(request.sequence)
             || self.pending_preview.map(|pending| pending.sequence()) != Some(request.sequence)
@@ -358,19 +377,15 @@ impl AppearanceCoordinator {
         )
     }
 
-    fn prepare_adapters(
+    fn publish_window_set(
         &self,
+        epoch: super::WindowSetEpoch,
         generation: Arc<AppearanceGeneration>,
-    ) -> Result<Vec<Box<dyn PreparedWindowAppearance>>, (super::WindowAdapterId, AdapterFailureClass)>
-    {
-        let mut prepared = Vec::with_capacity(self.adapters.len());
-        for adapter in &self.adapters {
-            match adapter.prepare(Arc::clone(&generation)) {
-                Ok(publication) => prepared.push(publication),
-                Err(class) => return Err((adapter.id(), class)),
-            }
+    ) -> Result<(), AppearancePublicationFailure> {
+        if let Some(target) = &self.publication_target {
+            target.publish(epoch, Arc::clone(&self.current), generation)?;
         }
-        Ok(prepared)
+        Ok(())
     }
 
     fn finish_failed_preview(
@@ -390,9 +405,23 @@ impl AppearanceCoordinator {
     }
 }
 
-fn commit_adapters(publications: Vec<Box<dyn PreparedWindowAppearance>>) {
-    for publication in publications {
-        publication.commit();
+fn durable_window_set_error(failure: AppearancePublicationFailure) -> DurablePublicationError {
+    match failure {
+        AppearancePublicationFailure::Adapter { adapter, class } => {
+            DurablePublicationError::Adapter { adapter, class }
+        }
+        AppearancePublicationFailure::Stale(reason) => DurablePublicationError::Stale(reason),
+        failure => DurablePublicationError::WindowSet(failure),
+    }
+}
+
+fn preview_window_set_error(failure: AppearancePublicationFailure) -> PreviewPublicationError {
+    match failure {
+        AppearancePublicationFailure::Adapter { adapter, class } => {
+            PreviewPublicationError::Adapter { adapter, class }
+        }
+        AppearancePublicationFailure::Stale(reason) => PreviewPublicationError::Stale(reason),
+        failure => PreviewPublicationError::WindowSet(failure),
     }
 }
 

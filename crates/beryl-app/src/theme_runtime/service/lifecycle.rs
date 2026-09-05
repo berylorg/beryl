@@ -72,23 +72,14 @@ impl ThemeRuntime {
         self.appearance.as_ref().map(AppearanceCoordinator::current)
     }
 
-    pub fn register_adapter(
+    pub fn attach_publication_target(
         &mut self,
-        adapter: Arc<dyn AppearanceWindowAdapter>,
-    ) -> Result<(), AdapterRegistrationError> {
+        target: Arc<dyn AppearancePublicationTarget>,
+    ) -> Result<(), AppearancePublicationFailure> {
         self.appearance
             .as_mut()
-            .ok_or(AdapterRegistrationError::CapacityReached)?
-            .register_adapter(adapter)
-    }
-
-    pub fn unregister_adapter(
-        &mut self,
-        id: WindowAdapterId,
-    ) -> Result<bool, WindowEpochExhausted> {
-        self.appearance
-            .as_mut()
-            .map_or(Ok(false), |value| value.unregister_adapter(id))
+            .ok_or(AppearancePublicationFailure::Unavailable)?
+            .attach_publication_target(target)
     }
 
     pub fn stop_preview(&mut self) -> Result<StopPreviewResult, PreviewPublicationError> {

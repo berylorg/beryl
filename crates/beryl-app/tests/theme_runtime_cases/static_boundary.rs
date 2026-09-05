@@ -32,7 +32,7 @@ fn coordinator_has_no_gui_storage_document_or_repository_authority() {
 }
 
 #[test]
-fn crate_entry_point_mounts_only_the_pre_gui_theme_runtime() {
+fn crate_entry_point_routes_theme_runtime_without_mounting_the_shell() {
     let entry = include_str!("../../src/lib.rs");
     assert!(entry.contains("pub mod theme_runtime;"));
     assert!(!entry.contains("mod appearance;"));

@@ -15,12 +15,11 @@ use beryl_state::{
 };
 
 use super::{
-    AdapterRegistrationError, AppearanceCoordinator, AppearanceCoordinatorConfig,
-    AppearanceDiagnostics, AppearanceGeneration, AppearanceWindowAdapter,
+    AppearanceCoordinator, AppearanceCoordinatorConfig, AppearanceDiagnostics,
+    AppearanceGeneration, AppearancePublicationFailure, AppearancePublicationTarget,
     DurablePublicationIdentity, DurablePublicationOutcome, DurableRetryOutcome,
     PreparedPreviewAppearance, PreviewCandidateIdentity, PreviewPublicationError,
     PreviewPublicationRequest, PreviewPublicationResult, PreviewSource, StopPreviewResult,
-    WindowAdapterId, WindowEpochExhausted,
 };
 use std::sync::Arc;
 
@@ -448,6 +447,12 @@ impl ThemeRuntime {
     fn ensure_running(&self) -> Result<(), ThemeRuntimeFailureClass> {
         if self.appearance.is_none() || self.service.is_none() {
             Err(ThemeRuntimeFailureClass::Retired)
+        } else if self
+            .appearance
+            .as_ref()
+            .is_some_and(AppearanceCoordinator::is_publication_thread)
+        {
+            Err(ThemeRuntimeFailureClass::Publication)
         } else {
             Ok(())
         }
