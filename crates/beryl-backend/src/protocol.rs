@@ -27,6 +27,10 @@ pub struct InitializeResponse {
     pub codex_home: String,
     pub platform_family: String,
     pub platform_os: String,
+    #[serde(default)]
+    pub turn_scoped_developer_instructions_version: Option<u32>,
+    #[serde(flatten)]
+    pub compaction_observation: crate::CompactionObservationCapability,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +87,8 @@ const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
 pub struct CompatibilitySnapshot {
     platform_family: String,
     platform_os: String,
+    turn_scoped_developer_instructions_version: Option<u32>,
+    compaction_observation: crate::CompactionObservationCapability,
     requires_method_probes: bool,
 }
 
@@ -91,6 +97,9 @@ impl CompatibilitySnapshot {
         Self {
             platform_family: response.platform_family.clone(),
             platform_os: response.platform_os.clone(),
+            turn_scoped_developer_instructions_version: response
+                .turn_scoped_developer_instructions_version,
+            compaction_observation: response.compaction_observation.clone(),
             requires_method_probes: true,
         }
     }
@@ -105,6 +114,14 @@ impl CompatibilitySnapshot {
 
     pub fn requires_method_probes(&self) -> bool {
         self.requires_method_probes
+    }
+
+    pub fn turn_scoped_developer_instructions_version(&self) -> Option<u32> {
+        self.turn_scoped_developer_instructions_version
+    }
+
+    pub fn compaction_observation(&self) -> &crate::CompactionObservationCapability {
+        &self.compaction_observation
     }
 
     pub fn required_method_probes(&self) -> &'static [CompatibilityProbe] {
@@ -136,6 +153,14 @@ impl CompatibilitySnapshot {
             });
         }
 
+        if self.turn_scoped_developer_instructions_version != Some(1) {
+            return Err(
+                CompatibilityError::TurnScopedDeveloperInstructionsVersionMismatch {
+                    actual_version: self.turn_scoped_developer_instructions_version,
+                },
+            );
+        }
+
         Ok(())
     }
 }
@@ -158,6 +183,10 @@ pub enum CompatibilityError {
         expected_platform_os: &'static str,
         actual_platform_os: String,
     },
+    #[error(
+        "backend must advertise turnScopedDeveloperInstructionsVersion 1, got {actual_version:?}"
+    )]
+    TurnScopedDeveloperInstructionsVersionMismatch { actual_version: Option<u32> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

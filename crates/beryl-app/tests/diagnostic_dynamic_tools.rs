@@ -2,6 +2,8 @@
 mod activity_lifecycle_diagnostics;
 #[path = "../src/activity_presentation_diagnostics.rs"]
 mod activity_presentation_diagnostics;
+#[path = "../src/compaction_diagnostics.rs"]
+mod compaction_diagnostics;
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
@@ -25,6 +27,10 @@ use beryl_backend::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
     parse_dynamic_tool_call_request,
 };
+use compaction_diagnostics::{
+    CompactionDiagnosticCategory, CompactionDiagnosticEventData, CompactionDiagnosticSnapshot,
+    CompactionDiagnosticStage, CompactionDiagnosticStart, CompactionDiagnostics,
+};
 use diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, MediaDiagnosticEvent, MediaDiagnosticLog, MediaEventSnapshot,
     MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewDiagnostic,
@@ -37,12 +43,40 @@ use diagnostic_dynamic_tools::{
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
     ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
     TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
-    VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
+    VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs, compaction_diagnostics_result,
     dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
     renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
+
+#[test]
+fn compaction_tool_filters_before_its_public_64_event_cap() {
+    let diagnostics = CompactionDiagnostics::default();
+    let handle = diagnostics.begin(CompactionDiagnosticStart {
+        local_generation: 1,
+        workspace_identity: Some("workspace"),
+        runtime_alias: Some("runtime-1"),
+        thread_identity: Some("thread"),
+        warning_threshold: std::time::Duration::from_secs(180),
+    });
+    for sequence in 0..100 {
+        handle.record(
+            CompactionDiagnosticStage::Lifecycle,
+            CompactionDiagnosticCategory::ItemCompleted,
+            CompactionDiagnosticEventData {
+                turn_identity: Some("turn"),
+                elapsed: std::time::Duration::from_secs(sequence),
+                last_event_age: None,
+            },
+        );
+    }
+
+    let page = compaction_diagnostics_result(diagnostics.snapshot(), Some(64), 64);
+    assert_eq!(page.returned_count, 37);
+    assert_eq!(page.events.first().unwrap().sequence, 65);
+    assert_eq!(page.events.last().unwrap().sequence, 101);
+}
 
 #[test]
 fn activity_lifecycle_ring_enforces_identity_validity_and_storage_bounds() {
@@ -664,6 +698,7 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
             activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
             activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
+            compaction: CompactionDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -730,6 +765,7 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
             activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
             activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
+            compaction: CompactionDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -807,6 +843,7 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
             activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
             activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
+            compaction: CompactionDiagnosticSnapshot::default(),
         },
     );
     let payload = response_json(&response);
@@ -980,6 +1017,7 @@ fn diagnostic_snapshot(
         settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         activity_lifecycle: ActivityLifecycleDiagnosticSnapshot::default(),
         activity_presentation: ActivityPresentationDiagnosticSnapshot::default(),
+        compaction: CompactionDiagnosticSnapshot::default(),
     }
 }
 

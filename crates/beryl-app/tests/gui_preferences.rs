@@ -47,6 +47,11 @@ fn gui_preferences_roundtrip_through_preferences_toml() {
     };
 
     store.save(&preferences).unwrap();
+    assert!(
+        fs::read_to_string(store.preferences_path())
+            .unwrap()
+            .contains("context_compaction_timeout_seconds = 240")
+    );
 
     let loaded = store.load_or_default().unwrap();
     assert_eq!(

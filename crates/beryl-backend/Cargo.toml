@@ -26,6 +26,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+uuid.workspace = true
 wait-timeout.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -929,6 +929,10 @@ fn diagnostic_settings_update_schema_and_parser_are_strict_and_typed() {
         .input_schema;
     assert_eq!(schema["additionalProperties"], false);
     assert_eq!(
+        schema["properties"]["operations"]["properties"]["contextCompactionTimeoutSeconds"]["description"],
+        "Seconds after accepted compaction before Beryl reports a warning and continues observation."
+    );
+    assert_eq!(
         schema["properties"]["diagnostics"]["additionalProperties"],
         false
     );

@@ -139,6 +139,87 @@ fn managed_websocket_routes_error_notification_as_a_turn_event() {
 }
 
 #[test]
+fn managed_websocket_routes_cas_shaped_errors_and_later_terminal_events() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        for (turn_id, will_retry, status) in [
+            ("retry_turn", true, "completed"),
+            ("terminal_turn", false, "failed"),
+        ] {
+            socket
+                .send(Message::text(
+                    json!({
+                        "method": "error",
+                        "params": {
+                            "threadId": "stream_thread",
+                            "turnId": turn_id,
+                            "willRetry": will_retry,
+                            "error": { "message": "upstream failure" }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap();
+            socket
+                .send(Message::text(
+                    json!({
+                        "method": "turn/completed",
+                        "params": {
+                            "threadId": "stream_thread",
+                            "turn": {
+                                "id": turn_id,
+                                "status": status,
+                                "items": []
+                            }
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap();
+        }
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    for (turn_id, will_retry, status) in [
+        ("retry_turn", true, beryl_backend::TurnStatus::Completed),
+        ("terminal_turn", false, beryl_backend::TurnStatus::Failed),
+    ] {
+        let event = client
+            .next_turn_stream_event(Duration::from_secs(2))
+            .expect("CAS-shaped error notification should not fail the stream")
+            .expect("CAS-shaped error notification should produce an event");
+        let TurnStreamEvent::TurnError {
+            thread_id,
+            turn_id: actual_turn_id,
+            error,
+            will_retry: actual_will_retry,
+        } = event
+        else {
+            panic!("expected normalized CAS-shaped turn error");
+        };
+        assert_eq!(thread_id, "stream_thread");
+        assert_eq!(actual_turn_id, turn_id);
+        assert_eq!(error.message, "upstream failure");
+        assert_eq!(actual_will_retry, will_retry);
+
+        let terminal = client
+            .next_turn_stream_event(Duration::from_secs(2))
+            .expect("terminal notification after CAS-shaped error should remain readable");
+        let Some(TurnStreamEvent::TurnCompleted { thread_id, turn }) = terminal else {
+            panic!("expected terminal event after CAS-shaped error");
+        };
+        assert_eq!(thread_id, "stream_thread");
+        assert_eq!(turn.id, turn_id);
+        assert_eq!(turn.status, status);
+    }
+    server.join().unwrap();
+}
+
+#[test]
 fn managed_websocket_rejects_error_notification_without_params() {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
@@ -184,11 +265,17 @@ fn managed_websocket_rejects_malformed_error_notification_envelopes() {
             "params": valid_error_notification_params()
         }),
         json!({
+            "jsonrpc": null,
             "method": "error",
             "params": valid_error_notification_params()
         }),
         json!({
             "jsonrpc": "1.0",
+            "method": "error",
+            "params": valid_error_notification_params()
+        }),
+        json!({
+            "jsonrpc": true,
             "method": "error",
             "params": valid_error_notification_params()
         }),
@@ -212,6 +299,41 @@ fn managed_websocket_rejects_malformed_error_notification_envelopes() {
         ));
         server.join().unwrap();
     }
+}
+
+#[test]
+fn managed_websocket_rejects_cas_shaped_error_notification_with_invalid_typed_params() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        socket
+            .send(Message::text(
+                json!({
+                    "method": "error",
+                    "params": {
+                        "threadId": 17,
+                        "turnId": "turn_123",
+                        "willRetry": false,
+                        "error": { "message": "backend error" }
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .next_turn_stream_event(Duration::from_secs(2))
+        .expect_err("typed error notification fields must stay validated");
+    assert!(matches!(
+        error,
+        ManagedBackendError::DeserializeNotification { ref method, .. } if method == "error"
+    ));
+    server.join().unwrap();
 }
 
 #[test]
@@ -1136,7 +1258,8 @@ fn initialize_response(request_id: u64) -> String {
             "userAgent": "codex-cli 0.125.0",
             "codexHome": "C:/Users/example/.codex",
             "platformFamily": "windows",
-            "platformOs": "windows"
+            "platformOs": "windows",
+            "turnScopedDeveloperInstructionsVersion": 1
         }
     })
     .to_string()

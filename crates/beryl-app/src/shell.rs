@@ -411,6 +411,9 @@ mod checklist_sidebar_projection;
 mod checklist_sidebar_visibility;
 mod checklist_thread_menu;
 mod column_selector;
+mod compaction_control;
+mod compaction_integration;
+mod compaction_observer;
 mod composer_clipboard;
 mod composer_draft;
 mod composer_history;
@@ -421,7 +424,6 @@ mod composer_image_labels;
 mod composer_measurement;
 mod composer_submission;
 mod composer_submit;
-mod context_compaction;
 mod diagnostics;
 mod discovery;
 mod dynamic_settings;
@@ -530,6 +532,7 @@ use checklist_thread_menu::ChecklistThreadStartMenuState;
 use column_selector::{
     ColumnSelectorKeyboardIntent, ColumnSelectorScrollState, ColumnSelectorSurface,
 };
+use compaction_integration::StatusOperationTask;
 use composer_clipboard::{
     ComposerClipboardAtom, ComposerClipboardImage, ComposerClipboardLabelScope,
     ComposerClipboardPastePlan, ComposerClipboardPayload, ComposerClipboardPayloadError,
@@ -620,7 +623,6 @@ use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, ThreadTurnDefaults,
 };
-use status_operation::{StatusOperationUpdate, spawn_context_compaction_worker};
 use status_operation_state::{StatusLineOperationState, StatusModelListCache};
 use surface_notice::{
     SurfaceNotice, SurfaceNoticeQueue, local_turn_failure_notice,
@@ -916,7 +918,10 @@ pub(super) struct ShellView {
     composer_image_delivery_receiver: Option<Receiver<ComposerImageDeliveryUpdate>>,
     thread_title_receivers: Vec<ThreadTitleTask>,
     thread_title_update_receivers: Vec<ThreadTitleTask>,
-    status_operation_receiver: Option<Receiver<StatusOperationUpdate>>,
+    status_operation_receiver: Option<StatusOperationTask>,
+    next_compaction_generation: u64,
+    compaction_diagnostics: crate::compaction_diagnostics::CompactionDiagnostics,
+    compaction_diagnostic_operation: Option<compaction_integration::CompactionDiagnosticOperation>,
     pending_lifecycle_phase_continue: Option<PhaseContinueRequest>,
     pending_lifecycle_phase_continue_new_thread: Option<PhaseContinueNewThreadHandoff>,
     phase_continue_new_thread_handoff: Option<PhaseContinueNewThreadHandoff>,
@@ -1451,6 +1456,7 @@ struct ConversationSurfaceState {
     invalidated_stream_turns: TranscriptStreamInvalidations,
     pending_thread_activation: Option<PendingThreadActivation>,
     context_compaction_thread_id: Option<String>,
+    held_compaction_thread_id: Option<String>,
     composer_image_labels: ComposerImageLabelState,
     pending_new_thread_label_scope_id: u64,
     next_pending_new_thread_label_scope_id: u64,
@@ -2096,6 +2102,7 @@ impl ConversationSurfaceState {
             invalidated_stream_turns: TranscriptStreamInvalidations::default(),
             pending_thread_activation: None,
             context_compaction_thread_id: None,
+            held_compaction_thread_id: None,
             composer_image_labels: ComposerImageLabelState::default(),
             pending_new_thread_label_scope_id: 0,
             next_pending_new_thread_label_scope_id: 1,
@@ -3172,6 +3179,7 @@ impl ConversationSurfaceState {
             invalidated_stream_turns: self.invalidated_stream_turns.clone(),
             pending_thread_activation: self.pending_thread_activation.clone(),
             context_compaction_thread_id: self.context_compaction_thread_id.clone(),
+            held_compaction_thread_id: self.held_compaction_thread_id.clone(),
             composer_image_labels: self.composer_image_labels.clone(),
             pending_new_thread_label_scope_id: self.pending_new_thread_label_scope_id,
             next_pending_new_thread_label_scope_id: self.next_pending_new_thread_label_scope_id,
@@ -3223,6 +3231,7 @@ impl ConversationSurfaceState {
 
     fn refresh_after_backend_reopen(
         &mut self,
+        workspace_id: &str,
         workspace_state: &WorkspaceConversationState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
@@ -3237,6 +3246,14 @@ impl ConversationSurfaceState {
         graph_warning: Option<String>,
     ) {
         let previous_selected_thread = self.selected_thread().cloned();
+        let preserved_input = selected_thread_history
+            .as_ref()
+            .filter(|_| {
+                self.pending_turn_input_queue
+                    .as_ref()
+                    .is_some_and(|queue| queue.is_compaction_queue())
+            })
+            .and_then(|_| self.pending_turn_input_queue.take());
         let known_thread_pin = selected_thread_id.clone().or_else(|| {
             previous_selected_thread
                 .as_ref()
@@ -3287,6 +3304,9 @@ impl ConversationSurfaceState {
             }
         }
 
+        if let Some(queue) = preserved_input {
+            self.restore_held_input_after_reopen(queue, workspace_id, workspace_state);
+        }
         if let Some(notice) = notice {
             self.set_notice(notice);
         }
@@ -3580,6 +3600,7 @@ impl ConversationSurfaceState {
         self.invalidated_stream_turns.clear();
         self.pending_thread_activation = None;
         self.context_compaction_thread_id = None;
+        self.held_compaction_thread_id = None;
         self.transcript_branch_menu.close();
         self.cancel_transcript_edit_mode();
         self.composer_image_labels.reset_pending_new_thread();
@@ -3669,6 +3690,7 @@ impl ConversationSurfaceState {
         self.invalidated_stream_turns.clear();
         self.pending_thread_activation = None;
         self.context_compaction_thread_id = None;
+        self.held_compaction_thread_id = None;
         self.transcript_branch_menu.close();
         self.cancel_transcript_edit_mode();
         self.pending_turn_input_queue = None;
@@ -3687,6 +3709,9 @@ impl ConversationSurfaceState {
 
     fn begin_turn(&mut self, user_input: UserInputFragment) {
         let thread_id = self.selected_thread_id().map(str::to_string);
+        if let Some(thread_id) = &thread_id {
+            self.status_line.clear_compaction_outcome(thread_id);
+        }
         self.begin_turn_for_thread_id(thread_id, user_input);
     }
 
@@ -4067,7 +4092,9 @@ impl ConversationSurfaceState {
             .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
         self.loaded_history_anchor_pending = false;
         self.transcript_user_scrolled = false;
-        self.notices.clear_all();
+        if self.context_compaction_thread_id.is_none() && self.held_compaction_thread_id.is_none() {
+            self.notices.clear_all();
+        }
         self.sync_live_transcript_rows(before);
         true
     }
@@ -4090,17 +4117,6 @@ impl ConversationSurfaceState {
         self.context_compaction_thread_id.as_deref()
     }
 
-    fn observe_context_compaction_event(&mut self, event: &beryl_backend::TurnStreamEvent) -> bool {
-        let Some(thread_id) = self.context_compaction_thread_id.as_deref() else {
-            return false;
-        };
-        let Some(turn_id) = context_compaction::context_compaction_turn_id(thread_id, event) else {
-            return false;
-        };
-        self.status_line
-            .set_context_compaction_turn_id(thread_id, turn_id)
-    }
-
     fn take_pending_turn_input_queue_for_thread(
         &mut self,
         thread_id: &str,
@@ -4114,6 +4130,7 @@ impl ConversationSurfaceState {
         }
 
         let queue = self.pending_turn_input_queue.take()?;
+        self.status_line.clear_compaction_outcome(thread_id);
         if self
             .execution_details
             .activate_pending_turn(queue.turn_index())
@@ -4170,6 +4187,11 @@ impl ConversationSurfaceState {
     ) -> AppliedStreamEvent {
         if self.stream_event_targets_invalidated_turn(&event) {
             return AppliedStreamEvent::default();
+        }
+        if let beryl_backend::TurnStreamEvent::TurnStarted { thread_id, .. } = &event
+            && self.context_compaction_thread_id.as_deref() != Some(thread_id.as_str())
+        {
+            self.status_line.clear_compaction_outcome(thread_id);
         }
 
         let terminal_turn = match &event {
@@ -4378,6 +4400,8 @@ impl ConversationSurfaceState {
     fn mark_selected_turn_finished_idle(&mut self, active_thread_id: &str) -> bool {
         if self.selected_thread_id() != Some(active_thread_id)
             || self.execution_details.working_turn_index().is_some()
+            || self.context_compaction_thread_id.as_deref() == Some(active_thread_id)
+            || self.held_compaction_thread_id.as_deref() == Some(active_thread_id)
         {
             return false;
         }
@@ -4772,6 +4796,9 @@ impl ShellView {
             thread_title_receivers: Vec::new(),
             thread_title_update_receivers: Vec::new(),
             status_operation_receiver: None,
+            next_compaction_generation: 0,
+            compaction_diagnostics: Default::default(),
+            compaction_diagnostic_operation: None,
             pending_lifecycle_phase_continue: None,
             pending_lifecycle_phase_continue_new_thread: None,
             phase_continue_new_thread_handoff: None,
@@ -9321,40 +9348,11 @@ impl ShellView {
 
     fn turn_options_with_current_developer_instructions(
         &self,
-        selected_thread_id: Option<&str>,
         options: TurnStartOptions,
     ) -> TurnStartOptions {
-        let Some(defaults) = self
-            .conversation_surface()
-            .map(|surface| surface.effective_turn_context_defaults(selected_thread_id))
-        else {
-            return options;
-        };
-        self.turn_options_with_current_developer_instructions_defaults(
-            selected_thread_id,
-            options,
-            defaults,
-        )
-    }
-
-    fn turn_options_with_current_developer_instructions_defaults(
-        &self,
-        selected_thread_id: Option<&str>,
-        options: TurnStartOptions,
-        defaults: ThreadTurnDefaults,
-    ) -> TurnStartOptions {
-        let Some(_model) = defaults.model() else {
-            warn!(
-                thread_id = selected_thread_id.unwrap_or("<new-thread>"),
-                "hidden developer-instructions context could not be applied or reset because no effective model is known for turn-start collaboration settings"
-            );
-            return options.without_developer_instructions_context();
-        };
-
         status_line::turn_start_options_with_developer_instructions_context(
             options,
             self.current_hidden_developer_instructions(),
-            defaults,
         )
     }
 
@@ -11940,6 +11938,21 @@ impl ShellView {
         fragment: UserInputFragment,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(thread_id) = self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_held_compaction_thread_id)
+            .map(str::to_string)
+        {
+            if !self.queue_context_compaction_turn_from_composer(fragment, cx) {
+                return false;
+            }
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.hold_compaction_input(&thread_id);
+            }
+            self.begin_held_queue_eligibility(&thread_id);
+            self.notify_transcript_panel(cx);
+            return true;
+        }
         if self.status_operation_receiver.is_some()
             && self.queue_context_compaction_turn_from_composer(fragment.clone(), cx)
         {
@@ -12088,10 +12101,7 @@ impl ShellView {
             self.report_backend_operation_block("Composer unavailable", block, cx);
             return false;
         };
-        let turn_options = self.turn_options_with_current_developer_instructions(
-            selected_thread_id.as_deref(),
-            turn_options,
-        );
+        let turn_options = self.turn_options_with_current_developer_instructions(turn_options);
 
         match &mut self.state {
             ShellState::Ready(ready) => ready.surface.begin_turn(fragment.clone()),
@@ -12245,111 +12255,21 @@ impl ShellView {
         true
     }
 
-    fn queue_context_compaction_turn_from_composer(
-        &mut self,
-        fragment: UserInputFragment,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let (thread_id, execution_target, automatic_title_generation_allowed, turn_options) =
-            match &self.state {
-                ShellState::Ready(ready) => {
-                    let Some(thread_id) = ready
-                        .surface
-                        .selected_thread_context_compaction_id()
-                        .map(str::to_string)
-                    else {
-                        return false;
-                    };
-                    let automatic_title_generation_allowed = ready
-                        .loaded_workspace
-                        .workspace_state
-                        .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
-                            thread_id.clone(),
-                        ));
-                    let turn_options = ready
-                        .surface
-                        .pending_turn_start_options(Some(thread_id.as_str()));
-                    (
-                        thread_id,
-                        ready.execution_target.clone(),
-                        automatic_title_generation_allowed,
-                        turn_options,
-                    )
-                }
-                ShellState::BackendUnavailable(unavailable) => {
-                    let Some(thread_id) = unavailable
-                        .surface
-                        .selected_thread_context_compaction_id()
-                        .map(str::to_string)
-                    else {
-                        return false;
-                    };
-                    let automatic_title_generation_allowed = unavailable
-                        .loaded_workspace
-                        .workspace_state
-                        .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
-                            thread_id.clone(),
-                        ));
-                    let turn_options = unavailable
-                        .surface
-                        .pending_turn_start_options(Some(thread_id.as_str()));
-                    let execution_target = Self::registered_thread_execution_target(
-                        &unavailable.loaded_workspace,
-                        &thread_id,
-                    )
-                    .unwrap_or_else(|| unavailable.execution_target.clone());
-                    (
-                        thread_id,
-                        execution_target,
-                        automatic_title_generation_allowed,
-                        turn_options,
-                    )
-                }
-                ShellState::WorkspaceIdle(_)
-                | ShellState::WorkspaceLoaded(_)
-                | ShellState::Blocked(_)
-                | ShellState::Discovering(_)
-                | ShellState::Picker(_)
-                | ShellState::Opening(_) => return false,
-            };
-
-        let queued = match &mut self.state {
-            ShellState::Ready(ready) => ready.surface.queue_pending_turn_fragment(
-                thread_id,
-                execution_target,
-                automatic_title_generation_allowed,
-                turn_options,
-                fragment,
-            ),
-            ShellState::BackendUnavailable(unavailable) => {
-                unavailable.surface.queue_pending_turn_fragment(
-                    thread_id,
-                    execution_target,
-                    automatic_title_generation_allowed,
-                    turn_options,
-                    fragment,
-                )
-            }
-            ShellState::WorkspaceIdle(_)
-            | ShellState::WorkspaceLoaded(_)
-            | ShellState::Blocked(_)
-            | ShellState::Discovering(_)
-            | ShellState::Picker(_)
-            | ShellState::Opening(_) => false,
-        };
-
-        if queued {
-            self.clear_composer_draft(cx);
-        }
-        queued
-    }
-
     fn begin_lifecycle_phase_continue(
         &mut self,
         request: PhaseContinueRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(reason) = self.compaction_unavailable_reason() {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Lifecycle continuation unavailable",
+                    reason,
+                ));
+            }
+            return false;
+        }
         if self.status_operation_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
@@ -12474,15 +12394,17 @@ impl ShellView {
             return false;
         }
 
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_context_compaction(&thread_id);
+        if let Some(surface) = self.conversation_surface_mut()
+            && let Some(queue) = surface.pending_turn_input_queue.as_mut()
+        {
+            queue.mark_generated_lifecycle_fragment(request.resume_fragment().id);
         }
-        self.status_operation_receiver = Some(spawn_context_compaction_worker(
-            connector,
-            thread_id,
-            self.bootstrap.probe_timeout(),
-            self.current_context_compaction_timeout(),
-        ));
+        if !self.begin_compaction_observation(connector, thread_id.clone()) {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.hold_compaction_input(&thread_id);
+            }
+            return false;
+        }
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
         true
@@ -12611,7 +12533,11 @@ impl ShellView {
             pending_turn_queue_should_wait_for_compaction(
                 surface.context_compaction_thread_id(),
                 thread_id,
-            )
+            ) || surface.held_compaction_thread_id.as_deref() == Some(thread_id)
+                || surface
+                    .pending_turn_input_queue
+                    .as_ref()
+                    .is_some_and(|queue| queue.is_for_thread(thread_id) && queue.is_held())
         }) {
             return false;
         }
@@ -12631,13 +12557,6 @@ impl ShellView {
             }
             return false;
         };
-        let Some(queue) = self
-            .conversation_surface_mut()
-            .and_then(|surface| surface.take_pending_turn_input_queue_for_thread(thread_id))
-        else {
-            return false;
-        };
-
         let Some(beryl_workspace_id) = self
             .loaded_workspace()
             .map(|loaded| loaded.workspace.id().clone())
@@ -12647,12 +12566,16 @@ impl ShellView {
         let Some(persistence) = self.workspace_persistence_for_worker() else {
             return false;
         };
+        let Some(queue) = self
+            .conversation_surface_mut()
+            .and_then(|surface| surface.take_pending_turn_input_queue_for_thread(thread_id))
+        else {
+            return false;
+        };
         let selected_thread_id = Some(queue.thread_id().to_string());
         let automatic_title_generation_allowed = queue.automatic_title_generation_allowed();
-        let turn_options = self.turn_options_with_current_developer_instructions(
-            selected_thread_id.as_deref(),
-            queue.turn_options().clone(),
-        );
+        let turn_options =
+            self.turn_options_with_current_developer_instructions(queue.turn_options().clone());
         let user_input_fragments = queue.into_fragments();
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
@@ -13026,7 +12949,19 @@ impl ShellView {
         if let ShellState::BackendUnavailable(unavailable) = &self.state
             && &unavailable.execution_target == execution_target
         {
-            return Some(unavailable.surface.snapshot_for_backend_reopen());
+            if unavailable
+                .surface
+                .pending_turn_input_queue
+                .as_ref()
+                .is_some_and(|queue| queue.is_compaction_queue())
+            {
+                self.record_compaction_queue(
+                    crate::compaction_diagnostics::CompactionDiagnosticCategory::QueueHeld,
+                );
+            }
+            return Some(unavailable.surface.snapshot_for_compaction_reopen(
+                unavailable.loaded_workspace.workspace.id().as_str(),
+            ));
         }
         let ShellState::Blocked(blocked) = &self.state else {
             return None;
@@ -13037,10 +12972,20 @@ impl ShellView {
             return None;
         }
 
-        blocked
-            .surface
-            .as_ref()
-            .map(ConversationSurfaceState::snapshot_for_backend_reopen)
+        blocked.surface.as_ref().and_then(|surface| {
+            blocked.loaded_workspace.as_ref().map(|loaded| {
+                if surface
+                    .pending_turn_input_queue
+                    .as_ref()
+                    .is_some_and(|queue| queue.is_compaction_queue())
+                {
+                    self.record_compaction_queue(
+                        crate::compaction_diagnostics::CompactionDiagnosticCategory::QueueHeld,
+                    );
+                }
+                surface.snapshot_for_compaction_reopen(loaded.workspace.id().as_str())
+            })
+        })
     }
 
     fn remember_known_threads_for_target(

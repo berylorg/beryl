@@ -68,11 +68,11 @@ pub enum NotificationSoundPathError {
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ContextCompactionTimeoutError {
-    #[error("context compaction timeout must be a whole number of seconds")]
+    #[error("compaction warning after must be a whole number of seconds")]
     NotInteger,
-    #[error("context compaction timeout must be at least {min} second")]
+    #[error("compaction warning after must be at least {min} second")]
     TooSmall { min: u64 },
-    #[error("context compaction timeout must be at most {max} seconds")]
+    #[error("compaction warning after must be at most {max} seconds")]
     TooLarge { max: u64 },
 }
 

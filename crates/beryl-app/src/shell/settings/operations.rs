@@ -66,11 +66,13 @@ pub(crate) fn settings_section(
     let field_id = context_compaction_timeout_field_id();
     let row = SettingsRow::new(
         field_id.clone(),
-        "Context compaction timeout",
+        "Compaction warning after",
         draft.context_compaction_timeout_seconds_value(),
         SettingsFieldKind::Number,
     )
-    .with_subtext("Seconds Beryl waits for backend-reported compaction completion.");
+    .with_subtext(
+        "Seconds after accepted compaction before Beryl warns that it is taking longer than expected. Observation continues.",
+    );
 
     SettingsSection::new(operation_section_id(), "Operations").with_row(
         match errors.get(&field_id) {
@@ -95,13 +97,13 @@ pub(crate) fn context_compaction_timeout_field_id() -> SettingsFieldId {
 pub(crate) fn context_compaction_timeout_error(error: ContextCompactionTimeoutError) -> String {
     match error {
         ContextCompactionTimeoutError::NotInteger => {
-            "Context compaction timeout must be a whole number of seconds.".to_string()
+            "Compaction warning after must be a whole number of seconds.".to_string()
         }
         ContextCompactionTimeoutError::TooSmall { min } => {
-            format!("Context compaction timeout must be at least {min} second.")
+            format!("Compaction warning after must be at least {min} second.")
         }
         ContextCompactionTimeoutError::TooLarge { max } => {
-            format!("Context compaction timeout must be at most {max} seconds.")
+            format!("Compaction warning after must be at most {max} seconds.")
         }
     }
 }

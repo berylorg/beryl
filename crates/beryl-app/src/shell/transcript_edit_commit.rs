@@ -2,7 +2,6 @@ use super::{
     ShellState, ShellView, SurfaceNotice, TranscriptEditReplacementTurnState,
     composer_draft::{AcceptedComposerDraft, composer_image_copy_text, composer_image_marker},
     execution_detail::{TranscriptImagePathResolver, UserInputFragment},
-    status_line::ThreadTurnDefaults,
     transcript_edit_commit_worker::TranscriptEditCommitRequest,
     turn_worker::{shell_dynamic_tool_request_channel, spawn_turn_worker},
 };
@@ -21,12 +20,6 @@ impl ShellView {
         if !self.transcript_edit_commit_request_is_current(&request) {
             return;
         }
-        let source_thread_id = request.source_thread_id().to_string();
-        let turn_context_defaults = self
-            .conversation_surface()
-            .map(|surface| surface.effective_turn_context_defaults(Some(source_thread_id.as_str())))
-            .unwrap_or_default();
-
         if let Some(surface) = self.conversation_surface_mut() {
             surface.load_thread_history_window(
                 &thread,
@@ -39,12 +32,8 @@ impl ShellView {
             );
         }
 
-        if !self.begin_transcript_edit_replacement_turn(
-            request,
-            replacement_fragment,
-            turn_context_defaults,
-            cx,
-        ) && let Some(surface) = self.conversation_surface_mut()
+        if !self.begin_transcript_edit_replacement_turn(request, replacement_fragment, cx)
+            && let Some(surface) = self.conversation_surface_mut()
         {
             surface.set_notice(SurfaceNotice::new(
                 "Thread edit partially applied",
@@ -77,7 +66,6 @@ impl ShellView {
         &mut self,
         request: TranscriptEditCommitRequest,
         fragment: UserInputFragment,
-        turn_context_defaults: ThreadTurnDefaults,
         cx: &mut Context<Self>,
     ) -> bool {
         if self.turn_receiver.is_some()
@@ -111,11 +99,8 @@ impl ShellView {
             composer_cleared,
             turn_started: false,
         });
-        let turn_options = self.turn_options_with_current_developer_instructions_defaults(
-            Some(request.source_thread_id()),
-            request.turn_options().clone(),
-            turn_context_defaults,
-        );
+        let turn_options =
+            self.turn_options_with_current_developer_instructions(request.turn_options().clone());
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
         self.turn_receiver = Some(spawn_turn_worker(

@@ -185,9 +185,205 @@ fn terminal_lifecycle_yield(
         .expect("terminal turn should consume lifecycle yield")
 }
 
+#[test]
+fn interrupted_queue_removes_only_generated_identity_and_preserves_human_order() {
+    let human_same_text = UserInputFragment::text(PHASE_CONTINUE_RESUME_TEXT);
+    let generated = UserInputFragment::text(PHASE_CONTINUE_RESUME_TEXT);
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        WorkspaceId::host_windows("C:\\work"),
+        false,
+        TurnStartOptions::default(),
+        3,
+        human_same_text.clone(),
+    );
+    queue.append(generated.clone());
+    queue.mark_generated_lifecycle_fragment(generated.id);
+    queue.append(UserInputFragment::text("human follow-up"));
+    assert_eq!(queue.hold_after_compaction(), Some(generated));
+    assert!(queue.is_held());
+    assert_eq!(queue.fragments()[0], human_same_text);
+    assert_eq!(queue.fragments()[1].text, "human follow-up");
+    assert!(queue.hold_after_compaction().is_none());
+    assert_eq!(queue.fragment_count(), 2);
+}
+
+#[test]
+fn explicit_submission_joins_held_input_until_idle_authorization() {
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        WorkspaceId::host_windows("C:\\work"),
+        false,
+        TurnStartOptions::default(),
+        3,
+        UserInputFragment::text("first human input"),
+    );
+    queue.hold_after_compaction();
+    queue.append(UserInputFragment::text("explicit retry"));
+    assert!(queue.is_held());
+    queue.bind_compaction_workspace("workspace");
+    assert!(queue.authorize_after_fresh_idle(
+        "workspace",
+        "thread_1",
+        &WorkspaceId::host_windows("C:\\work"),
+        Some(&beryl_backend::ThreadStatus::Idle)
+    ));
+    assert!(!queue.is_held());
+    assert_eq!(
+        fragment_texts(&queue.into_fragments()),
+        vec!["first human input", "explicit retry"]
+    );
+}
+
+#[test]
+fn reopened_queue_rebases_presentation_without_changing_fragment_identity_or_order() {
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        WorkspaceId::host_windows("C:\\work"),
+        false,
+        TurnStartOptions::default(),
+        3,
+        UserInputFragment::text("first"),
+    );
+    queue.append(UserInputFragment::text("second"));
+    let fragments = queue.fragments().to_vec();
+    queue.hold_after_compaction();
+    queue.bind_compaction_workspace("workspace");
+    assert!(queue.rebase_after_reopen(
+        "workspace",
+        "thread_1",
+        &WorkspaceId::host_windows("C:\\work"),
+        12
+    ));
+    assert_eq!(queue.turn_index(), 12);
+    assert_eq!(queue.fragments(), fragments);
+    assert!(queue.is_held());
+}
+
+#[test]
+fn generated_only_interrupted_queue_accepts_next_human_fragment_without_auto_resume() {
+    let generated = UserInputFragment::text(PHASE_CONTINUE_RESUME_TEXT);
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        WorkspaceId::host_windows("C:\\work"),
+        false,
+        TurnStartOptions::default(),
+        3,
+        generated.clone(),
+    );
+    queue.mark_generated_lifecycle_fragment(generated.id);
+    queue.hold_after_compaction();
+    assert_eq!(queue.fragment_count(), 0);
+    queue.append(UserInputFragment::text("resume now"));
+    assert!(queue.is_held());
+    assert_eq!(fragment_texts(&queue.into_fragments()), vec!["resume now"]);
+}
+
 fn fragment_texts(fragments: &[UserInputFragment]) -> Vec<String> {
     fragments
         .iter()
         .map(|fragment| fragment.text.clone())
         .collect()
+}
+
+#[test]
+fn live_delivery_decision_holds_interrupted_input_through_active_unavailable_and_stale_idle_then_releases_once()
+ {
+    let target = WorkspaceId::host_windows("C:\\work");
+    let generated = UserInputFragment::text(PHASE_CONTINUE_RESUME_TEXT);
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        target.clone(),
+        false,
+        TurnStartOptions::default(),
+        3,
+        generated.clone(),
+    );
+    assert!(queue.bind_compaction_workspace("workspace"));
+    queue.mark_generated_lifecycle_fragment(generated.id);
+    queue.append(UserInputFragment::text("accepted while compacting"));
+    assert_eq!(queue.hold_after_compaction(), Some(generated));
+    queue.append(UserInputFragment::text("explicit resume"));
+    let held = queue.clone();
+    for status in [
+        None,
+        Some(beryl_backend::ThreadStatus::Active {
+            active_flags: vec![],
+        }),
+    ] {
+        assert!(!queue.authorize_after_fresh_idle(
+            "workspace",
+            "thread_1",
+            &target,
+            status.as_ref()
+        ));
+        assert_eq!(queue, held);
+    }
+    for (workspace, thread, execution) in [
+        ("other", "thread_1", target.clone()),
+        ("workspace", "other", target.clone()),
+        (
+            "workspace",
+            "thread_1",
+            WorkspaceId::host_windows("C:\\other"),
+        ),
+    ] {
+        assert!(!queue.authorize_after_fresh_idle(
+            workspace,
+            thread,
+            &execution,
+            Some(&beryl_backend::ThreadStatus::Idle)
+        ));
+        assert_eq!(queue, held);
+    }
+    assert!(queue.authorize_after_fresh_idle(
+        "workspace",
+        "thread_1",
+        &target,
+        Some(&beryl_backend::ThreadStatus::Idle)
+    ));
+    assert!(!queue.authorize_after_fresh_idle(
+        "workspace",
+        "thread_1",
+        &target,
+        Some(&beryl_backend::ThreadStatus::Idle)
+    ));
+    assert_eq!(
+        fragment_texts(&queue.into_fragments()),
+        vec!["accepted while compacting", "explicit resume"]
+    );
+}
+
+#[test]
+fn live_reopen_decision_rejects_other_workspaces_threads_and_targets_without_mutating_queue() {
+    let target = WorkspaceId::host_windows("C:\\work");
+    let mut queue = PendingTurnInputQueue::new(
+        "thread_1".into(),
+        target.clone(),
+        false,
+        TurnStartOptions::default(),
+        3,
+        UserInputFragment::text("accepted human input"),
+    );
+    assert!(!queue.is_compaction_queue());
+    assert!(!queue.rebase_after_reopen("workspace", "thread_1", &target, 20));
+    assert!(queue.bind_compaction_workspace("workspace"));
+    let original = queue.clone();
+    for (workspace, thread, execution) in [
+        ("other", "thread_1", target.clone()),
+        ("workspace", "other", target.clone()),
+        (
+            "workspace",
+            "thread_1",
+            WorkspaceId::host_windows("C:\\other"),
+        ),
+    ] {
+        assert!(!queue.rebase_after_reopen(workspace, thread, &execution, 20));
+        assert_eq!(queue, original);
+    }
+    assert!(!queue.bind_compaction_workspace("other"));
+    assert!(queue.rebase_after_reopen("workspace", "thread_1", &target, 20));
+    assert_eq!(queue.turn_index(), 20);
+    assert!(queue.is_held());
+    assert_eq!(queue.fragments(), original.fragments());
 }

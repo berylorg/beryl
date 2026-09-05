@@ -113,6 +113,7 @@ impl ShellView {
                             surface.start_new_thread();
                         }
                         surface.refresh_after_backend_reopen(
+                            inventory_workspace_id.as_str(),
                             &inventory_workspace_state,
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),
@@ -731,8 +732,8 @@ pub(super) fn blocked_state_for_error(
                 &source,
             ),
             next_steps: vec![
-                "Verify that the codex executable is on PATH for this runtime mode.".to_string(),
-                "If you selected WSL-Linux, verify that the distro can run codex.".to_string(),
+                "Verify that codex-app-server or codex is on PATH for this runtime mode.".to_string(),
+                "If you selected WSL-Linux, verify that the distro can run codex-app-server or codex.".to_string(),
                 "Retry after correcting the launch environment.".to_string(),
             ],
             disconnect: false,

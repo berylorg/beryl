@@ -26,7 +26,8 @@ pub(super) fn settings_update_schema() -> Value {
                                 "type": "string",
                                 "maxLength": 32
                             }
-                        ]
+                        ],
+                        "description": "Seconds after accepted compaction before Beryl reports a warning and continues observation."
                     }
                 },
                 "additionalProperties": false

@@ -1443,11 +1443,13 @@ fn settings_model_includes_operations_context_compaction_timeout_row() {
     let field_id = context_compaction_timeout_field_id();
     let row = model
         .row(&field_id)
-        .expect("context compaction timeout row should exist");
-    assert_eq!(row.label(), "Context compaction timeout");
+        .expect("compaction warning threshold row should exist");
+    assert_eq!(row.label(), "Compaction warning after");
     assert_eq!(
         row.subtext(),
-        Some("Seconds Beryl waits for backend-reported compaction completion.")
+        Some(
+            "Seconds after accepted compaction before Beryl warns that it is taking longer than expected. Observation continues."
+        )
     );
     assert_eq!(row.kind(), SettingsFieldKind::Number);
     assert_eq!(row.value(), "180");

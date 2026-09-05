@@ -50,5 +50,6 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
 unicode-segmentation = "1.12.0"
+uuid = { version = "1.23.1", features = ["serde", "v4"] }
 wait-timeout = "0.2.1"
 windows = "0.61"

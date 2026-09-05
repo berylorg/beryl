@@ -1,5 +1,24 @@
 //! Backend launch and protocol-facing types for Beryl.
 //!
+//! Background observation can deny unsupported approvals with a bounded write:
+//! ```no_run
+//! use beryl_backend::{ApprovalRequest, ManagedBackendError, ManagedBackendSession};
+//! use std::time::Duration;
+//! fn deny(session: &mut ManagedBackendSession, request: &ApprovalRequest)
+//!     -> Result<(), ManagedBackendError>
+//! {
+//!     session.deny_approval_request_with_timeout(request, Duration::from_secs(10))
+//! }
+//! ```
+//!
+//! Managed Host-Windows launches prefer `codex-app-server.exe` from `PATH` and
+//! otherwise invoke `codex.exe app-server`. WSL makes the same standalone-first
+//! choice inside the selected distro's login shell. Exact launch options always
+//! use their requested executable without fallback.
+//! Managed connections require the fork's
+//! `initialize.turnScopedDeveloperInstructionsVersion == 1` advertisement before
+//! they become ready, so turn-scoped hidden instructions cannot be omitted.
+//!
 //! ```no_run
 //! use std::time::Duration;
 //!
@@ -164,14 +183,30 @@
 //! let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
 //! let launch = BackendLaunchSpec::managed_stdio_for_workspace(workspace);
 //! let command = launch.command_line()?;
-//! assert_eq!(command.program(), "codex");
+//! assert!(matches!(command.program(), "codex-app-server.exe" | "codex.exe"));
 //! # Ok(())
 //! # }
+//! ```
+
+//! Receipt-aware compaction preserves the operation id before dispatch so a
+//! timed-out start can be reconciled without resubmission. Unknown evidence is
+//! never terminal success; the caller must confirm thread idle separately.
+//!
+//! ```no_run
+//! # fn example(session: &mut beryl_backend::ManagedBackendSession) -> Result<(), Box<dyn std::error::Error>> {
+//! use std::time::Duration;
+//! let operation = session.prepare_compaction("01900000-0000-7000-8000-000000000001")?;
+//! let accepted = session.start_compaction(&operation, Duration::from_secs(10));
+//! // Keep `operation` even if `accepted` is an error; never repeat start.
+//! let expected = accepted.as_ref().ok().and_then(|r| r.turn_id).map(|id| id.to_string());
+//! let receipt = session.read_compaction(&operation, expected.as_deref(), Duration::from_secs(10))?;
+//! # Ok(()) }
 //! ```
 
 mod activity;
 mod auth;
 mod command;
+mod compaction;
 mod discovery;
 mod dynamic_tool;
 mod hard_stop;
@@ -197,9 +232,14 @@ pub use activity::{
 };
 pub use auth::ManagedBackendAuthMaterial;
 pub use command::{
-    BackendCommandLine, BackendCommandLineError, BackendLaunchSpec, BackendTransport,
-    BackendWebSocketConfig, BackendWebSocketEndpoint, ManagedBackendLaunchOptions,
-    ManagedBackendLaunchOptionsError,
+    BackendCommandLine, BackendCommandLineError, BackendLaunchSpec, BackendPathResolver,
+    BackendTransport, BackendWebSocketConfig, BackendWebSocketEndpoint,
+    ManagedBackendLaunchOptions, ManagedBackendLaunchOptionsError,
+};
+pub use compaction::{
+    CompactionCapabilityError, CompactionError, CompactionErrorClassification,
+    CompactionInterruptedReason, CompactionObservationCapability, CompactionOperation,
+    CompactionReceipt, CompactionReceiptError, CompactionReceiptState, CompactionUnknownReason,
 };
 pub use discovery::{
     DiscoveredWorkspace, DiscoveredWorkspaceThread, RuntimeDiscoveryError, RuntimeDiscoveryReport,

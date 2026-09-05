@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use crate::{
     activity_lifecycle_diagnostics::ActivityLifecycleDiagnosticSnapshot,
     activity_presentation_diagnostics::ActivityPresentationDiagnosticSnapshot,
+    compaction_diagnostics::CompactionDiagnosticSnapshot,
     dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE,
     memory_diagnostics::{ProcessMemorySnapshot, RetainedStateSnapshot},
 };
@@ -26,6 +27,7 @@ pub const READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL: &str = "read_settings_window_di
 pub const READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL: &str = "read_activity_lifecycle_diagnostics";
 pub const READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL: &str =
     "read_activity_presentation_diagnostics";
+pub const READ_COMPACTION_DIAGNOSTICS_TOOL: &str = "read_compaction_diagnostics";
 
 pub(crate) const DEFAULT_VISIBLE_MEDIA_LIMIT: usize = 32;
 pub(crate) const MAX_VISIBLE_MEDIA_LIMIT: usize = 64;
@@ -37,6 +39,8 @@ pub(crate) const DEFAULT_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT: usize = 64;
 pub(crate) const MAX_ACTIVITY_LIFECYCLE_DIAGNOSTIC_LIMIT: usize = 256;
 pub(crate) const DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT: usize = 64;
 pub(crate) const MAX_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT: usize = 64;
+pub(crate) const DEFAULT_COMPACTION_DIAGNOSTIC_LIMIT: usize = 64;
+pub(crate) const MAX_COMPACTION_DIAGNOSTIC_LIMIT: usize = 64;
 const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
 const TRANSCRIPT_FRAME_METRIC_RING_CAPACITY: usize = 128;
@@ -55,6 +59,7 @@ pub(crate) struct DiagnosticToolSnapshot {
     pub settings_window: SettingsWindowDiagnosticSnapshot,
     pub activity_lifecycle: ActivityLifecycleDiagnosticSnapshot,
     pub activity_presentation: ActivityPresentationDiagnosticSnapshot,
+    pub compaction: CompactionDiagnosticSnapshot,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -823,6 +828,14 @@ pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                 DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
             ),
         ),
+        DynamicToolSpec::new(
+            READ_COMPACTION_DIAGNOSTICS_TOOL,
+            "Read a bounded content-free compaction observation diagnostic ring without querying the backend.",
+            media_events_schema_with_limits(
+                MAX_COMPACTION_DIAGNOSTIC_LIMIT,
+                DEFAULT_COMPACTION_DIAGNOSTIC_LIMIT,
+            ),
+        ),
     ]
     .into_iter()
     .map(|tool| {
@@ -848,6 +861,7 @@ pub fn is_beryl_diagnostic_dynamic_tool(request: &DynamicToolCallRequest) -> boo
                 | READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL
                 | READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL
                 | READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL
+                | READ_COMPACTION_DIAGNOSTICS_TOOL
         )
 }
 
@@ -950,6 +964,17 @@ fn diagnostic_tool_result(
                 arguments.limit_or_default(
                     DEFAULT_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
                     MAX_ACTIVITY_PRESENTATION_DIAGNOSTIC_LIMIT,
+                ),
+            )))
+        }
+        READ_COMPACTION_DIAGNOSTICS_TOOL => {
+            let arguments = parse_arguments::<MediaEventsArguments>(request.arguments())?;
+            Ok(json!(compaction_diagnostics_result(
+                snapshot.compaction,
+                arguments.after_sequence,
+                arguments.limit_or_default(
+                    DEFAULT_COMPACTION_DIAGNOSTIC_LIMIT,
+                    MAX_COMPACTION_DIAGNOSTIC_LIMIT,
                 ),
             )))
         }
@@ -1064,6 +1089,24 @@ pub(crate) fn activity_presentation_diagnostics_result(
     after_sequence: Option<u64>,
     limit: usize,
 ) -> ActivityPresentationDiagnosticSnapshot {
+    if let Some(after_sequence) = after_sequence {
+        snapshot
+            .events
+            .retain(|event| event.sequence > after_sequence);
+    }
+    if snapshot.events.len() > limit {
+        snapshot.events.truncate(limit);
+        snapshot.truncated = true;
+    }
+    snapshot.returned_count = snapshot.events.len();
+    snapshot
+}
+
+pub(crate) fn compaction_diagnostics_result(
+    mut snapshot: CompactionDiagnosticSnapshot,
+    after_sequence: Option<u64>,
+    limit: usize,
+) -> CompactionDiagnosticSnapshot {
     if let Some(after_sequence) = after_sequence {
         snapshot
             .events

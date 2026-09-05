@@ -15,9 +15,10 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 
 - Beryl integrates with Codex through `codex app-server` as an out-of-process client.
 - Beryl launches and owns managed backend processes in V1. It does not attach to already running app-server instances.
-- Host-Windows launch uses the `codex` executable from the user's `PATH` by default. A distinct exact Codex CLI override preserves the `app-server` subcommand, while an exact standalone `codex-app-server` override omits that CLI-only subcommand.
+- Default launch resolves `codex-app-server` on the selected runtime's `PATH` first and invokes it directly when present. If it is absent, launch resolves `codex` and uses its `app-server` subcommand. Executable names follow the target platform, including `.exe` on Windows. A present standalone executable that fails to start or probe produces its own error; fallback is for absence, not a second attempt after failure.
+- Explicit executable overrides take precedence over default discovery. An exact Codex CLI override preserves the `app-server` subcommand, while an exact standalone app-server override omits it. Neither silently falls back to another executable.
 - The Beryl executable exposes only the explicit standalone Host-Windows app-server path as bootstrap configuration. This is the supported selection path for a locally built Beryl-maintained Codex fork; Beryl does not bundle, install, discover from the source checkout, or hardcode a machine-local fork artifact.
-- WSL launch uses `wsl.exe`, targets the selected distro, sets the requested working directory, and runs `codex app-server` inside the distro.
+- WSL launch uses `wsl.exe`, targets the selected distro, sets the requested working directory, and resolves the standalone-first choice inside the distro's login-shell environment. Host `PATH` entries and Windows executable suffixes do not select its Linux backend.
 - A Beryl-owned app-server listens on an authenticated loopback WebSocket endpoint chosen by Beryl.
 - Beryl generates a high-entropy capability token per managed launch, stores it only in a per-run local token file and memory, passes the token file to app-server auth configuration, uses the token in WebSocket handshakes, and removes the token file when the server exits.
 - Managed listeners bind only to loopback addresses and must not expose unauthenticated non-loopback endpoints.
@@ -56,6 +57,7 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 - Branch actions depend on app-server fork and rollback primitives. When missing, branch actions are disabled rather than emulated.
 - Edit actions depend on app-server rollback and turn-start primitives plus exact rollback-scope proof. When missing or unprovable, edit actions are disabled rather than emulated.
 - Hard-stop backend primitives are probed separately. Missing hard-stop support disables only affected hard-stop escalation targets and must not disable soft interruption.
+- Receipt-aware compaction requires the status-line feature's version-1 observation capability and process-scoped observation session identity. Missing support disables compaction only; a changed observation session cannot silently adopt a previous process's operation.
 - Every initialized client session requests saved-path-only generated-image delivery. Servers that honor the capability omit generated-image inline result bytes; Beryl continues to treat `savedPath` as authoritative and handles capability absence without inventing an image artifact.
 - Beryl consumes the optional root-only thread-usage-tree read and update surfaces when available. Capability absence or `method not found` leaves the runtime usable, preserves exact legacy root-thread status when known, and makes descendant usage unavailable rather than estimating it.
 - Operations that target incompatible or unavailable backends fail or present localized recovery for that target and must not silently switch runtime target, workspace member, backend process, or thread.
@@ -72,6 +74,7 @@ Keep Beryl workspaces usable when runtime targets or backend connections are una
 ## Turn-Stream Error Recovery
 
 - A valid normalized app-server `error` notification is correlated only by its exact thread and turn identity. It is not a JSON-RPC protocol failure and does not by itself make the foreground stream unusable.
+- App-server's omission of the `jsonrpc` field is a valid error-notification envelope and must not trigger stream-loss recovery. The backend package owns envelope validation for both managed transports.
 - An `error` notification with `willRetry = true` is a nonterminal recovery signal. It must not finish turn state, terminalize Activity rows, finalize hard-stop tracking or turn execution-detail state, trigger completion sound, or enqueue a terminal turn notice.
 - An `error` notification with `willRetry = false` is a correlated failure precursor. It may make the exact selected user-visible active turn eligible for early failure reporting, but it does not substitute for `turn/completed` or an actual turn-stream failure as authority for terminal status, Activity finalization, hard-stop and execution-detail cleanup, or completion attention effects.
 - Error-notification effects require exact nonblank thread and turn identity matching the active operation. Mismatched or blank identity must not mutate another turn, and repeated notifications must not duplicate terminal effects.

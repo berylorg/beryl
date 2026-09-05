@@ -230,22 +230,14 @@ pub(crate) fn status_line_cell_specs(
 pub(crate) fn turn_start_options_with_developer_instructions_context(
     options: TurnStartOptions,
     developer_instructions: Option<String>,
-    defaults: ThreadTurnDefaults,
 ) -> TurnStartOptions {
-    let Some(model) = defaults.model().map(str::to_string) else {
-        return options.without_developer_instructions_context();
-    };
-
-    options.with_developer_instructions_context(
-        developer_instructions,
-        model,
-        defaults.reasoning_effort().map(str::to_string),
-    )
+    options.with_developer_instructions(developer_instructions)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum StatusLineTurnStateOverride {
     Compacting { turn_id: Option<String> },
+    CompactionOutcome { successful: bool },
 }
 
 impl CancellableActiveTurn {
@@ -353,6 +345,8 @@ impl StatusLineState {
     }
 
     pub(crate) fn clear_session_metadata(&mut self) {
+        self.turn_state_overrides_by_thread
+            .retain(|_, state| matches!(state, StatusLineTurnStateOverride::Compacting { .. }));
         self.session_metadata = ThreadSessionMetadata::default();
     }
 
@@ -518,12 +512,32 @@ impl StatusLineState {
             return false;
         };
 
-        if active_turn_id.as_deref() == Some(turn_id.as_str()) {
+        if active_turn_id.is_some() {
             return false;
         }
 
         *active_turn_id = Some(turn_id);
         true
+    }
+
+    pub(crate) fn set_compaction_outcome(&mut self, thread_id: &str, successful: bool) {
+        // Only the latest terminal compaction presentation is retained; live
+        // compaction identities remain independently owned until cleanup.
+        self.turn_state_overrides_by_thread
+            .retain(|_, state| matches!(state, StatusLineTurnStateOverride::Compacting { .. }));
+        self.turn_state_overrides_by_thread.insert(
+            thread_id.to_string(),
+            StatusLineTurnStateOverride::CompactionOutcome { successful },
+        );
+    }
+
+    pub(crate) fn clear_compaction_outcome(&mut self, thread_id: &str) {
+        if matches!(
+            self.turn_state_overrides_by_thread.get(thread_id),
+            Some(StatusLineTurnStateOverride::CompactionOutcome { .. })
+        ) {
+            self.turn_state_overrides_by_thread.remove(thread_id);
+        }
     }
 
     pub(crate) fn context_compaction_cancellation_target(
@@ -987,6 +1001,8 @@ impl StatusLineTurnStateOverride {
     fn label(&self) -> &'static str {
         match self {
             Self::Compacting { .. } => "compacting",
+            Self::CompactionOutcome { successful: true } => "ok",
+            Self::CompactionOutcome { successful: false } => "error",
         }
     }
 }

@@ -10,10 +10,10 @@ use std::{
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use beryl_backend::{
-    BackendLaunchSpec, BackendTransport, BackendWebSocketEndpoint, CompatibilityError,
-    CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
-    DynamicToolCallResponse, DynamicToolSpec, HardStopCapabilityProbe, HardStopTarget,
-    HardStopTargetOutcome, InitializeResponse, ManagedBackendAuthMaterial,
+    BackendLaunchSpec, BackendPathResolver, BackendTransport, BackendWebSocketEndpoint,
+    CompatibilityError, CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions,
+    ConfigReadResponse, DynamicToolCallResponse, DynamicToolSpec, HardStopCapabilityProbe,
+    HardStopTarget, HardStopTargetOutcome, InitializeResponse, ManagedBackendAuthMaterial,
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendLaunchOptions,
     ManagedBackendLaunchOptionsError, ManagedBackendServer, ManagedBackendSession,
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
@@ -37,15 +37,24 @@ use beryl_backend::{
 };
 
 #[test]
-fn host_windows_compatibility_stdio_launch_is_explicit() {
+fn host_windows_default_falls_back_to_codex_cli_when_standalone_is_absent() {
     let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
-    let launch = BackendLaunchSpec::managed_stdio_for_workspace(workspace.clone());
+    let fixture = tempfile::tempdir().expect("empty path fixture should be created");
+    let resolver =
+        BackendPathResolver::from_host_windows_path_entries([fixture.path().to_path_buf()]);
+    let launch = BackendLaunchSpec::managed_stdio_with_options_and_path_resolver(
+        workspace.runtime_mode().clone(),
+        workspace.canonical_path().to_path_buf(),
+        ManagedBackendLaunchOptions::default(),
+        resolver,
+    )
+    .expect("Host Windows fallback launch should build");
     let command = launch
         .command_line()
         .expect("host stdio command line should build");
 
     assert_eq!(launch.transport(), BackendTransport::ManagedStdio);
-    assert_eq!(command.program(), "codex");
+    assert_eq!(command.program(), "codex.exe");
     assert_eq!(
         command.args(),
         &[
@@ -55,6 +64,128 @@ fn host_windows_compatibility_stdio_launch_is_explicit() {
         ]
     );
     assert_eq!(command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
+}
+
+#[test]
+fn host_windows_default_prefers_standalone_app_server_from_path_with_spaces() {
+    let fixture = tempfile::Builder::new()
+        .prefix("beryl standalone app server ")
+        .tempdir()
+        .expect("standalone fixture directory should be created");
+    let standalone = fixture.path().join("codex-app-server.exe");
+    std::fs::write(&standalone, b"standalone fixture")
+        .expect("standalone fixture should be created");
+    let resolver =
+        BackendPathResolver::from_host_windows_path_entries([fixture.path().to_path_buf()]);
+
+    let launch = BackendLaunchSpec::managed_stdio_with_options_and_path_resolver(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        ManagedBackendLaunchOptions::default(),
+        resolver,
+    )
+    .expect("Host Windows standalone launch should build");
+    let command = launch
+        .command_line()
+        .expect("standalone command line should build");
+
+    assert!(standalone.to_string_lossy().contains(' '));
+    assert_eq!(command.program(), standalone.to_str().unwrap());
+    assert_eq!(
+        command.args(),
+        &["--listen".to_string(), "stdio://".to_string()]
+    );
+}
+
+#[test]
+fn host_windows_relative_path_entry_is_frozen_before_launch_cwd_changes() {
+    let discovery_cwd = std::env::current_dir().expect("test current directory should resolve");
+    let fixture = tempfile::Builder::new()
+        .prefix("beryl-relative-standalone-")
+        .tempdir_in(&discovery_cwd)
+        .expect("relative standalone fixture directory should be created");
+    let standalone = fixture.path().join("codex-app-server.exe");
+    std::fs::write(&standalone, b"standalone fixture")
+        .expect("standalone fixture should be created");
+    let relative_entry = fixture
+        .path()
+        .strip_prefix(&discovery_cwd)
+        .expect("fixture should be below the discovery directory")
+        .to_path_buf();
+
+    let launch = BackendLaunchSpec::managed_stdio_with_options_and_path_resolver(
+        RuntimeMode::HostWindows,
+        r"C:\other\workspace",
+        ManagedBackendLaunchOptions::default(),
+        BackendPathResolver::from_host_windows_path_entries_relative_to(
+            [relative_entry],
+            Some(&discovery_cwd),
+        ),
+    )
+    .expect("Host Windows standalone launch should build");
+
+    assert_eq!(
+        launch
+            .command_line()
+            .expect("standalone command line should build")
+            .program(),
+        standalone.to_str().unwrap()
+    );
+}
+
+#[test]
+fn host_windows_default_prefers_standalone_when_both_programs_are_present() {
+    let fixture = tempfile::tempdir().expect("program fixture directory should be created");
+    let standalone = fixture.path().join("codex-app-server.exe");
+    std::fs::write(&standalone, b"standalone fixture")
+        .expect("standalone fixture should be created");
+    std::fs::write(fixture.path().join("codex.exe"), b"CLI fixture")
+        .expect("CLI fixture should be created");
+
+    let launch = BackendLaunchSpec::managed_websocket_with_options_and_path_resolver(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        BackendWebSocketEndpoint::loopback(49152),
+        r"C:\tmp\beryl-token.txt",
+        ManagedBackendLaunchOptions::default(),
+        BackendPathResolver::from_host_windows_path_entries([fixture.path().to_path_buf()]),
+    )
+    .expect("Host Windows standalone WebSocket launch should build");
+    let command = launch
+        .command_line()
+        .expect("standalone command line should build");
+
+    assert_eq!(command.program(), standalone.to_str().unwrap());
+    assert_eq!(command.args()[0], "--listen");
+    assert!(!command.args().iter().any(|arg| arg == "app-server"));
+}
+
+#[cfg(windows)]
+#[test]
+fn host_windows_default_does_not_fallback_after_present_standalone_fails_to_spawn() {
+    let fixture = tempfile::tempdir().expect("program fixture directory should be created");
+    let standalone = fixture.path().join("codex-app-server.exe");
+    std::fs::write(&standalone, b"not a Windows executable")
+        .expect("failing standalone fixture should be created");
+    std::fs::write(fixture.path().join("codex.exe"), b"CLI fixture")
+        .expect("CLI fixture should be created");
+    let standalone_text = standalone.to_str().unwrap().to_string();
+
+    let launch = BackendLaunchSpec::managed_stdio_with_options_and_path_resolver(
+        RuntimeMode::HostWindows,
+        r"C:\work\beryl",
+        ManagedBackendLaunchOptions::default(),
+        BackendPathResolver::from_host_windows_path_entries([fixture.path().to_path_buf()]),
+    )
+    .expect("Host Windows standalone launch should build");
+    let error = ManagedBackendSession::launch_and_probe(launch, Duration::from_millis(100))
+        .expect_err("present standalone executable should be attempted directly");
+
+    assert!(matches!(
+        &error,
+        ManagedBackendError::Spawn { program, .. } if program == &standalone_text
+    ));
+    assert!(error.to_string().contains(&standalone_text));
 }
 
 #[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
@@ -67,7 +198,7 @@ fn stdio_initialize_serializes_saved_path_only_without_server_acknowledgement() 
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; if ($request.params.capabilities.savedPathOnly -ne $true) { exit 1 }; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows"}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine()"#,
+        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; if ($request.params.capabilities.savedPathOnly -ne $true) { exit 1 }; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows","turnScopedDeveloperInstructionsVersion":1}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine()"#,
     ]);
 
     let mut session = ManagedBackendSession::launch_and_initialize_test_command(
@@ -79,6 +210,64 @@ fn stdio_initialize_serializes_saved_path_only_without_server_acknowledgement() 
     .expect(
         "stdio initialize should accept the legacy response without capability acknowledgement",
     );
+    session.shutdown().unwrap();
+}
+
+#[cfg(all(target_os = "windows", feature = "lifecycle-test-support"))]
+#[test]
+fn stdio_routes_cas_shaped_errors_and_later_terminal_events() {
+    let launch =
+        BackendLaunchSpec::managed_stdio_for_workspace(WorkspaceId::host_windows(r"C:\work\beryl"));
+    let mut command = Command::new("powershell.exe");
+    command.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows","turnScopedDeveloperInstructionsVersion":1}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine(); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_retry","willRetry":true,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_retry","status":"completed","items":[]}}}'); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_terminal","willRetry":false,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_terminal","status":"failed","items":[]}}}'); [Console]::Out.Flush(); Start-Sleep -Seconds 2"#,
+    ]);
+
+    let mut session = ManagedBackendSession::launch_and_initialize_test_command(
+        launch,
+        command,
+        ManagedBackendClientOptions::foreground(),
+        Duration::from_secs(2),
+    )
+    .expect("stdio fixture should initialize");
+
+    for (turn_id, will_retry, status) in [
+        ("stdio_retry", true, TurnStatus::Completed),
+        ("stdio_terminal", false, TurnStatus::Failed),
+    ] {
+        let event = session
+            .next_turn_stream_event(Duration::from_secs(2))
+            .expect("CAS-shaped stdio error notification should not fail the stream")
+            .expect("CAS-shaped stdio error notification should produce an event");
+        let TurnStreamEvent::TurnError {
+            thread_id,
+            turn_id: actual_turn_id,
+            error,
+            will_retry: actual_will_retry,
+        } = event
+        else {
+            panic!("expected normalized stdio turn error");
+        };
+        assert_eq!(thread_id, "stdio_thread");
+        assert_eq!(actual_turn_id, turn_id);
+        assert_eq!(error.message, "upstream failure");
+        assert_eq!(actual_will_retry, will_retry);
+
+        let event = session
+            .next_turn_stream_event(Duration::from_secs(2))
+            .expect("terminal notification after CAS-shaped stdio error should remain readable")
+            .expect("stdio fixture should emit a terminal event");
+        let TurnStreamEvent::TurnCompleted { thread_id, turn } = event else {
+            panic!("expected terminal stdio event after CAS-shaped error");
+        };
+        assert_eq!(thread_id, "stdio_thread");
+        assert_eq!(turn.id, turn_id);
+        assert_eq!(turn.status, status);
+    }
+
     session.shutdown().unwrap();
 }
 
@@ -114,12 +303,16 @@ fn wsl_linux_compatibility_stdio_launch_uses_bash_login_shell_and_process_group(
 fn host_windows_managed_websocket_launch_uses_loopback_and_token_file() {
     let endpoint = BackendWebSocketEndpoint::loopback(49152);
     let token_file = PathBuf::from(r"C:\tmp\beryl-token.txt");
-    let launch = BackendLaunchSpec::managed_websocket(
+    let fixture = tempfile::tempdir().expect("empty path fixture should be created");
+    let launch = BackendLaunchSpec::managed_websocket_with_options_and_path_resolver(
         RuntimeMode::HostWindows,
         r"C:\work\beryl",
         endpoint.clone(),
         token_file.clone(),
-    );
+        ManagedBackendLaunchOptions::default(),
+        BackendPathResolver::from_host_windows_path_entries([fixture.path().to_path_buf()]),
+    )
+    .expect("Host Windows fallback WebSocket launch should build");
     let command = launch
         .command_line()
         .expect("host websocket command line should build");
@@ -131,7 +324,7 @@ fn host_windows_managed_websocket_launch_uses_loopback_and_token_file() {
     assert_eq!(config.backend_token_file_path(), token_file.as_path());
     assert!(config.endpoint().is_loopback());
     assert_eq!(config.endpoint().listen_url(), "ws://127.0.0.1:49152");
-    assert_eq!(command.program(), "codex");
+    assert_eq!(command.program(), "codex.exe");
     assert_eq!(
         command.args(),
         &[
@@ -465,7 +658,7 @@ fn wsl_linux_launch_keeps_supervised_shell_alive_while_waiting_for_process_group
     let shell = command.args()[7].as_str();
     let outer = wsl_launch_outer_shell_tokens(shell);
     let inner = wsl_launch_inner_shell_command(shell);
-    let codex_args = wsl_launch_codex_args_from_inner(&inner);
+    let (standalone_args, cli_args) = wsl_launch_app_server_args_from_inner(&inner);
 
     assert!(
         !outer
@@ -486,8 +679,9 @@ fn wsl_linux_launch_keeps_supervised_shell_alive_while_waiting_for_process_group
         "WSL launch shell must propagate the waited child status"
     );
     assert!(inner.contains("\"$$\""));
-    assert_eq!(codex_args[0], "app-server");
-    assert!(codex_args.iter().any(|arg| arg == "--listen"));
+    assert_eq!(standalone_args[0], "--listen");
+    assert_eq!(cli_args[0], "app-server");
+    assert_eq!(&cli_args[1..], standalone_args);
 }
 
 #[test]
@@ -560,26 +754,29 @@ fn assert_wsl_launch_prefix(args: &[String], distro_name: &str, cwd: &str) {
 
 fn assert_wsl_process_group_shell_command(shell: &str, expected_fragments: &[&str]) {
     let inner = wsl_launch_inner_shell_command(shell);
-    let codex_args = wsl_launch_codex_args_from_inner(&inner);
+    let (standalone_args, cli_args) = wsl_launch_app_server_args_from_inner(&inner);
 
     assert!(inner.contains("printf"));
     assert!(inner.contains("\"$$\""));
     assert!(inner.contains("/tmp/beryl-codex-app-server/process-"));
     assert!(inner.contains(".pid"));
-    assert_eq!(codex_args[0], "app-server");
-    assert!(codex_args.iter().any(|arg| arg == "--listen"));
+    assert!(inner.contains("if command -v codex-app-server >/dev/null 2>&1; then"));
+    assert_eq!(standalone_args[0], "--listen");
+    assert_eq!(cli_args[0], "app-server");
+    assert_eq!(&cli_args[1..], standalone_args);
 
     for fragment in expected_fragments {
         assert!(
-            codex_args.iter().any(|arg| arg == fragment),
-            "missing WSL launch fragment {fragment:?} in {codex_args:?}"
+            standalone_args.iter().any(|arg| arg == fragment),
+            "missing WSL standalone launch fragment {fragment:?} in {standalone_args:?}"
         );
+        assert!(cli_args.iter().any(|arg| arg == fragment));
     }
 }
 
 fn wsl_launch_codex_args(shell: &str) -> Vec<String> {
     let inner = wsl_launch_inner_shell_command(shell);
-    wsl_launch_codex_args_from_inner(&inner)
+    wsl_launch_app_server_args_from_inner(&inner).1
 }
 
 fn wsl_launch_outer_shell_tokens(shell: &str) -> Vec<String> {
@@ -614,21 +811,28 @@ fn wsl_launch_inner_shell_command(shell: &str) -> String {
         .clone()
 }
 
-fn wsl_launch_codex_args_from_inner(inner: &str) -> Vec<String> {
-    let codex_start = inner
-        .find("; codex ")
-        .expect("inner WSL shell command should launch codex")
-        + 2;
-    let codex_end = inner[codex_start..]
-        .find("; status=$?")
-        .expect("inner WSL shell command should capture codex exit status")
-        + codex_start;
-    let codex_command = &inner[codex_start..codex_end];
-    let mut codex_tokens =
-        shlex::split(codex_command).expect("codex WSL shell command should parse");
+fn wsl_launch_app_server_args_from_inner(inner: &str) -> (Vec<String>, Vec<String>) {
+    let standalone_start = inner
+        .find("then codex-app-server ")
+        .expect("inner WSL shell command should launch the standalone server")
+        + "then ".len();
+    let standalone_end = inner[standalone_start..]
+        .find("; else codex ")
+        .expect("inner WSL shell command should include the CLI fallback")
+        + standalone_start;
+    let cli_start = standalone_end + "; else ".len();
+    let cli_end = inner[cli_start..]
+        .find("; fi; status=$?")
+        .expect("inner WSL shell command should capture the selected command status")
+        + cli_start;
 
-    assert_eq!(codex_tokens.remove(0), "codex");
-    codex_tokens
+    let mut standalone_tokens = shlex::split(&inner[standalone_start..standalone_end])
+        .expect("standalone WSL shell command should parse");
+    let mut cli_tokens = shlex::split(&inner[cli_start..cli_end])
+        .expect("CLI fallback WSL shell command should parse");
+    assert_eq!(standalone_tokens.remove(0), "codex-app-server");
+    assert_eq!(cli_tokens.remove(0), "codex");
+    (standalone_tokens, cli_tokens)
 }
 
 #[test]
@@ -867,7 +1071,7 @@ fn websocket_turn_start_serializes_ordered_user_input() {
 }
 
 #[test]
-fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
+fn websocket_turn_start_serializes_dedicated_hidden_developer_instructions() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -885,14 +1089,9 @@ fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
                         "text": "Follow up"
                     }
                 ],
-                "collaborationMode": {
-                    "mode": "default",
-                    "settings": {
-                        "model": "gpt-5.5",
-                        "reasoning_effort": "high",
-                        "developer_instructions": "Use the operator's project rules."
-                    }
-                }
+                "model": "gpt-5.5",
+                "effort": "high",
+                "developerInstructions": "Use the operator's project rules."
             })
         );
         socket
@@ -925,11 +1124,10 @@ fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
         .start_turn_with_user_input_options(
             "thread_1",
             vec![UserInput::text("Follow up")],
-            TurnStartOptions::default().with_developer_instructions_context(
-                Some("Use the operator's project rules.".to_string()),
-                "gpt-5.5",
-                Some("high".to_string()),
-            ),
+            TurnStartOptions::default()
+                .with_model("gpt-5.5")
+                .with_reasoning_effort("high")
+                .with_developer_instructions(Some("Use the operator's project rules.".to_string())),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -939,7 +1137,7 @@ fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
 }
 
 #[test]
-fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_reset() {
+fn websocket_turn_start_omits_blank_developer_instructions() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -957,13 +1155,7 @@ fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_res
                         "text": "Follow up"
                     }
                 ],
-                "collaborationMode": {
-                    "mode": "default",
-                    "settings": {
-                        "model": "gpt-5.5",
-                        "developer_instructions": null
-                    }
-                }
+                "model": "gpt-5.5"
             })
         );
         socket
@@ -996,7 +1188,9 @@ fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_res
         .start_turn_with_user_input_options(
             "thread_1",
             vec![UserInput::text("Follow up")],
-            TurnStartOptions::default().with_developer_instructions_context(None, "gpt-5.5", None),
+            TurnStartOptions::default()
+                .with_model("gpt-5.5")
+                .with_developer_instructions(Some(" \n\t ".to_string())),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -2999,7 +3193,8 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                         "userAgent": "codex-cli 0.128.0",
                         "codexHome": "C:/Users/example/.codex",
                         "platformFamily": "windows",
-                        "platformOs": "windows"
+                        "platformOs": "windows",
+                        "turnScopedDeveloperInstructionsVersion": 1
                     }
                 })
                 .to_string(),
@@ -3235,7 +3430,8 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
         "userAgent": "codex-cli 0.118.0",
         "codexHome": "C:/Users/example/.codex",
         "platformFamily": "windows",
-        "platformOs": "windows"
+        "platformOs": "windows",
+        "turnScopedDeveloperInstructionsVersion": 1
     }))
     .unwrap();
 
@@ -3490,6 +3686,8 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         codex_home: "C:/Users/example/.codex".to_string(),
         platform_family: "windows".to_string(),
         platform_os: "windows".to_string(),
+        turn_scoped_developer_instructions_version: Some(1),
+        compaction_observation: Default::default(),
     });
 
     assert_eq!(
@@ -3534,6 +3732,10 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         host_snapshot.validate_runtime_mode(&RuntimeMode::HostWindows),
         Ok(())
     );
+    assert_eq!(
+        host_snapshot.turn_scoped_developer_instructions_version(),
+        Some(1)
+    );
     assert!(matches!(
         host_snapshot.validate_runtime_mode(&RuntimeMode::WslLinux {
             distro_name: "Ubuntu".to_string()
@@ -3550,6 +3752,8 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         codex_home: "/home/example/.codex".to_string(),
         platform_family: "unix".to_string(),
         platform_os: "linux".to_string(),
+        turn_scoped_developer_instructions_version: Some(1),
+        compaction_observation: Default::default(),
     });
 
     assert_eq!(
@@ -3558,6 +3762,82 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         }),
         Ok(())
     );
+}
+
+#[test]
+fn compatibility_requires_turn_scoped_developer_instructions_version_one() {
+    for actual_version in [None, Some(0), Some(2)] {
+        let snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
+            user_agent: "codex-cli test".to_string(),
+            codex_home: "C:/Users/example/.codex".to_string(),
+            platform_family: "windows".to_string(),
+            platform_os: "windows".to_string(),
+            turn_scoped_developer_instructions_version: actual_version,
+            compaction_observation: Default::default(),
+        });
+
+        assert!(matches!(
+            snapshot.validate_runtime_mode(&RuntimeMode::HostWindows),
+            Err(CompatibilityError::TurnScopedDeveloperInstructionsVersionMismatch {
+                actual_version: returned_version,
+            }) if returned_version == actual_version
+        ));
+    }
+}
+
+#[test]
+fn initialize_rejects_malformed_turn_scoped_developer_instructions_version() {
+    for malformed_value in [json!(false), json!(-1), json!("1"), json!({ "version": 1 })] {
+        let response = serde_json::from_value::<InitializeResponse>(json!({
+            "userAgent": "codex-cli test",
+            "codexHome": "C:/Users/example/.codex",
+            "platformFamily": "windows",
+            "platformOs": "windows",
+            "turnScopedDeveloperInstructionsVersion": malformed_value,
+        }));
+        assert!(response.is_err());
+    }
+}
+
+#[test]
+fn websocket_initialize_rejects_missing_turn_scoped_developer_instructions_before_ready() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        let request = read_json(&mut socket);
+        assert_eq!(request["method"], json!("initialize"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": request["id"],
+                    "result": {
+                        "userAgent": "codex-cli incompatible",
+                        "codexHome": "C:/Users/example/.codex",
+                        "platformFamily": "windows",
+                        "platformOs": "windows"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+
+    let error = ManagedBackendSession::connect_websocket(
+        websocket_test_launch(endpoint.clone()),
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .expect_err("missing required advertisement must reject the connection before it is ready");
+
+    assert!(matches!(
+        error,
+        ManagedBackendError::Compatibility(
+            CompatibilityError::TurnScopedDeveloperInstructionsVersionMismatch {
+                actual_version: None,
+            }
+        )
+    ));
+    server.join().unwrap();
 }
 
 #[test]
@@ -3781,7 +4061,8 @@ fn guarded_probe_initialize_failure_retains_server_for_explicit_cleanup() {
                         "userAgent": "codex-cli incompatible",
                         "codexHome": "/home/example/.codex",
                         "platformFamily": "unix",
-                        "platformOs": "linux"
+                        "platformOs": "linux",
+                        "turnScopedDeveloperInstructionsVersion": 1
                     }
                 })
                 .to_string(),
@@ -4051,7 +4332,8 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {
                     "userAgent": "codex-cli 0.125.0",
                     "codexHome": "C:/Users/example/.codex",
                     "platformFamily": "windows",
-                    "platformOs": "windows"
+                    "platformOs": "windows",
+                    "turnScopedDeveloperInstructionsVersion": 1
                 }
             })
             .to_string(),

@@ -494,7 +494,7 @@ fn hidden_developer_instructions_route_only_user_facing_turn_starts() {
         "fn begin_transcript_edit_replacement_turn",
     );
     let compaction_queue_body = rust_function_body(
-        shell_source,
+        include_str!("../src/shell/compaction_integration.rs"),
         "fn queue_context_compaction_turn_from_composer",
     );
     let lifecycle_continue_body =
@@ -513,7 +513,7 @@ fn hidden_developer_instructions_route_only_user_facing_turn_starts() {
     );
     assert_order(
         replacement_turn_body,
-        "turn_options_with_current_developer_instructions_defaults(",
+        "turn_options_with_current_developer_instructions(",
         "spawn_turn_worker",
     );
 
@@ -602,7 +602,7 @@ fn backend_unavailable_target_gates_are_target_scoped() {
     let queue_steering_fallback_body =
         rust_function_body(shell_source, "fn queue_steering_fragments_for_next_turn");
     let context_compaction_queue_body = rust_function_body(
-        shell_source,
+        include_str!("../src/shell/compaction_integration.rs"),
         "fn queue_context_compaction_turn_from_composer",
     );
     let older_history_page_body =
@@ -621,8 +621,10 @@ fn backend_unavailable_target_gates_are_target_scoped() {
         status_operation_source,
         "fn begin_status_model_list_load_if_needed",
     );
-    let status_operation_event_body =
-        rust_function_body(status_operation_source, "fn apply_status_operation_event");
+    let status_operation_event_body = rust_function_body(
+        include_str!("../src/shell/compaction_integration.rs"),
+        "fn apply_compaction_update",
+    );
     let status_backend_available_body = rust_function_body(
         status_operation_source,
         "pub(crate) fn status_line_backend_operation_available",
@@ -694,9 +696,9 @@ fn backend_unavailable_target_gates_are_target_scoped() {
     assert!(older_history_page_body.contains("ShellState::BackendUnavailable(unavailable)"));
     assert!(older_history_page_body.contains("connector.launch_spec().runtime_mode().clone()"));
     assert!(!older_history_page_body.contains("| ShellState::BackendUnavailable(_)"));
-    assert!(status_operation_event_body.contains("ShellState::BackendUnavailable(unavailable)"));
-    assert!(status_operation_event_body.contains("selected_thread_registered_execution_target"));
-    assert!(status_operation_event_body.contains("surface.apply_stream_event"));
+    assert!(status_operation_event_body.contains("self.compaction_target_matches"));
+    assert!(status_operation_event_body.contains("control.accept(update)"));
+    assert!(!status_operation_event_body.contains("surface.apply_stream_event"));
     assert!(
         status_model_load_body.contains("status_model_list_config_cwd_for_connector(&connector)")
     );
@@ -755,7 +757,7 @@ fn backend_unavailable_target_gates_are_target_scoped() {
 }
 
 #[test]
-fn context_compaction_uses_configured_completion_timeout_only_for_stream_wait() {
+fn context_compaction_captures_warning_threshold_and_bounded_request_timeout_once_per_observer() {
     let shell_source = include_str!("../src/shell.rs");
     let status_operation_source = include_str!("../src/shell/status_operation.rs");
 
@@ -765,20 +767,16 @@ fn context_compaction_uses_configured_completion_timeout_only_for_stream_wait() 
     );
     let lifecycle_continue_body =
         rust_function_body(shell_source, "fn begin_lifecycle_phase_continue");
-    let worker_body =
-        rust_function_body(status_operation_source, "fn run_context_compaction_worker");
-
-    assert!(status_operation_source.contains("request_timeout: Duration"));
-    assert!(status_operation_source.contains("stream_timeout: Duration"));
-    assert!(manual_compaction_body.contains("self.bootstrap.probe_timeout()"));
-    assert!(manual_compaction_body.contains("self.current_context_compaction_timeout()"));
-    assert!(lifecycle_continue_body.contains("self.bootstrap.probe_timeout()"));
-    assert!(lifecycle_continue_body.contains("self.current_context_compaction_timeout()"));
-    assert!(worker_body.contains("connector.connect_client(request_timeout)"));
-    assert!(worker_body.contains("session.resume_thread_metadata(&thread_id, request_timeout)"));
-    assert!(worker_body.contains("session.compact_thread(&thread_id, request_timeout)"));
-    assert!(worker_body.contains("let event_timeout = remaining.min"));
-    assert!(!status_operation_source.contains("CONTEXT_COMPACTION_MIN_STREAM_TIMEOUT"));
+    let worker_body = rust_function_body(
+        include_str!("../src/shell/compaction_integration.rs"),
+        "fn begin_compaction_observation",
+    );
+    assert!(manual_compaction_body.contains("self.begin_compaction_observation"));
+    assert!(lifecycle_continue_body.contains("self.begin_compaction_observation"));
+    assert!(worker_body.contains("self.bootstrap.probe_timeout()"));
+    assert!(worker_body.contains("self.current_context_compaction_timeout()"));
+    assert!(worker_body.contains("compaction_observer::spawn_observer"));
+    assert!(!status_operation_source.contains("stream_timeout"));
 }
 
 #[test]

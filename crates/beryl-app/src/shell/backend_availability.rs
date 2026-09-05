@@ -215,6 +215,7 @@ impl BackendUnavailableKind {
             | ManagedBackendError::ThreadListPageLimitExceeded { .. }
             | ManagedBackendError::ThreadListCursorRepeated { .. }
             | ManagedBackendError::UsageTreeRootMismatch { .. }
+            | ManagedBackendError::Compaction(_)
             | ManagedBackendError::UnexpectedMessageShape
             | ManagedBackendError::MalformedTurnErrorNotificationEnvelope { .. }
             | ManagedBackendError::BoundedResourceExceeded { .. }

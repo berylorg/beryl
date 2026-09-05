@@ -130,6 +130,7 @@ const STARTUP_STAGES: &[ManagedBackendStartupStage] = &[
 
 #[derive(Debug)]
 pub struct ManagedBackendSession {
+    compaction_observation: crate::CompactionObservationCapability,
     launch_spec: BackendLaunchSpec,
     process: Option<SupervisedBackendProcess>,
     transport: BackendClientTransport,
@@ -193,6 +194,8 @@ pub struct ManagedBackendStartupProgress {
 
 #[derive(Debug, Error)]
 pub enum ManagedBackendError {
+    #[error(transparent)]
+    Compaction(#[from] crate::CompactionError),
     #[error("managed backend launch options are invalid")]
     InvalidLaunchOptions {
         #[from]
@@ -1169,17 +1172,79 @@ impl ManagedBackendSession {
         Ok(())
     }
 
+    /// Convenience observed start. Use `prepare_compaction` and `start_compaction`
+    /// when the caller needs to reconcile a lost start acknowledgement.
     pub fn compact_thread(
         &mut self,
         thread_id: &str,
         timeout: Duration,
-    ) -> Result<(), ManagedBackendError> {
-        let _: EmptyResponse = self.request(
-            "thread/compact/start",
-            &ThreadCompactStartParams::new(thread_id),
+    ) -> Result<crate::CompactionReceipt, ManagedBackendError> {
+        let operation = self.prepare_compaction(thread_id)?;
+        self.start_compaction(&operation, timeout)
+    }
+
+    pub fn compaction_observation(&self) -> &crate::CompactionObservationCapability {
+        &self.compaction_observation
+    }
+
+    /// Allocate the operation identity before dispatch. Retain it for read-only recovery.
+    pub fn prepare_compaction(
+        &self,
+        thread_id: &str,
+    ) -> Result<crate::CompactionOperation, ManagedBackendError> {
+        let session = self
+            .compaction_observation
+            .session_id()
+            .map_err(crate::CompactionError::from)?;
+        Ok(crate::CompactionOperation::new(thread_id, session)?)
+    }
+
+    /// Submit exactly once. An error after dispatch does not authorize resubmission.
+    pub fn start_compaction(
+        &mut self,
+        operation: &crate::CompactionOperation,
+        timeout: Duration,
+    ) -> Result<crate::CompactionReceipt, ManagedBackendError> {
+        let session = self
+            .compaction_observation
+            .session_id()
+            .map_err(crate::CompactionError::from)?;
+        if session != operation.observation_session_id() {
+            return Err(crate::CompactionError::IdentityMismatch {
+                field: "observationSessionId",
+            }
+            .into());
+        }
+        let response: crate::compaction::CompactionStartResponse =
+            self.request("thread/compact/start", operation, timeout)?;
+        response.receipt.validate(operation, None, session, true)?;
+        Ok(response.receipt)
+    }
+
+    /// Read retained evidence without resuming a thread or repeating the mutation.
+    pub fn read_compaction(
+        &mut self,
+        operation: &crate::CompactionOperation,
+        expected_turn_id: Option<&str>,
+        timeout: Duration,
+    ) -> Result<crate::CompactionReceipt, ManagedBackendError> {
+        let session = self
+            .compaction_observation
+            .session_id()
+            .map_err(crate::CompactionError::from)?;
+        let expected = expected_turn_id
+            .map(|id| crate::compaction::identity(id, "expectedTurnId"))
+            .transpose()?;
+        let response: crate::CompactionReceipt = self.request(
+            "thread/compact/read",
+            &crate::compaction::CompactionReadParams {
+                operation,
+                expected_turn_id: expected,
+            },
             timeout,
         )?;
-        Ok(())
+        response.validate(operation, expected, session, false)?;
+        Ok(response)
     }
 
     pub fn interrupt_turn(
@@ -1293,6 +1358,43 @@ impl ManagedBackendSession {
                 | DeadlineTransportError::WebSocketReadExpiredAfterProgress(_),
             ) => {
                 unreachable!("unbounded response expired")
+            }
+        }
+    }
+
+    /// Deny an approval within one bounded transport-write deadline.
+    /// A partial-write failure poisons only this client session, consistently
+    /// with bounded JSON-RPC request writes.
+    pub fn deny_approval_request_with_timeout(
+        &mut self,
+        request: &ApprovalRequest,
+        timeout: Duration,
+    ) -> Result<(), ManagedBackendError> {
+        let deadline = RequestDeadline::from_timeout(timeout);
+        match self.deny_approval_request_until(request, deadline.expires_at) {
+            Ok(()) => Ok(()),
+            Err(DeadlineTransportError::StdioWriteExpired) => {
+                self.poison_after_stdio_write_timeout();
+                Err(deadline.timeout_error("approval/deny"))
+            }
+            Err(DeadlineTransportError::WebSocketWriteExpired) => {
+                self.poison_after_websocket_write_timeout();
+                Err(deadline.timeout_error("approval/deny"))
+            }
+            Err(DeadlineTransportError::StdioWriteFailed(error)) => {
+                self.poison_after_stdio_write_timeout();
+                Err(error)
+            }
+            Err(DeadlineTransportError::WebSocketWriteFailed(error)) => {
+                self.poison_after_websocket_write_timeout();
+                Err(error)
+            }
+            Err(DeadlineTransportError::DeadlineExpired) => {
+                Err(deadline.timeout_error("approval/deny"))
+            }
+            Err(DeadlineTransportError::Backend(error)) => Err(error),
+            Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(_)) => {
+                unreachable!("write path cannot report a read deadline")
             }
         }
     }
@@ -1546,6 +1648,7 @@ impl ManagedBackendSession {
         Ok(Self {
             launch_spec,
             process: Some(process),
+            compaction_observation: Default::default(),
             transport: BackendClientTransport::Stdio {
                 writer: Some(SupervisedStdioWriter::spawn(stdin)),
                 messages,
@@ -1764,6 +1867,7 @@ impl ManagedBackendSession {
         Ok(Self {
             launch_spec,
             process: None,
+            compaction_observation: Default::default(),
             transport: BackendClientTransport::WebSocket(transport),
             pending_messages: VecDeque::new(),
             pending_message_bytes: 0,
@@ -1906,6 +2010,8 @@ impl ManagedBackendSession {
 
         let compatibility = CompatibilitySnapshot::from_initialize_response(&initialize);
         compatibility.validate_runtime_mode(self.launch_spec.runtime_mode())?;
+
+        self.compaction_observation = initialize.compaction_observation.clone();
 
         self.notify_initialized()?;
 
@@ -4117,12 +4223,14 @@ fn parse_incoming_value(value: Value) -> Result<IncomingMessage, ManagedBackendE
 
     if let Some(method) = object.get("method").and_then(Value::as_str) {
         if method == "error" {
-            if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-                return Err(
-                    ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
-                        detail: "jsonrpc must be exactly 2.0",
-                    },
-                );
+            if let Some(jsonrpc) = object.get("jsonrpc") {
+                if jsonrpc.as_str() != Some("2.0") {
+                    return Err(
+                        ManagedBackendError::MalformedTurnErrorNotificationEnvelope {
+                            detail: "jsonrpc must be exactly 2.0",
+                        },
+                    );
+                }
             }
             if object.contains_key("id") {
                 return Err(

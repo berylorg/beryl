@@ -53,7 +53,7 @@ Give users a durable, validated settings window for Beryl-owned application pref
 
 - The settings feature owns row mechanics, staging, validation dispatch, apply sequencing, and persistence plumbing.
 - The feature that owns a setting owns that setting's semantics.
-- The Operations section includes `Context compaction timeout`; its selected-thread compaction semantics are owned by `doc/features/status-line/design.md`.
+- The Operations section includes `Compaction warning after`, expressed in seconds; its selected-thread warning and continued-observation semantics are owned by `doc/features/status-line/design.md`. Existing stored timeout values remain the warning threshold.
 - The Agent section includes `Developer Instructions`; send-time developer-instructions behavior is owned by `doc/features/composer/design.md`.
 - The Graph section includes graph upkeep instructions; workspace-scoped semantics and send-time graph-upkeep behavior are owned by `doc/features/graph-upkeep/design.md`.
 - The Notifications section includes `End-turn sound`; notification playback semantics are owned by `doc/features/notifications/design.md`.
