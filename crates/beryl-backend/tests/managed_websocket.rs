@@ -1258,8 +1258,7 @@ fn initialize_response(request_id: u64) -> String {
             "userAgent": "codex-cli 0.125.0",
             "codexHome": "C:/Users/example/.codex",
             "platformFamily": "windows",
-            "platformOs": "windows",
-            "turnScopedDeveloperInstructionsVersion": 1
+            "platformOs": "windows"
         }
     })
     .to_string()

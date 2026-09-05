@@ -1,23 +1,26 @@
 use std::{
     path::PathBuf,
-    sync::mpsc::{self, Sender, TryRecvError},
+    sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread,
     time::{Duration, Instant},
 };
 
 use beryl_backend::{
-    BackendConfigDefaults, ManagedBackendClientConnector, ModelInfo, ThreadStatus,
+    ApprovalRequest, BackendConfigDefaults, ManagedBackendClientConnector, ManagedBackendSession,
+    ModelInfo, ThreadStatus, TurnStreamEvent,
 };
 use beryl_model::workspace::WorkspaceId;
 use gpui::{
     Bounds, ClickEvent, Context, KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseUpEvent, Pixels,
     Window,
 };
+use tracing::warn;
 
 use super::{
-    ConversationSurfaceState, ShellView, SurfaceNotice,
-    compaction_integration::{PolledStatusUpdate, StatusOperationTask},
+    ConversationSurfaceState, ShellState, ShellView, SurfaceNotice,
+    context_compaction::ContextCompactionStreamState,
     hard_stop::{HardStopOutcome, HardStopUpdate, spawn_hard_stop_worker},
+    lifecycle_continuation::context_compaction_queue_failure_message,
     status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets, ThreadTurnDefaults},
     status_operation_state::{
         HardStopHoldSource, HardStopRequestSummary, StatusLineOperationKind,
@@ -26,11 +29,14 @@ use super::{
     turn_stop::{TurnStopOutcome, TurnStopUpdate, spawn_turn_stop_worker},
 };
 
+const CONTEXT_COMPACTION_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
 const STATUS_OPERATION_POLL_MAX_EVENTS_PER_FRAME: usize = 64;
 const STATUS_OPERATION_POLL_MAX_FRAME_TIME: Duration = Duration::from_millis(4);
 
 pub(super) enum StatusOperationUpdate {
     ModelListFinished(StatusModelListOutcome),
+    ContextCompactionEvent(TurnStreamEvent),
+    ContextCompactionFinished(ContextCompactionOutcome),
 }
 
 pub(super) enum StatusModelListOutcome {
@@ -43,14 +49,38 @@ pub(super) enum StatusModelListOutcome {
     },
 }
 
+pub(super) enum ContextCompactionOutcome {
+    Finished { thread_id: String },
+    Failed { thread_id: String, message: String },
+}
+
 pub(super) fn spawn_status_model_list_worker(
     connector: ManagedBackendClientConnector,
     config_cwd: PathBuf,
     timeout: Duration,
-) -> StatusOperationTask {
+) -> Receiver<StatusOperationUpdate> {
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || run_status_model_list_worker(connector, config_cwd, timeout, sender));
-    StatusOperationTask::Models(receiver)
+    receiver
+}
+
+pub(super) fn spawn_context_compaction_worker(
+    connector: ManagedBackendClientConnector,
+    thread_id: String,
+    request_timeout: Duration,
+    stream_timeout: Duration,
+) -> Receiver<StatusOperationUpdate> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        run_context_compaction_worker(
+            connector,
+            thread_id,
+            request_timeout,
+            stream_timeout,
+            sender,
+        )
+    });
+    receiver
 }
 
 fn run_status_model_list_worker(
@@ -87,6 +117,116 @@ fn run_status_model_list_worker(
     };
 
     let _ = sender.send(StatusOperationUpdate::ModelListFinished(outcome));
+}
+
+fn run_context_compaction_worker(
+    connector: ManagedBackendClientConnector,
+    thread_id: String,
+    request_timeout: Duration,
+    stream_timeout: Duration,
+    sender: Sender<StatusOperationUpdate>,
+) {
+    let mut session = match connector.connect_client(request_timeout) {
+        Ok(session) => session,
+        Err(error) => {
+            let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                ContextCompactionOutcome::Failed {
+                    thread_id,
+                    message: format!("Beryl could not connect to the managed backend: {error}"),
+                },
+            ));
+            return;
+        }
+    };
+
+    if let Err(error) = session.resume_thread_metadata(&thread_id, request_timeout) {
+        let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+            ContextCompactionOutcome::Failed {
+                thread_id,
+                message: format!(
+                    "Beryl could not subscribe to the thread before context compaction: {error}"
+                ),
+            },
+        ));
+        return;
+    }
+
+    if let Err(error) = session.compact_thread(&thread_id, request_timeout) {
+        let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+            ContextCompactionOutcome::Failed {
+                thread_id,
+                message: format!("Beryl could not start context compaction: {error}"),
+            },
+        ));
+        return;
+    }
+
+    let started_at = Instant::now();
+    let mut stream_state = ContextCompactionStreamState::default();
+    loop {
+        let elapsed = started_at.elapsed();
+        if elapsed >= stream_timeout {
+            let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                ContextCompactionOutcome::Failed {
+                    thread_id,
+                    message: "Beryl timed out waiting for context compaction to finish."
+                        .to_string(),
+                },
+            ));
+            return;
+        }
+
+        let remaining = stream_timeout - elapsed;
+        let event_timeout = remaining.min(CONTEXT_COMPACTION_IDLE_POLL_INTERVAL);
+        let event = match session.next_turn_stream_event(event_timeout) {
+            Ok(Some(TurnStreamEvent::ApprovalRequested(request))) => {
+                if let Err(message) =
+                    deny_status_operation_approval(&mut session, &request, request_timeout)
+                {
+                    let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                        ContextCompactionOutcome::Failed { thread_id, message },
+                    ));
+                    return;
+                }
+                continue;
+            }
+            Ok(Some(TurnStreamEvent::ProtocolError { error })) => {
+                let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                    ContextCompactionOutcome::Failed {
+                        thread_id,
+                        message: format!(
+                            "Beryl received a protocol error during context compaction: {}",
+                            error.message
+                        ),
+                    },
+                ));
+                return;
+            }
+            Ok(Some(event)) => event,
+            Ok(None) => continue,
+            Err(error) => {
+                let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                    ContextCompactionOutcome::Failed {
+                        thread_id,
+                        message: format!(
+                            "Beryl lost the execution stream during context compaction: {error}"
+                        ),
+                    },
+                ));
+                return;
+            }
+        };
+
+        let finished = stream_state.observe(&thread_id, &event);
+        let _ = sender.send(StatusOperationUpdate::ContextCompactionEvent(event));
+
+        if finished {
+            let _ = sender.send(StatusOperationUpdate::ContextCompactionFinished(
+                ContextCompactionOutcome::Finished { thread_id },
+            ));
+            return;
+        }
+    }
 }
 
 impl ConversationSurfaceState {
@@ -147,6 +287,9 @@ impl ConversationSurfaceState {
         self.status_line.finish_context_compaction(thread_id);
         if self.context_compaction_thread_id.as_deref() == Some(thread_id) {
             self.context_compaction_thread_id = None;
+        }
+        if self.selected_thread_id() == Some(thread_id) {
+            self.selected_thread_status = Some(ThreadStatus::Idle);
         }
     }
 }
@@ -451,12 +594,6 @@ impl ShellView {
         let Some(thread_id) = thread_id else {
             return;
         };
-        if let Some(reason) = self.compaction_unavailable_reason() {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new("Context compaction unavailable", reason));
-            }
-            return;
-        }
         let Some(connector) = self.backend_client_connector() else {
             if let Some(block) = self.current_conversation_submission_block() {
                 self.report_backend_operation_block("Context unavailable", block, cx);
@@ -466,8 +603,14 @@ impl ShellView {
 
         if let Some(surface) = self.conversation_surface_mut() {
             surface.status_line_operations_mut().close();
+            surface.begin_context_compaction(&thread_id);
         }
-        self.begin_compaction_observation(connector, thread_id);
+        self.status_operation_receiver = Some(spawn_context_compaction_worker(
+            connector,
+            thread_id,
+            self.bootstrap.probe_timeout(),
+            self.current_context_compaction_timeout(),
+        ));
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
     }
@@ -538,7 +681,6 @@ impl ShellView {
             ));
         }
 
-        self.record_compaction_stop(&target.thread_id, &target.turn_id);
         self.turn_stop_receiver = Some(spawn_turn_stop_worker(
             connector,
             target.clone(),
@@ -695,41 +837,26 @@ impl ShellView {
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    if !self.handle_compaction_worker_stopped() {
-                        let queue_check = matches!(
-                            self.status_operation_receiver,
-                            Some(StatusOperationTask::QueueCheck(_))
-                        );
-                        self.status_operation_receiver = None;
-                        if queue_check {
-                            if let Some(surface) = self.conversation_surface_mut() {
-                                surface.set_notice(SurfaceNotice::new(
-                                    "Input remains queued",
-                                    "Beryl could not confirm backend idle. Submit again to retry.",
-                                ));
-                            }
-                        } else {
-                            self.handle_status_operation_worker_stopped();
-                        }
-                    }
+                    self.status_operation_receiver = None;
+                    self.handle_status_operation_worker_stopped();
                     updated = true;
                     break;
                 }
             };
 
             match update {
-                PolledStatusUpdate::Model(outcome) => {
+                StatusOperationUpdate::ModelListFinished(outcome) => {
                     self.status_operation_receiver = None;
                     self.finish_status_model_list(outcome);
                     updated = true;
                     break;
                 }
-                PolledStatusUpdate::Observer(update) => {
-                    updated |= self.apply_compaction_update(update);
+                StatusOperationUpdate::ContextCompactionEvent(event) => {
+                    updated |= self.apply_status_operation_event(event);
                 }
-                PolledStatusUpdate::QueueStatus(target, status) => {
+                StatusOperationUpdate::ContextCompactionFinished(outcome) => {
                     self.status_operation_receiver = None;
-                    self.finish_held_queue_eligibility(target, status);
+                    self.finish_context_compaction(outcome);
                     updated = true;
                     break;
                 }
@@ -892,6 +1019,38 @@ impl ShellView {
             })
     }
 
+    fn finish_context_compaction(&mut self, outcome: ContextCompactionOutcome) {
+        match outcome {
+            ContextCompactionOutcome::Finished { thread_id } => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.finish_context_compaction(&thread_id);
+                    surface.finish_running_tool_activity_for_thread_ok(&thread_id);
+                }
+                self.begin_pending_turn_input_queue_for_thread(&thread_id);
+            }
+            ContextCompactionOutcome::Failed { thread_id, message } => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.finish_context_compaction(&thread_id);
+                    surface.finish_running_tool_activity_for_thread_error(&thread_id);
+                    surface.set_notice(SurfaceNotice::new(
+                        "Context compaction failed",
+                        message.clone(),
+                    ));
+                    surface.fail_pending_turn_input_queue_for_thread(
+                        &thread_id,
+                        context_compaction_queue_failure_message(&message),
+                    );
+                }
+
+                self.block_if_backend_process_dead(
+                    "Managed backend disconnected during context compaction",
+                    "The backend process exited before context compaction finished.",
+                    &message,
+                );
+            }
+        }
+    }
+
     fn finish_turn_stop_request(&mut self, outcome: TurnStopOutcome) {
         match outcome {
             TurnStopOutcome::Accepted { target } => {
@@ -1015,11 +1174,59 @@ impl ShellView {
         );
     }
 
+    fn apply_status_operation_event(&mut self, event: TurnStreamEvent) -> bool {
+        let mut updated = self
+            .conversation_surface_mut()
+            .is_some_and(|surface| surface.observe_context_compaction_event(&event));
+        match event {
+            TurnStreamEvent::TokenUsageUpdated {
+                thread_id,
+                turn_id,
+                token_usage,
+            } => updated | self.apply_token_usage_update(thread_id, turn_id, token_usage),
+            TurnStreamEvent::AccountRateLimitsUpdated { rate_limits } => {
+                updated | self.apply_account_rate_limits_update(rate_limits)
+            }
+            TurnStreamEvent::ThreadNameUpdated {
+                thread_id,
+                thread_name,
+            } => updated | self.apply_thread_name_update(thread_id, thread_name),
+            event => {
+                let execution_target = match &self.state {
+                    ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+                    ShellState::BackendUnavailable(unavailable) => {
+                        Self::selected_thread_registered_execution_target(
+                            &unavailable.loaded_workspace,
+                            &unavailable.surface,
+                        )
+                    }
+                    _ => None,
+                };
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.apply_stream_event(event, execution_target.as_ref());
+                    updated = true;
+                }
+                updated
+            }
+        }
+    }
+
     fn handle_status_operation_worker_stopped(&mut self) {
         let message =
             "Beryl lost the background task that was running a status-line backend operation.";
         self.status_model_cache.finish_failed(message.to_string());
         if let Some(surface) = self.conversation_surface_mut() {
+            let selected_thread_id = surface.selected_thread_id().map(str::to_string);
+            if let Some(thread_id) = selected_thread_id.as_deref() {
+                surface.finish_context_compaction(thread_id);
+                surface.finish_running_tool_activity_for_thread_error(thread_id);
+                surface.fail_pending_turn_input_queue_for_thread(
+                    thread_id,
+                    format!(
+                        "Beryl could not send the queued input because the status operation stopped unexpectedly: {message}"
+                    ),
+                );
+            }
             surface.status_line_operations_mut().close();
             surface.set_notice(SurfaceNotice::new("Status operation failed", message));
         }
@@ -1066,10 +1273,6 @@ impl ShellView {
             return false;
         }
 
-        self.record_compaction_stop(
-            &selected_targets.selected_turn.thread_id,
-            &selected_targets.selected_turn.turn_id,
-        );
         self.hard_stop_receiver = Some(spawn_hard_stop_worker(
             connector,
             selected_targets,
@@ -1127,10 +1330,6 @@ impl ShellView {
             ));
         }
 
-        self.record_compaction_stop(
-            &selected_targets.selected_turn.thread_id,
-            &selected_targets.selected_turn.turn_id,
-        );
         self.hard_stop_receiver = Some(spawn_hard_stop_worker(
             connector,
             selected_targets.clone(),
@@ -1161,4 +1360,42 @@ fn hard_stop_summary_notice(summary: &HardStopRequestSummary) -> String {
 
 fn hard_stop_hold_key(key: &str) -> bool {
     matches!(key, "enter" | "space" | " ")
+}
+
+fn deny_status_operation_approval(
+    session: &mut ManagedBackendSession,
+    request: &ApprovalRequest,
+    request_timeout: Duration,
+) -> Result<(), String> {
+    warn!(
+        approval = %request.summary(),
+        approval_payload = %request.pretty_params(),
+        "auto-denying unsupported backend approval request during status operation"
+    );
+    session
+        .deny_approval_request(request)
+        .map_err(|error| format!("Beryl could not deny the backend approval request: {error}"))?;
+
+    if request.kind().denial_response_interrupts_turn() {
+        return Ok(());
+    }
+
+    let Some(thread_id) = request.thread_id() else {
+        return Err(
+            "Beryl denied a backend approval request but could not interrupt the turn because the request did not include a thread id."
+                .to_string(),
+        );
+    };
+    let Some(turn_id) = request.turn_id() else {
+        return Err(
+            "Beryl denied a backend approval request but could not interrupt the turn because the request did not include a turn id."
+                .to_string(),
+        );
+    };
+
+    session
+        .interrupt_turn(thread_id, turn_id, request_timeout)
+        .map_err(|error| {
+            format!("Beryl denied the backend approval request but could not interrupt the turn: {error}")
+        })
 }

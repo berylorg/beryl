@@ -100,77 +100,6 @@ fn context_compaction_finish_restores_underlying_turn_state() {
 }
 
 #[test]
-fn context_compaction_stop_identity_remains_pinned_until_cleanup() {
-    let mut state = StatusLineState::default();
-    state.begin_context_compaction("thread_1");
-    assert!(state.set_context_compaction_turn_id("thread_1", "exact"));
-    assert!(!state.set_context_compaction_turn_id("thread_1", "unrelated"));
-    assert_eq!(
-        state
-            .context_compaction_cancellation_target(Some("thread_1"))
-            .unwrap()
-            .turn_id,
-        "exact"
-    );
-}
-
-#[test]
-fn compaction_outcome_projects_until_the_next_ordinary_turn() {
-    let mut state = StatusLineState::default();
-    state.set_compaction_outcome("thread_1", false);
-    assert_eq!(
-        state.projection(Some("thread_1"), "ok").last_turn_state,
-        "error"
-    );
-    assert!(
-        state
-            .context_compaction_cancellation_target(Some("thread_1"))
-            .is_none()
-    );
-    state.clear_compaction_outcome("thread_1");
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "working")
-            .last_turn_state,
-        "working"
-    );
-}
-
-#[test]
-fn terminal_compaction_projection_retention_keeps_only_latest_and_preserves_live_identity() {
-    let mut state = StatusLineState::default();
-    state.begin_context_compaction("live");
-    state.set_context_compaction_turn_id("live", "exact");
-    for index in 0..100 {
-        state.set_compaction_outcome(&format!("thread-{index}"), false);
-    }
-    for index in 0..99 {
-        assert_eq!(
-            state
-                .projection(Some(&format!("thread-{index}")), "ok")
-                .last_turn_state,
-            "ok"
-        );
-    }
-    assert_eq!(
-        state.projection(Some("thread-99"), "ok").last_turn_state,
-        "error"
-    );
-    assert_eq!(
-        state
-            .context_compaction_cancellation_target(Some("live"))
-            .unwrap()
-            .turn_id,
-        "exact"
-    );
-    state.clear_session_metadata();
-    assert_eq!(
-        state.projection(Some("thread-99"), "ok").last_turn_state,
-        "ok"
-    );
-}
-
-#[test]
 fn context_compaction_is_cancellable_only_after_turn_id_is_known() {
     let mut state = StatusLineState::default();
 
@@ -359,58 +288,71 @@ fn effective_turn_context_defaults_include_displayed_model_and_reasoning() {
 }
 
 #[test]
-fn developer_instructions_are_added_without_effective_defaults() {
+fn developer_instructions_context_is_added_from_effective_defaults() {
     let options = status_line::turn_start_options_with_developer_instructions_context(
         beryl_backend::TurnStartOptions::default(),
         Some("Use the operator's settings.".to_string()),
+        ThreadTurnDefaults::new(Some("gpt-5.5".to_string()), Some("high".to_string())),
     );
 
+    let context = options
+        .developer_instructions_context()
+        .expect("context should be attached");
     assert_eq!(
-        options.developer_instructions(),
+        context.developer_instructions(),
         Some("Use the operator's settings.")
     );
+    assert_eq!(context.model(), "gpt-5.5");
+    assert_eq!(context.reasoning_effort(), Some("high"));
 }
 
 #[test]
-fn disabled_developer_instructions_are_omitted() {
+fn disabled_developer_instructions_context_keeps_hidden_reset() {
     let options = status_line::turn_start_options_with_developer_instructions_context(
         beryl_backend::TurnStartOptions::default(),
         None,
+        ThreadTurnDefaults::new(Some("gpt-5.5".to_string()), None),
     );
 
-    assert_eq!(options.developer_instructions(), None);
+    let context = options
+        .developer_instructions_context()
+        .expect("context should be attached");
+    assert_eq!(context.developer_instructions(), None);
+    assert_eq!(context.model(), "gpt-5.5");
+    assert_eq!(context.reasoning_effort(), None);
 }
 
 #[test]
-fn late_bound_developer_instructions_replace_request_time_value() {
+fn late_bound_developer_instructions_context_replaces_request_time_context() {
     let request_time_options = beryl_backend::TurnStartOptions::default()
-        .with_developer_instructions(Some("Old setting".to_string()));
+        .with_developer_instructions_context(Some("Old setting".to_string()), "gpt-5.4", None);
 
     let replacement_start_options =
         status_line::turn_start_options_with_developer_instructions_context(
             request_time_options,
             Some("New setting".to_string()),
+            ThreadTurnDefaults::new(Some("gpt-5.5".to_string()), Some("high".to_string())),
         );
 
-    assert_eq!(
-        replacement_start_options.developer_instructions(),
-        Some("New setting")
-    );
+    let context = replacement_start_options
+        .developer_instructions_context()
+        .expect("replacement start should have late-bound context");
+    assert_eq!(context.developer_instructions(), Some("New setting"));
+    assert_eq!(context.model(), "gpt-5.5");
+    assert_eq!(context.reasoning_effort(), Some("high"));
 }
 
 #[test]
-fn developer_instructions_apply_without_effective_model() {
+fn developer_instructions_context_is_omitted_without_effective_model() {
     let stale_options = beryl_backend::TurnStartOptions::default()
-        .with_developer_instructions(Some("Old setting".to_string()));
+        .with_developer_instructions_context(Some("Old setting".to_string()), "gpt-5.4", None);
     let options = status_line::turn_start_options_with_developer_instructions_context(
         stale_options,
         Some("Use the operator's settings.".to_string()),
+        ThreadTurnDefaults::new(None, Some("high".to_string())),
     );
 
-    assert_eq!(
-        options.developer_instructions(),
-        Some("Use the operator's settings.")
-    );
+    assert!(options.developer_instructions_context().is_none());
 }
 
 #[test]

@@ -239,8 +239,7 @@ fn render_context_menu(
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let available = surface.status_line_projection().context_operation_available;
-    let unavailable_reason = shell.compaction_unavailable_reason();
-    let enabled = shell.status_line_context_interactive(available) && unavailable_reason.is_none();
+    let enabled = shell.status_line_context_interactive(available);
     let mut menu = div()
         .flex()
         .flex_col()
@@ -260,9 +259,6 @@ fn render_context_menu(
             "status-context-compact-row",
             "Compact",
         ));
-    }
-    if let Some(reason) = unavailable_reason {
-        menu = menu.child(disabled_row(shell, &reason));
     }
     menu
 }

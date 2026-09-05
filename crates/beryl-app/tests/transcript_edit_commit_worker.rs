@@ -231,24 +231,34 @@ mod shell {
             edit_commit_source,
             "pub(super) fn finish_successful_transcript_edit_rollback",
         );
+        let defaults_index = finish_body
+            .find("effective_turn_context_defaults")
+            .expect("successful rollback should preserve effective turn defaults before reload");
         let load_index = finish_body
             .find("load_thread_history_window")
             .expect("successful rollback should reload the rolled-back history");
         let replacement_index = finish_body
             .find("begin_transcript_edit_replacement_turn")
             .expect("successful rollback should start the replacement turn");
-        assert!(load_index < replacement_index);
+        assert!(
+            defaults_index < load_index && load_index < replacement_index,
+            "replacement defaults must be captured before history reload clears session metadata"
+        );
 
         let replacement_body = rust_function_body(
             edit_commit_source,
             "fn begin_transcript_edit_replacement_turn",
         );
         let late_bind_index = replacement_body
-            .find("turn_options_with_current_developer_instructions")
+            .find("turn_options_with_current_developer_instructions_defaults")
             .expect("replacement turn start should late-bind developer instructions");
         let worker_index = replacement_body
             .find("spawn_turn_worker")
             .expect("replacement turn start should spawn the replacement turn worker");
+        assert!(
+            replacement_body.contains("turn_context_defaults"),
+            "replacement turn start should use the defaults captured before history reload"
+        );
         assert!(
             late_bind_index < worker_index,
             "replacement turn start must attach developer instructions immediately before spawning the turn"

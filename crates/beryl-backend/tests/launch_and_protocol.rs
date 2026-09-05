@@ -198,7 +198,7 @@ fn stdio_initialize_serializes_saved_path_only_without_server_acknowledgement() 
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; if ($request.params.capabilities.savedPathOnly -ne $true) { exit 1 }; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows","turnScopedDeveloperInstructionsVersion":1}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine()"#,
+        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; if ($request.params.capabilities.savedPathOnly -ne $true) { exit 1 }; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows"}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine()"#,
     ]);
 
     let mut session = ManagedBackendSession::launch_and_initialize_test_command(
@@ -223,7 +223,7 @@ fn stdio_routes_cas_shaped_errors_and_later_terminal_events() {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows","turnScopedDeveloperInstructionsVersion":1}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine(); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_retry","willRetry":true,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_retry","status":"completed","items":[]}}}'); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_terminal","willRetry":false,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_terminal","status":"failed","items":[]}}}'); [Console]::Out.Flush(); Start-Sleep -Seconds 2"#,
+        r#"$request = [Console]::In.ReadLine() | ConvertFrom-Json; [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex-cli legacy","codexHome":"C:/Users/example/.codex","platformFamily":"windows","platformOs":"windows"}}'); [Console]::Out.Flush(); [void][Console]::In.ReadLine(); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_retry","willRetry":true,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_retry","status":"completed","items":[]}}}'); [Console]::Out.WriteLine('{"method":"error","params":{"threadId":"stdio_thread","turnId":"stdio_terminal","willRetry":false,"error":{"message":"upstream failure"}}}'); [Console]::Out.WriteLine('{"method":"turn/completed","params":{"threadId":"stdio_thread","turn":{"id":"stdio_terminal","status":"failed","items":[]}}}'); [Console]::Out.Flush(); Start-Sleep -Seconds 2"#,
     ]);
 
     let mut session = ManagedBackendSession::launch_and_initialize_test_command(
@@ -1071,7 +1071,7 @@ fn websocket_turn_start_serializes_ordered_user_input() {
 }
 
 #[test]
-fn websocket_turn_start_serializes_dedicated_hidden_developer_instructions() {
+fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -1089,9 +1089,14 @@ fn websocket_turn_start_serializes_dedicated_hidden_developer_instructions() {
                         "text": "Follow up"
                     }
                 ],
-                "model": "gpt-5.5",
-                "effort": "high",
-                "developerInstructions": "Use the operator's project rules."
+                "collaborationMode": {
+                    "mode": "default",
+                    "settings": {
+                        "model": "gpt-5.5",
+                        "reasoning_effort": "high",
+                        "developer_instructions": "Use the operator's project rules."
+                    }
+                }
             })
         );
         socket
@@ -1124,10 +1129,11 @@ fn websocket_turn_start_serializes_dedicated_hidden_developer_instructions() {
         .start_turn_with_user_input_options(
             "thread_1",
             vec![UserInput::text("Follow up")],
-            TurnStartOptions::default()
-                .with_model("gpt-5.5")
-                .with_reasoning_effort("high")
-                .with_developer_instructions(Some("Use the operator's project rules.".to_string())),
+            TurnStartOptions::default().with_developer_instructions_context(
+                Some("Use the operator's project rules.".to_string()),
+                "gpt-5.5",
+                Some("high".to_string()),
+            ),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -1137,7 +1143,7 @@ fn websocket_turn_start_serializes_dedicated_hidden_developer_instructions() {
 }
 
 #[test]
-fn websocket_turn_start_omits_blank_developer_instructions() {
+fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_reset() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -1155,7 +1161,13 @@ fn websocket_turn_start_omits_blank_developer_instructions() {
                         "text": "Follow up"
                     }
                 ],
-                "model": "gpt-5.5"
+                "collaborationMode": {
+                    "mode": "default",
+                    "settings": {
+                        "model": "gpt-5.5",
+                        "developer_instructions": null
+                    }
+                }
             })
         );
         socket
@@ -1188,9 +1200,7 @@ fn websocket_turn_start_omits_blank_developer_instructions() {
         .start_turn_with_user_input_options(
             "thread_1",
             vec![UserInput::text("Follow up")],
-            TurnStartOptions::default()
-                .with_model("gpt-5.5")
-                .with_developer_instructions(Some(" \n\t ".to_string())),
+            TurnStartOptions::default().with_developer_instructions_context(None, "gpt-5.5", None),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -3193,8 +3203,7 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                         "userAgent": "codex-cli 0.128.0",
                         "codexHome": "C:/Users/example/.codex",
                         "platformFamily": "windows",
-                        "platformOs": "windows",
-                        "turnScopedDeveloperInstructionsVersion": 1
+                        "platformOs": "windows"
                     }
                 })
                 .to_string(),
@@ -3430,8 +3439,7 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
         "userAgent": "codex-cli 0.118.0",
         "codexHome": "C:/Users/example/.codex",
         "platformFamily": "windows",
-        "platformOs": "windows",
-        "turnScopedDeveloperInstructionsVersion": 1
+        "platformOs": "windows"
     }))
     .unwrap();
 
@@ -3686,8 +3694,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         codex_home: "C:/Users/example/.codex".to_string(),
         platform_family: "windows".to_string(),
         platform_os: "windows".to_string(),
-        turn_scoped_developer_instructions_version: Some(1),
-        compaction_observation: Default::default(),
     });
 
     assert_eq!(
@@ -3732,10 +3738,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         host_snapshot.validate_runtime_mode(&RuntimeMode::HostWindows),
         Ok(())
     );
-    assert_eq!(
-        host_snapshot.turn_scoped_developer_instructions_version(),
-        Some(1)
-    );
     assert!(matches!(
         host_snapshot.validate_runtime_mode(&RuntimeMode::WslLinux {
             distro_name: "Ubuntu".to_string()
@@ -3752,8 +3754,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         codex_home: "/home/example/.codex".to_string(),
         platform_family: "unix".to_string(),
         platform_os: "linux".to_string(),
-        turn_scoped_developer_instructions_version: Some(1),
-        compaction_observation: Default::default(),
     });
 
     assert_eq!(
@@ -3762,82 +3762,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         }),
         Ok(())
     );
-}
-
-#[test]
-fn compatibility_requires_turn_scoped_developer_instructions_version_one() {
-    for actual_version in [None, Some(0), Some(2)] {
-        let snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
-            user_agent: "codex-cli test".to_string(),
-            codex_home: "C:/Users/example/.codex".to_string(),
-            platform_family: "windows".to_string(),
-            platform_os: "windows".to_string(),
-            turn_scoped_developer_instructions_version: actual_version,
-            compaction_observation: Default::default(),
-        });
-
-        assert!(matches!(
-            snapshot.validate_runtime_mode(&RuntimeMode::HostWindows),
-            Err(CompatibilityError::TurnScopedDeveloperInstructionsVersionMismatch {
-                actual_version: returned_version,
-            }) if returned_version == actual_version
-        ));
-    }
-}
-
-#[test]
-fn initialize_rejects_malformed_turn_scoped_developer_instructions_version() {
-    for malformed_value in [json!(false), json!(-1), json!("1"), json!({ "version": 1 })] {
-        let response = serde_json::from_value::<InitializeResponse>(json!({
-            "userAgent": "codex-cli test",
-            "codexHome": "C:/Users/example/.codex",
-            "platformFamily": "windows",
-            "platformOs": "windows",
-            "turnScopedDeveloperInstructionsVersion": malformed_value,
-        }));
-        assert!(response.is_err());
-    }
-}
-
-#[test]
-fn websocket_initialize_rejects_missing_turn_scoped_developer_instructions_before_ready() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        let request = read_json(&mut socket);
-        assert_eq!(request["method"], json!("initialize"));
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": request["id"],
-                    "result": {
-                        "userAgent": "codex-cli incompatible",
-                        "codexHome": "C:/Users/example/.codex",
-                        "platformFamily": "windows",
-                        "platformOs": "windows"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-
-    let error = ManagedBackendSession::connect_websocket(
-        websocket_test_launch(endpoint.clone()),
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .expect_err("missing required advertisement must reject the connection before it is ready");
-
-    assert!(matches!(
-        error,
-        ManagedBackendError::Compatibility(
-            CompatibilityError::TurnScopedDeveloperInstructionsVersionMismatch {
-                actual_version: None,
-            }
-        )
-    ));
-    server.join().unwrap();
 }
 
 #[test]
@@ -4061,8 +3985,7 @@ fn guarded_probe_initialize_failure_retains_server_for_explicit_cleanup() {
                         "userAgent": "codex-cli incompatible",
                         "codexHome": "/home/example/.codex",
                         "platformFamily": "unix",
-                        "platformOs": "linux",
-                        "turnScopedDeveloperInstructionsVersion": 1
+                        "platformOs": "linux"
                     }
                 })
                 .to_string(),
@@ -4332,8 +4255,7 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {
                     "userAgent": "codex-cli 0.125.0",
                     "codexHome": "C:/Users/example/.codex",
                     "platformFamily": "windows",
-                    "platformOs": "windows",
-                    "turnScopedDeveloperInstructionsVersion": 1
+                    "platformOs": "windows"
                 }
             })
             .to_string(),

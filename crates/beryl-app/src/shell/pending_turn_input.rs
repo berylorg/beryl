@@ -1,4 +1,4 @@
-use beryl_backend::{ThreadStatus, TurnStartOptions};
+use beryl_backend::TurnStartOptions;
 use beryl_model::workspace::WorkspaceId;
 
 use super::execution_detail::UserInputFragment;
@@ -16,9 +16,6 @@ pub(super) struct PendingTurnInputQueue {
     turn_options: TurnStartOptions,
     turn_index: usize,
     fragments: Vec<UserInputFragment>,
-    generated_lifecycle_fragment_id: Option<u64>,
-    held_for_explicit_resume: bool,
-    compaction_workspace_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,95 +73,11 @@ impl PendingTurnInputQueue {
             turn_options,
             turn_index,
             fragments: vec![first_fragment],
-            generated_lifecycle_fragment_id: None,
-            held_for_explicit_resume: false,
-            compaction_workspace_id: None,
         })
     }
 
     pub(super) fn thread_id(&self) -> &str {
         self.thread_id.as_str()
-    }
-
-    pub(super) fn mark_generated_lifecycle_fragment(&mut self, fragment_id: u64) {
-        self.generated_lifecycle_fragment_id = Some(fragment_id);
-    }
-
-    pub(super) fn hold_after_compaction(&mut self) -> Option<UserInputFragment> {
-        self.held_for_explicit_resume = true;
-        let generated = self.generated_lifecycle_fragment_id.take()?;
-        let index = self
-            .fragments
-            .iter()
-            .position(|fragment| fragment.id == generated)?;
-        Some(self.fragments.remove(index))
-    }
-
-    pub(super) fn is_held(&self) -> bool {
-        self.held_for_explicit_resume
-    }
-
-    pub(super) fn is_compaction_queue(&self) -> bool {
-        self.compaction_workspace_id.is_some()
-    }
-
-    pub(super) fn bind_compaction_workspace(&mut self, workspace_id: &str) -> bool {
-        if self
-            .compaction_workspace_id
-            .as_deref()
-            .is_some_and(|existing| existing != workspace_id)
-        {
-            return false;
-        }
-        self.compaction_workspace_id = Some(workspace_id.to_string());
-        true
-    }
-
-    pub(super) fn matches_compaction_target(
-        &self,
-        workspace_id: &str,
-        thread_id: &str,
-        execution_target: &WorkspaceId,
-    ) -> bool {
-        self.compaction_workspace_id.as_deref() == Some(workspace_id)
-            && self.thread_id == thread_id
-            && &self.execution_target == execution_target
-    }
-
-    pub(super) fn authorize_after_fresh_idle(
-        &mut self,
-        workspace_id: &str,
-        thread_id: &str,
-        execution_target: &WorkspaceId,
-        status: Option<&ThreadStatus>,
-    ) -> bool {
-        if !self.held_for_explicit_resume
-            || status != Some(&ThreadStatus::Idle)
-            || !self.matches_compaction_target(workspace_id, thread_id, execution_target)
-        {
-            return false;
-        }
-        self.held_for_explicit_resume = false;
-        true
-    }
-
-    pub(super) fn rebase_after_reopen(
-        &mut self,
-        workspace_id: &str,
-        thread_id: &str,
-        execution_target: &WorkspaceId,
-        index: usize,
-    ) -> bool {
-        if !self.matches_compaction_target(workspace_id, thread_id, execution_target) {
-            return false;
-        }
-        self.hold_after_compaction();
-        self.turn_index = index;
-        true
-    }
-
-    pub(super) fn fragments(&self) -> &[UserInputFragment] {
-        &self.fragments
     }
 
     pub(super) fn execution_target(&self) -> &WorkspaceId {

@@ -22,6 +22,8 @@ Place a blank line after every Markdown section header. Do not use Markdown tabl
 
 # Codex fork trust and scope boundary
 
+Keep the Codex fork as close to upstream as possible. Changes that add or expand fork-specific behavior, protocol, or maintenance drift require the Operator's explicit permission for that change. A request to fix Beryl does not authorize corresponding Codex fork changes.
+
 All Codex fork work is orchestrated from this Beryl workspace and governed by this workspace's instructions, plans, and skills under `.agents/skills/`. Do not vendor those skills into the fork.
 
 The only Codex fork working-tree scope is the sibling path `../codex-fork/codex-rs/**`. Treat `../codex-fork/codex-rs/` as the complete fork project. Do not inspect, document, edit, test, review, or otherwise rely on working-tree files elsewhere under `../codex-fork/`.

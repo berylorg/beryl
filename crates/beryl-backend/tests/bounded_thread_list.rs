@@ -102,8 +102,7 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>) {
                     "userAgent": "codex-cli test",
                     "codexHome": std::env::temp_dir().join("beryl-bounded-list-codex-home"),
                     "platformFamily": "windows",
-                    "platformOs": "windows",
-                    "turnScopedDeveloperInstructionsVersion": 1
+                    "platformOs": "windows"
                 }
             })
             .to_string(),

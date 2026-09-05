@@ -94,15 +94,6 @@ mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
 mod build_identity;
-/// Bounded, content-free diagnostics for compaction observations.
-///
-/// ```
-/// use beryl_app::compaction_diagnostics::CompactionDiagnostics;
-///
-/// let diagnostics = CompactionDiagnostics::default();
-/// let _snapshot = diagnostics.snapshot();
-/// ```
-pub mod compaction_diagnostics;
 mod diagnostic_acceptance_gate;
 mod diagnostic_child_control;
 mod diagnostic_child_dynamic_tools;
@@ -345,9 +336,9 @@ pub use diagnostic_child_dynamic_tools::{
 };
 pub use diagnostic_dynamic_tools::{
     READ_ACTIVITY_LIFECYCLE_DIAGNOSTICS_TOOL, READ_ACTIVITY_PRESENTATION_DIAGNOSTICS_TOOL,
-    READ_COMPACTION_DIAGNOSTICS_TOOL, READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL,
-    READ_PROCESS_DIAGNOSTICS_TOOL, READ_RENDERER_DIAGNOSTICS_TOOL,
-    READ_RETAINED_STATE_SUMMARY_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL,
+    READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
+    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
+    READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL,
     beryl_diagnostic_dynamic_tool_specs, diagnostic_bridge_unavailable_response,
     is_beryl_diagnostic_dynamic_tool,
 };

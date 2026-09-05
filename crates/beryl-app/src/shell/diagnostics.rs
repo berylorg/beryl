@@ -1,6 +1,5 @@
 use gpui::{App, Context, Window, px, size};
 
-use crate::compaction_diagnostics::CompactionDiagnosticSnapshot;
 use crate::diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, ManagedBackendProcessDiagnostic, MemoryDiagnosticSnapshot,
     MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic, ProcessDiagnosticSnapshot,
@@ -15,10 +14,6 @@ use super::{
 };
 
 impl ShellView {
-    pub(super) fn compaction_diagnostic_snapshot(&self) -> CompactionDiagnosticSnapshot {
-        self.compaction_diagnostics.snapshot()
-    }
-
     pub(super) fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
         let mut snapshot = self
             .conversation_surface()
@@ -128,7 +123,6 @@ impl ShellView {
             .conversation_surface()
             .map(ConversationSurfaceState::activity_presentation_diagnostic_snapshot)
             .unwrap_or_default();
-        let compaction = self.compaction_diagnostic_snapshot();
         DiagnosticToolSnapshot {
             process,
             memory,
@@ -140,7 +134,6 @@ impl ShellView {
             settings_window: self.settings_window_diagnostic_snapshot(cx),
             activity_lifecycle,
             activity_presentation,
-            compaction,
         }
     }
 

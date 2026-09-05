@@ -9,6 +9,7 @@ mod status_line;
 
 use beryl_backend::TurnStartOptions;
 use graph_upkeep_context::compose_hidden_developer_instructions;
+use status_line::ThreadTurnDefaults;
 
 #[test]
 fn global_developer_instructions_remain_literal_when_graph_upkeep_is_disabled() {
@@ -45,36 +46,41 @@ fn graph_upkeep_context_precedes_global_developer_instructions() {
 }
 
 #[test]
-fn disabled_hidden_sections_omit_the_turn_scoped_field() {
+fn disabled_hidden_sections_keep_backend_reset_when_model_is_known() {
     let composed = compose_hidden_developer_instructions(None, None);
     assert_eq!(composed, None);
 
     let options = status_line::turn_start_options_with_developer_instructions_context(
         TurnStartOptions::default(),
         composed,
+        ThreadTurnDefaults::new(Some("gpt-5.5".to_string()), None),
     );
 
-    assert_eq!(options.developer_instructions(), None);
+    let context = options
+        .developer_instructions_context()
+        .expect("known model should keep the hidden reset context");
+    assert_eq!(context.developer_instructions(), None);
+    assert_eq!(context.model(), "gpt-5.5");
 }
 
 #[test]
-fn hidden_context_attaches_without_effective_model() {
+fn hidden_context_is_omitted_without_effective_model() {
     let policy =
         WorkspaceGraphUpkeepPolicy::with_instructions(Some("Track the active plan.".to_string()));
     let composed = compose_hidden_developer_instructions(Some(&policy), Some("Global".to_string()));
-    let stale_options =
-        TurnStartOptions::default().with_developer_instructions(Some("Old setting".to_string()));
+    let stale_options = TurnStartOptions::default().with_developer_instructions_context(
+        Some("Old setting".to_string()),
+        "gpt-5.4",
+        None,
+    );
 
     let options = status_line::turn_start_options_with_developer_instructions_context(
         stale_options,
         composed,
+        ThreadTurnDefaults::new(None, Some("high".to_string())),
     );
 
-    assert!(
-        options
-            .developer_instructions()
-            .is_some_and(|value| value.contains("Track the active plan."))
-    );
+    assert!(options.developer_instructions_context().is_none());
 }
 
 #[test]
@@ -92,7 +98,7 @@ fn graph_upkeep_policy_is_late_bound_for_later_request_assembly() {
         compose_hidden_developer_instructions(Some(&second_policy), Some("Global".to_string()))
             .expect("second context should be present");
 
-    assert_eq!(queued_options.developer_instructions(), None);
+    assert!(queued_options.developer_instructions_context().is_none());
     assert_ne!(first_context, second_context);
     assert!(first_context.contains("Track Phase 1."));
     assert!(second_context.contains("Track Phase 2."));

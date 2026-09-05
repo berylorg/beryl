@@ -113,7 +113,6 @@ impl ShellView {
                             surface.start_new_thread();
                         }
                         surface.refresh_after_backend_reopen(
-                            inventory_workspace_id.as_str(),
                             &inventory_workspace_state,
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),

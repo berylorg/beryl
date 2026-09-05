@@ -532,7 +532,14 @@ pub struct ThreadStartOptions {
 pub struct TurnStartOptions {
     model: Option<String>,
     reasoning_effort: Option<String>,
+    developer_instructions_context: Option<TurnDeveloperInstructionsContext>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TurnDeveloperInstructionsContext {
     developer_instructions: Option<String>,
+    model: String,
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -615,7 +622,29 @@ pub(crate) struct TurnStartParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub developer_instructions: Option<String>,
+    pub collaboration_mode: Option<TurnStartCollaborationMode>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnStartCollaborationMode {
+    mode: TurnStartCollaborationModeKind,
+    settings: TurnStartCollaborationModeSettings,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum TurnStartCollaborationModeKind {
+    Default,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+struct TurnStartCollaborationModeSettings {
+    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    developer_instructions: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -739,9 +768,19 @@ impl TurnStartOptions {
         self
     }
 
-    pub fn with_developer_instructions(mut self, developer_instructions: Option<String>) -> Self {
-        self.developer_instructions =
-            developer_instructions.and_then(|value| (!value.trim().is_empty()).then_some(value));
+    pub fn with_developer_instructions_context(
+        mut self,
+        developer_instructions: Option<String>,
+        model: impl Into<String>,
+        reasoning_effort: Option<String>,
+    ) -> Self {
+        self.developer_instructions_context =
+            TurnDeveloperInstructionsContext::new(developer_instructions, model, reasoning_effort);
+        self
+    }
+
+    pub fn without_developer_instructions_context(mut self) -> Self {
+        self.developer_instructions_context = None;
         self
     }
 
@@ -753,8 +792,36 @@ impl TurnStartOptions {
         self.reasoning_effort.as_deref()
     }
 
+    pub fn developer_instructions_context(&self) -> Option<&TurnDeveloperInstructionsContext> {
+        self.developer_instructions_context.as_ref()
+    }
+}
+
+impl TurnDeveloperInstructionsContext {
+    fn new(
+        developer_instructions: Option<String>,
+        model: impl Into<String>,
+        reasoning_effort: Option<String>,
+    ) -> Option<Self> {
+        let model = non_empty_string(Some(model.into()))?;
+        Some(Self {
+            developer_instructions: developer_instructions
+                .and_then(|value| (!value.trim().is_empty()).then_some(value)),
+            model,
+            reasoning_effort: non_empty_string(reasoning_effort),
+        })
+    }
+
     pub fn developer_instructions(&self) -> Option<&str> {
         self.developer_instructions.as_deref()
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub fn reasoning_effort(&self) -> Option<&str> {
+        self.reasoning_effort.as_deref()
     }
 }
 
@@ -1336,7 +1403,22 @@ impl TurnStartParams {
             input,
             model: options.model,
             effort: options.reasoning_effort,
-            developer_instructions: options.developer_instructions,
+            collaboration_mode: options
+                .developer_instructions_context
+                .map(TurnStartCollaborationMode::developer_instructions_context),
+        }
+    }
+}
+
+impl TurnStartCollaborationMode {
+    fn developer_instructions_context(context: TurnDeveloperInstructionsContext) -> Self {
+        Self {
+            mode: TurnStartCollaborationModeKind::Default,
+            settings: TurnStartCollaborationModeSettings {
+                model: context.model,
+                reasoning_effort: context.reasoning_effort,
+                developer_instructions: context.developer_instructions,
+            },
         }
     }
 }

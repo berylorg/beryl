@@ -34,7 +34,7 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - Beryl, not the model, chooses whether and how to compact before continuation.
 - The fixed continuation message is Beryl-owned and is not supplied by the model.
 - Automatic continuation sends the latest applied non-empty global developer-instructions setting as hidden developer-instructions context, subject to the composer feature's developer-instructions rules.
-- Context compaction warning and reconciliation behavior is governed by the settings/status-line contracts. A warning or unconfirmed outcome does not fail the queued continuation or start it early; only confirmed successful compaction and idle release it once.
+- Context compaction timeout behavior is governed by the settings/status-line contracts.
 
 ## Clean Phase Thread Orchestration
 
