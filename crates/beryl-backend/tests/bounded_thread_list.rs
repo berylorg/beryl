@@ -259,6 +259,7 @@ fn bounded_listing_caps_each_request_to_remaining_result_capacity() {
         assert_eq!(first["params"]["cwd"], json!([test_runtime_path_text()]));
         assert_eq!(first["params"]["sortKey"], json!("updated_at"));
         assert_eq!(first["params"]["sortDirection"], json!("desc"));
+        assert_eq!(first["params"]["useStateDbOnly"], json!(true));
         socket
             .send(Message::text(
                 json!({
@@ -276,6 +277,7 @@ fn bounded_listing_caps_each_request_to_remaining_result_capacity() {
         let second = read_json(&mut socket);
         assert_eq!(second["params"]["cursor"], json!("cursor_2"));
         assert_eq!(second["params"]["limit"], json!(1));
+        assert_eq!(second["params"]["useStateDbOnly"], json!(true));
         socket
             .send(Message::text(
                 json!({

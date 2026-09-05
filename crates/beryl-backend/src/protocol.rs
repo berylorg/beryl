@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use beryl_model::workspace::RuntimeMode;
-use serde::{Deserialize, Serialize, de};
+use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeMap};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -407,19 +407,39 @@ pub struct ConfigReadOptions {
     pub include_layers: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ThreadListOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cwd: Vec<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_key: Option<ThreadSortKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_direction: Option<SortDirection>,
+}
+
+impl Serialize for ThreadListOptions {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut fields = serializer.serialize_map(None)?;
+        if let Some(cursor) = &self.cursor {
+            fields.serialize_entry("cursor", cursor)?;
+        }
+        if let Some(limit) = self.limit {
+            fields.serialize_entry("limit", &limit)?;
+        }
+        if !self.cwd.is_empty() {
+            fields.serialize_entry("cwd", &self.cwd)?;
+        }
+        if let Some(sort_key) = self.sort_key {
+            fields.serialize_entry("sortKey", &sort_key)?;
+        }
+        if let Some(sort_direction) = self.sort_direction {
+            fields.serialize_entry("sortDirection", &sort_direction)?;
+        }
+        fields.serialize_entry("useStateDbOnly", &true)?;
+        fields.end()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

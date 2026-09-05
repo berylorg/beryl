@@ -48,6 +48,7 @@
 //! # fn collect_workspace_threads(
 //! #     session: &mut ManagedBackendSession,
 //! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! // Thread-list requests always select CAS's database-only listing mode.
 //! let options = ThreadListOptions::page(100)
 //!     .with_cwd(r"C:\work\beryl")
 //!     .updated_descending();

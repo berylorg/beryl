@@ -3416,7 +3416,8 @@ fn thread_list_options_serialize_filter_sort_and_page_controls() {
             "limit": 25,
             "cwd": ["C:/work/beryl"],
             "sortKey": "updated_at",
-            "sortDirection": "desc"
+            "sortDirection": "desc",
+            "useStateDbOnly": true
         })
     );
 
@@ -3429,7 +3430,8 @@ fn thread_list_options_serialize_filter_sort_and_page_controls() {
         .unwrap(),
         json!({
             "sortKey": "created_at",
-            "sortDirection": "asc"
+            "sortDirection": "asc",
+            "useStateDbOnly": true
         })
     );
 }
@@ -3924,6 +3926,10 @@ fn serve_successful_compatibility_probe(socket: &mut WebSocket<TcpStream>) {
 
     for request_id in 2..=15 {
         let request = read_json(socket);
+        if request["method"] == "thread/list" {
+            assert_eq!(request["params"]["cwd"], json!([]));
+            assert_eq!(request["params"]["useStateDbOnly"], json!(true));
+        }
         let result = match request["method"].as_str().unwrap() {
             "config/read" => Some(json!({ "config": {} })),
             "model/list" | "thread/list" | "thread/loaded/list" => Some(json!({ "data": [] })),

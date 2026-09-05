@@ -1950,6 +1950,7 @@ impl ManagedBackendSession {
                         cwd: Vec::new(),
                         sort_key: Some(ThreadSortKey::UpdatedAt),
                         sort_direction: Some(SortDirection::Desc),
+                        use_state_db_only: true,
                     },
                     timeout,
                 )?;
@@ -3813,6 +3814,7 @@ struct ThreadListProbeParams {
     sort_key: Option<ThreadSortKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sort_direction: Option<SortDirection>,
+    use_state_db_only: bool,
 }
 
 #[derive(Serialize)]
