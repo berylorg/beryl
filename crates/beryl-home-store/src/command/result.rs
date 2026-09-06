@@ -75,7 +75,7 @@ struct PendingReconciliationCustody {
     slot: crate::reconciliation::ReconciliationSlot,
     domains: Vec<crate::command::MaterializedDomainDescriptor>,
     receipt: CommitReceipt,
-    successor: Option<crate::successor::SuccessorDescriptor>,
+    successor: Option<crate::successor::FirstAcceptancePromotionDescriptor>,
 }
 
 impl fmt::Debug for ReconciliationCustody {
@@ -98,7 +98,7 @@ impl ReconciliationCustody {
         slot: crate::reconciliation::ReconciliationSlot,
         domains: Vec<crate::command::MaterializedDomainDescriptor>,
         receipt: CommitReceipt,
-        successor: Option<crate::successor::SuccessorDescriptor>,
+        successor: Option<crate::successor::FirstAcceptancePromotionDescriptor>,
     ) -> Self {
         Self {
             pending: Some(PendingReconciliationCustody {
@@ -148,7 +148,7 @@ impl Drop for ReconciliationCustody {
 pub(crate) struct RetainedReconciliationDescriptor {
     pub(crate) domains: Vec<crate::command::MaterializedDomainDescriptor>,
     pub(crate) receipt: CommitReceipt,
-    pub(crate) successor: Option<crate::successor::SuccessorDescriptor>,
+    pub(crate) successor: Option<crate::successor::FirstAcceptancePromotionDescriptor>,
 }
 
 /// Exact durable-state classification for one executed command.
@@ -509,8 +509,8 @@ pub enum CommandError {
         /// Admitted pending record count.
         actual: usize,
     },
-    #[error("command successor roles do not declare exactly one matching typed source protocol")]
-    InvalidSuccessorProtocol,
+    #[error("first-acceptance promotion requires one source and its admitted Asset transfer shape")]
+    InvalidFirstAcceptancePromotionAdmission,
     /// A required home or domain revision is exhausted.
     #[error("cannot advance {scope} revision: {source}")]
     RevisionExhausted {

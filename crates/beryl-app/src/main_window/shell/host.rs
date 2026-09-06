@@ -63,6 +63,7 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
             ),
         ))));
         let root_pending = Rc::clone(&pending);
+        let publication = self.appearance_owner.read(self.app).target();
         #[cfg(feature = "test-faults")]
         let reject_mount = std::mem::take(&mut self.reject_mount);
         let window = self
@@ -102,24 +103,18 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     match mounted {
                         Ok(composer) => {
                             controller.composer_mount = Some(composer);
-                            cx.new(|cx| MainWindowShellRoot {
-                                controller: Some(controller),
-                                construction_error: None,
-                                composer_observer: None,
-                                creation: None,
-                                creation_observer: None,
-                                appearance_release: None,
-                                command_focus: cx.focus_handle(),
+                            cx.new(|cx| {
+                                MainWindowShellRoot::new(controller, None, publication, window, cx)
                             })
                         }
-                        Err(error) => cx.new(|cx| MainWindowShellRoot {
-                            controller: Some(controller),
-                            construction_error: Some(error),
-                            composer_observer: None,
-                            creation: None,
-                            creation_observer: None,
-                            appearance_release: None,
-                            command_focus: cx.focus_handle(),
+                        Err(error) => cx.new(|cx| {
+                            MainWindowShellRoot::new(
+                                controller,
+                                Some(error),
+                                publication,
+                                window,
+                                cx,
+                            )
                         }),
                     }
                 },
@@ -144,8 +139,9 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                 }
             })?;
         let construction = window
-            .update(self.app, |root, window, _| {
+            .update(self.app, |root, window, cx| {
                 if let Some(error) = root.construction_error.take() {
+                    root.retire_notices(window, cx);
                     window.remove_window();
                     Err((
                         error,
@@ -190,7 +186,8 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                 });
                 if let Err(error) = registration {
                     let controller = window
-                        .update(self.app, |root, window, _| {
+                        .update(self.app, |root, window, cx| {
+                            root.retire_notices(window, cx);
                             window.remove_window();
                             root.controller.take().expect("unpublished controller")
                         })
@@ -352,9 +349,10 @@ impl MainWindowShell {
         self.appearance_owner
             .update(app, |owner, _| owner.unregister(self.adapter_id))
             .expect("bounded window-set epoch");
-        let _ = self
-            .window
-            .update(app, |_, window, _| window.remove_window());
+        let _ = self.window.update(app, |root, window, cx| {
+            root.retire_notices(window, cx);
+            window.remove_window();
+        });
         let controller = self
             .root
             .update(app, |root, _| {
@@ -371,13 +369,40 @@ pub struct MainWindowShellRoot {
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,
-    creation: Option<gpui::WeakEntity<MainWindowCreationOwner>>,
+    pub(super) creation: Option<gpui::WeakEntity<MainWindowCreationOwner>>,
     creation_observer: Option<gpui::Subscription>,
     appearance_release: Option<gpui::Subscription>,
     command_focus: gpui::FocusHandle,
+    pub(super) shell_focus: gpui::FocusHandle,
+    pub(super) notices: notices::MainWindowShellNotices,
 }
 
 impl MainWindowShellRoot {
+    fn new(
+        controller: MainWindowShellController,
+        construction_error: Option<String>,
+        publication: Arc<crate::theme_runtime::GpuiAppearancePublicationTarget>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let shell_focus = cx.focus_handle();
+        let notices =
+            notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
+        let mut root = Self {
+            controller: Some(controller),
+            construction_error,
+            composer_observer: None,
+            creation: None,
+            creation_observer: None,
+            appearance_release: None,
+            command_focus: cx.focus_handle(),
+            shell_focus,
+            notices,
+        };
+        root.subscribe_notices(window, cx);
+        root
+    }
+
     #[must_use]
     pub fn controller(&self) -> Option<&MainWindowShellController> {
         self.controller.as_ref()
@@ -432,6 +457,7 @@ impl MainWindowShellRoot {
 
 impl Render for MainWindowShellRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_notices(window, cx);
         let Some(controller) = self.controller.as_ref() else {
             return div().id("main-window-shell-empty").into_any_element();
         };
@@ -459,6 +485,8 @@ impl Render for MainWindowShellRoot {
             .map(|_| crate::main_window::creation::command::render(self, &self.command_focus, cx));
         div()
             .id("main-window-shell")
+            .relative()
+            .track_focus(&self.shell_focus)
             .key_context("MainWindow")
             .on_action(cx.listener(|root, _: &NewWindow, _, cx| root.invoke_new_window(cx)))
             .size_full()
@@ -468,7 +496,7 @@ impl Render for MainWindowShellRoot {
             .child(
                 div()
                     .id("main-window-toolbar")
-                    .h(if command.is_some() { px(44.) } else { px(0.) })
+                    .h(px(self.notice_chrome_height()))
                     .flex()
                     .items_center()
                     .justify_end()
@@ -514,6 +542,7 @@ impl Render for MainWindowShellRoot {
                     .flex_none()
                     .bg(appearance.status),
             )
+            .child(self.notices.widget.clone())
             .into_any_element()
     }
 }

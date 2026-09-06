@@ -7,8 +7,8 @@ use beryl_model::{CasThreadId, CasTurnId};
 use serde::Serialize;
 
 use super::{
-    BackendClientTransport, IncomingMessage, ManagedBackendError, ManagedBackendSession,
-    NonIdempotentRequestOutcome, ReceiveOutcome, TransportWriteFailure,
+    IncomingMessage, ManagedBackendError, ManagedBackendSession, NonIdempotentRequestOutcome,
+    ReceiveOutcome, TransportWriteFailure,
 };
 use crate::{
     BoundedResponseResult, ClientUserMessageId,
@@ -38,53 +38,11 @@ impl ManagedBackendSession {
         source: Box<dyn StreamedInputSource>,
         timeout: Duration,
     ) -> NonIdempotentRequestOutcome<TurnSteerResponseWire> {
-        if !matches!(
-            self.transport,
-            BackendClientTransport::ForegroundWebSocket(_)
-        ) {
-            let transport = match &self.transport {
-                BackendClientTransport::Stdio { .. } => "stdio",
-                BackendClientTransport::RequestOnlyWebSocket(_) => "request-only websocket",
-                BackendClientTransport::ForegroundWebSocket(_) => unreachable!(),
-            };
-            return proven_not_dispatched(ManagedBackendError::StreamedInputTransportUnsupported {
-                method: METHOD.to_string(),
-                transport,
-            });
-        }
-        if self.initialize.is_none() {
-            return proven_not_dispatched(ManagedBackendError::ClientNotInitialized);
-        }
-        if !self.has_full_turn_stream() {
-            return proven_not_dispatched(ManagedBackendError::RequestProfileMismatch {
-                method: METHOD,
-                required_profile: "full turn stream",
-            });
-        }
-        if self.ordered_turn_stream_sink.is_none() {
-            return proven_not_dispatched(ManagedBackendError::OrderedTurnStreamSinkUnbound);
-        }
-        if self.transport.is_closed() {
-            return proven_not_dispatched(ManagedBackendError::TransportClosed {
-                method: METHOD.to_string(),
-            });
-        }
-
-        let Some(next_request_id) = self.next_request_id.checked_add(1) else {
-            return proven_not_dispatched(ManagedBackendError::RequestIdExhausted {
-                method: METHOD,
-            });
+        let reservation = match self.reserve_streamed_request(METHOD, ResponseFamily::TurnSteer) {
+            Ok(reservation) => reservation,
+            Err(error) => return proven_not_dispatched(error),
         };
-        let request_id = self.next_request_id;
-        if self
-            .response_expectation
-            .install_fixed(request_id, ResponseFamily::TurnSteer)
-            .is_err()
-        {
-            return proven_not_dispatched(ManagedBackendError::ResponseExpectationUnavailable {
-                method: METHOD,
-            });
-        }
+        let request_id = reservation.request_id;
 
         let header = source.header();
         let source = RefCell::new(source);
@@ -102,7 +60,7 @@ impl ManagedBackendSession {
             .transport
             .write_streamed_message(METHOD, &request, &source_failure)
         {
-            Ok(_) => self.next_request_id = next_request_id,
+            Ok(_) => self.next_request_id = reservation.next_request_id,
             Err(failure) => {
                 return self.finish_turn_steer_write_failure(request_id, failure);
             }

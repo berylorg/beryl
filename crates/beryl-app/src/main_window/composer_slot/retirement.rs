@@ -5,6 +5,17 @@ use super::*;
 use crate::composer_host::ComposerHostServiceDisposalCompletion;
 
 impl MainWindowComposerSlot {
+    pub(in crate::main_window) fn disposal_flush_is_current(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        flush: crate::composer_host::ComposerHostFlushTicket,
+    ) -> bool {
+        self.selected_identity() == Some(selection)
+            && matches!(self.disposal_stage,
+                Some(DisposalStage::Flushing(current) | DisposalStage::AwaitingWidgetRelease(current))
+                    if current == flush)
+    }
+
     pub fn release_failed_pending(
         &mut self,
         store: &HomeStore,
@@ -105,9 +116,6 @@ impl MainWindowComposerSlot {
             | ComposerHostFlushAdmission::Joined { ticket, .. } => {
                 self.disposal_stage = Some(DisposalStage::Flushing(ticket))
             }
-            ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::Release) => {
-                self.disposal_stage = Some(DisposalStage::AwaitingWidgetRelease)
-            }
             ComposerHostFlushAdmission::Satisfied(_) => {
                 return Err(MainWindowComposerSlotError::StaleActivationReceipt);
             }
@@ -124,7 +132,7 @@ impl MainWindowComposerSlot {
             .ok_or(MainWindowComposerSlotError::TargetNotReady)?
         {
             DisposalStage::Flushing(ticket) => ticket,
-            DisposalStage::AwaitingWidgetRelease => {
+            DisposalStage::AwaitingWidgetRelease(_) => {
                 return Ok(MainWindowComposerDisposalAdvance::WidgetReleaseRequired(
                     self.selected_identity().unwrap(),
                 ));
@@ -137,8 +145,10 @@ impl MainWindowComposerSlot {
             ComposerHostFlushAdvance::ReconciliationPending => {
                 Ok(MainWindowComposerDisposalAdvance::ReconciliationPending)
             }
-            ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Release) => {
-                self.disposal_stage = Some(DisposalStage::AwaitingWidgetRelease);
+            ComposerHostFlushAdvance::Satisfied(
+                ComposerHostFlushPurpose::Release | ComposerHostFlushPurpose::WindowClose,
+            ) => {
+                self.disposal_stage = Some(DisposalStage::AwaitingWidgetRelease(ticket));
                 Ok(MainWindowComposerDisposalAdvance::WidgetReleaseRequired(
                     self.selected_identity().unwrap(),
                 ))
@@ -159,7 +169,7 @@ impl MainWindowComposerSlot {
     ) -> Result<MainWindowComposerDisposalAdvance, MainWindowComposerSlotError> {
         if !matches!(
             self.disposal_stage,
-            Some(DisposalStage::AwaitingWidgetRelease)
+            Some(DisposalStage::AwaitingWidgetRelease(_))
         ) || self.selected_identity() != Some(release.selection())
         {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
@@ -174,6 +184,7 @@ impl MainWindowComposerSlot {
             ComposerHostServiceDisposalCompletion::Disposed => {
                 self.selected = None;
                 self.disposal_stage = None;
+                self.window_close = None;
                 self.disposed = true;
                 Ok(MainWindowComposerDisposalAdvance::Disposed)
             }

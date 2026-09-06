@@ -160,7 +160,7 @@ Runtime rows always form one vertical list. They never reflow into horizontal co
 
 The primary collection and runtime registry own independent vertical scroll state and independent external scrollbar widgets. Pointer-wheel and touchpad input over either viewport routes through that viewport; the flyout itself does not own a third vertical scroll surface and never scrolls horizontally. Scroll routing and boundary propagation follow `scroll-ownership`.
 
-Collection rows remain single-height. Primary and secondary labels truncate within their allocated region; trailing status or commands retain their trailing alignment. The owning feature supplies complete accessibility text and tooltips for truncated values.
+Collection rows remain single-height. Primary and secondary labels truncate within their allocated region; trailing status or commands retain their trailing alignment. The owning feature supplies tooltips for truncated values.
 
 The window minimum-size contract must accommodate the fixed picker footprint. Clamping changes placement, not the widget's internal geometry.
 

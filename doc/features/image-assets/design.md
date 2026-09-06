@@ -157,9 +157,9 @@ an admitted asset-backed result or a terminal unavailable result.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
-- `irreversible-operation/v1`
+- `external-side-effects/v2`
+- `irreversible-operation/v2`

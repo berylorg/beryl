@@ -28,7 +28,8 @@ impl MainWindowComposerSlot {
         if self.disposed {
             return Err(MainWindowComposerSlotError::Disposed);
         }
-        if self.pending.is_some()
+        if self.window_close.is_some()
+            || self.pending.is_some()
             || self.disposal_stage.is_some()
             || self.submission_successor.is_some()
             || self
@@ -57,6 +58,7 @@ impl MainWindowComposerSlot {
         seed: RangeRestorationSeed,
     ) -> Result<(), MainWindowComposerSlotError> {
         if self.disposed
+            || self.window_close.is_some()
             || self.pending.is_some()
             || self.disposal_stage.is_some()
             || self.submission_successor.is_some()

@@ -1,6 +1,7 @@
 # Scope
 
-Inline-object accessibility across the owned GPUI fork and `gpui-text-input` Phase 133.
+Unsupported accessibility publication across the owned GPUI fork, first exposed by
+`gpui-text-input` Phase 133 and encountered again by the Phase 300 notice widget.
 
 # Invalidated Assumption
 
@@ -15,6 +16,11 @@ prepaint, and paint through `crates/gpui/src/element.rs`. Its manifest and publi
 AccessKit dependency, accessibility tree, semantic-node writer, semantic property API, or
 accessibility-action route. Ordinary `Div::on_action` and pointer handlers are GPUI input paths,
 not accessibility adapter actions.
+
+Phase 300 reconfirmed the missing capability at pinned revision
+`b6939aa0a2d78be59facd12a909a4ada3b6f6a64`, matching the inspected sibling checkout. Its public
+`Element`, `Interactivity`, and `Window` surfaces and internal `PlatformWindow` trait expose no
+semantic naming or tree publication route. A `TooltipBuilder` creates only a visual hover view.
 
 The original `gpui-text-input` draft separately retained a label and optional description, but it
 could not publish them as an OS accessibility node or route an assistive-technology action through
@@ -39,6 +45,11 @@ The Operator rejected accessibility scope. Phase 133 removes the accessibility-s
 description payload, its accounting, public API, and tests. The coherent surface retains only the
 visual presentation, opaque semantic state, and activation eligibility required by ordinary widget
 rendering and interaction.
+
+The Operator subsequently made accessibility an explicit project-wide [non-goal](../design.md).
+Active feature and GUI contracts therefore require no assistive naming, state, or action support.
+Ordinary keyboard interaction, focus management, visible labels, and tooltips remain GUI behavior.
+Missing platform accessibility must not become an implementation prerequisite for those controls.
 
 Do not add a compatibility adapter, synthetic accessibility action, unbounded registry, or
 per-frame logical-source scan.

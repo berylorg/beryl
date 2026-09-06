@@ -11,6 +11,9 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Retaining workspaces, semantic graph, graph upkeep, checklists, or checklist-bound threaded decisions behind renamed models or compatibility adapters.
 - Implementing graph-independent semantic search or turn/resource garbage collection.
 - Providing built-in file diff or agent-edit review workflows in V1.
+- Accessibility support, including screen-reader integration, assistive-technology interfaces,
+  and semantic accessibility names, descriptions, states, or actions. Ordinary keyboard interaction,
+  focus management, visible labels, and tooltips remain part of the GUI contract.
 
 # Decisions
 
@@ -145,6 +148,11 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 ## Responsiveness And Performance
 
 - Input and render latency, RAM use, and CPU use are first-order constraints.
+- Growable catalogs, transcripts, drafts, and media collections use incremental durable access and
+  bounded resident working sets at their large-data boundaries. Resident pages, rendered content,
+  caches, queued work, and media resources are limited by their configured budgets and admitted
+  concurrency, rather than accumulating with the complete dataset. More content may require more
+  durable storage and processing time.
 - The GPUI thread performs no blocking filesystem, process, network, parsing, image decode, persistence, or backend protocol work.
 - Established coherent content remains visible during asynchronous replacement whenever possible; Beryl does not flicker through temporary blank or opening surfaces.
 - Selected-thread content and its initial viewport publish in one transaction and are not corrected by later render callbacks.
@@ -160,8 +168,10 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Background work is bounded, cancellable, and lower priority than foreground turn streaming and selected transcript activation.
 - Implementation favors predictable latency, backpressure, eviction, and explicit unavailability
   over unbounded queues, caches, decode expansion, or renderer retention. Canonical content is
-  never silently truncated, but explicit product limits are allowed where an external API requires
-  a contiguous whole value.
+  never silently truncated. Owning features may declare generous limits for individual expensive
+  operations, including whole-value external APIs and marker-bearing edits; these do not impose a
+  smaller dataset or draft limit. Permanent operation-size refusal, temporary shared-capacity
+  refusal, and storage failure remain distinct, and no rejected operation publishes a partial edit.
 
 ## Platform Targeting
 
@@ -170,9 +180,9 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `persistent-state-integrity/v1`
-- `shared-resource-protection/v1`
+- `persistent-state-integrity/v2`
+- `shared-resource-protection/v2`

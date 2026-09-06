@@ -3,12 +3,7 @@ use super::*;
 impl SyndicComposerHost {
     pub fn is_dirty(&self) -> bool {
         self.active.as_ref().is_some_and(|active| {
-            active.published_candidate_generation < active.storage_candidate.candidate_generation()
-                || active.published_pair
-                    != DraftRootHistoryPairV1::new(
-                        active.storage_candidate.root(),
-                        active.storage_candidate.history(),
-                    )
+            active.published_candidate_generation != active.storage_candidate.candidate_generation()
         })
     }
 
@@ -73,6 +68,13 @@ impl SyndicComposerHost {
             return Err(ComposerHostError::PublicationUnavailable);
         }
         if !self.is_dirty() {
+            if !self.storage.draft_editor_candidate_is_saved(
+                store,
+                active.storage_candidate,
+                active.durable_selector,
+            )? {
+                return Err(ComposerHostError::PublicationAssetMismatch);
+            }
             return Ok(ComposerHostPublicationCapture::CleanNoOp);
         }
         if cancellation.is_cancelled() {

@@ -5,11 +5,23 @@ impl SyndicComposerHost {
         &mut self,
         purpose: ComposerHostFlushPurpose,
     ) -> Result<ComposerHostFlushAdmission, ComposerHostError> {
+        if self.lifecycle.close_ticket.is_some()
+            && (purpose != ComposerHostFlushPurpose::WindowClose
+                || self.lifecycle.barrier.is_none())
+        {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
         if active.unavailable || active.session_disposed || self.lifecycle.service_disposed {
             return Err(ComposerHostError::PublicationUnavailable);
         }
         if let Some(barrier) = self.lifecycle.barrier.as_mut() {
+            if purpose != barrier.purpose
+                && (purpose == ComposerHostFlushPurpose::WindowClose
+                    || barrier.purpose == ComposerHostFlushPurpose::WindowClose)
+            {
+                return Err(ComposerHostError::LifecycleBlocked);
+            }
             if purpose.disposes_session() && !barrier.purpose.disposes_session() {
                 barrier.purpose = purpose;
             }
@@ -61,12 +73,13 @@ impl SyndicComposerHost {
             purpose,
             publication,
             disposal,
+            saved_checkpoint: None,
+            close_disposal_authorized: false,
         });
-        let state = self.flush_state(ticket)?;
-        if !purpose.disposes_session() && state == ComposerHostFlushState::DisposalRequired {
-            self.lifecycle.barrier = None;
-            return Ok(ComposerHostFlushAdmission::Satisfied(purpose));
+        if purpose == ComposerHostFlushPurpose::WindowClose {
+            self.lifecycle.close_ticket = Some(ticket);
         }
+        let state = self.flush_state(ticket)?;
         Ok(ComposerHostFlushAdmission::Started { ticket, state })
     }
 
@@ -80,10 +93,24 @@ impl SyndicComposerHost {
             .as_ref()
             .filter(|barrier| barrier.ticket == ticket)
             .ok_or(ComposerHostError::StalePublicationGeneration)?;
-        if barrier.disposal.is_some() || (barrier.publication.is_none() && !self.is_dirty()) {
+        if barrier.disposal.is_some() {
             Ok(ComposerHostFlushState::DisposalRequired)
         } else if barrier.publication.is_some() {
             Ok(ComposerHostFlushState::PublicationPending)
+        } else if !self.is_dirty()
+            && !self.live_operation_pending()
+            && self.active.as_ref().is_some_and(|active| {
+                barrier.saved_checkpoint
+                    == Some((active.storage_candidate, active.durable_selector))
+            })
+        {
+            if barrier.purpose == ComposerHostFlushPurpose::WindowClose
+                && !barrier.close_disposal_authorized
+            {
+                Ok(ComposerHostFlushState::CloseReady)
+            } else {
+                Ok(ComposerHostFlushState::DisposalRequired)
+            }
         } else {
             Ok(ComposerHostFlushState::CaptureRequired)
         }
@@ -109,11 +136,18 @@ impl SyndicComposerHost {
         let state = self.flush_state(flush)?;
         if state != ComposerHostFlushState::CaptureRequired {
             let purpose = self.lifecycle.barrier.as_ref().unwrap().purpose;
-            if state == ComposerHostFlushState::DisposalRequired && !purpose.disposes_session() {
+            if state == ComposerHostFlushState::DisposalRequired
+                && purpose == ComposerHostFlushPurpose::Submission
+            {
                 self.lifecycle.barrier = None;
                 return Ok(ComposerHostFlushCapture::Satisfied(purpose));
             }
             return Ok(ComposerHostFlushCapture::State(state));
+        }
+        if self.live_operation_pending() && self.lifecycle.close_ticket == Some(flush) {
+            return Ok(ComposerHostFlushCapture::State(
+                ComposerHostFlushState::CaptureRequired,
+            ));
         }
         let capture = self.capture_lifecycle_publication(
             store,
@@ -134,8 +168,14 @@ impl SyndicComposerHost {
         };
         Ok(match capture {
             ComposerHostPublicationCapture::CleanNoOp => {
+                let active = self.active.as_ref().unwrap();
+                self.lifecycle.barrier.as_mut().unwrap().saved_checkpoint =
+                    Some((active.storage_candidate, active.durable_selector));
+                self.lifecycle.dirty_adoption_seen = false;
                 let purpose = self.lifecycle.barrier.as_ref().unwrap().purpose;
-                if purpose.disposes_session() {
+                if purpose == ComposerHostFlushPurpose::WindowClose {
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::CloseReady)
+                } else if purpose.disposes_session() {
                     ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
                 } else {
                     self.lifecycle.barrier = None;
@@ -174,7 +214,7 @@ impl SyndicComposerHost {
             return Ok(ComposerHostFlushCapture::Stale);
         }
         let purpose = self.lifecycle.barrier.as_ref().unwrap().purpose;
-        if !purpose.disposes_session() {
+        if purpose == ComposerHostFlushPurpose::Submission {
             self.lifecycle.barrier = None;
             return Ok(ComposerHostFlushCapture::Stale);
         }
@@ -232,7 +272,9 @@ impl SyndicComposerHost {
         let Some(publication) = publication else {
             let state = self.flush_state(flush)?;
             let purpose = self.lifecycle.barrier.as_ref().unwrap().purpose;
-            if state == ComposerHostFlushState::DisposalRequired && !purpose.disposes_session() {
+            if state == ComposerHostFlushState::DisposalRequired
+                && purpose == ComposerHostFlushPurpose::Submission
+            {
                 self.lifecycle.barrier = None;
                 return Ok(ComposerHostFlushAdvance::Satisfied(purpose));
             }
@@ -298,19 +340,9 @@ impl SyndicComposerHost {
             | ComposerHostPublicationCompletion::Superseded => {
                 if let Some(barrier) = self.lifecycle.barrier.as_mut() {
                     barrier.publication = None;
+                    barrier.saved_checkpoint = None;
                 }
-                if self.is_dirty() {
-                    ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
-                } else {
-                    self.lifecycle.dirty_adoption_seen = false;
-                    let purpose = self.lifecycle.barrier.as_ref().unwrap().purpose;
-                    if purpose.disposes_session() {
-                        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired)
-                    } else {
-                        self.lifecycle.barrier = None;
-                        ComposerHostFlushAdvance::Satisfied(purpose)
-                    }
-                }
+                ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
             }
             ComposerHostPublicationCompletion::NotCommitted => {
                 self.finish_flush_failure(ComposerHostFlushFailure::NotCommitted)
@@ -343,7 +375,8 @@ impl SyndicComposerHost {
             ComposerHostFlushFailure::Cancelled
                 | ComposerHostFlushFailure::NotCommitted
                 | ComposerHostFlushFailure::Recoverable
-        ) && self.lifecycle.dirty_adoption_seen
+        ) && self.lifecycle.close_ticket.is_none()
+            && self.lifecycle.dirty_adoption_seen
             && self.is_dirty()
         {
             if let Some(binding) = self.binding() {

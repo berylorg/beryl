@@ -17,11 +17,11 @@ use beryl_model::{
 use beryl_state::{AssetReferenceSetStagingAuthority, AssetState};
 use gpui_text_input::{
     BindingId, ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor,
-    InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest,
-    MutationCursor, MutationFinishInput, MutationIdentity, MutationKey, MutationKind,
-    MutationLane, MutationPage, MutationPageItem, MutationPageKey, MutationPageRequest,
-    MutationPositions, MutationProposal, MutationStreamFinish, MutationTotals, SourcePosition,
-    SourceRange, SourceRevision, SuccessorObject,
+    InlineObjectOrder, LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
+    MutationFinishInput, MutationIdentity, MutationKey, MutationKind, MutationLane, MutationPage,
+    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
+    MutationStreamFinish, MutationTotals, SourcePosition, SourceRange, SourceRevision,
+    SuccessorObject,
 };
 use syndic_storage::{
     DraftComposerMaterializationOperationIdV1, DraftEditorCandidateSessionIdV1,
@@ -45,7 +45,7 @@ pub fn submit_atoms(
     seed: u8,
     admitted_at: SyndicTimestamp,
 ) -> (FirstAcceptanceKind, SyndicDraftId) {
-    let mut host = SyndicComposerHost::new(storage);
+    let mut host = SyndicComposerHost::new(storage.clone());
     let request = ComposerHostActivationRequest::new(
         thread,
         DraftEditorCandidateSessionIdV1::from_bytes([seed; 16]),
@@ -66,23 +66,22 @@ pub fn submit_atoms(
         store,
         store.health().generation().unwrap(),
         storage,
-        assets,
-        DraftMarkerSealServiceLimits::new(
-            NonZeroUsize::MIN,
-            NonZeroUsize::MIN,
-        )
-        .unwrap(),
+        assets.clone(),
+        DraftMarkerSealServiceLimits::new(NonZeroUsize::MIN, NonZeroUsize::MIN).unwrap(),
     )
     .unwrap();
-    let marker_authority = atoms.iter().any(|atom| matches!(atom, Atom::Image(..))).then(|| {
-        ComposerHostMarkerSealAuthority::new(
-            DraftMarkerSealOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),
-            AssetReferenceSetStagingAuthority::new(
-                AssetReferenceSetId::from_bytes([seed.wrapping_add(3); 16]),
-                [seed.wrapping_add(4); 32],
-            ),
-        )
-    });
+    let marker_authority = atoms
+        .iter()
+        .any(|atom| matches!(atom, Atom::Image(..)))
+        .then(|| {
+            ComposerHostMarkerSealAuthority::new(
+                DraftMarkerSealOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),
+                AssetReferenceSetStagingAuthority::new(
+                    AssetReferenceSetId::from_bytes([seed.wrapping_add(3); 16]),
+                    [seed.wrapping_add(4); 32],
+                ),
+            )
+        });
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             next_draft,
@@ -98,7 +97,7 @@ pub fn submit_atoms(
             .advance_submission(
                 store,
                 ticket,
-                assets,
+                assets.clone(),
                 &seals,
                 DraftPieceOperationIdV1::from_bytes([seed.wrapping_add(7); 16]),
                 marker_authority,

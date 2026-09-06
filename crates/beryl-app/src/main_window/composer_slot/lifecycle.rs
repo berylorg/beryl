@@ -137,6 +137,9 @@ impl MainWindowComposerSlot {
         selection: MainWindowComposerSelectionIdentity,
         purpose: ComposerHostFlushPurpose,
     ) -> Result<ComposerHostFlushAdmission, MainWindowComposerDispatchError> {
+        if self.window_close.is_some() && purpose != ComposerHostFlushPurpose::WindowClose {
+            return Err(crate::composer_host::ComposerHostError::LifecycleBlocked.into());
+        }
         let selected = self.selected_mut(selection)?;
         Ok(selected.host.begin_flush(purpose)?)
     }
@@ -251,6 +254,7 @@ fn advance_flush(
         outcome,
         ComposerHostFlushAdvance::Progress(
             crate::composer_host::ComposerHostFlushState::CaptureRequired
+                | crate::composer_host::ComposerHostFlushState::CloseReady
                 | crate::composer_host::ComposerHostFlushState::DisposalRequired
         ) | ComposerHostFlushAdvance::Satisfied(_)
     ) {

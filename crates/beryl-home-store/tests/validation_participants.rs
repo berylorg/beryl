@@ -1,8 +1,8 @@
 mod support;
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use beryl_home_store::{
@@ -14,8 +14,8 @@ use beryl_model::DomainRevision;
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord,
-    FixtureMutationError, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed,
+    open_home,
 };
 
 struct RequireBytes<D> {

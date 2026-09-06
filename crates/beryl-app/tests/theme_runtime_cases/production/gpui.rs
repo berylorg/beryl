@@ -145,9 +145,7 @@ impl Mounted {
 }
 
 #[gpui::test]
-fn phase294_actual_windows_adopt_every_runtime_source_and_preserve_editors(
-    cx: &mut gpui::TestAppContext,
-) {
+fn actual_windows_adopt_every_runtime_source_and_preserve_editors(cx: &mut gpui::TestAppContext) {
     let mut mounted = Mounted::new(cx);
     let initial = mounted.runtime.as_ref().unwrap().current().unwrap();
     mounted.assert_generation(&initial, cx);
@@ -270,9 +268,7 @@ fn phase294_actual_windows_adopt_every_runtime_source_and_preserve_editors(
 }
 
 #[gpui::test]
-fn phase294_reentrant_snapshot_and_retirement_preserve_whole_adoption(
-    cx: &mut gpui::TestAppContext,
-) {
+fn reentrant_snapshot_and_retirement_preserve_whole_adoption(cx: &mut gpui::TestAppContext) {
     let mut mounted = Mounted::new(cx);
     let initial = mounted.runtime.as_ref().unwrap().current().unwrap();
     mounted.controls[1]
@@ -330,9 +326,7 @@ fn phase294_reentrant_snapshot_and_retirement_preserve_whole_adoption(
 }
 
 #[gpui::test]
-fn phase294_final_validation_rejects_a_root_closed_during_later_preparation(
-    cx: &mut gpui::TestAppContext,
-) {
+fn final_validation_rejects_a_root_closed_during_later_preparation(cx: &mut gpui::TestAppContext) {
     let mut mounted = Mounted::new(cx);
     let initial = mounted.runtime.as_ref().unwrap().current().unwrap();
     *mounted.controls[1].close_during_prepare.borrow_mut() = Some(mounted.windows[0]);
@@ -368,7 +362,7 @@ fn phase294_final_validation_rejects_a_root_closed_during_later_preparation(
 }
 
 #[gpui::test]
-fn phase294_gui_call_rejects_before_waiting_or_reading_repository(cx: &mut gpui::TestAppContext) {
+fn gui_call_rejects_before_waiting_or_reading_repository(cx: &mut gpui::TestAppContext) {
     let mut mounted = Mounted::new(cx);
     assert!(matches!(
         mounted
@@ -400,7 +394,7 @@ fn queue_preview(
 )> {
     let mut runtime = mounted.runtime.take().unwrap();
     let worker = std::thread::Builder::new()
-        .name("phase294-pending-publication".to_owned())
+        .name("pending-publication".to_owned())
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
             let request = runtime
@@ -432,7 +426,7 @@ fn queue_preview(
 }
 
 #[gpui::test]
-fn phase294_pending_publication_has_one_slot_and_exact_epoch_and_retirement_fences(
+fn pending_publication_has_one_slot_and_exact_epoch_and_retirement_fences(
     cx: &mut gpui::TestAppContext,
 ) {
     let mut mounted = Mounted::new(cx);

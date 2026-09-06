@@ -38,7 +38,7 @@ The transcript region receives height left after fixed and visible bounded panel
 
 This slot is a routed presentation-record contribution point inside the transcript view's ordered flow. It is for stable feature-owned synthetic context that belongs at an exact transcript boundary without becoming a Syndic turn or peer transcript viewport.
 
-Contributed records participate in transcript realization, scrolling, anchoring, measurement, selection, and accessibility through the transcript view. When no record applies at a resident boundary, the slot contributes no presentation item or reserved space.
+Contributed records participate in transcript realization, scrolling, anchoring, measurement, and selection through the transcript view. When no record applies at a resident boundary, the slot contributes no presentation item or reserved space.
 
 #### Slot: transcript.code-panel-actions
 

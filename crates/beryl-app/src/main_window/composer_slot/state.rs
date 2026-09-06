@@ -31,7 +31,7 @@ pub(super) enum PendingStage {
 #[derive(Clone, Copy)]
 pub(super) enum DisposalStage {
     Flushing(ComposerHostFlushTicket),
-    AwaitingWidgetRelease,
+    AwaitingWidgetRelease(ComposerHostFlushTicket),
 }
 
 pub(super) struct PendingComposer {

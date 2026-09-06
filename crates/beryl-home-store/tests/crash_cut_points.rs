@@ -5,15 +5,15 @@ mod support;
 use std::{env, path::PathBuf, process::Command};
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
 use support::{AlphaDomain, BytesRecord, PutBytes};
 
-const HOME_ENV: &str = "BERYL_PHASE5_CRASH_HOME";
-const POINT_ENV: &str = "BERYL_PHASE5_CRASH_POINT";
+const HOME_ENV: &str = "BERYL_CRASH_HOME";
+const POINT_ENV: &str = "BERYL_CRASH_POINT";
 
 fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(

@@ -207,11 +207,11 @@ impl DomainMutation<AssetDomain> for UpdateAssetOwnerHeads {
             .filter(|update| update.mutates())
             .count();
         reservation.reserve_records::<AssetOwnerHeadCodec>(count)?;
-        if let Some(witness) = successor::first_acceptance_witness(&self.updates) {
-            reservation.reserve_successor_witness::<
-                beryl_home_store::FirstAcceptancePromotionProtocolV1,
-                _,
-            >(witness)?;
+        if let Some(seed) = successor::first_acceptance_promotion_seed(&self.updates) {
+            reservation
+                .reserve_first_acceptance_promotion_asset::<successor::PromotionOwnerHeadAdapterV1>(
+                    seed,
+                )?;
         }
         Ok(())
     }

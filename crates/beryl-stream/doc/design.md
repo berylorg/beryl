@@ -82,8 +82,8 @@ unrelated services or limiting the logical size of streamed content.
 
 # Engineering Rigor
 
-Profile: `trusted-internal-tool/v1`
+Profile: `trusted-internal-tool/v2`
 
 Modifiers:
 
-- `shared-resource-protection/v1`
+- `shared-resource-protection/v2`

@@ -7,7 +7,8 @@ use beryl_state::{
 use super::{
     DurablePublicationIdentity, DurablePublicationOutcome, RepositoryAppearanceResult,
     ThemeRuntime, ThemeRuntimeFailureClass, installed_identity, load_observed, load_prepared,
-    map_live_failure, map_live_load_failure, map_publication_error, map_startup_failure,
+    map_live_failure, map_live_load_failure, map_publication_error, map_repository_load_failure,
+    map_startup_failure,
 };
 
 impl ThemeRuntime {
@@ -40,7 +41,7 @@ impl ThemeRuntime {
             self.repository.as_ref(),
         ) {
             Ok(candidate) => candidate,
-            Err(_) => return self.retain(ThemeRuntimeFailureClass::Repository),
+            Err(error) => return self.retain(map_repository_load_failure(&error)),
         };
         let Some(active) = self.active.as_ref() else {
             self.repository = Some(candidate);

@@ -16,18 +16,16 @@ use syndic_storage::{
     SyndicReadySteeringInput, SyndicStorage,
 };
 
-use crate::{
-    cas_projection::{
-        AcceptedInputSchedulerDiagnostics, ActiveSteeringDeliveryError,
-        ActiveSteeringDeliveryOutcome, ActiveSteeringRetryState, AdmittedProjectionSession,
-        CasProjectionCoordinator, CasProjectionRequest, LiveEventTarget, MinimumTurnCaptureReserve,
-        PendingTurnActivation, ProjectionCancellationToken, ProjectionConnectionService,
-        ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
-        ProjectionServiceConfig, ProjectionWorkerPoolDiagnostics, ScheduledOrdinaryAdmission,
-        ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
-        ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
-        input_replay::{InputReplayContext, InputReplayFactory, InputReplayRecord},
-    },
+use crate::cas_projection::{
+    AcceptedInputSchedulerDiagnostics, ActiveSteeringDeliveryError, ActiveSteeringDeliveryOutcome,
+    ActiveSteeringRetryState, AdmittedProjectionSession, CasProjectionCoordinator,
+    CasProjectionRequest, LiveEventTarget, MinimumTurnCaptureReserve, PendingTurnActivation,
+    ProjectionCancellationToken, ProjectionConnectionService,
+    ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
+    ProjectionServiceConfig, ProjectionWorkerPoolDiagnostics, ScheduledOrdinaryAdmission,
+    ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
+    ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+    input_replay::{InputReplayContext, InputReplayFactory, InputReplayRecord},
 };
 
 #[cfg(feature = "test-faults")]
@@ -35,7 +33,7 @@ use crate::cas_projection::OrdinaryInputReplayDiagnostics;
 
 use super::super::test_support::{DeliveryPause, install_delivery_pause};
 use super::server::{AUTHORIZATION, CAS_THREAD_ID, CAS_TURN_ID, SteeringServer, TIMEOUT};
-use super::submission_fixture::{submit_atoms, Atom};
+use super::submission_fixture::{Atom, submit_atoms};
 
 mod image {
     include!(concat!(
@@ -59,11 +57,11 @@ use self::{
     },
 };
 
-pub(super) const STEERING_TEXT: &str = "phase54 marker-free steering";
-pub(super) const SECOND_STEERING_TEXT: &str = "phase57 second marker-free steering";
-pub(super) const IMAGE_LEADING_TEXT: &str = "phase54 image ";
-pub(super) const SUBMITTED_TEXT: &str = "phase54 active turn";
-const EXECUTION_ROOT: &str = r"C:\work\beryl-phase54-steering";
+pub(super) const STEERING_TEXT: &str = " marker-free steering";
+pub(super) const SECOND_STEERING_TEXT: &str = " second marker-free steering";
+pub(super) const IMAGE_LEADING_TEXT: &str = " image ";
+pub(super) const SUBMITTED_TEXT: &str = " active turn";
+const EXECUTION_ROOT: &str = r"C:\work\beryl-steering";
 const POINT_READ_BYTES: usize = 1_000_000;
 
 struct UnavailableScheduledOrdinaryProvider;
@@ -312,7 +310,9 @@ impl DeliveryFixture {
             seed.wrapping_add(20),
             timestamp(3),
         );
-        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == submitted_item_id));
+        assert!(
+            matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == submitted_item_id)
+        );
         let submitted_turn_id = source_draft.submitted_turn_id();
 
         let config = ProjectionServiceConfig::try_new(

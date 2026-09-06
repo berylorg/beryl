@@ -29,18 +29,18 @@ path = "tests/ordered_turn_stream.rs"
 required-features = ["lifecycle-test-support"]
 
 [[test]]
-name = "phase31_request_flow"
-path = "tests/phase31_bounded_dispatch.rs"
+name = "request_flow"
+path = "tests/request_flow.rs"
 required-features = ["lifecycle-test-support"]
 
 [[test]]
-name = "phase32_lineage_flow"
-path = "tests/phase32_lineage_flow.rs"
+name = "lineage_flow"
+path = "tests/lineage_flow.rs"
 required-features = ["lifecycle-test-support"]
 
 [[test]]
-name = "phase39_thread_injection_session"
-path = "tests/phase39_thread_injection_session.rs"
+name = "thread_injection_session"
+path = "tests/thread_injection_session.rs"
 required-features = ["lifecycle-test-support"]
 
 [[test]]

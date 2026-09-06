@@ -172,8 +172,8 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

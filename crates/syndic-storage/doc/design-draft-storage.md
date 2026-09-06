@@ -61,6 +61,39 @@ disposed-head advance, or clean disposal with unequal published/newest checkpoin
 A fresh session forks only from the current draft's published authority; it never adopts unpublished
 state from an earlier process or session.
 
+Candidate provenance validates one exact root, history frontier, and candidate generation. An
+unchanged opening candidate derives its authority from the session's opening durable checkpoint:
+its root remains the opening root, and its live history is the exact fork of the opening durable
+history for that session. Opening inherits the durable generation, which need not be zero. Later
+adoptions require the exact committed ordinary-edit or historical-adoption evidence for their
+checkpoint. These evidence rules are shared by preparation reads and transactional validation;
+valid provenance alone does not establish publication eligibility.
+
+Syndic authenticates whether one exact live candidate is already represented by the current durable
+selector/root/history checkpoint. Exact published/newest equality or the unchanged opening's exact
+session-fork correspondence may establish that relationship. Opening correspondence requires the
+immutable opening authority and unchanged candidate identity at any inherited generation; equal
+roots or generations, or absence of a journal, do not suffice. It neither publishes the private
+fork nor makes later adopted candidates durable. Callers retain the live candidate identity and
+durable checkpoint separately, and stale selector or candidate authority cannot authorize use of
+another checkpoint.
+
+Ordinary final disposal may normalize an authenticated unchanged opening's newest history to its
+published history in the same atomic command as the exact disposal receipt. It requires current
+durable correspondence and no operation custody, preserves the current draft and its selector, and
+leaves the disposed published/newest pairs byte-equal. Receipt replay and reconciliation cover the
+complete source and normalized terminal session state; substituted forks and later adopted dirty
+states are rejected. This is normal disposal, independent of unpublished-target abandonment.
+An exact disposal receipt authenticates its recorded source and terminal session history after a
+later draft replaces the disposed editor's draft. Mutable current-selector eligibility is checked
+at admission and is not a continuing prerequisite for validating that committed historical receipt.
+
+Captured publication validates the captured checkpoint even when the live session has advanced.
+Current-session eligibility, custody, and publication preconditions remain separate checks; proving
+the current head does not prove an older captured candidate. Publication moves the captured root
+and matching history together and cannot mark a newer candidate published merely because the
+captured operation completed.
+
 ## Durable Mutation Staging
 
 `DraftMutationOperationIdV1` is one opaque caller-owned identity reused for one transaction's begin,

@@ -5,6 +5,13 @@ theme repository service and Beryl-owned typed scalar settings only.
 
 ## Theme repository service
 
+- The package enforces the theme runtime's 1,024 installed-entry and 1 MiB encoded-manifest limits
+  in reads, decoding, transformed-output preflight, and encoding. Smaller caller allowances remain
+  effective. One bounded stable-id set proves uniqueness during forward decoding; no preceding-row
+  rescans are required. Overflow is a typed limit error and never accepts a partial manifest.
+- Install and Save As refuse capacity or output-size overflow before physical staging or
+  publication. Count-neutral commands remain available at capacity under their existing guards.
+  Typed count and manifest-byte limit provenance remains available to app and tool consumers.
 - The service owns stable installed theme ids, repository generations, manifest cursor pages,
   document observation revisions, byte lengths and digests, the finite role/property schema,
   bounded compact-TOML parser and validator, and complete resolved appearance values. Manifest

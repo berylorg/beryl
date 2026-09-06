@@ -20,10 +20,9 @@ use crate::{
     BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,
     LifecycleYieldRequest, LifecycleYieldRequestHandler,
     cas_projection::{
-        OrdinaryDynamicToolContext, ProjectionConnectionService,
+        MinimumTurnCaptureReserve, OrdinaryDynamicToolContext, ProjectionConnectionService,
         ProjectionConnectionServiceCloseOutcome, ProjectionCoordinatorError,
-        MinimumTurnCaptureReserve, ProjectionServiceConfig,
-        service_config::ProjectionWorkerPermitError,
+        ProjectionServiceConfig, service_config::ProjectionWorkerPermitError,
     },
 };
 
@@ -32,7 +31,7 @@ use super::*;
 mod server {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/phase37_normal_terminal/server.rs"
+        "/tests/normal_terminal/server.rs"
     ));
 }
 
@@ -140,7 +139,7 @@ fn execution_binding(runtime_id: RuntimeId) -> ExecutionBinding {
         RuntimeNativePath::from_admitted(
             RuntimeMode::host(),
             PathFlavor::Windows,
-            r"C:\work\phase59-scheduled-ordinary",
+            r"C:\work\scheduled-ordinary",
         )
         .unwrap(),
     )
@@ -151,7 +150,7 @@ fn explicit_policy() -> ScheduledOrdinaryRequestPolicy {
         .with_model("turn-model")
         .with_reasoning_effort("high")
         .with_developer_instructions_context(
-            Some("phase59 developer instructions".to_owned()),
+            Some(" developer instructions".to_owned()),
             "turn-model",
             Some("high".to_owned()),
         );
@@ -232,7 +231,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
             &connector,
             runtime_id,
             CasProcessGeneration::new(59_001).unwrap(),
-            Path::new(r"C:\work\phase59-scheduled-ordinary"),
+            Path::new(r"C:\work\scheduled-ordinary"),
             TIMEOUT,
         )
         .unwrap();
@@ -271,7 +270,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
             &foreign_connector,
             runtime_id,
             CasProcessGeneration::new(59_002).unwrap(),
-            Path::new(r"C:\work\phase59-scheduled-ordinary"),
+            Path::new(r"C:\work\scheduled-ordinary"),
             TIMEOUT,
         )
         .unwrap();
@@ -412,7 +411,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
         .unwrap();
     assert_eq!(
         developer.developer_instructions(),
-        Some("phase59 developer instructions")
+        Some(" developer instructions")
     );
     assert!(slot.lock().unwrap().is_none());
 

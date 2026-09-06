@@ -17,7 +17,7 @@ use beryl_backend::{
 use beryl_model::CasThreadId;
 
 #[allow(dead_code)]
-#[path = "../phase31_bounded_dispatch/support.rs"]
+#[path = "../request_flow/support.rs"]
 mod dispatch_support;
 
 use dispatch_support::{
@@ -39,7 +39,7 @@ impl SourceCalls {
     }
 }
 
-const SUBMITTED_TEXT: &str = "phase-36";
+const SUBMITTED_TEXT: &str = "streamed turn input";
 
 struct TextReplaySource {
     calls: SourceCalls,

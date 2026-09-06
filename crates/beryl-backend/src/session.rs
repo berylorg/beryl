@@ -1,11 +1,7 @@
 use std::{
     io,
     path::PathBuf,
-    process::ChildStdin,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc::{Receiver, RecvTimeoutError},
-    },
+    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -21,6 +17,7 @@ mod interruption;
 mod ordered_turn_stream;
 pub(crate) mod outbound;
 mod pre_bind;
+mod streamed_admission;
 mod streamed_turn_start;
 mod streamed_turn_steer;
 mod thread_injection;
@@ -48,7 +45,7 @@ use crate::{
     websocket_transport::{ForegroundWebSocketTransport, RequestOnlyWebSocketTransport},
 };
 
-use outbound::{DispatchProgress, OutboundWriteFailure, StdioJsonWriter, write_json};
+use outbound::DispatchProgress;
 
 static NEXT_APPROVAL_RESPONSE_AUTHORITY_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -633,20 +630,12 @@ impl ManagedBackendSession {
         request
     }
 
-    /// Constructs only the detached stdio capability-gate fixture.
-    ///
-    /// This test-support seam has no stdout reader and cannot execute requests;
-    /// it exists solely to prove streamed input is rejected before source reads
-    /// or writes while the session remains locally reusable.
     #[cfg(feature = "lifecycle-test-support")]
     #[doc(hidden)]
-    pub fn stdio_streamed_input_gate_for_lifecycle_test() -> Result<Self, ManagedBackendError> {
-        let (_sender, messages) = std::sync::mpsc::sync_channel(1);
+    pub fn unsupported_streamed_input_gate_for_lifecycle_test() -> Result<Self, ManagedBackendError>
+    {
         Ok(Self {
-            transport: BackendClientTransport::Stdio {
-                stdin: None,
-                messages,
-            },
+            transport: BackendClientTransport::Unsupported,
             managed_launch_provenance: None,
             initialize: None,
             initialized_notification_profile: None,
@@ -798,7 +787,7 @@ impl ManagedBackendSession {
             BackendClientTransport::RequestOnlyWebSocket(transport) => {
                 transport.fail_next_write_before_dispatch_for_lifecycle_test();
             }
-            BackendClientTransport::Stdio { .. } => {
+            BackendClientTransport::Unsupported => {
                 panic!("write-failure lifecycle seam requires a WebSocket candidate");
             }
         }
@@ -1184,10 +1173,8 @@ impl TransportWriteFailure {
 }
 
 enum BackendClientTransport {
-    Stdio {
-        stdin: Option<ChildStdin>,
-        messages: Receiver<Result<IncomingMessage, ManagedBackendError>>,
-    },
+    #[cfg(feature = "lifecycle-test-support")]
+    Unsupported,
     ForegroundWebSocket(ForegroundWebSocketTransport),
     RequestOnlyWebSocket(RequestOnlyWebSocketTransport),
 }
@@ -1199,53 +1186,14 @@ impl BackendClientTransport {
         message: &T,
     ) -> Result<outbound::OutboundWriteMetrics, TransportWriteFailure> {
         match self {
-            Self::Stdio { stdin, .. } => {
-                let Some(sink) = stdin.as_mut() else {
-                    return Err(TransportWriteFailure::ProvenNotDispatched(
-                        ManagedBackendError::TransportClosed {
-                            method: method.to_string(),
-                        },
-                    ));
-                };
-                let result = {
-                    let mut writer = StdioJsonWriter::new(sink);
-                    write_json(&mut writer, message)
-                };
-                match result {
-                    Ok(metrics) => Ok(metrics),
-                    Err(failure) => {
-                        let progress = failure.progress();
-                        let error = match failure {
-                            OutboundWriteFailure::Serialize { source, .. }
-                                if progress.some_bytes() =>
-                            {
-                                ManagedBackendError::WriteRequest {
-                                    method: method.to_string(),
-                                    source: io::Error::other(source),
-                                }
-                            }
-                            OutboundWriteFailure::Serialize { source, .. } => {
-                                ManagedBackendError::SerializeRequest {
-                                    method: method.to_string(),
-                                    source,
-                                }
-                            }
-                            OutboundWriteFailure::Transport { source, .. } => {
-                                ManagedBackendError::WriteRequest {
-                                    method: method.to_string(),
-                                    source,
-                                }
-                            }
-                        };
-                        if progress.some_bytes() {
-                            drop(stdin.take());
-                        }
-                        Err(TransportWriteFailure::from_progress(progress, error))
-                    }
-                }
-            }
             Self::ForegroundWebSocket(transport) => transport.write_message(method, message),
             Self::RequestOnlyWebSocket(transport) => transport.write_message(method, message),
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::TransportClosed {
+                    method: method.to_string(),
+                },
+            )),
         }
     }
 
@@ -1259,16 +1207,17 @@ impl BackendClientTransport {
             Self::ForegroundWebSocket(transport) => {
                 transport.write_streamed_message(method, message, source_failure)
             }
-            Self::Stdio { .. } => Err(TransportWriteFailure::ProvenNotDispatched(
-                ManagedBackendError::StreamedInputTransportUnsupported {
-                    method: method.to_string(),
-                    transport: "stdio",
-                },
-            )),
             Self::RequestOnlyWebSocket(_) => Err(TransportWriteFailure::ProvenNotDispatched(
                 ManagedBackendError::StreamedInputTransportUnsupported {
                     method: method.to_string(),
                     transport: "request-only websocket",
+                },
+            )),
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::StreamedInputTransportUnsupported {
+                    method: method.to_string(),
+                    transport: "unsupported",
                 },
             )),
         }
@@ -1284,16 +1233,17 @@ impl BackendClientTransport {
             Self::ForegroundWebSocket(transport) => {
                 transport.write_injection_message(method, message, source_failure)
             }
-            Self::Stdio { .. } => Err(TransportWriteFailure::ProvenNotDispatched(
-                ManagedBackendError::ThreadInjectionTransportUnsupported {
-                    method: method.to_string(),
-                    transport: "stdio",
-                },
-            )),
             Self::RequestOnlyWebSocket(_) => Err(TransportWriteFailure::ProvenNotDispatched(
                 ManagedBackendError::ThreadInjectionTransportUnsupported {
                     method: method.to_string(),
                     transport: "request-only websocket",
+                },
+            )),
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::ThreadInjectionTransportUnsupported {
+                    method: method.to_string(),
+                    transport: "unsupported",
                 },
             )),
         }
@@ -1309,19 +1259,6 @@ impl BackendClientTransport {
         response_expectation: &mut crate::incoming_json::ResponseExpectationSlot,
     ) -> Result<ReceiveOutcome, ManagedBackendError> {
         match self {
-            Self::Stdio { messages, .. } if verifier.is_some() => {
-                Err(ManagedBackendError::StreamedInputTransportUnsupported {
-                    method: method.to_string(),
-                    transport: "stdio",
-                })
-            }
-            Self::Stdio { messages, .. } => match messages.recv_timeout(timeout) {
-                Ok(message) => message.map(ReceiveOutcome::Message),
-                Err(RecvTimeoutError::Timeout) => Ok(ReceiveOutcome::Quiet),
-                Err(RecvTimeoutError::Disconnected) => Err(ManagedBackendError::TransportClosed {
-                    method: method.to_string(),
-                }),
-            },
             Self::ForegroundWebSocket(transport) => {
                 match transport.recv_json_value_timeout(
                     method,
@@ -1353,6 +1290,10 @@ impl BackendClientTransport {
                     None => Ok(ReceiveOutcome::Quiet),
                 }
             }
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => Err(ManagedBackendError::TransportClosed {
+                method: method.to_string(),
+            }),
             Self::RequestOnlyWebSocket(transport) => {
                 match transport.recv_json_value_timeout(method, timeout, response_expectation)? {
                     Some(crate::incoming_json::DecodedIncoming::Response { result, .. }) => {
@@ -1406,23 +1347,23 @@ impl BackendClientTransport {
 
     fn close(&mut self) {
         match self {
-            Self::Stdio { stdin, .. } => {
-                drop(stdin.take());
-            }
             Self::ForegroundWebSocket(transport) => {
                 transport.close();
             }
             Self::RequestOnlyWebSocket(transport) => {
                 transport.close();
             }
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => {}
         }
     }
 
     fn is_closed(&self) -> bool {
         match self {
-            Self::Stdio { stdin, .. } => stdin.is_none(),
             Self::ForegroundWebSocket(transport) => transport.is_closed(),
             Self::RequestOnlyWebSocket(transport) => transport.is_closed(),
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => true,
         }
     }
 }
@@ -1430,7 +1371,6 @@ impl BackendClientTransport {
 impl std::fmt::Debug for BackendClientTransport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Stdio { .. } => f.write_str("BackendClientTransport::Stdio"),
             Self::ForegroundWebSocket(transport) => f
                 .debug_struct("BackendClientTransport::ForegroundWebSocket")
                 .field("endpoint", &transport.endpoint())
@@ -1439,6 +1379,8 @@ impl std::fmt::Debug for BackendClientTransport {
                 .debug_struct("BackendClientTransport::RequestOnlyWebSocket")
                 .field("endpoint", &transport.endpoint())
                 .finish(),
+            #[cfg(feature = "lifecycle-test-support")]
+            Self::Unsupported => f.write_str("BackendClientTransport::Unsupported"),
         }
     }
 }

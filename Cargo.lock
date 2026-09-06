@@ -577,6 +577,7 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tracing",
  "tungstenite",
+ "unicode-segmentation 1.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "windows 0.61.3",
 ]
 

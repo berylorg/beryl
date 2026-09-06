@@ -29,7 +29,7 @@ use std::{
     },
 };
 
-#[path = "../../phase186_pending_composer_activation/support.rs"]
+#[path = "../../pending_composer_activation/support.rs"]
 mod composer_support;
 
 pub struct ComposerFixture {
@@ -40,7 +40,7 @@ pub struct ComposerFixture {
 
 impl ComposerFixture {
     pub fn new(seed: u8) -> Self {
-        let fixture = composer_support::fixture::Fixture::new("phase294-gpui", seed);
+        let fixture = composer_support::fixture::Fixture::new("gpui", seed);
         composer_support::seed_activation_published_draft(&fixture, fixture.selected_thread);
         let mut host = SyndicComposerHost::new(fixture.storage.clone());
         assert!(matches!(
@@ -317,7 +317,7 @@ pub fn on_worker<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> T {
     let worker = std::thread::Builder::new()
-        .name("phase294-appearance-worker".to_owned())
+        .name("appearance-worker".to_owned())
         .stack_size(16 * 1024 * 1024)
         .spawn(work)
         .unwrap();

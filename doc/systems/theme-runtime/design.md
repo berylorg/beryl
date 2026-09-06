@@ -101,9 +101,14 @@ authority.
 - `manifest.toml` owns membership, names, and installed order but does not pin document content,
   length, digest, or observation revision. Users may edit an installed TOML document directly;
   files absent from the manifest remain inert and are never auto-installed.
-- Installed-theme count is logically unbounded. Enumeration uses revision-bound cursor pages with
-  stable theme ids and explicit item and decoded-byte limits; the runtime never materializes the
-  complete manifest or retains every row to answer a page request.
+- The installed-theme count is bounded by the Theming feature's 1,024-entry limit. The encoded
+  manifest is at most 1 MiB, including headers and formatting; a caller may select a smaller
+  operation allowance but cannot raise this ceiling. Enumeration retains revision-bound cursor
+  pages with stable theme ids and explicit item and decoded-byte limits.
+- Manifest validation traverses the input once and retains at most the supported number of stable
+  ids for uniqueness checking. It does not repeatedly reopen the manifest to compare each row
+  with its predecessors or require a complete collection of decoded rows. Count and byte overflow
+  are typed refusals, never truncation or automatic repository modification.
 - Document reads bind exact theme id, manifest generation, service generation, process-local
   observation revision, exact byte length, digest, and bounded source ranges. A changed document
   invalidates only work prepared from its superseded identity, including when the bytes later
@@ -116,6 +121,10 @@ authority.
 - Install, rename, delete, reorder, update, Save, and Save As are typed repository commands. Each
   carries the expected home and manifest generations plus every exact theme id, document
   revision, digest, order position, and feature-draft revision on which it depends.
+- Install and Save As prove the appended count and complete output manifest fit the supported
+  limits before staging or publishing either file. Count-neutral commands remain admitted at
+  capacity when their other guards and byte limits pass. Refusal preserves exact repository,
+  draft, active-setting, preview, and appearance identities.
 - Beryl-authored document writes stream one complete canonical replacement to a sibling staged file,
   validate its exact length and digest, durably flush it, and atomically replace the stable installed
   TOML file. Save and update change only that document and its observation identity; they do not
@@ -270,6 +279,9 @@ authority.
 - Repository refresh keeps the last coherent snapshot and durable base until the complete new
   snapshot and any affected active document are resolved and applicable. A failed refresh cannot
   partially update installed order, editor inputs, durable base, or current preview.
+- Count and encoded-manifest limit failures retain distinct typed provenance through app and tool
+  adapters. An over-limit repository follows startup fallback or last-coherent refresh preservation
+  without pruning entries, treating a readable prefix as complete, or issuing a repository write.
 - Structural Beryl-home failure retires the theme runtime's repository service, Settings handle,
   mutation gates, workers, pages, and preview arbiter with their exact home generation. None is
   adopted by a replacement service.
@@ -296,6 +308,8 @@ authority.
 
 ## Bounds And Diagnostics
 
+- Installed-count and encoded-manifest limits are ordinary subsystem limits. They require no
+  resource reservation protocol, process-wide governor, or additional reconciliation mechanism.
 - Repository page caches, source pages, staged-file buffers, parser state, mutation workers,
   reconciliation workers, coalesced filesystem notifications, live-edit rereads, preview
   preparation, publication attempts, window adapters, and tool brokers each have an explicit
@@ -315,8 +329,8 @@ authority.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

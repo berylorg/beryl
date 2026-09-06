@@ -30,7 +30,8 @@ mod publication;
 
 use load::{
     installed_identity, load_observed, load_prepared, map_live_failure, map_live_load_failure,
-    map_publication_error, map_startup_failure, prepared_matches_active, start_error,
+    map_publication_error, map_repository_execution_failure, map_repository_load_failure,
+    map_startup_failure, prepared_matches_active, start_error,
 };
 
 /// Explicit fixed bounds for one process-wide theme runtime.
@@ -80,6 +81,8 @@ impl ThemeRuntimeConfig {
 pub enum ThemeRuntimeFailureClass {
     Identity,
     Repository,
+    InstalledEntryLimit,
+    ManifestByteLimit,
     DocumentMissing,
     DocumentUnreadable,
     DocumentInvalid,

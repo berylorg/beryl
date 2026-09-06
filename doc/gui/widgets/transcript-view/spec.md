@@ -29,7 +29,7 @@ The transcript view consists of a root surface, viewport, realized frame, ordere
 Each realized presentation record has an owner-supplied stable identity, revision, provenance classification, measured outer geometry, and authored-content, synthetic-context, or local-presentation classification. Authored content records may contain text runs, image markers, code panels, table panels, or other owner-supplied bounded nested widgets.
 
 An authored-content record may include one optional noninteractive record-status/provenance part. The
-part carries an owner-supplied visible label, matching accessible label, and one pending, repaired,
+part carries an owner-supplied visible label and one pending, repaired,
 or incomplete provenance state. It belongs to the same host generation and record identity as the
 content it describes; it is not a separate presentation record, command target, or live region.
 
@@ -94,9 +94,7 @@ If activation, release, remeasurement, revision replacement, or virtualization i
 Pointer and keyboard invocation over an eligible realized target reports its stable target identity and geometry. The owning feature supplies menu rows and command availability through the built-in context-menu and anchored-context-menu widgets.
 
 The record-status/provenance part is static text. It never receives focus, accepts activation,
-starts selection, opens a menu, or becomes a command target. Its owner-supplied accessible label is
-included in the containing record's accessible description and exposes the same state and meaning
-as the visible label.
+starts selection, opens a menu, or becomes a command target.
 
 The part's presence, label, and pending, repaired, or incomplete state update only when the widget
 consumes a new owning host generation. The widget never transitions repair status from local input,
@@ -136,7 +134,7 @@ fragments received before one frame may naturally publish together. Exact durabl
 reconciliation replaces the matching transient suffix without producing duplicate text or a blank
 intermediate record.
 
-The widget realizes only records and synthetic-context chunks present in the current host-supplied realized-frame snapshot, including its bounded overscan. Rendering, hit testing, measurement, and accessibility construction never walk nonresident history, unreconciled context chunks, or elements outside that frame.
+The widget realizes only records and synthetic-context chunks present in the current host-supplied realized-frame snapshot, including its bounded overscan. Rendering, hit testing, measurement, and presentation construction never walk nonresident history, unreconciled context chunks, or elements outside that frame.
 
 Stable presentation identity and synthetic-context group/chunk identity, not visible index, own measurement, selection, focus, nested-widget state, and menu anchoring across frame changes. A revision change invalidates measurements and facts from earlier revisions.
 

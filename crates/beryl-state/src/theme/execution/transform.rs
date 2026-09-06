@@ -6,7 +6,9 @@ use std::{
     rc::Rc,
 };
 
-use beryl_home_store::{HomeStore, ThemeFileIdentity, ThemeFileSelector, ThemeRepositorySnapshot};
+use beryl_home_store::{
+    HomeStore, ThemeFileIdentity, ThemeFileSelector, ThemeRepositoryError, ThemeRepositorySnapshot,
+};
 use sha2::{Digest, Sha256};
 
 use super::super::{
@@ -14,7 +16,8 @@ use super::super::{
     THEME_MANIFEST_LINE_MAX_BYTES, THEME_MANIFEST_PAGE_MAX_DECODED_BYTES,
     THEME_MANIFEST_PAGE_MAX_ENCODED_BYTES, ThemeDocumentDigest, ThemeManifestCursor,
     ThemeManifestDecoder, ThemeManifestEncodeError, ThemeManifestEncoder, ThemeManifestGeneration,
-    ThemeManifestIdentity, ThemeManifestReadLimits, ThemeName, ThemePageLimits, ThemeService,
+    ThemeManifestIdentity, ThemeManifestLimit, ThemeManifestReadLimits, ThemeName, ThemePageLimits,
+    ThemeService,
     physical::{
         PhysicalThemeLimits, PhysicalThemeReadErrors, PhysicalThemeReader, physical_file_identity,
     },
@@ -209,9 +212,10 @@ impl<W: Write> TransformState<W> {
     fn new(
         writer: W,
         generation: ThemeManifestGeneration,
+        max_encoded_bytes: u64,
     ) -> Result<Self, ThemeRepositoryExecutionError> {
         Ok(Self {
-            encoder: ThemeManifestEncoder::new(writer, generation)
+            encoder: ThemeManifestEncoder::new_bounded(writer, generation, max_encoded_bytes)
                 .map_err(ThemeRepositoryExecutionError::ManifestEncode)?,
             next_output: 0,
             found: false,
@@ -273,7 +277,7 @@ impl ManifestInput<'_> {
                 let page = decoder.read_page(*cursor, limits).map_err(|source| {
                     errors.take().map_or(
                         ThemeRepositoryExecutionError::ManifestDecode(source),
-                        ThemeRepositoryExecutionError::Repository,
+                        manifest_physical_error,
                     )
                 })?;
                 let row = page.records().first().cloned();
@@ -294,7 +298,6 @@ fn open_manifest_input<'store>(
     snapshot: &ThemeRepositorySnapshot,
     manifest: ThemeManifestIdentity,
     physical_manifest: Option<ThemeFileIdentity>,
-    max_manifest_source: NonZeroU64,
     limits: PhysicalThemeLimits,
 ) -> Result<ManifestInput<'store>, ThemeRepositoryExecutionError> {
     match physical_manifest {
@@ -305,6 +308,13 @@ fn open_manifest_input<'store>(
             Ok(ManifestInput::Empty { done: false })
         }
         Some(expected) => {
+            if expected.length() > limits.operations().max_source_bytes() {
+                return Err(ThemeRepositoryExecutionError::ManifestDecode(
+                    super::super::ThemeManifestDecodeError::LimitExceeded(
+                        ThemeManifestLimit::EncodedBytes,
+                    ),
+                ));
+            }
             let reader = PhysicalThemeReader::new(
                 store,
                 snapshot,
@@ -316,13 +326,15 @@ fn open_manifest_input<'store>(
             let errors = reader.errors();
             let mut decoder =
                 ThemeManifestDecoder::open(reader, service.home(), manifest_read_limits()?)
-                    .map_err(ThemeRepositoryExecutionError::ManifestDecode)?;
+                    .map_err(|source| {
+                        errors.take().map_or(
+                            ThemeRepositoryExecutionError::ManifestDecode(source),
+                            manifest_physical_error,
+                        )
+                    })?;
             decoder
                 .bind_identity(manifest)
                 .map_err(ThemeRepositoryExecutionError::ManifestDecode)?;
-            if expected.length() > max_manifest_source.get() {
-                return Err(fact(ThemeCommandFactError::PhysicalManifestMismatch));
-            }
             let cursor = decoder.first_cursor();
             Ok(ManifestInput::Present {
                 decoder,
@@ -331,6 +343,15 @@ fn open_manifest_input<'store>(
                 done: false,
             })
         }
+    }
+}
+
+fn manifest_physical_error(error: ThemeRepositoryError) -> ThemeRepositoryExecutionError {
+    match error {
+        ThemeRepositoryError::LimitExceeded => ThemeRepositoryExecutionError::ManifestDecode(
+            super::super::ThemeManifestDecodeError::LimitExceeded(ThemeManifestLimit::EncodedBytes),
+        ),
+        error => ThemeRepositoryExecutionError::Repository(error),
     }
 }
 
@@ -374,11 +395,11 @@ pub(super) fn hash_manifest_transform(
         snapshot,
         manifest,
         physical_manifest,
-        max_manifest_source,
         limits,
     )?;
-    let writer = HashingWriter::new(max_manifest_source.get());
-    let mut state = TransformState::new(writer, generation)?;
+    let maximum = limits.operations().max_source_bytes();
+    let writer = HashingWriter::new(maximum);
+    let mut state = TransformState::new(writer, generation, maximum)?;
     while let Some(row) = input.next_row()? {
         change.transform(row, &mut state)?;
     }
@@ -397,18 +418,23 @@ pub(super) fn manifest_transform_reader<'store>(
     generation: ThemeManifestGeneration,
     change: ManifestChange,
     max_manifest_source: NonZeroU64,
-    limits: PhysicalThemeLimits,
 ) -> Result<ManifestTransformReader<'store>, ThemeRepositoryExecutionError> {
+    let limits = PhysicalThemeLimits::manifest(max_manifest_source)
+        .map_err(|_| ThemeRepositoryExecutionError::InvalidLimits)?;
     let input = open_manifest_input(
         service,
         store,
         snapshot,
         manifest,
         physical_manifest,
-        max_manifest_source,
         limits,
     )?;
-    ManifestTransformReader::new(input, change, generation, max_manifest_source.get())
+    ManifestTransformReader::new(
+        input,
+        change,
+        generation,
+        limits.operations().max_source_bytes(),
+    )
 }
 
 struct HashingWriter {
@@ -506,7 +532,7 @@ impl<'store> ManifestTransformReader<'store> {
         Ok(Self {
             input,
             change,
-            state: Some(TransformState::new(writer, generation)?),
+            state: Some(TransformState::new(writer, generation, maximum)?),
             queue,
             finished: false,
         })
@@ -570,7 +596,6 @@ pub(super) fn require_member(
         snapshot,
         manifest,
         physical_manifest,
-        max_manifest_source,
         limits,
     )?;
     while let Some(row) = input.next_row()? {

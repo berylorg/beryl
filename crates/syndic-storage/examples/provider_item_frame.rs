@@ -1,11 +1,11 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, io::Cursor};
 
 use beryl_model::CasItemId;
 use syndic_storage::{
-    PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES, ProviderAgentMessageV1, ProviderFrameSinkV1,
-    ProviderFrameTextSpanV1, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderTextV1, decode_bounded_provider_item_frame_v1,
-    encode_provider_item_frame_v1,
+    ProviderAgentMessageV1, ProviderFrameSinkV1, ProviderFrameTextSpanV1,
+    ProviderFrameTextSpanValidatorV1, ProviderItemFrameV1, ProviderItemObservationV1,
+    ProviderItemV1, ProviderLifecycleTimestampMsV1, ProviderTextV1, encode_provider_item_frame_v1,
+    validate_streaming_provider_item_frame_v1,
 };
 
 #[derive(Default)]
@@ -39,13 +39,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut bytes = FrameBytes::default();
     let reference = encode_provider_item_frame_v1(&frame, 0, &mut bytes).unwrap();
-    let decoded = decode_bounded_provider_item_frame_v1(
-        &bytes.0,
-        PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES,
+    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
+    let structural = validate_streaming_provider_item_frame_v1(
+        &mut Cursor::new(&bytes.0),
         0,
-    )?;
+        bytes.0.len() as u64,
+        reference.encoded_digest(),
+        &mut spans,
+    )
+    .unwrap();
+    spans.finish(structural.reference()).unwrap();
 
-    assert_eq!(decoded, frame);
+    assert_eq!(structural.reference(), &reference);
     assert_eq!(reference.encoded_len(), bytes.0.len() as u64);
     Ok(())
 }

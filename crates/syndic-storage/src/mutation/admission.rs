@@ -1,5 +1,6 @@
 use beryl_home_store::{
-    DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
+    DomainMutation, DomainReader, FirstAcceptancePromotionAdmission, MutationBuilder,
+    MutationContribution, ReconciliationReservation,
 };
 use beryl_model::{
     DraftRevision, InputGateRevision, SealedAssetReferenceSetProof, SyndicDraftId, SyndicItemId,
@@ -170,10 +171,13 @@ impl DomainMutation<SyndicDomain> for FirstAcceptanceMutation {
     ) -> Result<(), Self::Error> {
         shared::reserve_acceptance_records(reservation)?;
         if !matches!(self.acceptance.expected_gate_state(), InputGateState::Idle) {
-            reservation.reserve_successor_source::<
-                beryl_home_store::FirstAcceptancePromotionProtocolV1,
-                _,
-            >(successor::FirstAcceptancePromotionSourceV1)?;
+            let admission = match self.acceptance.asset_reference_set() {
+                Some(_) => FirstAcceptancePromotionAdmission::AssetTransferRequired,
+                None => FirstAcceptancePromotionAdmission::MarkerFree,
+            };
+            reservation.reserve_first_acceptance_promotion_source::<
+                successor::FirstAcceptancePromotionSourceV1,
+            >(admission)?;
         }
         Ok(())
     }

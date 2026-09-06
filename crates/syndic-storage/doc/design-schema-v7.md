@@ -222,7 +222,11 @@ canonical byte comparison of the point-read target closure.
   newer than the candidate generation, selector root/history disagreement after a recorded
   publication, or disposed head that later advances is corruption. A newly opened head has no
   custody; a cleanly disposed head must have no custody and must have byte-equal published and newest
-  root/history pairs.
+  root/history pairs. Ordinary disposal of an unchanged opening may atomically normalize newest
+  history to published history only after authenticating its exact opening fork and current durable
+  checkpoint, without custody. The existing disposal receipt binds the complete source and final
+  pairs and lifecycle transition; the draft selector is unchanged. This uses existing encodings and
+  preserves the disposed-head equality invariant.
 - `draft-mutation-staging-heads` uses the exact 48-byte `DraftMutationStagingIdentityV1` key and
   mutable V1 head specified under
   [Draft Mutation Staging Canonical Encodings](#draft-mutation-staging-canonical-encodings).
@@ -402,15 +406,28 @@ canonical byte comparison of the point-read target closure.
   exact count, encoded-byte length, page digest, and preceding-page chain digest, and rejects gaps,
   duplicate ordinals, trailing bytes, unknown variants, invalid UTF-8, or a field beyond its closed
   bound. Item pages retain complete ordered semantic final-item fields and per-item digests; content
-  pages retain exact field/range bytes; media pages retain only finalized asset identity, byte
-  digest/length, authenticated adapter/release/runtime/`savedPath` provenance, and the exact matching
-  cross-domain media identity and commitment supplied by the system command.
+  pages retain exact field/range bytes; media pages retain finalized asset identity, byte
+  digest/length, authenticated adapter/release/runtime/`savedPath` provenance, exact target
+  item/resource ordinal, the matching Asset page/entry locator, and the ordered cross-domain media
+  commitment supplied by the system command. These locators use the existing target thread/turn
+  identities and bounded package-owned references, not a new shared repair identity. Item/resource
+  source descriptors retain the exact media-page location so a read never searches the page set.
+- Media entries are strictly ordered by one-based snapshot item ordinal and one-based resource
+  ordinal within that item. A direct locator contains one-based page ordinal and zero-based entry
+  index; page ordinals use the existing `u64` encoding and entry indexes use unsigned big-endian
+  `u16`, rejecting an index outside the decoded bounded page. The page digest covers the exact
+  canonical entries and locators, excluding its own digest and the successor chain commitment;
+  the head advances that chain from the prior commitment and page digest. The final ordered media
+  commitment belongs to the sealed head and read reference, not to its own entry preimage.
+  Seal admission requires the complete-response frontier and declared media totals, never merely
+  the last page currently present. No new record is written per entry when that frontier seals.
 - Open or failed repair stages are unreachable from canonical items, transcript projections,
   history reads, catalog reads, and replay. Each bounded page-stage command validates and durably
   commits that page's complete item fields, identities, digests, provenance, or media witnesses while
   advancing the build head's checked totals and family chain commitments. For a repair-media page,
-  this package's participant records the matching noncanonical media witness and advances only the
-  Syndic build state; it publishes no canonical history authority.
+  this package's participant validates exact ordered item/resource membership and direct locators,
+  records the noncanonical media witness, and advances only the Syndic build state in the same
+  command as the matching immutable Asset page; it publishes no canonical history authority.
 - This package's participant in the final repair command validates the exact `RepairRequired` gate
   and consumed request claim, target correlation, terminal outcome, sealed build head, declared
   totals, complete family commitments, adapter/release provenance, and finalized-media commitments.
@@ -418,6 +435,12 @@ canonical byte comparison of the point-read target closure.
   staleness, sealed repair metadata, and exact `FinalizingHistory(target)` successor gate. Missing
   or disagreeing package-local facts reject that participant and leave existing Syndic authority
   unchanged.
+- The corresponding Asset participant publishes one compact visibility selector. Ordinary
+  resource-metadata reads obtain a selected repair source's exact owner-qualified Asset reference
+  from the named snapshot-backed item/resource and media-page locations; they require selected
+  snapshot authority and reject unselected stages. Final selection creates no per-resource copy or
+  index sweep. Subsequent bounded projection work preserves those locators. This adds no Syndic
+  family: source descriptors and the existing repair head/media pages carry the fields.
 - Cross-domain staging and final publication are the system-owned `HomeCommand`s defined by
   `doc/systems/cas-live-syndic-transcript/design.md`. This package contributes only its Syndic
   participant and cannot independently assert whole-command success or make partial repair media
@@ -516,6 +539,16 @@ canonical byte comparison of the point-read target closure.
   and it remains present after later return to zero. An absent singleton beside any admission
   record, arithmetic overflow, aggregate disagreement, or a recorded charge above any limit is
   invalid.
+- The isolated marker-label-readiness operation profile admits at most 65,536 retained association
+  charges and 67,108,864 exact encoded bytes for that operation across both trees, replay records,
+  and cleanup residue under the same accounting rules. Exceeding either own-operation ceiling is
+  `OperationTooLarge` even in an otherwise empty home. If that operation fits but the shared
+  64-head, aggregate-association, aggregate-byte, or runtime-slot capacity does not, admission is
+  `CapacityUnavailable`; actual storage failure remains a storage error. These are semantic
+  classifications over the existing constants and encoding, not a promise of 65,536 user markers.
+  Checks apply at each bounded staging quantum before candidate adoption; no up-front reservation
+  of all future work is promised. Refusal preserves the prior candidate and exact cleanup or
+  reconciliation custody.
 - `draft-marker-label-admission-heads` keys canonically encode exact draft, editor session, and
   operation identity. Values repeat that owner and commit package-owned request/proof-custody
   authority, lifecycle, ingestion frontier, optional head-selected replay-receipt reference while
@@ -580,7 +613,11 @@ canonical byte comparison of the point-read target closure.
   family commitments. The final atomic seal selects those already staged paged commitments by
   reading only the compact sealed head, fixed family commitments, gate, and required publication
   witnesses; it never materializes the snapshot, restages page payloads, or walks the page set while
-  holding the writer.
+  holding the writer. The Asset witness binds its sealed paged set and compact visibility-selector
+  transition; neither participant opens sidecars or copies all metadata/references. Final command
+  reads, writes, retained state, and reconciliation are bounded independently of media/item count.
+  Fresh recovery may seal or select only a fully staged candidate proved by its compact frontiers;
+  it does not rebuild missing stages or reread admitted sidecar bytes.
 - Stop-operation keys are exactly 32 bytes. Stop-operation values use the package's 65,536-byte
   small-record ceiling, but their only variable-width fields are the exact CAS thread and turn
   identities, each limited to 256 UTF-8 bytes by `beryl-model`. Causes use four canonical
@@ -626,7 +663,8 @@ canonical byte comparison of the point-read target closure.
   durable after success, failure, cancellation, crash, or a persistence cut.
 - Source and proposal lane ordinals, item totals, canonical-byte totals, batch page totals, and
   aggregate encoded bytes use checked arithmetic. There is no smaller cumulative operation cap
-  below any representable checked-`u64` lane total and no operation-wide 256/257 limit. Preparation
+  below any representable checked-`u64` lane total and no operation-wide 256/257 limit; the separate
+  marker-label-readiness operation profile still applies when required. Preparation
   custody retains caller payload until complete batch acceptance or exact target reconciliation;
   neither a source-selected retry state nor an indeterminate or fail-closed closure authorizes
   payload release.
@@ -678,7 +716,8 @@ canonical byte comparison of the point-read target closure.
   proposal pages use checked `u64` cursors, counts, lengths, and cumulative canonical identities;
   explicit finish-input fixes the final totals in the staging head before any build exists. One
   logical edit may consume any representable number of pages without a whole-operation collection
-  or a special cumulative 256/257 boundary. One widget-page payload is released only after its
+  or a special cumulative 256/257 boundary, subject to the separate marker-label-readiness operation
+  profile when required. One widget-page payload is released only after its
   complete physical-page batch, every target receipt, final head, final session custody, and
   cumulative identity are durable or exact target reconciliation proves that closure. Later build
   and reconciliation read those staged records in bounded pages rather than asking the caller to
@@ -782,7 +821,8 @@ canonical byte comparison of the point-read target closure.
   identity as collision or `OccupiedIdentityNoncommit`, as applicable, and authorize no mutation.
 - Draft and materialization counts, UTF-8 lengths, newline and logical-line counts, piece ordinals,
   marker counts, and fragment ordinals use checked `u64`. The bounds above limit one command and resident traversal, not one
-  logical draft, edit, same-anchor marker set, or sealed Composer value. Progress-transition
+  logical draft, same-anchor marker set, or sealed Composer value. Marker-label readiness has its
+  separately declared operation limit; other edits have no smaller whole-operation cap. Progress-transition
   ordinals also use checked `u64`; one fixed-size receipt per bounded work quantum keeps retained
   state and command work fixed without imposing a smaller whole-edit bound.
 - Ordinary candidate adoption, undo, and redo use bounded or logarithmic path and index work and

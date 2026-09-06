@@ -1,8 +1,9 @@
-use beryl_home_store::HomeStore;
+use beryl_home_store::{HomeStore, ThemeRepositoryError};
 use beryl_state::{
     InstalledThemeId, InstalledThemeSelection, PreparedThemeAppearance, ThemeAppearanceSource,
     ThemeDocumentIdentity, ThemeDocumentLoadError, ThemeLiveEditFailure, ThemeLoadFailure,
-    ThemeManifestCursor, ThemeObservedDocument, ThemeRepositoryLoadError,
+    ThemeManifestCursor, ThemeManifestDecodeError, ThemeManifestEncodeError, ThemeManifestLimit,
+    ThemeObservedDocument, ThemeRepositoryExecutionError, ThemeRepositoryLoadError,
     ThemeRepositoryObservation, ThemeResolver, ThemeService, ThemeSettingsIdentity,
 };
 
@@ -136,6 +137,44 @@ pub(super) fn map_startup_failure(failure: &ThemeLoadFailure) -> ThemeRuntimeFai
         ThemeLoadFailure::DocumentUnreadable => ThemeRuntimeFailureClass::DocumentUnreadable,
         ThemeLoadFailure::DocumentInvalid => ThemeRuntimeFailureClass::DocumentInvalid,
         ThemeLoadFailure::ApplicationUnavailable => ThemeRuntimeFailureClass::Resolution,
+    }
+}
+
+pub(super) fn map_repository_load_failure(
+    failure: &ThemeRepositoryLoadError,
+) -> ThemeRuntimeFailureClass {
+    match failure {
+        ThemeRepositoryLoadError::Manifest(ThemeManifestDecodeError::LimitExceeded(limit)) => {
+            map_manifest_limit(*limit)
+        }
+        ThemeRepositoryLoadError::Repository(ThemeRepositoryError::LimitExceeded) => {
+            ThemeRuntimeFailureClass::ManifestByteLimit
+        }
+        _ => ThemeRuntimeFailureClass::Repository,
+    }
+}
+
+pub(super) fn map_repository_execution_failure(
+    failure: &ThemeRepositoryExecutionError,
+) -> ThemeRuntimeFailureClass {
+    match failure {
+        ThemeRepositoryExecutionError::ManifestDecode(ThemeManifestDecodeError::LimitExceeded(
+            limit,
+        ))
+        | ThemeRepositoryExecutionError::ManifestEncode(ThemeManifestEncodeError::LimitExceeded(
+            limit,
+        )) => map_manifest_limit(*limit),
+        _ => ThemeRuntimeFailureClass::Repository,
+    }
+}
+
+const fn map_manifest_limit(limit: ThemeManifestLimit) -> ThemeRuntimeFailureClass {
+    match limit {
+        ThemeManifestLimit::InstalledEntries => ThemeRuntimeFailureClass::InstalledEntryLimit,
+        ThemeManifestLimit::EncodedBytes => ThemeRuntimeFailureClass::ManifestByteLimit,
+        ThemeManifestLimit::HeaderEncodedBytes | ThemeManifestLimit::PageEncodedBytes => {
+            ThemeRuntimeFailureClass::Repository
+        }
     }
 }
 

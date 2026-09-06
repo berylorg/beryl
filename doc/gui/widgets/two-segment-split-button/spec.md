@@ -21,7 +21,7 @@ Widgets:
 
 # Anatomy
 
-The widget consists of one joined root, one text-labeled primary segment, one compact secondary segment, and one internal separator. The secondary segment contains an owner-supplied glyph and accessible name and is the stable anchor for its associated flyout.
+The widget consists of one joined root, one text-labeled primary segment, one compact secondary segment, and one internal separator. The secondary segment contains an owner-supplied glyph and tooltip and is the stable anchor for its associated flyout.
 
 Each segment adapts the referenced `command button` semantics. The owner supplies the two labels or glyphs, commands, availability states and explanations, and associated flyout. The widget does not own feature command effects, flyout content, or product eligibility.
 

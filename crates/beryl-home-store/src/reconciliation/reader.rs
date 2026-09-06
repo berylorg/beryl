@@ -137,38 +137,7 @@ fn decode_key<D: StorageDomain, R: RecordCodec<D>>(encoded: &[u8]) -> Result<R::
 pub(crate) fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
     encoded: &[u8],
 ) -> Result<R::Value, ReadError> {
-    let version: [u8; 4] = encoded
-        .get(..crate::RECORD_VERSION_BYTES)
-        .ok_or(ReadError::MalformedRecord {
-            domain: D::NAME,
-            family: R::FAMILY,
-        })?
-        .try_into()
-        .expect("four-byte record version");
-    let found = u32::from_be_bytes(version);
-    if found != R::VERSION.get() {
-        return Err(ReadError::UnsupportedRecordVersion {
-            domain: D::NAME,
-            family: R::FAMILY,
-            supported: R::VERSION,
-            found,
-        });
-    }
-    let payload = &encoded[crate::RECORD_VERSION_BYTES..];
-    if payload.len() > R::MAX_VALUE_BYTES {
-        return Err(ReadError::InvalidStoredValueSize {
-            domain: D::NAME,
-            family: R::FAMILY,
-            maximum: R::MAX_VALUE_BYTES.saturating_add(crate::RECORD_VERSION_BYTES),
-            actual: encoded.len(),
-        });
-    }
-    R::decode_value(payload).map_err(|source| ReadError::Codec {
-        domain: D::NAME,
-        family: R::FAMILY,
-        operation: CodecOperation::DecodeValue,
-        source: Box::new(source),
-    })
+    crate::read::decode_value::<D, R>(encoded)
 }
 
 fn read_current<D: StorageDomain, R: RecordCodec<D>>(
@@ -200,6 +169,5 @@ fn read_current<D: StorageDomain, R: RecordCodec<D>>(
         stage: ReadStage::PointValue,
         source: Box::new(source),
     })?;
-    (family.validate_envelope)(pair.key(), pair.value())?;
-    decode_value::<D, R>(pair.value()).map(Some)
+    crate::read::decode_record_envelope::<D, R>(pair.key(), pair.value()).map(Some)
 }

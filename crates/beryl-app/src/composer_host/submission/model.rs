@@ -195,11 +195,9 @@ pub(super) enum PendingSubmissionStage {
 
 #[derive(Clone)]
 pub(super) struct CapturedSubmission {
-    pub(super) thread_id: beryl_model::SyndicThreadId,
     pub(super) candidate: syndic_storage::DraftEditorCandidateActivationBindingV1,
-    pub(super) thread_revision: beryl_model::ThreadRevision,
+    pub(super) selector: syndic_storage::DraftEditorCurrentSelectorV1,
     pub(super) image_label_authority: ImageLabelAuthorityHeadV1,
-    pub(super) draft_revision: beryl_model::DraftRevision,
     pub(super) gate_revision: beryl_model::InputGateRevision,
     pub(super) gate_state: syndic_storage::InputGateState,
     pub(super) asset_reference_set: Option<beryl_model::SealedAssetReferenceSetProof>,

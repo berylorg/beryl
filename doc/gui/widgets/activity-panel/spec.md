@@ -48,7 +48,7 @@ focus ring for focus-visible keyboard focus.
 Rows remain single-line and visually stable as their status or value changes. Status markers distinguish owner-supplied running, successful, and failed states. The agent and activity keys use quieter emphasis than their values.
 
 Long agent labels and activity values truncate inside their own regions. A tooltip may expose the
-owner-supplied bounded accessible projection while its stable row remains realized; it never asks
+owner-supplied bounded visible projection while its stable row remains realized; it never asks
 the owner to materialize complete source content.
 
 Failure feedback is visually distinct from the row collection but remains compact conversation
@@ -68,7 +68,7 @@ Visibility is controlled by the mounting feature. A hidden activity panel is unm
 
 Dragging the top-edge resize handle changes the panel's allocated height within owner-supplied minimum and maximum bounds. Pointer capture keeps the resize continuous until release or cancellation. The widget reports transient and committed heights; persistence belongs to the owning feature.
 
-The resize handle has the accessible name `Resize activity panel`. When it has keyboard focus, Up and Down resize by the owner-supplied step, while Page Up and Page Down resize by a larger step. Home and End move to the minimum and maximum allocation. Resize commands never move the composer or status line outside the window.
+The resize handle has the tooltip `Resize activity panel`. When it has keyboard focus, Up and Down resize by the owner-supplied step, while Page Up and Page Down resize by a larger step. Home and End move to the minimum and maximum allocation. Resize commands never move the composer or status line outside the window.
 
 A visible Retry button emits only the owner-supplied command for the exact failed query or page.
 While retry is pending, the same button remains visible and disabled and repeated activation emits
@@ -76,8 +76,8 @@ nothing. Success removes feedback only with coherent current-query results; a ch
 makes the old feedback and completion obsolete. If feedback disappears while its button has focus,
 focus moves to the stable row viewport or the owner-supplied safe target when no viewport is eligible.
 
-The resize handle and row viewport are separate focus targets in normal focus traversal. The row
-viewport has the accessible name `Activity`; focus belongs to the stable viewport rather than any
+The resize handle and row viewport are separate focus targets in normal focus traversal. Focus
+belongs to the stable viewport rather than any
 realized row. While the viewport has focus, Up and Down scroll by one fixed row, Page Up and Page
 Down scroll by one viewport, and Home and End move to the logical top and bottom. While the resize
 handle has focus, those same keys retain the resize behavior above and never scroll the viewport.

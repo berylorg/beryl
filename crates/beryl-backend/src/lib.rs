@@ -4,8 +4,7 @@
 //! `codex-cli 0.146.0` identity and one same-session `config/read` proves both required nested
 //! `features.multi_agent_v2` settings are true with `sessionFlags` origins. Admission holds opaque
 //! managed-launch provenance and sends no capability, model, or conversation-target request.
-//! Request-only WebSocket and detached stdio sessions are different construction-time policies and
-//! cannot manufacture production admission authority.
+//! Request-only WebSocket sessions cannot manufacture production admission authority.
 //!
 //! Foreground thread start, resume, fork, unsubscribe, request-only metadata reads, full-profile
 //! streamed `turn/start`, correlation-bearing streamed `turn/steer`, exact foreground

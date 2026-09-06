@@ -320,7 +320,7 @@ pub(super) fn records(
             draft_index,
             fresh_root: base.fresh_root,
             fresh_history: base.fresh_history,
-            disposed_session: base.disposed_session,
+            disposal: base.disposal,
             origin_span,
             advanced_image_label_authority,
             summary,

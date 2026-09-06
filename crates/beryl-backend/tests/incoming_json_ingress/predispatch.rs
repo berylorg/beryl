@@ -92,8 +92,8 @@ impl ThreadInjectionSource for CountingInjectionSource {
 }
 
 #[test]
-fn stdio_streamed_turn_is_rejected_before_source_or_session_state() {
-    let mut session = ManagedBackendSession::stdio_streamed_input_gate_for_lifecycle_test()
+fn unsupported_streamed_turn_is_rejected_before_source_or_session_state() {
+    let mut session = ManagedBackendSession::unsupported_streamed_input_gate_for_lifecycle_test()
         .expect("detached lifecycle session");
     session.poison_streamed_user_message_verifier_for_lifecycle_test();
     let before = session.predispatch_state_for_lifecycle_test();
@@ -109,13 +109,13 @@ fn stdio_streamed_turn_is_rejected_before_source_or_session_state() {
         Duration::from_millis(10),
     );
     let NonIdempotentRequestOutcome::ProvenNotDispatched { error } = outcome else {
-        panic!("unsupported stdio turn/start must be proven not dispatched");
+        panic!("unsupported turn/start must be proven not dispatched");
     };
     assert!(matches!(
         *error,
         ManagedBackendError::StreamedInputTransportUnsupported {
             ref method,
-            transport: "stdio",
+            transport: "unsupported",
         } if method == "turn/start"
     ));
     assert_eq!(calls.count(), 0);
@@ -123,8 +123,8 @@ fn stdio_streamed_turn_is_rejected_before_source_or_session_state() {
 }
 
 #[test]
-fn unsupported_stdio_injection_consumes_target_without_reading_source_or_mutating_session_state() {
-    let mut session = ManagedBackendSession::stdio_streamed_input_gate_for_lifecycle_test()
+fn unsupported_injection_consumes_target_without_reading_source_or_mutating_session_state() {
+    let mut session = ManagedBackendSession::unsupported_streamed_input_gate_for_lifecycle_test()
         .expect("detached lifecycle session");
     let before = session.predispatch_state_for_lifecycle_test();
     let source_identity = ThreadInjectionSourceIdentity::new([3; 32]);
@@ -151,14 +151,14 @@ fn unsupported_stdio_injection_consumes_target_without_reading_source_or_mutatin
         error,
     } = outcome
     else {
-        panic!("unsupported stdio injection must be proven not dispatched");
+        panic!("unsupported injection must be proven not dispatched");
     };
     assert_eq!(actual, thread_id);
     assert!(matches!(
         *error,
         ManagedBackendError::ThreadInjectionTransportUnsupported {
             ref method,
-            transport: "stdio",
+            transport: "unsupported",
         } if method == "thread/inject_items"
     ));
     assert_eq!(calls.count(), 0);
@@ -190,7 +190,7 @@ fn foreground_initialize_predispatch_write_failure_writes_no_json_and_preserves_
     server.join().unwrap();
 }
 
-const AUTHORIZATION: &str = "Bearer phase-28-test-token";
+const AUTHORIZATION: &str = "Bearer test-token";
 
 fn foreground_config() -> ForegroundSessionConfig {
     ForegroundSessionConfig::new(nonzero_usize(16))

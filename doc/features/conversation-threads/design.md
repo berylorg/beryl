@@ -52,7 +52,7 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 - If the current window already owns an eligible pristine empty thread, primary New Thread is a no-op that remains on that thread.
 - Activating the secondary segment opens the New Thread runtime/root flyout.
 - Holding or long-pressing the primary segment does not open the flyout or invoke another command.
-- The secondary segment has the accessible name `Choose runtime and root`.
+- The secondary segment has the tooltip `Choose runtime and root`.
 - The two segments are independently keyboard-focusable. `Enter` and `Space` activate the focused segment.
 - With zero configured runtimes, the primary segment remains visible but disabled. Its tooltip says `Add a runtime with the … button before creating a thread.`
 - With zero configured runtimes, the enabled secondary segment receives the theme's attention-drawing secondary treatment. It returns to its ordinary presentation after a runtime exists.
@@ -340,10 +340,8 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 - Root unavailability includes a missing path, inaccessible path, non-directory path, permission failure, or unavailable WSL distribution.
 - Add runtime, Add root, New Thread confirmation, and thread activation report failure without partially changing the visible selection.
 
-## Accessibility And Focus
+## Focus And Visible Context
 
-- Every icon-only or symbol-only command has an accessible name independent of its glyph.
-- Thread and root rows expose their complete title or path, runtime/root context, activity, and availability status to accessibility output even when visible text is truncated.
 - Disabled commands and unavailable selector rows expose a hover/focus tooltip with the closest actionable reason.
 - Opening either thread/root flyout moves focus into its search field. Dismissing the flyout returns
   focus to its trigger; collection changes preserve a coherent focused row or return focus to search
@@ -352,8 +350,8 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

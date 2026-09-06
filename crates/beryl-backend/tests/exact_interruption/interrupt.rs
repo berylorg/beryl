@@ -21,20 +21,20 @@ fn exact_wire_omits_local_correlations_and_preserves_ordered_ingress() {
         let wire = read_text(socket).unwrap();
         assert_eq!(
             wire,
-            r#"{"method":"turn/interrupt","id":2,"params":{"threadId":"thread-phase67","turnId":"turn-phase67"}}"#
+            r#"{"method":"turn/interrupt","id":2,"params":{"threadId":"thread-","turnId":"turn-"}}"#
         );
         let request: serde_json::Value = serde_json::from_str(&wire).unwrap();
         assert_eq!(request["id"], 2);
         assert_eq!(request["method"], "turn/interrupt");
-        assert_eq!(request["params"]["threadId"], "thread-phase67");
-        assert_eq!(request["params"]["turnId"], "turn-phase67");
+        assert_eq!(request["params"]["threadId"], "thread-");
+        assert_eq!(request["params"]["turnId"], "turn-");
         assert_eq!(request["params"].as_object().unwrap().len(), 2);
         assert!(!wire.contains("a5a5"));
         assert!(!wire.contains("5a5a"));
 
         send_json(
             socket,
-            r#"{"method":"thread/name/updated","params":{"threadId":"thread-phase67","threadName":"discarded"}}"#,
+            r#"{"method":"thread/name/updated","params":{"threadId":"thread-","threadName":"discarded"}}"#,
         );
         send_json(socket, r#"{"id":2,"result":{}}"#);
         expect_close(socket);

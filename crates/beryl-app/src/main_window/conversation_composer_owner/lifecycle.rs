@@ -325,7 +325,7 @@ impl MainWindowConversationComposer {
         }
     }
 
-    pub(super) fn is_live(&self) -> bool {
+    pub(in crate::main_window) fn is_live(&self) -> bool {
         matches!(self.phase, MainWindowConversationComposerPhase::Live)
     }
 

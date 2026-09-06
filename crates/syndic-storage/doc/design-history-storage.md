@@ -105,6 +105,15 @@ Projection-resource mappings name resources; they do not copy payloads. Textual 
 explicit, bounded, and cursorable. Provider credentials and unnormalized transport envelopes are
 never resources.
 
+For a selected terminal-repair source, ordinary resource-metadata reads resolve the named item and
+resource directly through its snapshot-backed locator. They return the exact target thread/turn,
+item/resource ordinal, Asset page/entry locator, AssetId, and sealed media commitment needed by the
+Asset boundary. The selected snapshot authenticates this reference; a merely staged or sealed
+snapshot cannot supply it. Reads touch only the selected compact head and named bounded pages and
+need no prior bulk materialization of resource records. Later projection/resource construction
+preserves these same locators in bounded steps. Syndic never reads Asset private records or treats
+AssetId alone as repair visibility authority.
+
 The package stores facts needed by system services but does not own transcript selection,
 presentation ordering policy, activity-row scheduling, title generation, retention UX, or renderer
 residency.
@@ -156,6 +165,15 @@ it does not rewrite the predecessor lifecycle or make earlier incomplete ancesto
 Package-local terminal repair publishes one exact immutable repair authority and sealed item-set
 commitment before repaired items become selectable. Repair never fabricates missing provider events,
 changes cross-package dispatch authority, or weakens source provenance.
+
+Each repair-media staging contribution commits one bounded witness page with its head advancement
+and the matching Asset page. Complete item/resource membership and direct locators are validated as
+pages arrive. Sealing uses the complete durable frontier and accumulated commitments; final
+selection reads only the compact sealed head, fixed family commitments, gate, and matching Asset
+publication witness. It selects snapshot-backed item/resource authority without scanning pages,
+copying all resource records, or doing sidecar I/O. The final command and its reconciliation closure
+remain fixed-size in media count. Fresh recovery can seal or select a fully staged durable candidate
+through fresh handles but cannot fill missing stages or authorize another historical request.
 
 ## Privacy And Diagnostics
 

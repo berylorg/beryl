@@ -17,8 +17,8 @@ use crate::{
     reconciliation::{ReconciliationReservationError, ReconciliationSlot},
     store::{HomeStore, StoreGeneration},
     successor::{
-        SuccessorDescriptor, SuccessorProtocolIdentity, SuccessorRoleDescriptor,
-        SuccessorRoleReservation,
+        FirstAcceptancePromotionAssetReservation, FirstAcceptancePromotionDescriptor,
+        FirstAcceptancePromotionReservation, FirstAcceptancePromotionSourceReservation,
     },
 };
 
@@ -107,13 +107,13 @@ struct CommandReservation {
     materialized: Option<(
         Vec<MaterializedDomainDescriptor>,
         CommitReceipt,
-        Option<SuccessorDescriptor>,
+        Option<FirstAcceptancePromotionDescriptor>,
     )>,
 }
 
 struct SuccessorReservation {
-    identity: SuccessorProtocolIdentity,
-    roles: Vec<(usize, SuccessorRoleReservation)>,
+    source: (usize, FirstAcceptancePromotionSourceReservation),
+    asset: Option<(usize, FirstAcceptancePromotionAssetReservation)>,
 }
 
 enum ExecutionOutcome {
@@ -806,20 +806,19 @@ fn materialize_reservation(
             records,
         });
     }
-    let successor = reservation
-        .successor
-        .take()
-        .map(|successor| SuccessorDescriptor {
-            identity: successor.identity,
-            roles: successor
-                .roles
-                .into_iter()
-                .map(|(participant_index, role)| SuccessorRoleDescriptor {
-                    domain_slot: prepared[participant_index].participant.slot(),
-                    role,
-                })
-                .collect(),
-        });
+    let successor =
+        reservation
+            .successor
+            .take()
+            .map(|successor| FirstAcceptancePromotionDescriptor {
+                source_slot: prepared[successor.source.0].participant.slot(),
+                source: successor.source.1,
+                asset_slot: successor
+                    .asset
+                    .as_ref()
+                    .map(|(participant, _)| prepared[*participant].participant.slot()),
+                asset: successor.asset.map(|(_, asset)| asset),
+            });
     reservation.materialized = Some((domains, receipt, successor));
     Ok(())
 }
@@ -883,32 +882,39 @@ fn finalize_outcome(outcome: ExecutionOutcome, reservation: CommandReservation) 
 fn collect_successor_reservation(
     declarations: &mut [ReconciliationReservationOutput],
 ) -> Result<Option<SuccessorReservation>, CommandError> {
-    let mut identity = None;
-    let mut source_count = 0usize;
-    let mut roles = Vec::new();
+    let mut source = None;
+    let mut asset = None;
     for (participant_index, declaration) in declarations.iter_mut().enumerate() {
         let Some(role) = declaration.successor.take() else {
             continue;
         };
-        let role_identity = role.identity();
-        if identity
-            .is_some_and(|identity: SuccessorProtocolIdentity| !identity.matches(role_identity))
-        {
-            return Err(CommandError::InvalidSuccessorProtocol);
+        match role {
+            FirstAcceptancePromotionReservation::Source(candidate) => {
+                if source.replace((participant_index, candidate)).is_some() {
+                    return Err(CommandError::InvalidFirstAcceptancePromotionAdmission);
+                }
+            }
+            FirstAcceptancePromotionReservation::Asset(candidate) => {
+                if asset.replace((participant_index, candidate)).is_some() {
+                    return Err(CommandError::InvalidFirstAcceptancePromotionAdmission);
+                }
+            }
         }
-        identity = Some(role_identity);
-        if role.is_source() {
-            source_count += 1;
-        }
-        roles.push((participant_index, role));
     }
-    let Some(identity) = identity else {
+    let Some(source) = source else {
+        if asset.is_some() {
+            return Err(CommandError::InvalidFirstAcceptancePromotionAdmission);
+        }
         return Ok(None);
     };
-    if source_count != 1 {
-        return Err(CommandError::InvalidSuccessorProtocol);
+    let admitted = match source.1.admission {
+        crate::FirstAcceptancePromotionAdmission::MarkerFree => asset.is_none(),
+        crate::FirstAcceptancePromotionAdmission::AssetTransferRequired => asset.is_some(),
+    };
+    if !admitted {
+        return Err(CommandError::InvalidFirstAcceptancePromotionAdmission);
     }
-    Ok(Some(SuccessorReservation { identity, roles }))
+    Ok(Some(SuccessorReservation { source, asset }))
 }
 
 fn conflict_name(conflict: &RevisionConflict) -> &'static str {

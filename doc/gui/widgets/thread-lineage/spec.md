@@ -27,7 +27,7 @@ The thread lineage contains a fixed root strip, structural heading, horizontal t
 stable focus proxy, fixed-stride windowed trail layer, ordered parent breadcrumb controls,
 separators, readonly current-thread endpoint, and an overlay horizontal scrollbar.
 
-Each resident parent breadcrumb has an owner-supplied stable thread identity, title, availability state, bounded accessible context, and navigation command. The current endpoint has stable identity and title but no activation command.
+Each resident parent breadcrumb has an owner-supplied stable thread identity, title, availability state, bounded context, and navigation command. The current endpoint has stable identity and title but no activation command.
 
 The widget owns strip anatomy, breadcrumb geometry, focus movement, truncation, horizontal overflow, bounded realization, page requests, unavailable/current presentation, and tooltip anchoring. The owning feature supplies one revision-bound lineage query identity, the total parent count, bounded resident breadcrumb pages, stable identities, labels, availability meaning, navigation effects, the current endpoint, and whether the widget is mounted. The widget never receives the complete lineage collection.
 
@@ -35,7 +35,7 @@ The widget owns strip anatomy, breadcrumb geometry, focus movement, truncation, 
 
 The strip reads as lightweight navigation chrome subordinate to the toolbar. The structural heading stays visually quiet while parent breadcrumbs read as compact controls and the current endpoint reads as a readonly destination.
 
-Separators remain visually compact and never become focus targets. Long labels truncate within capped breadcrumb widths. Tooltips and accessibility output expose complete owner-supplied titles and unavailable explanations.
+Separators remain visually compact and never become focus targets. Long labels truncate within capped breadcrumb widths. Tooltips expose complete owner-supplied titles and unavailable explanations.
 
 Horizontal overflow does not wrap the trail, increase strip height, or create outer-window scrolling.
 

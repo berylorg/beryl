@@ -121,7 +121,7 @@ Provide shared pure-data identities and values used across Beryl packages withou
 
 # Engineering Rigor
 
-Profile: `trusted-internal-tool/v1`
+Profile: `trusted-internal-tool/v2`
 
 Modifiers:
 

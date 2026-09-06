@@ -7,7 +7,13 @@ version.workspace = true
 
 [features]
 default = []
-test-faults = ["beryl-home-store/test-faults"]
+provider-frame-test-support = []
+test-faults = ["beryl-home-store/test-faults", "provider-frame-test-support"]
+
+[[test]]
+name = "provider_codec"
+path = "tests/provider_codec.rs"
+required-features = ["provider-frame-test-support"]
 
 [dependencies]
 beryl-home-store.workspace = true

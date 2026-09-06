@@ -16,7 +16,11 @@ use crate::{
     StorageDomain,
     domain::{RegisteredDomain, StoreInstanceId},
     read::{encode_stored_key, encode_value},
-    successor::{SuccessorProtocol, SuccessorRoleReservation, SuccessorSource, SuccessorWitness},
+    successor::{
+        FirstAcceptancePromotionAdmission, FirstAcceptancePromotionAssetAdapter,
+        FirstAcceptancePromotionAssetSeed, FirstAcceptancePromotionReservation,
+        FirstAcceptancePromotionSource,
+    },
 };
 
 mod participant;
@@ -48,7 +52,7 @@ pub(crate) struct ReconciliationReservationOutput {
     pub(crate) domain: &'static str,
     pub(crate) quotas: Vec<ReservedRecordQuota>,
     pub(crate) descriptor_bytes: usize,
-    pub(crate) successor: Option<SuccessorRoleReservation>,
+    pub(crate) successor: Option<FirstAcceptancePromotionReservation>,
 }
 
 /// Exact materialized old/new facts for one record in an opaque reconciliation descriptor.
@@ -75,7 +79,7 @@ pub struct ReconciliationReservation<'a, D: StorageDomain> {
     quotas: Vec<ReservedRecordQuota>,
     families: HashSet<&'static str>,
     descriptor_bytes: usize,
-    successor: Option<SuccessorRoleReservation>,
+    successor: Option<FirstAcceptancePromotionReservation>,
     _callback: PhantomData<&'a mut ()>,
     _typed: PhantomData<fn(D) -> D>,
 }
@@ -143,15 +147,17 @@ impl<'a, D: StorageDomain> ReconciliationReservation<'a, D> {
         Ok(())
     }
 
-    pub fn reserve_successor_source<P, S>(&mut self, source: S) -> Result<(), MutationBuildError>
+    pub fn reserve_first_acceptance_promotion_source<S>(
+        &mut self,
+        admission: FirstAcceptancePromotionAdmission,
+    ) -> Result<(), MutationBuildError>
     where
-        P: SuccessorProtocol,
-        S: SuccessorSource<D, P>,
+        S: FirstAcceptancePromotionSource<D>,
     {
         if self.successor.is_some() {
             return Err(MutationBuildError::DuplicateSuccessorRole { domain: D::NAME });
         }
-        let (role, bytes) = crate::successor::reserve_source::<D, P, S>(source)?;
+        let (role, bytes) = crate::successor::reserve_source::<D, S>(admission)?;
         self.descriptor_bytes = self
             .descriptor_bytes
             .checked_add(bytes)
@@ -160,15 +166,18 @@ impl<'a, D: StorageDomain> ReconciliationReservation<'a, D> {
         Ok(())
     }
 
-    pub fn reserve_successor_witness<P, W>(&mut self, witness: W) -> Result<(), MutationBuildError>
+    pub fn reserve_first_acceptance_promotion_asset<A>(
+        &mut self,
+        seed: FirstAcceptancePromotionAssetSeed,
+    ) -> Result<(), MutationBuildError>
     where
-        P: SuccessorProtocol,
-        W: SuccessorWitness<D, P>,
+        A: FirstAcceptancePromotionAssetAdapter<D>,
+        <A::OwnerHead as RecordCodec<D>>::Value: Eq,
     {
         if self.successor.is_some() {
             return Err(MutationBuildError::DuplicateSuccessorRole { domain: D::NAME });
         }
-        let (role, bytes) = crate::successor::reserve_witness::<D, P, W>(witness)?;
+        let (role, bytes) = crate::successor::reserve_asset::<D, A>(seed)?;
         self.descriptor_bytes = self
             .descriptor_bytes
             .checked_add(bytes)
@@ -301,30 +310,6 @@ pub enum MutationBuildError {
     },
     #[error("domain `{domain}` declares more than one successor role")]
     DuplicateSuccessorRole { domain: &'static str },
-    #[error("domain `{domain}` declares an invalid successor protocol")]
-    InvalidSuccessorProtocol { domain: &'static str },
-    #[error("domain `{domain}` reserves zero successor reads for family `{family}`")]
-    ZeroSuccessorReadReservation {
-        domain: &'static str,
-        family: &'static str,
-    },
-    #[error("domain `{domain}` declares a successor witness without a derived read")]
-    MissingSuccessorReadReservation { domain: &'static str },
-    #[error(
-        "domain `{domain}` reserves the same successor read more than once for family `{family}`"
-    )]
-    DuplicateSuccessorReadReservation {
-        domain: &'static str,
-        family: &'static str,
-    },
-    #[error(
-        "domain `{domain}` successor retained state is {actual} bytes, exceeding its declared {maximum}-byte maximum"
-    )]
-    SuccessorRetainedStateTooLarge {
-        domain: &'static str,
-        actual: usize,
-        maximum: usize,
-    },
     #[error("domain `{domain}` successor reservation overflows")]
     SuccessorReservationOverflow { domain: &'static str },
     /// A typed codec rejected its key or value.

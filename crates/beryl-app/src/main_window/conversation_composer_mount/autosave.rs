@@ -12,7 +12,7 @@ use super::super::{
 };
 use crate::composer_host::{
     ComposerHostAutosaveAdvance, ComposerHostAutosaveCapture, ComposerHostAutosaveInterval,
-    ComposerHostAutosaveSettingsCompletion, ComposerHostAutosaveTimer, ComposerHostFlushTicket,
+    ComposerHostAutosaveSettingsCompletion, ComposerHostAutosaveTimer,
     ComposerHostMarkerSealAuthority, ComposerHostPublicationTicket,
 };
 
@@ -24,49 +24,6 @@ pub use model::{
 };
 
 impl MainWindowConversationComposerMount {
-    pub(super) fn capture_native_lineage_disposal_publication(
-        &self,
-        selection: MainWindowComposerSelectionIdentity,
-        flush: ComposerHostFlushTicket,
-    ) -> Result<crate::composer_host::ComposerHostFlushCapture, String> {
-        let requirement = self.service.autosave_capture_requirement(selection)?;
-        if requirement == MainWindowComposerAutosaveCaptureRequirement::Clean {
-            return Ok(crate::composer_host::ComposerHostFlushCapture::State(
-                crate::composer_host::ComposerHostFlushState::DisposalRequired,
-            ));
-        }
-        let marker_authority = match requirement {
-            MainWindowComposerAutosaveCaptureRequirement::ChangedMarkers => {
-                Some(fresh_marker_authority()?)
-            }
-            MainWindowComposerAutosaveCaptureRequirement::UnchangedMarkers => None,
-            MainWindowComposerAutosaveCaptureRequirement::Clean => unreachable!(),
-        };
-        self.service.capture_flush_publication(
-            selection,
-            flush,
-            self.submission_assets(),
-            &self.submission_marker_seals(),
-            fresh_piece_operation_id()?,
-            marker_authority,
-            current_timestamp()?,
-            &CommandCancellation::new(),
-        )
-    }
-
-    pub(super) fn capture_native_lineage_disposal_session(
-        &self,
-        selection: MainWindowComposerSelectionIdentity,
-        flush: ComposerHostFlushTicket,
-    ) -> Result<crate::composer_host::ComposerHostFlushCapture, String> {
-        self.service.capture_flush_disposal(
-            selection,
-            flush,
-            fresh_piece_operation_id()?,
-            &CommandCancellation::new(),
-        )
-    }
-
     pub(super) fn submission_assets(&self) -> beryl_state::AssetState {
         self.autosave.assets.clone()
     }
@@ -152,6 +109,9 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         self.autosave.suspend()?;
+        if self.window_close.is_some() {
+            return Ok(());
+        }
         self.autosave.fenced = false;
         let Some(selection) = self.service.selected_identity() else {
             return Ok(());
@@ -489,11 +449,13 @@ impl MainWindowConversationComposerMount {
     }
 }
 
-fn fresh_piece_operation_id() -> Result<DraftPieceOperationIdV1, String> {
+pub(in crate::main_window) fn fresh_piece_operation_id() -> Result<DraftPieceOperationIdV1, String>
+{
     Ok(DraftPieceOperationIdV1::from_bytes(fresh_bytes()?))
 }
 
-fn fresh_marker_authority() -> Result<ComposerHostMarkerSealAuthority, String> {
+pub(in crate::main_window) fn fresh_marker_authority()
+-> Result<ComposerHostMarkerSealAuthority, String> {
     Ok(ComposerHostMarkerSealAuthority::new(
         DraftMarkerSealOperationIdV1::from_bytes(fresh_bytes()?),
         AssetReferenceSetStagingAuthority::new(
@@ -510,7 +472,7 @@ fn fresh_bytes<const N: usize>() -> Result<[u8; N], String> {
     Ok(bytes)
 }
 
-fn current_timestamp() -> Result<SyndicTimestamp, String> {
+pub(in crate::main_window) fn current_timestamp() -> Result<SyndicTimestamp, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "conversation composer autosave clock precedes the Unix epoch".to_owned())?

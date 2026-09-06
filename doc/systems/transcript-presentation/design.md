@@ -164,6 +164,6 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

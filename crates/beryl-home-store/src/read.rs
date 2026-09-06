@@ -20,7 +20,8 @@ use crate::{
 mod execute;
 
 pub(crate) use execute::{
-    encode_stored_key, encode_value, validate_physical_family, validate_record_envelope,
+    decode_record_envelope, decode_value, encode_stored_key, encode_value,
+    validate_physical_family, validate_record_envelope,
 };
 use execute::{read_cursor, read_point};
 

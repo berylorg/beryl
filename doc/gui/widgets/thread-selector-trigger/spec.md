@@ -24,8 +24,8 @@ Widgets:
 
 The thread selector trigger contains one command-capable root, primary selected-thread title region, trailing flyout label, and trailing disclosure glyph. The complete root is one activation target; the title and trailing affordance are not separate commands.
 
-The owning feature supplies the selected-thread identity, bounded visible title or fallback, bounded
-accessible name, flyout label, activation command, readiness, unavailability reason, and associated
+The owning feature supplies the selected-thread identity, bounded visible title or fallback,
+tooltip text, flyout label, activation command, readiness, unavailability reason, and associated
 flyout state. The widget owns trigger geometry, title truncation, focus, command feedback, and stable
 trailing-affordance placement.
 
@@ -75,7 +75,7 @@ Content-free diagnostics expose widget instance id, selected-thread identity pre
 
 The root fills the toolbar's remaining inline allocation between leading navigation controls and trailing window commands. It obeys `beryl-command-geometry` for toolbar height and focus treatment.
 
-The title region flexes and may shrink to zero after preserving the control's accessible name. The trailing flyout label and disclosure glyph remain fixed-size and aligned to the trailing edge.
+The title region flexes and may shrink to zero; its tooltip remains available. The trailing flyout label and disclosure glyph remain fixed-size and aligned to the trailing edge.
 
 State transitions do not change block size, outer padding, trailing-affordance width, or neighboring toolbar geometry.
 

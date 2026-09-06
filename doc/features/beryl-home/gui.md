@@ -22,7 +22,7 @@ This is an explicitly feature-local arrangement rather than a project-local widg
 
 The surface is a compact centered vertical stack containing the heading `Beryl couldn't open its data`, bounded selectable failure detail, and a horizontal button group containing `Retry` and `Exit`.
 
-`Retry` uses the primary `command button` variant. The feature supplies its current label, enabled state, progress accessibility state, and the ordinary `Exit` `command button` state from `design.md`.
+`Retry` uses the primary `command button` variant. The feature supplies its current label, enabled state, progress state, and the ordinary `Exit` `command button` state from `design.md`.
 
 The surface contains no Reset, Continue, Take Over, Choose Another Home, runtime, root, thread, Settings, or CAS controls. The bounded detail region retains one stable location without stacked notices or window resizing.
 

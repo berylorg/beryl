@@ -25,7 +25,9 @@ use super::{
     MainWindowConversationComposerSurfaceSnapshot, MainWindowNativeLineagePrepublicationSource,
 };
 
-mod autosave;
+pub(super) mod autosave;
+mod close;
+mod native_disposal;
 mod native_lineage;
 mod pending_presentation;
 mod submission;
@@ -34,6 +36,10 @@ use pending_presentation::MainWindowConversationComposerPendingPresentation;
 mod realization;
 
 pub use autosave::*;
+pub use close::{
+    MainWindowConversationComposerCloseAdmission, MainWindowConversationComposerCloseAdvance,
+    MainWindowConversationComposerCloseTicket,
+};
 #[cfg(feature = "test-faults")]
 pub use submission::{
     MainWindowComposerSubmissionAdvanceTestRelease, MainWindowComposerSubmissionAdvanceTestToken,
@@ -154,6 +160,9 @@ pub struct MainWindowConversationComposerMount {
     autosave: autosave::MainWindowConversationComposerAutosave,
     submission: submission::MainWindowConversationComposerSubmission,
     contribution_subscription: Option<Subscription>,
+    window_close: Option<close::ActiveWindowClose>,
+    window_close_generation: u64,
+    window_close_task: Option<Task<()>>,
     native_lineage_recovery: Option<crate::cas_projection::NativeLineageRecoveryControl>,
     native_lineage_snapshot: Option<crate::cas_projection::NativeLineageRecoverySnapshot>,
     native_lineage_selection: Option<MainWindowComposerSelectionIdentity>,
@@ -162,6 +171,8 @@ pub struct MainWindowConversationComposerMount {
     native_lineage_disposal_flush:
         Option<(MainWindowComposerSelectionIdentity, ComposerHostFlushTicket)>,
     native_lineage_disposal_capture: Option<ComposerHostFlushCapture>,
+    native_lineage_disposal_task: Option<Task<()>>,
+    native_lineage_disposal_cancellation: Option<CommandCancellation>,
     native_lineage_last_disposal_advance: Option<MainWindowComposerDisposalAdvance>,
     native_lineage_prompt_published: bool,
     native_lineage_route_lost: bool,
@@ -328,6 +339,9 @@ impl MainWindowConversationComposerMount {
                 cx.background_executor().clone(),
             ),
             contribution_subscription: None,
+            window_close: None,
+            window_close_generation: 0,
+            window_close_task: None,
             native_lineage_recovery: None,
             native_lineage_snapshot: None,
             native_lineage_selection: None,
@@ -335,6 +349,8 @@ impl MainWindowConversationComposerMount {
             native_lineage_widget_release: None,
             native_lineage_disposal_flush: None,
             native_lineage_disposal_capture: None,
+            native_lineage_disposal_task: None,
+            native_lineage_disposal_cancellation: None,
             native_lineage_last_disposal_advance: None,
             native_lineage_prompt_published: false,
             native_lineage_route_lost: false,
@@ -428,6 +444,9 @@ impl MainWindowConversationComposerMount {
         cancellation: &CommandCancellation,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowComposerActivationAdvance, String> {
+        if self.window_close.is_some() {
+            return Err("conversation composer is waiting for window close".to_owned());
+        }
         if self.native_lineage_snapshot.is_some() {
             return Err("native lineage recovery owns the selected composer".to_owned());
         }
@@ -462,6 +481,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
+        if self.window_close.is_some() {
+            return Err("conversation composer is waiting for window close".to_owned());
+        }
         if self.native_lineage_snapshot.is_some() {
             return Err("native lineage recovery owns the selected composer".to_owned());
         }
@@ -637,6 +659,12 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountFlushStart, String> {
+        if self.native_lineage_disposal_task.is_some() {
+            return Err("native lineage disposal is still advancing".to_owned());
+        }
+        if self.window_close.is_some() {
+            return Err("conversation composer is waiting for window close settlement".to_owned());
+        }
         if self.cancel_mounted_submission() {
             return Err("composer submission cancellation is still settling".to_owned());
         }
@@ -685,6 +713,14 @@ impl MainWindowConversationComposerMount {
                     && let ComposerHostFlushAdmission::Started { ticket, .. }
                     | ComposerHostFlushAdmission::Joined { ticket, .. } = admission
                 {
+                    if self
+                        .native_lineage_disposal_flush
+                        .map(|(_, current)| current)
+                        != Some(ticket)
+                    {
+                        self.native_lineage_disposal_cancellation =
+                            Some(CommandCancellation::new());
+                    }
                     self.native_lineage_disposal_flush = Some((expected, ticket));
                     self.native_lineage_disposal_capture = None;
                     self.native_lineage_last_disposal_advance = None;
@@ -735,34 +771,25 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<MainWindowConversationComposerMountDisposalAdvance, String> {
-        let advance = self.service.advance_disposal()?;
-        self.native_lineage_last_disposal_advance = Some(advance);
-        if matches!(
-            advance,
-            MainWindowComposerDisposalAdvance::Progress(ComposerHostFlushState::CaptureRequired)
-        ) && let Some((selection, flush)) = self.native_lineage_disposal_flush
+        if self.native_lineage_last_disposal_advance
+            == Some(MainWindowComposerDisposalAdvance::Disposed)
         {
-            self.native_lineage_disposal_capture =
-                Some(self.capture_native_lineage_disposal_publication(selection, flush)?);
-        } else if matches!(
-            advance,
-            MainWindowComposerDisposalAdvance::Progress(ComposerHostFlushState::DisposalRequired)
-        ) && let Some((previous, flush)) = self.native_lineage_disposal_flush
-        {
-            let selection = self.service.selected_identity().ok_or_else(|| {
-                "conversation composer selection disappeared before disposal capture".to_owned()
-            })?;
-            if !Self::native_lineage_successor_is_exact(previous, selection) {
-                return Err(
-                    "conversation composer disposal selection left its exact lineage".to_owned(),
-                );
-            }
-            self.native_lineage_disposal_flush = Some((selection, flush));
-            self.native_lineage_widget_release =
-                Some(MainWindowComposerWidgetRelease::new(selection));
-            self.native_lineage_disposal_capture =
-                Some(self.capture_native_lineage_disposal_session(selection, flush)?);
+            return Ok(MainWindowConversationComposerMountDisposalAdvance::Disposed);
         }
+        if self.native_lineage_disposal_flush.is_some() {
+            return self.advance_native_lineage_disposal_task(window, cx);
+        }
+        let advance = self.service.advance_disposal()?;
+        self.finish_disposal_advance(advance, window, cx)
+    }
+
+    pub(super) fn finish_disposal_advance(
+        &mut self,
+        advance: MainWindowComposerDisposalAdvance,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<MainWindowConversationComposerMountDisposalAdvance, String> {
+        self.native_lineage_last_disposal_advance = Some(advance);
         if self.contribution.is_some() {
             self.synchronize_contribution_selection(cx)?;
         }

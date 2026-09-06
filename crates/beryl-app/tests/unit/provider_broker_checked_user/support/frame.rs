@@ -26,7 +26,7 @@ pub(in super::super) fn read_provider_frame(
     }
     let start = usize::try_from(reference.frame().encoded_start()).unwrap();
     let end = usize::try_from(reference.frame().encoded_end()).unwrap();
-    syndic_storage::decode_bounded_provider_item_frame_v1(
+    syndic_storage::provider_frame_test_support::decode_bounded_provider_item_frame_v1(
         &content[start..end],
         syndic_storage::PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES,
         reference.frame().encoded_start(),

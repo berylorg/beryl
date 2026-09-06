@@ -21,7 +21,7 @@ The course adjustment is to keep one persistent `rodio::Player` alive with the w
 Phase 299 passed its library check and all 16 serial nextest integration tests, including priority,
 capacity, identity, bounded text, and repeated release behavior. Independent semantic review found
 no blocking issue. Automatic approval review then rejected removal of the exact task-owned
-`crates/beryl-app/tests/phase299_notice_arbiter/nextest.toml` before execution with only
+`crates/beryl-app/tests/notice_arbiter/nextest.toml` before execution with only
 `blocked by policy`. The 73-byte timeout configuration remains untracked; no task process,
 fixture, or environment mutation remains. Cleanup was not retried or bypassed. This residue is
 separate from the accepted production result and remains for Operator disposition.

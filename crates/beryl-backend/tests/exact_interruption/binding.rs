@@ -60,11 +60,11 @@ fn every_changed_exact_target_component_refuses_before_bytes() {
     });
     let mut session = connect_initialized(endpoint);
     let mismatches = [
-        changed_target(4, 7, 11, "thread-phase67", "turn-phase67"),
-        changed_target(3, 8, 11, "thread-phase67", "turn-phase67"),
-        changed_target(3, 7, 12, "thread-phase67", "turn-phase67"),
-        changed_target(3, 7, 11, "thread-other", "turn-phase67"),
-        changed_target(3, 7, 11, "thread-phase67", "turn-other"),
+        changed_target(4, 7, 11, "thread-", "turn-"),
+        changed_target(3, 8, 11, "thread-", "turn-"),
+        changed_target(3, 7, 12, "thread-", "turn-"),
+        changed_target(3, 7, 11, "thread-other", "turn-"),
+        changed_target(3, 7, 11, "thread-", "turn-other"),
     ];
     for mismatch in mismatches {
         assert!(matches!(
@@ -98,7 +98,7 @@ fn target_replacement_requires_an_explicit_revoking_cut() {
     });
     let mut session = connect_initialized(endpoint);
     let stale = authorize(&mut session);
-    let successor = changed_target(3, 8, 1, "thread-phase67", "turn-successor");
+    let successor = changed_target(3, 8, 1, "thread-", "turn-successor");
 
     assert!(matches!(
         session.bind_exact_foreground_turn(successor.clone()),

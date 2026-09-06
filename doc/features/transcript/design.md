@@ -54,18 +54,18 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 ## Repair Presentation
 
 - Assistant words enter history through live capture. When live capture cannot establish a complete
-  historical turn, Beryl makes exactly one terminal repair request for the affected turn. That
-  request either produces the atomic whole-turn repaired presentation below or the turn becomes
-  terminally incomplete; Beryl never retries the request, issues a second repair request, or
-  splices competing representations together.
+  historical turn, Beryl may make at most one eligible terminal repair request for the affected
+  turn. Repair either produces the atomic whole-turn repaired presentation below or the turn
+  becomes terminally incomplete. When no request can be authorized or its source is unavailable,
+  incomplete convergence may occur without a request. Beryl never retries a consumed request,
+  issues a second repair request, or splices competing representations together.
 - Every transcript-visible assistant record belonging to a turn awaiting repair is labeled
   `Repair pending`. Visible durable content remains readable, but commands requiring complete turn
   provenance remain unavailable.
 - Successful repair replaces the affected turn all at once. All repaired records appear together
   and are persistently labeled `Repaired from CAS history`; the user never sees a partial item
   splice, a mixture of pre-repair and repaired records, or a blank intermediate turn.
-- The repair label and each affected record's accessible description expose the same provenance.
-  Repair-state changes become visible only with the corresponding whole-turn replacement.
+- Repair-state changes become visible only with the corresponding whole-turn replacement.
 - Whole-turn replacement preserves the user's semantic transcript anchor. Any selection, quote
   affordance, or context menu whose source or geometry changed closes instead of targeting the new
   records through stale provenance.
@@ -120,6 +120,6 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

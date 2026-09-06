@@ -1,36 +1,36 @@
 use super::*;
 
+fn marker_handle<S>(
+    store: &mut HomeStore,
+    faults: &FaultController,
+    source: &beryl_home_store::DomainHandle<SourceDomain>,
+) -> beryl_home_store::ReconciliationHandle
+where
+    S: FirstAcceptancePromotionSource<SourceDomain>,
+{
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    installed(
+        store.execute_current(source.current_command(SourcePromotion::<S>::new(
+            FirstAcceptancePromotionAdmission::MarkerFree,
+        ))),
+    )
+}
+
 #[test]
-fn successor_flight_is_joined_and_worker_failure_retains_retryable_custody() {
+fn fixed_successor_flights_join_and_memoized_failures_retrigger_from_retained_custody() {
     let _serial = SERIAL
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
-        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
-        faults.clone(),
-    )
-    .unwrap();
+    let (_directory, faults, mut store) = open();
     let source = store.register_domain::<SourceDomain>().unwrap();
-    committed(
-        store.execute_current(source.current_command(Put::<SourceDomain, SourceRecord>::new(1, 1))),
-    );
-    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    let handle = match store.execute_current(source.current_command(SourcePut {
-        key: 1,
-        value: 2,
-        source: SourceHook,
-    })) {
-        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
-        other => panic!("expected indeterminate outcome, got {other:?}"),
-    };
-    committed(
-        store
-            .execute_current(source.current_command(Put::<SourceDomain, SourceRecord>::new(1, 42))),
-    );
-
+    committed(store.execute_current(
+        source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
+    ));
+    let handle = marker_handle::<BlockingMarkerSource>(&mut store, &faults, &source);
+    committed(store.execute_current(
+        source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 42)),
+    ));
     BLOCK_SOURCE.store(true, Ordering::SeqCst);
     let store = Arc::new(store);
     let first_store = Arc::clone(&store);
@@ -57,78 +57,113 @@ fn successor_flight_is_joined_and_worker_failure_retains_retryable_custody() {
     store.close().unwrap();
 
     reset_hooks();
-    let directory = tempdir().unwrap();
+    let (_directory, faults, mut store) = open();
+    let source = store.register_domain::<SourceDomain>().unwrap();
+    committed(store.execute_current(
+        source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
+    ));
+    let handle = marker_handle::<FailingMarkerSource>(&mut store, &faults, &source);
+    committed(store.execute_current(
+        source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 42)),
+    ));
+    FAIL_SOURCE.store(true, Ordering::SeqCst);
+    let first = store.reconcile(&handle).unwrap_err().to_string();
+    let second = store.reconcile(&handle).unwrap_err().to_string();
+    assert_eq!(first, second);
+    assert_eq!(SOURCE_CALLS.load(Ordering::SeqCst), 1);
+    FAIL_SOURCE.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        store.retry_reconciliation(&handle).unwrap(),
+        ReconciliationResolution::ExactSuccessor { .. }
+    ));
+    assert!(store.pending_reconciliations().is_empty());
+    store.close().unwrap();
+}
+
+#[test]
+fn fixed_descriptor_limits_reject_before_writer_and_charge_retained_scopes() {
+    let _serial = SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    reset_hooks();
+    let (_directory, _faults, mut store) = open();
+    let source = store.register_domain::<SourceDomain>().unwrap();
+    let asset = store.register_domain::<AssetDomain>().unwrap();
+    let mut too_large = HomeCommand::new(store.home_revision().unwrap());
+    too_large
+        .add(source.contribution(
+            store.domain_revision(&source).unwrap(),
+            SourcePromotion::<AssetSource>::new(
+                FirstAcceptancePromotionAdmission::AssetTransferRequired,
+            ),
+        ))
+        .unwrap();
+    too_large
+        .add(asset.contribution(
+            store.domain_revision(&asset).unwrap(),
+            AssetPromotion::<TooLargeAsset, TooLargeAssetRecord>::new(seed(proof(1))),
+        ))
+        .unwrap();
+    assert!(
+        matches!(store.execute(too_large), CommandOutcome::NotCommitted { evidence: CommandError::ReconciliationDescriptorTooLarge { limit, .. } } if limit == 64 * 1024 * 1024)
+    );
+    assert_eq!(store.home_revision().unwrap().get(), 1);
+
     let faults = FaultController::new();
+    drop(store);
+    let directory = tempdir().unwrap();
     let mut store = HomeStore::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let source = store.register_domain::<SourceDomain>().unwrap();
-    committed(
-        store.execute_current(source.current_command(Put::<SourceDomain, SourceRecord>::new(1, 1))),
-    );
-    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    let handle = match store.execute_current(source.current_command(SourcePut {
-        key: 1,
-        value: 2,
-        source: SourceHook,
-    })) {
-        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
-        other => panic!("expected indeterminate outcome, got {other:?}"),
-    };
-    committed(
-        store
-            .execute_current(source.current_command(Put::<SourceDomain, SourceRecord>::new(1, 42))),
-    );
-    FAIL_SOURCE.store(true, Ordering::SeqCst);
-    assert!(store.reconcile(&handle).is_err());
-    assert_eq!(store.pending_reconciliations().len(), 1);
-    FAIL_SOURCE.store(false, Ordering::SeqCst);
-    let retry = store.pending_reconciliations().pop().unwrap();
+    let asset = store.register_domain::<AssetDomain>().unwrap();
+    for _ in 0..4 {
+        let mut command = HomeCommand::new(store.home_revision().unwrap());
+        command
+            .add(source.contribution(
+                store.domain_revision(&source).unwrap(),
+                SourcePromotion::<AssetSource>::new(
+                    FirstAcceptancePromotionAdmission::AssetTransferRequired,
+                ),
+            ))
+            .unwrap();
+        command
+            .add(asset.contribution(
+                store.domain_revision(&asset).unwrap(),
+                AssetPromotion::<LargeAsset, LargeAssetRecord>::new(seed(proof(1))),
+            ))
+            .unwrap();
+        faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+        match store.execute(command) {
+            CommandOutcome::Indeterminate { reconciliation, .. } => {
+                reconciliation.install();
+            }
+            other => panic!("expected retained indeterminate scope, got {other:?}"),
+        }
+    }
+    let mut saturated = HomeCommand::new(store.home_revision().unwrap());
+    saturated
+        .add(source.contribution(
+            store.domain_revision(&source).unwrap(),
+            SourcePromotion::<AssetSource>::new(
+                FirstAcceptancePromotionAdmission::AssetTransferRequired,
+            ),
+        ))
+        .unwrap();
+    saturated
+        .add(asset.contribution(
+            store.domain_revision(&asset).unwrap(),
+            AssetPromotion::<LargeAsset, LargeAssetRecord>::new(seed(proof(1))),
+        ))
+        .unwrap();
     assert!(matches!(
-        store.retry_reconciliation(&retry).unwrap(),
-        ReconciliationResolution::ExactSuccessor { .. }
-    ));
-    store.close().unwrap();
-}
-
-#[test]
-fn successor_charge_is_reserved_before_writer_admission() {
-    let _serial = SERIAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    reset_hooks();
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
-        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
-        faults,
-    )
-    .unwrap();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let outcome = store.execute_current(source.current_command(SourcePut {
-        key: 1,
-        value: 2,
-        source: HugeSource,
-    }));
-    assert!(matches!(
-        outcome,
+        store.execute(saturated),
         CommandOutcome::NotCommitted {
-            evidence: CommandError::ReconciliationDescriptorTooLarge { .. }
+            evidence: CommandError::ReconciliationCapacity
         }
     ));
-    assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert!(store.pending_reconciliations().is_empty());
-
-    let outcome = store.execute_current(source.current_command(NearLimitPut));
-    assert!(matches!(
-        outcome,
-        CommandOutcome::NotCommitted {
-            evidence: CommandError::ReconciliationDescriptorTooLarge { .. }
-        }
-    ));
-    assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert!(store.pending_reconciliations().is_empty());
-    store.close().unwrap();
+    let close = store.close().unwrap_err();
+    assert_eq!(close.pending_reconciliation_scopes(), Some(4));
 }

@@ -21,8 +21,8 @@ use super::{
     InstalledThemeId, InstalledThemeSelection, ThemeDocument, ThemeDocumentDigest,
     ThemeDocumentError, ThemeDocumentIdentity, ThemeDocumentRevision, ThemeHomeIdentity,
     ThemeIdentityError, ThemeManifestCursor, ThemeManifestDecodeError, ThemeManifestGeneration,
-    ThemeManifestHeader, ThemeManifestIdentity, ThemeManifestPage, ThemeManifestReadLimits,
-    ThemePageLimits, ThemeRepositoryService, ThemeSettingsIdentity,
+    ThemeManifestHeader, ThemeManifestIdentity, ThemeManifestLimit, ThemeManifestPage,
+    ThemeManifestReadLimits, ThemePageLimits, ThemeRepositoryService, ThemeSettingsIdentity,
     physical::{
         PhysicalThemeLimits, PhysicalThemeReadErrors, PhysicalThemeReader, document_identity_parts,
         installed_theme_id, observe_file, repository_snapshot, stable_file_id,
@@ -40,6 +40,7 @@ pub struct ThemeRepositoryObservation {
     snapshot: ThemeRepositorySnapshot,
     manifest: ThemeManifestIdentity,
     physical_manifest: Option<ThemeFileIdentity>,
+    max_manifest_bytes: NonZeroU64,
 }
 
 impl ThemeRepositoryObservation {
@@ -228,13 +229,22 @@ impl ThemeService {
         }
         let limits = PhysicalThemeLimits::manifest(max_manifest_bytes)
             .map_err(|_| ThemeRepositoryLoadError::InvalidLimits)?;
-        let snapshot =
-            repository_snapshot(store, limits).map_err(ThemeRepositoryLoadError::Repository)?;
+        let physical_limits = PhysicalThemeLimits::manifest(
+            NonZeroU64::new(super::THEME_MANIFEST_MAX_BYTES).expect("hard limit is nonzero"),
+        )
+        .map_err(|_| ThemeRepositoryLoadError::InvalidLimits)?;
+        let snapshot = repository_snapshot(store, physical_limits)
+            .map_err(ThemeRepositoryLoadError::Repository)?;
         self.check_snapshot(&snapshot)?;
         let physical_manifest = snapshot.manifest_identity();
         let manifest = match physical_manifest {
             None => self.manifest(ThemeManifestGeneration::INITIAL),
             Some(expected) => {
+                if expected.length() > limits.operations().max_source_bytes() {
+                    return Err(ThemeRepositoryLoadError::Manifest(
+                        ThemeManifestDecodeError::LimitExceeded(ThemeManifestLimit::EncodedBytes),
+                    ));
+                }
                 let decoder = open_manifest_decoder(
                     store,
                     &snapshot,
@@ -251,7 +261,7 @@ impl ThemeService {
                     expected.length(),
                     ThemeDocumentDigest::from_bytes(expected.sha256()),
                 );
-                validate_manifest_unique(
+                validate_manifest_complete(
                     store,
                     &snapshot,
                     expected,
@@ -289,6 +299,8 @@ impl ThemeService {
             snapshot,
             manifest,
             physical_manifest,
+            max_manifest_bytes: NonZeroU64::new(limits.operations().max_source_bytes())
+                .expect("physical manifest limit is nonzero"),
         })
     }
 
@@ -416,9 +428,13 @@ impl ThemeService {
                 ThemeRepositoryLoadError::ScopeGated,
             ));
         }
-        let limits = PhysicalThemeLimits::document().map_err(|_| {
+        let document_limits = PhysicalThemeLimits::document().map_err(|_| {
             ThemeDocumentLoadError::RepositoryLoad(ThemeRepositoryLoadError::InvalidLimits)
         })?;
+        let limits =
+            PhysicalThemeLimits::repository(repository.max_manifest_bytes).map_err(|_| {
+                ThemeDocumentLoadError::RepositoryLoad(ThemeRepositoryLoadError::InvalidLimits)
+            })?;
         let stable_id =
             stable_file_id(&theme_id).map_err(|_| ThemeDocumentLoadError::InvalidStableId)?;
         let selector = ThemeFileSelector::Document(stable_id);
@@ -428,6 +444,12 @@ impl ThemeService {
         let identity = self
             .observe_document(repository.manifest, theme_id, previous, byte_length, digest)
             .map_err(ThemeDocumentLoadError::Service)?;
+        if byte_length > document_limits.operations().max_source_bytes() {
+            return Err(ThemeDocumentLoadError::Invalid {
+                identity,
+                source: super::ThemeDocumentError::DocumentTooLarge,
+            });
+        }
         let reader = PhysicalThemeReader::new(
             store,
             &repository.snapshot,
@@ -476,15 +498,7 @@ impl ThemeService {
                 super::ThemeFreshnessError::StaleManifest,
             ))
         })?;
-        let max_manifest_bytes = NonZeroU64::new(
-            expected_manifest
-                .length()
-                .max(super::THEME_DOCUMENT_MAX_BYTES as u64)
-                .max(1),
-        )
-        .ok_or({
-            ThemeDocumentLoadError::RepositoryLoad(ThemeRepositoryLoadError::InvalidLimits)
-        })?;
+        let max_manifest_bytes = repository.max_manifest_bytes;
         let limits = PhysicalThemeLimits::manifest(max_manifest_bytes).map_err(|_| {
             ThemeDocumentLoadError::RepositoryLoad(ThemeRepositoryLoadError::InvalidLimits)
         })?;
@@ -550,7 +564,7 @@ impl ThemeService {
             store,
             &snapshot,
             selector,
-            PhysicalThemeLimits::document().map_err(|_| {
+            PhysicalThemeLimits::repository(repository.max_manifest_bytes).map_err(|_| {
                 ThemeDocumentLoadError::RepositoryLoad(ThemeRepositoryLoadError::InvalidLimits)
             })?,
         )
@@ -707,6 +721,11 @@ fn open_manifest_decoder<'store>(
     read_limits: ThemeManifestReadLimits,
     bind: Option<ThemeManifestIdentity>,
 ) -> Result<CheckedManifestDecoder<'store>, ThemeRepositoryLoadError> {
+    if expected.length() > physical_limits.operations().max_source_bytes() {
+        return Err(ThemeRepositoryLoadError::Manifest(
+            ThemeManifestDecodeError::LimitExceeded(ThemeManifestLimit::EncodedBytes),
+        ));
+    }
     let reader = PhysicalThemeReader::new(
         store,
         snapshot,
@@ -730,11 +749,7 @@ fn open_manifest_decoder<'store>(
     Ok(CheckedManifestDecoder { decoder, errors })
 }
 
-/// Proves stable-id uniqueness with bounded memory by comparing each row only to its predecessors.
-///
-/// The manifest is logically unbounded, so this deliberately trades repeated exact range scans
-/// for a constant one-row working set rather than retaining an unbounded identity index.
-fn validate_manifest_unique(
+fn validate_manifest_complete(
     store: &HomeStore,
     snapshot: &ThemeRepositorySnapshot,
     expected: ThemeFileIdentity,
@@ -749,7 +764,7 @@ fn validate_manifest_unique(
             .ok_or(ThemeRepositoryLoadError::InvalidLimits)?,
     )
     .map_err(|source| ThemeRepositoryLoadError::Manifest(ThemeManifestDecodeError::Page(source)))?;
-    let mut outer = open_manifest_decoder(
+    let mut decoder = open_manifest_decoder(
         store,
         snapshot,
         expected,
@@ -758,44 +773,16 @@ fn validate_manifest_unique(
         read_limits,
         Some(manifest),
     )?;
-    let mut outer_cursor = ThemeManifestCursor::first(manifest);
+    let mut cursor = ThemeManifestCursor::first(manifest);
     loop {
-        let page = outer.read_page(outer_cursor, page_limits)?;
-        let Some(current) = page.records().first() else {
+        let page = decoder.read_page(cursor, page_limits)?;
+        if page.records().is_empty() {
             return Ok(());
-        };
-        if current.order() > 0 {
-            let mut prior = open_manifest_decoder(
-                store,
-                snapshot,
-                expected,
-                physical_limits,
-                home,
-                read_limits,
-                Some(manifest),
-            )?;
-            let mut prior_cursor = ThemeManifestCursor::first(manifest);
-            while prior_cursor.next_order() < current.order() {
-                let prior_page = prior.read_page(prior_cursor, page_limits)?;
-                let earlier = prior_page.records().first().ok_or_else(|| {
-                    ThemeRepositoryLoadError::Manifest(ThemeManifestDecodeError::CursorMismatch)
-                })?;
-                if earlier.id() == current.id() {
-                    return Err(ThemeRepositoryLoadError::Manifest(
-                        ThemeManifestDecodeError::DuplicateThemeId {
-                            id: current.id().clone(),
-                        },
-                    ));
-                }
-                prior_cursor = prior_page.next().ok_or_else(|| {
-                    ThemeRepositoryLoadError::Manifest(ThemeManifestDecodeError::CursorMismatch)
-                })?;
-            }
         }
         let Some(next) = page.next() else {
             return Ok(());
         };
-        outer_cursor = next;
+        cursor = next;
     }
 }
 

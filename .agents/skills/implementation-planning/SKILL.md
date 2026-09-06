@@ -69,9 +69,10 @@ Implementation-private choices may remain open when every allowed choice satisfi
 authoritative contract and would not change phase boundaries or completion evidence.
 
 Resolve the effective engineering-rigor contract across every applicable design scope before
-splitting phases. Read the engineering-rigor authority and profile catalog as required there. Treat
-a missing, unknown, or incompatible required declaration as incomplete design and stop planning
-until its owning design authority is corrected.
+splitting phases. Use the `engineering-rigor` rules for explicit inheritance and missing declarations;
+an unambiguous applicable contract need not cause a paperwork stop. Resolve any remaining choice
+that materially changes implementation or acceptance in its owning design authority before planning
+the affected slice. Do not guess an unknown profile or bypass a conflicting guarantee.
 
 Translate the contract's supported operating envelope, defensive behavior, failure handling,
 verification evidence, and review requirements into concrete phase work. Do not copy profile,
@@ -139,16 +140,18 @@ integration, and no-change outcomes, before marking it `finished` or beginning t
 Review the completed work and evidence against the phase acceptance boundary and effective
 engineering-rigor contract.
 
-Use an independent reviewer only when the effective rigor contract, a concrete consequence, weak
-objective verification, another applicable authority, or the phase acceptance plan requires it.
-Otherwise, objective verification plus worker self-review and targeted main-thread validation may
-satisfy the completion review.
+Use an independent reviewer when the effective rigor contract, another applicable authority, or
+the phase acceptance plan requires it, or when material consequences and gaps in objective evidence
+justify it under `engineering-rigor`. Weak verification alone does not require independent review
+of low-consequence work. Otherwise, objective verification plus worker self-review and targeted
+main-thread validation may satisfy the completion review. Preserve explicit versioned requirements.
 
-Treat a finding as blocking only when it identifies an unmet applicable guarantee, a concrete
-consequence inside the supported operating envelope, or an undeclared trust, exposure, blast
-radius, or irreversibility condition. Keep speculative hardening outside the effective contract
-non-blocking. Escalate an undeclared condition to the owning design authority; apply the scope-growth
-rule only if the corrected authority creates another hard task or acceptance boundary.
+Treat a finding as blocking only when it identifies an unmet applicable guarantee or demonstrated
+material harm beyond the failures the effective contract permits. An understandable failed
+invocation, retry, or rebuild allowed by that contract is not a blocking defect. Keep speculative
+hardening non-blocking. Escalate a material undeclared exposure or consequence to the owning design
+authority; apply the scope-growth rule only if the corrected authority creates another hard task
+or acceptance boundary.
 
 When completion review finds a blocking issue within the phase's acceptance boundary, keep the
 phase `wip`, record the corrective work in that phase, and address it before repeating review.

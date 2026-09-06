@@ -22,7 +22,7 @@ use beryl_model::{
 use serde_json::Value;
 use tungstenite::{Message, WebSocket, accept_hdr};
 
-pub const AUTHORIZATION: &str = "Bearer phase-46-pre-bind-token";
+pub const AUTHORIZATION: &str = "Bearer pre-bind-token";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApprovalTrace {

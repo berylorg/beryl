@@ -31,7 +31,7 @@ The widget owns visible-range geometry, bounded two-axis realization, focus and 
 
 The widget reads as one bounded inset panel distinct from surrounding prose. Column headers and optional row headers remain visually distinguishable from body cells without changing grid geometry as focus or selection moves.
 
-Grid lines, alternating-row treatment, selection, focus, pending ranges, and local fallback treatment preserve row and column measurements. Truncated visible cell content uses owner-supplied accessibility text and copy data rather than treating the paint truncation as source content.
+Grid lines, alternating-row treatment, selection, focus, pending ranges, and local fallback treatment preserve row and column measurements. Truncated visible cell content uses owner-supplied tooltip and copy data rather than treating the paint truncation as source content.
 
 # States
 
@@ -63,7 +63,7 @@ Scrollbar thumb dragging and lane interaction route through the table panel. Bec
 
 The grid realizes only the owner-supplied visible row and column ranges plus bounded overscan. Overscan is capped independently on every axis and never expands to the complete table because of selection, focus, hover, copy, or scrollbar interaction.
 
-Every realized row, column, and cell has stable owner-supplied identity independent of visible index. Focus, selection, measurement, copy, accessibility, and demand reporting follow those identities across viewport movement and filtering or revision changes.
+Every realized row, column, and cell has stable owner-supplied identity independent of visible index. Focus, selection, measurement, copy, and demand reporting follow those identities across viewport movement and filtering or revision changes.
 
 Content-free diagnostics expose widget instance id, table identity, revision, known row and column counts, visible and realized row ranges, visible and realized column ranges, overscan counts on each axis, realized cell count, pending range count, scroll offsets, selected-for-scroll state, focused stable cell identity, selected stable range bounds, scrollbar presence, and fallback count. Diagnostics never include cell text, header text, copied data, file paths, or resource bytes.
 

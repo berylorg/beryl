@@ -79,9 +79,10 @@ impl ManagedBackendSession {
             BackendClientTransport::ForegroundWebSocket(_)
         ) {
             let transport = match &self.transport {
-                BackendClientTransport::Stdio { .. } => "stdio",
                 BackendClientTransport::RequestOnlyWebSocket(_) => "request-only websocket",
                 BackendClientTransport::ForegroundWebSocket(_) => unreachable!(),
+                #[cfg(feature = "lifecycle-test-support")]
+                BackendClientTransport::Unsupported => "unsupported",
             };
             return proven_not_dispatched(
                 ManagedBackendError::ThreadInjectionTransportUnsupported {

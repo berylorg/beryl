@@ -41,11 +41,11 @@ These four supplements are part of this package design. Each is authoritative on
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
 - `privileged-access/v1`
-- `external-side-effects/v1`
+- `external-side-effects/v2`
 
 This rigor declaration governs this entry point and all four normative supplements. The privileged authenticated boundary and external effect transition require independent semantic review. Loss of authorization, exact dispatch outcome, secret handling, effect custody, or a bounded input/result contract is blocking.

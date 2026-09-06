@@ -291,6 +291,13 @@ impl NoticeRecordToken {
     pub fn revision(&self) -> u64 {
         self.revision
     }
+
+    pub fn same_identity(&self, other: &Self) -> bool {
+        self.owner == other.owner
+            && self.admission == other.admission
+            && self.window_id == other.window_id
+            && self.condition == other.condition
+    }
 }
 
 impl std::fmt::Debug for NoticeRecordToken {

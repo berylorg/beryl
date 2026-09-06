@@ -69,7 +69,12 @@ Support bounded operator debugging, live testing, and resource investigation thr
 - Child control may switch threads, list threads from the bounded Beryl-home catalog, invoke ordinary New Thread, submit bounded text through the child composer, request soft stop for the child's exact selected active turn, scroll transcript, close transient popups, and wait for bounded UI or turn-state predicates.
 - Child commands produce the same validation, availability, and visible outcomes as corresponding
   ordinary UI interactions.
-- Child commands that activate image-heavy or history-heavy transcript states exercise real child UI work and must honor the transcript feature's residency and presentable-media admission gates. They must not use diagnostic shortcuts that publish unloaded, media-pending, or otherwise non-presentable transcript rows.
+- Child commands that activate image-heavy or history-heavy transcript states exercise ordinary
+  coherent transcript and initial-viewport publication. Markdown parsing and media preparation
+  continue afterward with the transcript feature's stable row-owned placeholders or terminal
+  fallbacks; they do not gate activation. Diagnostics neither bypass coherent-content admission nor
+  introduce a stronger media-readiness gate. Activation completion and subsequent resource readiness
+  remain distinct observable states.
 - Child commands reject ambiguous, stale, missing, or unavailable targets and report timeout or partial state instead of blocking indefinitely.
 - A child command must not fall back to another thread, runtime, root, turn, stop target, or input path when the requested target cannot be used exactly.
 - Child composer submission may synthesize user-authored transcript input only for the isolated child and only through ordinary validation, draft acceptance, transcript insertion, new-thread creation, active-turn steering, compaction queueing, and rejection behavior.
@@ -90,13 +95,17 @@ Support bounded operator debugging, live testing, and resource investigation thr
 
 # Engineering Rigor
 
-Profile: `trusted-internal-tool/v1`
+Profile: `trusted-internal-tool/v2`
 
 Modifiers:
 
 - `untrusted-input/v1`
 - `privileged-access/v1`
-- `external-side-effects/v1`
+- `external-side-effects/v2`
 
 Human operators are trusted. Dynamic-tool requests and caller-supplied executable paths are
 untrusted, and the supported operating envelope contains one isolated diagnostic child.
+
+Focused child-activation evidence covers history-heavy and image-heavy selection with media still
+pending, stable initial placement, later ready or terminal resource outcomes, and the same bounded
+residency and release behavior as ordinary UI activation.

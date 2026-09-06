@@ -14,7 +14,11 @@ use crate::{
     domain::callback::ErasedCallbackError,
     health::{ClassifiedFjallError, FailureSeverity},
     store::HomeStore,
-    successor::{DerivedReadFact, SuccessorExecution, SuccessorRoleKind, SuccessorRoleResult},
+    successor::{
+        FIRST_ACCEPTANCE_PROMOTION_COLLISION_FACT_BYTES, FirstAcceptancePromotionAssetResult,
+        FirstAcceptancePromotionExecution, FirstAcceptancePromotionPointFact,
+        FirstAcceptancePromotionSourceResult,
+    },
 };
 
 pub(crate) mod reader;
@@ -141,7 +145,7 @@ struct SealedCollision {
     _domains: Vec<SealedDomain>,
     _receipt_revision: u64,
     charged_bytes: usize,
-    _successor: Option<SealedSuccessor>,
+    _successor: Option<SealedFirstAcceptancePromotion>,
 }
 struct SealedDomain {
     _domain_slot: usize,
@@ -155,22 +159,15 @@ struct SealedRecord {
     _old_digest: Option<[u8; 32]>,
     _new_digest: Option<[u8; 32]>,
 }
-struct SealedSuccessor {
-    _protocol: &'static str,
+struct SealedFirstAcceptancePromotion {
+    _source: FirstAcceptancePromotionSourceResult,
+    _asset: Option<FirstAcceptancePromotionAssetResult>,
     _correlation_digest: Option<[u8; 32]>,
-    _roles: Vec<SealedSuccessorRole>,
+    _points: [Option<FirstAcceptancePromotionPointFact>; 3],
 }
-struct SealedSuccessorRole {
-    _domain_slot: usize,
-    _kind: SuccessorRoleKind,
-    _result: SuccessorRoleResult,
-    _correlation_digest: Option<[u8; 32]>,
-    _derived: Vec<DerivedReadFact>,
-}
-
 struct ReconciliationExecution {
     sides: Vec<DomainReconciliation>,
-    successor: Option<SuccessorExecution>,
+    successor: Option<FirstAcceptancePromotionExecution>,
     receipt: CommitReceipt,
 }
 
@@ -485,7 +482,7 @@ fn signal_structural(
 fn seal_collision(
     descriptor: &RetainedReconciliationDescriptor,
     sides: &[DomainReconciliation],
-    successor: Option<&SuccessorExecution>,
+    successor: Option<&FirstAcceptancePromotionExecution>,
 ) -> SealedCollision {
     let mut charged_bytes = 32usize;
     let domains = descriptor
@@ -522,30 +519,13 @@ fn seal_collision(
         .collect();
     let successor = successor.map(|successor| {
         charged_bytes = charged_bytes
-            .checked_add(128)
-            .and_then(|bytes| bytes.checked_add(successor.identity.name.len()))
+            .checked_add(FIRST_ACCEPTANCE_PROMOTION_COLLISION_FACT_BYTES)
             .expect("reserved successor collision charge arithmetic");
-        let roles = successor
-            .roles
-            .iter()
-            .map(|role| {
-                charged_bytes = charged_bytes
-                    .checked_add(160)
-                    .and_then(|bytes| bytes.checked_add(role.derived.len().saturating_mul(96)))
-                    .expect("reserved successor role charge arithmetic");
-                SealedSuccessorRole {
-                    _domain_slot: role.domain_slot,
-                    _kind: role.kind,
-                    _result: role.result,
-                    _correlation_digest: role.correlation_digest,
-                    _derived: role.derived.clone(),
-                }
-            })
-            .collect();
-        SealedSuccessor {
-            _protocol: successor.identity.name,
-            _correlation_digest: successor.correlation_digest,
-            _roles: roles,
+        SealedFirstAcceptancePromotion {
+            _source: successor.source,
+            _asset: successor.asset,
+            _correlation_digest: successor.diagnostic,
+            _points: successor.points,
         }
     });
     SealedCollision {
@@ -564,10 +544,8 @@ fn descriptor_sides_admit_successor(
         return false;
     };
     descriptor.domains.iter().zip(sides).all(|(domain, side)| {
-        if successor
-            .roles
-            .iter()
-            .any(|role| role.domain_slot == domain.domain_slot)
+        if domain.domain_slot == successor.source_slot
+            || successor.asset_slot == Some(domain.domain_slot)
         {
             *side != DomainReconciliation::ExactOld
         } else {

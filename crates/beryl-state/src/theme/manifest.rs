@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     error::Error,
     fmt,
     io::{self, BufRead, Write},
@@ -16,6 +17,8 @@ pub const THEME_MANIFEST_SCHEMA_VERSION: u64 = 1;
 pub const THEME_MANIFEST_LINE_MAX_BYTES: usize = 4 * 1024;
 pub const THEME_MANIFEST_HEADER_MAX_BYTES: usize = 16 * 1024;
 pub const THEME_MANIFEST_PAGE_MAX_ENCODED_BYTES: usize = 256 * 1024;
+pub const THEME_INSTALLED_MAX_ENTRIES: usize = 1024;
+pub const THEME_MANIFEST_MAX_BYTES: u64 = 1024 * 1024;
 
 /// Caller-selected bounds for incremental manifest decoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,6 +97,7 @@ pub(crate) struct ThemeManifestDecoder<R> {
     row_id: Option<InstalledThemeId>,
     row_name: Option<ThemeName>,
     pending: Option<InstalledThemeSummary>,
+    installed_ids: HashSet<InstalledThemeId>,
     eof: bool,
 }
 
@@ -178,6 +182,7 @@ impl<R: BufRead> ThemeManifestDecoder<R> {
             row_id: None,
             row_name: None,
             pending: None,
+            installed_ids: HashSet::with_capacity(THEME_INSTALLED_MAX_ENTRIES),
             eof: !first_row,
         })
     }
@@ -345,6 +350,14 @@ impl<R: BufRead> ThemeManifestDecoder<R> {
                 order: self.next_order,
                 field: "name",
             })?;
+        if self.next_order >= THEME_INSTALLED_MAX_ENTRIES as u64 {
+            return Err(ThemeManifestDecodeError::LimitExceeded(
+                ThemeManifestLimit::InstalledEntries,
+            ));
+        }
+        if !self.installed_ids.insert(id.clone()) {
+            return Err(ThemeManifestDecodeError::DuplicateThemeId { id });
+        }
         Ok(InstalledThemeSummary::new(id, name, self.next_order))
     }
 }
@@ -373,17 +386,27 @@ pub(crate) struct ThemeManifestEncoder<W> {
     generation: ThemeManifestGeneration,
     next_order: u64,
     encoded_bytes: u64,
+    max_encoded_bytes: u64,
 }
 
 impl<W: Write> ThemeManifestEncoder<W> {
-    pub(crate) fn new(
+    pub(crate) fn new_bounded(
         mut writer: W,
         generation: ThemeManifestGeneration,
+        max_encoded_bytes: u64,
     ) -> Result<Self, ThemeManifestEncodeError> {
         let header = format!(
             "schema_version = {THEME_MANIFEST_SCHEMA_VERSION}\ngeneration = {}\n\n",
             generation.get()
         );
+        if u64::try_from(header.len())
+            .map_err(|_| ThemeManifestEncodeError::EncodedLengthOverflow)?
+            > max_encoded_bytes
+        {
+            return Err(ThemeManifestEncodeError::LimitExceeded(
+                ThemeManifestLimit::EncodedBytes,
+            ));
+        }
         writer.write_all(header.as_bytes())?;
         Ok(Self {
             writer,
@@ -391,6 +414,7 @@ impl<W: Write> ThemeManifestEncoder<W> {
             next_order: 0,
             encoded_bytes: u64::try_from(header.len())
                 .map_err(|_| ThemeManifestEncodeError::EncodedLengthOverflow)?,
+            max_encoded_bytes,
         })
     }
 
@@ -398,6 +422,11 @@ impl<W: Write> ThemeManifestEncoder<W> {
         &mut self,
         theme: &InstalledThemeSummary,
     ) -> Result<(), ThemeManifestEncodeError> {
+        if self.next_order >= THEME_INSTALLED_MAX_ENTRIES as u64 {
+            return Err(ThemeManifestEncodeError::LimitExceeded(
+                ThemeManifestLimit::InstalledEntries,
+            ));
+        }
         if theme.order() != self.next_order {
             return Err(ThemeManifestEncodeError::NonContiguousOrder {
                 expected: self.next_order,
@@ -455,14 +484,20 @@ impl<W: Write> ThemeManifestEncoder<W> {
     }
 
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ThemeManifestEncodeError> {
-        self.writer.write_all(bytes)?;
-        self.encoded_bytes = self
+        let encoded_bytes = self
             .encoded_bytes
             .checked_add(
                 u64::try_from(bytes.len())
                     .map_err(|_| ThemeManifestEncodeError::EncodedLengthOverflow)?,
             )
             .ok_or(ThemeManifestEncodeError::EncodedLengthOverflow)?;
+        if encoded_bytes > self.max_encoded_bytes {
+            return Err(ThemeManifestEncodeError::LimitExceeded(
+                ThemeManifestLimit::EncodedBytes,
+            ));
+        }
+        self.writer.write_all(bytes)?;
+        self.encoded_bytes = encoded_bytes;
         Ok(())
     }
 }
@@ -635,6 +670,8 @@ fn parse_toml_string(value: &str, line: u64) -> Result<String, ThemeManifestDeco
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThemeManifestLimit {
+    InstalledEntries,
+    EncodedBytes,
     HeaderEncodedBytes,
     PageEncodedBytes,
 }
@@ -795,6 +832,7 @@ pub enum ThemeManifestEncodeError {
     NonContiguousOrder { expected: u64, actual: u64 },
     OrderExhausted,
     EncodedLengthOverflow,
+    LimitExceeded(ThemeManifestLimit),
 }
 
 impl fmt::Display for ThemeManifestEncodeError {
@@ -809,6 +847,7 @@ impl fmt::Display for ThemeManifestEncodeError {
             Self::EncodedLengthOverflow => {
                 formatter.write_str("theme manifest encoded byte count overflowed")
             }
+            Self::LimitExceeded(limit) => write!(formatter, "theme manifest exceeded {limit}"),
         }
     }
 }
@@ -831,6 +870,8 @@ impl From<io::Error> for ThemeManifestEncodeError {
 impl fmt::Display for ThemeManifestLimit {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::InstalledEntries => "the installed-entry limit",
+            Self::EncodedBytes => "the encoded-manifest limit",
             Self::HeaderEncodedBytes => "the header encoded-byte limit",
             Self::PageEncodedBytes => "the page encoded-byte limit",
         })

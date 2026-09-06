@@ -104,7 +104,7 @@ Preserve the user's current window layout and last coherent work surfaces when d
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 

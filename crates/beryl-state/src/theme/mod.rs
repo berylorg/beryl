@@ -39,9 +39,10 @@ pub use identity::{
     ThemeManifestGeneration, ThemeManifestIdentity, ThemeSettingsIdentity,
 };
 pub use manifest::{
-    THEME_MANIFEST_HEADER_MAX_BYTES, THEME_MANIFEST_LINE_MAX_BYTES,
-    THEME_MANIFEST_PAGE_MAX_ENCODED_BYTES, THEME_MANIFEST_SCHEMA_VERSION, ThemeManifestDecodeError,
-    ThemeManifestEncodeError, ThemeManifestHeader, ThemeManifestLimit, ThemeManifestReadLimits,
+    THEME_INSTALLED_MAX_ENTRIES, THEME_MANIFEST_HEADER_MAX_BYTES, THEME_MANIFEST_LINE_MAX_BYTES,
+    THEME_MANIFEST_MAX_BYTES, THEME_MANIFEST_PAGE_MAX_ENCODED_BYTES, THEME_MANIFEST_SCHEMA_VERSION,
+    ThemeManifestDecodeError, ThemeManifestEncodeError, ThemeManifestHeader, ThemeManifestLimit,
+    ThemeManifestReadLimits,
 };
 pub(crate) use manifest::{ThemeManifestDecoder, ThemeManifestEncoder, ThemeManifestEncoding};
 pub use model::*;

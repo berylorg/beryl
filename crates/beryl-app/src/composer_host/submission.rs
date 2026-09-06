@@ -221,22 +221,26 @@ impl SyndicComposerHost {
         store: &HomeStore,
         assets: AssetState,
     ) -> Result<ComposerHostSubmissionAdvance, ComposerHostSubmissionError> {
-        let (request, candidate, thread_id, published_pair) = {
+        let (request, candidate, selector) = {
             let pending = self.submission.pending.as_ref().unwrap();
             let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
             (
                 pending.request,
                 active.storage_candidate,
-                active.thread_id,
-                active.published_pair,
+                active.durable_selector,
             )
         };
-        if candidate.root() != published_pair.root()
-            || candidate.history() != published_pair.history()
-            || self.is_dirty()
-        {
+        if self.is_dirty() || self.publication.lane.is_some() || self.live_operation_pending() {
             return Err(ComposerHostError::PublicationPending.into());
         }
+        if !self
+            .storage
+            .draft_editor_candidate_is_saved(store, candidate, selector)
+            .map_err(ComposerHostError::from)?
+        {
+            return Err(ComposerHostError::PublicationAssetMismatch.into());
+        }
+        let thread_id = selector.thread_id();
         let current = self
             .storage
             .current_draft(store, thread_id, submission_point_limit())?
@@ -245,8 +249,14 @@ impl SyndicComposerHost {
             .storage
             .image_label_authority_head(store, thread_id, submission_point_limit())?
             .ok_or(ComposerHostError::MissingImageLabelAuthority)?;
-        if current.draft().id() != candidate.draft_id()
-            || current.draft().root_history() != published_pair
+        if syndic_storage::DraftEditorCurrentSelectorV1::new(
+            current.thread().id(),
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().piece_root(),
+            current.draft().history(),
+        ) != selector
         {
             return Err(ComposerHostError::PublicationAssetMismatch.into());
         }
@@ -269,17 +279,15 @@ impl SyndicComposerHost {
             .input_gate(store, thread_id, submission_point_limit())?
             .ok_or(ComposerHostError::MissingCurrentDraft)?;
         let build = DraftComposerBuildKeyV1::new(
-            candidate.root(),
+            selector.root(),
             DraftComposerFormatV1::ComposerV1,
             request.materialization_operation_id(),
         );
         self.pending_submission_mut().stage = PendingSubmissionStage::Materializing {
             captured: CapturedSubmission {
-                thread_id,
                 candidate,
-                thread_revision: current.thread().revision(),
+                selector,
                 image_label_authority,
-                draft_revision: current.draft().revision(),
                 gate_revision: gate.revision(),
                 gate_state: gate.state().clone(),
                 asset_reference_set,
@@ -356,13 +364,27 @@ impl SyndicComposerHost {
                 self.settle_materializer_command(store.execute(command), captured, cancellation)
             }
             DraftComposerMaterializationStatusV1::Sealed(materialization) => {
+                let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
+                if active.storage_candidate != captured.candidate
+                    || active.durable_selector != captured.selector
+                    || !self
+                        .storage
+                        .draft_editor_candidate_is_saved(
+                            store,
+                            captured.candidate,
+                            captured.selector,
+                        )
+                        .map_err(ComposerHostError::from)?
+                {
+                    return Err(ComposerHostError::PublicationAssetMismatch.into());
+                }
                 let request = self.submission.pending.as_ref().unwrap().request;
                 let acceptance = FirstAcceptance::new(
-                    captured.thread_id,
-                    captured.thread_revision,
+                    captured.selector.thread_id(),
+                    captured.selector.thread_revision(),
                     captured.image_label_authority,
                     captured.candidate.draft_id(),
-                    captured.draft_revision,
+                    captured.selector.selector_revision(),
                     captured.candidate,
                     materialization,
                     captured.gate_revision,

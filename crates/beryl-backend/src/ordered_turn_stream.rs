@@ -320,8 +320,6 @@ pub trait OrderedTurnStreamSink: Send {
 /// Binding failures decided before ordered transport polling begins.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum OrderedTurnStreamBindingError {
-    #[error("ordered turn-stream ingestion is unavailable on stdio transport")]
-    StdioUnavailable,
     #[error("ordered turn-stream ingestion requires an initialized full notification profile")]
     FullTurnStreamRequired,
     #[error("this session already has an ordered turn-stream sink")]

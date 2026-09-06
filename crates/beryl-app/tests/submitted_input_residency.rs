@@ -1,0 +1,100 @@
+#![cfg(feature = "test-faults")]
+
+#[path = "projection/syndic.rs"]
+mod syndic;
+
+#[path = "submitted_input_residency/backpressure.rs"]
+mod backpressure;
+#[path = "submitted_input_residency/content.rs"]
+mod content;
+#[path = "submitted_input_residency/failure.rs"]
+mod failure;
+#[path = "submitted_input_residency/fixture.rs"]
+mod fixture;
+#[path = "submitted_input_residency/scale.rs"]
+mod scale;
+#[path = "submitted_input_residency/server.rs"]
+mod server;
+#[path = "submitted_input_residency/verification.rs"]
+mod verification;
+#[path = "submitted_input_residency/wire.rs"]
+mod wire;
+
+use beryl_app::{
+    BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,
+    LifecycleYieldRequest, LifecycleYieldRequestHandler,
+    cas_projection::{OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers},
+};
+use beryl_backend::DynamicToolCallResponse;
+
+pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
+
+static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[derive(Default)]
+pub(crate) struct NoopLifecycle;
+
+impl LifecycleYieldRequestHandler for NoopLifecycle {
+    fn respond_lifecycle_yield(
+        &mut self,
+        _context: OrdinaryDynamicToolContext,
+        _request: LifecycleYieldRequest,
+    ) -> DynamicToolCallResponse {
+        DynamicToolCallResponse::success_text("unused lifecycle handler")
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct NoopBranch;
+
+impl BranchDiscussionResolutionRequestHandler for NoopBranch {
+    fn respond_branch_discussion_resolution(
+        &mut self,
+        _context: OrdinaryDynamicToolContext,
+        _request: BranchDiscussionResolutionRequest,
+    ) -> DynamicToolCallResponse {
+        DynamicToolCallResponse::success_text("unused branch handler")
+    }
+}
+
+pub(crate) fn noop_handlers<'a>(
+    lifecycle: &'a mut NoopLifecycle,
+    branch: &'a mut NoopBranch,
+) -> OrdinaryDynamicToolHandlers<'a> {
+    OrdinaryDynamicToolHandlers::new(lifecycle, branch)
+}
+
+#[test]
+fn submitted_input_logical_work_scales_and_local_capacity_releases() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    scale::run();
+}
+
+#[test]
+fn submitted_input_backpressure_stays_capacity_one() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    backpressure::run();
+}
+
+#[test]
+fn submitted_input_failures_preserve_taxonomy_and_release() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::run();
+}
+
+#[test]
+fn submitted_content_fixture_uses_exact_root_first_acceptance() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let mut fixture = syndic::Fixture::new(201);
+    let thread = fixture.create_ordinary(202);
+    let seeded = content::seed_submitted_input(
+        &mut fixture,
+        thread,
+        content::LogicalInput::marker_free(2),
+        None,
+    );
+    assert_eq!(fixture.submitted_content(seeded.submitted), seeded.content);
+    assert!(seeded.composer_max_buffer_bytes <= syndic_storage::CONTENT_CHUNK_MAX_BYTES);
+    let (_directory, service) = fixture.into_service();
+    let _ = service.close().unwrap();
+}

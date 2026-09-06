@@ -796,7 +796,9 @@ mod mutation;
 mod native_projection;
 mod pristine_thread;
 mod projection;
-mod provider_item;
+#[cfg(feature = "provider-frame-test-support")]
+pub mod provider_frame_test_support;
+pub(crate) mod provider_item;
 mod provider_observation;
 mod read;
 mod record;

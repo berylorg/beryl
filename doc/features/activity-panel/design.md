@@ -54,7 +54,7 @@ Show bounded live and recent backend activity for the selected conversation with
 - Lifecycle updates preserve exact row identity across overlapping threads and subagents.
 - Running activity remains available until terminal state. Completed activity is retained only
   within deterministic recent-activity bounds; leaving the viewport never changes logical state.
-- Row labels, activity values, tooltips, and accessibility strings are bounded projections over
+- Row labels, activity values, and tooltips are bounded projections over
   source ranges. Truncation is explicit; asking for complete source content never materializes it in
   this panel.
 
@@ -120,6 +120,6 @@ Show bounded live and recent backend activity for the selected conversation with
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

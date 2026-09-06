@@ -11,6 +11,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - The graph composes typed home domains, health and readiness publishers, runtime/root services,
   bounded catalog and activity services, settings and theme services, durable-job coordinators,
   and explicitly bounded worker pools. Shared versioned facts never retain or mutate GPUI views.
+- The validated home service graph constructs exactly one marker-seal service for each home
+  generation with immutable limits. Windows and publication flights receive clones sharing its
+  flight registry and capacity. Construction is restricted to home composition; consumers do not
+  rediscover the service through a process-global registry. Graph retirement freezes admission and
+  completes the existing disposal and generation-retirement protocol before replacement; dropping
+  shared handles alone is not that protocol.
 - `beryl-app` is the sole GPUI shell-composition boundary described by
   [GUI integration](../../../doc/gui/integration.md). Feature controllers mount only into declared
   windows and slots.

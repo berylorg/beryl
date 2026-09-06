@@ -172,6 +172,7 @@ pub(super) fn receipt_matches_head(
         && opened.open_operation_id() == head.open_operation_id()
         && opened.durable_base_selector_revision() == head.durable_base_selector_revision()
         && opened.durable_base_root() == head.durable_base_root()
+        && opened.durable_base_history() == head.durable_base_history()
         && opened.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active
         && opened.session_generation() <= head.session_generation()
 }
@@ -210,160 +211,50 @@ pub(super) fn candidate_session_adoption_is_exact(
     store: &HomeStore,
     head: &DraftEditorCandidateSessionV1,
 ) -> Result<bool, SyndicReadError> {
-    if !super::publication::candidate_session_publication_is_exact_in_store(storage, store, head)? {
-        return Ok(false);
-    }
-    if !active_operation_custody_is_exact(storage, store, head)? {
-        return Ok(false);
-    }
-    let root = head.newest_root();
-    let history_reference = head.newest_history();
-    let stored_root = storage.point::<DraftPieceRootsFamily>(store, root.key(), point_limit())?;
-    let stored_history = storage.point::<DraftEditHistoryFrontiersFamily>(
-        store,
-        history_reference.key(),
-        point_limit(),
-    )?;
-    let (Some(stored_root), Some(stored_history)) = (stored_root.as_ref(), stored_history.as_ref())
-    else {
-        return Ok(false);
-    };
-    if stored_root.reference() != root
-        || stored_history.reference() != history_reference
-        || history_reference.root() != root
-        || history_reference.candidate_generation() != head.newest_candidate_generation()
+    if !publication::candidate_session_publication_is_exact_in_store(storage, store, head)?
+        || !active_operation_custody_is_exact(storage, store, head)?
     {
         return Ok(false);
     }
-    if !draft_edit_history_frontier_is_authenticated_v1(storage, store, stored_history)? {
-        return Ok(false);
-    }
-    if head.newest_candidate_generation() == 0 {
-        let durable_history = storage.point::<DraftEditHistoryFrontiersFamily>(
-            store,
-            head.durable_base_history().key(),
-            point_limit(),
-        )?;
-        return Ok(root == head.durable_base_root()
-            && history_reference.key().session_id() == Some(head.session_id())
-            && durable_history.as_ref().is_some_and(|frontier| {
-                frontier.reference() == head.durable_base_history()
-                    && frontier.fork_session(head.session_id()).as_ref() == Some(stored_history)
-            }));
-    }
-    if head.newest_candidate_generation() == head.published_candidate_generation()
-        && head.newest_root() == head.published_root()
-    {
-        let published = storage.point::<DraftEditHistoryFrontiersFamily>(
-            store,
-            head.published_history().key(),
-            point_limit(),
-        )?;
-        return Ok(published.as_ref().is_some_and(|frontier| {
-            frontier.reference() == head.published_history()
-                && (frontier == stored_history
-                    && matches!(
-                        frontier.reference().key(),
-                        DraftEditHistoryFrontierKeyV1::Publication { session_id, .. }
-                            if session_id == head.session_id()
-                    )
-                    || frontier.fork_session(head.session_id()).as_ref() == Some(stored_history))
-        }));
-    }
-    let Some(journal_head) = stored_history.journal_head() else {
-        return Ok(false);
-    };
-    let Some(newest_transition) = storage.point::<DraftEditHistoryTransitionsFamily>(
+    let Some(frontier) = storage.point::<DraftEditHistoryFrontiersFamily>(
         store,
-        journal_head.key(),
+        head.newest_history().key(),
         point_limit(),
     )?
     else {
         return Ok(false);
     };
-    if newest_transition.reference() != journal_head {
-        return Ok(false);
+    if checkpoint::has_opening_identity(head) {
+        return checkpoint::candidate_is_exact_in_store(storage, store, head, &frontier);
     }
-    if newest_transition.kind() != DraftEditHistoryTransitionKindV1::OrdinaryEdit {
-        return historical_candidate_session_is_exact_in_store(
-            storage,
+    if head.newest_candidate_generation() == head.published_candidate_generation()
+        && head.newest_root() == head.published_root()
+    {
+        let root = storage.point::<DraftPieceRootsFamily>(
             store,
-            head,
-            newest_transition.operation_id(),
-        );
-    }
-    let key = DraftPieceSettlementKeyV1::new(
-        head.draft_id(),
-        head.session_id(),
-        newest_transition.operation_id(),
-    );
-    let settlement = storage.point::<DraftPieceSettlementsFamily>(store, key, point_limit())?;
-    let build = storage.point::<DraftPieceBuildsFamily>(store, key, point_limit())?;
-    if let Some(build) = build.as_ref() {
-        let receipt = storage.point::<DraftPieceBuildProgressFamily>(
-            store,
-            build.progress_receipt().key(),
+            head.newest_root().key(),
             point_limit(),
         )?;
-        let Some(receipt) = receipt else {
-            return Ok(false);
-        };
-        if !progress_receipt_matches_build(&receipt, build) {
-            return Ok(false);
-        }
-        if !progress_receipt_closure_is_exact(storage, store, &receipt)? {
-            return Ok(false);
-        }
-        let Some(next_ordinal) = build
-            .progress_receipt()
-            .key()
-            .transition_ordinal()
-            .checked_add(1)
-        else {
-            return Ok(false);
-        };
-        if storage
-            .point::<DraftPieceBuildProgressFamily>(
-                store,
-                DraftPieceBuildProgressReceiptKeyV1::new(
-                    build.draft_id(),
-                    build.session_id(),
-                    build.operation_id(),
-                    next_ordinal,
-                ),
-                point_limit(),
-            )?
-            .is_some()
-        {
-            return Ok(false);
-        }
+        let published = storage.point::<DraftEditHistoryFrontiersFamily>(
+            store,
+            head.published_history().key(),
+            point_limit(),
+        )?;
+        return Ok(root.as_ref().is_some_and(|root| {
+            root.reference() == head.newest_root()
+                && draft_piece_root_reference_is_locally_exact_v1(root.reference())
+        }) && frontier.reference() == head.newest_history()
+            && draft_edit_history_frontier_is_authenticated_v1(storage, store, &frontier)?
+            && published.as_ref().is_some_and(|published| {
+                published.reference() == head.published_history()
+                    && (published == &frontier
+                        && matches!(published.reference().key(),
+                            DraftEditHistoryFrontierKeyV1::Publication { session_id, .. }
+                                if session_id == head.session_id())
+                        || published.fork_session(head.session_id()).as_ref() == Some(&frontier))
+            }));
     }
-    let Some(settlement) = settlement else {
-        return Ok(false);
-    };
-    let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
-        return Ok(false);
-    };
-    let stored_transition = storage.point::<DraftEditHistoryTransitionsFamily>(
-        store,
-        adoption.transition().key(),
-        point_limit(),
-    )?;
-    Ok(settlement_closure_is_exact(&settlement)
-        && settlement_terminal_build_is_exact(&settlement, build.as_ref())
-        && adopted_head_matches_current(adoption.adopted_session(), head)
-        && adoption.adopted_root() == stored_root
-        && adoption.adopted_history() == stored_history
-        && stored_transition.as_ref() == Some(adoption.transition())
-        && matches!(
-            settlement.outcome(),
-            DraftPieceSettlementOutcomeV1::Committed {
-                successor,
-                candidate_generation,
-                ..
-            } if *successor == root
-                && *candidate_generation == head.newest_candidate_generation()
-        ))
+    checkpoint::candidate_is_exact_in_store(storage, store, head, &frontier)
 }
 
 pub(super) fn candidate_session_closure_is_exact_in_store(

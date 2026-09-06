@@ -30,11 +30,11 @@ use self::{
     server::{SteeringServer, SteeringServerScenario, TIMEOUT},
     support::{DeliveryFixture, RetryRaceBranch, STEERING_TEXT},
 };
-use super::test_support::DeliveryPause;
 use super::model::{
     ActiveSteeringDeliveryError, ActiveSteeringDeliveryOutcome, ActiveSteeringProjectionLossCause,
     ActiveSteeringRetryCause, ActiveSteeringSaturationCause, ActiveSteeringUnknownCause,
 };
+use super::test_support::DeliveryPause;
 
 fn wait_for_route_pair(
     fixture: &DeliveryFixture,
@@ -60,8 +60,7 @@ fn wait_for_route_pair(
 
 #[test]
 fn automatic_scheduler_claims_delivers_and_joins_at_minimum_capacity() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
+    let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
     let fixture = DeliveryFixture::new_scheduled(215, 4, &server, STEERING_TEXT);
     let deadline = Instant::now() + TIMEOUT;
     let (diagnostics, workers) = loop {
@@ -102,8 +101,7 @@ fn same_source_inputs_deliver_in_accepted_order_with_one_active_attempt() {
     let diagnostics = loop {
         let diagnostics = fixture.scheduler_diagnostics();
         if fixture.route_state() == AcceptedRouteEffectiveState::Delivered
-            && fixture.second_route_state()
-                == AcceptedRouteEffectiveState::Delivered
+            && fixture.second_route_state() == AcceptedRouteEffectiveState::Delivered
             && diagnostics.workers_active() == 0
             && diagnostics.workers_joined() == 2
         {
@@ -187,8 +185,7 @@ fn sibling_admission_before_retry_preserves_proven_non_dispatch() {
 
 #[test]
 fn sibling_admission_before_rejection_preserves_exact_rejection() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::StructuredRejectionThenSuccess);
+    let server = SteeringServer::spawn(SteeringServerScenario::StructuredRejectionThenSuccess);
     let mut fixture = DeliveryFixture::new(224, 5, &server, STEERING_TEXT);
 
     let outcome = fixture
@@ -234,13 +231,9 @@ fn sibling_admission_before_abandonment_preserves_exact_loss_disposition() {
 
 #[test]
 fn durable_receipt_reconciles_after_delivery_claim_descendant() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
-    let fixture = DeliveryFixture::new_scheduled_descendant_reconciliation(
-        220,
-        &server,
-        STEERING_TEXT,
-    );
+    let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
+    let fixture =
+        DeliveryFixture::new_scheduled_descendant_reconciliation(220, &server, STEERING_TEXT);
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let diagnostics = fixture.scheduler_diagnostics();
@@ -263,16 +256,11 @@ fn durable_receipt_reconciles_after_delivery_claim_descendant() {
 
 #[test]
 fn parked_cancellation_ignores_ordinary_wake_until_lifecycle_renewal() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
-    let fixture =
-        DeliveryFixture::new_scheduled_cancelled(216, 4, &server, STEERING_TEXT);
+    let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
+    let fixture = DeliveryFixture::new_scheduled_cancelled(216, 4, &server, STEERING_TEXT);
     let parked = fixture.scheduler_diagnostics();
     assert_eq!(fixture.route_state(), AcceptedRouteEffectiveState::Ready);
-    assert_eq!(
-        fixture.route_lifecycle(),
-        AcceptedInputLifecycle::Retryable
-    );
+    assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Retryable);
     assert_eq!(parked.workers_started(), 1);
     assert_eq!(parked.workers_joined(), 1);
 
@@ -325,14 +313,9 @@ fn parked_cancellation_ignores_ordinary_wake_until_lifecycle_renewal() {
 
 #[test]
 fn lifecycle_reopen_observed_before_older_parked_completion_wins_after_join() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
-    let fixture = DeliveryFixture::new_scheduled_cancelled_and_renewed(
-        217,
-        4,
-        &server,
-        STEERING_TEXT,
-    );
+    let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
+    let fixture =
+        DeliveryFixture::new_scheduled_cancelled_and_renewed(217, 4, &server, STEERING_TEXT);
     let deadline = Instant::now() + TIMEOUT;
     let diagnostics = loop {
         let diagnostics = fixture.scheduler_diagnostics();
@@ -373,10 +356,7 @@ fn full_worker_set_preserves_ready_input_for_delivery_after_release() {
             cause: ActiveSteeringSaturationCause::WorkerPoolFull,
         })
     ));
-    assert_eq!(
-        fixture.route_state(),
-        AcceptedRouteEffectiveState::Ready
-    );
+    assert_eq!(fixture.route_state(), AcceptedRouteEffectiveState::Ready);
     assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Admitted);
     assert_eq!(fixture.ready_input(), ready_before);
     assert_eq!(fixture.input_gate(), gate_before);
@@ -409,10 +389,7 @@ fn occupied_connection_attempt_preserves_ready_input_for_later_delivery() {
             cause: ActiveSteeringSaturationCause::ConnectionAttemptBusy,
         })
     ));
-    assert_eq!(
-        fixture.route_state(),
-        AcceptedRouteEffectiveState::Ready
-    );
+    assert_eq!(fixture.route_state(), AcceptedRouteEffectiveState::Ready);
     assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Admitted);
     assert_eq!(fixture.ready_input(), ready_before);
     assert_eq!(fixture.input_gate(), gate_before);
@@ -451,10 +428,7 @@ fn closed_structured_rejection_preserves_the_exact_diagnostic_and_queues_next_tu
         fixture.route_state(),
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::SteeringRejected)
     );
-    assert!(matches!(
-        fixture.binding_state(),
-        BindingState::Active(_)
-    ));
+    assert!(matches!(fixture.binding_state(), BindingState::Active(_)));
 
     fixture.close(server);
 }
@@ -503,7 +477,7 @@ fn completion_unknown_terminalizes_the_input_and_retires_projection_authority() 
             ref actual,
         } if method == "turn/steer"
             && expected.as_str() == server::CAS_TURN_ID
-            && actual.as_str() == "phase54-wrong-turn"
+            && actual.as_str() == "wrong-turn"
     ));
     assert_eq!(
         fixture.route_state(),
@@ -516,12 +490,10 @@ fn completion_unknown_terminalizes_the_input_and_retires_projection_authority() 
 
 #[test]
 fn exact_response_waits_for_started_then_completed_before_durable_success() {
-    let server =
-        SteeringServer::spawn(SteeringServerScenario::SuccessResponseBeforeLifecycle);
+    let server = SteeringServer::spawn(SteeringServerScenario::SuccessResponseBeforeLifecycle);
     let mut fixture = DeliveryFixture::new(205, 4, &server, STEERING_TEXT);
 
-    let (state_before_lifecycle, outcome) =
-        fixture.deliver_after_delayed_lifecycle(&server);
+    let (state_before_lifecycle, outcome) = fixture.deliver_after_delayed_lifecycle(&server);
     assert_eq!(
         state_before_lifecycle,
         AcceptedRouteEffectiveState::Delivering,
@@ -597,14 +569,8 @@ fn cancellation_during_preparation_returns_the_exact_route_to_retryable() {
             cause: ActiveSteeringRetryCause::Preparation(_),
         }
     ));
-    assert_eq!(
-        fixture.route_state(),
-        AcceptedRouteEffectiveState::Ready
-    );
-    assert_eq!(
-        fixture.route_lifecycle(),
-        AcceptedInputLifecycle::Retryable
-    );
+    assert_eq!(fixture.route_state(), AcceptedRouteEffectiveState::Ready);
+    assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Retryable);
     assert!(matches!(fixture.binding_state(), BindingState::Active(_)));
 
     let ready_before_saturation = fixture.ready_input();
@@ -661,10 +627,7 @@ fn lifecycle_arm_retry_precedes_concurrent_ordinary_loss() {
         fixture.route_state(),
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::ProjectionLost)
     );
-    assert_eq!(
-        fixture.route_lifecycle(),
-        AcceptedInputLifecycle::Retryable
-    );
+    assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Retryable);
     assert!(matches!(fixture.binding_state(), BindingState::Stale(_)));
 
     fixture.close(server);
@@ -688,10 +651,7 @@ fn authorization_retry_precedes_concurrent_ordinary_loss() {
         fixture.route_state(),
         AcceptedRouteEffectiveState::NextTurn(NextTurnReason::ProjectionLost)
     );
-    assert_eq!(
-        fixture.route_lifecycle(),
-        AcceptedInputLifecycle::Retryable
-    );
+    assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Retryable);
     assert!(matches!(fixture.binding_state(), BindingState::Stale(_)));
 
     fixture.close(server);

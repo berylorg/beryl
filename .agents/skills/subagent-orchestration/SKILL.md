@@ -19,8 +19,10 @@ Delegating work transfers execution responsibility, never authority. A subagent 
 
 Before routing implementation verification or review, resolve the effective engineering-rigor
 contract from the applicable design authorities. It determines the required review method and
-evidence threshold; it does not provide a rigor-profile-to-model mapping. Treat a missing, unknown,
-or incompatible required declaration as incomplete design and report it rather than guessing.
+evidence threshold; it does not provide a rigor-profile-to-model mapping. Apply `engineering-rigor`
+rules for explicit inheritance and missing declarations. Resolve any remaining choice that materially
+changes implementation or acceptance before routing the affected work; do not guess an unknown
+profile or bypass a conflicting guarantee.
 
 ## Delegation Gate
 
@@ -116,10 +118,12 @@ Use a fresh reviewer context and provide the artifact, controlling sources, acce
 effective engineering-rigor contract or its relevant derived requirements, supported operating
 envelope, and required evidence without leaking the expected verdict or prior diagnosis.
 
-Spawn an independent reviewer only when the effective rigor contract, a concrete consequence, weak
-objective verification, applicable instructions, or an explicit acceptance plan requires it. Let
-routine objective verification remain with the worker plus targeted main-thread validation when no
-independent review requirement applies.
+Spawn an independent reviewer when the effective rigor contract, applicable instructions, or an
+explicit acceptance plan requires it, or when material consequences and gaps in objective evidence
+justify it under `engineering-rigor`. Weak verification alone does not require independent review
+of low-consequence work. Let routine objective verification remain with the worker plus targeted
+main-thread validation when no independent review requirement applies. Preserve explicit versioned
+requirements.
 
 Choose reviewer strength from the consequence and verifiability of the reviewed decision, not from
 the artifact's format, the author's profile, or a rigor-profile-to-model mapping. Use a frontier
@@ -128,10 +132,11 @@ architectural review, and critical reasoning only for adversarial, deeply couple
 verifiable, or materially costly review required by the effective contract or concrete consequence.
 
 A reviewer reports findings and evidence. Classify a finding as blocking only when it identifies an
-unmet applicable guarantee, a concrete consequence inside the supported operating envelope, or an
-undeclared exposure or consequence requiring design-authority correction. Speculative hardening
-outside the effective contract is non-blocking. A reviewer does not inherit the main thread's
-authority, and the main thread must not rubber-stamp a stronger model's conclusion.
+unmet applicable guarantee or demonstrated material harm beyond the failures the effective contract
+permits. An allowed failed invocation, retry, or rebuild is not a blocking defect. Escalate a material
+undeclared exposure or consequence to design authority; keep speculative hardening non-blocking.
+A reviewer does not inherit the main thread's authority, and the main thread must not rubber-stamp
+a stronger model's conclusion.
 
 ## Parallelism
 

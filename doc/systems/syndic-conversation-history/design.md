@@ -488,9 +488,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   complete home it permits at most 64 retained admission heads, 65,536 retained associations, and
   67,108,864 retained encoded bytes, including state left by prior process generations. A target
   that would exceed either its operation limit or a home-wide aggregate limit is refused before
-  mutation and can produce no readiness proof. This permits bounded streaming without accumulated
-  transition history, a resident registry, whole-draft scan, caller tree commitment, or unbounded
-  memory.
+  committing that charge and can produce no readiness proof. This permits bounded streaming without
+  accumulated transition history, a resident registry, whole-draft scan, caller tree commitment, or
+  unbounded memory.
 - Syndic registers one configured-capacity typed HomeStore runtime attachment. The registered-domain
   slot for one home generation is its sole strong owner, and every Syndic handle clone or
   reacquisition resolves that same attachment. It owns a bounded set of fixed-size
@@ -498,14 +498,29 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   but no per-label, historical, whole-draft, or process-global registry. The durable source-order
   and target-id trees are package-owned operation state in HomeStore, not attachment-resident state.
 - V1 uses one Syndic-package-owned readiness production profile rather than a HomeStore registration
-  option or app-selected tuning surface. The complete home retains at most 64 readiness heads across
-  process generations, at most 65,536 associations, and at most 67,108,864 encoded bytes charged to
-  their current trees, replay closures, and cleanup residue. The runtime attachment therefore owns
-  at most 64 live reservations, destination-frontier entries, and active attempt identities. One
-  canonical evidence page contains at most 256 associations and at most 65,536 encoded bytes.
-  Capacity refusal happens before creating or extending operation custody and leaves ordinary text
-  editing and unrelated established operations available. These limits bound retained work, not the
-  marker population of a draft assembled across completed operations.
+  option or app-selected tuning surface. One operation's own retained charge may not exceed 65,536
+  associations or 67,108,864 encoded bytes under the existing package accounting for both current
+  trees, replay closure, and cleanup residue. These are isolated-operation ceilings at every
+  admitted quantum, not a guarantee that 65,536 user marker occurrences fit. Exceeding either ceiling
+  returns `OperationTooLarge` regardless of other operations' occupancy; waiting or retrying the
+  identical operation under the same profile does not raise the limit.
+- Separately, the complete home retains at most 64 readiness heads across process generations,
+  65,536 associations, and 67,108,864 encoded bytes under those same charges. The runtime attachment
+  owns at most 64 live reservations, destination-frontier entries, and active attempt identities.
+  A proposed operation charge that fits its isolated ceilings but cannot fit the current aggregate
+  or runtime slots returns `CapacityUnavailable`, not `OperationTooLarge`. Storage failures and
+  indeterminate writer outcomes retain their existing distinct provenance and custody. Classification
+  checks the operation's own proposed charge before adding other heads' occupancy.
+- One canonical evidence page contains at most 256 associations and 65,536 encoded bytes. Admission
+  uses trustworthy bounded count or charge facts to reject early when possible, otherwise checks
+  each bounded staging quantum before committing its charge. It never assembles the full operation
+  to preflight it or promises that an earlier successful check reserves future aggregate capacity.
+  A later refusal preserves candidate/root/history authority; admitted staging first reaches its
+  existing exact terminal settlement and incremental cleanup, with ambiguous custody reconciled
+  before noncommit is reported. No prefix is adopted and no refused proof reaches `MutationBegin`.
+  These explicit single-operation limits apply to insertion-bearing marker readiness, not the
+  marker population of a draft assembled across completed edits, text-only work, removal-only work,
+  historical-root undo/redo, or marker-seal publication. Those paths keep their own existing bounds.
 - Page preparation creates one opaque immutable bounded move-only dispatch attempt. The attempt owns
   the canonical evidence page, durable operation/page identity, exact source-head closure, sealed
   HomeStore executable command, and paired expectation consumer. The app may transport only the
@@ -638,8 +653,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   candidate-session custody endpoint. No committed prefix or intermediate mutable head or session
   endpoint is observable after any command cut. The widget and app release the widget-page payload
   only after complete target acceptance or exact target reconciliation. Neither lane declares a
-  final page count before finish. No smaller cumulative cap applies below any representable
-  checked-`u64` total, and checked overflow rejects the whole batch. Commands are serialized through
+  final page count before finish. The lanes add no smaller cumulative cap below any representable
+  checked-`u64` total; insertion-bearing marker work separately requires the fixed readiness profile
+  above, and checked overflow rejects the whole batch. Commands are serialized through
   one fixed in-flight slot, so source and proposal backpressure cannot create a resident page queue.
 - During that slot, `beryl-app` retains exactly one current validated widget-page request and the one
   prepared atomic physical-page batch derived from it. `SourceSelected` retains that same request and
@@ -838,7 +854,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   conflicting cursor or operation reuse is a collision. Small keystrokes and every one-physical-
   page translation use the same batch boundary rather than a separate command. Total edit size may
   require any representable number of bounded widget-page batches and is not limited by a resident
-  collection, viewport dimensions, or an arbitrary cumulative 256/257-page cap.
+  collection, viewport dimensions, or an arbitrary cumulative 256/257-page cap. This lane guarantee
+  does not remove the separate fixed marker-readiness operation profile.
 - Every post-finish build begin, staging-window/fragment stage, successor-construction advance, and terminal
   election names one exact expected source receipt, with `None` valid exactly when the target has
   transition ordinal one, and one
@@ -896,7 +913,8 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   closure. They never walk the receipt chain or rescan consumed staging pages. Candidate adoption atomically binds its settlement to the
   terminal receipt and that receipt's immediate-predecessor/root closure. Each receipt and the
   retained verification state are fixed-size, and there is exactly one receipt per bounded work
-  quantum, so command work and resident state stay fixed while one logical edit remains unbounded.
+  quantum, so command work and resident state stay fixed as one logical edit spans more commands
+  within its applicable operation profile.
 - Each newly committed staging-window command byte-compares only its bounded source page/receipt and
   complete target effects. Its target receipt commits the prior authenticated build receipt, before/
   after lane-consumption frontiers, before/after fragment endpoint and chain, and every same-command
@@ -1454,14 +1472,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Staging has hard schema-owned item-count, encoded-byte, page-count, per-page item, and per-page
   byte limits. It is unreachable from ordinary history and projection reads and is never canonical,
   even after every page is present.
-- One atomic cross-domain whole-turn seal-and-selection mutation validates the staged snapshot's
-  exact CAS/Syndic correlation, consumed request claim, terminal outcome, every item identity and
-  complete final field, per-page and aggregate digests, adapter/release provenance, and every
-  required finalized-media witness. Its Beryl participant atomically publishes only the exact asset
-  metadata, references, and resource dispositions proven by matching inert repair-media evidence;
-  its Syndic participant selects the compact snapshot head as the turn's sole canonical item
-  authority and enters
-  `FinalizingHistory`. The selection mutation does not rebuild or publish projections. A durable
+- Bounded staging validates each item's exact identity, complete final fields, and required media
+  evidence and advances sealed family commitments for the complete snapshot. One atomic cross-domain
+  whole-turn seal-and-selection mutation validates only the compact sealed head, fixed family/media
+  commitments, exact CAS/Syndic correlation, consumed request claim, terminal outcome, adapter/release
+  provenance, and matching publication witnesses. Its Beryl participant selects the complete sealed
+  asset generation; its Syndic participant selects the compact snapshot head as the turn's sole
+  canonical item authority. The final command does not traverse item/media pages, reread sidecar bytes,
+  or copy per-item metadata into a new batch. Both compact selectors publish together and the turn
+  enters `FinalizingHistory`. The selection mutation does not rebuild or publish projections. A durable
   live prefix, process-local outage buffer, GUI text, or partial snapshot is never combined with
   it; rejection preserves the prior authority unchanged.
 - Bounded durable work in `FinalizingHistory` rebuilds transcript and every other affected derived
@@ -1658,15 +1677,19 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `persistent-state-integrity/v1`
-- `shared-resource-protection/v1`
+- `persistent-state-integrity/v2`
+- `shared-resource-protection/v2`
 
 The draft-marker authority boundary requires independent semantic review of protection-head
 monotonicity, arbitrary-order ingestion, post-EOF assignment, retained-resource enforcement and
 reclamation, exact replay/reconciliation, target point consumption, and terminal closure.
+Focused acceptance distinguishes isolated `OperationTooLarge` from aggregate `CapacityUnavailable`
+and actual storage failure, including refusal after bounded staging has begun. It proves unchanged
+candidate/root/history authority, exact cleanup and ambiguous custody, and bounded resident state
+while a draft grows beyond one marker operation's allowance through completed smaller edits.
 Adversarial review is required only for a named high-consequence boundary that remains weakly
 covered by objective evidence.

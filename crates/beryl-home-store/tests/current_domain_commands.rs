@@ -3,19 +3,19 @@ mod support;
 #[cfg(feature = "test-faults")]
 use std::{sync::Arc, thread};
 
-#[cfg(feature = "test-faults")]
-use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint, FaultScope},
-    HomeOpenOptions, HomeSchemaVersion,
-};
 use beryl_home_store::{
     CommandError, DomainHandle, DomainMutation, DomainReader, HomeCommand, HomeStore,
     MutationBuilder, PointReadLimit,
 };
+#[cfg(feature = "test-faults")]
+use beryl_home_store::{
+    HomeOpenOptions, HomeSchemaVersion,
+    test_faults::{FaultController, FaultPoint, FaultScope},
+};
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, open_home, AlphaDomain, BytesRecord, FixtureMutationError, PutBytes,
+    AlphaDomain, BytesRecord, FixtureMutationError, PutBytes, committed, not_committed, open_home,
 };
 
 struct PutIfMissing {

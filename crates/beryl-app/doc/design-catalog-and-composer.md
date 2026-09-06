@@ -20,12 +20,20 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Range-Backed Composer Host
 
+- Marker sealing consumes the single injected home-generation service owned by the
+  [process service graph](design-shell-lifecycle.md#process-service-graph-and-windows); a host or
+  window never constructs independent flight capacity.
 - One selected host opens one exact editor-candidate session from the durable selector and exposes
   revision-bound bounded text and zero-width-marker pages to the app-neutral widget. It never
   reconstructs or retains the complete draft.
 - Widget range and marker requests map to typed Syndic ranges without widening, merging, or
   reinterpreting scopes. Resident text, marker, geometry, edit, IME, and history facts remain
   within configured page, byte, and per-frame budgets.
+- Host request numbering has one allocation owner for each live host/session. Publication, ordinary
+  editing, history adoption, and other binding advances within that lifetime preserve its monotonic
+  sequence. A new sequence belongs only to a fresh host generation; stale generations and reused
+  request identities remain rejected, and exhaustion never wraps. This request sequence is distinct
+  from the widget mutation/history operation allocator used across activation generations.
 - Restoration contains only exact root and extent binding, caret, directed selection, scroll
   anchor or continuation, durable history frontier, and undo/redo availability. It contains no
   text pages, marker collection, piece tree, layout graph, or draft-sized inverse content.
@@ -48,6 +56,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
   thread, draft, session, candidate, predecessor, and destination authority. The app transports
   bounded pages and opaque commands or receipts; it never chooses labels, builds a registry,
   compares dependency-private proof facts, scans the draft, or substitutes another operation.
+- The host preserves Syndic's fixed-profile `OperationTooLarge`, temporary `CapacityUnavailable`,
+  and storage-failure distinctions through the composer result. It does not infer a public marker
+  count from internal association or byte ceilings, raise the profile, automatically split one
+  edit into partial adoptions, or treat a passed staging check as future capacity reservation.
 - Cancellation discards unadmitted work only when typed reconciliation proves noncommit. After
   admission, exact custody drains or transfers until terminal. Stale, conflicting, exhausted,
   missing, or corrupt readiness publishes no marker, caret, selection, candidate, or history change.
@@ -59,8 +71,25 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Syndic owns durable edit-history roots and frontiers. The app exposes only exact undo/redo
   availability and transports one opaque resolved historical target; it retains no inverse text,
   root graph, or history-sized collection.
-- Autosave and flush capture one immutable adopted candidate and matching frontier. Newer edits may
-  continue, but a completion clears only its captured generation.
+- Autosave and flush capture one immutable adopted candidate and matching frontier. Autosave permits
+  newer edits, but a completion clears only its captured generation.
+- An unchanged opening is clean through Syndic-owned exact correspondence to the current durable
+  checkpoint, including a nonzero inherited candidate generation. Flush authenticates that
+  relationship without publishing the private history fork. It retains the exact live candidate
+  identity separately from the durable selector/root/history checkpoint. A pending real publication
+  still requires exact settlement; an already-durable opening cannot bypass its custody.
+- Ordinary-close preparation fences new composer mutations while already admitted edits settle,
+  then flushes the newest eligible candidate. Its exact attempt remains bound to the home, host,
+  and mounted editor through later close obligations. Draft readiness alone neither disposes the
+  editor nor releases the close gate; the resident editor continues coherent read-only interaction.
+- Final close authorization disposes only the exact ready editor. Failed close settlement releases
+  only that attempt's gate, preserves current caret, selection, scroll, and history authority, and
+  cannot lift an independent unavailable state. Pending publication retains ordinary exact custody;
+  stale settlement cannot release or dispose another attempt or replacement editor.
+- Foreground release, worker release, and mount-retirement cleanup use the same exact gate-release
+  decision. Their scheduling differs: foreground work cannot wait for storage-held locks, and
+  background cleanup remains bounded. The mounted interaction gate, admission reservation, and
+  durable flush barrier retain their distinct responsibilities.
 - Marker-changing publication streams one immutable root's authenticated pages through typed Syndic
   and Asset contributions and publishes atomically. The app retains bounded pages, cursors, opaque
   proofs, and custody and constructs no cross-domain proof mapping. Marker-unchanged publication
@@ -68,6 +97,11 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Submission starts only after a flush proves one immutable candidate is the current durable draft.
   The app drives bounded materialization and reference preparation and passes opaque typed
   contributions into one atomic acceptance command.
+- Submission may use the authenticated unchanged opening relationship. It materializes the durable
+  root while fencing the exact captured live candidate and durable selector independently; later
+  adoption, selector drift, or replacement invalidates that capture. Final ordinary session disposal
+  uses Syndic's exact disposal command, including authenticated opening normalization, and preserves
+  the normal disposal receipt and reconciliation obligations.
 - Only exact accepted send-and-clear disposes the editor session, closes its history frontier, and
   clears the composer. Other or ambiguous outcomes preserve the coherent editor and exact evidence.
 - Composer history retains a fixed-capacity set of compact sealed Syndic input references and

@@ -910,6 +910,28 @@ impl DraftEditorCandidateSessionV1 {
         Some(next)
     }
 
+    pub(crate) fn disposed_opening(&self, operation_id: DraftPieceOperationIdV1) -> Option<Self> {
+        if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
+            || self.disposal_operation_id.is_some()
+            || self.active_operation.is_some()
+            || self.dirty_generation != 0
+            || self.durable_base_selector_revision != self.published_selector_revision
+            || self.durable_base_root != self.published_root
+            || self.durable_base_history != self.published_history
+            || self.published_candidate_generation != self.newest_candidate_generation
+            || self.newest_candidate_generation != self.durable_base_history.candidate_generation()
+            || self.published_root != self.newest_root
+            || self.newest_history.key()
+                != super::DraftEditHistoryFrontierKeyV1::session(self.draft_id, self.session_id)
+            || operation_id == self.open_operation_id
+        {
+            return None;
+        }
+        let mut normalized = self.clone();
+        normalized.newest_history = normalized.published_history;
+        normalized.disposed(operation_id)
+    }
+
     pub(crate) fn abandoned_fresh(&self, operation_id: DraftPieceOperationIdV1) -> Option<Self> {
         if self.lifecycle != DraftEditorCandidateSessionLifecycleV1::Active
             || self.disposal_operation_id.is_some()

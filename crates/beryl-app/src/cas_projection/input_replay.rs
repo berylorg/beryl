@@ -8,7 +8,7 @@ mod page;
 mod prepared;
 mod record;
 
-#[allow(unused_imports, reason = "Phase 52 mounts this prepared app boundary")]
+#[allow(unused_imports, reason = "prepared app boundary")]
 pub(in crate::cas_projection) use accepted::{
     AcceptedInputReplayContext, AcceptedInputReplayError, AcceptedInputReplayFactory,
     AcceptedInputReplaySource, AcceptedInputSteeringCorrelationError,

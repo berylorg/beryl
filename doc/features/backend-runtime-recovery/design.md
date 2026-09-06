@@ -153,11 +153,11 @@ Let users understand which backend-dependent actions are unavailable, which runt
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`
 - `availability-required/v1`
 
 Availability protects unaffected local workflows and recovery of the same durable binding; it does

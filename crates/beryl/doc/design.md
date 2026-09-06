@@ -63,6 +63,6 @@ Provide the Beryl executable entry point and composition root.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

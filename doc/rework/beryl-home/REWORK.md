@@ -109,6 +109,9 @@
   presentation boundaries; declared individual-operation limits do not authorize such a path.
 - During the active cutover, Syndic V7 registers only implemented families; deferred materializer
   and repair families join in their owning phases rather than existing as empty placeholders.
+- Marker-seal construction retains its current shared registry until validated-home bootstrap
+  enforces single construction and injects shared clones; that slice removes discovery without
+  permitting duplicate home-level flight capacity.
 
 # Reference Snapshot
 
@@ -265,14 +268,17 @@
   and stale-route fencing, with [publication evidence](../../failures/native-lineage-seed-publication.md).
 - [x] Mounted and independently accepted bounded independent main-window creation with exact claims,
   coherent publication, cancellation settlement, and [verification evidence](../../failures/main-window-creation.md).
+- [ ] Establish [unchanged-opening durable correspondence](../../failures/pristine-editor-publication.md), clean flush and submission, and exact normal disposal before accepting resident-preserving ordinary-close flush.
+- [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
-- [ ] Implement the notice widget under the existing widget contract.
-- [ ] Mount the accepted notice arbiter and widget, warned best-effort-home startup notice, exact soft-stop
+- [x] Implemented and accepted the bounded notice widget with selectable detail, exact commands, focus continuity, inert behavior, and themed rendering.
+- [x] Mounted and accepted the per-window notice projection with exact ownership, stable overlay geometry, focus return, and atomic appearance updates.
+- [ ] Implement the warned best-effort-home startup notice, exact soft-stop
   feedback, bounded notification-audio ownership, and explicit fail-closed repair and recovery
   unavailable states without pretending deferred capabilities are mounted.
 - [ ] Rework the transcript prototype onto immutable shared pages without deep snapshot clones and
@@ -334,6 +340,10 @@
 
 ## Checkpoint 8: Integrate, Harden, And Close The Rework
 
+- [x] Named live code, tests, fixtures, and configuration by behavior and verified the complete live naming surface.
+- [x] Completed the accepted duplicate-implementation and bounded-theme simplification batch, retaining its recorded verification limits. Paused shell work remains stopped by Operator instruction.
+- [ ] Replace marker-service global discovery with explicit shared home ownership when bootstrap composition is assembled.
+- [ ] Share only the duplicated persistent-tree rebalancing mechanics after editor behavior stabilizes.
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
   membership edge, and forbidden API reference.
 - [ ] Close evidence gaps, if any remain after owning phases, for named Beryl-owned queues, caches,

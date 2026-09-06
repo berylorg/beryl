@@ -253,12 +253,18 @@ pub(crate) fn validate_record_envelope<D: StorageDomain, R: RecordCodec<D>>(
     encoded_key: &[u8],
     encoded_value: &[u8],
 ) -> Result<(), ReadError> {
+    decode_record_envelope::<D, R>(encoded_key, encoded_value).map(|_| ())
+}
+
+pub(crate) fn decode_record_envelope<D: StorageDomain, R: RecordCodec<D>>(
+    encoded_key: &[u8],
+    encoded_value: &[u8],
+) -> Result<R::Value, ReadError> {
     validate_codec::<D, R>()?;
     ensure_stored_key_size::<D, R>(encoded_key)?;
     decode_stored_key::<D, R>(encoded_key)?;
     ensure_stored_value_size::<D, R>(encoded_value.len())?;
-    decode_value::<D, R>(encoded_value)?;
-    Ok(())
+    decode_value::<D, R>(encoded_value)
 }
 
 pub(crate) fn encode_value<D: StorageDomain, R: RecordCodec<D>>(
@@ -285,7 +291,7 @@ pub(crate) fn encode_value<D: StorageDomain, R: RecordCodec<D>>(
     Ok(encoded)
 }
 
-fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
+pub(crate) fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
     encoded: &[u8],
 ) -> Result<R::Value, ReadError> {
     decode_value_with_size::<D, R>(encoded).map(|(value, _)| value)

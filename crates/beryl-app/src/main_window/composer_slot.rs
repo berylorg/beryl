@@ -12,6 +12,7 @@ use crate::composer_host::{
 };
 use crate::main_window::MainWindowComposerMarkerMetadataAuthority;
 
+mod close;
 mod dispatch;
 mod lifecycle;
 mod model;
@@ -41,6 +42,7 @@ pub struct MainWindowComposerSlot {
     disposal_stage: Option<DisposalStage>,
     submission_successor: Option<MainWindowComposerActivationReceipt>,
     native_lineage_suspension: Option<MainWindowComposerSelectionIdentity>,
+    window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     #[cfg(feature = "test-faults")]
     activation_after_open_fault:
         Option<Box<dyn FnOnce(&HomeStore, SyndicStorage) + Send + 'static>>,
@@ -62,7 +64,7 @@ impl MainWindowComposerSlot {
             matches!(self.disposal_stage, Some(DisposalStage::Flushing(_))),
             matches!(
                 self.disposal_stage,
-                Some(DisposalStage::AwaitingWidgetRelease)
+                Some(DisposalStage::AwaitingWidgetRelease(_))
             ),
         )
     }
@@ -106,6 +108,7 @@ impl MainWindowComposerSlot {
             disposal_stage: None,
             submission_successor: None,
             native_lineage_suspension: None,
+            window_close: None,
             #[cfg(feature = "test-faults")]
             activation_after_open_fault: None,
             #[cfg(feature = "test-faults")]
@@ -119,7 +122,7 @@ impl MainWindowComposerSlot {
             Some(PendingStage::AwaitingWidgetRelease | PendingStage::Finalizing)
         ) || matches!(
             self.disposal_stage,
-            Some(DisposalStage::AwaitingWidgetRelease)
+            Some(DisposalStage::AwaitingWidgetRelease(_))
         ) || self.submission_successor.is_some()
         {
             return self.selected.as_ref().map(|selected| selected.identity);
@@ -145,7 +148,7 @@ impl MainWindowComposerSlot {
             Some(PendingStage::Finalizing)
         ) || matches!(
             self.disposal_stage,
-            Some(DisposalStage::AwaitingWidgetRelease)
+            Some(DisposalStage::AwaitingWidgetRelease(_))
         ) || self.submission_successor.is_some()
             || self.native_lineage_suspension == Some(selection);
         if !awaiting_release || self.selected_identity() != Some(selection) {
@@ -589,6 +592,13 @@ impl MainWindowComposerSlot {
     fn ensure_live(&self) -> Result<(), MainWindowComposerSlotError> {
         if self.disposed {
             Err(MainWindowComposerSlotError::Disposed)
+        } else if self.window_close.is_some()
+            || self
+                .selected
+                .as_ref()
+                .is_some_and(|selected| selected.host.window_close_ticket().is_some())
+        {
+            Err(MainWindowComposerSlotError::ActivationPending)
         } else {
             Ok(())
         }

@@ -19,7 +19,7 @@ Widgets:
 The image marker consists of an inline root, owner-supplied visible label, optional media-state
 indicator, and stable activation anchor.
 
-The owner supplies marker identity, label text, accessibility text, media-identity state,
+The owner supplies marker identity, label text, media-identity state,
 presentation-availability state, and activation behavior. The widget does not own image bytes,
 labels, asset references, commands, menus, previews, editing semantics, submission, or persistence.
 

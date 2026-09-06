@@ -113,7 +113,7 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
     fn commit(self: Box<Self>, app: &mut App) {
         let window = self.window;
         window
-            .update(app, |root, _, app| {
+            .update(app, |root, window, app| {
                 let controller = root
                     .controller
                     .as_mut()
@@ -130,6 +130,9 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                         )
                     })
                     .expect("validated mounted editor accepts appearance");
+                root.notices.widget.update(app, |widget, cx| {
+                    widget.set_appearance(self.appearance.generation.clone(), window, cx);
+                });
                 controller.appearance = self.appearance;
                 app.notify();
             })

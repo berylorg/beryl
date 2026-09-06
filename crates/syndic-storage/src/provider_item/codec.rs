@@ -1,9 +1,9 @@
-mod decode;
+#[cfg(feature = "provider-frame-test-support")]
+pub(crate) mod decode;
 mod encode;
 mod stream;
 mod tags;
 
-pub use decode::decode_bounded_provider_item_frame_v1;
 pub use encode::encode_provider_item_frame_v1;
 pub use stream::validate_streaming_provider_item_frame_v1;
 

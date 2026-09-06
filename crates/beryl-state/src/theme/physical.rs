@@ -11,7 +11,7 @@ use beryl_home_store::{
 
 use super::{
     InstalledThemeId, THEME_DOCUMENT_MAX_BYTES, THEME_DOCUMENT_RANGE_MAX_BYTES,
-    ThemeDocumentDigest, ThemeDocumentIdentity, ThemeIdentityError,
+    THEME_MANIFEST_MAX_BYTES, ThemeDocumentDigest, ThemeDocumentIdentity, ThemeIdentityError,
 };
 
 const PHYSICAL_IO_BUFFER_BYTES: usize = 64 * 1024;
@@ -65,9 +65,26 @@ impl PhysicalThemeLimits {
     }
 
     pub(crate) fn manifest(max_source_bytes: NonZeroU64) -> Result<Self, PhysicalThemeLimitsError> {
-        let range_bytes = NonZeroUsize::new(THEME_DOCUMENT_RANGE_MAX_BYTES)
+        let max_source_bytes =
+            NonZeroU64::new(max_source_bytes.get().min(THEME_MANIFEST_MAX_BYTES))
+                .ok_or(PhysicalThemeLimitsError::InvalidOperationLimits)?;
+        let source_range = usize::try_from(max_source_bytes.get())
+            .map_err(|_| PhysicalThemeLimitsError::RangeTooLarge)?;
+        let range_bytes = NonZeroUsize::new(THEME_DOCUMENT_RANGE_MAX_BYTES.min(source_range))
             .ok_or(PhysicalThemeLimitsError::InvalidOperationLimits)?;
         Self::new(max_source_bytes, range_bytes)
+    }
+
+    pub(crate) fn repository(
+        max_manifest_source: NonZeroU64,
+    ) -> Result<Self, PhysicalThemeLimitsError> {
+        let max_source_bytes = max_manifest_source
+            .get()
+            .min(THEME_MANIFEST_MAX_BYTES)
+            .max(THEME_DOCUMENT_MAX_BYTES as u64);
+        let max_source_bytes = NonZeroU64::new(max_source_bytes)
+            .ok_or(PhysicalThemeLimitsError::InvalidOperationLimits)?;
+        Self::manifest(max_source_bytes)
     }
 
     pub(crate) const fn operations(self) -> ThemeOperationLimits {

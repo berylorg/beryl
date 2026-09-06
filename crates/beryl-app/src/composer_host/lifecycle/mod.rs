@@ -4,7 +4,10 @@ use std::time::{Duration, Instant};
 use beryl_home_store::{CommandCancellation, HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
 use beryl_state::AssetState;
-use syndic_storage::{DraftPieceOperationIdV1, SyndicTimestamp};
+use syndic_storage::{
+    DraftEditorCandidateActivationBindingV1, DraftEditorCurrentSelectorV1, DraftPieceOperationIdV1,
+    SyndicTimestamp,
+};
 
 use crate::composer_marker_seal::DraftMarkerSealService;
 
@@ -17,6 +20,7 @@ use super::{
 };
 
 mod autosave;
+mod close;
 mod flush;
 mod service;
 mod settlement;
@@ -120,7 +124,7 @@ pub enum ComposerHostFlushPurpose {
 
 impl ComposerHostFlushPurpose {
     const fn disposes_session(self) -> bool {
-        !matches!(self, Self::Submission)
+        !matches!(self, Self::Submission | Self::WindowClose)
     }
 }
 
@@ -142,6 +146,7 @@ impl ComposerHostFlushTicket {
 pub enum ComposerHostFlushState {
     CaptureRequired,
     PublicationPending,
+    CloseReady,
     DisposalRequired,
 }
 
@@ -232,6 +237,7 @@ pub(super) struct ComposerHostLifecycleCoordinator {
     timer: Option<ComposerHostAutosaveTimer>,
     barrier_generation: u64,
     barrier: Option<PendingFlushBarrier>,
+    close_ticket: Option<ComposerHostFlushTicket>,
     autosave: Option<PendingSave>,
     dirty_adoption_seen: bool,
     service_disposed: bool,
@@ -249,6 +255,11 @@ struct PendingFlushBarrier {
     purpose: ComposerHostFlushPurpose,
     publication: Option<PendingSave>,
     disposal: Option<ComposerHostDisposalTicket>,
+    saved_checkpoint: Option<(
+        DraftEditorCandidateActivationBindingV1,
+        DraftEditorCurrentSelectorV1,
+    )>,
+    close_disposal_authorized: bool,
 }
 
 impl ComposerHostLifecycleCoordinator {
@@ -261,6 +272,7 @@ impl ComposerHostLifecycleCoordinator {
             timer: None,
             barrier_generation: 0,
             barrier: None,
+            close_ticket: None,
             autosave: None,
             dirty_adoption_seen: false,
             service_disposed: false,
@@ -271,6 +283,7 @@ impl ComposerHostLifecycleCoordinator {
     pub(super) fn activate(&mut self) {
         self.timer = None;
         self.barrier = None;
+        self.close_ticket = None;
         self.autosave = None;
         self.dirty_adoption_seen = false;
         self.last_publication_completion = None;
@@ -281,20 +294,22 @@ impl ComposerHostLifecycleCoordinator {
     }
 
     pub(super) const fn has_barrier(&self) -> bool {
-        self.barrier.is_some()
+        self.barrier.is_some() || self.close_ticket.is_some()
     }
 
     pub(super) fn freezes_admission(&self) -> bool {
-        self.barrier
-            .as_ref()
-            .is_some_and(|barrier| barrier.purpose.disposes_session())
+        self.close_ticket.is_some()
+            || self
+                .barrier
+                .as_ref()
+                .is_some_and(|barrier| barrier.purpose != ComposerHostFlushPurpose::Submission)
     }
 
     pub(super) fn adopted(&mut self, binding: ComposerHostBinding, _became_dirty: bool) {
         if !self.dirty_adoption_seen {
             self.dirty_adoption_seen = true;
         }
-        if self.timer.is_none() && self.barrier.is_none() && self.autosave.is_none() {
+        if self.timer.is_none() && !self.has_barrier() && self.autosave.is_none() {
             let _ = self.arm(binding, Instant::now());
         }
     }
@@ -351,6 +366,7 @@ impl ComposerHostLifecycleCoordinator {
     pub(super) fn clear_runtime(&mut self) {
         self.timer = None;
         self.barrier = None;
+        self.close_ticket = None;
         self.autosave = None;
     }
 }

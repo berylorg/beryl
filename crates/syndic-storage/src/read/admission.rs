@@ -4,11 +4,11 @@ use crate::{
     CanonicalItemRecord, DraftComposerMaterializationRecordV1, DraftComposerMaterializationsFamily,
     DraftEditHistoryFrontierKeyV1, DraftEditHistoryFrontierV1, DraftEditHistoryFrontiersFamily,
     DraftEditHistoryPolicyV1, DraftEditorCandidateActivationBindingV1,
-    DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionRecordKeyV1,
-    DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
-    DraftEditorCandidateSessionsFamily, DraftPieceRootKeyV1, DraftPieceRootRecordV1,
-    DraftPieceRootsFamily, DraftRecord, FirstAcceptance, FirstAcceptanceKind,
-    FirstAcceptanceStatus, ImageLabelAuthorityHeadV1, ImageLabelOriginOwner,
+    DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionReadOutcomeV1,
+    DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
+    DraftEditorCandidateSessionV1, DraftEditorCandidateSessionsFamily, DraftPieceRootKeyV1,
+    DraftPieceRootRecordV1, DraftPieceRootsFamily, DraftRecord, FirstAcceptance,
+    FirstAcceptanceKind, FirstAcceptanceStatus, ImageLabelAuthorityHeadV1, ImageLabelOriginOwner,
     ImageLabelOriginSpanRecord, InputGateRecord, SyndicReadError, ThreadRecord, TurnItemOrdinal,
     TurnKind, TurnRecord, canonical_empty_draft_edit_history_v1,
     canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1, codec::*,
@@ -32,6 +32,8 @@ struct FirstAcceptanceObservation {
     fresh_root: Option<DraftPieceRootRecordV1>,
     fresh_history: Option<DraftEditHistoryFrontierV1>,
     session: Option<DraftEditorCandidateSessionRecordV1>,
+    session_authenticated: bool,
+    disposal_receipt: Option<DraftEditorCandidateSessionRecordV1>,
     materialization: Option<DraftComposerMaterializationRecordV1>,
     turn: Option<TurnRecord>,
     item: Option<CanonicalItemRecord>,
@@ -109,6 +111,30 @@ impl FirstAcceptanceObservation {
             )?,
             None => None,
         };
+        let session = storage.point::<DraftEditorCandidateSessionsFamily>(
+            store,
+            DraftEditorCandidateSessionRecordKeyV1::head(
+                acceptance.draft_id(),
+                acceptance.candidate().session_id(),
+            ),
+            limit,
+        )?;
+        let session_authenticated = match storage.draft_editor_candidate_session(
+            store,
+            acceptance.draft_id(),
+            acceptance.candidate().session_id(),
+        )? {
+            DraftEditorCandidateSessionReadOutcomeV1::Active(head)
+            | DraftEditorCandidateSessionReadOutcomeV1::Disposed(head) => {
+                session.as_ref() == Some(&DraftEditorCandidateSessionRecordV1::Head(head))
+            }
+            DraftEditorCandidateSessionReadOutcomeV1::ConcurrentChange => {
+                return Err(SyndicReadError::ConcurrentChange {
+                    operation: "first-acceptance session reconciliation",
+                });
+            }
+            _ => false,
+        };
         Ok(Self {
             thread: storage.point::<ThreadsFamily>(store, acceptance.thread_id(), limit)?,
             image_label_authority: storage.point::<ImageLabelAuthorityHeadsFamily>(
@@ -134,12 +160,15 @@ impl FirstAcceptanceObservation {
                 Some(key) => storage.point::<DraftEditHistoryFrontiersFamily>(store, key, limit)?,
                 None => None,
             },
-            session: storage.point::<DraftEditorCandidateSessionsFamily>(
+            session,
+            session_authenticated,
+            disposal_receipt: storage.point::<DraftEditorCandidateSessionsFamily>(
                 store,
-                DraftEditorCandidateSessionRecordKeyV1::Head {
-                    draft_id: acceptance.draft_id(),
-                    session_id: acceptance.candidate().session_id(),
-                },
+                DraftEditorCandidateSessionRecordKeyV1::disposal_receipt(
+                    acceptance.draft_id(),
+                    acceptance.candidate().session_id(),
+                    acceptance.session_disposal_operation_id(),
+                ),
                 limit,
             )?,
             materialization: storage.point::<DraftComposerMaterializationsFamily>(
@@ -169,11 +198,11 @@ impl FirstAcceptanceObservation {
                 draft.id() == acceptance.draft_id()
                     && draft.thread_id() == acceptance.thread_id()
                     && draft.revision() == acceptance.expected_draft_revision()
-                    && draft.root_history()
-                        == crate::DraftRootHistoryPairV1::new(
-                            acceptance.candidate().root(),
-                            acceptance.candidate().history(),
-                        )
+                    && self.session.as_ref().is_some_and(|record| {
+                        matches!(record, DraftEditorCandidateSessionRecordV1::Head(session)
+                            if draft.root_history() == crate::DraftRootHistoryPairV1::new(
+                                session.published_root(), session.published_history()))
+                    })
             })
             && self.next_draft.is_none()
             && self.gate.as_ref().is_some_and(|gate| {
@@ -181,6 +210,8 @@ impl FirstAcceptanceObservation {
                     && gate.state() == acceptance.expected_gate_state()
             })
             && self.source_authority_is_exact(acceptance)
+            && self.session_authenticated
+            && self.disposal_receipt.is_none()
             && self.session.as_ref().is_some_and(|record| {
                 matches!(record, DraftEditorCandidateSessionRecordV1::Head(session)
                     if active_session_is_exact(session, acceptance))
@@ -196,9 +227,18 @@ impl FirstAcceptanceObservation {
         let Some((expected_head, expected_span)) = expected_image_label_records(acceptance) else {
             return Ok(false);
         };
-        let session_exact = self.session.as_ref().is_some_and(|record| {
+        let session_exact = self.session_authenticated && self.session.as_ref().is_some_and(|record| {
             matches!(record, DraftEditorCandidateSessionRecordV1::Head(session)
-                if disposed_session_is_exact(session, acceptance))
+                if disposed_session_is_exact(session, acceptance)
+                    && self.disposal_receipt.as_ref().is_some_and(|record| {
+                        matches!(record, DraftEditorCandidateSessionRecordV1::OpenReceipt(receipt)
+                            if receipt.disposal().is_some_and(|receipt| {
+                                DraftEditorCandidateActivationBindingV1::from_head(receipt.before_head())
+                                    == acceptance.candidate()
+                                    && receipt.after_head() == session
+                                    && self.source_history.as_ref() == Some(receipt.frontier())
+                            }))
+                    }))
         });
         let fresh_exact = fresh_records_are_exact(
             acceptance,
@@ -376,9 +416,7 @@ fn active_session_is_exact(
         && session.disposal_operation_id().is_none()
         && session.active_operation().is_none()
         && DraftEditorCandidateActivationBindingV1::from_head(session) == acceptance.candidate()
-        && session.published_candidate_generation() == session.newest_candidate_generation()
-        && session.published_root() == session.newest_root()
-        && session.published_history() == session.newest_history()
+        && crate::draft_piece::candidate_session_has_saved_identity(session)
 }
 
 fn disposed_session_is_exact(
@@ -394,7 +432,6 @@ fn disposed_session_is_exact(
         && session.session_id() == candidate.session_id()
         && session.published_candidate_generation() == candidate.candidate_generation()
         && session.published_root() == candidate.root()
-        && session.published_history() == candidate.history()
         && session.logical_extent() == candidate.logical_extent()
 }
 

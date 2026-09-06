@@ -47,9 +47,13 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 
 - Persisted themes are shareable compact TOML theme documents in the single supported theme schema.
 - Installed themes are stored in a portable theme repository under the Beryl home directory so users can share themes without sharing unrelated preferences.
-- The installed-theme collection may be arbitrarily large. The Themes page keeps visible work
-  bounded, loads more installed rows as navigation requires them, and preserves stable selection,
-  focus, and scroll position across coherent repository refreshes.
+- A Beryl home supports at most 1,024 installed themes. The built-in fallback, previews, unsaved
+  candidates, and unlisted files do not count as installed themes. The Themes page keeps visible
+  work bounded, loads more installed rows as navigation requires them, and preserves stable
+  selection, focus, and scroll position across coherent repository refreshes.
+- At capacity, Install and Save As refuse with localized capacity feedback before changing any
+  repository file, installed identity, draft, or appearance. Save, update, rename, reorder, and
+  otherwise-permitted delete remain available; deletion makes room for another installed theme.
 - Rename, delete, reorder, install, Save, and Save As become visible only as complete repository
   updates. Failure preserves the last coherent installed collection and staged editor state and
   reports localized feedback; an indeterminate outcome remains visibly reconciling until the exact
@@ -102,6 +106,10 @@ Give users durable, validated control over Beryl's appearance theme system, incl
   the active identity or document is missing, unreadable, invalid, or cannot be applied, all
   windows keep the previous coherent theme, or the built-in fallback when no installed theme has
   applied in this process.
+- A repository exceeding its installed-count or encoded-manifest limit is unavailable input,
+  with specific repository-limit feedback. Startup uses the complete fallback and refresh preserves
+  the last coherent collection and appearance. Beryl never truncates, prunes, or rewrites such a
+  repository automatically.
 - Refresh and activation failures appear in the affected installed theme's split-item preview and,
   while that item is selected, in its bounded detail area. Retry is an action on that feedback
   detail row, never a split-list item action. When the identity or item is unavailable, the page-
@@ -266,12 +274,14 @@ Give users durable, validated control over Beryl's appearance theme system, incl
   an active identity; the user-visible Settings Apply/OK workflow remains required.
 - Accepted theme tool writes have the same validation and complete visible outcomes as the matching
   settings-window operation.
+- Install and Save As tools return a bounded structured capacity refusal when the installed-theme
+  limit is reached; encoded-manifest limit failures retain their distinct repository-limit cause.
 - Tool calls that target unknown roles, unsupported properties, invalid values, unavailable sections, stale theme ids, or unsafe draft conflicts reject with bounded structured errors and must not partially apply.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

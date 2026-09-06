@@ -67,11 +67,13 @@ confusing current drafts with submitted transcript history or image identity.
 
 - Every conversation thread owns exactly one current durable draft. The composer supports drafts sized for
   million-token or larger model contexts without imposing a smaller whole-draft product limit.
-- Representable document, caret, directed-selection, edit, undo, and redo size is not capped by
-  resident RAM, viewport dimensions, a hardcoded cumulative fragment count, or a requirement to
-  collect one whole operation. Fixed implementation bounds may limit one page, command, retained
-  working set, queue, or frame; large operations make bounded visible progress over time as one
-  logical operation.
+- Representable document, caret, and directed-selection size is not capped by resident RAM or
+  viewport dimensions. Editing, undo, and redo use bounded pages and working sets without requiring
+  a whole-operation resident collection. Large supported operations make bounded visible progress
+  over time as one logical operation. The explicit marker-edit admission limit below and the
+  contiguous clipboard limit constrain individual operations, not draft size or the ability to
+  browse an existing draft. Page, command, queue, and frame limits never silently become additional
+  logical-content limits.
 - Large drafts are intentional product state. Selecting, saving, submitting, or restoring one
   loads only the content needed for the visible editor range and requested operation; it does not
   require the complete draft to become resident first.
@@ -85,7 +87,12 @@ confusing current drafts with submitted transcript history or image identity.
   the draft restored after a crash. Autosave or flush separately publishes the newest eligible
   adopted editor state as the current durable draft without requiring a second whole-draft payload.
 - Dirty-only autosave runs every 30 seconds by default. Settings may tune the required interval from 5 through 300 whole seconds but may not disable autosave.
-- The first adopted edit after the published and newest editor frontiers become equal arms the next
+- Opening a saved draft is clean, including an empty, imported, or previously edited draft. The
+  editor's private history fork does not itself require a save. An unchanged opening checkpoint
+  satisfies flush through exact storage authentication against the current durable draft; it does
+  not advance the draft selector or produce publication effects. A later adopted edit or history
+  operation is dirty even when its text matches an earlier saved state.
+- The first adopted edit after the editor becomes clean arms the next
   autosave deadline from that adoption time. Later edits while the draft remains dirty do not
   debounce, postpone, or otherwise replace that deadline.
 - Publishing a committed autosave-interval change rearms the next dirty-draft deadline from that publication time using the new interval; it does not preserve a deadline derived from the superseded setting.
@@ -240,6 +247,19 @@ confusing current drafts with submitted transcript history or image identity.
   conversation remain unavailable, while ordinary text input remains available. If the safe next
   label cannot be established, image paste presents an explicit unavailable or incomplete-history
   outcome and does not mutate the draft.
+- One edit that inserts, moves, or replaces image-marker occurrences must fit the fixed V1
+  marker-edit admission profile defined by the Syndic system. An operation that exceeds that
+  profile reports `OperationTooLarge` with guidance to use a smaller selection. Retrying the same
+  operation after waiting does not make it fit. The profile is not a guaranteed number of pasted
+  markers, because the exact operation also affects its size.
+- Temporary shared-capacity pressure reports `CapacityUnavailable`, with a later retry available
+  after capacity is released; storage failure retains its separate storage-failure presentation.
+  Bounded preparation may discover either refusal after work has begun. A determinate refusal
+  preserves the complete prior draft, markers, caret, selection, and undo/redo state and publishes
+  no partial edit. An ambiguous storage outcome still follows Durable Mutation Reconciliation.
+- The marker-edit admission limit does not cap existing draft markers, selection, marker removal,
+  historical undo/redo, or autosave. These operations retain their own exact readiness, history,
+  persistence, and bounded-working-set requirements.
 - A marker is one indivisible draft position for caret movement, selection, deletion, cut, paste,
   undo, and redo. Removing one occurrence removes only that draft reference and never removes an
   image already retained by accepted or queued input.
@@ -266,6 +286,9 @@ confusing current drafts with submitted transcript history or image identity.
   conversation creates another reference to the same image with the same label. A stale
   representation that no longer identifies that label and image is rejected before draft mutation.
 - Cutting and then pasting a marker is the user-visible way to move that image reference inside the draft.
+- Cut and a later paste are separate operations. A successful cut retains its ordinary undo step;
+  refusal of the later paste changes no further draft state, preserves the eligible clipboard
+  representation, and neither reverses the cut automatically nor loses its undo authority.
 - Pasting the private marker representation into another conversation allocates that conversation's
   own label, subject to the visible readiness outcomes above.
 - Clipboard text that merely looks like `[Image A]` without valid Beryl metadata always pastes as ordinary text.
@@ -398,8 +421,14 @@ confusing current drafts with submitted transcript history or image identity.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`
+
+Acceptance covers marker edits within the fixed admission profile, isolated-operation size refusal,
+temporary contention, and storage failure as distinct visible outcomes. It proves unchanged state
+on determinate refusal, exact ambiguous-outcome handling, and usable cut undo after a later paste
+refusal. Representative drafts larger than one operation's allowance remain browsable and editable
+through smaller operations with bounded resident pages and release after repeated operations.

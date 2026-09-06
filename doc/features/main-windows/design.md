@@ -100,7 +100,7 @@ Preserve each window's visible identity and placement without requiring auxiliar
   copying, and inspection remain available. No accepted mutation or newly created window may enter
   outside the captured barrier.
 - The Exit control keeps its stable toolbar position, changes its label to `Exiting…`, shows the
-  `command button` loading state, exposes a disabled accessible state, and uses the same exact
+  `command button` loading state, visibly becomes disabled, and uses the same exact
   waiting reason in its disabled tooltip.
 - After the complete restore set and orderly-exit intent are durable, Beryl closes all application
   windows and terminates the process.
@@ -163,6 +163,6 @@ Preserve each window's visible identity and placement without requiring auxiliar
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

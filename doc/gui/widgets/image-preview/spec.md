@@ -22,7 +22,7 @@ fitted image surface, optional local state message, optional contextual-command 
 command. The optional anchor and required close command use command buttons in the chrome region.
 
 The owner supplies preview identity, media-identity state, one admitted bounded thumbnail or visible
-tile set when ready, local presentation state, accessibility label, originating anchor, and any
+tile set when ready, local presentation state, originating anchor, and any
 contextual-command availability. The widget does not locate, decode, validate, persist, replace,
 mutate, or retain the complete original image bytes and does not decide product command policy.
 

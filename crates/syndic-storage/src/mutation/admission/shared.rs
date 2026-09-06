@@ -9,16 +9,17 @@ use crate::{
     BindingRecord, CanonicalItemRecord, ContextEnvelopeRecord, DraftByThreadRecord,
     DraftComposerMaterializationsFamily, DraftEditHistoryFrontierV1,
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily, DraftEditHistoryPolicyV1,
-    DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionRecordKeyV1,
-    DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionV1,
+    DraftEditorCandidateSessionDisposeRequestV1, DraftEditorCandidateSessionLifecycleV1,
+    DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
     DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
     DraftImageLabelProtectionHeadV1, DraftPieceRootRecordV1, DraftPieceRootsCodec,
     DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1, DraftSubmissionIntent,
     HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelOriginSpanRecord, InputGateRecord,
-    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord, TranscriptViewHeadRecord,
-    TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord, TurnStateRecord,
-    authenticate_draft_edit_history_frontier_v1, canonical_empty_draft_edit_history_v1,
-    canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1,
+    PreparedCandidateDisposal, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord,
+    TranscriptViewHeadRecord, TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord,
+    TurnStateRecord, authenticate_draft_edit_history_frontier_v1,
+    canonical_empty_draft_edit_history_v1, canonical_empty_draft_piece_root_v1,
+    canonical_empty_draft_root_operation_id_v1, prepare_candidate_disposal,
 };
 
 pub(super) struct AcceptanceBase {
@@ -28,7 +29,7 @@ pub(super) struct AcceptanceBase {
     pub(super) draft: DraftRecord,
     pub(super) gate: InputGateRecord,
     pub(super) summary: HistorySummaryRecord,
-    pub(super) disposed_session: DraftEditorCandidateSessionV1,
+    pub(super) disposal: PreparedCandidateDisposal,
     pub(super) fresh_root: DraftPieceRootRecordV1,
     pub(super) fresh_history: DraftEditHistoryFrontierV1,
 }
@@ -56,7 +57,7 @@ pub(super) fn reserve_acceptance_records(
     reservation.reserve_records::<DraftsCodec>(2)?;
     reservation.reserve_records::<DraftPieceRootsCodec>(1)?;
     reservation.reserve_records::<DraftEditHistoryFrontiersCodec>(1)?;
-    reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(1)?;
+    reservation.reserve_records::<DraftEditorCandidateSessionsCodec>(2)?;
     reservation.reserve_records::<ThreadsCodec>(1)?;
     reservation.reserve_records::<DraftByThreadCodec>(1)?;
     reservation.reserve_records::<TurnsCodec>(1)?;
@@ -123,11 +124,8 @@ pub(super) fn load_base(
             current: draft.revision(),
         });
     }
-    let expected_pair = DraftRootHistoryPairV1::new(
-        acceptance.candidate().root(),
-        acceptance.candidate().history(),
-    );
-    if draft.root_history() != expected_pair
+    let expected_pair = draft.root_history();
+    if acceptance.candidate().root() != expected_pair.root()
         || acceptance.candidate().draft_id() != draft.id()
         || acceptance.materialization().key().source() != acceptance.candidate().root()
     {
@@ -159,15 +157,24 @@ pub(super) fn load_base(
         || session.thread_id() != acceptance.thread_id()
         || session.active_operation().is_some()
         || DraftEditorCandidateActivationBindingV1::from_head(&session) != acceptance.candidate()
-        || session.published_candidate_generation() != session.newest_candidate_generation()
-        || session.published_root() != session.newest_root()
-        || session.published_history() != session.newest_history()
+        || session.published_selector_revision() != draft.revision()
+        || DraftRootHistoryPairV1::new(session.published_root(), session.published_history())
+            != expected_pair
     {
         return Err(SyndicMutationError::IdentityCollision);
     }
-    let disposed_session = session
-        .disposed(acceptance.session_disposal_operation_id())
-        .ok_or(SyndicMutationError::IdentityCollision)?;
+    let disposal = prepare_candidate_disposal(
+        reader,
+        DraftEditorCandidateSessionDisposeRequestV1::new(
+            session.draft_id(),
+            session.session_id(),
+            acceptance.session_disposal_operation_id(),
+            session.session_generation(),
+            expected_pair,
+        ),
+        session,
+        source_history.clone(),
+    )?;
 
     let mapping = required::<DraftComposerMaterializationsFamily>(
         reader,
@@ -230,7 +237,7 @@ pub(super) fn load_base(
         draft,
         gate,
         summary,
-        disposed_session,
+        disposal,
         fresh_root,
         fresh_history,
     })
@@ -280,7 +287,7 @@ pub(super) struct CommonRecords {
     pub(super) draft_index: DraftByThreadRecord,
     pub(super) fresh_root: DraftPieceRootRecordV1,
     pub(super) fresh_history: DraftEditHistoryFrontierV1,
-    pub(super) disposed_session: DraftEditorCandidateSessionV1,
+    pub(super) disposal: PreparedCandidateDisposal,
     pub(super) origin_span: Option<ImageLabelOriginSpanRecord>,
     pub(super) advanced_image_label_authority: Option<ImageLabelAuthorityHeadV1>,
     pub(super) summary: HistorySummaryRecord,
@@ -303,13 +310,7 @@ impl CommonRecords {
         )?;
         mutations.put::<DraftsCodec>(&self.draft.id(), &self.draft)?;
         mutations.put::<DraftByThreadCodec>(&self.thread.id(), &self.draft_index)?;
-        mutations.put::<DraftEditorCandidateSessionsCodec>(
-            &DraftEditorCandidateSessionRecordKeyV1::Head {
-                draft_id: self.disposed_session.draft_id(),
-                session_id: self.disposed_session.session_id(),
-            },
-            &DraftEditorCandidateSessionRecordV1::Head(self.disposed_session.clone()),
-        )?;
+        self.disposal.contribute(mutations)?;
         if let Some(span) = &self.origin_span {
             mutations.put::<ImageLabelOriginSpansCodec>(
                 &ImageLabelOriginSpanKey {

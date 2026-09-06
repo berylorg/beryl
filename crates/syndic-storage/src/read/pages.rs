@@ -13,8 +13,8 @@ use super::SyndicPage;
 
 mod owner;
 
-const PHASE_7_PAGE_MAX_ITEMS: usize = 256;
-const PHASE_7_PAGE_MAX_STORED_BYTES: usize = crate::TRANSCRIPT_PAGE_MAX_BYTES;
+const PAGE_MAX_ITEMS: usize = 256;
+const PAGE_MAX_STORED_BYTES: usize = crate::TRANSCRIPT_PAGE_MAX_BYTES;
 
 impl SyndicStorage {
     pub fn content_chunks(
@@ -170,7 +170,7 @@ impl SyndicStorage {
         after: Option<crate::TranscriptPosition>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::TranscriptViewEntryRecord>, SyndicReadError> {
-        let limits = phase_7_page_limits(limits);
+        let limits = clamp_page_limits(limits);
         let first = ThreadTranscriptKey {
             thread,
             generation,
@@ -203,7 +203,7 @@ impl SyndicStorage {
         after: Option<crate::TurnDepth>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::TranscriptPathTurnRecord>, SyndicReadError> {
-        let limits = phase_7_page_limits(limits);
+        let limits = clamp_page_limits(limits);
         let last = ThreadTranscriptPathKey {
             thread,
             generation,
@@ -238,7 +238,7 @@ impl SyndicStorage {
         after: Option<crate::ProjectionOrdinal>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::ItemProjectionIndexRecord>, SyndicReadError> {
-        let limits = phase_7_page_limits(limits);
+        let limits = clamp_page_limits(limits);
         let set = self
             .item_projection_set(
                 store,
@@ -421,7 +421,7 @@ impl SyndicStorage {
             store,
             projection,
             after,
-            phase_7_page_limits(limits),
+            clamp_page_limits(limits),
         )
     }
 
@@ -470,10 +470,10 @@ impl SyndicStorage {
     }
 }
 
-fn phase_7_page_limits(limits: CursorReadLimits) -> CursorReadLimits {
+fn clamp_page_limits(limits: CursorReadLimits) -> CursorReadLimits {
     CursorReadLimits::new(
-        limits.max_items().min(PHASE_7_PAGE_MAX_ITEMS),
-        limits.max_bytes().min(PHASE_7_PAGE_MAX_STORED_BYTES),
+        limits.max_items().min(PAGE_MAX_ITEMS),
+        limits.max_bytes().min(PAGE_MAX_STORED_BYTES),
     )
-    .expect("clamped nonzero Phase 7 page bounds remain nonzero")
+    .expect("clamped nonzero page bounds remain nonzero")
 }

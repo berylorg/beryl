@@ -211,6 +211,40 @@ fn physical_limits() -> ThemeOperationLimits {
     .unwrap()
 }
 
+fn manifest_with_rows(rows: usize) -> Vec<u8> {
+    let mut manifest = String::from("schema_version = 1\ngeneration = 2\n\n");
+    for index in 0..rows {
+        manifest.push_str(&format!(
+            "[[theme]]\nid = \"theme-{index}\"\nname = \"Theme {index}\"\n\n"
+        ));
+    }
+    manifest.into_bytes()
+}
+
+fn replace_manifest(fixture: &RuntimeFixture, manifest: &[u8]) {
+    let limits = ThemeOperationLimits::new(
+        (manifest.len() as u64).max(1024 * 1024),
+        NonZeroUsize::new(64 * 1024).unwrap(),
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        NonZeroUsize::new(4096).unwrap(),
+    )
+    .unwrap();
+    let snapshot = fixture.store.theme_repository_snapshot(limits).unwrap();
+    assert!(matches!(
+        fixture
+            .store
+            .replace_theme_manifest(
+                &snapshot,
+                ThemeFileIdentity::new(manifest.len() as u64, Sha256::digest(manifest).into()),
+                &mut Cursor::new(manifest),
+                limits,
+            )
+            .unwrap(),
+        ThemeMutationOutcome::Committed(_)
+    ));
+}
+
 fn replace_active_bytes(fixture: &RuntimeFixture, bytes: &[u8]) {
     let limits = physical_limits();
     let snapshot = fixture.store.theme_repository_snapshot(limits).unwrap();
@@ -313,6 +347,102 @@ fn startup_publishes_the_exact_installed_active_document() {
     assert_eq!(document.theme_id().as_str(), "active");
     assert!(runtime.diagnostics().pages_read() > 0);
     assert_eq!(runtime.diagnostics().last_failure(), None);
+}
+
+#[test]
+fn repository_entry_limit_preserves_its_startup_and_refresh_categories() {
+    let startup_fixture = RuntimeFixture::new();
+    let overflow = manifest_with_rows(1025);
+    replace_manifest(&startup_fixture, &overflow);
+    let startup_revision = startup_fixture
+        .state
+        .settings()
+        .revision(&startup_fixture.store)
+        .unwrap();
+    let startup = ThemeRuntime::start(
+        &startup_fixture.store,
+        startup_fixture.state.themes(),
+        startup_revision,
+        None,
+        config(),
+    )
+    .unwrap();
+    assert_eq!(
+        startup.diagnostics().last_failure(),
+        Some(ThemeRuntimeFailureClass::InstalledEntryLimit)
+    );
+
+    let refresh_fixture = RuntimeFixture::new();
+    let refresh_revision = refresh_fixture
+        .state
+        .settings()
+        .revision(&refresh_fixture.store)
+        .unwrap();
+    let mut refresh = ThemeRuntime::start(
+        &refresh_fixture.store,
+        refresh_fixture.state.themes(),
+        refresh_revision,
+        None,
+        config(),
+    )
+    .unwrap();
+    replace_manifest(&refresh_fixture, &overflow);
+    assert_eq!(
+        await_appearance(&mut refresh, &refresh_fixture),
+        RepositoryAppearanceResult::Retained(ThemeRuntimeFailureClass::InstalledEntryLimit)
+    );
+    assert_eq!(
+        refresh.diagnostics().last_failure(),
+        Some(ThemeRuntimeFailureClass::InstalledEntryLimit)
+    );
+}
+
+#[test]
+fn repository_byte_limit_preserves_its_startup_and_refresh_categories() {
+    let overflow = vec![b'#'; 1024 * 1024 + 1];
+    let startup_fixture = RuntimeFixture::new();
+    replace_manifest(&startup_fixture, &overflow);
+    let startup_revision = startup_fixture
+        .state
+        .settings()
+        .revision(&startup_fixture.store)
+        .unwrap();
+    let startup = ThemeRuntime::start(
+        &startup_fixture.store,
+        startup_fixture.state.themes(),
+        startup_revision,
+        None,
+        config(),
+    )
+    .unwrap();
+    assert_eq!(
+        startup.diagnostics().last_failure(),
+        Some(ThemeRuntimeFailureClass::ManifestByteLimit)
+    );
+
+    let refresh_fixture = RuntimeFixture::new();
+    let refresh_revision = refresh_fixture
+        .state
+        .settings()
+        .revision(&refresh_fixture.store)
+        .unwrap();
+    let mut refresh = ThemeRuntime::start(
+        &refresh_fixture.store,
+        refresh_fixture.state.themes(),
+        refresh_revision,
+        None,
+        config(),
+    )
+    .unwrap();
+    replace_manifest(&refresh_fixture, &overflow);
+    assert_eq!(
+        await_appearance(&mut refresh, &refresh_fixture),
+        RepositoryAppearanceResult::Retained(ThemeRuntimeFailureClass::ManifestByteLimit)
+    );
+    assert_eq!(
+        refresh.diagnostics().last_failure(),
+        Some(ThemeRuntimeFailureClass::ManifestByteLimit)
+    );
 }
 
 #[test]

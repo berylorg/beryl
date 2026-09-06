@@ -71,7 +71,7 @@ fn volatile_wire_matches_pinned_interrupt_and_omits_correlation() {
         let wire = read_text(socket).unwrap();
         assert_eq!(
             wire,
-            r#"{"method":"turn/interrupt","id":2,"params":{"threadId":"thread-phase67","turnId":"turn-phase67"}}"#
+            r#"{"method":"turn/interrupt","id":2,"params":{"threadId":"thread-","turnId":"turn-"}}"#
         );
         assert!(!wire.contains("c3c3"));
         send_json(socket, r#"{"id":2,"result":{}}"#);

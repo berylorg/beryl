@@ -10,7 +10,7 @@ use beryl_home_store::{
 use tempfile::tempdir;
 
 use support::{
-    committed, not_committed, open_home, AlphaDomain, BetaDomain, BytesRecord, PutBytes,
+    AlphaDomain, BetaDomain, BytesRecord, PutBytes, committed, not_committed, open_home,
 };
 
 #[derive(Clone, Copy)]
@@ -146,10 +146,12 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
             ))
             .unwrap();
         let receipt = committed(store.execute(accepted));
-        assert!(store
-            .receipt_domain_revision(&receipt, &alpha)
-            .unwrap()
-            .is_some());
+        assert!(
+            store
+                .receipt_domain_revision(&receipt, &alpha)
+                .unwrap()
+                .is_some()
+        );
         assert_eq!(
             store.receipt_domain_revision(&receipt, &beta).unwrap(),
             None

@@ -171,8 +171,8 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

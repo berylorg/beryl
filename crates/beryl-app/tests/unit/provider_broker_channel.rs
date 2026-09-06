@@ -1,11 +1,11 @@
 use std::{num::NonZeroUsize, sync::mpsc, thread, time::Duration};
 
 use beryl_backend::{
-    lifecycle_test_support::{provider_observation_fragment, thread_closed_operation},
     ProviderField, ProviderValueContext,
+    lifecycle_test_support::{provider_observation_fragment, thread_closed_operation},
 };
 use beryl_model::CasThreadId;
-use beryl_stream::{fixed_channel, PagePool};
+use beryl_stream::{PagePool, fixed_channel};
 
 use super::*;
 
@@ -59,7 +59,7 @@ fn cancelled_broker_returns_thread_close_ownership() {
     ack.close();
     let cancelled = Arc::new(AtomicBool::new(true));
     let mut sink = broker_sink(sender, ack, cancelled, 180);
-    let thread_id = CasThreadId::new("phase-80-post-cut-close").unwrap();
+    let thread_id = CasThreadId::new("post-cut-close").unwrap();
     let error = match sink.submit(thread_closed_operation(thread_id.clone())) {
         Ok(_) => panic!("cancelled broker accepted a thread-close operation"),
         Err(error) => error,

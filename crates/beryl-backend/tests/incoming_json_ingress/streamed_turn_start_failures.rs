@@ -22,7 +22,7 @@ use serde_json::Value;
 use tungstenite::WebSocket;
 
 #[allow(dead_code)]
-#[path = "../phase31_bounded_dispatch/support.rs"]
+#[path = "../request_flow/support.rs"]
 mod dispatch_support;
 
 use dispatch_support::{
@@ -80,6 +80,33 @@ impl StreamedInputSource for EmptyReplaySource {
     ) -> Result<StreamedTextPage, StreamedInputSourceError> {
         self.calls.note();
         Err(StreamedInputSourceError::ReadFailed)
+    }
+}
+
+struct UnreadSource;
+
+impl StreamedInputSource for UnreadSource {
+    fn header(&self) -> StreamedInputHeader {
+        panic!("pre-dispatch gate read the start source header")
+    }
+
+    fn begin_pass(&mut self) -> Result<StreamedInputHeader, StreamedInputSourceError> {
+        panic!("pre-dispatch gate began start source replay")
+    }
+
+    fn next_descriptor(
+        &mut self,
+    ) -> Result<Option<StreamedInputDescriptor>, StreamedInputSourceError> {
+        panic!("pre-dispatch gate read a start descriptor")
+    }
+
+    fn read_text_page(
+        &mut self,
+        _source_id: StreamedTextSourceId,
+        _start: u64,
+        _max_utf8_bytes: usize,
+    ) -> Result<StreamedTextPage, StreamedInputSourceError> {
+        panic!("pre-dispatch gate read start text")
     }
 }
 
@@ -155,6 +182,39 @@ fn assert_empty_turn_start(request: &Value) {
     assert_eq!(request["method"], "turn/start");
     assert_eq!(request["params"]["threadId"], "thread-failure");
     assert_eq!(request["params"]["input"], serde_json::json!([]));
+}
+
+#[test]
+fn occupied_response_slot_rejects_streamed_start_after_earlier_gates_without_reading_source() {
+    let (endpoint, server) = spawn_server(|socket| {
+        initialize_server(socket);
+        expect_close(socket);
+    });
+    let mut session = initialized_session(endpoint, Calls::default(), None);
+    session.occupy_response_expectation_for_lifecycle_test(99);
+    let before = session.predispatch_state_for_lifecycle_test();
+
+    let outcome = session.start_turn_with_streamed_input(
+        &CasThreadId::new("thread-failure").unwrap(),
+        Box::new(UnreadSource),
+        TIMEOUT,
+    );
+
+    assert!(matches!(
+        outcome,
+        NonIdempotentRequestOutcome::ProvenNotDispatched { error }
+            if matches!(
+                *error,
+                ManagedBackendError::ResponseExpectationUnavailable {
+                    method: "turn/start"
+                }
+            )
+    ));
+    assert_eq!(session.predispatch_state_for_lifecycle_test(), before);
+    assert!(!session.transport_is_closed_for_lifecycle_test());
+
+    session.shutdown().unwrap();
+    server.join().unwrap();
 }
 
 #[test]

@@ -43,7 +43,7 @@ text.
 
 Bordered mode may include one optional feedback part after the text viewport and before the resize
 handle. It presents one owner-supplied bounded status or validation message. The owner supplies the
-message, complete accessibility text, semantic meaning, and invalidity; the code panel owns only
+message, semantic meaning, and invalidity; the code panel owns only
 placement and presentation and never performs validation. The feedback part is passive and is not
 a focus stop, command, or scroll surface.
 
@@ -136,8 +136,7 @@ No-wrap enables horizontal scrolling instead of soft line breaks.
 In bordered mode, the widget may expose a draggable lower edge for vertical resizing within surrounding layout bounds.
 
 When present, feedback spans the bordered panel below the viewport and above the resize handle. It
-consumes only its bounded allocation, clips overflow while retaining complete owner-supplied
-accessibility text, and does not become another scroll container.
+consumes only its bounded allocation, clips overflow, and does not become another scroll container.
 
 Scrollable code panels use the shared scrollbar affordance.
 

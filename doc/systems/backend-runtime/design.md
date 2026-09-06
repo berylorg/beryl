@@ -177,12 +177,12 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
 - `privileged-access/v1`
-- `external-side-effects/v1`
+- `external-side-effects/v2`
 
 The Operator-selected Codex executable and OS account are trusted. Detached endpoints, tokens,
 reports, and malformed protocol inputs cannot establish authority.

@@ -1,9 +1,11 @@
 mod model;
+mod widget;
 
 use beryl_model::WindowId;
 use model::Identity;
 
 pub use model::*;
+pub use widget::*;
 
 struct Entry {
     token: NoticeRecordToken,

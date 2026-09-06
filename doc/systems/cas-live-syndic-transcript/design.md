@@ -204,21 +204,28 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   a repair snapshot names a nonempty `savedPath`, it promptly reads that exact path through the
   snapshot's authenticated runtime boundary and prepares the bytes in the Beryl-home image sidecar
   before the source can disappear.
-- Each bounded repair-media stage home command atomically records a matching noncanonical Syndic
-  media witness and Beryl-state inert prepared-asset evidence keyed by the existing target turn and
-  item natural identities. The evidence consumes current-generation sidecar admission authority and
-  retains exact asset digest/length plus repair snapshot, CAS thread, turn, item, runtime, and saved-
-  path provenance. It is unreachable from ordinary asset, resource, history, transcript, and
-  projection reads and publishes no asset metadata, reference, or resource disposition.
-- One final cross-domain home command is the sole publication cut. The `beryl-state` participant
-  validates every inert prepared-asset record and sidecar and publishes the exact asset metadata,
-  references, and resource dispositions; the `syndic-storage` participant validates the matching
-  complete media commitment, selects the whole repair snapshot, and enters `FinalizingHistory`.
-  Either all of those effects commit or none do.
-- Failure or explicit incomplete convergence leaves any prepared sidecar and staging evidence inert
-  and unreachable for future home-wide garbage collection. Recovery may finish an already complete
-  staged candidate from those durable witnesses without rereading CAS or the runtime path; an
-  incomplete stage cannot authorize partial publication.
+- Each bounded repair-media stage home command atomically records one immutable Asset page and its
+  matching noncanonical Syndic media witness under the existing target turn/item identities. It
+  consumes current-generation sidecar admission evidence after byte verification and durability
+  finish outside the writer, and advances exact ordered membership, direct entry locators, counts,
+  and matching commitments. Staging publishes no canonical metadata, reference, or disposition.
+- The [image-assets system](../image-assets/design.md) owns paged Asset sealing, sidecar evidence,
+  visibility, and owner-qualified direct lookup. Complete durable page chains seal without another
+  full traversal. One final cross-domain home command validates only compact exact sealed heads,
+  revisions, media commitments, and the consumed repair gate; Beryl-state publishes one Asset
+  visibility selector while Syndic selects the whole snapshot and enters `FinalizingHistory`.
+  Final read/write work, memory, and reconciliation are independent of item/media count and perform
+  no sidecar I/O, page-set scan, or bulk metadata promotion. Either both selections commit or neither.
+- Selected Syndic resource metadata carries exact repair-owner/page/entry authority for bounded
+  Asset reads. AssetId-only lookup cannot expose staging. Resource dispositions derive from the
+  selected snapshot, and subsequent bounded projection work retains those references without
+  requiring a whole-set copy or separate per-resource publication before selection.
+- Failure or explicit incomplete convergence leaves prepared sidecars and unselected staging inert
+  for future home-wide garbage collection. Fresh recovery may seal or select only an already fully
+  staged candidate from compact durable completion evidence and fresh handles. It neither rehashes
+  all admitted sidecars nor fills missing stages, rereads CAS, or accesses the old runtime path.
+  Exact selector reconciliation distinguishes nonpublication, complete publication, and corruption;
+  no old capability or mixed-domain selection authorizes success.
 - The runtime path itself is never durable media authority.
 - Missing, empty, changed, unreadable, unsupported, oversized, or unauthenticated `savedPath` makes the repaired turn incomplete. Beryl never falls back to inline base64, a similar file, a URL, or prior transient bytes.
 
@@ -371,9 +378,9 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
 - `privileged-access/v1`
-- `external-side-effects/v1`
+- `external-side-effects/v2`

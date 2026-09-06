@@ -121,7 +121,7 @@ The root fills the inline allocation supplied by the selected settings page and 
 
 The column trail is a single horizontal row whose intrinsic inline size follows the number of selected-path columns. Columns keep a stable width and do not shrink to avoid overflow. Each column fixes its header above a flexible vertical role-row viewport.
 
-Role rows use a fixed block size and gap so visible-range calculation does not require measuring every schema row. Samples, labels, and disclosure affordances remain inside that fixed geometry. Long role labels truncate visually while their full accessible names remain available.
+Role rows use a fixed block size and gap so visible-range calculation does not require measuring every schema row. Samples, labels, and disclosure affordances remain inside that fixed geometry. Long role labels truncate visually while a tooltip exposes the complete label.
 
 Spec CSS:
 

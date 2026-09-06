@@ -310,22 +310,54 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   unauthenticated path or bytes invalidates the whole repair candidate. All repair-derived asset
   metadata, references, and canonical resource dispositions remain unpublished; a usable sibling
   item never becomes a partial repaired asset.
-- Preparing repair media first publishes only an inert Beryl-state staging record through a bounded
-  cross-domain stage command with the matching noncanonical Syndic media witness. That record
-  consumes the current-generation `AdmittedSidecar`, retains the target turn/item natural identity,
-  asset digest/length, media facts, and authenticated repair provenance, and is unreachable from
-  every ordinary asset, resource, transcript, history, and projection read. It is not canonical
-  asset metadata, a durable reference, or a resource disposition.
-- The CAS-live Syndic transcript system owns whole-turn repair convergence and `beryl-app` owns its
-  process coordinator. One final `HomeCommand` combines the Beryl-state promotion participant with
-  Syndic seal-and-selection. The Beryl participant revalidates every inert staging record and final
-  sidecar before publishing exact asset metadata, references, and resource dispositions; the Syndic
-  participant validates the identical media commitment, selects the whole snapshot, and enters
-  `FinalizingHistory`. Neither participant can commit alone.
-- A typed media failure or explicit incomplete convergence publishes no repair-derived asset or
-  snapshot. Prepared sidecars and staging records remain inert and unreachable for future home-wide
-  garbage collection. A fresh service may finish only an already complete durable staged candidate;
-  it never rereads CAS or trusts a recreated runtime path to fill a missing stage.
+- Repair media is built as an immutable paged Asset set under the existing target thread/turn
+  natural identity. Each bounded cross-domain stage command records one Asset page and its matching
+  noncanonical Syndic media witness. Sidecar reads, hashing, and durability admission finish before
+  writer admission; the command consumes the exact current-generation `AdmittedSidecar` evidence
+  and commits metadata, provenance, page identity, and checked build-frontier advancement together.
+  Staging is unreachable from ordinary reads and publishes no canonical asset or resource.
+- Staging derives complete item/resource membership, direct page/entry locators, exact asset
+  identities, and an ordered cross-domain media commitment incrementally. Both owners reject gaps,
+  duplicate resource occurrences, changed replay bytes, and inconsistent totals within bounded
+  pages. Repeated occurrences may name the same `AssetId` without a resident deduplication map.
+  A complete build seals its exact frontier, count, commitment, and sidecar-admission evidence;
+  sealing uses the already committed page chain and does not reread all pages or sidecars.
+- The CAS-live system owns whole-turn convergence and `beryl-app` its coordinator. One final
+  `HomeCommand` publishes one compact Asset visibility selector and selects the matching complete
+  Syndic snapshot with `FinalizingHistory`. It validates only the exact repair gate, sealed heads,
+  revisions, totals, and matching media commitment. Neither participant can commit alone. Final
+  command reads, writes, retained memory, and reconciliation closure are bounded independently of
+  item count, media count, and sidecar bytes; it performs no page-set scan, sidecar I/O, or bulk copy
+  into ordinary metadata, owner heads, references, or resource records.
+- The selected immutable pages themselves supply repair-owned asset metadata and references.
+  Syndic's selected snapshot supplies resource dispositions and carries the exact owner-qualified
+  media reference needed by ordinary resource reads. A reference binds target thread/turn,
+  item/resource ordinal, direct page/entry locator, `AssetId`, and sealed media commitment. Asset
+  lookup checks the published selector and that named immutable page; it never scans sets or falls
+  back to an equal-looking asset. Projection building copies only bounded reference facts as its
+  normal pages are produced, without requiring all resource records before snapshot selection.
+- `AssetId` alone remains byte identity, not repair visibility authority. AssetId-only ordinary
+  metadata lookup sees only independently admitted ordinary records and never discovers staging or
+  materializes repaired metadata on a read. A later operation that needs ordinary ownership of one
+  repaired asset explicitly admits that demanded asset's metadata/reference through the ordinary
+  bounded mutation boundary using its selected repair-owner proof. This transfers no repair-set
+  ownership and does not promote sibling entries. Preview, Copy, and Save use the owner-qualified
+  resource read directly.
+- In the trusted-home envelope, durable page evidence relies on completed sidecar admission and
+  Beryl's prohibition on replacing or deleting final sidecars. Seal, publication, and routine fresh
+  recovery do not rehash previously admitted bytes. Observed missing or corrupt bytes still return
+  the established typed unavailable outcome at a demanded read; explicit scrub retains its role.
+- Each stage admits at most one page under the repair schema's item and encoded-byte ceilings and
+  checked record/read/write bounds for both participants and their heads. It releases writer
+  admission before another page or sidecar operation. Worker, page, and byte capacities remain
+  those of the media configuration; total work may grow with the set without growing residency or
+  one command. The canonical empty set has a sealed zero-count commitment and no media pages.
+- A typed media failure or explicit incomplete convergence selects no repair-derived asset or
+  snapshot. Prepared sidecars and unselected pages remain inert for future home-wide garbage
+  collection. Fresh recovery uses new handles and may seal or select only a fully staged durable
+  candidate whose compact frontiers prove completion; it never fills a missing page, rereads CAS,
+  or trusts a recreated runtime path. A selected result is resolved from its exact selectors after
+  acknowledgement loss; a mixed or mismatched selection is corruption, not partial success.
 - Inline base64, a hosted URL, a similar filesystem entry, prior transient bytes, and CAS history
   outside the exact repair snapshot are never fallback media authority.
 
@@ -425,9 +457,15 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none
 
 Asset bytes, media metadata, and generated paths are untrusted at admission. Arbitrary same-user
 mutation of final sidecars after admission remains outside the correctness contract.
+
+Repair-publication evidence must cover page and final-command failure cuts, exact replay and
+acknowledgement loss, fresh recovery of complete versus incomplete staging, rejection of unselected
+or substituted lookup authority, and equal final-command bounds for small and large media sets.
+The selected result must be complete across both domains while resident page/worker memory stays
+within the same configured limits.

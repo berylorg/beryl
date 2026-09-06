@@ -21,9 +21,11 @@ use crate::window_acquisition::{
 };
 
 mod appearance;
+mod notices;
 use super::initial_composer::InitialComposerCandidate;
 use crate::theme_runtime::{AppearanceGeneration, GpuiAppearanceWindowSet};
 use appearance::MainWindowShellAppearance;
+pub use notices::*;
 
 pub type MainWindowShellComposerConfigurator = Box<
     dyn FnMut(

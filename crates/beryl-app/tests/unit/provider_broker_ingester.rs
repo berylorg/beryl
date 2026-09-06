@@ -15,10 +15,10 @@ use crate::cas_projection::{
     accepted_input_scheduler::AcceptedInputSchedulerSignal,
     connection::{ConnectionRegistryAuthority, EventRouter},
     context_compaction::ContextCompactionCoordinator,
+    initial_start::InitialStartGate,
     persistent_failure::MasterCommandGate,
     service_config::ProjectionWorkerPool,
     service_registry::ProjectionServiceConnectionRegistry,
-    initial_start::InitialStartGate,
     stop::StopCoordinator,
 };
 
@@ -230,7 +230,7 @@ fn whole_connection_failure_is_sticky_across_every_command_observation() {
 }
 
 #[test]
-fn phase82_page_pool_failure_retains_the_acquired_worker() {
+fn page_pool_failure_retains_the_acquired_worker() {
     let fixture = BrokerBuildFixture::new(191);
     let error = fixture.build_error(ProviderBrokerBuildFault::PagePool);
 
@@ -253,7 +253,7 @@ fn phase82_page_pool_failure_retains_the_acquired_worker() {
 }
 
 #[test]
-fn phase82_channel_failure_retains_the_worker_and_fixed_page_pool() {
+fn channel_failure_retains_the_worker_and_fixed_page_pool() {
     let fixture = BrokerBuildFixture::new(192);
     let error = fixture.build_error(ProviderBrokerBuildFault::Channel);
 
@@ -276,7 +276,7 @@ fn phase82_channel_failure_retains_the_worker_and_fixed_page_pool() {
 }
 
 #[test]
-fn phase82_spawn_failure_retains_the_complete_unstarted_broker() {
+fn spawn_failure_retains_the_complete_unstarted_broker() {
     let fixture = BrokerBuildFixture::new(193);
     let error = fixture.build_error(ProviderBrokerBuildFault::Spawn);
 

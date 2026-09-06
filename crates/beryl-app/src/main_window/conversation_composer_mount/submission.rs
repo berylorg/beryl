@@ -152,6 +152,13 @@ struct SubmissionSuccessor {
 }
 
 impl MainWindowConversationComposerSubmission {
+    pub(super) fn executor(&self) -> BackgroundExecutor {
+        self.executor.clone()
+    }
+    pub(super) fn is_active(&self) -> bool {
+        self.active.is_some()
+    }
+
     pub(super) fn new(
         request_source: MainWindowComposerSubmissionRequestSource,
         executor: BackgroundExecutor,
@@ -203,7 +210,8 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if self.submission.active.is_some()
+        if self.window_close.is_some()
+            || self.submission.active.is_some()
             || matches!(
                 self.submission.status,
                 MainWindowConversationComposerSubmissionStatus::Unavailable
@@ -597,6 +605,7 @@ impl MainWindowConversationComposerMount {
 
 impl Drop for MainWindowConversationComposerMount {
     fn drop(&mut self) {
+        self.release_window_close_on_drop();
         self.cancel_native_lineage_on_drop();
         if let Some(task) = self.submission.task.take() {
             task.detach();

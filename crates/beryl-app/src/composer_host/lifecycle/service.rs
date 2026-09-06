@@ -11,6 +11,9 @@ impl SyndicComposerHost {
         &mut self,
         store: &HomeStore,
     ) -> Result<ComposerHostServiceDisposalCompletion, ComposerHostError> {
+        if self.lifecycle.close_ticket.is_some() {
+            return Err(ComposerHostError::LifecycleBlocked);
+        }
         self.lifecycle.service_disposed = true;
         self.dispose_pending_submission(store)?;
         self.lifecycle.clear_runtime();

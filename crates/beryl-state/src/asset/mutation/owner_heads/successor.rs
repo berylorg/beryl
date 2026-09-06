@@ -1,31 +1,20 @@
 use beryl_home_store::{
-    FirstAcceptancePromotionProtocolV1, MutationBuildError, RecordCodec, SuccessorObservation,
-    SuccessorPointRead, SuccessorPointReader, SuccessorPointRecord, SuccessorReadReservation,
-    SuccessorWitness,
+    FirstAcceptancePromotionAssetAdapter, FirstAcceptancePromotionAssetPlan,
+    FirstAcceptancePromotionAssetSeed, RecordCodec,
 };
-use beryl_model::{
-    AssetReferenceSetDigest, AssetReferenceSetId, FirstAcceptancePromotionSuccessorV1,
-    OrderedMarkerAssetSummaryV1, SealedAssetReferenceSetProof, SequentialMarkerSummaryV1,
-    SyndicAcceptedInputId, SyndicDraftId,
-};
+use beryl_model::FirstAcceptancePromotionSuccessorV1;
 
 use crate::RecordRevision;
 
 use super::{AssetOwnerHeadAction, AssetOwnerHeadUpdate};
-use crate::asset::{
-    AssetDomain, AssetOwner, AssetOwnerHeadRecord, AssetValidationError, codec::AssetOwnerHeadCodec,
-};
+use crate::asset::{AssetDomain, AssetOwner, AssetOwnerHeadRecord, codec::AssetOwnerHeadCodec};
 
 #[derive(Clone, Copy)]
-pub(super) struct FirstAcceptancePromotionWitnessV1 {
-    draft_id: SyndicDraftId,
-    accepted_input_id: SyndicAcceptedInputId,
-    asset_reference_set: SealedAssetReferenceSetProof,
-}
+pub(super) struct PromotionOwnerHeadAdapterV1;
 
-pub(super) fn first_acceptance_witness(
+pub(super) fn first_acceptance_promotion_seed(
     updates: &[AssetOwnerHeadUpdate],
-) -> Option<FirstAcceptancePromotionWitnessV1> {
+) -> Option<FirstAcceptancePromotionAssetSeed> {
     if updates.len() != 2 {
         return None;
     }
@@ -51,102 +40,38 @@ pub(super) fn first_acceptance_witness(
     if draft_id.accepted_input_id() != accepted_input_id || draft_set != accepted_set {
         return None;
     }
-    Some(FirstAcceptancePromotionWitnessV1 {
+    Some(FirstAcceptancePromotionAssetSeed {
         draft_id,
         accepted_input_id,
         asset_reference_set: draft_set,
     })
 }
 
-struct PromotionOwnerHeadReadV1;
-
-impl SuccessorPointRead<AssetDomain, FirstAcceptancePromotionProtocolV1>
-    for PromotionOwnerHeadReadV1
-{
-    type Record = AssetOwnerHeadCodec;
+impl FirstAcceptancePromotionAssetAdapter<AssetDomain> for PromotionOwnerHeadAdapterV1 {
+    type OwnerHead = AssetOwnerHeadCodec;
     const MAX_DECODED_BYTES: usize = 512;
 
-    fn derive_key(correlation: &FirstAcceptancePromotionSuccessorV1, ordinal: usize) -> AssetOwner {
-        match ordinal {
-            0 => AssetOwner::CurrentDraft(SyndicDraftId::from_bytes(
-                *correlation.accepted_input_id().as_bytes(),
-            )),
-            1 => AssetOwner::AcceptedInput(correlation.accepted_input_id()),
-            _ => AssetOwner::SubmittedTurnItem(correlation.submitted_item_id()),
-        }
-    }
-
-    fn expected_value(
+    fn derive_plan(
+        seed: &FirstAcceptancePromotionAssetSeed,
         correlation: &FirstAcceptancePromotionSuccessorV1,
-        ordinal: usize,
-    ) -> AssetOwnerHeadRecord {
-        AssetOwnerHeadRecord {
-            owner: Self::derive_key(correlation, ordinal),
-            set: correlation
-                .asset_reference_set()
-                .unwrap_or_else(empty_reference_set),
-            owner_revision: RecordRevision::INITIAL,
+    ) -> Option<FirstAcceptancePromotionAssetPlan<AssetOwner, AssetOwnerHeadRecord>> {
+        if correlation.accepted_input_id() != seed.accepted_input_id
+            || correlation.asset_reference_set() != Some(seed.asset_reference_set)
+        {
+            return None;
         }
-    }
-}
-
-impl SuccessorWitness<AssetDomain, FirstAcceptancePromotionProtocolV1>
-    for FirstAcceptancePromotionWitnessV1
-{
-    const MAX_RETAINED_BYTES: usize = 256;
-
-    fn reserve_reads(
-        &self,
-        reservation: &mut SuccessorReadReservation<
-            '_,
-            AssetDomain,
-            FirstAcceptancePromotionProtocolV1,
-        >,
-    ) -> Result<(), MutationBuildError> {
-        reservation.reserve::<PromotionOwnerHeadReadV1>(3)
-    }
-
-    fn authenticate(
-        &self,
-        reader: &mut SuccessorPointReader<'_, AssetDomain, FirstAcceptancePromotionProtocolV1>,
-    ) -> Result<SuccessorObservation<FirstAcceptancePromotionSuccessorV1>, AssetValidationError>
-    {
-        let draft = reader.read::<PromotionOwnerHeadReadV1>()?;
-        let accepted = reader.read::<PromotionOwnerHeadReadV1>()?;
-        let submitted = reader.read::<PromotionOwnerHeadReadV1>()?;
-        let correlation = *reader.correlation();
-        let exact_correlation = correlation.accepted_input_id() == self.accepted_input_id
-            && SyndicDraftId::from_bytes(*correlation.accepted_input_id().as_bytes())
-                == self.draft_id
-            && correlation.asset_reference_set() == Some(self.asset_reference_set);
-        let originals_absent = matches!(draft, SuccessorPointRecord::Absent)
-            && matches!(accepted, SuccessorPointRecord::Absent);
-        let submitted_exact = matches!(
+        let submitted = AssetOwner::SubmittedTurnItem(correlation.submitted_item_id());
+        Some(FirstAcceptancePromotionAssetPlan {
+            original_draft: AssetOwner::CurrentDraft(seed.draft_id),
+            original_accepted: AssetOwner::AcceptedInput(seed.accepted_input_id),
             submitted,
-            SuccessorPointRecord::Present(ref head)
-                if head.owner() == AssetOwner::SubmittedTurnItem(correlation.submitted_item_id())
-                    && head.set() == self.asset_reference_set
-                    && head.owner_revision() == RecordRevision::INITIAL
-        );
-        if exact_correlation && originals_absent && submitted_exact {
-            Ok(SuccessorObservation::Authenticated(correlation))
-        } else {
-            Ok(SuccessorObservation::Collision)
-        }
+            expected_submitted: AssetOwnerHeadRecord {
+                owner: submitted,
+                set: seed.asset_reference_set,
+                owner_revision: RecordRevision::INITIAL,
+            },
+        })
     }
-}
-
-fn empty_reference_set() -> SealedAssetReferenceSetProof {
-    let sequential = SequentialMarkerSummaryV1::new([0; 32], 0, None)
-        .expect("zero-marker summary is structurally valid");
-    SealedAssetReferenceSetProof::new(
-        AssetReferenceSetId::from_bytes([0; 16]),
-        sequential,
-        OrderedMarkerAssetSummaryV1::new([0; 32], 0),
-        0,
-        AssetReferenceSetDigest::from_bytes([0; 32]),
-    )
-    .expect("zero-marker proof is structurally valid")
 }
 
 const _: [(); 1] = [(); (AssetOwnerHeadCodec::MAX_KEY_BYTES <= 17) as usize];

@@ -75,6 +75,13 @@ Public APIs use stable Syndic identities and typed nonzero monotonic revisions. 
 identities are bounded source metadata and never the sole primary key. Every correctness-sensitive
 mutation names exact expected revisions or immutable roots for all authority it reads or changes.
 
+The normal provider-frame API performs streaming structural validation. The optional
+`provider-frame-test-support` feature exposes the bounded complete materializer only through a
+test-support namespace for independent canonical and malformed-frame parity checks. Default builds
+neither compile nor export that decoder. Staging, publication, recovery, and projection use the
+streaming path; test-support materialization cannot become a second production validation path.
+The oracle preserves exact V7 bytes, history-support outcomes, and content-reference evidence.
+
 Cloneable handles are non-`Copy` views. Prepared commands, installation tokens, proof inputs,
 receipts, final proofs, ambiguous-outcome handles, and reconciliation authorities are opaque,
 move-only values. Their custody cannot be reconstructed from identifiers, digests, stored bytes, or
@@ -119,12 +126,12 @@ prior service generation.
 
 # Engineering Rigor
 
-Profile: production-application/v1
+Profile: production-application/v2
 
 Modifiers:
 
-- persistent-state-integrity/v1
-- shared-resource-protection/v1
+- persistent-state-integrity/v2
+- shared-resource-protection/v2
 
 This rigor contract governs this entry point and all four normative supplements in the
 documentation set.

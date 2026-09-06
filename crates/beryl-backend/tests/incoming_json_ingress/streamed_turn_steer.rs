@@ -24,7 +24,7 @@ use beryl_backend::{
 use beryl_model::{CasThreadId, CasTurnId};
 
 #[allow(dead_code)]
-#[path = "../phase31_bounded_dispatch/support.rs"]
+#[path = "../request_flow/support.rs"]
 mod dispatch_support;
 
 use dispatch_support::{
@@ -466,10 +466,11 @@ fn duplicate_delayed_lifecycle_is_rejected_by_ordered_correlation_authority() {
 }
 
 #[test]
-fn stdio_and_request_only_steering_fail_before_source_replay_or_session_mutation() {
-    let mut stdio = ManagedBackendSession::stdio_streamed_input_gate_for_lifecycle_test().unwrap();
-    let before = stdio.predispatch_state_for_lifecycle_test();
-    let outcome = steer_with_unread_source(&mut stdio);
+fn unsupported_and_request_only_steering_fail_before_source_replay_or_session_mutation() {
+    let mut unsupported =
+        ManagedBackendSession::unsupported_streamed_input_gate_for_lifecycle_test().unwrap();
+    let before = unsupported.predispatch_state_for_lifecycle_test();
+    let outcome = steer_with_unread_source(&mut unsupported);
     assert!(matches!(
         outcome,
         NonIdempotentRequestOutcome::ProvenNotDispatched { error }
@@ -477,11 +478,11 @@ fn stdio_and_request_only_steering_fail_before_source_replay_or_session_mutation
                 *error,
                 ManagedBackendError::StreamedInputTransportUnsupported {
                     ref method,
-                    transport: "stdio",
+                    transport: "unsupported",
                 } if method == "turn/steer"
             )
     ));
-    assert_eq!(stdio.predispatch_state_for_lifecycle_test(), before);
+    assert_eq!(unsupported.predispatch_state_for_lifecycle_test(), before);
 
     let (endpoint, server) = spawn_server(|socket| {
         assert_initialize(&read_json(socket).unwrap(), true);

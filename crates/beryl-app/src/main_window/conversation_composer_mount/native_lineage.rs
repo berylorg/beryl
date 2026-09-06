@@ -93,6 +93,9 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<bool, String> {
+        if self.window_close.is_some() {
+            return Ok(false);
+        }
         if let Err(error) = self.finish_native_lineage_host_result(window, cx) {
             return self
                 .fail_native_lineage_realization(
@@ -227,7 +230,7 @@ impl MainWindowConversationComposerMount {
         self.native_lineage_selection = Some(current);
     }
 
-    pub(super) fn native_lineage_successor_is_exact(
+    pub(in crate::main_window) fn native_lineage_successor_is_exact(
         previous: MainWindowComposerSelectionIdentity,
         current: MainWindowComposerSelectionIdentity,
     ) -> bool {
@@ -541,6 +544,7 @@ impl MainWindowConversationComposerMount {
     }
 
     pub(super) fn cancel_native_lineage_on_drop(&mut self) {
+        let disposal_cleanup_pending = self.cancel_native_lineage_disposal_on_drop();
         if let (Some(control), Some(snapshot)) = (
             self.native_lineage_recovery.as_ref(),
             self.native_lineage_snapshot,
@@ -548,7 +552,7 @@ impl MainWindowConversationComposerMount {
             let _ = control.cancel(snapshot.key());
         }
         self.cancel_native_lineage_realization();
-        if let Some(selection) = self.native_lineage_selection {
+        if !disposal_cleanup_pending && let Some(selection) = self.native_lineage_selection {
             let _ = self.service.cancel_native_lineage_suspension(selection);
         }
         self.native_lineage_validation_task = None;

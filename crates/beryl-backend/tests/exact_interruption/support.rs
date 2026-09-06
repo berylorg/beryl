@@ -12,8 +12,8 @@ use beryl_model::{
 
 use crate::websocket::{AUTHORIZATION, TIMEOUT, foreground_config};
 
-pub const THREAD: &str = "thread-phase67";
-pub const TURN: &str = "turn-phase67";
+pub const THREAD: &str = "thread-";
+pub const TURN: &str = "turn-";
 
 pub struct InertSink;
 

@@ -10,7 +10,7 @@ pub(super) fn publish_image_asset(home: &HomeStore, state: &BerylState) -> Asset
     let sidecar = home
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
-            b"\x89PNG\r\n\x1a\nphase54-repeated-steering-image",
+            b"\x89PNG\r\n\x1a\nrepeated-steering-image",
             SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap()),
         )
         .unwrap();
@@ -35,10 +35,22 @@ pub(super) fn publish_image_asset(home: &HomeStore, state: &BerylState) -> Asset
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
     match home.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("active-steering image metadata command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("active-steering image metadata command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("active-steering image metadata command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!(
+            "active-steering image metadata command committed with later failure: {outcome:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("active-steering image metadata command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("active-steering image metadata command was indeterminate: {outcome:?}")
+        }
     }
     asset
 }

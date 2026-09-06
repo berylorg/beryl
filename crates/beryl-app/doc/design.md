@@ -95,11 +95,11 @@ internal contract.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`
 
 This rigor declaration governs this entry point and all six normative supplements. Supported-
 envelope public contracts, exact external-effect custody, cancellation and replacement fences,

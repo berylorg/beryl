@@ -57,6 +57,11 @@ of every allocation made by Beryl or its dependencies.
 - When an external API necessarily materializes a whole value, Beryl places a documented generous
   limit on the input or operation where feasible and treats the dependency allocation as an
   accepted limitation. It does not reconstruct dependency-private allocation formulas.
+- An owning feature and system may explicitly limit one operation's size or retained staging cost
+  independently of dataset size. Such a limit names its fixed profile, accounting boundary, and
+  atomic refusal behavior. It never permits a whole-dataset resident buffer or silently caps an
+  existing draft, transcript, or catalog. An operation that cannot fit in isolation is distinct
+  from temporary shared-capacity contention and from storage failure.
 - Queues and worker sets have explicit count capacities. Full queues apply backpressure, coalesce
   replaceable work, evict optional work, or return a typed unavailable result according to the
   owning semantic contract.
@@ -181,7 +186,7 @@ of every allocation made by Beryl or its dependencies.
 - Large text records expose indexed source-byte ranges, and Beryl retains only the ranges needed
   for the realized frame and bounded overscan before presentation adaptation, syntax work, line
   layout, or `SharedString` construction would create an unreasonable whole-record working set.
-- Markdown, code, tables, logs, and accessibility projections have practical per-record or
+- Markdown, code, tables, and logs have practical per-record or
   per-window work limits. Optional decoration may degrade explicitly while canonical durable text
   remains available.
 - Render and prepaint paths consume prepared presentation data. They do not perform blocking
@@ -212,11 +217,13 @@ of every allocation made by Beryl or its dependencies.
 - Logically unbounded drafts are durably chunked and presented through revision-bound range and
   page sources. Editor activation, app state, undo, autosave, and rendering never require a whole-
   draft resident value or proportional duplicate.
-- Logical document, selection, edit, undo, and redo size is not capped by resident RAM, viewport
-  dimensions, a hardcoded cumulative fragment count, or a whole-operation collection. Fixed limits
-  apply to one source or proposal page, one durable command and record batch, resident working
-  sets, custody and request queues, and per-frame work. Large operations retain compact cursors and
-  make bounded progress over time through the same semantic transaction as small operations.
+- Logical document and selection size is not capped by resident RAM or viewport dimensions.
+  Editing, undo, and redo retain compact cursors and bounded pages rather than a whole-operation
+  resident collection. Fixed limits apply to source or proposal pages, durable command batches,
+  working sets, custody and request queues, and per-frame work. Explicit owning operation profiles
+  may additionally bound retained staging, including Syndic's V1 marker-edit admission profile;
+  those limits do not cap the draft's marker population. Large operations within their declared
+  envelope make bounded progress through the same semantic transaction as small operations.
 - One edit session captures exact predecessor caret and directed selection, streams bounded source
   and canonical proposal pages under cumulative replay identity, and finishes only through an
   explicit authenticated end-of-input. Consumed payload pages are released after acceptance.
@@ -253,6 +260,11 @@ of every allocation made by Beryl or its dependencies.
   unknown-dispatch outcomes remain distinct where they affect correctness.
 - A denied speculative load leaves durable authority unchanged. Optional preload or decoration may
   be dropped under pressure.
+- Operation preflight uses trusted compact size facts when available, otherwise bounded incremental
+  preparation. It checks each proposed charge before exceeding its allowance and never materializes
+  a whole value just to measure it. Passing one check does not reserve future shared capacity.
+  Refusal before publication leaves the selected durable state unchanged; already staged work
+  follows its existing exact cancellation, reconciliation, and cleanup contract.
 - If a correctness-sensitive operation exceeds a known limit before dispatch or commit, it fails
   explicitly. After possible external dispatch, resource failure preserves the existing
   unknown-outcome rules.
@@ -284,6 +296,10 @@ of every allocation made by Beryl or its dependencies.
   renderers, media, and failures.
 - Tests do not require exact allocator-byte equality, CAS process accounting, GPU-driver residency
   accounting, or a global RSS ceiling.
+- Dataset-growth evidence holds page, cache, queue, and worker configuration fixed while increasing
+  durable draft, transcript, or catalog size. It distinguishes bounded resident usage from total
+  disk growth and operation latency. Operation-limit evidence separately covers isolated size
+  refusal, aggregate contention, storage failure, atomic unchanged rejection, and released custody.
 - Reviews and source scans target unbounded channels, whole-history collections, obvious
   clone-heavy bulk payloads, unrestricted decode/layout expansion, and caches without eviction at
   the named risk boundaries. They do not reject every `Vec`, `String`, `PathBuf`, iterator, or
@@ -302,6 +318,6 @@ of every allocation made by Beryl or its dependencies.
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

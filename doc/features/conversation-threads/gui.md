@@ -8,7 +8,7 @@ Mount-into: main-window.toolbar
 
 Conversation-thread controls form an explicitly feature-local toolbar ordering rather than a toolbar widget. In order, they are one project-local [`two-segment split button`](../../gui/widgets/two-segment-split-button/spec.md), backward and forward thread-navigation command buttons, and one project-local [`thread selector trigger`](../../gui/widgets/thread-selector-trigger/spec.md). The controls leave the trailing toolbar group available for the window-level New Window, Exit, and Settings commands.
 
-The feature configures the two-segment split button's primary label as `New Thread`, its secondary glyph as an ellipsis, and the secondary accessible name as `Choose runtime and root`. It supplies the exact commands, availability explanations, secondary attention state, and New Thread flyout association from `design.md`. The widget owns joined geometry, independent segment focus and visual states, and the stable secondary flyout anchor.
+The feature configures the two-segment split button's primary label as `New Thread`, its secondary glyph as an ellipsis, and the secondary tooltip as `Choose runtime and root`. It supplies the exact commands, availability explanations, secondary attention state, and New Thread flyout association from `design.md`. The widget owns joined geometry, independent segment focus and visual states, and the stable secondary flyout anchor.
 
 The backward and forward controls are compact icon-like `command button` widgets. The feature
 supplies the trigger's selected thread and displayed title, `THREADS`
@@ -49,7 +49,7 @@ Thread rows configure the picker's leading icon as a thread spool, its primary l
 
 In the all-roots list, the secondary line includes the runtime and root before its activity or occupancy state, for example `Host - C:\Projects\Example - current` or `Linux - /home/user/projects/example - open elsewhere`. When more than one configured executable runtime has the same derived Host or WSL environment label, the line inserts that thread's executable path after the environment label so those runtimes remain visibly distinguishable. In a root-scoped list, the heading already owns the full root path, so the secondary line contains only current state, activity time, or open-elsewhere state.
 
-Path values are never rewritten into shortened aliases. When available width cannot show a complete path, the rendered line truncates at its boundary while its tooltip and accessibility text expose the complete stored path.
+Path values are never rewritten into shortened aliases. When available width cannot show a complete path, the rendered line truncates at its boundary while its tooltip exposes the complete stored path.
 
 The current thread may carry the trailing status `OPEN`. A thread occupied by another main conversation window carries the trailing status `UNAVAILABLE`; its secondary line explains that it is open elsewhere. Status remains aligned to the trailing edge independently of title length.
 
@@ -61,13 +61,13 @@ The root-browsing state defined by `design.md` maps the header command to `Back 
 
 Root rows configure the picker's leading icon as a folder, its primary label as the full root path, and its secondary label as `<thread count> threads - <last activity time>`. A row eligible to return to the thread list may configure its trailing region with `Choose`.
 
-Root paths remain single-line so every row keeps the fixed collection height. Constrained paths use the full-path truncation, tooltip, and accessibility rule defined for thread metadata.
+Root paths remain single-line so every row keeps the fixed collection height. Constrained paths use the full-path truncation and tooltip rule defined for thread metadata.
 
 The root-scoped thread state maps the central collection to that root's thread rows and the heading to `THREADS FOR <full root path>`. The all-roots state maps the same region to all-root thread rows and the all-roots heading.
 
 ### Runtime And Root Configuration
 
-The feature configures each runtime row with its Host or WSL environment label as the primary label. The secondary line begins with the exact configured Codex executable path and then appends compact root-count and readiness metadata. The line remains single-height and follows the same full-path truncation, tooltip, and accessibility rule as other path-bearing rows. The row also provides a `Browse roots` command or readonly `Roots shown` state and an `Add root` command. The feature configures `Add runtime` beneath the runtime collection.
+The feature configures each runtime row with its Host or WSL environment label as the primary label. The secondary line begins with the exact configured Codex executable path and then appends compact root-count and readiness metadata. The line remains single-height and follows the same full-path truncation and tooltip rule as other path-bearing rows. The row also provides a `Browse roots` command or readonly `Roots shown` state and an `Add root` command. The feature configures `Add runtime` beneath the runtime collection.
 
 These controls create or select runtimes and roots only. They do not expose thread metadata manipulation. The thread-root picker owns their vertical layout, bounded runtime viewport, focus preservation, and scrolling mechanics.
 

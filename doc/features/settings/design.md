@@ -133,6 +133,6 @@ Give users a durable, validated settings window for Beryl-owned application pref
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none

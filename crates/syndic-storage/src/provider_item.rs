@@ -1,6 +1,6 @@
 //! Closed typed values and deterministic framing for pinned provider items.
 
-mod codec;
+pub(crate) mod codec;
 mod error;
 mod frame;
 mod structured;

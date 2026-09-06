@@ -11,7 +11,7 @@ use beryl_state::{
 };
 use tempfile::tempdir;
 
-use support::phase9::{admission, catalog_facts, catalog_sources, placement, sidecar_limit};
+use support::state_fixture::{admission, catalog_facts, catalog_sources, placement, sidecar_limit};
 use support::{execute, host_runtime, open};
 
 #[test]

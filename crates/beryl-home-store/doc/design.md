@@ -76,11 +76,11 @@ No supplement owns cross-package behavior outside its role or declares a separat
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `persistent-state-integrity/v1`
+- `persistent-state-integrity/v2`
 
 This declaration governs this entry point and every normative supplement in the Documentation Set.
 The supported operating envelope is an Operator-selected trusted Beryl home with the documented

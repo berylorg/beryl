@@ -1309,11 +1309,17 @@ fn decode_session_record(bytes: &[u8]) -> Result<DraftEditorCandidateSessionReco
             if request.draft_id() != before.draft_id()
                 || request.session_id() != before.session_id()
                 || request.expected_session_generation() != before.session_generation()
-                || request.expected_pair()
-                    != DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
+                || !(request.expected_pair()
+                    == DraftRootHistoryPairV1::new(before.newest_root(), before.newest_history())
+                    && (before.disposed(request.operation_id()).as_ref() == Some(&after)
+                        || before.abandoned_fresh(request.operation_id()).as_ref() == Some(&after))
+                    || request.expected_pair()
+                        == DraftRootHistoryPairV1::new(
+                            before.published_root(),
+                            before.published_history(),
+                        )
+                        && before.disposed_opening(request.operation_id()).as_ref() == Some(&after))
                 || frontier.reference() != before.newest_history()
-                || (before.disposed(request.operation_id()).as_ref() != Some(&after)
-                    && before.abandoned_fresh(request.operation_id()).as_ref() != Some(&after))
             {
                 return Err(CodecError::InvalidLength("candidate disposal receipt"));
             }

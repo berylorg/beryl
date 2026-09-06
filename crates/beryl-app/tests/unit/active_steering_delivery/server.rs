@@ -10,11 +10,11 @@ use beryl_backend::BackendWebSocketEndpoint;
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
 
-pub(super) const AUTHORIZATION: &str = "Bearer phase54-active-steering";
-pub(super) const CAS_THREAD_ID: &str = "phase54-cas-thread";
-pub(super) const CAS_TURN_ID: &str = "phase54-cas-turn";
-const CAS_INITIAL_ITEM_ID: &str = "phase54-initial-item";
-const CAS_ITEM_ID: &str = "phase54-steering-item";
+pub(super) const AUTHORIZATION: &str = "Bearer active-steering";
+pub(super) const CAS_THREAD_ID: &str = "cas-thread";
+pub(super) const CAS_TURN_ID: &str = "cas-turn";
+const CAS_INITIAL_ITEM_ID: &str = "initial-item";
+const CAS_ITEM_ID: &str = "steering-item";
 pub(super) const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,7 +63,7 @@ impl SteeringServer {
         let (event_sender, events) = mpsc::sync_channel(4);
         let (commands, command_receiver) = mpsc::sync_channel(1);
         let handle = thread::Builder::new()
-            .name("phase54-active-steering-server".to_owned())
+            .name("active-steering-server".to_owned())
             .spawn(move || run_server(listener, event_sender, command_receiver, scenario))
             .unwrap();
         Self {
@@ -152,7 +152,12 @@ fn complete_admission(socket: &mut WebSocket<TcpStream>) {
     let request = read_json(socket).unwrap();
     assert_eq!(request["method"], "config/read");
     let id = request["id"].as_u64().unwrap();
-    send_json(socket, &format!(r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#));
+    send_json(
+        socket,
+        &format!(
+            r#"{{"id":{id},"result":{{"config":{{"model":"gpt-5.6","model_reasoning_effort":"high","features":{{"multi_agent_v2":{{"enabled":true,"expose_spawn_agent_model_overrides":true}}}}}},"origins":{{"features.multi_agent_v2.enabled":{{"name":{{"type":"sessionFlags"}},"version":"0"}},"features.multi_agent_v2.expose_spawn_agent_model_overrides":{{"name":{{"type":"sessionFlags"}},"version":"0"}}}}}}}}"#
+        ),
+    );
 }
 
 fn complete_projection(socket: &mut WebSocket<TcpStream>) {
@@ -165,7 +170,7 @@ fn complete_projection(socket: &mut WebSocket<TcpStream>) {
     send_json(
         socket,
         &format!(
-            r#"{{"id":{id},"result":{{"thread":{{"id":"{CAS_THREAD_ID}","extra":null,"sessionId":"phase54-session","forkedFromId":null,"parentThreadId":null,"preview":"preview","ephemeral":false,"historyMode":"legacy","modelProvider":"openai","createdAt":1,"updatedAt":2,"recencyAt":null,"status":{{"type":"idle"}},"path":null,"cwd":"C:\\work\\beryl","cliVersion":"0.146.0","source":"appServer","threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"turns":[]}},"model":"gpt-5.6","modelProvider":"openai","serviceTier":null,"cwd":"C:\\work\\beryl","runtimeWorkspaceRoots":[],"instructionSources":[],"approvalPolicy":"never","approvalsReviewer":"user","sandbox":{{}},"activePermissionProfile":null,"reasoningEffort":"high","multiAgentMode":"explicitRequestOnly"}}}}"#,
+            r#"{{"id":{id},"result":{{"thread":{{"id":"{CAS_THREAD_ID}","extra":null,"sessionId":"session","forkedFromId":null,"parentThreadId":null,"preview":"preview","ephemeral":false,"historyMode":"legacy","modelProvider":"openai","createdAt":1,"updatedAt":2,"recencyAt":null,"status":{{"type":"idle"}},"path":null,"cwd":"C:\\work\\beryl","cliVersion":"0.146.0","source":"appServer","threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"turns":[]}},"model":"gpt-5.6","modelProvider":"openai","serviceTier":null,"cwd":"C:\\work\\beryl","runtimeWorkspaceRoots":[],"instructionSources":[],"approvalPolicy":"never","approvalsReviewer":"user","sandbox":{{}},"activePermissionProfile":null,"reasoningEffort":"high","multiAgentMode":"explicitRequestOnly"}}}}"#,
         ),
     );
 }
@@ -217,13 +222,13 @@ fn run_scenario(
             complete_success(
                 socket,
                 ExpectedInput::Text(super::support::STEERING_TEXT),
-                "phase54-steering-item-1",
+                "steering-item-1",
                 54_031,
             );
             complete_success(
                 socket,
                 ExpectedInput::Text(super::support::SECOND_STEERING_TEXT),
-                "phase54-steering-item-2",
+                "steering-item-2",
                 54_041,
             );
             read_until_close(socket).unwrap();
@@ -232,7 +237,7 @@ fn run_scenario(
             complete_success(
                 socket,
                 ExpectedInput::Text(super::support::SECOND_STEERING_TEXT),
-                "phase54-steering-item-second-only",
+                "steering-item-second-only",
                 54_046,
             );
             read_until_close(socket).unwrap();
@@ -246,7 +251,7 @@ fn run_scenario(
             complete_success(
                 socket,
                 ExpectedInput::Text(super::support::SECOND_STEERING_TEXT),
-                "phase54-steering-item-after-rejection",
+                "steering-item-after-rejection",
                 54_051,
             );
             read_until_close(socket).unwrap();
@@ -269,7 +274,7 @@ fn run_scenario(
             let id = request["id"].as_u64().unwrap();
             send_json(
                 socket,
-                &format!(r#"{{"id":{id},"result":{{"turnId":"phase54-wrong-turn"}}}}"#),
+                &format!(r#"{{"id":{id},"result":{{"turnId":"wrong-turn"}}}}"#),
             );
             read_until_close(socket).unwrap();
         }
@@ -534,7 +539,7 @@ fn read_json(socket: &mut WebSocket<TcpStream>) -> Option<Value> {
             Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {
                 return None;
             }
-            Err(error) => panic!("phase54 server read failed: {error}"),
+            Err(error) => panic!(" server read failed: {error}"),
         }
     }
 }

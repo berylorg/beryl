@@ -17,15 +17,15 @@ second row, overlay, or progress surface. The record presents that text on the n
 frame without a typewriter animation and remains visually continuous as it becomes historical.
 
 Every affected assistant record configures the `transcript view`'s optional noninteractive
-record-status/provenance part with one feature-supplied visible and accessible label: `Repair
+record-status/provenance part with one feature-supplied visible label: `Repair
 pending`, `Repaired from CAS history`, or `Incomplete`. The part remains adjacent to record
-provenance and is included in the record's accessible description. It is not another row, overlay,
+provenance. It is not another row, overlay,
 progress surface, or interactive control.
 
 The configured part and repaired record content update together in the whole-turn replacement. The
 part never advances ahead of the records whose provenance it describes.
 
-The transcript view also composes applicable records from `transcript.context-records` into the host-supplied ordered presentation flow. A synthetic-context contribution receives the transcript's ordinary variable-height realization, chunking, measurement, selection, accessibility, and anchor mechanics without becoming another transcript viewport or turn record.
+The transcript view also composes applicable records from `transcript.context-records` into the host-supplied ordered presentation flow. A synthetic-context contribution receives the transcript's ordinary variable-height realization, chunking, measurement, selection, and anchor mechanics without becoming another transcript viewport or turn record.
 
 The feature selects tail-oriented placement unless an explicit navigation command provides another target. During selected-thread activation, it keeps the prior coherent `transcript view` visible in activation-pending state until the replacement content and initial viewport state can publish together.
 
@@ -55,7 +55,7 @@ image-control contract.
 
 Transcript image-marker inspection opens the project-local `image preview` in
 `main-window.overlays`. The transcript feature supplies the exact marker target, presented resource
-state, accessibility label, origin anchor, and the relationship between the marker and preview
+state, origin anchor, and the relationship between the marker and preview
 command placements. `doc/features/image-assets/design.md` owns Copy and `Save…` eligibility,
 disabled and failure behavior, command outcomes, and generic focus-return semantics, including
 origin eligibility. The preview widget owns its fitted overlay and dismissal.

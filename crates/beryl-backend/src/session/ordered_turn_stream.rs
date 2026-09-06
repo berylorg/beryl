@@ -16,12 +16,6 @@ impl ManagedBackendSession {
         &mut self,
         mut sink: Box<dyn OrderedTurnStreamSink>,
     ) -> Result<(), OrderedTurnStreamBindingError> {
-        if !matches!(
-            self.transport,
-            BackendClientTransport::ForegroundWebSocket(_)
-        ) {
-            return Err(OrderedTurnStreamBindingError::StdioUnavailable);
-        }
         if !self.has_full_turn_stream() {
             return Err(OrderedTurnStreamBindingError::FullTurnStreamRequired);
         }

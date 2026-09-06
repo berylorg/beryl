@@ -11,16 +11,16 @@ use std::{
 };
 
 use beryl_home_store::{
-    test_faults::{FaultController, FaultPoint},
     HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
+    test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
 use support::{AlphaDomain, BytesRecord, PutBytes};
 
-const HOME_ENV: &str = "BERYL_PHASE9_FORCE_HOME";
-const POINT_ENV: &str = "BERYL_PHASE9_FORCE_POINT";
-const READY_ENV: &str = "BERYL_PHASE9_FORCE_READY";
+const HOME_ENV: &str = "BERYL_FORCE_HOME";
+const POINT_ENV: &str = "BERYL_FORCE_POINT";
+const READY_ENV: &str = "BERYL_FORCE_READY";
 
 fn open(path: &Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(

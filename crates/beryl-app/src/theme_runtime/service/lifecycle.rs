@@ -11,9 +11,15 @@ impl ThemeRuntime {
         let active = ThemeService::active_theme_from_setting(active_setting)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Identity))?;
         let settings = service.settings_identity(domain_revision, active_setting);
-        let repository = service
-            .observe_repository(store, config.max_manifest_bytes, config.manifest_read, None)
-            .ok();
+        let (repository, repository_failure) = match service.observe_repository(
+            store,
+            config.max_manifest_bytes,
+            config.manifest_read,
+            None,
+        ) {
+            Ok(repository) => (Some(repository), None),
+            Err(error) => (None, Some(map_repository_load_failure(&error))),
+        };
         let mut pages_read = 0;
         let loaded = match (&active, &repository) {
             (None, _) => Err(ThemeLoadFailure::ActiveIdentityMissing),
@@ -32,7 +38,8 @@ impl ThemeRuntime {
         };
         let startup = ThemeStartupOutcome::evaluate(settings, active.as_ref(), loaded)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Identity))?;
-        let last_failure = startup.failure().map(map_startup_failure);
+        let last_failure =
+            repository_failure.or_else(|| startup.failure().map(map_startup_failure));
         let initial = startup.appearance().clone();
         let last_observed_document = installed_identity(&initial).cloned();
         let appearance = AppearanceCoordinator::new(config.appearance, initial);

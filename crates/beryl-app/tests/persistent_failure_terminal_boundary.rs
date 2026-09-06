@@ -118,20 +118,20 @@ fn terminal_service_supervisor_has_no_public_recovery_or_publication_surface() {
 }
 
 #[test]
-fn obsolete_phase62_running_recovery_tests_stay_absent() {
+fn obsolete_running_recovery_tests_stay_absent() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     for relative in [
-        "tests/phase62_accepted_next_scheduler.rs",
-        "tests/phase62_accepted_next_scheduler/shutdown.rs",
-        "tests/phase62_accepted_next_scheduler/support.rs",
-        "tests/phase62_accepted_next_scheduler/support/execution.rs",
+        "tests/accepted_next_scheduler.rs",
+        "tests/accepted_next_scheduler/shutdown.rs",
+        "tests/accepted_next_scheduler/support.rs",
+        "tests/accepted_next_scheduler/support/execution.rs",
     ] {
         let source = fs::read_to_string(manifest.join(relative)).unwrap();
         for obsolete in [
             "verification_successes",
             "recovery_cycles",
             "same-generation verification",
-            "phase63_restart_handoff",
+            "restart_handoff",
             "home_generation_failure_before_reservation_makes_supervisor_terminally_unavailable",
             "ReadyProviderFactory",
             "ScheduledOrdinaryExecutionProviderFactory",
@@ -145,12 +145,12 @@ fn obsolete_phase62_running_recovery_tests_stay_absent() {
     }
     assert!(
         !manifest
-            .join("tests/phase62_accepted_next_scheduler/promotion_collision.rs")
+            .join("tests/accepted_next_scheduler/promotion_collision.rs")
             .exists()
     );
     assert!(
         !manifest
-            .join("tests/phase62_accepted_next_scheduler/promotion_faults.rs")
+            .join("tests/accepted_next_scheduler/promotion_faults.rs")
             .exists()
     );
 }

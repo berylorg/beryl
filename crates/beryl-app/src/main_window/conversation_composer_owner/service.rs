@@ -22,6 +22,10 @@ use super::prepublication::MainWindowNativeLineagePrepublicationSource;
 use super::{MainWindowComposerSelectionIdentity, MainWindowComposerWidgetRelease};
 use crate::main_window::MainWindowComposerSlot;
 
+mod close;
+mod close_cleanup;
+mod native_disposal;
+
 pub(in crate::main_window) enum MainWindowNativeLineageSourceRetentionError {
     CapacityFull { epoch: u64 },
     Failed(String),
@@ -190,6 +194,7 @@ impl Future for PendingCompletionTestGate {
 pub struct MainWindowConversationComposerService {
     pub(super) store: Arc<HomeStore>,
     pub(super) slot: Mutex<MainWindowComposerSlot>,
+    window_close: Mutex<Option<crate::main_window::MainWindowConversationComposerCloseTicket>>,
     native_lineage_sources: Mutex<Vec<Arc<MainWindowNativeLineagePrepublicationSource>>>,
     native_lineage_driver_started: AtomicBool,
     native_lineage_capacity_epoch: AtomicU64,
@@ -301,6 +306,7 @@ impl MainWindowConversationComposerService {
         Self {
             store,
             slot: Mutex::new(slot),
+            window_close: Mutex::new(None),
             native_lineage_sources: Mutex::new(Vec::with_capacity(2)),
             native_lineage_driver_started: AtomicBool::new(false),
             native_lineage_capacity_epoch: AtomicU64::new(0),
@@ -607,6 +613,7 @@ impl MainWindowConversationComposerService {
         selection: MainWindowComposerSelectionIdentity,
         seed: gpui_text_input::RangeRestorationSeed,
     ) -> Result<(), String> {
+        self.ensure_no_window_close()?;
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
@@ -862,6 +869,7 @@ impl MainWindowConversationComposerService {
         selection: MainWindowComposerSelectionIdentity,
         request: crate::composer_host::ComposerHostSubmissionRequest,
     ) -> Result<crate::composer_host::ComposerHostSubmissionTicket, String> {
+        self.ensure_no_window_close()?;
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
@@ -1022,6 +1030,7 @@ impl MainWindowConversationComposerService {
         retirement_operation_id: syndic_storage::DraftPieceOperationIdV1,
         cancellation: &beryl_home_store::CommandCancellation,
     ) -> Result<super::MainWindowComposerActivationAdvance, String> {
+        self.ensure_no_window_close()?;
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
@@ -1061,6 +1070,7 @@ impl MainWindowConversationComposerService {
         &self,
         receipt: super::MainWindowComposerActivationReceipt,
     ) -> Result<crate::composer_host::ComposerHostFlushAdmission, String> {
+        self.ensure_no_window_close()?;
         self.slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?
@@ -1168,6 +1178,7 @@ impl MainWindowConversationComposerService {
     pub(in crate::main_window) fn begin_disposal(
         &self,
     ) -> Result<crate::composer_host::ComposerHostFlushAdmission, String> {
+        self.ensure_no_window_close()?;
         #[cfg(feature = "test-faults")]
         if self
             .test_fail_next_native_lineage_disposal_begin

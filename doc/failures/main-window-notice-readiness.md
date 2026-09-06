@@ -43,6 +43,43 @@ Accepted command/focus examples exist in
 `crates/beryl-app/src/main_window/conversation_composer_mount/native_lineage/prompt.rs`.
 `crates/beryl-app/tests/phase290_main_window_creation/gpui.rs` and
 `crates/beryl-app/tests/theme_runtime_cases/production/gpui_fixture.rs` provide rendered-input and
-appearance verification seams. Future widget acceptance still needs exact input rejection,
-replacement/focus, selection/copy, revision-sensitive scrolling, bounded geometry, diagnostics
-privacy, and actual themed rendering evidence.
+appearance verification seams. Phase 300 supplied exact input rejection, replacement/focus,
+selection/copy, revision-sensitive scrolling, bounded geometry, diagnostics privacy, and themed
+rendering evidence through 20 passing focused GPUI tests and semantic completion review. Test
+scenes do not establish live GPU paint, and active scrollbar thumb dragging was not demonstrated
+by the simulated-input harness; inert scrollbar ownership fencing was reviewed in source.
+
+## 2026-09-06: Accessibility Is Outside Project Scope
+
+The notice spec retained an accessible-name requirement after earlier accessibility work had been
+rejected. Phase 300 stopped when the pinned GPUI could not publish that name; the existing
+[platform finding](gpui-inline-object-accessibility-boundary.md) owns the dependency evidence.
+
+The Operator explicitly excluded accessibility project-wide. The [root non-goal](../design.md)
+now controls the affected GUI contracts, and the notice close control uses an ordinary
+`Dismiss notice` tooltip. Missing accessibility support is not a Phase 300 blocker or a GPUI
+prerequisite. Ordinary keyboard, focus, selection, and tooltip behavior remain required; a tooltip
+is not an accessibility implementation. Phase 300 subsequently completed the widget's functional
+corrections and verification under that scope.
+
+## 2026-09-06: Queued Dismissal Must Release Its Superseded Pending State
+
+Mounting the widget through GPUI event subscriptions introduced queued delivery between its
+dismissal handler and the per-window arbiter. The pinned GPUI `Context::emit` queues an
+`Effect::Emit`; an intervening update can therefore publish a newer revision before the owner
+receives the dismissal. The arbiter correctly rejects the old visible token, but resetting the
+widget's pending-dismissal latch only when stable record identity changes left the newer revision
+permanently undismissible.
+
+The widget now clears that latch when the complete visible token changes, and when its inert gate
+changes. Exact owner validation still rejects the stale event. The regression in
+`crates/beryl-app/tests/phase301_notice_mount.rs` invokes the production dismissal handler and
+updates the same record within one outer GPUI update, then verifies that the new revision survives
+the queued old event and dismisses through an ordinary close click. A `test-faults`-gated delegate
+provides only that scheduling seam; it retains the production pending-state and event path.
+
+All eight mount cases passed, including actual owner-command clicks, appearance publication,
+retirement, inert routing, resize, and independent windows. The 41 related widget, shell, and
+creation regressions, locked library check, formatting, and independent semantic review passed.
+These tests exercise mounted GPUI behavior and do not establish live GPU paint. Best-effort warning
+admission and timers and missing feature-owned event producers remain outside Phase 301.

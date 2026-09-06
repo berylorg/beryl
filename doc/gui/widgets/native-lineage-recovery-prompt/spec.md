@@ -69,8 +69,8 @@ Enter and Space invoke the focused command according to the `command button` con
 not dismiss the prompt, request a replacement composer, change the selected thread, or abandon the
 retained binding.
 
-When both commands are temporarily unavailable, the prompt itself may receive programmatic focus
-for accessible reading, but it performs no command. Disabled buttons expose their owner-supplied
+When both commands are temporarily unavailable, the prompt itself may receive programmatic focus,
+but it performs no command. Disabled buttons expose their owner-supplied
 explanations through the referenced availability contract.
 
 On replacement by an eligible composer, focus moves to the newly mounted editor only after its

@@ -1,5 +1,6 @@
 mod admission;
 mod builder_model;
+mod checkpoint;
 mod codec;
 mod history;
 mod marker_commitment;
@@ -20,6 +21,7 @@ mod tree;
 pub use admission::*;
 pub use beryl_model::DraftMarkerCommitmentV1;
 pub use builder_model::*;
+pub(crate) use checkpoint::has_saved_identity as candidate_session_has_saved_identity;
 pub use history::*;
 pub use marker_commitment::canonical_empty_draft_marker_commitment_v1;
 pub use marker_seal::*;
@@ -33,6 +35,7 @@ pub use publication::{
     PreparedDraftEditorCandidatePublicationV1, PreparedDraftEditorCandidateSessionAbandonFreshV1,
     PreparedDraftEditorCandidateSessionDisposeV1,
 };
+pub(crate) use publication::{PreparedCandidateDisposal, prepare_candidate_disposal};
 pub use read::DraftPieceCommandReconciliationErrorV1;
 pub use session::{
     DraftEditorCandidateSessionCommandErrorV1, PreparedDraftEditorCandidateSessionOpenV1,
@@ -78,7 +81,6 @@ pub(crate) use history::{
     DraftHistoricalRootAdoptionsCodec, canonical_history_reference_bytes, dec_history_frontier,
     dec_history_reference, dec_history_transition, enc_history_frontier, enc_history_reference,
     enc_history_transition, historical_candidate_session_is_exact,
-    historical_candidate_session_is_exact_in_store,
 };
 pub(crate) use marker_commitment::*;
 pub(crate) use marker_seal::DraftMarkerSealsCodec;

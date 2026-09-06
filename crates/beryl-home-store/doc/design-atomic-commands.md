@@ -97,13 +97,19 @@ is governed by [the package design](design.md), including that design's engineer
   new, or successor removes the gate and releases its slot, charge, descriptor, worker, reader,
   snapshot, pages, and hook state. Collision closes only that scope and retains one configured-
   bounded sealed fact set after disposing descriptor and transient execution state.
-- An optional statically typed successor protocol has exactly one source and zero or more witnesses.
-  Registration fixes protocol, owner, role, family, count, key, stored-byte, decoded-byte, and
-  fixed-inline correlation bounds before admission. `ExactSuccessor` requires the source and all
-  witnesses to agree on one correlation while every participant without a successor role is exact
-  new; an exact-old participant, missing or disagreeing role, quota or record failure, passive
-  non-new participant, or unresolved hook seals collision. Ordinary unanimous exact sides and
-  already-ineligible mixed states are classified before successor hooks run.
+- First-acceptance promotion is the sole successor shape. Its descriptor admits one Syndic source
+  and either source-only marker-free acceptance or one Asset transfer witness. Private static
+  domain adapters bind exact owner, slot, and codec identities and use the existing fixed
+  `FirstAcceptancePromotionSuccessorV1` correlation. The optional witness derives exactly two
+  absent original heads and one exact submitted-item head from fixed admitted seed facts;
+  HomeStore executes those three typed checks on the same snapshot without exposing arbitrary
+  point reads, witness collections, protocol registration, or erased resolver state.
+- Concrete retained facts, codec bounds, and collision evidence are included in the pre-writer
+  descriptor allowance. `ExactSuccessor` requires the admitted source and optional witness to
+  agree by typed fields while every other participant is exact new. Exact old, missing or
+  disagreeing roles, invalid derived facts, passive non-new state, and unresolved hooks seal
+  collision. Stored-envelope, decode, and I/O failures retain their typed provenance. Ordinary
+  unanimous exact sides and already-ineligible mixed states are classified before successor work.
 - Duplicate triggers join one stable retained flight without adding a descriptor, read, resolver,
   worker, or queue entry. A completed typed worker failure remains memoized until an exact-handle
   retrigger refreshes that same flight. Caller cancellation after admission or custody installation

@@ -99,9 +99,10 @@ impl ThemeRuntime {
                 self.config.max_manifest_bytes,
                 references,
             )
-            .map_err(|_| {
-                self.last_failure = Some(ThemeRuntimeFailureClass::Repository);
-                ThemeRuntimeFailureClass::Repository
+            .map_err(|error| {
+                let failure = map_repository_execution_failure(&error);
+                self.last_failure = Some(failure);
+                failure
             })?;
         match outcome {
             ThemeRepositoryOperationOutcome::NotCommitted { .. } => {

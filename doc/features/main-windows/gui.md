@@ -27,7 +27,7 @@ disabled presentation composes `disabled-command-tooltip` with the design-suppli
 recovery explanation.
 
 During an admitted barrier, the command uses the built-in `loading` state with the label exactly
-`Exiting…`. That loading state is the waiting indication; the command is accessibly disabled, and
+`Exiting…`. That loading state is the waiting indication; the command is visibly disabled, and
 its tooltip is `Application Exit is waiting for active work and durable state.` Failure restores the
 label `Exit` and its design-owned enabled or disabled state.
 

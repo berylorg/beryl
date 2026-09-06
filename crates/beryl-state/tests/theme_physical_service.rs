@@ -13,8 +13,9 @@ use beryl_home_store::{
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_state::{
-    InstalledThemeSelection, ThemeDocumentDigest, ThemeDocumentLoadError, ThemeManifestCursor,
-    ThemeManifestGeneration, ThemeManifestReadLimits, ThemePageLimits, ThemeRepositoryLoadError,
+    InstalledThemeSelection, THEME_INSTALLED_MAX_ENTRIES, ThemeDocumentDigest,
+    ThemeDocumentLoadError, ThemeManifestCursor, ThemeManifestDecodeError, ThemeManifestGeneration,
+    ThemeManifestLimit, ThemeManifestReadLimits, ThemePageLimits, ThemeRepositoryLoadError,
     ThemeRepositoryObservation, ThemeService,
 };
 
@@ -57,6 +58,27 @@ fn manifest_bytes(service: &ThemeService) -> Vec<u8> {
     assert_eq!(service.manifest(generation).generation(), generation);
     b"schema_version = 1\ngeneration = 2\n\n[[theme]]\nid = \"active\"\nname = \"Active\"\n"
         .to_vec()
+}
+
+fn populated_manifest(entries: usize, generation: u64) -> Vec<u8> {
+    let mut manifest = format!("schema_version = 1\ngeneration = {generation}\n\n");
+    for index in 0..entries {
+        manifest.push_str(&format!(
+            "[[theme]]\nid = \"theme-{index}\"\nname = \"Theme {index}\"\n\n"
+        ));
+    }
+    manifest.into_bytes()
+}
+
+fn quoted_manifest(entries: usize, generation: u64) -> Vec<u8> {
+    let quoted_name = "\\\"".repeat(128);
+    let mut manifest = format!("schema_version = 1\ngeneration = {generation}\n\n");
+    for index in 0..entries {
+        manifest.push_str(&format!(
+            "[[theme]]\nid = \"theme-{index}\"\nname = \"{quoted_name}\"\n\n"
+        ));
+    }
+    manifest.into_bytes()
 }
 
 fn install_fixture(
@@ -393,6 +415,144 @@ fn duplicate_manifest_ids_are_rejected_without_materializing_the_collection() {
         )
         .unwrap_err();
     assert!(matches!(error, ThemeRepositoryLoadError::Manifest(_)));
+}
+
+#[test]
+fn distant_duplicate_manifest_id_is_rejected() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let service = ThemeService::acquire(&store).unwrap();
+    let mut manifest = populated_manifest(257, 2);
+    manifest.extend_from_slice(b"[[theme]]\nid = \"theme-0\"\nname = \"Duplicate\"\n");
+    let snapshot = store.theme_repository_snapshot(operation_limits()).unwrap();
+    store
+        .replace_theme_manifest(
+            &snapshot,
+            identity(&manifest),
+            &mut Cursor::new(&manifest),
+            operation_limits(),
+        )
+        .unwrap();
+
+    assert!(matches!(
+        service.observe_repository(
+            &store,
+            NonZeroU64::new(1024 * 1024).unwrap(),
+            manifest_read_limits(),
+            None,
+        ),
+        Err(ThemeRepositoryLoadError::Manifest(
+            ThemeManifestDecodeError::DuplicateThemeId { .. }
+        ))
+    ));
+}
+
+#[test]
+fn escaped_full_manifest_respects_clamped_and_caller_bounds() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let service = ThemeService::acquire(&store).unwrap();
+    let manifest = quoted_manifest(THEME_INSTALLED_MAX_ENTRIES, 2);
+    assert!(manifest.len() > 256 * 1024);
+    assert!(manifest.len() <= 1024 * 1024);
+    let snapshot = store.theme_repository_snapshot(operation_limits()).unwrap();
+    store
+        .replace_theme_manifest(
+            &snapshot,
+            identity(&manifest),
+            &mut Cursor::new(&manifest),
+            operation_limits(),
+        )
+        .unwrap();
+
+    service
+        .observe_repository(
+            &store,
+            NonZeroU64::new(2 * 1024 * 1024).unwrap(),
+            manifest_read_limits(),
+            None,
+        )
+        .unwrap();
+    assert!(matches!(
+        service.observe_repository(
+            &store,
+            NonZeroU64::new(256 * 1024).unwrap(),
+            manifest_read_limits(),
+            None,
+        ),
+        Err(ThemeRepositoryLoadError::Manifest(
+            ThemeManifestDecodeError::LimitExceeded(ThemeManifestLimit::EncodedBytes)
+        ))
+    ));
+}
+
+#[test]
+fn manifest_entry_limit_is_enforced_across_forward_pages() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = HomeStore::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let service = ThemeService::acquire(&store).unwrap();
+    let valid = populated_manifest(THEME_INSTALLED_MAX_ENTRIES, 2);
+    let snapshot = store.theme_repository_snapshot(operation_limits()).unwrap();
+    store
+        .replace_theme_manifest(
+            &snapshot,
+            identity(&valid),
+            &mut Cursor::new(&valid),
+            operation_limits(),
+        )
+        .unwrap();
+    let max = NonZeroU64::new(1024 * 1024).unwrap();
+    let observed = service
+        .observe_repository(&store, max, manifest_read_limits(), None)
+        .unwrap();
+    let mut session = service
+        .open_manifest(&store, &observed, max, manifest_read_limits())
+        .unwrap();
+    let limits = ThemePageLimits::new(
+        NonZeroUsize::new(7).unwrap(),
+        NonZeroUsize::new(4096).unwrap(),
+    )
+    .unwrap();
+    let mut cursor = ThemeManifestCursor::first(observed.manifest());
+    let mut entries = 0;
+    loop {
+        let page = session.read_page(cursor, limits).unwrap();
+        entries += page.records().len();
+        let Some(next) = page.next() else {
+            break;
+        };
+        cursor = next;
+    }
+    assert_eq!(entries, THEME_INSTALLED_MAX_ENTRIES);
+
+    let overflow = populated_manifest(THEME_INSTALLED_MAX_ENTRIES + 1, 3);
+    let snapshot = store.theme_repository_snapshot(operation_limits()).unwrap();
+    store
+        .replace_theme_manifest(
+            &snapshot,
+            identity(&overflow),
+            &mut Cursor::new(&overflow),
+            operation_limits(),
+        )
+        .unwrap();
+    assert!(matches!(
+        service.observe_repository(&store, max, manifest_read_limits(), None),
+        Err(ThemeRepositoryLoadError::Manifest(
+            ThemeManifestDecodeError::LimitExceeded(ThemeManifestLimit::InstalledEntries)
+        ))
+    ));
 }
 
 #[test]

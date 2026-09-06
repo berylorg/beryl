@@ -128,23 +128,25 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   ordinary exact-side classification can read only the exact operation identities admitted by the
   command's pre-writer descriptor reservation and materialized under the serialized writer before
   physical mutation; it cannot be substituted by the domain's exhaustive validator.
-- An operation may additionally declare one statically typed successor protocol while materializing
-  that descriptor. Exactly one participating domain is its source and zero or more participating
-  domains are witnesses. The source alone may authenticate one fixed-size correlation from
-  descriptor-bound natural records. A witness may then perform only the correlation-derived typed
-  point reads whose codec families, counts, maximum key and stored-value bytes, and maximum decoded
-  bytes were declared and charged before writer admission. This is not arbitrary key construction:
-  the source hook owns the correlation type and derivation, every witness is registered by its live
-  domain owner, and the reader rejects undeclared families or exhausted quotas before acquisition.
-  Participants without a successor role receive no derived-read authority.
-- Source, witness, and correlation values retained in a scope are fixed inline `Copy` values. Their
-  complete type sizes are checked against their declarations and charged before admission; they
-  cannot retain a scope-owned `Vec`, `Box`, `Arc`, string, or another hidden heap graph.
-- The reservation conservatively charges four complete correlation widths for the maximum
-  simultaneous source typed/encoded and one witness typed/encoded representations. Witness
-  agreement uses typed equality; encoding is diagnostic digest input and need not define equality.
-  A declared witness reserves and consumes at least one derived point read. Declaring no witness
-  role is the only zero-read witness shape.
+- Successor reconciliation has one closed first-acceptance promotion shape. The descriptor binds
+  exactly one Syndic source and either no witness for marker-free acceptance or one Asset transfer
+  witness. This choice is admitted authority; observed records cannot supply permission to omit
+  the witness. Other participating domains receive no derived-read authority.
+- The source authenticates the existing fixed `FirstAcceptancePromotionSuccessorV1` correlation
+  from descriptor-bound natural records. Private domain-owned static adapters retain exact live
+  owner, slot, and codec identities. HomeStore owns execution and has no dependency on Syndic or
+  Asset private records; adapters expose only this fixed operation's typed facts.
+- The optional Asset adapter derives one fixed plan from the admitted draft identity, accepted-input
+  identity, sealed-set proof, and authenticated correlation: absence of the original CurrentDraft
+  and AcceptedInput heads, and the exact SubmittedTurnItem head over that sealed set at its initial
+  revision. HomeStore performs those three typed point checks on the ordinary reconciliation
+  snapshot. There is no arbitrary point-reader callback, variable witness collection, protocol
+  registry, pluggable correlation type, or caller-defined read loop.
+- Retained seed and correlation facts are fixed inline values. The pre-writer descriptor budget
+  includes their concrete sizes, the three codec-bounded key/stored/decoded values, and bounded
+  collision facts. Domain codecs remain private behind static typed adapters; no erased heap state
+  or per-protocol quota machinery is required. Agreement uses typed field equality, with encoding
+  used only for diagnostic digests.
 - Only registration at a schema-validation boundary, an explicit whole-home scrub, background
   maintenance, or corruption-evidence investigation may use the store-owned exhaustive validation
   path. It streams
@@ -307,9 +309,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   durable receipt, `ExactSuccessor` with that same receipt, or `Collision`. `ExactOld` proves the
   operation did not become authoritative. `ExactNew` proves the complete intended atomic state.
   `ExactSuccessor` is considered only after ordinary unanimous exact-old and exact-new
-  classification fails. It requires the one declared source and every declared witness to
-  authenticate the same correlation in one snapshot while every participant without a successor
-  role is `ExactNew`. Within that mixed successor candidate, an `ExactOld` participant, missing role, unresolved observation, mismatched
+  classification fails. It requires the admitted Syndic source and optional Asset transfer witness
+  to authenticate the fixed promotion facts in one snapshot while every other participant is
+  `ExactNew`. Within that mixed successor candidate, an `ExactOld` participant, missing role, unresolved observation, mismatched
   correlation, invalid derived record, passive non-new participant, or hook collision is
   `Collision`. Both success variants reconstruct the exact receipt a direct `Committed` result
   would have carried; a resolver cannot fabricate a later-generation receipt.
@@ -336,10 +338,10 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   admission, every mutation that could become indeterminate obtains one move-only reservation and
   proves from its
   command-owned identities plus declared schema limits that its conservative descriptor-byte
-  budget fits that ceiling. A declared successor protocol includes in that proof its protocol and
-  role identities, resolver state, maximum correlation, each derived-read codec family and count,
-  maximum key/stored/decoded bytes, and the extended sealed-collision facts; none of those charges
-  may be discovered after admission. After writer admission, the mutation participants' single
+  budget fits that ceiling. First-acceptance successor support includes its fixed source/witness
+  identities, seed and correlation facts, three codec-bounded point checks when an Asset transfer
+  witness is admitted, and extended sealed-collision facts; none of those charges may be discovered
+  after admission. After writer admission, the mutation participants' single
   bounded preparation passes materialize the exact old state, intended new state, and intended
   receipt facts from the admitted snapshot into that reserved budget before batch construction or
   any Fjall mutation. Scope saturation returns
@@ -389,7 +391,7 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   neither refreshes nor executes it. The retrigger cannot reopen a resolved or collision-closed
   scope, add a descriptor, charge, queue entry, or concurrent exact-scope worker, or supply a proof,
   correlation, release, reset, or classification decision. The original descriptor remains the
-  sole source of successor protocol authority, and successor classification occurs before
+  sole source of first-acceptance successor authority, and successor classification occurs before
   collision sealing in the same single-flight worker and snapshot as ordinary exact-side
   classification.
 - Registry installation is also the lifetime cut for process-local command continuations. The
@@ -540,14 +542,14 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   remain unusable. Process termination publishes no acknowledgement, and a later process relies on
   durable natural replay rather than reconstructing a process-local scope.
 - `ExactOld`, `ExactNew`, and `ExactSuccessor` remove the scope and release its registry slot,
-  complete retained byte charge, descriptor, successor resolver and correlation state, worker
+  complete retained byte charge, descriptor, successor seed and correlation facts, worker
   permit, snapshot, reader, pages, and hook state. `Collision` compacts
   its evidence into only the configured-byte-bounded sealed old/new identities, revisions, digests,
   and collision facts. In the same registry transition it replaces the descriptor's conservative
   retained-byte charge with the sealed facts' exact encoded-byte charge, discards the descriptor,
   retains that closed scope, slot, and replacement charge, and releases the worker permit plus every
   transient reader, snapshot, page, and hook allocation. Collision facts additionally retain only
-  the bounded protocol identity, correlation digest, per-domain role/result, and derived-record
+  the fixed promotion-shape identity, correlation digest, source/witness result, and derived-record
   current/expected digests required to explain successor disagreement. Their schema maximum is
   included in the pre-writer reservation, so this transition never needs new registry capacity. A typed
   reconciliation failure likewise releases all transient worker state while leaving at most the one
@@ -585,7 +587,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - A new failure signal while recovery is active joins that attempt instead of creating another
   loop. Successful physical reopen alone does not cancel retries or publish application state.
 - Behind the startup fence, the system reacquires the complete Beryl and Syndic typed handle set,
-  runs every pending operation descriptor to `ExactOld`, `ExactNew`, or scoped-closed `Collision`,
+  runs every pending operation descriptor to `ExactOld`, `ExactNew`, `ExactSuccessor`, or
+  scoped-closed `Collision`, preserving the original-receipt and gate-release semantics of both
+  successful reconciliation variants,
   installs those scope gates, and constructs a fresh CAS-live service. That service repairs each
   eligible affected turn from its exact durable natural identities. Storage supplies fresh typed
   reads and commits but never retains, selects, resumes, adopts, or blesses a CAS capability.
@@ -835,7 +839,7 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers: none
 

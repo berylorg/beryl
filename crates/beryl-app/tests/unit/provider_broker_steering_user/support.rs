@@ -5,9 +5,8 @@ use std::{
 };
 
 use beryl_backend::{
-    lifecycle_test_support::decode_provider_json_for_test, ClientUserMessageId,
-    ManagedBackendError, OrderedTurnStreamProgress, OrderedTurnStreamSink,
-    UserMessageEchoLifecycle,
+    ClientUserMessageId, ManagedBackendError, OrderedTurnStreamProgress, OrderedTurnStreamSink,
+    UserMessageEchoLifecycle, lifecycle_test_support::decode_provider_json_for_test,
 };
 use beryl_home_store::{
     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit,
@@ -21,33 +20,32 @@ use beryl_model::{
 };
 use beryl_state::{AssetMediaType, BerylState, PublishAssetMetadata};
 use syndic_storage::{
-    empty_selected_path_digest, AcceptedInputLifecycle, AcceptedRouteEffectiveState,
-    AcceptedRouteLeafState, ActivateBinding, BeginAcceptedInputDelivery, BindingState,
-    CasLineageProof, CasRepresentedPrefixProof, CreateThread, DraftEditHistoryPolicyV1,
-    FirstAcceptanceKind, NativeCasLineage, NextTurnReason, PublishActiveCasTurn,
-    PublishValidBinding, RetryAcceptedInputDelivery, SelectedPathProof,
+    AcceptedInputLifecycle, AcceptedRouteEffectiveState, AcceptedRouteLeafState, ActivateBinding,
+    BeginAcceptedInputDelivery, BindingState, CasLineageProof, CasRepresentedPrefixProof,
+    CreateThread, DraftEditHistoryPolicyV1, FirstAcceptanceKind, NativeCasLineage, NextTurnReason,
+    PublishActiveCasTurn, PublishValidBinding, RetryAcceptedInputDelivery, SelectedPathProof,
     SyndicDeliveringSteeringInput, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TurnIncompleteReason,
+    TurnIncompleteReason, empty_selected_path_digest,
 };
 
+use super::submission_fixture::{Atom, submit_atoms};
 use crate::{
     cas_projection::{
+        PendingTurnActivation,
         connection::{
+            ConnectionRegistryAuthority, EventRouter, ProviderBroker, ProviderBrokerControl,
+            TargetTurnRegistration,
             provider_broker::{CheckedSteeringLifecycleOwner, RunningProviderBrokerIngester},
             registry::LoadedThreadKey,
             router::{ActiveSteeringAttemptPermit, LiveEventTargetCloseReason, TargetRegistration},
-            ConnectionRegistryAuthority, EventRouter, ProviderBroker, ProviderBrokerControl,
-            TargetTurnRegistration,
         },
         input_replay::encode_accepted_input_steering_correlation,
         service_config::ProjectionWorkerPool,
         service_registry::ProjectionServiceConnectionRegistry,
         test_faults::install_steering_selection_barrier_for_key,
-        PendingTurnActivation,
     },
     conversation_tools::ConversationToolRegistry,
 };
-use super::submission_fixture::{submit_atoms, Atom};
 
 const POINT_READ_BYTES: usize = 1_000_000;
 const EXECUTION_ROOT: &str = r"C:\work\beryl-steering-user-test";
@@ -135,7 +133,9 @@ impl SteeringFixture {
             seed.wrapping_add(20),
             timestamp(3),
         );
-        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == initial_item));
+        assert!(
+            matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == initial_item)
+        );
         let turn_id = source_draft.submitted_turn_id();
 
         let selected = selected_path(&home, storage, thread_id);
@@ -581,11 +581,12 @@ impl SteeringFixture {
                 ),
             ),
         );
-        assert!(self
-            .storage
-            .delivering_steering_input(&self.home, self.accepted_input_id, point_limit())
-            .unwrap()
-            .is_none());
+        assert!(
+            self.storage
+                .delivering_steering_input(&self.home, self.accepted_input_id, point_limit())
+                .unwrap()
+                .is_none()
+        );
     }
 
     pub(super) fn delivering_route(&self) -> SyndicDeliveringSteeringInput {
@@ -656,11 +657,7 @@ impl SteeringFixture {
     }
 
     pub(super) fn expected_input_items(&self) -> u64 {
-        if self.image_path.is_some() {
-            2
-        } else {
-            1
-        }
+        if self.image_path.is_some() { 2 } else { 1 }
     }
 
     pub(super) fn image_path(&self) -> Option<&str> {
@@ -719,7 +716,7 @@ fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
     let sidecar = home
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
-            b"\x89PNG\r\n\x1a\nphase52-steering-image",
+            b"\x89PNG\r\n\x1a\nsteering-image",
             SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap()),
         )
         .unwrap();
@@ -744,10 +741,22 @@ fn publish_image_asset(home: &HomeStore, state: &BerylState) -> AssetId {
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     metadata.add_to(&mut command).unwrap();
     match home.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user image metadata command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("steering-user image metadata command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user image metadata command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => {
+            panic!("steering-user image metadata command committed with later failure: {outcome:?}")
+        }
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("steering-user image metadata command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("steering-user image metadata command was indeterminate: {outcome:?}")
+        }
     }
     asset
 }
@@ -781,10 +790,22 @@ fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContributio
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
     match home.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("steering-user fixture contribution command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("steering-user fixture contribution command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("steering-user fixture contribution command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!(
+            "steering-user fixture contribution command committed with later failure: {outcome:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("steering-user fixture contribution command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("steering-user fixture contribution command was indeterminate: {outcome:?}")
+        }
     }
 }
 

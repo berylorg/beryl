@@ -185,8 +185,8 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `external-side-effects/v1`
+- `external-side-effects/v2`

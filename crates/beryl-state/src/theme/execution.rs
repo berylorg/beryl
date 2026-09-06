@@ -528,8 +528,7 @@ fn execute_document_only(
         vec![target.clone()],
         vec![next],
     )?;
-    let limits = PhysicalThemeLimits::document()
-        .map_err(|_| ThemeRepositoryExecutionError::InvalidLimits)?;
+    let limits = combined_limits(max_manifest_source)?;
     let outcome = store
         .replace_theme_document(
             snapshot,
@@ -685,7 +684,6 @@ fn execute_install_like(
         next_manifest.generation(),
         change,
         max_manifest_source,
-        limits,
     )?;
     let outcome = store
         .install_theme_document(
@@ -748,7 +746,6 @@ fn execute_manifest_only(
         next_manifest.generation(),
         change,
         max_manifest_source,
-        limits,
     )?;
     let outcome = store
         .replace_theme_manifest(snapshot, intended, &mut reader, limits.operations())
@@ -823,7 +820,6 @@ fn execute_delete(
         next_manifest.generation(),
         change,
         max_manifest_source,
-        limits,
     )?;
     let current_references = references
         .current_theme_references()
@@ -1024,13 +1020,8 @@ fn canonical_document(document: &ThemeDocument) -> Result<Vec<u8>, ThemeReposito
 fn combined_limits(
     max_manifest_source: NonZeroU64,
 ) -> Result<PhysicalThemeLimits, ThemeRepositoryExecutionError> {
-    let maximum = max_manifest_source
-        .get()
-        .max(THEME_DOCUMENT_MAX_BYTES as u64);
-    PhysicalThemeLimits::manifest(
-        NonZeroU64::new(maximum).ok_or(ThemeRepositoryExecutionError::InvalidLimits)?,
-    )
-    .map_err(|_| ThemeRepositoryExecutionError::InvalidLimits)
+    PhysicalThemeLimits::repository(max_manifest_source)
+        .map_err(|_| ThemeRepositoryExecutionError::InvalidLimits)
 }
 
 fn fact(value: ThemeCommandFactError) -> ThemeRepositoryExecutionError {

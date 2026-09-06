@@ -29,6 +29,7 @@ static ACTIVE_HOOKS: AtomicUsize = AtomicUsize::new(0);
 static MAX_HOOKS: AtomicUsize = AtomicUsize::new(0);
 static HOOK_CALLS: AtomicUsize = AtomicUsize::new(0);
 static VALIDATION_CALLS: AtomicUsize = AtomicUsize::new(0);
+static VALUE_DECODE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static RELEASE: (Mutex<()>, Condvar) = (Mutex::new(()), Condvar::new());
 
 #[derive(Debug)]
@@ -90,6 +91,7 @@ macro_rules! codec {
                 Ok(value.clone())
             }
             fn decode_value(bytes: &[u8]) -> Result<Vec<u8>, Self::Error> {
+                VALUE_DECODE_CALLS.fetch_add(1, Ordering::SeqCst);
                 Ok(bytes.to_vec())
             }
         }
@@ -296,6 +298,7 @@ fn reset_counters() {
     MAX_HOOKS.store(0, Ordering::SeqCst);
     HOOK_CALLS.store(0, Ordering::SeqCst);
     VALIDATION_CALLS.store(0, Ordering::SeqCst);
+    VALUE_DECODE_CALLS.store(0, Ordering::SeqCst);
 }
 
 fn wait_for_active(expected: usize) {
@@ -338,8 +341,52 @@ fn exact_new_reconstructs_receipt_and_releases_scope_without_validation() {
     assert_eq!(receipt.home_revision().get(), 2);
     assert!(store.pending_reconciliations().is_empty());
     assert_eq!(VALIDATION_CALLS.load(Ordering::SeqCst), validation_before);
+    assert_eq!(VALUE_DECODE_CALLS.load(Ordering::SeqCst), 2);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     store.close().unwrap();
+}
+
+#[test]
+fn current_unsupported_version_retains_reconciliation_error_provenance() {
+    let _serial = SERIAL.lock().unwrap();
+    reset_counters();
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = HomeStore::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let alpha = store.register_domain::<Alpha>().unwrap();
+
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let handle = match store
+        .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(7, b"new")))
+    {
+        CommandOutcome::Indeterminate { reconciliation, .. } => reconciliation.install_and_handle(),
+        other => panic!("expected indeterminate outcome, got {other:?}"),
+    };
+    store
+        .inject_persisted_corrupt_record::<Alpha, AlphaRecord>(
+            &alpha,
+            &7_u64.to_be_bytes(),
+            &2_u32.to_be_bytes(),
+        )
+        .unwrap();
+
+    let error = store.reconcile(&handle).unwrap_err();
+    assert!(matches!(
+        error
+            .source()
+            .and_then(|source| source.downcast_ref::<DomainCallbackSource>()),
+        Some(DomainCallbackSource::Read(ReadError::UnsupportedRecordVersion {
+            supported,
+            found: 2,
+            ..
+        })) if *supported == RecordVersion::new(1)
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert_eq!(store.pending_reconciliations().len(), 1);
 }
 
 #[test]

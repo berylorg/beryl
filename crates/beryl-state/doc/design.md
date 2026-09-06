@@ -72,10 +72,10 @@ This entry point governs these bounded normative supplements:
 
 # Engineering Rigor
 
-Profile: `production-application/v1`
+Profile: `production-application/v2`
 
 Modifiers:
 
-- `persistent-state-integrity/v1`
+- `persistent-state-integrity/v2`
 
 The profile and modifier apply to this entry point and every linked supplement.

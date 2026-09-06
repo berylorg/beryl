@@ -53,7 +53,7 @@ Replacement publishes the new stable notice identity, content, and variant as on
 
 # Interaction
 
-In the dismissible variant, the close command has the accessible name `Dismiss notice` and dismisses only the exact stable notice identity supplied by the owner. Enter and Space activate it when focused. Duplicate activation while dismissal is pending is rejected.
+In the dismissible variant, the close command has the tooltip `Dismiss notice` and dismisses only the exact stable notice identity supplied by the owner. Enter and Space activate it when focused. Duplicate activation while dismissal is pending is rejected.
 
 The persistent variant renders no close command and does not dismiss through Escape, outside click, or notice activation. Its owner removes or replaces the record when the feature-owned condition ends.
 

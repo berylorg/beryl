@@ -3,10 +3,10 @@ use std::any::TypeId;
 use beryl_model::{DomainRevision, HomeRevision};
 use thiserror::Error;
 
-use crate::{domain::StoreInstanceId, health::FailureSeverity, HealthGateError, HomeGeneration};
+use crate::{HealthGateError, HomeGeneration, domain::StoreInstanceId, health::FailureSeverity};
 
 use super::{
-    HomeProofCommand, HomeProofProtocol, PreparedProofRole, ProofCorrelation, MAX_PROOF_ROLES,
+    HomeProofCommand, HomeProofProtocol, MAX_PROOF_ROLES, PreparedProofRole, ProofCorrelation,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]

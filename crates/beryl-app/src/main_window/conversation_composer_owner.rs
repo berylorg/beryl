@@ -28,6 +28,7 @@ use super::{
 };
 
 mod clipboard;
+mod close;
 mod construction;
 mod dispatch;
 mod lifecycle;
@@ -130,6 +131,7 @@ pub struct MainWindowConversationComposer {
     active_flight: Option<u64>,
     phase: MainWindowConversationComposerPhase,
     release_fence_requires_restoration: bool,
+    window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     scheduled: bool,
     last_error: Option<String>,
     _input_subscription: Option<Subscription>,
@@ -207,6 +209,9 @@ impl MainWindowConversationComposer {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
+        if self.window_close.is_some() {
+            return Err("conversation composer is waiting for window close".to_owned());
+        }
         let anchor = self
             .image_surfaces
             .prepare_remove(self.selection)
@@ -241,7 +246,8 @@ impl MainWindowConversationComposer {
         order: gpui_text_input::InlineObjectOrder,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
-        if !self.is_live() || self.pending_marker_metadata.is_some() {
+        if !self.is_live() || self.window_close.is_some() || self.pending_marker_metadata.is_some()
+        {
             return Err("composer marker insertion lane is busy".to_owned());
         }
         let retained_bytes = std::mem::size_of::<ComposerHostImageMarkerMetadata>();
@@ -358,6 +364,9 @@ impl MainWindowConversationComposer {
         cx: &mut Context<Self>,
     ) {
         if !self.is_live() || self.active_flight.is_some() || self.last_error.is_some() {
+            return;
+        }
+        if kind == ClipboardKind::Cut && self.window_close.is_some() {
             return;
         }
         let Some(selected_range) = self.input.update(cx, |input, _| {

@@ -1,3 +1,4 @@
+use beryl_backend::ManagedBackendClientConnector;
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     path::Path,
@@ -7,17 +8,16 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use beryl_backend::ManagedBackendClientConnector;
 
 use beryl_home_store::{
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
+use beryl_model::{CasProcessGeneration, RuntimeId};
 use beryl_state::{
     ApplySettings, BerylState, ExpectedSettingRevision, SettingKey, SettingUpdate, SettingValue,
 };
 use syndic_storage::SyndicStorage;
-use beryl_model::{CasProcessGeneration, RuntimeId};
 
 use super::*;
 use crate::cas_projection::MinimumTurnCaptureReserve;
@@ -25,7 +25,7 @@ use crate::cas_projection::MinimumTurnCaptureReserve;
 mod terminal_server {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/phase37_normal_terminal/server.rs"
+        "/tests/normal_terminal/server.rs"
     ));
 }
 
@@ -73,11 +73,7 @@ fn service() -> (
     (directory, faults, state, shutdowns, service)
 }
 
-fn fail_home(
-    service: &ProjectionConnectionService,
-    state: BerylState,
-    faults: &FaultController,
-) {
+fn fail_home(service: &ProjectionConnectionService, state: BerylState, faults: &FaultController) {
     let live = service.live_home_command().unwrap();
     let home = live.home();
     let update = SettingUpdate::new(
@@ -130,8 +126,14 @@ fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers(
     assert_eq!(evidence.home_id(), home_id);
     assert_eq!(evidence.home_generation(), home_generation);
     assert_eq!(evidence.service_generation(), service_generation);
-    assert_eq!(evidence.completion(), PersistentFailureCutCompletion::Finished);
-    assert_eq!(evidence.cut_snapshot().state(), PersistentFailureCutState::Finished);
+    assert_eq!(
+        evidence.completion(),
+        PersistentFailureCutCompletion::Finished
+    );
+    assert_eq!(
+        evidence.cut_snapshot().state(),
+        PersistentFailureCutState::Finished
+    );
     assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
 }
 

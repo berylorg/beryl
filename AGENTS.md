@@ -7,6 +7,16 @@
 - A dirty worktree does not imply human ownership of source code or tests and is not, by itself, a reason to avoid changing them.
 - Do not blindly discard unrelated or concurrent work. Reconcile existing changes against current authority and the active phase, and preserve work that remains consistent with them.
 
+## Source And Test Naming
+
+- Name source files, modules, symbols, test targets, cases, and fixtures for their responsibility or
+  behavior. Do not embed implementation-plan phase numbers in code names, paths, fixture data,
+  comments, or build configuration.
+- Implementation phase numbers belong only in transient planning and historical evidence. Actual
+  domain phases and protocol version numbers remain meaningful code concepts.
+- Put reusable test helpers in support modules named for the behavior they support. Tests must not
+  depend on the identity or numbering of a past implementation-plan phase.
+
 ## Source-Code Documentation
 
 - In this Beryl repository, documentation in source code is banned. Do not add or expand Rust doc
