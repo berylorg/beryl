@@ -5,8 +5,8 @@ accepted using the [complete simplification audit](audits/code-simplification/re
 within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
 has resumed implementation; host request sequencing, submission quiescence and already-durable
 composer integration, exact close-gate release and resident-preserving close flush are accepted.
-Atomic fixed-continuation publication is accepted. Ordinary-close mounting follows its app
-adoption, same-thread continuation cancellation and exact waiting for initially noninterruptible work.
+Atomic fixed-continuation publication and app adoption are accepted. Ordinary-close mounting
+follows same-thread continuation cancellation and exact waiting for initially noninterruptible work.
 The Operator authorizes continuous implementation until a blocker requires attention, with a
 commit after each accepted phase. The Operator explicitly preapproves all future temporary-directory
 deletions; obsolete-directory cleanup remains authorized for this thread. Preserve unrelated work,
@@ -70,22 +70,13 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 321: Publish Fixed Continuation Content Atomically (finished)
+# Phase 322: Adopt Atomic Continuation Content Publication (finished)
 
-Syndic atomically publishes the complete fixed sealed content and classifies exact reuse without
-a write or revision advance. All 16 selected tests, locked default and test-faults checks, formatting
-and independent adversarial review passed. [Publication evidence](failures/lifecycle-continuation-staging.md)
-records exact closure, conflict preservation and reconciliation coverage. App adoption remains separate.
-
-# Phase 322: Adopt Atomic Continuation Content Publication (pending)
-
-Replace the app's fixed-content construction loop with the accepted storage operation under
-[app live control](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).
-Preserve exact successful compaction, user-input precedence, bounded staging-failure feedback and
-ambiguous-command custody. Remove the displaced lifecycle staging path where no accepted consumer
-remains. Verify fixed sealed content reuse and successful/failed compaction settlement, including
-existing partial-content failure, with focused app checks and independent semantic review. Keep
-the retained Phase 319 changes outside this phase's commit and acceptance claim.
+The app consumes only atomic fixed-content publication or exact typed reuse, preserves uncertain
+command custody and settles definitive content conflicts through bounded continuation failure.
+The obsolete seal API is retired. All 13 app and 79 storage tests, locked checks, formatting and
+independent semantic review passed. [Adoption evidence](failures/lifecycle-continuation-staging.md)
+records direct versus shared-path proof. Retained close cancellation is not accepted by this phase.
 
 # Phase 319: Cancel Same-Thread Continuation At Window Close (pending)
 
@@ -112,15 +103,12 @@ same-thread admission boundary, with focused locked Cargo checks and behavior te
 semantic review must cover cancellation ordering, durable admission and exact authority/custody
 before acceptance.
 
-The Operator accepted atomic fixed-content publication as the correction to the reproduced
-staging incompatibility. The two prerequisite phases above now own its implementation and app
-adoption. [Staging evidence](failures/lifecycle-continuation-staging.md) retains the diagnosis and
-verification limits.
+The atomic storage publication and app-adoption prerequisites are now accepted.
+[Staging evidence](failures/lifecycle-continuation-staging.md) retains the diagnosis and proof.
 
 The cancellation implementation and eight meaningful tests remain uncommitted and unaccepted.
-Successful settlement/race verification is blocked; the final capacity and terminal-before-
-compaction cases are not yet verified. Resumption must address the staging prerequisite under
-owning authority, then run focused compaction and stop tests. The stop unit fixture that registers
+Successful settlement/race verification can now resume; the final capacity and terminal-before-
+compaction cases are not yet verified. Run focused compaction and stop tests. The stop unit fixture that registers
 an invented other turn must instead use an actual independent thread/turn while retaining its
 isolation assertion. Repeat locked checks on the final source and obtain completion review before
 compacting or committing this phase. Exact waiting and OS-close integration remain pending.

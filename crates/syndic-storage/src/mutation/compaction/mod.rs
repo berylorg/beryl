@@ -14,12 +14,12 @@ use crate::{
     CompactionOperationId, CompactionOperationRecord, CompactionOperationRevision,
     CompactionOperationState, CompactionOperationTarget, CompactionProviderSequence,
     CompactionRequestDisposition, CompactionSettlement, CompactionSettlementReceiptRecord,
-    CompactionThreadStatus, ContentLifecycle, ContentManifestRecord, ConversationParent,
-    ExecutionSnapshotKind, ExecutionSnapshotRecord, InputGateRecord, InputGateState,
-    ProviderOperationKind, StopDispositionSource, StopMatchingTerminalWitness, StopOperationId,
-    StopOperationRecord, StopOperationState, SyndicMutationError, SyndicStorage, SyndicTimestamp,
-    TurnDepth, TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord,
-    TurnStateRevision, codec::*, domain::SyndicDomain, root_turn_chain_digest,
+    CompactionThreadStatus, ContentManifestRecord, ConversationParent, ExecutionSnapshotKind,
+    ExecutionSnapshotRecord, InputGateRecord, InputGateState, ProviderOperationKind,
+    StopDispositionSource, StopMatchingTerminalWitness, StopOperationId, StopOperationRecord,
+    StopOperationState, SyndicMutationError, SyndicStorage, SyndicTimestamp, TurnDepth,
+    TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord, TurnStateRevision,
+    codec::*, domain::SyndicDomain, root_turn_chain_digest,
 };
 
 use super::{point, required};
@@ -262,12 +262,6 @@ pub struct AbandonCompactionOperation {
     reason: CompactionAbandonmentReason,
 }
 
-/// Exact final building frontier to seal as the fixed ownerless lifecycle content.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SealLifecycleContinuationContent {
-    expected: ContentManifestRecord,
-}
-
 /// One serialized lifecycle settlement candidate; accepted-next work still wins atomically.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettleLifecycleCompaction {
@@ -331,17 +325,6 @@ impl SettleLifecycleCompaction {
     }
 }
 
-impl SealLifecycleContinuationContent {
-    #[must_use]
-    pub const fn new(expected: ContentManifestRecord) -> Self {
-        Self { expected }
-    }
-    #[must_use]
-    pub const fn expected(&self) -> &ContentManifestRecord {
-        &self.expected
-    }
-}
-
 impl AbandonCompactionOperation {
     #[must_use]
     pub const fn new(
@@ -374,67 +357,7 @@ struct ClaimMutation(ClaimCompactionDispatch);
 struct RequestMutation(PublishCompactionRequestDisposition);
 struct ProviderMutation(PublishCompactionProviderEvent);
 struct SettleMutation(SettleCompactionOperation);
-struct SealLifecycleContentMutation(SealLifecycleContinuationContent);
 struct SettleLifecycleMutation(SettleLifecycleCompaction);
-
-impl DomainMutation<SyndicDomain> for SealLifecycleContentMutation {
-    type Error = SyndicMutationError;
-    type Prepared = ContentManifestRecord;
-
-    fn prepare(
-        self,
-        reader: &DomainReader<'_, SyndicDomain>,
-    ) -> Result<Self::Prepared, Self::Error> {
-        self.successor(reader)
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<ContentManifestsCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        prepared: Self::Prepared,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        mutations.put::<ContentManifestsCodec>(&prepared.id(), &prepared)?;
-        Ok(())
-    }
-}
-
-impl SealLifecycleContentMutation {
-    fn successor(
-        &self,
-        reader: &DomainReader<'_, SyndicDomain>,
-    ) -> Result<ContentManifestRecord, SyndicMutationError> {
-        let current = required::<ContentManifestsFamily>(reader, &self.0.expected.id())?;
-        let prepared = crate::prepare_lifecycle_continuation_content()?;
-        if current != self.0.expected
-            || current.lifecycle() != ContentLifecycle::Building
-            || current.id() != prepared.id()
-            || current.encoding() != prepared.encoding()
-            || current.expected() != prepared.summary()
-            || current.chunk_count() != prepared.summary().chunk_count()
-            || current.encoded_bytes() != prepared.summary().encoded_bytes()
-            || current.chain_digest() != prepared.summary().digest()
-        {
-            return Err(SyndicMutationError::ContentManifestConflict);
-        }
-        Ok(ContentManifestRecord::new(
-            current.id(),
-            current.revision().checked_next()?,
-            current.encoding(),
-            ContentLifecycle::Sealed,
-            current.chunk_count(),
-            current.encoded_bytes(),
-            current.chain_digest(),
-            current.expected(),
-        ))
-    }
-}
 
 mod admission;
 mod api;

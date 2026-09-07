@@ -19,21 +19,20 @@ use syndic_storage::{
     CasRepresentedPrefixProof, CasTurnSource, ClaimCompactionDispatch, CompactionAdmissionRead,
     CompactionAttemptNonce, CompactionMarkerLifecycle, CompactionOperationId,
     CompactionOperationNonce, CompactionProviderEvent, CompactionProviderSequence,
-    CompactionThreadStatus, CompleteTerminalHistory, ContentAppend, ContentBuild, ContentLifecycle,
-    ContentManifestRecord, CreateThread, DraftEditHistoryPolicyV1, FinalizeNextTurnItem,
-    FreezeNextTurnItem, GeneratedMediaResourceDisposition, ItemProjectionGeneration,
-    LiveSourceEvent, NativeCasLineage, PreparedContent, ProjectionLifecycle,
-    ProviderFrameOrdinalV1, ProviderFramePreparationPlan, ProviderFrameStageOutcome,
-    ProviderItemBuildLifecycle, ProviderItemFrameV1, ProviderItemObservationV1, ProviderItemV1,
-    ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderUserMessageV1,
-    PublishActiveCasTurn, PublishCompactionProviderEvent, PublishValidBinding, ResourceBacking,
-    SealLifecycleContinuationContent, SealedProviderFrameReference, SettleLifecycleCompaction,
-    SourceEventPayload, SourceEventSequence, StartItemProjectionBuild, StartTranscriptBuild,
-    StopCause, StopCauseSet, StopOperationId, StopOperationNonce, StopOperationRecord,
-    StopOperationTarget, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TranscriptBuildPhase, TurnEndStatus, TurnItemOrdinal, TurnTerminalOutcome,
-    empty_selected_path_digest, prepare_lifecycle_continuation_content, prepare_provider_frame,
-    stage_provider_frame,
+    CompactionThreadStatus, CompleteTerminalHistory, ContentLifecycle, CreateThread,
+    DraftEditHistoryPolicyV1, FinalizeNextTurnItem, FreezeNextTurnItem,
+    GeneratedMediaResourceDisposition, ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage,
+    ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
+    ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn,
+    PublishCompactionProviderEvent, PublishValidBinding, ResourceBacking,
+    SealedProviderFrameReference, SettleLifecycleCompaction, SourceEventPayload,
+    SourceEventSequence, StartItemProjectionBuild, StartTranscriptBuild, StopCause, StopCauseSet,
+    StopOperationId, StopOperationNonce, StopOperationRecord, StopOperationTarget,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TranscriptBuildPhase, TurnEndStatus,
+    TurnItemOrdinal, TurnTerminalOutcome, empty_selected_path_digest,
+    prepare_lifecycle_continuation_content, prepare_provider_frame, stage_provider_frame,
 };
 
 const CONVERGENCE_LIMIT: usize = 4_096;
@@ -157,43 +156,12 @@ fn publish_compaction_provider(
     );
 }
 
-fn stage_prepared_content(
-    store: &HomeStore,
-    storage: &SyndicStorage,
-    prepared: &PreparedContent,
-) -> ContentManifestRecord {
-    let mut manifest = prepared.building_manifest();
-    execute(
-        store,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(prepared),
-        ),
-    );
-    loop {
-        let Some(append) = ContentAppend::prepare(&manifest, prepared).unwrap() else {
-            break;
-        };
-        manifest = append.next_manifest().clone();
-        execute(
-            store,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        );
-    }
-    manifest
-}
-
 fn lifecycle_content(
     store: &HomeStore,
     storage: &SyndicStorage,
 ) -> syndic_storage::ContentReference {
     let prepared = prepare_lifecycle_continuation_content().unwrap();
-    let manifest = stage_prepared_content(store, storage, &prepared);
-    assert_current(
-        store.execute_current(storage.current_seal_lifecycle_continuation_content(
-            SealLifecycleContinuationContent::new(manifest),
-        )),
-    );
+    assert_current(store.execute_current(storage.current_publish_lifecycle_continuation_content()));
     storage
         .content_manifest(store, prepared.id(), point_limit())
         .unwrap()

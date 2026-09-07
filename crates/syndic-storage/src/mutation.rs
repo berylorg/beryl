@@ -48,7 +48,7 @@ pub use binding::{
 pub use compaction::{
     AbandonCompactionOperation, AdmitCompactionOperation, ClaimCompactionDispatch,
     CompactionProviderEvent, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
-    SealLifecycleContinuationContent, SettleCompactionOperation, SettleLifecycleCompaction,
+    SettleCompactionOperation, SettleLifecycleCompaction,
 };
 pub use content::{CONTENT_APPEND_MAX_CHUNKS, ContentAppend, ContentBuild};
 pub use error::{CreateThreadError, SyndicMutationError, ThreadCreationStatus};

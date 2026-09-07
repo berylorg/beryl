@@ -233,65 +233,32 @@ impl ContextCompactionCoordinator {
         }
         let prepared = syndic_storage::prepare_lifecycle_continuation_content()
             .map_err(|_| LifecycleContentFailure::DefinitivePreparation)?;
-        for _ in 0..8 {
-            let manifest = self
-                .storage
-                .content_manifest(&self.home, prepared.id(), point_limit())
-                .map_err(|_| LifecycleContentFailure::Home)?;
-            let Some(manifest) = manifest else {
-                self.execute_content_contribution(|revision| {
-                    self.storage
-                        .begin_content(revision, ContentBuild::from_prepared(&prepared))
-                })
-                .map_err(LifecycleContentFailure::Command)?;
-                continue;
-            };
-            if manifest.lifecycle() == ContentLifecycle::Sealed {
-                return manifest
-                    .sealed_reference()
-                    .filter(|content| {
-                        content.id() == prepared.id()
-                            && content.encoding() == prepared.encoding()
-                            && content.summary() == prepared.summary()
-                    })
-                    .ok_or(LifecycleContentFailure::Home);
+        let outcome = self.home.execute_current(
+            self.storage
+                .current_publish_lifecycle_continuation_content(),
+        );
+        if let CommandOutcome::NotCommitted {
+            evidence: beryl_home_store::CommandError::ContributorValidation { source, .. },
+        } = &outcome
+        {
+            match source.downcast_ref::<syndic_storage::SyndicMutationError>() {
+                Some(syndic_storage::SyndicMutationError::LifecycleContentAlreadyPublished {
+                    content,
+                }) => return Ok(*content),
+                Some(
+                    syndic_storage::SyndicMutationError::ContentManifestConflict
+                    | syndic_storage::SyndicMutationError::ContentChunkConflict
+                    | syndic_storage::SyndicMutationError::ContentNotComplete,
+                ) => return Err(LifecycleContentFailure::DefinitivePreparation),
+                _ => {}
             }
-            let append = ContentAppend::prepare(&manifest, &prepared)
-                .map_err(|_| LifecycleContentFailure::Home)?;
-            if let Some(append) = append {
-                self.execute_content_contribution(|revision| {
-                    self.storage.append_content(revision, append)
-                })
-                .map_err(LifecycleContentFailure::Command)?;
-                continue;
-            }
-            require_committed_command(self.home.execute_current(
-                self.storage.current_seal_lifecycle_continuation_content(
-                    SealLifecycleContinuationContent::new(manifest),
-                ),
-            ))
-            .map_err(LifecycleContentFailure::Command)?;
         }
-        Err(LifecycleContentFailure::Home)
-    }
-
-    fn execute_content_contribution(
-        &self,
-        contribution: impl FnOnce(beryl_model::DomainRevision) -> beryl_home_store::MutationContribution,
-    ) -> Result<(), ContextCompactionError> {
-        let home_revision = self
-            .home
-            .home_revision()
-            .map_err(|_| ContextCompactionError::Storage)?;
-        let domain_revision = self
-            .storage
-            .revision(&self.home)
-            .map_err(|_| ContextCompactionError::Storage)?;
-        let mut command = HomeCommand::new(home_revision);
-        command
-            .add(contribution(domain_revision))
-            .map_err(|_| ContextCompactionError::Storage)?;
-        require_committed_command(self.home.execute(command))
+        require_committed_command(outcome).map_err(LifecycleContentFailure::Command)?;
+        self.storage
+            .content_manifest(&self.home, prepared.id(), point_limit())
+            .map_err(|_| LifecycleContentFailure::Home)?
+            .and_then(|manifest| manifest.sealed_reference())
+            .ok_or(LifecycleContentFailure::Home)
     }
 
     pub(super) fn cancel_lifecycle_intent(&self, local: &LocalCompaction) {

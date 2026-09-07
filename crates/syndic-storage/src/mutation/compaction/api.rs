@@ -21,27 +21,6 @@ impl SyndicStorage {
     }
 
     #[must_use]
-    pub fn seal_lifecycle_continuation_content(
-        &self,
-        expected_domain_revision: DomainRevision,
-        request: SealLifecycleContinuationContent,
-    ) -> MutationContribution {
-        self.handle.contribution(
-            expected_domain_revision,
-            SealLifecycleContentMutation(request),
-        )
-    }
-
-    #[must_use]
-    pub fn current_seal_lifecycle_continuation_content(
-        &self,
-        request: SealLifecycleContinuationContent,
-    ) -> CurrentDomainCommand {
-        self.handle
-            .current_command(SealLifecycleContentMutation(request))
-    }
-
-    #[must_use]
     pub fn admit_compaction_operation(
         &self,
         expected_domain_revision: DomainRevision,

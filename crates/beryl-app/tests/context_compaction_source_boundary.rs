@@ -76,7 +76,8 @@ fn lifecycle_compaction_uses_atomic_user_work_precedence_and_fixed_content() {
     let settlement = source("src/cas_projection/context_compaction/coordinator/settlement.rs");
     for required in [
         "prepare_lifecycle_continuation_content",
-        "current_seal_lifecycle_continuation_content",
+        "current_publish_lifecycle_continuation_content",
+        "LifecycleContentAlreadyPublished",
         "current_settle_lifecycle_compaction",
         "SettleLifecycleCompaction::new",
         "AcceptedInputWakeReason::ExecutionReady",
@@ -108,7 +109,7 @@ fn compaction_queue_workers_and_close_cancellation_are_bounded() {
     let admission = source("src/cas_projection/context_compaction/coordinator/admission.rs");
     let dispatch = source("src/cas_projection/context_compaction/coordinator/dispatch.rs");
     let settlement = source("src/cas_projection/context_compaction/coordinator/settlement.rs");
-    let service = source("src/cas_projection/service.rs");
+    let service = source("src/cas_projection/service/shutdown.rs");
     assert!(coordinator.contains("const COMPACTION_WORKER_CAPACITY: usize = 8"));
     assert!(coordinator.contains("const COMPACTION_QUEUE_CAPACITY: usize = 64"));
     assert!(coordinator.contains("mpsc::sync_channel(COMPACTION_QUEUE_CAPACITY)"));

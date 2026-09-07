@@ -3,16 +3,16 @@
 ## Scope And Invalidated Assumption
 
 Window-close continuation cancellation relied on existing fixed-content staging to verify both
-sides of successful compaction settlement. That staging path cannot currently reach append or
-seal. This blocks Phase 319 acceptance and the later ordinary-close prerequisites; it does not
-establish a defect in the new cancellation ordering.
+sides of successful compaction settlement. That staging path could not reach append or seal and
+blocked Phase 319 acceptance. The accepted storage and app correction below resolves staging;
+close-cancellation acceptance remains a separate boundary.
 
 ## Decisive Evidence
 
 `ContextCompactionCoordinator::ensure_lifecycle_content` in
 `crates/beryl-app/src/cas_projection/context_compaction/coordinator/settlement.rs` prepares the
-fixed content and calls `begin_content` with `ContentBuild::from_prepared`. The resulting manifest
-is building and ownerless. The next loop iteration uses public `SyndicStorage::content_manifest`
+fixed content and previously called `begin_content` with `ContentBuild::from_prepared`. The resulting manifest
+was building and ownerless. The next loop iteration used public `SyndicStorage::content_manifest`
 in `crates/syndic-storage/src/read.rs`, which rejects ownerless content unless it is sealed:
 `ownerless content is unavailable before seal`. The staging error maps to `Storage`, so neither
 append nor the dedicated lifecycle-continuation seal command is reached.
@@ -114,3 +114,44 @@ directory was untouched.
 This accepts the storage operation only. App adoption is the next separate phase; the retained
 close-cancellation source and tests remain unaccepted and uncommitted until their own verification
 and completion review succeed.
+
+## Accepted App Adoption
+
+Phase 322 was accepted on 2026-09-07. `ensure_lifecycle_content` now requests one atomic publication
+and recognizes only the exact typed already-published noncommit as reuse. Fresh success reads only
+the sealed reference. Partial/conflicting content validation follows the existing definitive
+preparation-failure path: one bounded failure count, consumed intent, manual successful compaction
+settlement and preserved accepted input. Other command outcomes keep their original classification
+and install indeterminate custody before returning failure. No retry or alternative identity is
+introduced. The former app construction helper and unused lifecycle seal request/mutation/API were
+removed; direct storage fixtures now use the atomic operation.
+
+```powershell
+cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults --locked --config-file .cargo/local/lifecycle-staging-nextest.toml --test lifecycle_content_staging --test context_compaction_source_boundary --test-threads 2 --no-fail-fast
+cargo +stable --config .cargo/local.toml nextest run -p syndic-storage --features test-faults --locked --config-file .cargo/local/lifecycle-staging-nextest.toml --test compaction_storage --test catalog_summary --test stop_storage --test-threads 2 --no-fail-fast
+cargo +stable --config .cargo/local.toml check -p beryl-app --lib --locked
+cargo +stable --config .cargo/local.toml check -p beryl-app -p syndic-storage --features test-faults --lib --locked
+```
+
+App run `22c90d62-c472-4fb7-b18d-a692d743c91b` passed all 13 tests, none skipped, in 7.257 seconds:
+six direct behavior cases and seven existing source-boundary checks. Direct behavior includes
+fresh/reused successful settlement, unchanged revisions on reuse, accepted-input precedence,
+building and sealed-incomplete content preserving encoded bytes with bounded failure feedback,
+definitive preparation failure, and an ambiguous fresh publication retaining its exact handle
+through coordinator shutdown before `ExactNew` reconciliation. That ambiguity test uses direct
+staging; active-compaction local failure/intent cleanup additionally relies on reviewed shared
+settlement code.
+
+Storage run `942757fd-7ff6-4f00-a869-a68e74df359e` passed all 79 tests, none skipped, in 61.538 seconds:
+three catalog, 44 compaction and 32 stop cases. An initial four failures exposed a fixture-only
+orphan: `seed_detached_canonical_draft_backing` deleted its temporary thread and image-label
+authority but omitted the corresponding draft protection head. Its cleanup now deletes that head
+too; all whole-home scrub assertions remain. The four focused cases passed before the final full
+selection. A stale source-boundary file reference was also corrected without changing its checks.
+
+Current locked checks and 14-file formatting/diff checks passed. Independent semantic review found
+no blocker; root checked the key mapping, fixture cleanup and raw test results. Temporary timeout
+configuration was removed, process stack settings were restored, and no selected processes or
+attributable test homes remained. Empty anonymous directories of uncertain ownership and the
+earlier policy-blocked directory were untouched. Retained Phase 319 changes remain outside this
+acceptance and commit; the shared coordinator file contributes only the import cleanup here.

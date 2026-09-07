@@ -23,15 +23,13 @@ use syndic_storage::{
     CasLineageProof, CasRepresentedPrefixProof, ClaimCompactionDispatch, CompactionAdmissionRead,
     CompactionAttemptNonce, CompactionMarkerLifecycle, CompactionOperationId,
     CompactionOperationNonce, CompactionOperationRecord, CompactionProviderEvent,
-    CompactionProviderSequence, CompactionRequestDisposition, CompactionThreadStatus,
-    ContentAppend, ContentBuild, ContentManifestRecord, CreateThread, DraftEditHistoryPolicyV1,
-    ExactThreadCatalogSummary, NativeCasLineage, PreparedContent,
+    CompactionProviderSequence, CompactionRequestDisposition, CompactionThreadStatus, CreateThread,
+    DraftEditHistoryPolicyV1, ExactThreadCatalogSummary, NativeCasLineage,
     PreparedThreadCatalogSummaryReplacement, PublishCompactionProviderEvent,
-    PublishCompactionRequestDisposition, PublishValidBinding, SealLifecycleContinuationContent,
-    SettleLifecycleCompaction, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    ThreadArchiveState, ThreadCatalogSummaryPreparation, ThreadCatalogTitleSource,
-    ThreadLineageDepth, TurnEndStatus, TurnTerminalOutcome, empty_selected_path_digest,
-    prepare_lifecycle_continuation_content,
+    PublishCompactionRequestDisposition, PublishValidBinding, SettleLifecycleCompaction,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, ThreadArchiveState,
+    ThreadCatalogSummaryPreparation, ThreadCatalogTitleSource, ThreadLineageDepth, TurnEndStatus,
+    TurnTerminalOutcome, empty_selected_path_digest, prepare_lifecycle_continuation_content,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -290,12 +288,9 @@ impl Fixture {
             25,
         );
         let prepared = prepare_lifecycle_continuation_content().unwrap();
-        let manifest = stage_prepared_content(&self.store, self.syndic.clone(), &prepared);
         execute_current(
             &self.store,
-            self.syndic.current_seal_lifecycle_continuation_content(
-                SealLifecycleContinuationContent::new(manifest),
-            ),
+            self.syndic.current_publish_lifecycle_continuation_content(),
         );
         let content = self
             .syndic
@@ -372,32 +367,6 @@ fn execute_current(store: &HomeStore, command: beryl_home_store::CurrentDomainCo
         } => {}
         outcome => panic!("expected a clean current-domain command, got {outcome:?}"),
     }
-}
-
-fn stage_prepared_content(
-    store: &HomeStore,
-    storage: SyndicStorage,
-    prepared: &PreparedContent,
-) -> ContentManifestRecord {
-    let mut manifest = prepared.building_manifest();
-    execute_contribution(
-        store,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(prepared),
-        ),
-    );
-    loop {
-        let Some(append) = ContentAppend::prepare(&manifest, prepared).unwrap() else {
-            break;
-        };
-        manifest = append.next_manifest().clone();
-        execute_contribution(
-            store,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        );
-    }
-    manifest
 }
 
 fn catalog_facts(

@@ -18,12 +18,10 @@ use syndic_storage::{
     CompactionAdmissionRead, CompactionAttemptNonce, CompactionMarkerLifecycle,
     CompactionOperationId, CompactionOperationNonce, CompactionOperationRecord,
     CompactionProviderEvent, CompactionProviderSequence, CompactionRequestDisposition,
-    CompactionThreadStatus, ContentAppend, ContentBuild, ContentManifestRecord, CreateThread,
-    DraftEditHistoryPolicyV1, InputGateRecord, NativeCasLineage, PreparedContent,
-    PublishCompactionProviderEvent, PublishCompactionRequestDisposition, PublishValidBinding,
-    SealLifecycleContinuationContent, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TurnEndStatus, TurnTerminalOutcome, empty_selected_path_digest,
-    prepare_lifecycle_continuation_content,
+    CompactionThreadStatus, CreateThread, DraftEditHistoryPolicyV1, InputGateRecord,
+    NativeCasLineage, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
+    PublishValidBinding, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnEndStatus,
+    TurnTerminalOutcome, empty_selected_path_digest, prepare_lifecycle_continuation_content,
 };
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
@@ -98,32 +96,6 @@ pub fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContri
         } => {}
         outcome => panic!("expected clean compaction fixture command, got {outcome:?}"),
     }
-}
-
-fn stage_prepared_content(
-    store: &HomeStore,
-    storage: &SyndicStorage,
-    prepared: &PreparedContent,
-) -> ContentManifestRecord {
-    let mut manifest = prepared.building_manifest();
-    execute(
-        store,
-        storage.begin_content(
-            storage.revision(store).unwrap(),
-            ContentBuild::from_prepared(prepared),
-        ),
-    );
-    loop {
-        let Some(append) = ContentAppend::prepare(&manifest, prepared).unwrap() else {
-            break;
-        };
-        manifest = append.next_manifest().clone();
-        execute(
-            store,
-            storage.append_content(storage.revision(store).unwrap(), append),
-        );
-    }
-    manifest
 }
 
 pub fn loaded_generation() -> CasLoadedSessionGeneration {
@@ -393,17 +365,15 @@ impl CompactionFixture {
 
     pub fn prepare_lifecycle_content(&self) -> syndic_storage::ContentReference {
         let prepared = prepare_lifecycle_continuation_content().unwrap();
-        let manifest = stage_prepared_content(&self.store, &self.storage, &prepared);
-        match self
-            .store
-            .execute_current(self.storage.current_seal_lifecycle_continuation_content(
-                SealLifecycleContinuationContent::new(manifest),
-            )) {
+        match self.store.execute_current(
+            self.storage
+                .current_publish_lifecycle_continuation_content(),
+        ) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..
             } => {}
-            outcome => panic!("expected clean lifecycle content seal, got {outcome:?}"),
+            outcome => panic!("expected clean lifecycle content publication, got {outcome:?}"),
         }
         self.storage
             .content_manifest(&self.store, prepared.id(), point_limit())

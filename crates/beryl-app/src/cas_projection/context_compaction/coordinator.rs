@@ -17,7 +17,7 @@ use crate::cas_projection::{
     stop::StopCoordinator,
 };
 use beryl_backend::{CompactThreadDisposition, CompactionAttemptCorrelation};
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeGeneration, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     BindingState, ClaimCompactionDispatch, CompactionAbandonmentReason,
@@ -25,10 +25,9 @@ use syndic_storage::{
     CompactionMarkerLifecycle, CompactionOperationId, CompactionOperationNonce,
     CompactionOperationRecord, CompactionOperationState, CompactionProviderEvent,
     CompactionProviderSequence, CompactionRequestDisposition, CompactionRequestTransitionStatus,
-    CompactionSettlement, ContentAppend, ContentBuild, ContentLifecycle,
-    PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
-    SealLifecycleContinuationContent, SettleCompactionOperation, SettleLifecycleCompaction,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    CompactionSettlement, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
+    SettleCompactionOperation, SettleLifecycleCompaction, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp,
 };
 
 use super::ContextCompactionTargetAuthority;
