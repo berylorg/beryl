@@ -30,8 +30,8 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - `plan_complete` stops after the current turn reaches terminal state and requests a completion notification.
 - Automatic lifecycle continuation does not play ordinary end-turn sound for the turn that requested continuation.
 - Any exact soft stop admitted for the turn before terminal completion cancels that turn's pending
-  automatic continuation. A user, diagnostic controller, window-close barrier, or Beryl-owned
-  interrupting approval must not appear to stop a turn and then silently restart it; the stop does
+  automatic continuation. A user, diagnostic controller, interrupting approval, or application-
+  shutdown barrier must not appear to stop a turn and then silently restart it; the stop does
   not discard separately accepted queued user input.
 - When CAS-live supplies an eligible pre-admission soft-stop fallback for the exact yielding turn,
   pending automatic continuation is canceled before interruption dispatch. Separately accepted
@@ -48,9 +48,12 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 - Once Beryl reports the fixed continuation as accepted and it appears as a conversation turn, it
   is no longer pending lifecycle intent. That visible turn survives and recovers like any other
   ordinary conversation turn; restart still does not create an additional one.
-- Beginning the owning window's close barrier cancels the pending continuation before Beryl decides
-  whether there is still an interruptible turn. This remains true after the yielding turn has
-  finished or compaction has begun, and does not depend on the whole process exiting.
+- Switching away from, or closing, a nonfinal main-window view does not cancel a pending automatic
+  continuation. The continuation and any compaction proceed in the background after the view has
+  detached, subject to the ordinary accepted-input precedence rules.
+- Beginning an application-shutdown barrier cancels every pending automatic continuation before it
+  can become another turn. This remains true after the yielding turn has finished or compaction has
+  begun, and does not discard separately accepted input.
 - After the yielding turn finishes, already accepted next-turn input wins. Beryl cancels the
   automatic continuation, does not start its compaction, and preserves the user's accepted order.
 - Input submitted while automatic compaction is running is visibly accepted and queued. When

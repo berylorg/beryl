@@ -5,7 +5,7 @@ This supplement is normative only for its bounded beryl-app live-control role an
 
 The [CAS-live system](../../../doc/systems/cas-live-syndic-transcript/design.md) owns interruption,
 compaction, continuation, ordering, recovery, and authority-loss policy. This supplement owns only
-the app coordinator, foreground-driver, adapter, and custody surfaces.
+the app coordinator, execution-driver, adapter, and custody surfaces.
 
 ## Approval Routing
 
@@ -15,6 +15,12 @@ the app coordinator, foreground-driver, adapter, and custody surfaces.
 - The app receives only bounded approval kind, request, thread, turn, item, route, and response
   state. Command, cwd, reason, permission body, raw parameters, backend JSON, and pretty payloads
   do not cross this boundary.
+- Exact request routes and installed denial/stop obligations are owned by the process execution
+  session within existing broker/request bounds. Window detachment does not discard or retarget
+  them and cannot change the existing approval policy. No interactive response capability follows
+  from a display fact. Authority loss and generation retirement use ordinary ordered invalidation.
+- Retained request state is ephemeral, uses no durable payload record or GUI handle, and contributes
+  to process work and shutdown facts while unsettled. No request capability survives restart.
 - Command-execution and file-change denials use provider-owned interruption and cause no second
   interrupt. Permission denial installs the driver-owned exact stop obligation before broker
   acknowledgement; denial then precedes the sole driver's required `turn/interrupt`.
@@ -55,9 +61,9 @@ the app coordinator, foreground-driver, adapter, and custody surfaces.
 - Stop of compaction uses its exact provider-operation target and same driver. Nondispatch reopen,
   possible dispatch, loss, terminal, and restart retain system-owned custody and never create a
   replacement compaction.
-- One process-local continuation intent is keyed to the yielding turn. Stop admission, healthy-home
-  close, non-success terminal, compaction failure, authority loss, or process loss consumes it
-  without consuming accepted input.
+- One process-local continuation intent is keyed to the yielding turn. Stop admission, admitted
+  process shutdown, non-success terminal, compaction failure, authority loss, or process loss
+  consumes it without consuming accepted input. Thread switching and nonfinal close preserve it.
 - After exact successful compaction, the app requests Syndic's atomic fixed-content publication and
   passes only its sealed result to atomic user-work-versus-continuation settlement. The app owns no
   intermediate content build or unsealed manifest read. Ambiguity retains the ordinary

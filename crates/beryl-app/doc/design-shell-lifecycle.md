@@ -11,6 +11,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - The graph composes typed home domains, health and readiness publishers, runtime/root services,
   bounded catalog and activity services, settings and theme services, durable-job coordinators,
   and explicitly bounded worker pools. Shared versioned facts never retain or mutate GPUI views.
+- The graph also owns the bounded execution-session registry and shared shutdown coordinator
+  defined by the [CAS-live system](../../../doc/systems/cas-live-syndic-transcript/design.md).
+  These services retain exact execution custody without window handles and publish bounded
+  running-thread and needs-attention pages to independent window subscribers.
 - The validated home service graph constructs exactly one marker-seal service for each home
   generation with immutable limits. Windows and publication flights receive clones sharing its
   flight registry and capacity. Construction is restricted to home composition; consumers do not
@@ -23,6 +27,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Each main window owns one controller, `WindowId`, exact selected-thread claim, bounded navigation
   and transient interaction state, composer host, transcript host, and presentation projections.
   No main-window controller or GPUI entity is shared between windows.
+- Selection and nonfinal close release only view/editor/subscription ownership after the required
+  flush and durable claim/session transaction. They do not dispose an execution session or cancel
+  its accepted queue, pending request, compaction, or continuation. Attaching a running thread
+  obtains presentation subscriptions and GUI occupancy without waiting for execution checkout.
 - Construction checks the stable process main-window count before allocating the controller or OS
   window. The [main-windows feature](../../../doc/features/main-windows/design.md) owns capacity and
   visible creation, close, Exit, and restore behavior. One admitted construction may retain its
@@ -49,6 +57,21 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Startup and activation presentation follow the
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md); this
   package owns only typed preparation, fencing, and publication.
+
+## Window Detachment And Process Shutdown
+
+- Ordinary close and application Exit are coordinated with process window construction through
+  one bounded admission gate. The app revalidates whether a closing window is final before
+  admitting shutdown or durably removing it; overlapping closes cannot each assume another
+  window will survive. Confirmation carries exact attempt, window-set, and work revisions and
+  owns no stop or mutation authority until the shared shutdown coordinator admits the barrier.
+- The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
+  preserves durable queue custody, and composes resident-preserving draft flush with typed session
+  publication. It retains windows and claims until success, then joins service/runtime disposal
+  before process exit. Explicit Exit and final ordinary close retain their distinct restore modes.
+- A failed barrier releases interaction gates from the retained coherent state without restoring
+  cancelled continuations or repeating possible dispatch. Closing a settings or auxiliary window
+  never becomes the final-main-window execution barrier.
 
 ## Prepublication Window Abandonment
 

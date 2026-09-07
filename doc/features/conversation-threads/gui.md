@@ -6,7 +6,7 @@ This is the normative supplemental GUI composition file for `design.md`. It owns
 
 Mount-into: main-window.toolbar
 
-Conversation-thread controls form an explicitly feature-local toolbar ordering rather than a toolbar widget. In order, they are one project-local [`two-segment split button`](../../gui/widgets/two-segment-split-button/spec.md), backward and forward thread-navigation command buttons, and one project-local [`thread selector trigger`](../../gui/widgets/thread-selector-trigger/spec.md). The controls leave the trailing toolbar group available for the window-level New Window, Exit, and Settings commands.
+Conversation-thread controls form an explicitly feature-local toolbar ordering rather than a toolbar widget. In order, they are one project-local [`two-segment split button`](../../gui/widgets/two-segment-split-button/spec.md), backward and forward thread-navigation command buttons, one project-local [`thread selector trigger`](../../gui/widgets/thread-selector-trigger/spec.md), and the `Running threads` command. The controls leave the trailing toolbar group available for the window-level New Window, Exit, and Settings commands.
 
 The feature configures the two-segment split button's primary label as `New Thread`, its secondary glyph as an ellipsis, and the secondary tooltip as `Choose runtime and root`. It supplies the exact commands, availability explanations, secondary attention state, and New Thread flyout association from `design.md`. The widget owns joined geometry, independent segment focus and visual states, and the stable secondary flyout anchor.
 
@@ -17,6 +17,38 @@ Switcher. The trigger widget owns its stretchable geometry, truncation, trailing
 loading, open, and unavailable presentation.
 
 The toolbar does not display Workspaces or Graph controls, a static runtime prefix, a root path, or a thread-management action menu. The New Thread secondary segment and active thread selector trigger open selection flyouts rather than action menus.
+
+## Running Threads Command
+
+Mount-into: main-window.toolbar
+
+The text-labeled `Running threads` command follows the thread selector in every main window. Its
+label may append the compact running count. It uses the command button's attention presentation
+when the process projection reports needs-attention work, with a bounded explanatory tooltip. It
+remains available for inspection when its count is zero; shutdown interaction gates still apply.
+The command does not move or resize as counts change.
+
+## Running Threads Flyout
+
+Mount-into: main-window.overlays
+
+The command opens the project-local `thread-root picker` in its collection-only immediate-selection
+variant, titled `Running threads`. The feature supplies the process-wide revision-bound collection,
+total logical count, bounded resident pages and stable exact thread identities. Search applies to
+that collection. The empty text is `No running threads or threads needing attention.`
+
+Rows use thread icons, titles, runtime/root metadata, and a trailing `NEEDS ATTENTION` status or the
+current running state. Secondary metadata identifies a thread open in another window. That row
+remains actionable: activation reveals its existing window. An unviewed row invokes ordinary
+thread attachment in the invoking window; pending flush/attachment uses the existing row-pending
+presentation. Failure preserves the coherent current view and reports the design-owned error.
+Neither row updates nor arrival of an attention event activates a window or moves focus.
+
+The widget retains the focused stable identity through status reordering; if a row leaves the
+logical collection, focus resolves to a surviving neighbor without activating it. Feature-owned
+page results use the same revision and stale-response rules as the Thread Switcher. The collection
+contains no approval content or response controls. Request handling follows the existing policy
+and exact selected-thread feature surfaces.
 
 ## Thread Lineage Strip
 

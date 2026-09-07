@@ -660,6 +660,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Thread Claims And Empty-Thread Acquisition
 
 - A durable window id owns at most one active thread claim, and a Syndic thread has at most one active or restoring window claim.
+- These claims represent GUI occupancy only. A running unclaimed thread remains claimable for
+  viewing, and releasing or replacing a window claim does not release process execution authority.
+  Execution leases and same-thread operation gates remain owned by the CAS-live system.
 - Each claim stores the exact session generation in which its current ownership/state was published and a separate monotonic claim revision. A later unrelated session publication does not rewrite an unchanged claim, but every claim-changing command validates both values as well as the current session revision.
 - Claim-or-create is one serialized, revision-checked command over the exact runtime/root scope, catalog eligibility facts, thread record, current draft, and claim records.
 - Eligible empty threads are ordered deterministically by oldest creation identity and then stable thread id. The first still-eligible unclaimed thread is reused; otherwise a new thread and empty current draft are created atomically.
@@ -704,12 +707,14 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - The active session header retains the runtime/root pair from the latest successful thread activation or empty-thread acquisition independently of window-record lifetime. This fallback survives ordinary closure of the final window.
 - Auxiliary Settings windows, flyouts, menus, notices, and previews never receive session records.
 - Window creation, successful thread activation, accepted geometry updates, and ordinary window close update the active generation through revision-checked commands.
-- Ordinary healthy-home window close admits or joins the active turn's durable exact stop and
-  removes the window record only after terminal-history convergence plus the dirty-draft and
-  session flush barriers succeed. Only local pre-byte nondispatch while the target remains exact
-  leaves the window open; a provider rejection without a current-target verdict converges through
-  authority loss. Possible dispatch retains the close claim and waits for terminal or
-  authority-loss convergence.
+- Nonfinal ordinary healthy-home window close removes the window record and its GUI claim only
+  after the dirty-draft and session flush barriers succeed. The revision-checked removal does not
+  mutate execution, accepted-input, continuation, or pending-request authority. Failed or
+  indeterminate removal retains coherent window/claim custody until exact settlement.
+- Final-main-window close and explicit Exit require the CAS-live process-wide graceful execution
+  barrier before their final durable session publication. The app serializes final-window
+  revalidation with window acquisition/removal and shutdown admission; the store does not infer
+  process quiescence from a missing claim, empty restore set, or coarse thread activity.
 - Closing the final main window through ordinary close commits removal of the final window record, leaving the active restore set empty, and then terminates the process normally.
 - Dedicated application Exit flushes the already-open window set and marks shutdown mode without processing those windows as ordinary closes.
 - External process termination leaves the last `SyncAll`-completed active generation intact.

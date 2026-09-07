@@ -38,7 +38,7 @@ The thread-root picker consists of:
 - An Add runtime command below the runtime viewport.
 - An optional footer containing the owning feature's confirmation command.
 
-The flyout frame, header, search field, runtime/root section, and optional footer retain stable identity while the primary collection changes. Replacing the primary collection does not replace or resize the flyout frame.
+The flyout frame, header, search field, runtime/root section when present, and optional footer retain stable identity while the primary collection changes. Replacing the primary collection does not replace or resize the flyout frame. The collection-only variant omits the runtime/root section and footer from its anatomy and traversal.
 
 The widget owns collection presentation and interaction mechanics. The owning feature supplies a
 revision-bound collection identity, total row count, bounded resident row pages, stable row
@@ -170,7 +170,13 @@ Immediate selection activates an owner-supplied row command without a footer con
 
 Confirmed selection keeps a pending selected row and exposes the footer confirmation region.
 
-The primary collection may be configured with thread-row or root-row presentation. Runtime rows remain available in either selection variant.
+The primary collection may be configured with thread-row or root-row presentation. Runtime rows remain available in either selection variant unless collection-only is selected.
+
+Collection-only uses immediate selection and retains the same outer footprint, header, search,
+collection heading, and fixed-height primary-row geometry. It omits runtime/root controls and the
+footer, giving their bounded allocation to the primary viewport. It inherits exact stable focus,
+bounded page residency, four-row overscan on each side, navigation, request settlement, tooltip
+release, and content-free diagnostics. It stores no hidden runtime rows or associated requests.
 
 Default variant: immediate selection with thread-row presentation.
 

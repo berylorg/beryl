@@ -38,31 +38,16 @@ Preserve each window's visible identity and placement without requiring auxiliar
 
 - Closing one main conversation window normally removes that window from the next restored session.
 - Closing a window does not close or rearrange other main windows.
-- Activating close shows one close-in-progress state and keeps the window visible until its active
-  work, dirty draft, and session update have settled. New mutations in that window are unavailable
-  during this state, while its last coherent content remains readable, selectable, scrollable, and
-  copyable.
-- When the closing window owns an active turn or context compaction, close cancels only that
-  thread's scheduled automatic lifecycle continuation before it becomes another turn. It joins or
-  requests the same exact `Soft stop` used by the selected-thread control when the exact operation
-  is interruptible, and otherwise waits for that exact operation to reach terminal or
-  authority-loss outcome. Close does not treat compaction as coarse thread activity and exposes no
-  hard stop, coarse stop, escalation, or force-close path.
-- Repeated close or stop activation while close is in progress joins the same wait and never creates
-  another interruption. A continuation that already became a turn before close remains ordinary
-  thread work and is not discarded.
-- If an exact soft-stop request fails before it can affect the operation, or any active-work,
-  dirty-draft, or session obligation fails or cannot be proven complete, the window returns to its
-  ordinary open state with its thread claim, resident editor, and last coherent presentation
-  intact. The established window-level notice reports the bounded failure. Every such ordinary
-  close-failure notice has no owner command.
-- For a soft-stop or active-work failure that also establishes selected-thread runtime/backend
-  unavailability, the commandless close-failure notice directs the user to the separately owned
-  persistent backend-unavailable notice. Only that [backend-runtime recovery
-  feature](../backend-runtime-recovery/design.md) notice exposes `Retry`, including its established
-  visible-but-unavailable pending state, same-binding retry target, and success removal. A soft-stop
-  or active-work failure that does not make that persistent notice eligible exposes no recovery
-  command.
+- Activating close shows one close-in-progress state and keeps the window visible until its dirty
+  draft and session update have settled. New mutations in that window are unavailable during this
+  state, while its last coherent content remains readable, selectable, scrollable, and copyable.
+- Closing a nonfinal main window flushes its current draft and session, then detaches its view and
+  GUI claim. It never stops, joins, pauses, or otherwise changes an active turn,
+  context compaction, accepted queued input, terminal-history convergence, or
+  scheduled automatic continuation for that exact thread.
+- If a draft or session obligation fails or cannot be proven complete, the window returns to its
+  coherent open state with its thread claim, resident editor, and last presentation intact. It
+  reports a bounded commandless close-failure notice. It does not stop the background execution.
 - For a dirty-draft or session failure that also establishes persistent Beryl-home store failure,
   the commandless close-failure notice directs the user to the separately owned persistent home-
   failure notice. The [Beryl Home feature](../beryl-home/design.md) owns automatic same-home
@@ -72,25 +57,47 @@ Preserve each window's visible identity and placement without requiring auxiliar
   coherent again, another close attempt requires a new ordinary window-close activation.
 - After every required obligation succeeds, Beryl removes the window from the restore set, releases
   its thread claim, and closes that window.
-- Closing the final main window through the ordinary window-close command durably records an empty restore set and then terminates Beryl normally.
-- Final ordinary close is not the dedicated application Exit command: it does not preserve the closed window for restoration, and the next launch follows the empty-restore fallback acquisition below.
+- Closing the final main window never leaves Beryl running in a tray or without a main window. If
+  no process work remains, it durably records an empty restore set and terminates Beryl normally.
+- When final ordinary close finds any active turn, context compaction, admitted pending work,
+  in-flight request handling, scheduled continuation, or terminal-history convergence, Beryl
+  presents one platform-native confirmation
+  dialog. `Cancel`, `Escape`, and OS dialog dismissal leave every window and work item unchanged;
+  its positive command is `Exit Beryl`.
+- Confirming `Exit Beryl` begins the same all-work shutdown as the dedicated Exit command. It freezes
+  new dispatch, cancels scheduled automatic continuations, preserves already accepted queued input,
+  requests or joins each exact interruptible operation's sole soft stop, and waits for exact active work
+  and terminal history to settle before
+  process exit. It records an empty restore set after the shutdown succeeds.
+- The confirmation covers the complete work set captured by atomic shutdown-barrier admission. Later
+  revisions or successor states of that same work remain inside it and never prompt again. If new work
+  appears while the no-work final-close fast path is being admitted, Beryl asks before effects begin.
+- Concurrent final-close requests serialize behind one close owner and share its confirmation or
+  shutdown state. Final-window designation is revalidated under that serialization so Beryl never
+  exits with zero resident windows by race. If confirmation is cancelled or any shutdown, flush, or durable-session obligation
+  fails or remains unproven, the final window remains open with its last coherent presentation.
+- Final ordinary close is not the dedicated application Exit command: it records an empty restore
+  set, while Exit preserves the current layout for restoration.
 
 ## Application Exit
 
 - The main toolbar exposes a dedicated `Exit` command.
-- Activating Exit begins one graceful application-wide barrier for the complete current set of
-  open main conversation windows. Those windows remain present until the barrier succeeds.
-- For every active turn or context compaction, the barrier requests or joins the sole exact
-  soft-stop path at most once when that exact operation is interruptible, and otherwise waits for
+- Activating Exit first uses the same native confirmation when any process work remains, including
+  unviewed work. Cancel leaves all work and windows unchanged. Confirmed activation, or a revalidated
+  no-work activation, begins one application-wide barrier; all windows remain until it succeeds.
+- The barrier covers work with and without an open view: active turns, context compactions, admitted
+  pending work, in-flight request handling, scheduled continuation, and terminal-history
+  convergence. For every interruptible exact
+  operation it requests or joins the sole exact soft-stop path at most once and otherwise waits for
   exact terminal or authority-loss completion. An operation already stopping is joined; Exit never
   treats compaction as coarse thread activity or exposes or issues a hard stop, coarse stop,
   escalation, force exit, or second interruption.
-- Exit cancels each scheduled automatic lifecycle continuation before it can become another turn. A
-  continuation that already became a turn before the barrier remains ordinary thread work and must
-  settle as part of the same barrier.
-- Exit waits for every open window's dirty-draft flush and for admitted draft, session, and
-  restore-set obligations to settle durably. An indeterminate durable outcome remains part of the
-  barrier until same-home reconciliation proves its result.
+- Exit freezes new dispatch and cancels every scheduled automatic lifecycle continuation before it
+  becomes another turn. A continuation that already became a turn remains ordinary thread work and
+  must settle as part of the same barrier; already accepted queued input remains preserved.
+- Exit waits for every open window's dirty-draft flush, all exact work's terminal-history outcome,
+  and admitted draft, session, and restore-set obligations to settle durably. An indeterminate
+  durable outcome remains part of the barrier until same-home reconciliation proves its result.
 - While the barrier is active, every visible Exit command is disabled with a waiting indication.
   Repeated activation cannot create another exit attempt or another interruption.
 - Barrier admission freezes the complete current mutation set. New Window, New Thread, thread or
@@ -102,8 +109,8 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - The Exit control keeps its stable toolbar position, changes its label to `Exiting…`, shows the
   `command button` loading state, visibly becomes disabled, and uses the same exact
   waiting reason in its disabled tooltip.
-- After the complete restore set and orderly-exit intent are durable, Beryl closes all application
-  windows and terminates the process.
+- After the complete restore set, orderly-exit intent, and all-work terminal history are durable,
+  Beryl closes all application windows and terminates the process.
 - The restore set captures each open main window's selected thread identity, position, size, and Windows virtual-desktop placement.
 - Exit does not add auxiliary Settings windows or transient flyouts, menus, previews, or notices to the restore set.
 - Before a barrier begins, any feature-owned gate that cannot yet settle safely keeps Exit visible
@@ -117,6 +124,9 @@ Preserve each window's visible identity and placement without requiring auxiliar
   exit or close a subset of windows. Every window, thread claim, resident editor, and last coherent
   presentation remains intact. The affected windows report the blocking turn, draft, session, or
   storage failure through commandless Exit-failure notices.
+- A failure belonging to unviewed work is reported through a bounded commandless Exit-failure
+  notice in the invoking surviving window. Reporting never opens or selects that thread; when
+  no matching persistent backend condition is eligible it offers no substitute Retry command.
 - A blocking turn or active-work failure that also establishes selected-thread runtime/backend
   unavailability in an affected window directs the user to that window's separately owned
   persistent backend-unavailable notice;

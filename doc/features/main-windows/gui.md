@@ -1,7 +1,7 @@
 # Main Windows GUI
 
-This is the normative supplemental GUI composition file for `design.md`. It owns only the New
-Window and Exit command mounts, control composition and placement, and window-close or Exit-failure
+This is the normative supplemental GUI composition file for `design.md`. It owns the New
+Window and Exit command mounts, shutdown confirmation presentation, and window-close or Exit-failure
 notice contributions. Their workflow, availability, waiting, failure, notice-command behavior,
 session, persistence, restore, and window-lifecycle behavior remain in `design.md`.
 
@@ -30,6 +30,18 @@ During an admitted barrier, the command uses the built-in `loading` state with t
 `Exiting…`. That loading state is the waiting indication; the command is visibly disabled, and
 its tooltip is `Application Exit is waiting for active work and durable state.` Failure restores the
 label `Exit` and its design-owned enabled or disabled state.
+
+## Shutdown Confirmation
+
+The platform-native shutdown confirmation precedes an admitted shutdown barrier. The dialog is
+owned by the invoking main window, with title `Exit Beryl?`, bounded text explaining that running
+threads, including those not open in a window, will stop, and buttons `Cancel` and `Exit Beryl`.
+Cancel is the default; Escape or native dismissal cancels. The native dialog owns focus while open
+and cancellation restores the invoking window's previous focus. It is not a restored application
+window or a Beryl overlay. The feature supplies the current running-thread count; it includes no
+transcript, approval content, or unbounded thread list. Pending confirmation does not display
+`Exiting…`; that state starts only after confirmed barrier admission. Duplicate requests reveal
+the existing confirmation without opening another dialog.
 
 ## Window-Close And Exit-Failure Notice Contributions
 

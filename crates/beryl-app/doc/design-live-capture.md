@@ -27,6 +27,10 @@ and bounded repair coordination.
 - Each connection's sole ordered ingester consumes the closed compact-control, approval,
   dynamic-tool, and provider-operation union directly into typed owners. Source publication and
   acknowledgement remain ordered through the capacity-one broker.
+- The exact process execution session owns that consumer for both viewed and unviewed threads.
+  Window detachment releases presentation subscriptions only. No background thread requires a
+  transcript/editor mount or additional consumer; capture and terminal-history work retain their
+  ordinary bounded publication and custody until exact execution retirement.
 - Provider begin allocates one observation identity as a 128-bit value from the OS cryptographic
   random source. Every fragment, control, seal, reconciliation, and publication is fenced by it and
   exact route, generation, registration, item kind, field, ordinal, and protocol index.

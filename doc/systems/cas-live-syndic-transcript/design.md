@@ -39,6 +39,121 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Beryl coordinates typed durable commands and normalized CAS requests without becoming another durable history owner.
 - Ordinary transcript, catalog, title, search, branch-context, and replay reads use Syndic only.
 - CAS historical access exists solely inside the repair boundary defined here.
+- The process owns execution independently of main-window selection. A window owns its durable
+  GUI claim, editor, view subscriptions, and presentation; that claim neither owns nor authorizes
+  a CAS session. The process owns exact execution sessions, capture, scheduling, pending request
+  routing, and lifecycle continuation for viewed and unviewed threads alike.
+
+## Process-Owned Execution Lifetime
+
+- One healthy-home service generation owns one bounded execution registry keyed by Syndic thread.
+  Every reserved entry names the exact healthy home/service generation, Syndic thread, and full
+  runtime/root execution binding before projection establishment. It retains managed-process,
+  connection, loaded-session, projection-binding, tool-profile, and operation authority as each is
+  established and validates every applicable identity before use. A reservation or admitted
+  unprojected session does not imply loaded projection or dispatch authority. The entry owns or
+  checks out the actual admitted execution lease; copied ids or a shared connection handle cannot
+  preserve authority after the owning lease has revoked it.
+- A checked-out session remains owned by its exact execution flight through preparation,
+  dispatch classification, approval, streaming, stop, compaction, and terminal-history settlement.
+  Its process owner retains the flight, worker reservations, required runtime interest, sole driver
+  and ordered ingester independently of view subscriptions. A return to the registry transfers
+  custody only within that same healthy generation and never publishes simultaneous usable leases.
+- Switching threads or closing a nonfinal main window flushes and detaches the window's view.
+  It does not revoke execution authority, unsubscribe the execution stream, stop the target,
+  suppress accepted-input promotion, or cancel lifecycle continuation. Already accepted work and
+  eligible automatic work follow their ordinary gates while no window selects the thread.
+- A window may attach to a running unclaimed thread through ordinary GUI claim acquisition and
+  bounded current presentation. Attachment does not establish another CAS projection, replay
+  work, or wait for the execution lease to become idle. Existing GUI occupancy remains exclusive.
+- Registry capacity is reserved before inserting an already-admitted execution session; connection
+  admission retains its existing worker-permit gate. The slot bound is
+  `ProjectionServiceConfig.worker_capacity / CONNECTION_WORKER_PERMITS` using checked nonzero
+  configuration and the existing two-worker connection reservation; the protected steering
+  reserve remains intact. Available, checked-out, and retiring entries share this same bound,
+  and retain their slot reservation until exact release even if connection workers have ended.
+  There is at most one compact entry per admitted thread and no separate waiting list.
+  Saturation leaves durable pending
+  work intact and waits for the existing typed capacity wake. It does not impose a new durable
+  thread or queued-input quota or evict required active authority.
+- Durable queues remain revision-bound paged routes. Only eligible admitted work acquires an
+  execution session; catalog enumeration, window restoration, or an activity query cannot start
+  arbitrary catalog threads or allocate a session per durable thread.
+- At terminal-history fixed point the owner may serve eligible same-thread work under the normal
+  operation gate. When no admitted work, pending request, continuation, finalization, or other
+  required execution interest remains, it releases expensive session and runtime resources through
+  exact retirement. Idle catalog membership retains no connection or worker. All entries and
+  capabilities are revoked and joined on generation retirement; none survives process restart.
+
+## Request Custody And Running-Thread Projection
+
+- Admitted protocol requests and installed approval-denial/stop obligations belong to the exact
+  process execution session, ordered route, and request identity. Existing supported request and
+  approval policy applies identically while viewed or unviewed. Detachment cannot change policy,
+  duplicate or retarget a response, discard an obligation, or invent user-response authority.
+- The process retains bounded normalized request state and its exact non-cloneable capability
+  until ordinary ordered settlement or invalidation. Existing per-connection broker, route,
+  payload, and request-concurrency limits bound it; no unbounded secondary queue exists.
+- Request state is ephemeral and retains existing privacy exclusions. No raw approval payload,
+  command body, authentication material, permission body, or secret is added to durable records,
+  running-thread pages, notices, or logs. Restart never reconstructs a response capability.
+- The app publishes revision-bound bounded pages of running and needs-attention facts from exact
+  process execution state, typed durable work/status pages, and the transient attention pool.
+  Pages cover preparing and pending work, executing and stopping targets, approval handling,
+  compaction, and terminal-history work. Durable facts do not manufacture live authority.
+- One process-owned transient attention pool uses the same fixed pending-notice count capacity
+  and per-notice byte ceiling as the [Notifications feature](../../features/notifications/design.md).
+  This is one shared pool, not a pool per historical thread. Each record contains only compact
+  exact thread, yield/outcome identity, and bounded notice facts; completed attention retains no
+  execution lease and creates no durable attention or acknowledgement record.
+- The pool applies Notifications' existing priority, replacement, omission, and diagnostic rules
+  at capacity. View absence alone does not discard an admitted attention record. Its exact record
+  clears on notice-close acknowledgement or successful explicit Running threads activation to
+  that thread. A stale acknowledgement cannot clear a successor record. Neither action resumes
+  work, and no attention or acknowledgement survives process restart by contract.
+- Running-thread projection and subscriptions contain compact identity, state, and bounded display
+  facts, never transcript bodies, editor state, raw request payloads, or GUI entities. Its resident
+  pages and subscribers have the existing configured page and window bounds. Querying or updating
+  it creates no hidden window, transcript mount, focus transfer, or extra capture consumer.
+
+## Application Shutdown Coordination
+
+- Final-main-window close and explicit application Exit use one process-owned shutdown
+  coordinator. Nonfinal ordinary close is view detachment and never enters this execution barrier.
+  Feature authority owns confirmation and visible failures; storage authority owns restore-set
+  publication, with an empty set for final ordinary close and preserved layout for explicit Exit.
+- Confirmation reads a versioned process-wide work snapshot, including hidden, pending, preparing,
+  approval-blocked, stopping, compaction, continuation, and terminal-history work. Merely opening
+  or cancelling confirmation mutates no execution, queue, continuation, claim, or durable state.
+- Barrier admission linearizes under a shared process gate with main-window acquisition/removal,
+  execution admission, and every dispatch or same-thread successor cut. It revalidates final-window
+  identity and current work at admission. Positive confirmation authorizes all current work
+  captured by that atomic barrier; ordinary progress or newly admitted work before the fence does
+  not require repeated confirmation. If an initially idle close skipped confirmation and work
+  appears before admission, confirmation is required before effects. An ordinary close that is no
+  longer final returns to view-detach semantics. Concurrent close and Exit requests join one
+  current attempt and cannot duplicate stop
+  dispatch or publish competing shutdown modes; an admitted explicit Exit retains layout mode.
+- The admitted barrier fences direct submission, accepted-input promotion, pending dispatch,
+  steering, compaction launch, and automatic-continuation admission process-wide. It cancels
+  volatile continuation intents at their exact same-thread cut and preserves all already accepted
+  input and durably admitted pending turns. A candidate that won before the fence remains part of
+  the barrier; a later candidate cannot dispatch. It never drains the queue by starting more turns.
+- The coordinator visits the exact registered targets with bounded pages and joins their retained
+  execution flights. It requests or joins each target's existing sole exact graceful soft stop when
+  authorized, and waits for initially noninterruptible work to reach exact eligibility, terminal
+  outcome, or authoritative loss. Approval waits remain exact target work; invisibility or shutdown
+  cannot synthesize approval consent. Responses, coarse idle state, and missing stop eligibility
+  are not terminal evidence.
+- Terminal capture, repair eligibility/convergence, finalization, and admitted reconciliation
+  remain permitted behind the dispatch fence. The barrier completes only after each captured
+  target's terminal-history fixed point or the existing durable authority-loss convergence and
+  all required draft/session durability obligations. Only then may claims be released, windows
+  disposed, and the process service graph and managed runtimes retired and joined.
+- Any failed or unproven obligation retains coherent windows, claims, resident editors, and exact
+  operation/reconciliation custody. Failed shutdown does not undo a stop already sent, resurrect a
+  cancelled continuation, repeat uncertain dispatch, or fabricate rollback. The interaction and
+  dispatch gates reopen only after a coherent failure outcome; a retry is a new explicit attempt.
 
 ## Pinned CAS Contract
 
@@ -90,7 +205,10 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Normal Live Capture
 
-- Every admitted foreground projection owns one ordered consumer for the complete pinned notification stream. Responses, server requests, item observations, and terminal controls cross one ordering boundary.
+- Every admitted execution projection owns one ordered consumer for the complete pinned notification
+  stream regardless of whether a window selects its thread. The protocol's foreground connection
+  profile denotes full live capture capability, not GUI visibility. Responses, server requests,
+  item observations, and terminal controls cross one ordering boundary.
 - Normal capture retains every Beryl-relevant public field of every admitted pinned item variant, including exact operational content. Operational records remain outside parent transcript narrative but are not normally sampled, summarized, or discarded.
 - Provider observations are normalized into exact typed item start, delta, completion, and terminal facts with CAS thread, turn, and item identity.
 - Arbitrarily large admitted values cross bounded durable staging and content pages. Page, transport, or coalescing boundaries do not become semantic event boundaries.
@@ -333,10 +451,12 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Automatic Lifecycle Continuation
 
-- Lifecycle continuation intent is process-local and keyed to the exact yielding turn. Process loss, exact stop admission, window-close cancellation, compaction failure, or authority loss discards it.
-- Window close cancels that volatile intent at the same-thread admission cut before a continuation
-  can win; closing never reconstructs or reschedules it. A continuation already durably admitted
-  before the cut remains an ordinary pending turn.
+- Lifecycle continuation intent is process-local and keyed to the exact yielding turn. Process loss,
+  exact stop admission, admitted process shutdown, compaction failure, or authority loss discards
+  it. Thread switching and nonfinal window close leave it eligible under the ordinary gates.
+- Process shutdown cancels that volatile intent at the same-thread admission cut before a
+  continuation can win. A continuation already durably admitted before the cut remains an ordinary
+  pending turn. Neither failed shutdown nor restart reconstructs the cancelled intent.
 - After the yielding turn reaches terminal-history fixed point, Beryl compacts only when the same-thread gate is idle and no accepted-next work already wins.
 - Syndic owns atomic publication of the fixed continuation content through its
   [fixed-content operation](../../../crates/syndic-storage/doc/design-history-storage.md#fixed-lifecycle-content-publication).
@@ -388,3 +508,11 @@ Modifiers:
 
 - `privileged-access/v1`
 - `external-side-effects/v2`
+
+Execution/view separation protects exact provider-effect custody, durable accepted work, and capture
+through nonfinal detachment. Verification must cover detach and reattach during preparation,
+streaming, in-flight approval handling, compaction, continuation, and terminal-history work; bounded registry
+saturation and idle reclamation; and shutdown admission racing new work, final-window changes,
+duplicate requests, authority loss, and durability failure. Independent semantic review must examine
+the execution lease, request-routing privilege boundary, and all dispatch/successor cuts. Background
+execution does not weaken privacy, recovery, same-thread serialization, or resource guarantees.

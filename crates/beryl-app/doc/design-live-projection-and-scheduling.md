@@ -12,6 +12,9 @@ topology and typed execution surfaces.
 - Runtime readiness is process-wide and coalesced by exact runtime/root demand while projected per
   window. Releasing one window preserves all other interest and required work; final release drains
   required work before orderly retirement.
+- Admitted execution sessions hold required runtime interest separately from view interest.
+  Process-owned work can preserve or acquire that exact demand without a mounted thread view;
+  catalog queries and mere durable thread existence create none.
 - Every validated connection has one non-GPUI driver, one ordered ingester, one non-cloneable sink,
   one bounded router, and one capacity-one broker with one acknowledgement slot and at most one
   current bounded operation. Only the driver polls and sends serialized provider requests.
@@ -31,6 +34,30 @@ topology and typed execution surfaces.
 - Per-thread subscription leases come from one process-wide generation allocator. Each binding use
   requires one current admitted lease; release revokes locally before bounded unsubscribe. Drop
   performs no backend I/O and cannot leave reusable authority.
+- Execution subscriptions and GUI observation subscriptions have distinct owners. The process
+  registry retains the actual admitted loaded-session lease or transfers it exclusively into an
+  execution checkout; removing the selected view drops only its observation subscription.
+  Retaining an `Arc` after the authority-owning lease is dropped is not execution ownership.
+- The process session-checkout provider accepts already-admitted sessions scoped to its exact
+  healthy home/service generation, Syndic thread, and full runtime/root execution binding before
+  projection establishment. Managed-process, connection, loaded-session, projection-binding, and
+  immutable tool-profile authority is required when established and before the corresponding use;
+  checkout alone grants no projection or dispatch authority. Process composition supplies typed
+  request policy, asset preparation, and dynamic-tool authority without window discovery.
+- The checkout provider transfers each session into the existing non-cloneable execution lease
+  and matching scheduler flight; it creates no parallel execution lease or second run owner.
+  The wider process registry composes this custody with other execution paths and work inventory.
+  One session is either available or checked out, never usable by both. Return settles exact
+  custody and emits only the existing typed execution/capacity wake; it cannot revive a retired
+  slot or cross a service-generation boundary.
+- Registry admission reserves one slot before insertion from the system-defined
+  `worker_capacity / CONNECTION_WORKER_PERMITS` bound, sharing it across available, checked-out,
+  and retiring slots without consuming the protected steering reserve. A slot is released only
+  after exact return/retirement settlement, not merely when its connection workers end.
+  Durable routes own waiting work, and saturation adds no resident waiter list. A checked-out
+  session retains its worker and same-thread flight through exact terminal disposition. Once idle
+  with no required work or view interest, the owner releases session resources through retirement;
+  disposal revokes, joins, and reclaims all exact entries before generation loss completes.
 - Retirement linearizes with registry acquisition through one bounded in-memory gate containing no
   backend or storage work. Connection or process loss revokes matching leases and registrations.
 - Native continuation, resume, inclusive fork, fresh lineage, or one-time recovery injection is
@@ -77,6 +104,11 @@ topology and typed execution surfaces.
 - One process-owned level-triggered scheduler reads revision-bound durable pages for steering,
   accepted-next, and recovered-pending work. Durable routes own backlog; resident state is bounded
   to compact cursors, lane wake facts, one candidate per permit, and join/disposition facts.
+- Eligibility and execution checkout are independent of GUI selection. Direct, accepted-next,
+  pending, steering, compaction, and continuation paths all participate in the process shutdown
+  admission fence before their irreversible dispatch/successor cut. A fence preserves durable
+  candidates and captures already-winning flights for joined settlement; no shutdown pass starts
+  queued successors to empty the backlog.
 - Steering and ordinary lanes share a coalesced wake service and bounded worker pool while retaining
   distinct eligibility and permit authority. A wake or release cannot be retyped across lanes.
 - Each ordinary candidate acquires its worker permit before claim and one exact same-thread flight

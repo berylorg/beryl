@@ -290,7 +290,16 @@
 - [x] Restored and independently accepted compaction response reconciliation with original-driver authority through router handoff and [ordering evidence](../../failures/cas-phase72-compaction-terminal-ordering.md).
 - [x] Established and independently accepted bounded same-thread window-close continuation cancellation while preserving accepted input and already-admitted work.
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
-- [ ] Resolve ordinary-close successor-work admission and waiting semantics in the main-windows feature and CAS-live authority before implementing the exact-work close barrier.
+- [x] Reconciled process-owned background execution, independent view lifetime, bounded attention,
+  and final-window confirmation/shutdown in feature, GUI, CAS-live, runtime, storage and app authority.
+  Existing approval-denial policy remains unchanged; interactive approvals are a separate Operator
+  decision. The former stop-on-nonfinal-close plan is superseded.
+- [ ] Implement the bounded production session checkout provider and process work ownership across
+  direct submission, accepted input, compaction, continuation and terminal-history convergence.
+- [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
+  with process-owned lifecycle attention independent of the originating window.
+- [ ] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window
+  and Exit confirmation, serialized close designation, and durable restore-mode integration.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

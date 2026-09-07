@@ -27,6 +27,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
   `doc/systems/cas-live-syndic-transcript/design.md`; bounded collection mechanics are defined in
   `doc/systems/bounded-resource-dataflow/design.md`.
 - Ordinary main-window close behavior is defined in `doc/features/main-windows/design.md`.
+- The application-wide Running threads surface is this feature's product behavior. Its toolbar
+  placement and picker composition are defined in `gui.md`; process work and attention routing are
+  defined by their owning system authority.
 
 ## Product Vocabulary
 
@@ -39,6 +42,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 - Each main conversation window owns independent selection, navigation history, draft presentation, transient flyout state, and visible loading or failure presentation.
 - A Syndic thread may be open in at most one main conversation window at a time.
+- A running thread may have no open main-window view. Detaching its sole view releases that view's
+  claim without changing its exact execution, queued input, compaction, or terminal-history
+  state.
 - Once at least one runtime exists, every visible main conversation window has one selected Syndic thread.
 - A fresh Beryl home with zero configured runtimes is the sole state in which the initial main conversation window may be threadless.
 - Two windows never share a default new thread. Each window claims or creates its own eligible thread.
@@ -177,6 +183,36 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 - A thread open in another main conversation window remains visible but unavailable. Its row identifies the open-elsewhere state and its hover/focus tooltip explains that one thread cannot be open in two windows.
 - Unavailable rows do not activate through pointer, keyboard, or programmatic acceptance paths.
 - The Thread Switcher contains only runtime creation, root creation, runtime/root browsing, and thread selection. It contains no thread metadata manipulation commands.
+
+## Running threads
+
+- Every main conversation window exposes a compact `Running threads` command and count. It opens
+  an application-wide recent-first collection of exact threads with running work or unacknowledged
+  attention; opening the collection never starts, stops, or otherwise changes
+  work. Needs-attention rows come from Notifications' bounded process attention pool; the collection
+  does not create a durable attention history. Successful explicit activation of a row acknowledges
+  that thread's currently displayed exact attention record without resuming its work.
+- A row remains present while its exact thread has an active conversation turn, context compaction,
+  admitted work awaiting dispatch or terminal history, in-flight request handling, scheduled
+  continuation, or retained needs-attention state.
+  It is removed after terminal-history settlement when no attention remains, and an idle queued-input-
+  only row is not retained after process shutdown cancels further dispatch.
+- Each row factually identifies the thread, its runtime/root, current execution or Needs attention
+  state, and whether it is current, open in another window, or unviewed. Attention is a factual
+  work-state signal; this collection does not define a new input, policy, or control surface.
+- The collection contains no runtime/root management, title editing, thread-management, or stop
+  commands.
+- Activating a current row leaves the current thread selected. Activating a row open in another main
+  window explicitly reveals that exact existing window and does not transfer its thread to the
+  invoking window. This explicit activation may reveal a window, but new work, attention arrival,
+  collection refresh, and background state changes never steal focus or selection.
+- Activating an unviewed running row first uses the ordinary durable draft/session flush for the
+  invoking window's current thread, then detaches that view and attaches the exact same live thread
+  to the invoking window. It never starts a replacement turn, replays input, or reconstructs live
+  state. A failed or indeterminate flush leaves the invoking window and its current thread unchanged
+  and leaves the unviewed execution running.
+- The ordinary Thread Switcher keeps its existing unavailable treatment for a thread open in another
+  window. Running threads is the only collection that reveals such an already-open exact thread.
 
 ## Root Scoping In The Thread Switcher
 
@@ -320,6 +356,10 @@ Keep thread selection responsive across a large Beryl home while preserving exac
   follows Visible Mutation Reconciliation and is never restored as a proven noncommit or exposed
   for repeat activation.
 - Thread activation never waits for CAS merely to browse complete Syndic history. CAS readiness gates submission and other CAS-backed operations for the activated thread.
+- Switching away from an executing thread flushes the current draft and session before it detaches
+  the view. Success leaves the execution, accepted queued input, compaction, automatic continuation,
+  and terminal-history work running in the background; flush failure leaves the current view attached and
+  changes none of that work.
 
 ## Progressive Shell Readiness
 

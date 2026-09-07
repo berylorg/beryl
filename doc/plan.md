@@ -1,113 +1,80 @@
 # Scope
 
-The earlier code simplification and behavior-based naming batch is complete. The Operator has
-accepted using the [complete simplification audit](audits/code-simplification/report.md) selectively
-within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
-has resumed implementation; host request sequencing, submission quiescence and already-durable
-composer integration, exact close-gate release and resident-preserving close flush are accepted.
-Atomic fixed-continuation publication and app adoption are accepted. Ordinary-close mounting
-follows same-thread continuation cancellation and exact waiting for initially noninterruptible work.
+Implement the Operator-approved background-thread behavior under the revised
+[conversation-thread](features/conversation-threads/design.md),
+[main-window](features/main-windows/design.md),
+[CAS-live](systems/cas-live-syndic-transcript/design.md), and
+[app package](../crates/beryl-app/doc/design.md) authority. The process owns execution; switching
+views and closing nonfinal windows preserve it. Final-main-window close and explicit Exit use
+confirmed process-wide graceful shutdown, with their distinct restore-set outcomes.
+
 The Operator authorizes continuous implementation until a blocker requires attention, with a
-commit after each accepted phase. The Operator explicitly preapproves all future temporary-directory
-deletions; obsolete-directory cleanup remains authorized for this thread. Preserve unrelated work,
-verify exact cleanup targets and obey tool-enforced restrictions.
-Protect concrete supported-envelope consequences without duplicating dependency
-guarantees, runtime validation, or review machinery.
+commit after each accepted phase. Temporary-directory deletion and obsolete-directory cleanup
+remain authorized; verify exact targets and preserve unrelated or concurrent work. The active
+Beryl-home architectural replacement remains tracked by [REWORK.md](rework/beryl-home/REWORK.md).
+The former window-owned stop/wait plan is superseded. Previously accepted exact-stop,
+continuation-cancellation, draft-flush and session primitives are reusable evidence, not authority
+for stopping a background thread when a nonfinal view closes.
 
-The audit and its [canonical findings](audits/code-simplification/estimates.tsv) are supporting
-evidence, not design authority or a second implementation plan. Its line estimates are not delivery
-targets, and completing every proposal is not a rework completion gate. Before activating a bounded
-rework slice, inspect the relevant findings against current source and owning target docs; the audit
-describes a frozen baseline and does not establish that a finding still applies after later work.
+Apply the [simplification audit](audits/code-simplification/report.md) selectively within each
+owning acceptance boundary. It is evidence, not authority or a second plan; preserve its baseline
+estimates and record actual dispositions only for accepted selected findings. Separate an
+independently implementable simplification or material scope growth before work begins. Keep
+source names behavior-based and follow the canonical single GPUI graph. No compatibility shell,
+universal resource governor, or compile-only substitute fulfills target behavior.
 
-Complete the ordinary-close prerequisites and mounting in the phases below.
-Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
-Include a simplification within an existing phase only when it serves that phase's same acceptance
-boundary and cannot be independently implemented, verified, reviewed, or resumed. Otherwise derive
-a separate bounded phase before starting it; place optional cleanup between accepted slices only
-when it reduces the work or uncertainty of reaching the next milestone. Broad restructuring of
-unstable or soon-replaced code remains deferred.
+The final shell mounts every declared slot and feature contribution using accepted target
+services and widgets. Leave deferred contributions visibly absent or unavailable until their
+bounded implementation is accepted. Startup, restoration, Exit/close mounting, catalog,
+transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
+branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-Keep later ownership and algorithm work in its existing rework milestones: marker-service discovery
-removal accompanies bootstrap composition, and persistent-tree rebalancing sharing follows stable
-editor behavior. Contract-changing audit alternatives require decisions in the owning feature,
-system, package or GUI authority before implementation phases can be derived. A parser feasibility
-investigation, if selected, has an evidence-only acceptance boundary and does not authorize the
-production rewrite. No such alternative is selected by this policy update.
+# Phase 324: Own Scheduled Execution Sessions In The Process (wip)
 
-For each selected finding, the phase records its ID, retained contracts, dependencies and concrete
-verification derived from the owning engineering-rigor requirements. After acceptance, record the
-finding's disposition and actual implementation/verification evidence in the audit, retain its
-baseline estimate, and compact the phase and corresponding rework outcome before advancing. Leave
-unselected proposals in the audit rather than expanding them into speculative pending phases.
+Implement the concrete process-owned `ScheduledOrdinaryExecutionProvider` for already-admitted
+sessions under the app live-projection and CAS-live ownership contracts. Process composition
+supplies typed request policy, assets and dynamic-tool authority; this phase does not launch
+runtimes or mount windows. Reuse the existing non-cloneable execution lease and scheduler flight,
+worker, connection and generation validation rather than duplicate them in another run object.
 
-The replacement shell is the final target-state composition boundary, not a compatibility shell or
-a reduced copy of the archived workspace-era view. It ultimately mounts every declared main-window
-slot and feature contribution, including theme roles, toolbar and lineage, transcript and its owned
-scrolling, optional activity and discussion surfaces, composer, status line, overlays, notices, and
-Settings entry. Reuse accepted live target-state services, hosts, projections, and widgets; keep
-unimplemented mounts visibly absent or unavailable until their owning bounded phase completes.
+Reserve a bounded slot keyed to exact healthy home/service generation, thread and full execution
+binding. Derive retained-slot capacity from configured worker capacity and per-connection worker
+permits; count available, checked-out and retiring slots until definitive release. Decline missing,
+busy, stale or full authority without consuming durable backlog or retaining an unbounded waiter.
+Transfer each session once into the existing execution lease and return it only to its still-current
+owner. Shutdown, retirement and generation loss fence issuance and return; release must not revive
+a closed slot. Availability wakes the existing scheduler through a typed bounded notification.
+The owner and checkout retain no GUI state or view-lifetime dependency; actual view detachment
+and reattachment verification belongs to the following composition boundary.
 
-Use the accepted, canonically pinned single GPUI dependency graph and atomic GPUI window-set
-appearance publication when shell implementation resumes. Keep startup restoration,
-onboarding, placement, close, Exit, later catalog/navigation/activity/status/notice/settings/
-transcript mounts, repair, recovery, branch, asset, integration, and closure boundaries in the
-active rework tracker until their own bounded slices are ready.
+Verify the production provider through the existing real scheduler: independent exact thread and
+binding slots, durable promotion and terminal capture without a view, busy decline, return/wake
+without duplicate dispatch, generation and asset rejection, service shutdown joining checked-out
+work, late return after the provider-owner fence, saturation and repeated release with bounded
+retained counts. Preserve
+existing authority tests where they already prove the shared mechanism. Run focused nextest and
+locked app checks, formatting and whitespace validation, then obtain independent semantic review
+of authority transfer, return races, resource release and evidence before acceptance.
 
-Marker-operation admission and visible refusal, diagnostic activation, and compact repair-media
-implementation and acceptance remain in their owning
-rework checkpoints; updating target authority does not mark those behaviors implemented.
+Current milestone: revised target authority is integrated; source readiness and lease boundaries
+are reviewed. Implement the production checkout provider next.
+The production provider seam and existing scheduler tests are identified; no implementation from
+the superseded noninterruptible window-close phase is retained as pending work.
 
-The earlier cleanup batch closure and composer opening/request/wait prerequisites are accepted.
-Preserve the retained close implementation and its explicit verification gaps below. Use the smallest implementation
-that fulfills the high-level feature contracts; ordinary close mounting, bootstrap and other later
-boundaries retain their own acceptance gates.
+# Phase 325: Own Running Work Independently Of Views (pending)
 
-The naming policy is in `AGENTS.md`. Historical rework snapshots and immutable investigation
-artifacts remain historical material. Update live source references without rewriting historical
-execution evidence. Theme scope follows the updated Theming feature, theme-runtime system, and
-state theme-service contracts. Bootstrap-dependent ownership and unstable editor-algorithm
-consolidation remain explicit later rework work; resolve their target decisions before activating
-their owning slices.
+Compose process-owned execution interest across direct submission, scheduled input, compaction,
+continuation and terminal-history work. Keep exact request routing and background attention under
+their owning policies. Establish the bounded revision-bound work inventory for shutdown and
+Running threads without mounting a GUI per thread. Verify view-interest release and immediate
+reattachment preserve the same live execution and capture, and all terminal/replacement paths
+release required resources. Split any independently missing composition prerequisite before
+activation; production runtime/provider composition remains explicit rather than inferred.
 
-# Phase 319: Cancel Same-Thread Continuation At Window Close (finished)
+# Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
-Ordinary-close cancellation now fences same-thread intent registration and durable continuation
-admission, preserves accepted input and already-admitted work, and bounds/reclaims cancelled-turn
-records. All eight direct cancellation and 13 focused stop cases, locked checks and formatting
-passed with independent semantic review. Tests exercise the actual durable admission cut;
-lifecycle launch fence coverage is static. Exact waiting and OS-close mounting remain separate.
-
-# Phase 320: Wait For Exact Noninterruptible Work At Window Close (wip)
-
-Implement the ordinary-close active-work barrier under the same CAS-live and app contracts.
-Distinguish proven idle from initially noninterruptible exact work, retain its identity through
-terminal-history or authority-loss convergence, and request or join the sole exact soft stop when
-eligible. Acknowledgement, coarse activity or stop ineligibility cannot prove completion. Verify
-pending, steering, compaction and finalization transitions, duplicate joins, failures and stale
-authority; preserve the thread claim and already-admitted work. Independently review exact
-identity, interruption and terminal evidence before OS-close integration.
-
-Current milestone: source readiness identifies the existing stabilized stop-admission read and
-exact-stop barrier as usable primitives, but implementation is blocked on owning design authority.
-The ordinary-close contract does not decide what happens when queued accepted work can become a
-successor turn while the captured turn settles: freeze new-turn admission and preserve the queue,
-or continue processing and extend the close wait. This changes scheduling, interruption ownership
-and completion evidence. Resolve the behavior in main-windows feature and CAS-live/app authority
-before implementing the retained-work barrier. No Phase 320 source changes have been applied.
-
-# Phase 298: Mount Ordinary Main-Window Close (pending)
-
-Mount ordinary close under [main-window behavior](features/main-windows/design.md), preserving
-the visible window and claim until exact active work, dirty draft, and durable session removal
-settle. Notice and resident-preserving flush prerequisites are accepted; await the continuation
-cancellation and exact active-work barriers above. Verify duplicate close
-admission, exact stop and continuation cancellation, failure return
-to the coherent open state, independent-window preservation, and final-window empty-restore
-termination. Inspect accepted stop, composer, session, and notice dependencies before activating;
-split any independently missing component into its own prerequisite phase. Exact-stop and typed
-session-removal primitives exist; the two independently missing active-work prerequisites are
-captured above. Keep final session removal, editor release and normal termination ordering in this
-integration boundary.
-
-Startup, Exit, restoration, onboarding, and the other deferred mounts remain in the rework tracker.
+Implement one admission fence and exact all-work convergence boundary shared by final-window close
+and explicit Exit. Preserve accepted queues, prevent successor dispatch, retain exact pending and
+noninterruptible targets through terminal history or authority-loss convergence, and return to
+coherent windows on failure. Confirmation, final-window designation, durable restore mode and OS
+close integration remain their subsequent rework acceptance boundary.

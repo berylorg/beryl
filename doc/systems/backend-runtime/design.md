@@ -53,7 +53,8 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 - `beryl-backend` supervises every launched Host or WSL process tree and explicitly terminates it
   when `beryl-app` retirement orchestration releases the final runtime requirement or final
-  shutdown begins.
+  shutdown reaches managed-runtime disposal after the CAS-live graceful execution and durable
+  window/session barriers. Starting shutdown is not authority to terminate still-unsettled turns.
 - Bounded process-shutdown escalation belongs only to managed-runtime lifecycle disposal. It is not
   turn control, a hard stop, terminal-history evidence, or authority to terminate a selected turn.
 - One Beryl process uses at most one active managed app-server process per configured runtime.
@@ -78,7 +79,10 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 ## Progressive Warm-Up
 
 - Opening Beryl and restoring conversation shells does not launch CAS.
-- Warm-up begins only for unique runtimes required by currently open selected threads. Catalog membership alone never warms a runtime.
+- Warm-up begins only for unique runtimes required by currently open selected threads or exact
+  admitted process-owned work. Required work includes queued promotion admitted by the scheduler,
+  pending request handling, compaction, continuation, and terminal capture/convergence independent
+  of GUI selection. Catalog membership alone never warms a runtime.
 - The `beryl-app` runtime orchestrator coalesces concurrent interest in the same runtime and fans
   the result to interested windows.
 - Cancelling one interest does not cancel launch while another interest remains.

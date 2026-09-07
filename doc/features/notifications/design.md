@@ -18,8 +18,9 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 ## Main Conversation Notices
 
-- Main conversation notices are bounded transient messages associated with one main conversation
-  window. Their overlay placement and widget composition are owned by `gui.md`.
+- Main conversation notices are bounded transient messages presented in one main conversation
+  window when a destination window exists. Their overlay placement and widget composition are owned
+  by `gui.md`.
 - Notices report localized errors and recovery information that should not replace the active conversation shell.
 - Notifications is the sole per-window presentation owner for every main-conversation notice. Beryl-home,
   backend-runtime recovery, status-line stop feedback, and ordinary feature errors contribute
@@ -65,6 +66,21 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - Ordinary error, warning, recovery, and informational records are dismissible unless their owning
   feature explicitly defines an unresolved condition as persistent. Dismissal never suppresses a
   later distinct condition or operation identity.
+- Work-owned lifecycle attention uses one bounded process pool independently of per-window notice
+  presentation. The pool uses the same count and per-record byte ceilings as one per-window notice
+  arbiter and retains only bounded exact thread, yield attempt, outcome, and notice facts. It does
+  not retain execution leases, transcript bodies, or a durable attention history.
+- View detachment alone does not discard an admitted lifecycle attention record. The destination
+  is the window currently viewing its exact thread, otherwise the surviving main window with the
+  smallest stable window identity. Destination changes remove the old presentation before offering
+  the same record to the new arbiter, without selecting a thread or moving focus.
+- Running threads exposes the retained process attention records. The exact notice close action or
+  successful explicit Running threads activation acknowledges the displayed exact record; stale
+  acknowledgement cannot clear a later record. Acknowledgement never resumes work or changes its
+  lifecycle outcome. Records end on acknowledgement or process disposal and are not restored.
+- The pool follows the existing notice priority, replacement and omission rules at capacity, with
+  content-free diagnostics. It has no unbounded overflow or promise to retain every past event.
+  Window-local command errors keep their existing window ownership.
 
 ## Best-Effort Home Warning
 
@@ -160,13 +176,14 @@ Report user-visible errors, recovery states, and completion attention signals wi
   completion, Notifications admits at most one lifecycle-yield record after that turn reaches its
   terminal state. A `phase_continue` attempt contributes at most one continuation-failure record
   only when Lifecycle Yield reports its bounded continuation-failure outcome. User-input
-  precedence, soft-stop cancellation, window-close cancellation, and successful automatic
+  precedence, soft-stop cancellation, application-shutdown cancellation, and successful automatic
   continuation do not contribute that failure record.
-- One lifecycle notice is associated with the destination window, exact yield attempt, and selected
-  outcome. Repeated terminal observation, rerender, sound handling, or failure reporting updates
-  that record in place and never presents a duplicate.
-- The destination is the main conversation window that owned the yielding turn. The record is not
-  broadcast or moved to another window, even when another window later selects the same thread.
+- One lifecycle notice is associated with the exact yield attempt and selected outcome. Repeated
+  terminal observation, rerender, sound handling, or failure reporting updates that record in place
+  and never presents a duplicate.
+- Lifecycle attention follows the bounded process pool and deterministic destination above.
+  Its retained `Needs attention` state remains discoverable through Running threads when its
+  originating window has detached; routing never opens, selects, or focuses a thread or window.
 - Lifecycle-yield records use the priority declared above: exact stop feedback preempts them, and
   they preempt runtime-unavailability, recovery, and ordinary records. Preemption returns an
   unacknowledged record to the front of its priority and does not acknowledge or remove it.
@@ -176,10 +193,11 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - Content is concise, localized, and host-owned: a bounded title identifies review readiness,
   operator attention, plan completion, or continuation failure, and bounded detail may identify the
   originating thread without copying model-supplied explanation or transcript content.
-- If the bounded pending-notice surface cannot admit the record or the destination window no longer exists, Beryl
-  shows no substitute record, does not retry, broadcast, or displace a protected condition record,
-  and records only content-free diagnostics. The accepted lifecycle outcome and any separately
-  requested sound remain unchanged.
+- If the bounded pending-notice surface cannot admit the record or no destination window remains,
+  Beryl does not displace a protected condition record. An attention record already admitted to
+  the process pool remains available through Running threads within that pool's bounds. Failure to
+  admit a process record uses the same bounded omission diagnostics; the accepted lifecycle outcome
+  and any separately requested sound remain unchanged.
 - Outcomes that stop for operator attention or report plan completion may use event-specific sounds chosen by Beryl policy.
 - The model never supplies a sound path, sound identity, volume, resume prompt, or compaction strategy.
 

@@ -43,6 +43,9 @@ internal contract.
 - `beryl-app` is the only Beryl package that composes the GPUI process shell, OS-window
   controllers, and feature mounts. It correlates typed services but creates no second durable
   authority.
+- The process service graph owns admitted thread-execution sessions, scheduler flights, pending
+  request routing, runtime interest, and coordinated shutdown. Main-window controllers own view
+  claims, editors, and subscriptions; removing a controller cannot revoke required execution.
 - The package consumes app-neutral values and services and publishes typed versioned facts,
   bounded pages, command outcomes, and exact adapter inputs. Versioned facts never retain GPUI
   views, entities, windows, or renderer callbacks.
