@@ -439,6 +439,7 @@ impl SealLifecycleContentMutation {
 mod admission;
 mod api;
 mod continuation;
+mod lifecycle_content;
 mod observation;
 mod settlement;
 

@@ -338,6 +338,10 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   can win; closing never reconstructs or reschedules it. A continuation already durably admitted
   before the cut remains an ordinary pending turn.
 - After the yielding turn reaches terminal-history fixed point, Beryl compacts only when the same-thread gate is idle and no accepted-next work already wins.
+- Syndic owns atomic publication of the fixed continuation content through its
+  [fixed-content operation](../../../crates/syndic-storage/doc/design-history-storage.md#fixed-lifecycle-content-publication).
+  The app consumes only the sealed result. Existing incomplete or conflicting content produces
+  bounded continuation failure without changing that content or discarding accepted input.
 - If accepted input exists when compaction settles, that work wins. Otherwise Beryl may atomically admit the exact fixed continuation text defined by the lifecycle feature while leaving the operator's current draft unchanged.
 - Restart never reconstructs continuation intent. An already durably admitted continuation turn recovers as an ordinary pending turn and is not duplicated.
 

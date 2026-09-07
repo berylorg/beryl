@@ -281,6 +281,9 @@
   worker and unmounted cleanup, with [close-release evidence](../../failures/main-window-close-readiness.md).
 - [x] Accepted resident-preserving close flush, coherent read-only interaction, exact failure release
   and authorized final disposal, with [integrated close evidence](../../failures/main-window-close-readiness.md).
+- [x] Established and independently accepted atomic fixed-continuation content publication with
+  exact reuse, conflict preservation and opaque reconciliation; [publication evidence](../../failures/lifecycle-continuation-staging.md)
+  retains the separate app-adoption and close-cancellation acceptance boundaries.
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.

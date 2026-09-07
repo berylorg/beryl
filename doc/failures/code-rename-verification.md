@@ -57,8 +57,10 @@ handle-ownership repairs in 13 included test files. Projection scale/release and
 representatives passed. The provider failure/unknown-outcome case again exceeded 180 seconds and
 its owned process tree was terminated. A context-compaction representative,
 `lifecycle_continuation_staging_is_fixed_ownerless_and_idempotent`, failed with `Storage` while
-unwrapping `stage_context_compaction_continuation_for_test`. Its cause remains uninvestigated;
-there is no pre-change runtime result establishing when that failure began.
+unwrapping `stage_context_compaction_continuation_for_test`. The later
+[staging investigation](lifecycle-continuation-staging.md) established an ownerless unsealed
+manifest read incompatibility. There is no pre-change runtime result establishing when that
+failure began.
 
 One scale/release invocation lost its terminal result because the command wrapper retained output
 but discarded the asynchronous session handle. Process disappearance did not establish success.

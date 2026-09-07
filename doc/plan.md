@@ -5,10 +5,12 @@ accepted using the [complete simplification audit](audits/code-simplification/re
 within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
 has resumed implementation; host request sequencing, submission quiescence and already-durable
 composer integration, exact close-gate release and resident-preserving close flush are accepted.
-Ordinary-close mounting is next, subject to its active-work and continuation-cancellation readiness check.
+Atomic fixed-continuation publication is accepted. Ordinary-close mounting follows its app
+adoption, same-thread continuation cancellation and exact waiting for initially noninterruptible work.
 The Operator authorizes continuous implementation until a blocker requires attention, with a
-commit after each accepted phase. Temporary and obsolete directory cleanup is authorized for
-the remainder of this thread; preserve unrelated work and verify exact cleanup targets.
+commit after each accepted phase. The Operator explicitly preapproves all future temporary-directory
+deletions; obsolete-directory cleanup remains authorized for this thread. Preserve unrelated work,
+verify exact cleanup targets and obey tool-enforced restrictions.
 Protect concrete supported-envelope consequences without duplicating dependency
 guarantees, runtime validation, or review machinery.
 
@@ -18,7 +20,7 @@ targets, and completing every proposal is not a rework completion gate. Before a
 rework slice, inspect the relevant findings against current source and owning target docs; the audit
 describes a frozen baseline and does not establish that a finding still applies after later work.
 
-Complete ordinary-close readiness and mounting in the phase below.
+Complete the ordinary-close prerequisites and mounting in the phases below.
 Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
 Include a simplification within an existing phase only when it serves that phase's same acceptance
 boundary and cannot be independently implemented, verified, reviewed, or resumed. Otherwise derive
@@ -68,24 +70,83 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 302: Preserve The Resident Editor Through Close Flush (finished)
+# Phase 321: Publish Fixed Continuation Content Atomically (finished)
 
-Resident close now retains the coherent read-only editor through authenticated draft readiness,
-releases only the failed attempt's gate and requires exact final authorization before disposal.
-All 62 selected integration tests and independent lifecycle review passed; current locked checks
-and formatting cover the unchanged source. [Resident-close evidence](failures/main-window-close-readiness.md)
-records direct versus shared-path coverage. OS close and its active-work/session obligations remain separate.
+Syndic atomically publishes the complete fixed sealed content and classifies exact reuse without
+a write or revision advance. All 16 selected tests, locked default and test-faults checks, formatting
+and independent adversarial review passed. [Publication evidence](failures/lifecycle-continuation-staging.md)
+records exact closure, conflict preservation and reconciliation coverage. App adoption remains separate.
+
+# Phase 322: Adopt Atomic Continuation Content Publication (pending)
+
+Replace the app's fixed-content construction loop with the accepted storage operation under
+[app live control](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).
+Preserve exact successful compaction, user-input precedence, bounded staging-failure feedback and
+ambiguous-command custody. Remove the displaced lifecycle staging path where no accepted consumer
+remains. Verify fixed sealed content reuse and successful/failed compaction settlement, including
+existing partial-content failure, with focused app checks and independent semantic review. Keep
+the retained Phase 319 changes outside this phase's commit and acceptance claim.
+
+# Phase 319: Cancel Same-Thread Continuation At Window Close (pending)
+
+Implement the window-close continuation cut required by the
+[CAS-live system](systems/cas-live-syndic-transcript/design.md#automatic-lifecycle-continuation),
+[app live control](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation), and
+[lifecycle yield](features/lifecycle-yield/design.md), together with
+[ordinary close](features/main-windows/design.md#ordinary-window-close). Readiness review found
+that existing exact-stop admission cancels only eligible targets, while compaction settlement
+consumes the original yielding-turn intent under its own settlement fence. The process-wide
+shutdown path cannot supply a single-window cut.
+
+Provide a bounded same-thread cancellation operation ordered against intent registration and
+automatic continuation admission, including noninterruptible active work. Preserve accepted
+input, other threads, and any continuation already durably admitted before cancellation. Keep
+exact generations, authority loss, capability ownership and failure outcomes explicit; no
+process-wide shutdown or new interruption may substitute for cancellation. This phase supplies
+the cancellation prerequisite only; exact work waiting and OS-close mounting remain separate.
+
+Verify cancellation before registration or settlement can revive intent, racing successful
+compaction settlement, already-admitted continuation preservation, accepted-input preservation,
+other-thread independence, repeated cancellation, and stale authority. Exercise the actual
+same-thread admission boundary, with focused locked Cargo checks and behavior tests. Independent
+semantic review must cover cancellation ordering, durable admission and exact authority/custody
+before acceptance.
+
+The Operator accepted atomic fixed-content publication as the correction to the reproduced
+staging incompatibility. The two prerequisite phases above now own its implementation and app
+adoption. [Staging evidence](failures/lifecycle-continuation-staging.md) retains the diagnosis and
+verification limits.
+
+The cancellation implementation and eight meaningful tests remain uncommitted and unaccepted.
+Successful settlement/race verification is blocked; the final capacity and terminal-before-
+compaction cases are not yet verified. Resumption must address the staging prerequisite under
+owning authority, then run focused compaction and stop tests. The stop unit fixture that registers
+an invented other turn must instead use an actual independent thread/turn while retaining its
+isolation assertion. Repeat locked checks on the final source and obtain completion review before
+compacting or committing this phase. Exact waiting and OS-close integration remain pending.
+
+# Phase 320: Wait For Exact Noninterruptible Work At Window Close (pending)
+
+Implement the ordinary-close active-work barrier under the same CAS-live and app contracts.
+Distinguish proven idle from initially noninterruptible exact work, retain its identity through
+terminal-history or authority-loss convergence, and request or join the sole exact soft stop when
+eligible. Acknowledgement, coarse activity or stop ineligibility cannot prove completion. Verify
+pending, steering, compaction and finalization transitions, duplicate joins, failures and stale
+authority; preserve the thread claim and already-admitted work. Independently review exact
+identity, interruption and terminal evidence before OS-close integration.
 
 # Phase 298: Mount Ordinary Main-Window Close (pending)
 
 Mount ordinary close under [main-window behavior](features/main-windows/design.md), preserving
 the visible window and claim until exact active work, dirty draft, and durable session removal
-settle. Await the notice and resident-preserving flush prerequisites above. Verify duplicate close
+settle. Notice and resident-preserving flush prerequisites are accepted; await the continuation
+cancellation and exact active-work barriers above. Verify duplicate close
 admission, exact stop and continuation cancellation, failure return
 to the coherent open state, independent-window preservation, and final-window empty-restore
 termination. Inspect accepted stop, composer, session, and notice dependencies before activating;
 split any independently missing component into its own prerequisite phase. Exact-stop and typed
-session-removal primitives exist; noninterruptible active-work waiting and close-time continuation
-cancellation still require a focused readiness check before activation.
+session-removal primitives exist; the two independently missing active-work prerequisites are
+captured above. Keep final session removal, editor release and normal termination ordering in this
+integration boundary.
 
 Startup, Exit, restoration, onboarding, and the other deferred mounts remain in the rework tracker.

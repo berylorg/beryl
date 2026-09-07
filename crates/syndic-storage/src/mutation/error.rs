@@ -41,6 +41,9 @@ pub enum SyndicMutationError {
     ContentManifestConflict,
     ContentChunkConflict,
     ContentNotComplete,
+    LifecycleContentAlreadyPublished {
+        content: crate::ContentReference,
+    },
     ContentRevisionConflict {
         expected: ContentRevision,
         current: ContentRevision,
@@ -229,6 +232,9 @@ impl fmt::Display for SyndicMutationError {
             }
             Self::TerminalTurnClosed => {
                 formatter.write_str("proven-terminal turn is closed to source events")
+            }
+            Self::LifecycleContentAlreadyPublished { .. } => {
+                formatter.write_str("fixed lifecycle content is already canonically published")
             }
             Self::SourceEventAlreadyAdmitted => {
                 formatter.write_str("the exact source event is already durably admitted")

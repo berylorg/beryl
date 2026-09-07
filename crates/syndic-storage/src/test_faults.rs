@@ -17,6 +17,7 @@ mod draft_piece_staging;
 mod fixture_command;
 mod fixture_delete;
 mod fixture_put;
+mod lifecycle_content;
 pub(crate) mod metrics;
 mod physical;
 mod provider;
@@ -97,6 +98,9 @@ pub use draft_piece_staging::{
     inject_draft_mutation_terminal_same_operation_custody,
 };
 pub use fixture_command::{FixtureBatch, FixtureBuildError, FixtureMutationError};
+pub use lifecycle_content::{
+    lifecycle_content_canonical_records, lifecycle_content_manifest_with_owner,
+};
 pub use metrics::{
     CurrentBindingReadMetrics, DeliveringSteeringReadMetrics, ReadySteeringReadMetrics,
     RecoveryResidencyMetrics, ValidationPageMetrics, current_binding_read_metrics,

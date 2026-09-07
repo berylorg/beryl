@@ -83,6 +83,38 @@ Provider structured values accept no more than 128 nested list/object containers
 bounded state; strings and collection counts remain chunked rather than whole-value resident. Adapter
 transport payloads are discarded after normalization and have no persisted catch-all JSON family.
 
+## Fixed Lifecycle Content Publication
+
+The package exposes one typed operation for the exact fixed lifecycle-continuation content defined
+by the [lifecycle feature](../../../doc/features/lifecycle-yield/design.md). Its recipe and content
+identity are package-owned; callers supply no alternative text, content identity, owner or build
+frontier. The existing one-atom, one-chunk `ComposerV1` representation and V7 identities remain
+unchanged.
+
+The operation atomically publishes the complete fixed content, byte/text spans, pieces and sealed
+ownerless manifest through the ordinary current-command and HomeStore mutation protocol. No
+building state becomes visible between its writes. Its preparation and reconciliation inspect only
+the fixed bounded record closure and obey package byte and record ceilings.
+
+The fixed closure contains five records: one manifest, chunk, byte span, text span and piece.
+Preparation uses one manifest point read and four owner-bounded cursor reads, each returning at
+most two records and 65,536 encoded bytes so unexpected children can be rejected. The complete
+canonical write closure is capped at 65,536 bytes. HomeStore owns the shared cursor lookahead,
+decoding and reconciliation limits.
+
+An already sealed object is reusable only when its complete canonical closure equals the fixed
+recipe. Conflicting ownership, metadata or records, an incomplete object, or an unsealed object
+produces an explicit non-success outcome without changing the existing records. This operation
+does not repair, overwrite or finish a pre-existing partial object. Public content reads continue
+to reject ownerless unsealed content.
+
+Duplicate and concurrent requests converge on that one exact sealed object. Commit ambiguity
+retains the existing opaque reconciliation custody; acknowledgement loss cannot authorize blind
+resubmission or an alternative content identity. A sealed reference is consumable only after
+durable publication or exact already-published classification under the mutation protocol.
+Exact already-published classification is a typed noncommit outcome and leaves the stored manifest
+revision and home/domain revisions unchanged.
+
 ## History, Activity, And Projection Records
 
 History summaries, activity-query records, transcript views, item-projection sets, projection builds,

@@ -58,9 +58,11 @@ the app coordinator, foreground-driver, adapter, and custody surfaces.
 - One process-local continuation intent is keyed to the yielding turn. Stop admission, healthy-home
   close, non-success terminal, compaction failure, authority loss, or process loss consumes it
   without consuming accepted input.
-- After exact successful compaction, the app stages only fixed continuation content and passes typed
-  facts to atomic user-work-versus-continuation settlement. Ambiguity is point-reconciled; no second
-  automatic turn is created. A durable pending continuation recovers only as ordinary work.
+- After exact successful compaction, the app requests Syndic's atomic fixed-content publication and
+  passes only its sealed result to atomic user-work-versus-continuation settlement. The app owns no
+  intermediate content build or unsealed manifest read. Ambiguity retains the ordinary
+  reconciliation custody; no second automatic turn is created. A durable pending continuation
+  recovers only as ordinary work.
 
 ## Custody And Release
 
