@@ -486,11 +486,29 @@ fn prepare_disposal(
         other => panic!("prior publication was not captured: {other:?}"),
     }
     for _ in 0..16 {
-        if matches!(
-            slot.advance_publish(&fixture.store, receipt).unwrap(),
-            MainWindowComposerPublishAdvance::Progress(ComposerHostFlushState::DisposalRequired)
-        ) {
-            return;
+        match slot.advance_publish(&fixture.store, receipt).unwrap() {
+            MainWindowComposerPublishAdvance::Progress(
+                ComposerHostFlushState::DisposalRequired,
+            ) => return,
+            MainWindowComposerPublishAdvance::Progress(ComposerHostFlushState::CaptureRequired) => {
+                assert!(matches!(
+                    slot.test_selected_host_mut()
+                        .unwrap()
+                        .capture_flush_publication(
+                            &fixture.store,
+                            flush,
+                            fixture.assets(),
+                            &seals,
+                            operation_id(operation),
+                            None,
+                            SyndicTimestamp::from_unix_millis(u64::from(operation)),
+                            &CommandCancellation::new(),
+                        )
+                        .unwrap(),
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+                ));
+            }
+            _ => {}
         }
     }
     panic!("prior publication did not reach disposal")
@@ -523,11 +541,31 @@ fn prepare_slot_disposal(
         other => panic!("selected publication was not captured: {other:?}"),
     }
     for _ in 0..16 {
-        if matches!(
-            slot.advance_disposal(&fixture.store).unwrap(),
-            MainWindowComposerDisposalAdvance::Progress(ComposerHostFlushState::DisposalRequired)
-        ) {
-            return;
+        match slot.advance_disposal(&fixture.store).unwrap() {
+            MainWindowComposerDisposalAdvance::Progress(
+                ComposerHostFlushState::DisposalRequired,
+            ) => return,
+            MainWindowComposerDisposalAdvance::Progress(
+                ComposerHostFlushState::CaptureRequired,
+            ) => {
+                assert!(matches!(
+                    slot.test_selected_host_mut()
+                        .unwrap()
+                        .capture_flush_publication(
+                            &fixture.store,
+                            flush,
+                            fixture.assets(),
+                            &seals,
+                            operation_id(operation),
+                            None,
+                            SyndicTimestamp::from_unix_millis(u64::from(operation)),
+                            &CommandCancellation::new(),
+                        )
+                        .unwrap(),
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+                ));
+            }
+            _ => {}
         }
     }
     panic!("selected publication did not reach disposal")

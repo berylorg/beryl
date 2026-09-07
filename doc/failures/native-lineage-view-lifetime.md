@@ -30,7 +30,9 @@ clearing that flag.
 - Seven ordinary GUI failures reproduced identically with only the five changed GUI production
   files replaced by HEAD. Exact working bytes were restored and all five hashes matched. This
   comparison retained the deferred provider changes in both runs; it was not a pristine checkout
-  test. Their causes remain a separate verification task.
+  test. Four were stale capture drivers, corrected without relaxing assertions or adding waits.
+  The final three-target run passed 32/35; the remaining three expose the separately recorded
+  [marker-admission gap](composer-marker-admission.md). They are not claimed as passing.
 
 Acceptance is limited to the tested composer mount boundary. Complete shell claim, session and
 transcript switching is not yet composed above it and has no end-to-end verification here.

@@ -29,32 +29,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 327: Preserve Recovery Work Across GUI Thread Switching (finished)
+# Phase 328: Verify Ordinary Composer Switching (finished)
 
-Accepted the GUI-only recovery-prompt switching correction: exact draft flush and failed-switch
-retention, process-route preservation, current-route rediscovery, and autosave suspension/restoration.
-Ten recovery tests, both app checks and independent semantic review passed. The seven ordinary
-GUI failures reproduce without these GUI changes and remain the next verification boundary.
-See [evidence and limits](failures/native-lineage-view-lifetime.md).
-
-# Phase 328: Verify Ordinary Composer Switching (wip)
-
-Classify the seven ordinary GUI failures reproduced with and without the preceding GUI change.
-Compare their flush, capture, marker and disposal drivers with the current typed contracts and
-passing mounted-switch tests. Correct only demonstrated stale test-driving mechanics within this
-verification boundary; retain their actual behavior assertions. Do not weaken expectations, add
-arbitrary waits, or infer a production defect from an undriven test operation.
-
-If diagnosis proves another GUI production defect, report its exact cause and establish the narrow
-implementation boundary before changing production. Non-GUI execution flaws remain findings and
-clean solution proposals, as the Operator requested. Verify corrected tests with focused nextest
-using documented serial GUI settings and then the three affected GUI targets; independently review
-any changed drivers against their retained assertions. Preserve all deferred provider changes.
-
-Current milestone: read-only diagnosis is starting. The broader run had 27 passes and seven failures;
-the seven failures reproduced with the five GUI production files at HEAD, after which exact current
-bytes were restored and verified. Full shell claim/session/transcript activation remains an existing
-rework integration limit, not authority to expand this phase into bootstrap or whole-shell work.
+Accepted four test-driver corrections that honor every explicit capture request before disposal,
+with their original assertions preserved. Independent review passed; the final three-target run
+passed 32 of 35 tests. The remaining three expose the separately reported
+[marker-admission integration gap](failures/composer-marker-admission.md); no production repair was
+attempted. [Recovery-switch evidence](failures/native-lineage-view-lifetime.md) remains accepted.
+Full shell claim/session/transcript integration remains outside this tested mount boundary.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 

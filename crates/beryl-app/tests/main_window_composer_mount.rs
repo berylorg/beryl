@@ -1875,7 +1875,9 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     initial_selection = service.selected_identity().unwrap();
     assert_eq!(
         initial_selection.binding().root().summary().marker_count(),
-        1
+        1,
+        "marker insertion did not settle: owner={:?}",
+        initial.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
     );
     assert_eq!(
         initial.read_with(cx, |composer, _| composer.selection_identity()),
@@ -2321,7 +2323,9 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
                 .root()
                 .summary()
                 .marker_count(),
-            order as u64
+            order as u64,
+            "marker insertion did not settle: owner={:?}",
+            composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
         );
         assert_eq!(
             composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
@@ -2423,7 +2427,12 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
         .unwrap();
     drive(cx, 48);
     let dirty_selection = service.selected_identity().unwrap();
-    assert_eq!(dirty_selection.binding().root().summary().marker_count(), 1);
+    assert_eq!(
+        dirty_selection.binding().root().summary().marker_count(),
+        1,
+        "marker insertion did not settle: owner={:?}",
+        contribution.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+    );
 
     cx.update(|window, app| {
         mount.update(app, |mount, mount_cx| {
@@ -2656,7 +2665,7 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
             .update(cx, |mount, _| mount.capture_flush_publication(
                 successor_selection,
                 flush,
-                assets,
+                assets.clone(),
                 &marker_seals,
                 operation_id(64),
                 None,
@@ -2675,6 +2684,33 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
             })
         });
         disposal_advances.push(format!("{advance:?}"));
+        if matches!(
+            advance,
+            Ok(
+                MainWindowConversationComposerMountDisposalAdvance::Retained(
+                    beryl_app::main_window::MainWindowComposerDisposalAdvance::Progress(
+                        ComposerHostFlushState::CaptureRequired
+                    )
+                )
+            )
+        ) {
+            let current = service.selected_identity().unwrap();
+            assert!(matches!(
+                mount
+                    .update(cx, |mount, _| mount.capture_flush_publication(
+                        current,
+                        flush,
+                        assets.clone(),
+                        &marker_seals,
+                        operation_id(64),
+                        None,
+                        published_at,
+                        &CommandCancellation::new(),
+                    ))
+                    .unwrap(),
+                ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+            ));
+        }
         if matches!(
             advance,
             Ok(

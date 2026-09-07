@@ -297,7 +297,8 @@
 - [x] Corrected recovery-prompt switching at the existing composer mount boundary, preserving
   process recovery routes, exact draft flush, failed-switch context and restored-editor autosave;
   [focused evidence](../../failures/native-lineage-view-lifetime.md) passed independent review.
-  Full shell activation integration and separately reproduced ordinary GUI test failures remain open.
+  Corrected stale capture drivers; the final GUI aggregate passed 32/35. Full shell activation
+  integration and [marker admission](../../failures/composer-marker-admission.md) remain open.
 - [ ] Implement the bounded production session checkout provider and process work ownership across
   direct submission, accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

@@ -485,7 +485,6 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
     );
 
     let mut published = None;
-    let mut captured = false;
     let mut disposal_captured = false;
     for _ in 0..32 {
         drive(cx, 4);
@@ -503,7 +502,8 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
             MainWindowConversationComposerMountPublishAdvance::Retained(
                 MainWindowComposerPublishAdvance::Progress(progress),
             ) => {
-                if progress == ComposerHostFlushState::CaptureRequired && !captured {
+                if progress == ComposerHostFlushState::CaptureRequired {
+                    predecessor_selection = service.selected_identity().unwrap();
                     let outcome = mount
                         .update(cx, |mount, _| {
                             mount.capture_flush_publication(
@@ -528,7 +528,6 @@ fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui
                         ),
                         "unexpected predecessor publication capture: {outcome:?}"
                     );
-                    captured = true;
                 }
                 if progress == ComposerHostFlushState::DisposalRequired && !disposal_captured {
                     predecessor_selection = service.selected_identity().unwrap();
