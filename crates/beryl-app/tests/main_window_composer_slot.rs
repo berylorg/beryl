@@ -7,6 +7,9 @@ mod composer_base;
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
+#[path = "main_window_composer_slot/request_sequence.rs"]
+mod request_sequence;
+
 use beryl_app::composer_host::{
     ComposerHostFlushAdmission, ComposerHostFlushCapture, ComposerHostFlushState,
 };

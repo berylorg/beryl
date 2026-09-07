@@ -9,7 +9,7 @@ use gpui_text_input::{
 use crate::composer_host::SyndicComposerHost;
 
 use super::super::{MainWindowComposerSelectionIdentity, MainWindowComposerSlot};
-use super::{MainWindowComposerDispatchError, MainWindowComposerDispatcher, translate};
+use super::{MainWindowComposerDispatchError, translate};
 
 #[derive(Clone, Copy)]
 pub(in crate::main_window) struct MainWindowComposerSuccessorProofLimits {
@@ -66,7 +66,6 @@ impl MainWindowComposerSlot {
         selected.dispatcher.in_dispatch = true;
         let result = build_successor_proof(
             &mut selected.host,
-            &mut selected.dispatcher,
             store,
             selection,
             positions,
@@ -80,7 +79,6 @@ impl MainWindowComposerSlot {
 
 fn build_successor_proof(
     host: &mut SyndicComposerHost,
-    dispatcher: &mut MainWindowComposerDispatcher,
     store: &HomeStore,
     selection: MainWindowComposerSelectionIdentity,
     positions: MutationPositions,
@@ -126,13 +124,10 @@ fn build_successor_proof(
             )
             .map_err(|_| MainWindowComposerDispatchError::Malformed)?;
         if let PageDemand::Requested(request) = demand {
-            let page = translate::text_page(
-                host,
-                store,
-                selection.binding(),
-                dispatcher.allocate_host_request_id()?,
-                request,
-            )?;
+            let request_id = host
+                .next_request_id()
+                .ok_or(MainWindowComposerDispatchError::Malformed)?;
+            let page = translate::text_page(host, store, selection.binding(), request_id, request)?;
             text.admit(page)
                 .map_err(|_| MainWindowComposerDispatchError::Malformed)?;
         }
@@ -168,13 +163,11 @@ fn build_successor_proof(
                 ));
             }
             ObjectDemand::Requested(request) => {
-                let page = translate::object_page(
-                    host,
-                    store,
-                    selection.binding(),
-                    dispatcher.allocate_host_request_id()?,
-                    request,
-                )?;
+                let request_id = host
+                    .next_request_id()
+                    .ok_or(MainWindowComposerDispatchError::Malformed)?;
+                let page =
+                    translate::object_page(host, store, selection.binding(), request_id, request)?;
                 let anchor_proofs =
                     text.prove_object_page_anchors(binding, &page)
                         .map_err(|_| {

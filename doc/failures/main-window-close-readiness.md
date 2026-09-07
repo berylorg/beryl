@@ -42,7 +42,7 @@ Mounted verification exposed a remaining request-sequence defect. `publish_captu
 `dispatch.rs`, which resets dispatcher request IDs to zero. Publication keeps the same resident
 host and its request high-water mark, so later selection or copying can fail with a duplicate,
 stale, or out-of-order request identity. Same-session publication must preserve that sequence;
-this correction remains unfinished.
+this correction was subsequently accepted with the evidence below.
 
 The last complete locked `phase302_resident_close_flush` run passed three of eight tests.
 A later focused run passed the long-text resident selection/copy/scroll, mutation rejection,
@@ -52,3 +52,13 @@ review passed before those test findings; they do not establish phase acceptance
 mount, and submission regression targets have not run. Implementation stopped at the separate
 [pristine-publication prerequisite](pristine-editor-publication.md); temporary diagnostics were
 removed, and all eight meaningful tests remain for resumption.
+
+## Request Sequence Correction
+
+Phase 305 now preserves the host high-water mark across binding advances and removes the mounted
+dispatcher's separate counter. Direct transition, exhaustion and fresh-generation tests pass.
+The focused resident close selection/copy/failure-release regression passes with a 32 MiB test
+thread stack, as does the pre-autosaved submission collision case that previously stalled.
+[The implementation record](../audits/code-simplification/implementation.md) preserves run IDs,
+commands, independent review, unrelated fixture failures and cleanup limits. These focused results
+do not accept the full resident-close suite or the remaining submission-quiescence work.

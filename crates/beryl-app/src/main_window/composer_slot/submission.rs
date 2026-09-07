@@ -230,7 +230,7 @@ impl MainWindowComposerSlot {
             let _ = host.dispose_composer_service(store);
             return Ok(MainWindowComposerSubmissionAdvance::SuccessorUnavailable);
         }
-        let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
+        let dispatcher = MainWindowComposerDispatcher::new(binding);
         let successor = MainWindowComposerSelectionIdentity {
             window_id: self.window_id,
             claim: predecessor.claim(),

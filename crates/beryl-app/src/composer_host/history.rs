@@ -405,7 +405,6 @@ impl SyndicComposerHost {
             active.storage_candidate = candidate;
             active.unavailable = true;
             self.pending.clear();
-            self.last_request_id = 0;
         }
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.history_after_commit_fault.take() {

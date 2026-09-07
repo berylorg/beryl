@@ -427,7 +427,6 @@ impl SyndicComposerHost {
                 self.detached_mutations.clear();
                 self.pending_history = None;
                 self.detached_history.clear();
-                self.last_request_id = 0;
                 self.lifecycle.clear_runtime();
                 self.lifecycle.dirty_adoption_seen = false;
                 ComposerHostFlushAdvance::Satisfied(purpose)

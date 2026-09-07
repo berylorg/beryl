@@ -204,7 +204,7 @@ impl MainWindowComposerSlot {
         let binding = host
             .binding()
             .expect("retiring composer host retains its activation binding");
-        let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
+        let dispatcher = MainWindowComposerDispatcher::new(binding);
         self.pending = Some(PendingComposer {
             receipt,
             claim,

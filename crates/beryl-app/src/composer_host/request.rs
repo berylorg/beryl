@@ -4,6 +4,15 @@ use syndic_storage::{DraftEditorCandidateSessionReadOutcomeV1, DraftPieceRangeSo
 use super::*;
 
 impl SyndicComposerHost {
+    pub(crate) fn next_request_id(&self) -> Option<u64> {
+        self.last_request_id.checked_add(1)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn test_last_request_id(&self) -> u64 {
+        self.last_request_id
+    }
+
     pub fn begin_request(
         &mut self,
         key: ComposerHostRequestKey,

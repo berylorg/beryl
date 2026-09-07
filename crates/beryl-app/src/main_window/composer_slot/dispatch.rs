@@ -96,7 +96,6 @@ pub enum MainWindowComposerDispatchError {
 
 pub(super) struct MainWindowComposerDispatcher {
     pub(super) binding: crate::composer_host::ComposerHostBinding,
-    pub(super) last_host_request_id: u64,
     in_dispatch: bool,
     mutation_begin: Option<(
         MutationKey,
@@ -109,19 +108,9 @@ pub(super) struct MainWindowComposerDispatcher {
 }
 
 impl MainWindowComposerDispatcher {
-    pub(super) fn new(
-        binding: crate::composer_host::ComposerHostBinding,
-        host: &SyndicComposerHost,
-    ) -> Self {
-        let last_host_request_id = host
-            .initial_responses()
-            .iter()
-            .map(|response| response.key().request_id().get())
-            .max()
-            .unwrap_or(0);
+    pub(super) fn new(binding: crate::composer_host::ComposerHostBinding) -> Self {
         Self {
             binding,
-            last_host_request_id,
             in_dispatch: false,
             mutation_begin: None,
             mutation_finish: None,
@@ -132,16 +121,6 @@ impl MainWindowComposerDispatcher {
 
     pub(super) fn replace_binding(&mut self, binding: crate::composer_host::ComposerHostBinding) {
         self.binding = binding;
-        self.last_host_request_id = 0;
-    }
-
-    fn allocate_host_request_id(&mut self) -> Result<u64, MainWindowComposerDispatchError> {
-        let request_id = self
-            .last_host_request_id
-            .checked_add(1)
-            .ok_or(MainWindowComposerDispatchError::Malformed)?;
-        self.last_host_request_id = request_id;
-        Ok(request_id)
     }
 }
 
@@ -304,7 +283,10 @@ impl MainWindowComposerSlot {
             return Err(MainWindowComposerDispatchError::Busy);
         }
         selected.dispatcher.in_dispatch = true;
-        let request_id = selected.dispatcher.allocate_host_request_id();
+        let request_id = selected
+            .host
+            .next_request_id()
+            .ok_or(MainWindowComposerDispatchError::Malformed);
         let result = request_id.and_then(|request_id| {
             translate::historical_object_page(
                 &mut selected.host,
@@ -382,20 +364,26 @@ fn dispatch(
 ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
     Ok(match request {
         RangeTextInputRequest::Page(request) => {
+            let request_id = host
+                .next_request_id()
+                .ok_or(MainWindowComposerDispatchError::Malformed)?;
             MainWindowComposerDispatchOutcome::Page(translate::text_page(
                 host,
                 store,
                 dispatcher.binding,
-                dispatcher.allocate_host_request_id()?,
+                request_id,
                 request,
             )?)
         }
         RangeTextInputRequest::ObjectPage(request) => {
+            let request_id = host
+                .next_request_id()
+                .ok_or(MainWindowComposerDispatchError::Malformed)?;
             MainWindowComposerDispatchOutcome::ObjectPage(translate::object_page(
                 host,
                 store,
                 dispatcher.binding,
-                dispatcher.allocate_host_request_id()?,
+                request_id,
                 request,
             )?)
         }

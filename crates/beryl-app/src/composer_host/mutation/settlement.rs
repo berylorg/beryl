@@ -77,7 +77,6 @@ impl SyndicComposerHost {
                     active.binding = binding;
                     active.storage_candidate = candidate;
                     self.pending.clear();
-                    self.last_request_id = 0;
                     self.lifecycle.adopted(binding, became_dirty);
                 }
                 ComposerHostMutationOutcome::Committed {

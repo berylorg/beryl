@@ -27,7 +27,6 @@ impl SyndicComposerHost {
         self.last_mutation_identity = None;
         self.last_history_identity = None;
         self.last_history_outcome = None;
-        self.last_request_id = 0;
 
         let action = match self.publication.lane.as_deref() {
             Some(ComposerHostPublicationLane::Publication(pending)) => match &pending.stage {

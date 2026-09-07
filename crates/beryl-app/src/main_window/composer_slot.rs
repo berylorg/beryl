@@ -86,7 +86,7 @@ impl MainWindowComposerSlot {
         if host.active_thread_id() != Some(claim.thread_id()) {
             return Err(MainWindowComposerSlotError::IdentityMismatch);
         }
-        let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
+        let dispatcher = MainWindowComposerDispatcher::new(binding);
         let draft_state = draft_state_for_host(&host, binding)?;
         Ok(Self {
             window_id,
@@ -209,7 +209,7 @@ impl MainWindowComposerSlot {
         self.pending
             .as_ref()
             .filter(|pending| pending.receipt == receipt)
-            .map(|pending| pending.dispatcher.last_host_request_id)
+            .map(|pending| pending.host.test_last_request_id())
     }
 
     pub fn pending_status(&self) -> Option<MainWindowComposerPendingStatus> {
@@ -306,7 +306,7 @@ impl MainWindowComposerSlot {
                 let binding = host
                     .binding()
                     .ok_or(MainWindowComposerSlotError::IdentityMismatch)?;
-                let dispatcher = MainWindowComposerDispatcher::new(binding, &host);
+                let dispatcher = MainWindowComposerDispatcher::new(binding);
                 self.pending = Some(PendingComposer {
                     receipt,
                     claim,

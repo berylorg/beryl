@@ -1,10 +1,44 @@
 # Scope
 
-The Operator-approved code simplification and behavior-based naming batch is complete. Stop here.
-The retained Checkpoint 4 work of the Beryl-home architectural rework tracked by
-`doc/rework/beryl-home/REWORK.md` remains paused until subsequent Operator instruction. Protect
-concrete supported-envelope consequences without duplicating dependency guarantees, runtime
-validation, or review machinery.
+The earlier code simplification and behavior-based naming batch is complete. The Operator has
+accepted using the [complete simplification audit](audits/code-simplification/report.md) selectively
+within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
+has resumed implementation; the host request-sequence prerequisite is now accepted. Submission
+quiescence progress is the next bounded phase before composer integration acceptance resumes.
+The Operator authorizes continuous implementation until a blocker requires attention, with a
+commit after each accepted phase. Temporary and obsolete directory cleanup is authorized for
+the remainder of this thread; preserve unrelated work and verify exact cleanup targets.
+Protect concrete supported-envelope consequences without duplicating dependency
+guarantees, runtime validation, or review machinery.
+
+The audit and its [canonical findings](audits/code-simplification/estimates.tsv) are supporting
+evidence, not design authority or a second implementation plan. Its line estimates are not delivery
+targets, and completing every proposal is not a rework completion gate. Before activating a bounded
+rework slice, inspect the relevant findings against current source and owning target docs; the audit
+describes a frozen baseline and does not establish that a finding still applies after later work.
+
+Complete mounted submission quiescence progress before returning to
+the retained composer integration acceptance gaps, then exact close-gate release and
+resident-preserving close-flush acceptance in the phases below.
+Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
+Include a simplification within an existing phase only when it serves that phase's same acceptance
+boundary and cannot be independently implemented, verified, reviewed, or resumed. Otherwise derive
+a separate bounded phase before starting it; place optional cleanup between accepted slices only
+when it reduces the work or uncertainty of reaching the next milestone. Broad restructuring of
+unstable or soon-replaced code remains deferred.
+
+Keep later ownership and algorithm work in its existing rework milestones: marker-service discovery
+removal accompanies bootstrap composition, and persistent-tree rebalancing sharing follows stable
+editor behavior. Contract-changing audit alternatives require decisions in the owning feature,
+system, package or GUI authority before implementation phases can be derived. A parser feasibility
+investigation, if selected, has an evidence-only acceptance boundary and does not authorize the
+production rewrite. No such alternative is selected by this policy update.
+
+For each selected finding, the phase records its ID, retained contracts, dependencies and concrete
+verification derived from the owning engineering-rigor requirements. After acceptance, record the
+finding's disposition and actual implementation/verification evidence in the audit, retain its
+baseline estimate, and compact the phase and corresponding rework outcome before advancing. Leave
+unselected proposals in the audit rather than expanding them into speculative pending phases.
 
 The replacement shell is the final target-state composition boundary, not a compatibility shell or
 a reduced copy of the archived workspace-era view. It ultimately mounts every declared main-window
@@ -23,44 +57,41 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-The Operator-approved consolidation batch completes accepted-submission disposal receipts, candidate
-provenance and already-durable opening correspondence, clean flush/submission integration, host
-request sequencing, and exact close-gate release in their separate phases, then resumes Phase 302
-acceptance. Use the smallest implementation that fulfills the high-level feature contracts. Continue
-through that batch after each phase's review and compaction; ordinary close mounting remains a
-later boundary.
-
-The earlier composer implementation remains paused at its compiled, unaccepted checkpoint below.
-The current authorization covers the audit's simplification recommendations and removal of
-implementation-plan numbers from live code. Continue through the independently reviewed and
-compacted simplification phases without another permission request; do not resume the earlier
-composer or ordinary-close work as a side effect. Preserve its retained source and verification
-gaps while updating names and references.
-
-The Operator explicitly requires stopping when this cleanup/simplification batch is complete.
-Phase 317 and batch closure are accepted. The earlier pending composer, close, bootstrap, and
-editor work does not resume under this instruction.
+The earlier cleanup batch closure and Phase 305 request sequencing are accepted. Preserve the compiled, unaccepted
+composer implementation and its explicit verification gaps below. Use the smallest implementation
+that fulfills the high-level feature contracts; ordinary close mounting, bootstrap and other later
+boundaries retain their own acceptance gates. Phase 318 still requires its own completion review
+before Phase 307 acceptance.
 
 The naming policy is in `AGENTS.md`. Historical rework snapshots and immutable investigation
 artifacts remain historical material. Update live source references without rewriting historical
 execution evidence. Theme scope follows the updated Theming feature, theme-runtime system, and
 state theme-service contracts. Bootstrap-dependent ownership and unstable editor-algorithm
-consolidation remain explicit later rework work; resolve their target decisions without silently
-expanding this batch into shell completion.
+consolidation remain explicit later rework work; resolve their target decisions before activating
+their owning slices.
 
-# Phase 317: Close Successor Reconciliation Around First Acceptance (finished)
+# Phase 305: Preserve The Host Request Sequence (finished)
 
-HomeStore now admits one static Syndic source and either explicit marker-free acceptance or one
-Asset transfer witness. It executes the fixed three-head plan, retains bounded collision facts,
-and preserves ordinary precedence, exact receipts, typed failures, capacity, and custody. Generic
-successor protocols, erased resolver state, witness collections, quotas, and read loops are removed.
-The ordinary read-only proof protocol remains separate.
+The live host now owns checked request allocation across editing, history, publication and mounted
+rebinding; only fresh-generation activation restarts it. Seven focused direct and mounted cases,
+the locked app library check, targeted formatting and independent semantic review passed.
+[AP-007/AM-007 implementation evidence](audits/code-simplification/implementation.md) records
+the accepted correction, broader test limitations and one policy-blocked temporary-directory cleanup.
 
-All four affected library checks, 38 focused HomeStore tests across five targets, formatting, and
-independent adversarial review passed. Two focused exact-root cases passed; production promotion
-runtime coverage remains incomplete because other selected cases fail during fixture setup.
-The final live naming scan passed. The batch is closed with its
-[verification limits](failures/code-rename-verification.md) retained; no earlier pending phase resumes.
+# Phase 318: Yield While Mounted Submission Awaits Editor Quiescence (pending)
+
+Under [composer behavior](features/composer/design.md) and
+[the app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md), replace the
+submission-start self-defer loop with progress that permits asynchronous editor completion and
+settles existing terminal editor errors through the ordinary failure path. Preserve exact pending
+generation/selection, bounded retained work, cancellation, stale completion rejection and single
+submission admission. No dependency scheduler change or new public lifecycle owner is required.
+
+The [quiescence finding](failures/mounted-submission-quiescence.md) records why GPUI deferred
+effects do not yield execution. Verify pending-flight progress, terminal editor failure, stale or
+cancelled starts and ordinary saved/dirty submission without an unbounded effect drain; run the
+focused mounted-submission regressions, locked app check and independent semantic review before
+returning to Phase 307 acceptance.
 
 # Phase 307: Integrate Already-Durable Composer Openings (pending)
 
@@ -88,39 +119,37 @@ Readiness confirmed that local clean-state shortcuts in `begin_flush` and `flush
 readiness until the existing worker path authenticates storage. No new service or persisted record
 is required. The native-lineage adapter audit also identified its clean shortcut and synchronous
 disposal advancement; those same-flow integration corrections are included above. Request numbering
-and exact close-gate release remain their subsequent phases.
+is an earlier prerequisite; exact close-gate release retains its later acceptance boundary.
 
-Safe-stop checkpoint: the host integration and native-lineage adapter are implemented and frozen.
+Resumed checkpoint: the host integration and native-lineage adapter are implemented but unaccepted.
 The adapter runs capture, advancement, and released-widget completion on one background task,
 preserving exact selection/flush fencing and real widget-release proof. Drop uses detached bounded
 cleanup rather than synchronously taking the storage-held slot lock. The locked app library check,
 targeted formatting, and source diff check passed. This phase remains unaccepted.
 
-- `saved_opening` compiled and ran once: five of seven cases passed. The later-edit case
-  expects an autosave timer while a flush barrier is active (`flush.rs:143`); verify that expectation
-  against timer suppression before changing it. The post-capture Undo case receives typed
-  `Admission(FirstAcceptanceCollision)` at `support.rs:182`, whose unwrap prevents its later draft-
-  preservation assertions from running. Preserve those assertions when correcting the test path.
-- The seven selected Phase 173/181/228 regressions were attempted together but none ran: compiling
-  the existing Phase 173 target reported 79 moved-value errors for `SyndicStorage` and `AssetState`.
-  The new tests' ownership fixes and one authorized clone in `composer_lifecycle/common.rs`
-  are retained. Resolve the regression fixture compilation before claiming lifecycle coverage.
-- Independent semantic review cleared the core host paths and found no concrete adapter blocker,
-  but final adapter acceptance is incomplete. Establish exact custody/terminal classification at
-  the 32-step unmounted-drain limit and review the mounted/drop regression results.
+- All seven `saved_opening` and 28 `composer_lifecycle` cases pass after correcting test handle
+  ownership, explicit clean authentication, marker-readiness setup, flush timer expectations and
+  typed pre-admission rejection assertions; stale-capture tests retain durable-state and exact
+  service-custody release checks.
+- Audit AM-008's mounted-test module wiring is corrected. Three existing native-lineage mounted
+  cases and a new actual disposal-reconciliation/drop case pass, including real widget release,
+  eventual weak-service release, exact terminal session state and unchanged durable draft.
+- Independent source review found no blocker in clean capture, submission fencing or native
+  disposal custody. The 32-step cleanup bounds advancement attempts rather than promising terminal
+  completion; installed ambiguous commands remain independently owned by HomeStore. Final review
+  of stable test changes and complete regression evidence remains pending.
+- `mounted_composer_submission` (the renamed mounted-submission target) remains unresolved as a
+  complete suite. Its earlier bounded eight-case run passed dirty direct Enter, failed empty
+  submission settlement and timed out six pre-autosaved cases. After Phase 305, the focused
+  pre-autosaved collision case passes. Phase 318 must correct the independent deferred-progress
+  mechanism before the complete suite and empty-submission outcome are reassessed; do not skip cases.
 
-All task workers, Cargo jobs, and owned temporary homes are stopped or reclaimed. Source and tests
-remain in the worktree. Continue with these verification gaps, then complete review before advancing
-to request sequencing, exact gate release, and the retained Phase 302 acceptance cases.
-
-# Phase 305: Preserve The Host Request Sequence (pending)
-
-Consolidate host request allocation under the live host/session lifetime defined in
-[the app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md). Preserve the
-sequence through publication, editing, history adoption, and same-session rebinding; require fresh
-generation fencing for replacement, reject stale or repeated requests, and retain checked
-exhaustion. Inspect direct and mounted callers before activation, then verify those transitions and
-the failed-close selection/copy regression with independent semantic review.
+The locked app library check and targeted formatting pass. All 39 saved-opening, lifecycle and
+selected native-lineage cases passed together in the final rerun. Bounded timed-out test processes,
+exact residual fixture homes and temporary diagnostics from that verification were reclaimed.
+AP-007/AM-007 request sequencing is accepted in Phase 305; Phase 318 separately owns the confirmed
+submission-start starvation mechanism. Optional fixture consolidation and other audit reductions
+remain unselected.
 
 # Phase 306: Consolidate Exact Close-Gate Release (pending)
 

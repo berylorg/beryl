@@ -268,7 +268,10 @@
   and stale-route fencing, with [publication evidence](../../failures/native-lineage-seed-publication.md).
 - [x] Mounted and independently accepted bounded independent main-window creation with exact claims,
   coherent publication, cancellation settlement, and [verification evidence](../../failures/main-window-creation.md).
-- [ ] Establish [unchanged-opening durable correspondence](../../failures/pristine-editor-publication.md), clean flush and submission, and exact normal disposal before accepting resident-preserving ordinary-close flush.
+- [x] Established and independently accepted monotonic host request allocation across editing,
+  history, publication and mounted rebinding, with fresh-generation reset and checked exhaustion;
+  [implementation evidence](../../audits/code-simplification/implementation.md) records focused verification and limits.
+- [ ] Establish [unchanged-opening durable correspondence](../../failures/pristine-editor-publication.md), responsive [submission quiescence](../../failures/mounted-submission-quiescence.md), clean flush and submission, and exact normal disposal before accepting resident-preserving ordinary-close flush.
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
@@ -341,7 +344,7 @@
 ## Checkpoint 8: Integrate, Harden, And Close The Rework
 
 - [x] Named live code, tests, fixtures, and configuration by behavior and verified the complete live naming surface.
-- [x] Completed the accepted duplicate-implementation and bounded-theme simplification batch, retaining its recorded verification limits. Paused shell work remains stopped by Operator instruction.
+- [x] Completed the accepted duplicate-implementation and bounded-theme simplification batch, retaining its recorded verification limits.
 - [ ] Replace marker-service global discovery with explicit shared home ownership when bootstrap composition is assembled.
 - [ ] Share only the duplicated persistent-tree rebalancing mechanics after editor behavior stabilizes.
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
