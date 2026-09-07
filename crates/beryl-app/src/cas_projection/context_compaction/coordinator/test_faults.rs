@@ -70,7 +70,10 @@ impl Drop for ContextCompactionStagingPauseController {
 
 #[derive(Clone)]
 #[doc(hidden)]
-pub struct ContextCompactionLifecycleTestHarness(Weak<ContextCompactionCoordinator>);
+pub struct ContextCompactionLifecycleTestHarness {
+    coordinator: Weak<ContextCompactionCoordinator>,
+    driver: Arc<Mutex<Option<dispatch::CompactionDriverGuard>>>,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[doc(hidden)]
@@ -82,11 +85,16 @@ pub enum ContextCompactionTerminalResponseTestOutcome {
 
 impl ContextCompactionLifecycleTestHarness {
     pub(in crate::cas_projection) fn new(coordinator: &Arc<ContextCompactionCoordinator>) -> Self {
-        Self(Arc::downgrade(coordinator))
+        Self {
+            coordinator: Arc::downgrade(coordinator),
+            driver: Arc::new(Mutex::new(None)),
+        }
     }
 
     fn coordinator(&self) -> Result<Arc<ContextCompactionCoordinator>, ContextCompactionError> {
-        self.0.upgrade().ok_or(ContextCompactionError::Unavailable)
+        self.coordinator
+            .upgrade()
+            .ok_or(ContextCompactionError::Unavailable)
     }
 
     pub fn mount_lifecycle_operation(
@@ -102,7 +110,14 @@ impl ContextCompactionLifecycleTestHarness {
         if operation.attempt() != attempt || !operation.state().is_live() {
             return Err(ContextCompactionError::AuthorityMismatch);
         }
-        coordinator.install_local(Arc::new(LocalCompaction::new(
+        let mut driver = self
+            .driver
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        if driver.is_some() {
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        let local = Arc::new(LocalCompaction::new(
             operation_id,
             attempt,
             CompactionOrigin::Lifecycle { yielding_turn_id },
@@ -111,7 +126,10 @@ impl ContextCompactionLifecycleTestHarness {
                 .commands
                 .authorize()
                 .map_err(|_| ContextCompactionError::Unavailable)?,
-        )))
+        ));
+        coordinator.install_local(Arc::clone(&local))?;
+        *driver = Some(dispatch::CompactionDriverGuard(local));
+        Ok(())
     }
 
     pub fn publish_provider_event(
@@ -141,6 +159,33 @@ impl ContextCompactionLifecycleTestHarness {
         ))
     }
 
+    pub fn observe_response(
+        &self,
+        operation_id: CompactionOperationId,
+        response_attempt: CompactionAttemptNonce,
+        disposition: CompactionRequestDisposition,
+    ) -> Result<CompactionRequestTransitionStatus, ContextCompactionError> {
+        let coordinator = self.coordinator()?;
+        let local = self.response_local(operation_id)?;
+        if response_attempt != local.attempt {
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        coordinator.observe_request(&local, disposition)
+    }
+
+    fn response_local(
+        &self,
+        operation_id: CompactionOperationId,
+    ) -> Result<Arc<LocalCompaction>, ContextCompactionError> {
+        self.driver
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?
+            .as_ref()
+            .filter(|driver| driver.0.operation_id == operation_id)
+            .map(|driver| Arc::clone(&driver.0))
+            .ok_or(ContextCompactionError::AuthorityMismatch)
+    }
+
     pub fn reconcile_settled_response(
         &self,
         operation_id: CompactionOperationId,
@@ -149,17 +194,7 @@ impl ContextCompactionLifecycleTestHarness {
         unbind_failed: bool,
     ) -> Result<ContextCompactionTerminalResponseTestOutcome, ContextCompactionError> {
         let coordinator = self.coordinator()?;
-        let operation = coordinator.read_operation(operation_id)?;
-        let local = LocalCompaction::new(
-            operation_id,
-            operation.attempt(),
-            CompactionOrigin::Manual,
-            Duration::from_secs(30),
-            coordinator
-                .commands
-                .authorize()
-                .map_err(|_| ContextCompactionError::Unavailable)?,
-        );
+        let local = self.response_local(operation_id)?;
         let observation = coordinator
             .observe_request(&local, disposition)
             .unwrap_or(CompactionRequestTransitionStatus::Collision);
@@ -179,7 +214,7 @@ impl ContextCompactionLifecycleTestHarness {
         };
         Ok(
             match dispatch::terminal_response_reconciliation(
-                response_attempt == operation.attempt(),
+                response_attempt == local.attempt,
                 response,
                 observation,
                 unbind_failed,

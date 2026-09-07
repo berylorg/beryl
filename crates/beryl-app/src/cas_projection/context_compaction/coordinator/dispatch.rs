@@ -82,6 +82,14 @@ pub(super) fn run_worker(
 
 struct ActiveWorkerGuard<'a>(&'a AtomicUsize);
 
+pub(super) struct CompactionDriverGuard(pub(super) Arc<LocalCompaction>);
+
+impl Drop for CompactionDriverGuard {
+    fn drop(&mut self) {
+        self.0.release_command();
+    }
+}
+
 impl Drop for ActiveWorkerGuard<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::AcqRel);
@@ -109,6 +117,7 @@ impl ContextCompactionCoordinator {
     }
 
     fn drive_operation(&self, local: Arc<LocalCompaction>, mut target: LiveEventTarget) {
+        let _driver = CompactionDriverGuard(Arc::clone(&local));
         if !local.command_is_current() {
             self.fail_local(&local);
             drop(target);

@@ -1,9 +1,7 @@
 use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::{RuntimeMode, SyndicDraftId};
 use beryl_state::AssetOwner;
-use syndic_storage::{
-    AcceptedInputAdmissionProof, AcceptedInputRecord, DraftEditHistoryPolicyV1,
-};
+use syndic_storage::{AcceptedInputAdmissionProof, AcceptedInputRecord, DraftEditHistoryPolicyV1};
 
 use super::{
     AcceptedInputReplayContext, AcceptedInputReplayError, AcceptedInputReplayFactory,
@@ -160,7 +158,7 @@ fn failed_home_generation_requires_a_fresh_replay_factory() {
         .unwrap();
     let old_factory = AcceptedInputReplayFactory::prepare(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.state.assets(),
         context.clone(),
         record.clone(),
@@ -211,7 +209,7 @@ fn failed_home_generation_requires_a_fresh_replay_factory() {
     assert!(matches!(
         AcceptedInputReplayFactory::prepare(
             &fixture.store,
-            fixture.storage,
+            fixture.storage.clone(),
             fixture.state.assets(),
             context,
             record.clone(),

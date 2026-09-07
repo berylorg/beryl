@@ -3,8 +3,8 @@ use beryl_model::RuntimeMode;
 use beryl_state::{AssetOwner, AssetOwnerHeadUpdate, UpdateAssetOwnerHeads};
 
 use super::{
-    AcceptedInputReplayContext, AcceptedInputReplayError,
-    AcceptedInputReplayFactory, ProjectionCancellationToken,
+    AcceptedInputReplayContext, AcceptedInputReplayError, AcceptedInputReplayFactory,
+    ProjectionCancellationToken,
     fixture::{Fixture, execute_one},
     support::drain_text,
 };
@@ -24,7 +24,7 @@ fn repeated_image_labels_and_large_text_replay_in_order_with_bounded_pages() {
     assert!(matches!(
         AcceptedInputReplayFactory::prepare(
             &fixture.store,
-            fixture.storage,
+            fixture.storage.clone(),
             fixture.state.assets(),
             context.clone(),
             record.clone(),
@@ -42,7 +42,7 @@ fn repeated_image_labels_and_large_text_replay_in_order_with_bounded_pages() {
     let exact_owner_head = owner_head.clone().unwrap();
     let factory = AcceptedInputReplayFactory::prepare(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.state.assets(),
         context,
         record,
@@ -62,13 +62,7 @@ fn repeated_image_labels_and_large_text_replay_in_order_with_bounded_pages() {
     let StreamedInputDescriptorKind::Text(first_text) = first.kind() else {
         panic!("large leading run must be text")
     };
-    let first_value = drain_text(
-        &mut source,
-        &fixture,
-        first_text.source_id(),
-        0,
-        101,
-    );
+    let first_value = drain_text(&mut source, &fixture, first_text.source_id(), 0, 101);
     assert!(
         first_value.starts_with(&leading),
         "leading authored text changed: expected at least {} bytes, got {}",
@@ -96,13 +90,7 @@ fn repeated_image_labels_and_large_text_replay_in_order_with_bounded_pages() {
         panic!("the repeated label must remain in the following text run")
     };
     assert_eq!(
-        drain_text(
-            &mut source,
-            &fixture,
-            tail_text.source_id(),
-            0,
-            101,
-        ),
+        drain_text(&mut source, &fixture, tail_text.source_id(), 0, 101,),
         " between [Image A] after"
     );
     assert!(
@@ -148,7 +136,7 @@ fn marker_aware_source_rechecks_owner_before_emitting_cached_image() {
         .unwrap();
     let factory = AcceptedInputReplayFactory::prepare(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         fixture.state.assets(),
         AcceptedInputReplayContext::new(
             fixture.store.home_id(),

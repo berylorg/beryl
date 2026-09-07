@@ -6,7 +6,9 @@ use beryl_backend::{
     ProviderObservationRoute, ProviderScalar, ProviderValueContext,
     lifecycle_test_support::provider_observation_fragment,
 };
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, PathFlavor,
     RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId, SyndicThreadId,
@@ -45,6 +47,8 @@ struct Fixture {
     home: Arc<HomeStore>,
     storage: SyndicStorage,
     coordinator: Arc<ContextCompactionCoordinator>,
+    #[cfg(feature = "test-faults")]
+    compaction_driver: Option<crate::cas_projection::ContextCompactionLifecycleTestHarness>,
     authority: Arc<ConnectionRegistryAuthority>,
     router: Arc<EventRouter>,
     registration: TargetRegistration,
@@ -147,19 +151,41 @@ impl Fixture {
         );
         let operation_id = admission.operation_id();
         match home.execute_current(storage.current_admit_compaction_operation(admission)) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction admission command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("compaction admission command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction admission command was indeterminate: {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!("compaction admission command committed with later failure: {outcome:?}"),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("compaction admission command was not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("compaction admission command was indeterminate: {outcome:?}")
+            }
         }
-        let admitted = operation(&home, storage, operation_id);
+        let admitted = operation(&home, storage.clone(), operation_id);
         match home.execute_current(storage.current_claim_compaction_dispatch(
             ClaimCompactionDispatch::new(operation_id, admitted.revision(), attempt),
         )) {
-            CommandOutcome::Committed { later_failure: None, .. } => {}
-            outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction dispatch-claim command committed with later failure: {outcome:?}"),
-            CommandOutcome::NotCommitted { evidence } => panic!("compaction dispatch-claim command was not committed: {evidence:?}"),
-            outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction dispatch-claim command was indeterminate: {outcome:?}"),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome @ CommandOutcome::Committed {
+                later_failure: Some(_),
+                ..
+            } => panic!(
+                "compaction dispatch-claim command committed with later failure: {outcome:?}"
+            ),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("compaction dispatch-claim command was not committed: {evidence:?}")
+            }
+            outcome @ CommandOutcome::Indeterminate { .. } => {
+                panic!("compaction dispatch-claim command was indeterminate: {outcome:?}")
+            }
         }
 
         let home_generation = home.health().generation().unwrap();
@@ -169,7 +195,7 @@ impl Fixture {
             &home,
             home_id,
             home_generation,
-            storage,
+            storage.clone(),
         ));
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
@@ -187,7 +213,7 @@ impl Fixture {
             Arc::clone(&home),
             home_id,
             home_generation,
-            storage,
+            storage.clone(),
             ProjectionServiceConnectionRegistry::new(commands.service_generation()),
             Arc::clone(&stop_coordinator),
             commands.clone(),
@@ -195,8 +221,9 @@ impl Fixture {
         )
         .unwrap();
         #[cfg(feature = "test-faults")]
-        coordinator
-            .lifecycle_test_harness()
+        let compaction_driver = coordinator.lifecycle_test_harness();
+        #[cfg(feature = "test-faults")]
+        compaction_driver
             .mount_lifecycle_operation(
                 operation_id,
                 attempt,
@@ -283,6 +310,8 @@ impl Fixture {
             home,
             storage,
             coordinator,
+            #[cfg(feature = "test-faults")]
+            compaction_driver: Some(compaction_driver),
             authority,
             router,
             registration,
@@ -364,7 +393,7 @@ impl Fixture {
     }
 
     fn operation(&self) -> syndic_storage::CompactionOperationRecord {
-        operation(&self.home, self.storage, self.operation_id)
+        operation(&self.home, self.storage.clone(), self.operation_id)
     }
 }
 
@@ -449,10 +478,22 @@ fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContributio
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
     match home.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("compaction fixture contribution command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("compaction fixture contribution command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("compaction fixture contribution command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!(
+            "compaction fixture contribution command committed with later failure: {outcome:?}"
+        ),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("compaction fixture contribution command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("compaction fixture contribution command was indeterminate: {outcome:?}")
+        }
     }
 }
 
@@ -501,6 +542,8 @@ impl Drop for Fixture {
         let _ = self.authority.retire();
         self.router
             .retire(LiveEventTargetCloseReason::WorkerStopped);
+        #[cfg(feature = "test-faults")]
+        drop(self.compaction_driver.take());
         let _ = &self.registration;
         let _ = &self.directory;
     }

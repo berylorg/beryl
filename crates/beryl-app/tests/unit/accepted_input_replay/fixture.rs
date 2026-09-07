@@ -8,16 +8,14 @@ use beryl_model::{
     AssetId, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
     SyndicDraftId, SyndicItemId, SyndicThreadId,
 };
-use beryl_state::{
-    AssetMediaType, AssetOwner, BerylState, PublishAssetMetadata,
-};
+use beryl_state::{AssetMediaType, AssetOwner, BerylState, PublishAssetMetadata};
 use syndic_storage::{
     CreateThread, DraftEditHistoryPolicyV1, FirstAcceptanceKind, ImageLabelOrdinal,
     SyndicPointReadLimit, SyndicTimestamp,
 };
 
-use super::*;
 use super::submission_fixture::{Atom, submit_atoms};
+use super::*;
 
 pub(super) struct Fixture {
     _directory: tempfile::TempDir,
@@ -83,7 +81,7 @@ impl Fixture {
     fn establish_pending_turn(&self) {
         let (kind, _) = submit_atoms(
             &self.store,
-            self.storage,
+            self.storage.clone(),
             self.state.assets(),
             self.thread,
             SyndicDraftId::from_bytes([self.seed.wrapping_add(2); 16]),
@@ -99,7 +97,7 @@ impl Fixture {
         self.establish_pending_turn();
         let (kind, source) = submit_atoms(
             &self.store,
-            self.storage,
+            self.storage.clone(),
             self.state.assets(),
             self.thread,
             SyndicDraftId::from_bytes([self.seed.wrapping_add(4); 16]),
@@ -127,7 +125,7 @@ impl Fixture {
             .unwrap();
         AcceptedInputReplayFactory::prepare(
             &self.store,
-            self.storage,
+            self.storage.clone(),
             self.state.assets(),
             AcceptedInputReplayContext::new(
                 self.store.home_id(),
@@ -218,7 +216,7 @@ impl Fixture {
         let asset = self.publish_asset(b"\x89PNG\r\n\x1a\naccepted-input-replay");
         let (kind, source) = submit_atoms(
             &self.store,
-            self.storage,
+            self.storage.clone(),
             self.state.assets(),
             self.thread,
             SyndicDraftId::from_bytes([self.seed.wrapping_add(4); 16]),

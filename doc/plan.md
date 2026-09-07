@@ -70,15 +70,15 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 322: Adopt Atomic Continuation Content Publication (finished)
+# Phase 323: Reconcile Compaction Responses After Terminal Settlement (finished)
 
-The app consumes only atomic fixed-content publication or exact typed reuse, preserves uncertain
-command custody and settles definitive content conflicts through bounded continuation failure.
-The obsolete seal API is retired. All 13 app and 79 storage tests, locked checks, formatting and
-independent semantic review passed. [Adoption evidence](failures/lifecycle-continuation-staging.md)
-records direct versus shared-path proof. Retained close cancellation is not accepted by this phase.
+Compaction reconciles typed terminal proof before live mutation and retains the original driver
+permit through response reconciliation and router handoff. Same-local tests and real router
+publication/epoch checks passed with all 40 selected compaction/content cases, 13 focused stop
+cases, locked checks, formatting and independent semantic review.
+[Accepted evidence](failures/cas-phase72-compaction-terminal-ordering.md) records proof boundaries.
 
-# Phase 319: Cancel Same-Thread Continuation At Window Close (pending)
+# Phase 319: Cancel Same-Thread Continuation At Window Close (wip)
 
 Implement the window-close continuation cut required by the
 [CAS-live system](systems/cas-live-syndic-transcript/design.md#automatic-lifecycle-continuation),
@@ -106,12 +106,11 @@ before acceptance.
 The atomic storage publication and app-adoption prerequisites are now accepted.
 [Staging evidence](failures/lifecycle-continuation-staging.md) retains the diagnosis and proof.
 
-The cancellation implementation and eight meaningful tests remain uncommitted and unaccepted.
-Successful settlement/race verification can now resume; the final capacity and terminal-before-
-compaction cases are not yet verified. Run focused compaction and stop tests. The stop unit fixture that registers
-an invented other turn must instead use an actual independent thread/turn while retaining its
-isolation assertion. Repeat locked checks on the final source and obtain completion review before
-compacting or committing this phase. Exact waiting and OS-close integration remain pending.
+The retained cancellation implementation is ready for final acceptance. All eight direct
+cancellation cases and all 13 focused stop cases pass after the accepted response/custody and
+fixture repairs; the independent review found no blocking cancellation defect. Direct tests use
+the actual durable continuation admission cut; lifecycle launch fence coverage is static.
+Current milestone: complete root acceptance and the cancellation commit before exact waiting.
 
 # Phase 320: Wait For Exact Noninterruptible Work At Window Close (pending)
 

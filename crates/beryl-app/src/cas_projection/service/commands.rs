@@ -34,7 +34,7 @@ impl ProjectionConnectionService {
             home,
             self.home_id,
             self.home_generation,
-            self.storage,
+            self.storage.clone(),
             &self.workers,
             target,
             input_id,

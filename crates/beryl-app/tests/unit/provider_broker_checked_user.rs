@@ -15,12 +15,12 @@ use beryl_backend::{
 #[cfg(feature = "test-faults")]
 use beryl_home_store::test_faults::{FaultController, FaultPoint};
 use beryl_model::{CasItemId, CasTurnId};
+use support::*;
 use syndic_storage::{
     BindingState, CasItemSource, CasTurnSource, InputGateState, ProviderFrameOrdinalV1,
     ProviderItemLifecycle, SourceEventPayload, SourceEventSequence, TurnEndStatus,
     TurnIncompleteReason, TurnLifecycle, TurnTerminalOutcome,
 };
-use support::*;
 
 #[test]
 fn checked_user_acknowledgements_follow_exact_activation_and_same_item_publication() {
@@ -103,7 +103,7 @@ fn checked_user_acknowledgements_follow_exact_activation_and_same_item_publicati
     );
     assert_eq!(started_item.provider(), Some(&started_reference));
     assert_user_message_frame(
-        &read_provider_frame(&fixture.home, fixture.storage, &started_reference),
+        &read_provider_frame(&fixture.home, fixture.storage.clone(), &started_reference),
         ProviderFrameOrdinalV1::FIRST,
         UserMessageEchoLifecycle::Started,
         &cas_item_id,
@@ -151,7 +151,7 @@ fn checked_user_acknowledgements_follow_exact_activation_and_same_item_publicati
     );
     assert_eq!(completed_item.provider(), Some(&completed_reference));
     assert_user_message_frame(
-        &read_provider_frame(&fixture.home, fixture.storage, &completed_reference),
+        &read_provider_frame(&fixture.home, fixture.storage.clone(), &completed_reference),
         ProviderFrameOrdinalV1::new(2).unwrap(),
         UserMessageEchoLifecycle::Completed,
         &cas_item_id,
@@ -256,15 +256,9 @@ fn checked_user_publication_barrier_holds_one_real_permit_and_releases_it() {
     assert_eq!(released.in_flight().current(), 0);
     assert_eq!(released.submitted(), 1);
     assert_eq!(released.acked(), 1);
+    assert_eq!(released.checked_user_publications().activity().current(), 0);
     assert_eq!(
-        released.checked_user_publications().activity().current(),
-        0
-    );
-    assert_eq!(
-        released
-            .checked_user_publications()
-            .activity()
-            .high_water(),
+        released.checked_user_publications().activity().high_water(),
         1
     );
     assert_eq!(released.checked_user_publications().publications(), 1);

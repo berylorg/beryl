@@ -287,6 +287,7 @@
 - [x] Adopted and independently accepted atomic fixed-content publication in compaction settlement,
   bounded partial-content failure and exact custody through retirement, and retired the displaced
   seal API with [app-adoption evidence](../../failures/lifecycle-continuation-staging.md).
+- [x] Restored and independently accepted compaction response reconciliation with original-driver authority through router handoff and [ordering evidence](../../failures/cas-phase72-compaction-terminal-ordering.md).
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.

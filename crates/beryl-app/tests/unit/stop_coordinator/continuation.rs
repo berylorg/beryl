@@ -1,7 +1,29 @@
 #[test]
 fn stop_cancels_only_the_exact_automatic_phase_continuation() {
     let fixture = StopFixture::new(61);
-    let other_turn = SyndicTurnId::from_bytes([0xee; 16]);
+    let other_thread = SyndicThreadId::from_bytes([0xee; 16]);
+    execute(
+        &fixture.home,
+        fixture.storage.create_thread(
+            fixture.storage.revision(&fixture.home).unwrap(),
+            CreateThread::ordinary(
+                other_thread,
+                SyndicDraftId::from_bytes([0xef; 16]),
+                exact_cas::execution_binding(),
+                timestamp(5),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ),
+    );
+    let other_turn = exact_cas::submit_current_draft(
+        &fixture.home,
+        fixture.storage.clone(),
+        other_thread,
+        SyndicDraftId::from_bytes([0xf0; 16]),
+        SyndicItemId::from_bytes([0xf1; 16]),
+        "independent continuation target",
+        timestamp(6),
+    );
     assert!(
         fixture
             .coordinator
@@ -16,7 +38,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
         fixture
             .coordinator
             .record_lifecycle_yield(
-                fixture.thread,
+                other_thread,
                 other_turn,
                 LifecycleYieldOutcome::PhaseContinue,
             )
@@ -42,7 +64,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
     assert_eq!(
         fixture
             .coordinator
-            .take_terminal_lifecycle_yield(fixture.thread, other_turn)
+            .take_terminal_lifecycle_yield(other_thread, other_turn)
             .unwrap(),
         Some(LifecycleYieldOutcome::PhaseContinue)
     );

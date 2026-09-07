@@ -209,11 +209,12 @@ impl LifecycleFixture {
             directory,
             storage: _,
             service,
-            harness: _,
+            harness,
             thread_id: _,
             yielding_turn_id: _,
             operation_id: _,
         } = self;
+        drop(harness);
         assert!(matches!(
             Arc::try_unwrap(service).ok().unwrap().close().unwrap(),
             beryl_app::cas_projection::ProjectionConnectionServiceCloseOutcome::Closed

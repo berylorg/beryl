@@ -118,7 +118,7 @@ impl ScheduledOrdinaryExecutionProvider for CheckoutProvider {
             .issue(
                 Box::new(session),
                 self.policy.clone(),
-                *self.assets.lock().unwrap(),
+                self.assets.lock().unwrap().clone(),
                 Box::new(ToolAuthority {
                     lifecycle: LifecycleHandler,
                     branch: BranchHandler,
@@ -252,7 +252,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     let foreign_provider = CheckoutProvider {
         slot: Arc::clone(&foreign_slot),
         policy: explicit_policy(),
-        assets: Arc::new(Mutex::new(foreign_assets)),
+        assets: Arc::new(Mutex::new(foreign_assets.clone())),
     };
     let foreign_service = ProjectionConnectionService::new(
         foreign_home,

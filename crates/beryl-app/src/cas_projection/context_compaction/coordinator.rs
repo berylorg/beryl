@@ -34,6 +34,9 @@ use super::ContextCompactionTargetAuthority;
 
 mod admission;
 pub(in crate::cas_projection) mod dispatch;
+#[cfg(test)]
+#[path = "../../../tests/unit/context_compaction_driver.rs"]
+mod driver_tests;
 mod model;
 mod settlement;
 #[cfg(feature = "test-faults")]

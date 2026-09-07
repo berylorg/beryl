@@ -684,6 +684,11 @@ impl TargetRegistrationProof {
 }
 
 impl TargetRegistration {
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn poll_for_test(&self) -> LiveEventPoll {
+        self.poll(std::time::Duration::ZERO)
+    }
+
     pub(in crate::cas_projection) fn key(&self) -> &LoadedThreadKey {
         &self.key
     }

@@ -301,7 +301,7 @@ impl DeliveryFixture {
         let submitted_item_id = SyndicItemId::from_bytes([seed.wrapping_add(3); 16]);
         let (kind, source_draft) = submit_atoms(
             &home,
-            storage,
+            storage.clone(),
             state.assets(),
             thread_id,
             SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]),
@@ -323,7 +323,7 @@ impl DeliveryFixture {
         .unwrap();
         let service = ProjectionConnectionService::new(
             home,
-            storage,
+            storage.clone(),
             config,
             Box::new(UnavailableScheduledOrdinaryProvider),
         )
@@ -346,7 +346,7 @@ impl DeliveryFixture {
             let coordinator = CasProjectionCoordinator::for_healthy_home(home).unwrap();
             let request = CasProjectionRequest::new(
                 thread_id,
-                selected_path(home, storage, thread_id),
+                selected_path(home, storage.clone(), thread_id),
                 execution_binding(runtime_id, seed),
                 ThreadStartOptions::persistent(),
                 Some(2_000_000),
@@ -356,7 +356,7 @@ impl DeliveryFixture {
             coordinator
                 .obtain_projection(
                     home,
-                    storage,
+                    &storage,
                     &mut session,
                     &request,
                     &ProjectionCancellationToken::new(),
@@ -382,7 +382,7 @@ impl DeliveryFixture {
         let cancellation = ProjectionCancellationToken::new();
         let replay = InputReplayFactory::prepare(
             home,
-            storage,
+            &storage,
             state.assets(),
             InputReplayContext::from_projection(&projection),
             InputReplayRecord::submitted(thread_id, submitted_item_id),
@@ -411,7 +411,7 @@ impl DeliveryFixture {
                     thread_id,
                     binding.binding().revision(),
                     gate.revision(),
-                    selected_path(home, storage, thread_id),
+                    selected_path(home, storage.clone(), thread_id),
                     snapshot_id,
                     submitted_turn_id,
                     projection.loaded_session_generation(),
@@ -444,7 +444,7 @@ impl DeliveryFixture {
             .start_streamed_turn(
                 TurnStartOptions::default(),
                 TIMEOUT,
-                replay.service(home, storage, &cancellation),
+                replay.service(home, &storage, &cancellation),
             )
             .unwrap();
         assert!(
@@ -488,7 +488,7 @@ impl DeliveryFixture {
             });
         let (kind, source_draft) = submit_atoms(
             home,
-            storage,
+            storage.clone(),
             state.assets(),
             thread_id,
             SyndicDraftId::from_bytes([seed.wrapping_add(6); 16]),
@@ -518,7 +518,12 @@ impl DeliveryFixture {
                 delivery.wait_until_paused(TIMEOUT);
                 let route = {
                     let live_home = service.live_home_command().unwrap();
-                    route_entry(live_home.home(), storage, thread_id, accepted_input_id)
+                    route_entry(
+                        live_home.home(),
+                        storage.clone(),
+                        thread_id,
+                        accepted_input_id,
+                    )
                 };
                 assert_eq!(
                     route,
@@ -540,7 +545,7 @@ impl DeliveryFixture {
         let second_accepted_input_id = if matches!(admission_mode, AdmissionMode::ScheduledPair) {
             let input_id = admit_second_scheduled_input(
                 &service,
-                storage,
+                storage.clone(),
                 state,
                 thread_id,
                 submitted_turn_id,
@@ -647,7 +652,7 @@ impl DeliveryFixture {
             .take()
             .expect("sibling-race delivery owns the live target");
         let service = &self.service;
-        let storage = self.storage;
+        let storage = self.storage.clone();
         let state = {
             let live_home = service.live_home_command().unwrap();
             BerylState::reacquire(live_home.home()).unwrap()
@@ -730,7 +735,7 @@ impl DeliveryFixture {
             .take()
             .expect("retry-race delivery owns the live target");
         let service = &self.service;
-        let storage = self.storage;
+        let storage = self.storage.clone();
         let thread_id = self.thread_id;
         let cancellation = &self.cancellation;
         let input_id = self.accepted_input_id;
@@ -763,7 +768,7 @@ impl DeliveryFixture {
                 let live_home = service.live_home_command().unwrap();
                 let home = live_home.home();
                 assert_eq!(
-                    route_state_for(home, storage, thread_id, input_id),
+                    route_state_for(home, storage.clone(), thread_id, input_id),
                     AcceptedRouteEffectiveState::Ready,
                     "exact Retry must commit before ordinary target-loss publication",
                 );
@@ -798,7 +803,7 @@ impl DeliveryFixture {
             .take()
             .expect("delayed delivery owns the sole live target");
         let service = &self.service;
-        let storage = self.storage;
+        let storage = self.storage.clone();
         let cancellation = &self.cancellation;
         let thread_id = self.thread_id;
         let input_id = self.accepted_input_id;
@@ -847,7 +852,7 @@ impl DeliveryFixture {
         let live_home = self.service.live_home_command().unwrap();
         route_state_for(
             live_home.home(),
-            self.storage,
+            self.storage.clone(),
             self.thread_id,
             self.accepted_input_id,
         )
@@ -856,7 +861,7 @@ impl DeliveryFixture {
     pub(super) fn route_state_after_service_close(&self) -> AcceptedRouteEffectiveState {
         route_state_for(
             self.service.home_for_shutdown_test(),
-            self.storage,
+            self.storage.clone(),
             self.thread_id,
             self.accepted_input_id,
         )
@@ -866,7 +871,7 @@ impl DeliveryFixture {
         let live_home = self.service.live_home_command().unwrap();
         route_state_for(
             live_home.home(),
-            self.storage,
+            self.storage.clone(),
             self.thread_id,
             self.second_accepted_input_id
                 .expect("scheduled-pair fixture retains its second input"),
@@ -888,7 +893,7 @@ impl DeliveryFixture {
         let live_home = self.service.live_home_command().unwrap();
         route_entry(
             live_home.home(),
-            self.storage,
+            self.storage.clone(),
             self.thread_id,
             self.accepted_input_id,
         )
@@ -898,7 +903,7 @@ impl DeliveryFixture {
     pub(super) fn route_lifecycle_after_service_close(&self) -> AcceptedInputLifecycle {
         route_entry(
             self.service.home_for_shutdown_test(),
-            self.storage,
+            self.storage.clone(),
             self.thread_id,
             self.accepted_input_id,
         )

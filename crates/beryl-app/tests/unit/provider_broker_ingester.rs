@@ -65,7 +65,7 @@ impl BrokerBuildFixture {
             &home,
             home_id,
             home_generation,
-            storage,
+            storage.clone(),
         ));
         let compaction = ContextCompactionCoordinator::new(
             Arc::clone(&home),

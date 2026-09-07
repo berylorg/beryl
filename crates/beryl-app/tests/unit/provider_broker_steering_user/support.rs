@@ -124,7 +124,7 @@ impl SteeringFixture {
         let initial_item = SyndicItemId::from_bytes([seed.wrapping_add(3); 16]);
         let (kind, source_draft) = submit_atoms(
             &home,
-            storage,
+            storage.clone(),
             state.assets(),
             thread_id,
             SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]),
@@ -138,7 +138,7 @@ impl SteeringFixture {
         );
         let turn_id = source_draft.submitted_turn_id();
 
-        let selected = selected_path(&home, storage, thread_id);
+        let selected = selected_path(&home, storage.clone(), thread_id);
         let process_generation = CasProcessGeneration::new(52_000 + u64::from(seed)).unwrap();
         let cas_thread_id = CasThreadId::new(format!("steering-thread-{seed}")).unwrap();
         let cas_turn_id = CasTurnId::new(format!("steering-turn-{seed}")).unwrap();
@@ -268,7 +268,7 @@ impl SteeringFixture {
         };
         let (kind, source_draft) = submit_atoms(
             &home,
-            storage,
+            storage.clone(),
             state.assets(),
             thread_id,
             SyndicDraftId::from_bytes([seed.wrapping_add(6); 16]),
@@ -378,14 +378,14 @@ impl SteeringFixture {
                 &home,
                 home_id,
                 home_generation,
-                storage,
+                storage.clone(),
             ));
         let context_compaction =
             crate::cas_projection::context_compaction::ContextCompactionCoordinator::new(
                 Arc::clone(&home),
                 home_id,
                 home_generation,
-                storage,
+                storage.clone(),
                 ProjectionServiceConnectionRegistry::new(commands.service_generation()),
                 Arc::clone(&stop_coordinator),
                 commands.clone(),

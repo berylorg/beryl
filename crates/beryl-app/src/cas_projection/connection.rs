@@ -97,6 +97,10 @@ use router::{ConnectionProcessFact, TargetRegistration};
 pub(in crate::cas_projection) use router::{
     LiveEventTargetLossError, LiveEventTargetLossOutcome, ProvenTerminalOutcome,
 };
+#[cfg(test)]
+pub(in crate::cas_projection) use router::{
+    TargetHandoffRequirement, TargetRegistration as CompactionTestTargetRegistration,
+};
 pub(in crate::cas_projection) use source_broker::StreamedInputBrokerService;
 pub(in crate::cas_projection) use target_command::turn_start_allows_not_started;
 pub(in crate::cas_projection) use target_command::{

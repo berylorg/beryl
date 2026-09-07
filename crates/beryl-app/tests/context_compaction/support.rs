@@ -35,9 +35,31 @@ impl LifecycleFixture {
     }
 
     fn new_with_accepted_next(seed: u8, operation_byte: u8, accepted_next: bool) -> Self {
-        let mut source = crate::syndic::Fixture::new(seed);
+        Self::from_source(
+            crate::syndic::Fixture::new(seed),
+            operation_byte,
+            accepted_next,
+        )
+    }
+
+    pub fn with_faults(
+        seed: u8,
+        operation_byte: u8,
+        faults: beryl_home_store::test_faults::FaultController,
+    ) -> Self {
+        Self::from_source(
+            crate::syndic::Fixture::with_faults(seed, faults),
+            operation_byte,
+            false,
+        )
+    }
+
+    fn from_source(
+        mut source: crate::syndic::Fixture,
+        operation_byte: u8,
+        accepted_next: bool,
+    ) -> Self {
         let submitted = source.submit_text(" completed yielding turn");
-        source.complete_with_assistant(submitted, " completed answer");
         let thread_id = source.thread;
         let yielding_turn_id = submitted.turn;
         assert!(
@@ -50,6 +72,8 @@ impl LifecycleFixture {
                 )
                 .unwrap()
         );
+
+        source.complete_with_assistant(submitted, " completed answer");
 
         let candidate = match source
             .storage
@@ -208,11 +232,12 @@ impl LifecycleFixture {
             directory,
             storage: _,
             service,
-            harness: _,
+            harness,
             thread_id: _,
             yielding_turn_id: _,
             operation_id: _,
         } = self;
+        drop(harness);
         Arc::try_unwrap(service).ok().unwrap().close().unwrap();
         drop(directory);
     }

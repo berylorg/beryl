@@ -4,6 +4,8 @@
 mod support;
 #[path = "projection/syndic.rs"]
 mod syndic;
+#[path = "context_compaction/terminal_ordering.rs"]
+mod terminal_ordering;
 
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 

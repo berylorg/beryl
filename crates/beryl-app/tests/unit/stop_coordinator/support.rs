@@ -7,7 +7,9 @@ use std::{
     time::Duration,
 };
 
-use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::{
     BindingRevision, CasThreadId, CasTurnId, InputGateRevision, SyndicDraftId,
     SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -15,8 +17,7 @@ use beryl_model::{
 use syndic_storage::{
     ContentAppend, ContentBuild, CreateThread, DraftEditHistoryPolicyV1, PreparedContent,
     SourceEventPayload, StopAdmissionIneligibility, StopAdmissionRead, StopCause,
-    StopOperationTarget, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    TurnStateRevision,
+    StopOperationTarget, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRevision,
 };
 
 use super::*;
@@ -29,12 +30,205 @@ use crate::{
 };
 
 #[allow(dead_code)]
-mod exact_cas {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../syndic-storage/tests/support/exact_cas.rs"
-    ));
+mod exact_cas_support {
+    use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
+    use beryl_model::{
+        BindingRevision, ContentRevision, SyndicContentId, SyndicDraftId, SyndicThreadId,
+    };
+    use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
+    use syndic_storage::{
+        ContentByteSpanRecord, ContentReference, CreateThread, DraftEditHistoryPolicyV1,
+        PreparedContent, SyndicStorage, TranscriptGeneration,
+    };
+
+    fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
+        let mut command = HomeCommand::new(store.home_revision().unwrap());
+        command
+            .add(
+                storage
+                    .clone()
+                    .fixture_contribution(storage.clone().revision(store).unwrap(), batch),
+            )
+            .unwrap();
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::Committed {
+                later_failure: Some(failure),
+                ..
+            } => panic!("fixture-batch command committed with a later failure: {failure:?}"),
+            CommandOutcome::NotCommitted { evidence } => {
+                panic!("fixture-batch command did not commit: {evidence:?}")
+            }
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                panic!("fixture-batch command was indeterminate: {failure:?}")
+            }
+        }
+    }
+
+    fn seed_detached_canonical_draft_backing(
+        store: &HomeStore,
+        storage: SyndicStorage,
+        staging_thread: SyndicThreadId,
+        draft_id: SyndicDraftId,
+    ) -> syndic_storage::DraftRootHistoryPairV1 {
+        let request = CreateThread::ordinary(
+            staging_thread,
+            draft_id,
+            exact_cas::execution_binding(),
+            syndic_storage::SyndicTimestamp::from_unix_millis(1),
+            DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+        );
+        let mut command = HomeCommand::new(store.home_revision().unwrap());
+        command
+            .add(
+                storage
+                    .clone()
+                    .create_thread(storage.clone().revision(store).unwrap(), request),
+            )
+            .unwrap();
+        match store.execute(command) {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            outcome => panic!("expected clean canonical thread seed, got {outcome:?}"),
+        }
+        let pair = storage
+            .current_draft(
+                store,
+                staging_thread,
+                syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .draft()
+            .root_history();
+        let mut cleanup = FixtureBatch::new();
+        for delete in [
+            FixtureDelete::Thread(staging_thread),
+            FixtureDelete::ImageLabelAuthorityHead(staging_thread),
+            FixtureDelete::DraftImageLabelProtectionHead(staging_thread),
+            FixtureDelete::ThreadExecution(staging_thread),
+            FixtureDelete::ThreadAttributes(staging_thread),
+            FixtureDelete::ThreadUsage(staging_thread),
+            FixtureDelete::ThreadCatalogSummary(staging_thread),
+            FixtureDelete::Draft(draft_id),
+            FixtureDelete::InputGate(staging_thread),
+            FixtureDelete::ActivityQueryHead(staging_thread),
+            FixtureDelete::TranscriptViewHead(staging_thread),
+            FixtureDelete::TranscriptBuild {
+                thread: staging_thread,
+                generation: TranscriptGeneration::FIRST,
+            },
+            FixtureDelete::HistorySummary(staging_thread),
+            FixtureDelete::Binding {
+                thread: staging_thread,
+                revision: BindingRevision::new(1).unwrap(),
+            },
+            FixtureDelete::DraftByThread(staging_thread),
+            FixtureDelete::BindingHead(staging_thread),
+        ] {
+            cleanup.delete(delete).unwrap();
+        }
+        commit(store, storage, cleanup);
+        pair
+    }
+
+    fn prepared_content_records(
+        content: &PreparedContent,
+    ) -> (ContentReference, Vec<FixtureRecord>) {
+        let revision = ContentRevision::new(1).unwrap();
+        let manifest = content.sealed_manifest(revision);
+        let mut records = Vec::with_capacity(
+            1 + content.chunks().len() * 2 + content.text_spans().len() + content.pieces().len(),
+        );
+        records.push(FixtureRecord::ContentManifest(manifest));
+        let mut encoded_start = 0;
+        for chunk in content.chunks() {
+            records.push(FixtureRecord::ContentChunk(chunk.clone()));
+            let span = ContentByteSpanRecord::for_chunk(chunk, encoded_start).unwrap();
+            encoded_start = span.end();
+            records.push(FixtureRecord::ContentByteSpan(span));
+        }
+        records.extend(
+            content
+                .text_spans()
+                .iter()
+                .copied()
+                .map(FixtureRecord::ContentTextSpan),
+        );
+        records.extend(
+            content
+                .pieces()
+                .iter()
+                .copied()
+                .map(FixtureRecord::ContentPiece),
+        );
+        (content.reference(revision), records)
+    }
+
+    fn batch(records: impl IntoIterator<Item = FixtureRecord>) -> FixtureBatch {
+        let mut batch = FixtureBatch::new();
+        let mut manifests = std::collections::HashMap::<SyndicContentId, _>::new();
+        let mut chunks = std::collections::HashMap::new();
+        let mut byte_spans = std::collections::HashMap::new();
+        let mut text_spans = std::collections::HashMap::new();
+        let mut pieces = std::collections::HashMap::new();
+        for record in records {
+            match &record {
+                FixtureRecord::ContentManifest(manifest) => {
+                    if let Some(existing) = manifests.insert(manifest.id(), manifest.clone()) {
+                        assert_eq!(existing, *manifest, "conflicting fixture content manifests");
+                        continue;
+                    }
+                }
+                FixtureRecord::ContentChunk(chunk) => {
+                    let key = (chunk.content_id(), chunk.ordinal());
+                    if let Some(existing) = chunks.insert(key, chunk.clone()) {
+                        assert_eq!(existing, *chunk, "conflicting fixture content chunks");
+                        continue;
+                    }
+                }
+                FixtureRecord::ContentByteSpan(span) => {
+                    let key = (span.content_id(), span.start());
+                    if let Some(existing) = byte_spans.insert(key, *span) {
+                        assert_eq!(existing, *span, "conflicting fixture content byte spans");
+                        continue;
+                    }
+                }
+                FixtureRecord::ContentTextSpan(span) => {
+                    let key = (span.content_id(), span.logical_start());
+                    if let Some(existing) = text_spans.insert(key, *span) {
+                        assert_eq!(existing, *span, "conflicting fixture content text spans");
+                        continue;
+                    }
+                }
+                FixtureRecord::ContentPiece(piece) => {
+                    let key = (piece.content_id(), piece.ordinal());
+                    if let Some(existing) = pieces.insert(key, *piece) {
+                        assert_eq!(existing, *piece, "conflicting fixture content pieces");
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+            batch.put(record).unwrap();
+        }
+        batch
+    }
+
+    #[path = "../../../../../syndic-storage/tests/support/exact_cas.rs"]
+    pub mod exact_cas;
 }
+
+use exact_cas_support::exact_cas;
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
@@ -50,10 +244,20 @@ fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContributio
     let mut command = HomeCommand::new(home.home_revision().unwrap());
     command.add(contribution).unwrap();
     match home.execute(command) {
-        CommandOutcome::Committed { later_failure: None, .. } => {}
-        outcome @ CommandOutcome::Committed { later_failure: Some(_), .. } => panic!("stop fixture command committed with later failure: {outcome:?}"),
-        CommandOutcome::NotCommitted { evidence } => panic!("stop fixture command was not committed: {evidence:?}"),
-        outcome @ CommandOutcome::Indeterminate { .. } => panic!("stop fixture command was indeterminate: {outcome:?}"),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        } => {}
+        outcome @ CommandOutcome::Committed {
+            later_failure: Some(_),
+            ..
+        } => panic!("stop fixture command committed with later failure: {outcome:?}"),
+        CommandOutcome::NotCommitted { evidence } => {
+            panic!("stop fixture command was not committed: {evidence:?}")
+        }
+        outcome @ CommandOutcome::Indeterminate { .. } => {
+            panic!("stop fixture command was indeterminate: {outcome:?}")
+        }
     }
 }
 
@@ -114,17 +318,17 @@ impl StopFixture {
         );
         let turn = exact_cas::submit_current_draft(
             &home,
-            storage,
+            storage.clone(),
             thread,
             SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]),
             SyndicItemId::from_bytes([seed.wrapping_add(3); 16]),
             "coordinator stop target",
             timestamp(2),
         );
-        let source = exact_cas::establish_turn(&home, storage, thread, turn, timestamp(3));
+        let source = exact_cas::establish_turn(&home, storage.clone(), thread, turn, timestamp(3));
         exact_cas::admit_event(
             &home,
-            storage,
+            storage.clone(),
             thread,
             turn,
             &source,
@@ -150,7 +354,7 @@ impl StopFixture {
             &home,
             home_id,
             home_generation,
-            storage,
+            storage.clone(),
             command_gate.authorizer(),
         ));
         let router = Arc::new(

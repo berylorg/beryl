@@ -280,7 +280,6 @@ impl ContextCompactionCoordinator {
         outcome: ContextCompactionOutcome,
     ) {
         local.complete(outcome);
-        local.release_command();
         self.remove_local(local);
     }
 
@@ -311,6 +310,18 @@ impl ContextCompactionCoordinator {
             local.attempt,
             disposition,
         );
+        match self
+            .storage
+            .compaction_request_disposition_status(&self.home, &request, point_limit())
+            .map_err(|_| ContextCompactionError::Storage)?
+        {
+            status @ (CompactionRequestTransitionStatus::Exact
+            | CompactionRequestTransitionStatus::TerminalAlreadySettled) => return Ok(status),
+            CompactionRequestTransitionStatus::Prior => {}
+            CompactionRequestTransitionStatus::Collision => {
+                return Err(ContextCompactionError::Storage);
+            }
+        }
         require_committed_command(
             self.home.execute_current(
                 self.storage

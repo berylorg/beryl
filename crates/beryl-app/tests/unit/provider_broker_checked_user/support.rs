@@ -46,16 +46,15 @@ use syndic_storage::{
     ActivateBinding, BindingState, CanonicalItemKind, CasLineageProof, CasRepresentedPrefixProof,
     ContentReference, CreateThread, DraftEditHistoryPolicyV1, FirstAcceptanceKind,
     NativeCasLineage, ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemLifecycle,
-    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
-    PublishValidBinding, SelectedPathProof, SourceEventRecord, SourceEventSequence,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnItemOrdinal,
-    empty_selected_path_digest,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1, PublishValidBinding,
+    SelectedPathProof, SourceEventRecord, SourceEventSequence, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, TurnItemOrdinal, empty_selected_path_digest,
 };
 
+use super::submission_fixture::{Atom, submit_atoms};
 pub(super) use frame::{assert_user_message_frame, read_provider_frame};
 pub(super) use storage::point_limit;
 use storage::{execute, execution_binding, selected_path};
-use super::submission_fixture::{Atom, submit_atoms};
 
 const POINT_READ_BYTES: usize = 1_000_000;
 const EXECUTION_ROOT: &str = r"C:\work\beryl-checked-user-test";
@@ -128,7 +127,7 @@ impl CheckedUserFixture {
         let item_id = SyndicItemId::from_bytes([seed.wrapping_add(2); 16]);
         let (kind, source_draft) = submit_atoms(
             &home,
-            storage,
+            storage.clone(),
             state.assets(),
             thread_id,
             SyndicDraftId::from_bytes([seed.wrapping_add(3); 16]),
@@ -137,7 +136,9 @@ impl CheckedUserFixture {
             seed.wrapping_add(20),
             SyndicTimestamp::from_unix_millis(3),
         );
-        assert!(matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == item_id));
+        assert!(
+            matches!(kind, FirstAcceptanceKind::Idle { user_item_id } if user_item_id == item_id)
+        );
         let turn_id = source_draft.submitted_turn_id();
 
         let item = storage
@@ -152,7 +153,7 @@ impl CheckedUserFixture {
             ProviderItemLifecycle::AwaitingCorrelation
         );
 
-        let selected = selected_path(&home, storage, thread_id);
+        let selected = selected_path(&home, storage.clone(), thread_id);
         let process_generation = CasProcessGeneration::new(36_000 + u64::from(seed)).unwrap();
         let cas_thread_id = CasThreadId::new(format!("checked-user-thread-{seed}")).unwrap();
         let cas_turn_id = CasTurnId::new(format!("checked-user-turn-{seed}")).unwrap();
@@ -300,14 +301,14 @@ impl CheckedUserFixture {
                 &home,
                 home_id,
                 home_generation,
-                storage,
+                storage.clone(),
             ));
         let context_compaction =
             crate::cas_projection::context_compaction::ContextCompactionCoordinator::new(
                 Arc::clone(&home),
                 home_id,
                 home_generation,
-                storage,
+                storage.clone(),
                 ProjectionServiceConnectionRegistry::new(commands.service_generation()),
                 Arc::clone(&stop_coordinator),
                 commands.clone(),
