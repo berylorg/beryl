@@ -43,8 +43,8 @@ use publication::service;
 fn first_dirty_arms_once_and_committed_settings_replace_the_generation() {
     let (_home, mut store, storage, thread) = fixture("autosave-generation", 1);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 2, 3);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 2, 3);
 
     assert_eq!(host.autosave_interval().seconds(), 30);
     assert!(host.autosave_timer().is_none());
@@ -74,7 +74,7 @@ fn first_dirty_arms_once_and_committed_settings_replace_the_generation() {
         host.fire_autosave(
             &store,
             first_timer,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(3),
             None,
@@ -90,12 +90,20 @@ fn first_dirty_arms_once_and_committed_settings_replace_the_generation() {
 fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
     let (_home, mut store, storage, thread) = fixture("autosave-outcomes", 11);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 12, 13);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 12, 13);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let timer = host.autosave_timer().unwrap();
     let cancellation = CommandCancellation::new();
-    let ticket = captured_autosave(&mut host, &store, assets, &seals, timer, 2, &cancellation);
+    let ticket = captured_autosave(
+        &mut host,
+        &store,
+        assets.clone(),
+        &seals,
+        timer,
+        2,
+        &cancellation,
+    );
     let replacement_timer = match host
         .publish_autosave_interval(dirty, 1, ComposerHostAutosaveInterval::new(10).unwrap())
         .unwrap()
@@ -107,7 +115,7 @@ fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
         host.fire_autosave(
             &store,
             replacement_timer,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(3),
             None,
@@ -128,7 +136,7 @@ fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
     let ticket = captured_autosave(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         retry_timer,
         4,
@@ -152,7 +160,7 @@ fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
     let ticket = captured_autosave(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         successor_timer,
         6,
@@ -173,12 +181,12 @@ fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
 fn joined_flush_repeats_to_the_newest_frontier_without_waiter_retention() {
     let (_home, mut store, storage, thread) = fixture("joined-flush", 21);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 22, 23);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 22, 23);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     assert_eq!(state, ComposerHostFlushState::CaptureRequired);
-    let publication = captured_flush(&mut host, &store, assets, &seals, flush, 2);
+    let publication = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 2);
     let second = commit_text(&mut host, &store, first, 2, 1, 1, "b", 1, 1);
 
     for _ in 0..32 {
@@ -210,10 +218,14 @@ fn joined_flush_repeats_to_the_newest_frontier_without_waiter_retention() {
         ComposerHostAutosaveAdvance::Stale
     );
 
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 3);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 3);
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
-        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     );
     assert_eq!(host.binding().unwrap().root(), second.root());
     assert!(!host.is_dirty());
@@ -233,8 +245,8 @@ fn joined_flush_repeats_to_the_newest_frontier_without_waiter_retention() {
 fn cancelled_flush_ends_unsatisfied_and_rearms_without_retaining_the_barrier() {
     let (_home, mut store, storage, thread) = fixture("cancelled-flush", 25);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 26, 27);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 26, 27);
     let _ = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     let cancellation = CommandCancellation::new();
@@ -243,7 +255,7 @@ fn cancelled_flush_ends_unsatisfied_and_rearms_without_retaining_the_barrier() {
         host.capture_flush_publication(
             &store,
             flush,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(2),
             None,
@@ -267,16 +279,20 @@ fn cancelled_flush_ends_unsatisfied_and_rearms_without_retaining_the_barrier() {
 fn lifecycle_release_disposes_only_after_clean_flush_and_rejects_stale_work() {
     let (_home, mut store, storage, thread) = fixture("release", 31);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 32, 33);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
     let binding = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let stale_timer = host.autosave_timer().unwrap();
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
     assert_eq!(state, ComposerHostFlushState::CaptureRequired);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 2);
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
-        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     );
     assert!(host.binding().is_some());
     assert!(matches!(
@@ -297,7 +313,7 @@ fn lifecycle_release_disposes_only_after_clean_flush_and_rejects_stale_work() {
         host.fire_autosave(
             &store,
             stale_timer,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(4),
             None,
@@ -322,14 +338,14 @@ fn lifecycle_release_disposes_only_after_clean_flush_and_rejects_stale_work() {
 fn service_disposal_releases_all_host_lifecycle_and_publication_custody() {
     let (_home, mut store, storage, thread) = fixture("service-disposal", 41);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 42, 43);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 42, 43);
     let _ = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let timer = host.autosave_timer().unwrap();
     let ticket = captured_autosave(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         timer,
         2,
@@ -368,7 +384,7 @@ fn captured_autosave(
         .fire_autosave(
             store,
             timer,
-            assets,
+            assets.clone(),
             seals,
             operation_id(operation),
             None,
@@ -406,7 +422,7 @@ fn captured_flush(
     captured_flush_with_cancellation(
         host,
         store,
-        assets,
+        assets.clone(),
         seals,
         flush,
         operation,
@@ -427,7 +443,7 @@ fn captured_flush_with_cancellation(
         .capture_flush_publication(
             store,
             flush,
-            assets,
+            assets.clone(),
             seals,
             operation_id(operation),
             None,
@@ -439,4 +455,37 @@ fn captured_flush_with_cancellation(
         ComposerHostFlushCapture::Captured(ticket) => ticket,
         other => panic!("flush publication was not captured: {other:?}"),
     }
+}
+
+fn authenticate_flush(
+    host: &mut beryl_app::composer_host::SyndicComposerHost,
+    store: &beryl_home_store::HomeStore,
+    assets: AssetState,
+    seals: &DraftMarkerSealService,
+    flush: beryl_app::composer_host::ComposerHostFlushTicket,
+) -> ComposerHostFlushCapture {
+    assert_eq!(
+        host.flush_state(flush).unwrap(),
+        ComposerHostFlushState::CaptureRequired
+    );
+    assert!(!host.is_dirty());
+    assert_eq!(host.publication_custody_count(), 0);
+    let revision = store.home_revision().unwrap();
+    let binding = host.binding();
+    let outcome = host
+        .capture_flush_publication(
+            store,
+            flush,
+            assets,
+            seals,
+            operation_id(999),
+            None,
+            SyndicTimestamp::from_unix_millis(999),
+            &CommandCancellation::new(),
+        )
+        .unwrap();
+    assert_eq!(store.home_revision().unwrap(), revision);
+    assert_eq!(host.binding(), binding);
+    assert_eq!(host.publication_custody_count(), 0);
+    outcome
 }

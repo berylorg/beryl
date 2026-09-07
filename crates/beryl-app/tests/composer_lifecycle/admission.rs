@@ -31,7 +31,7 @@ fn every_disposing_barrier_freezes_new_edit_undo_and_redo_admission() {
                 .wrapping_add(u8::from(dirty).wrapping_mul(8));
             let (_home, store, storage, thread) = base::fixture("disposing-admission-freeze", seed);
             let (mut host, empty) =
-                composer::activated(storage, &store, thread, seed + 1, seed + 2);
+                composer::activated(storage.clone(), &store, thread, seed + 1, seed + 2);
             let binding = if dirty {
                 composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1)
             } else {
@@ -65,7 +65,7 @@ fn every_disposing_barrier_freezes_new_edit_undo_and_redo_admission() {
 #[test]
 fn submission_allows_edits_until_a_disposing_join_upgrades_the_barrier() {
     let (_home, store, storage, thread) = base::fixture("submission-upgrade-freeze", 190);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 191, 192);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 191, 192);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     let edited = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     assert!(matches!(
@@ -91,8 +91,8 @@ fn submission_allows_edits_until_a_disposing_join_upgrades_the_barrier() {
 fn work_admitted_before_a_disposing_barrier_finishes_and_the_barrier_drains_it() {
     let (_home, mut store, storage, thread) = base::fixture("admitted-work-drains", 200);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 201, 202);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 201, 202);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     composer::begin_text(&mut host, &store, dirty, 2, 1).unwrap();
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
@@ -101,7 +101,7 @@ fn work_admitted_before_a_disposing_barrier_finishes_and_the_barrier_drains_it()
         .capture_flush_publication(
             &store,
             flush,
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(3),
             None,
@@ -118,7 +118,11 @@ fn work_admitted_before_a_disposing_barrier_finishes_and_the_barrier_drains_it()
     };
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
-        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
     );
     assert_eq!(host.binding().unwrap().root(), admitted.root());
     assert_eq!(host.publication_custody_count(), 0);

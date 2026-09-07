@@ -15,7 +15,7 @@ use super::{base, captured_flush, composer, publication, started_flush};
 #[test]
 fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
     let (_home, store, storage, thread) = base::fixture("barrier-fence", 111);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 112, 113);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 112, 113);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::ThreadSwitch);
     assert_eq!(state, ComposerHostFlushState::CaptureRequired);
@@ -28,22 +28,37 @@ fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
         Err(ComposerHostError::LifecycleBlocked)
     ));
     assert_eq!(host.lifecycle_diagnostics().barriers(), 1);
-    assert_eq!(host.flush_state(flush).unwrap(), state);
+    assert_eq!(
+        host.flush_state(flush).unwrap(),
+        ComposerHostFlushState::CaptureRequired
+    );
     host.dispose_composer_service(&store).unwrap();
 
     let (_home, mut store, storage, thread) = base::fixture("disposal-fence", 117);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 118, 119);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 118, 119);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (submission, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, submission, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, submission, 2);
     assert_eq!(
         host.advance_flush(&store, submission).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, submission),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
-    assert_eq!(state, ComposerHostFlushState::DisposalRequired);
+    assert_eq!(state, ComposerHostFlushState::CaptureRequired);
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
+    assert_eq!(
+        host.flush_state(flush).unwrap(),
+        ComposerHostFlushState::DisposalRequired
+    );
     assert!(matches!(
         host.test_activate(
             &store,
@@ -53,27 +68,30 @@ fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
         Err(ComposerHostError::LifecycleBlocked)
     ));
     assert_eq!(host.lifecycle_diagnostics().barriers(), 1);
-    assert_eq!(host.flush_state(flush).unwrap(), state);
+    assert_eq!(
+        host.flush_state(flush).unwrap(),
+        ComposerHostFlushState::DisposalRequired
+    );
 }
 
 #[test]
 fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
     let (_home, store, storage, thread) = base::fixture("activate-clean", 201);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 202, 203);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 202, 203);
     assert_activation_blocked(&mut host, &store, thread, clean, 204, 205);
 
     let (_home, store, storage, thread) = base::fixture("activate-dirty", 206);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 207, 208);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 207, 208);
     let dirty = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
     assert_activation_blocked(&mut host, &store, thread, dirty, 209, 210);
 
     let (_home, store, storage, thread) = base::fixture("activate-mutation", 211);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 212, 213);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 212, 213);
     composer::begin_text(&mut host, &store, clean, 1, 0).unwrap();
     assert_activation_blocked(&mut host, &store, thread, clean, 214, 215);
 
     let (_home, store, storage, thread) = base::fixture("activate-history", 216);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 217, 218);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 217, 218);
     let dirty = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
     let intent = composer::history_intent(
         dirty,
@@ -86,13 +104,13 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
 
     let (_home, mut store, storage, thread) = base::fixture("activate-barriers", 221);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 222, 223);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 222, 223);
     let dirty = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     assert_eq!(state, ComposerHostFlushState::CaptureRequired);
     assert_activation_blocked(&mut host, &store, thread, dirty, 224, 225);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 226);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 226);
     assert_eq!(
         host.flush_state(flush).unwrap(),
         ComposerHostFlushState::PublicationPending
@@ -101,18 +119,30 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
 
     let (_home, mut store, storage, thread) = base::fixture("activate-disposal", 229);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 230, 231);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 230, 231);
     let _ = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
     let (submission, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, submission, 232);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, submission, 232);
     assert_eq!(
         host.advance_flush(&store, submission).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, submission),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     let clean = host.binding().unwrap();
     let (flush, state) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
-    assert_eq!(state, ComposerHostFlushState::DisposalRequired);
+    assert_eq!(state, ComposerHostFlushState::CaptureRequired);
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
+    assert_eq!(
+        host.flush_state(flush).unwrap(),
+        ComposerHostFlushState::DisposalRequired
+    );
     assert_activation_blocked(&mut host, &store, thread, clean, 233, 234);
     assert_eq!(
         host.flush_state(flush).unwrap(),
@@ -124,14 +154,18 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
 fn disposal_dirty_conflict_cuts_the_barrier_and_retains_exact_terminal_custody() {
     let (_home, mut store, storage, thread) = base::fixture("disposal-dirty", 121);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 122, 123);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 122, 123);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (submission, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, submission, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, submission, 2);
     assert_eq!(
         host.advance_flush(&store, submission).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, submission),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     let binding = host.binding().unwrap();
     let session = storage
@@ -145,6 +179,10 @@ fn disposal_dirty_conflict_cuts_the_barrier_and_retains_exact_terminal_custody()
         panic!("candidate session was not active")
     };
     let (release, _) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, release),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
     assert!(matches!(
         host.capture_flush_disposal(
             &store,
@@ -158,7 +196,7 @@ fn disposal_dirty_conflict_cuts_the_barrier_and_retains_exact_terminal_custody()
     host.test_arm_publication_before_execute_fault(move |store, storage| {
         composer::direct_adopt(
             store,
-            storage,
+            storage.clone(),
             syndic_storage::DraftHistoricalRootSelectionIntentV1::new(
                 syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&session),
                 composer::operation_id(125),
@@ -180,16 +218,24 @@ fn foreign_disposal_execution_is_stale_and_preserves_the_joined_barrier() {
     let (_home, mut store, storage, thread) = base::fixture("disposal-generation", 131);
     let (_other_home, other_store, _, _) = base::fixture("disposal-foreign", 132);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 133, 134);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 133, 134);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (submission, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, submission, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, submission, 2);
     assert_eq!(
         host.advance_flush(&store, submission).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, submission),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     let (release, _) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, release),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
     assert!(matches!(
         host.capture_flush_disposal(
             &store,
@@ -223,15 +269,15 @@ fn foreign_autosave_publication_callback_is_inert() {
     let (_home, mut store, storage, thread) = base::fixture("stale-autosave", 181);
     let (_other_home, other_store, _, _) = base::fixture("stale-autosave-other", 182);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 183, 184);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 183, 184);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let timer = host.autosave_timer().unwrap();
     let publication = match host
         .fire_autosave(
             &store,
             timer,
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(185),
             None,
@@ -262,11 +308,11 @@ fn foreign_flush_publication_callback_is_inert() {
     let (_home, mut store, storage, thread) = base::fixture("stale-flush", 186);
     let (_other_home, other_store, _, _) = base::fixture("stale-flush-other", 187);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 188, 189);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 188, 189);
     composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (old_flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, old_flush, 190);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, old_flush, 190);
     let diagnostics = host.lifecycle_diagnostics();
     let custody = host.publication_custody_count();
     assert_eq!(
@@ -277,7 +323,11 @@ fn foreign_flush_publication_callback_is_inert() {
     assert_eq!(host.publication_custody_count(), custody);
     assert_eq!(
         host.advance_flush(&store, old_flush).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, old_flush),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
 }
 
@@ -285,8 +335,8 @@ fn foreign_flush_publication_callback_is_inert() {
 fn stale_barrier_ticket_is_inert_while_current_barrier_remains_owned() {
     let (_home, mut store, storage, thread) = base::fixture("stale-barrier", 197);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 198, 199);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 198, 199);
     let current_binding = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (old_flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     let cancellation = CommandCancellation::new();
@@ -295,7 +345,7 @@ fn stale_barrier_ticket_is_inert_while_current_barrier_remains_owned() {
         host.capture_flush_publication(
             &store,
             old_flush,
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(200),
             None,
@@ -325,16 +375,24 @@ fn foreign_disposal_reconciliation_is_stale_and_preserves_exact_custody() {
         base::fault_fixture("stale-disposal-reconcile", 191);
     let (_other_home, other_store, _, _) = base::fixture("stale-disposal-reconcile-other", 192);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, clean) = composer::activated(storage, &store, thread, 193, 194);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 193, 194);
     let _ = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
     let (submission, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, submission, 195);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, submission, 195);
     assert_eq!(
         host.advance_flush(&store, submission).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, submission),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     let (release, _) = started_flush(&mut host, ComposerHostFlushPurpose::Release);
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, release),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    );
     assert!(matches!(
         host.capture_flush_disposal(
             &store,
@@ -370,19 +428,26 @@ fn foreign_disposal_reconciliation_is_stale_and_preserves_exact_custody() {
 fn recoverable_capture_failure_cuts_once_without_retaining_source_custody() {
     let (_home, mut store, storage, thread) = base::fixture("recoverable", 136);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 137, 138);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 137, 138);
     let marker_assets = [
-        publication::publish_image_asset(&store, assets, b"recoverable-a"),
-        publication::publish_image_asset(&store, assets, b"recoverable-b"),
+        publication::publish_image_asset(&store, assets.clone(), b"recoverable-a"),
+        publication::publish_image_asset(&store, assets.clone(), b"recoverable-b"),
     ];
-    let _ = publication::insert_two_markers(&mut host, &store, empty, 1, marker_assets);
+    let _ = publication::insert_two_markers_with_readiness(
+        &mut host,
+        &store,
+        &storage,
+        empty,
+        1,
+        marker_assets,
+    );
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     assert!(matches!(
         host.capture_flush_publication(
             &store,
             flush,
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(139),
             None,
@@ -401,12 +466,12 @@ fn recoverable_capture_failure_cuts_once_without_retaining_source_custody() {
 fn undo_and_redo_during_one_flush_repeat_to_the_newest_frontier() {
     let (_home, mut store, storage, thread) = base::fixture("history-flush", 141);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 142, 143);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 142, 143);
     let a = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = composer::commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 3);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 3);
     let undone = composer::select_history(&mut host, &store, ab, 4, MutationKind::Undo);
     assert_ne!(undone.root(), ab.root());
     assert_eq!(
@@ -417,10 +482,14 @@ fn undo_and_redo_during_one_flush_repeat_to_the_newest_frontier() {
     assert_eq!(current_undone.root(), undone.root());
     let redone = composer::select_history(&mut host, &store, current_undone, 5, MutationKind::Redo);
     assert_eq!(redone.root(), ab.root());
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 6);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 6);
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     assert_eq!(host.binding().unwrap().root(), redone.root());
     assert!(!host.is_dirty());

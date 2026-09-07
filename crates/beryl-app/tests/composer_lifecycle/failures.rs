@@ -8,6 +8,8 @@ use syndic_storage::{
     DraftHistoricalRootSelectionIntentV1,
 };
 
+use beryl_app::composer_host::{ComposerHostFlushCapture, ComposerHostFlushState};
+
 use super::{
     base, captured_flush, captured_flush_with_cancellation, composer, lifecycle_common as common,
     publication, started_flush,
@@ -17,13 +19,13 @@ use super::{
 fn publication_not_committed_cuts_once_and_rearms_for_an_explicit_attempt() {
     let (_home, mut store, storage, thread) = base::fixture("not-committed", 51);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 52, 53);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 52, 53);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 2);
     host.test_arm_publication_before_execute_fault(move |store, storage| {
-        base::bump_home_revision(storage, store, 54);
+        base::bump_home_revision(storage.clone(), store, 54);
     });
 
     assert_eq!(
@@ -44,18 +46,18 @@ fn publication_not_committed_cuts_once_and_rearms_for_an_explicit_attempt() {
 fn durable_base_conflict_is_an_exact_terminal_cut() {
     let (_home, mut store, storage, thread) = base::fixture("durable-conflict", 61);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let selector = common::selector(storage, &store, thread);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let selector = common::selector(storage.clone(), &store, thread);
     let competing = {
-        let (mut competitor, empty) = composer::activated(storage, &store, thread, 64, 65);
+        let (mut competitor, empty) = composer::activated(storage.clone(), &store, thread, 64, 65);
         composer::commit_text(&mut competitor, &store, empty, 3, 0, 0, "z", 1, 1)
     };
-    let (mut host, empty) = composer::activated(storage, &store, thread, 62, 63);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 62, 63);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 2);
     host.test_arm_publication_before_execute_fault(move |store, storage| {
-        common::publish_binding(store, storage, selector, competing, 66, 66);
+        common::publish_binding(store, storage.clone(), selector, competing, 66, 66);
     });
 
     assert_eq!(
@@ -71,15 +73,15 @@ fn durable_base_conflict_is_an_exact_terminal_cut() {
 fn session_disposal_is_an_exact_terminal_cut() {
     let (_home, mut store, storage, thread) = base::fixture("session-disposed", 71);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let selector = common::selector(storage, &store, thread);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 72, 73);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let selector = common::selector(storage.clone(), &store, thread);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 72, 73);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 2);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 2);
     host.test_arm_publication_before_execute_fault(move |store, storage| {
-        common::publish_binding(store, storage, selector, dirty, 80, 80);
-        common::dispose_binding(store, storage, dirty, 81);
+        common::publish_binding(store, storage.clone(), selector, dirty, 80, 80);
+        common::dispose_binding(store, storage.clone(), dirty, 81);
     });
 
     assert_eq!(
@@ -95,16 +97,16 @@ fn session_disposal_is_an_exact_terminal_cut() {
 fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
     let (_home, mut store, storage, thread) = base::fixture("identity", 81);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let selector = common::selector(storage, &store, thread);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 82, 83);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let selector = common::selector(storage.clone(), &store, thread);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 82, 83);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 84);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 84);
     let competing = common::publication_request(selector, dirty, 84, 85);
-    let source = common::capture_source(&store, storage, competing);
+    let source = common::capture_source(&store, storage.clone(), competing);
     host.test_arm_publication_before_execute_fault(move |store, storage| {
-        let _ = common::publish_source(store, storage, source, competing);
+        let _ = common::publish_source(store, storage.clone(), source, competing);
     });
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
@@ -114,15 +116,15 @@ fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("reconciliation-collision", 91);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 92, 93);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 92, 93);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
     let cancellation = CommandCancellation::new();
     let _ = captured_flush_with_cancellation(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         flush,
         94,
@@ -148,7 +150,7 @@ fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
     };
     composer::direct_adopt(
         &store,
-        storage,
+        storage.clone(),
         DraftHistoricalRootSelectionIntentV1::new(
             DraftEditorCandidateActivationBindingV1::from_head(&session),
             composer::operation_id(95),
@@ -168,11 +170,11 @@ fn ambiguous_publication_reconciliation_stays_pending_then_cuts_exactly() {
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("reconciliation-exact", 101);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 102, 103);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 102, 103);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
-    let _ = captured_flush(&mut host, &store, assets, &seals, flush, 104);
+    let _ = captured_flush(&mut host, &store, assets.clone(), &seals, flush, 104);
     host.test_arm_publication_before_execute_fault(move |_, _| {
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     });
@@ -184,7 +186,11 @@ fn ambiguous_publication_reconciliation_stays_pending_then_cuts_exactly() {
     assert_eq!(host.publication_custody_count(), 1);
     assert_eq!(
         host.advance_flush(&store, flush).unwrap(),
-        ComposerHostFlushAdvance::Satisfied(ComposerHostFlushPurpose::Submission)
+        ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+    );
+    assert_eq!(
+        crate::authenticate_flush(&mut host, &store, assets.clone(), &seals, flush),
+        ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission)
     );
     assert_eq!(host.lifecycle_diagnostics().barriers(), 0);
     assert_eq!(host.publication_custody_count(), 0);

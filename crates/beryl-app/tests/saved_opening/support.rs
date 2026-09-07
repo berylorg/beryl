@@ -2,8 +2,8 @@ use beryl_app::{
     composer_host::{
         ComposerHostBinding, ComposerHostFlushAdmission, ComposerHostFlushAdvance,
         ComposerHostFlushCapture, ComposerHostFlushPurpose, ComposerHostFlushState,
-        ComposerHostFlushTicket, ComposerHostSubmissionAdvance, ComposerHostSubmissionRequest,
-        ComposerHostSubmissionTicket, SyndicComposerHost,
+        ComposerHostFlushTicket, ComposerHostSubmissionAdvance, ComposerHostSubmissionError,
+        ComposerHostSubmissionRequest, ComposerHostSubmissionTicket, SyndicComposerHost,
     },
     composer_marker_seal::DraftMarkerSealService,
 };
@@ -168,18 +168,24 @@ impl Fixture {
         ticket: ComposerHostSubmissionTicket,
         operation: u64,
     ) -> ComposerHostSubmissionAdvance {
-        self.host
-            .advance_submission(
-                &self.store,
-                ticket,
-                self.assets.clone(),
-                &self.seals,
-                composer::operation_id(operation),
-                None,
-                SyndicTimestamp::from_unix_millis(operation),
-                &CommandCancellation::new(),
-            )
-            .unwrap()
+        self.try_advance_submission(ticket, operation).unwrap()
+    }
+
+    pub fn try_advance_submission(
+        &mut self,
+        ticket: ComposerHostSubmissionTicket,
+        operation: u64,
+    ) -> Result<ComposerHostSubmissionAdvance, ComposerHostSubmissionError> {
+        self.host.advance_submission(
+            &self.store,
+            ticket,
+            self.assets.clone(),
+            &self.seals,
+            composer::operation_id(operation),
+            None,
+            SyndicTimestamp::from_unix_millis(operation),
+            &CommandCancellation::new(),
+        )
     }
 }
 

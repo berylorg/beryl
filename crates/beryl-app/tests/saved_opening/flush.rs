@@ -140,7 +140,8 @@ fn a_later_edit_requires_real_publication_and_new_saved_authentication() {
         1,
     );
     assert!(fixture.host.is_dirty());
-    assert!(fixture.host.autosave_timer().is_some());
+    assert!(fixture.host.autosave_timer().is_none());
+    assert_eq!(fixture.host.lifecycle_diagnostics().barriers(), 1);
     assert_eq!(
         fixture.host.advance_flush(&fixture.store, flush).unwrap(),
         ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)

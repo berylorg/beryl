@@ -86,3 +86,15 @@ The Operator subsequently authorized temporary and obsolete directory removal fo
 of the thread. A guarded retry against that exact path was still rejected by automatic approval
 review with `blocked by policy`; the directory remains. This is a tool-policy restriction rather
 than missing Operator authorization, and it does not block independent implementation work.
+
+## AM-008: Distinct Mounted-Test Support Modules
+
+Implemented and accepted on 2026-09-07 in Phase 307. The native-lineage helper module now uses
+the behavior-named `native_lineage_support` alias, while slot fixture support retains `support`.
+Both helpers and their consumers remain; the mounted target compiles with `test-faults`.
+The baseline correctness estimate remains zero, with no line-reduction credit claimed.
+
+The [opening integration evidence](../../failures/pristine-editor-publication.md) records the
+52-case integrated pass, including four selected native-lineage cases, targeted formatting and
+independent source/test review. Nine other mounted scenarios were excluded from that focused run;
+this wiring correction does not certify their behavior or accept later close phases.

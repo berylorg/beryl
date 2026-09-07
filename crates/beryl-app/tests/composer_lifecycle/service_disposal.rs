@@ -12,19 +12,22 @@ use super::{base, composer, publication};
 fn service_disposal_releases_changed_marker_flight_and_all_host_custody() {
     let (_home, mut store, storage, thread) = base::fixture("service-disposal-flight", 220);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let asset = publication::publish_image_asset(&store, assets, b"service-disposal");
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 221, 222);
+    let asset = publication::publish_image_asset(&store, assets.clone(), b"service-disposal");
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 221, 222);
     let edited = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let undone = composer::select_history(&mut host, &store, edited, 2, MutationKind::Undo);
-    let marker = publication::insert_published_marker(&mut host, &store, undone, 3, asset).0;
+    let marker = publication::insert_published_marker_with_readiness(
+        &mut host, &store, &storage, undone, 3, asset,
+    )
+    .0;
     assert_eq!(host.test_last_settlement_identity_custody_count(), 3);
     let timer = host.autosave_timer().unwrap();
     let ticket = match host
         .fire_autosave(
             &store,
             timer,
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(4),
             Some(publication::authority(223)),
@@ -61,13 +64,21 @@ fn service_disposal_releases_changed_marker_flight_and_all_host_custody() {
         ComposerHostAutosaveAdvance::Stale
     );
 
-    let (mut successor, empty) = composer::activated(storage, &store, thread, 224, 225);
-    let marker = publication::insert_published_marker(&mut successor, &store, empty, 5, asset).0;
+    let (mut successor, empty) = composer::activated(storage.clone(), &store, thread, 224, 225);
+    let marker = publication::insert_published_marker_with_readiness(
+        &mut successor,
+        &store,
+        &storage,
+        empty,
+        5,
+        asset,
+    )
+    .0;
     let successor_ticket = match successor
         .fire_autosave(
             &store,
             successor.autosave_timer().unwrap(),
-            assets,
+            assets.clone(),
             &seals,
             composer::operation_id(6),
             Some(publication::authority(226)),

@@ -8,12 +8,20 @@ fn autosave_reconciliation_ignores_late_cancellation_and_converges_exact_new() {
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("autosave-late-cancel", 221);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = publication::service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = composer::activated(storage, &store, thread, 222, 223);
+    let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 222, 223);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let timer = host.autosave_timer().unwrap();
     let cancellation = CommandCancellation::new();
-    let ticket = captured_autosave(&mut host, &store, assets, &seals, timer, 224, &cancellation);
+    let ticket = captured_autosave(
+        &mut host,
+        &store,
+        assets.clone(),
+        &seals,
+        timer,
+        224,
+        &cancellation,
+    );
     host.test_arm_publication_before_execute_fault(move |_, _| {
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     });

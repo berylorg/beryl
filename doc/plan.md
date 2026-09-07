@@ -3,8 +3,8 @@
 The earlier code simplification and behavior-based naming batch is complete. The Operator has
 accepted using the [complete simplification audit](audits/code-simplification/report.md) selectively
 within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
-has resumed implementation; host request sequencing and submission quiescence progress are now
-accepted. Already-durable composer integration acceptance is the next bounded phase.
+has resumed implementation; host request sequencing, submission quiescence and already-durable
+composer integration are accepted. Exact close-gate release is the next bounded phase.
 The Operator authorizes continuous implementation until a blocker requires attention, with a
 commit after each accepted phase. Temporary and obsolete directory cleanup is authorized for
 the remainder of this thread; preserve unrelated work and verify exact cleanup targets.
@@ -17,8 +17,7 @@ targets, and completing every proposal is not a rework completion gate. Before a
 rework slice, inspect the relevant findings against current source and owning target docs; the audit
 describes a frozen baseline and does not establish that a finding still applies after later work.
 
-Complete the retained composer integration acceptance gaps, then exact close-gate release and
-resident-preserving close-flush acceptance in the phases below.
+Complete exact close-gate release and resident-preserving close-flush acceptance in the phases below.
 Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
 Include a simplification within an existing phase only when it serves that phase's same acceptance
 boundary and cannot be independently implemented, verified, reviewed, or resumed. Otherwise derive
@@ -56,11 +55,10 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-The earlier cleanup batch closure and composer request/wait prerequisites are accepted. Preserve the compiled, unaccepted
-composer implementation and its explicit verification gaps below. Use the smallest implementation
+The earlier cleanup batch closure and composer opening/request/wait prerequisites are accepted.
+Preserve the retained close implementation and its explicit verification gaps below. Use the smallest implementation
 that fulfills the high-level feature contracts; ordinary close mounting, bootstrap and other later
-boundaries retain their own acceptance gates. Phase 307 still requires final integration verification
-and its own completion review.
+boundaries retain their own acceptance gates.
 
 The naming policy is in `AGENTS.md`. Historical rework snapshots and immutable investigation
 artifacts remain historical material. Update live source references without rewriting historical
@@ -69,71 +67,14 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 318: Yield While Mounted Submission Awaits Editor Quiescence (finished)
+# Phase 307: Integrate Already-Durable Composer Openings (finished)
 
-Submission now yields through one retained timer, prepares the newest settled same-editor state,
-and fences cancellation, stale callbacks, replacement and terminal editor errors. All 13 mounted
-submission cases, both locked app library configurations, formatting and independent semantic
-review passed. [Quiescence evidence](failures/mounted-submission-quiescence.md) records exact
-verification and the corrected empty-rejection assertion. No newly owned temporary resources remain.
-
-# Phase 307: Integrate Already-Durable Composer Openings (pending)
-
-Use Phase 304's exact correspondence for clean host state, flush, final disposal, and submission
-under [composer behavior](features/composer/design.md) and
-[the app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md).
-
-- Keep the host's dirty presentation local while recognizing an unchanged opening as clean. Derive
-  it from validated host state without introducing another request or lifecycle owner.
-- Route clean flush through existing off-GUI capture/advance work and exact storage authentication
-  before satisfying its barrier. Preserve pending publication custody and invalidate captured
-  readiness after later adoption, selector drift, or replacement.
-- Adapt the native-lineage disposal caller to perform its capture and storage advancement in
-  background work with exact selection/flush completion fencing and existing custody. Remove its
-  fabricated clean-disposal shortcut without moving storage work onto the GUI thread.
-- Submission retains the exact live candidate and durable selector separately, materializes the
-  authenticated durable root, and uses accepted storage contribution/status/reconciliation paths.
-  Final disposal reuses the accepted ordinary command and its normalized opening receipt.
-- Verify untouched empty and populated drafts, reopened nonzero generations, no publication effects
-  from clean flush, submission, final disposal, later edits/history, stale capture rejection, and
-  focused lifecycle regressions. Run the affected locked check, formatting, and independent semantic
-  review before acceptance.
-
-Readiness confirmed that local clean-state shortcuts in `begin_flush` and `flush_state` must defer
-readiness until the existing worker path authenticates storage. No new service or persisted record
-is required. The native-lineage adapter audit also identified its clean shortcut and synchronous
-disposal advancement; those same-flow integration corrections are included above. Request numbering
-is an earlier prerequisite; exact close-gate release retains its later acceptance boundary.
-
-Resumed checkpoint: the host integration and native-lineage adapter are implemented but unaccepted.
-The adapter runs capture, advancement, and released-widget completion on one background task,
-preserving exact selection/flush fencing and real widget-release proof. Drop uses detached bounded
-cleanup rather than synchronously taking the storage-held slot lock. The locked app library check,
-targeted formatting, and source diff check passed. This phase remains unaccepted.
-
-- All seven `saved_opening` and 28 `composer_lifecycle` cases pass after correcting test handle
-  ownership, explicit clean authentication, marker-readiness setup, flush timer expectations and
-  typed pre-admission rejection assertions; stale-capture tests retain durable-state and exact
-  service-custody release checks.
-- Audit AM-008's mounted-test module wiring is corrected. Three existing native-lineage mounted
-  cases and a new actual disposal-reconciliation/drop case pass, including real widget release,
-  eventual weak-service release, exact terminal session state and unchanged durable draft.
-- Independent source review found no blocker in clean capture, submission fencing or native
-  disposal custody. The 32-step cleanup bounds advancement attempts rather than promising terminal
-  completion; installed ambiguous commands remain independently owned by HomeStore. Final review
-  of stable test changes and complete regression evidence remains pending.
-- All 13 `mounted_composer_submission` cases pass after the accepted request-sequence and
-  quiescence prerequisites, including the eight existing scenarios and five new waiting/cancellation
-  regressions. Empty rejection follows the typed pre-acceptance `Empty` error through the ordinary
-  `Failed` path; corrected assertions prove unchanged durable/editor state and released custody.
-
-The locked app library check and targeted formatting pass. All 39 saved-opening, lifecycle and
-selected native-lineage cases passed together in the final rerun. Bounded timed-out test processes,
-exact residual fixture homes and temporary diagnostics from that verification were reclaimed.
-AP-007/AM-007 request sequencing and submission-start quiescence are accepted. Run the integrated
-regression selection against those prerequisites and complete independent review of the retained
-source and test changes before accepting this phase. Optional fixture consolidation and other audit reductions
-remain unselected.
+Clean openings now use exact storage authentication through flush, submission and normalized
+disposal. Native disposal preserves off-GUI execution, actual widget release and independent
+ambiguous-command custody. All 52 selected integration cases, targeted formatting and independent
+semantic review passed; locked app checks cover the unchanged production source.
+[Opening integration evidence](failures/pristine-editor-publication.md) records the verification
+boundary and retained test repairs, including audit AM-008. Broader close acceptance remains pending.
 
 # Phase 306: Consolidate Exact Close-Gate Release (pending)
 
@@ -171,7 +112,8 @@ editor before a subsequent session failure can be known; the
 Ordinary OS-window close, active-work coordination, session removal, and application Exit remain
 outside this prerequisite and in their owning later slices.
 
-Resume after Phases 304, 307, 305, and 306. The resident close implementation and eight acceptance tests
+Resume after Phase 306; storage correspondence, host integration, request sequencing and submission
+quiescence are accepted. The resident close implementation and eight acceptance tests
 are retained. The previous locked app library check and targeted formatting passed, and semantic
 source review completed, but focused acceptance remained failing and the planned regression
 targets have not run. The [close finding](failures/main-window-close-readiness.md) records the

@@ -1,4 +1,10 @@
-use beryl_app::composer_host::{ComposerHostSubmissionAdvance, ComposerHostSubmissionStage};
+use beryl_app::{
+    composer_host::{
+        ComposerHostServiceDisposalCompletion, ComposerHostSubmissionAdvance,
+        ComposerHostSubmissionError, ComposerHostSubmissionStage,
+    },
+    input_admission::InputAdmissionBuildError,
+};
 use beryl_model::{SyndicDraftId, SyndicItemId, SyndicTurnId};
 use syndic_storage::{
     DraftEditorCandidateSessionReadOutcomeV1, DraftHistoricalRootDirectionV1,
@@ -156,10 +162,23 @@ fn a_later_adoption_after_opening_capture_cannot_clear_the_newer_candidate() {
     };
     assert!(later.newest_candidate_generation() > resident.candidate().candidate_generation());
     let revision = fixture.store.home_revision().unwrap();
+    assert!(matches!(
+        fixture.try_advance_submission(ticket, 190),
+        Err(ComposerHostSubmissionError::Admission(
+            InputAdmissionBuildError::FirstAcceptanceCollision
+        ))
+    ));
+    assert_eq!(fixture.binding(), resident);
+    assert_eq!(fixture.host.test_submission_acceptance(), Some(acceptance));
+    let diagnostics = fixture.host.submission_diagnostics();
+    assert!(diagnostics.pending());
     assert_eq!(
-        fixture.advance_submission(ticket, 190),
-        ComposerHostSubmissionAdvance::NotCommitted
+        diagnostics.stage(),
+        Some(ComposerHostSubmissionStage::Accepting)
     );
+    assert_eq!(diagnostics.retained_roots(), 1);
+    assert_eq!(diagnostics.retained_materializations(), 1);
+    assert!(!diagnostics.command_attempted());
     assert_eq!(fixture.store.home_revision().unwrap(), revision);
     assert_eq!(fixture.current(), durable);
     assert_eq!(
@@ -171,7 +190,7 @@ fn a_later_adoption_after_opening_capture_cannot_clear_the_newer_candidate() {
                 resident.candidate().session_id()
             )
             .unwrap(),
-        DraftEditorCandidateSessionReadOutcomeV1::Active(later)
+        DraftEditorCandidateSessionReadOutcomeV1::Active(later.clone())
     );
     assert!(
         fixture
@@ -194,6 +213,39 @@ fn a_later_adoption_after_opening_capture_cannot_clear_the_newer_candidate() {
             )
             .unwrap()
             .is_none()
+    );
+    assert_eq!(
+        fixture
+            .host
+            .dispose_composer_service(&fixture.store)
+            .unwrap(),
+        ComposerHostServiceDisposalCompletion::Disposed
+    );
+    assert!(fixture.host.binding().is_none());
+    assert!(fixture.host.test_submission_acceptance().is_none());
+    let diagnostics = fixture.host.submission_diagnostics();
+    assert!(!diagnostics.pending());
+    assert_eq!(diagnostics.stage(), None);
+    assert_eq!(diagnostics.retained_roots(), 0);
+    assert_eq!(diagnostics.retained_materializations(), 0);
+    assert!(!diagnostics.command_attempted());
+    assert_eq!(fixture.host.publication_custody_count(), 0);
+    assert_eq!(
+        fixture.advance_submission(ticket, 190),
+        ComposerHostSubmissionAdvance::Stale
+    );
+    assert_eq!(fixture.store.home_revision().unwrap(), revision);
+    assert_eq!(fixture.current(), durable);
+    assert_eq!(
+        fixture
+            .storage
+            .draft_editor_candidate_session(
+                &fixture.store,
+                resident.candidate().draft_id(),
+                resident.candidate().session_id(),
+            )
+            .unwrap(),
+        DraftEditorCandidateSessionReadOutcomeV1::Active(later)
     );
 }
 

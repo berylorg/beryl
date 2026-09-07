@@ -3,7 +3,7 @@
 #[path = "syndic_composer_history/support.rs"]
 mod composer_support;
 #[path = "native_lineage_gui/support.rs"]
-mod support;
+mod native_lineage_support;
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
@@ -1009,7 +1009,7 @@ fn native_lineage_late_flights_drain_after_route_cancellation(cx: &mut gpui::Tes
     ));
     let binding = host.binding().unwrap();
     let binding = composer_support::commit_text(&mut host, &store, binding, 93, 0, 0, "a", 1, 1);
-    let binding = support::insert_published_marker_with_readiness(
+    let binding = native_lineage_support::insert_published_marker_with_readiness(
         &mut host,
         &store,
         &storage,
@@ -1237,6 +1237,164 @@ fn native_lineage_late_settlement_drains_after_actual_mount_and_service_drop(
 }
 
 #[gpui::test]
+fn native_lineage_disposal_reconciliation_drains_after_actual_mount_and_service_drop(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(ensure_text_input_bindings);
+    let fixture = Fixture::new("native-lineage-disposal-drop", 115);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let durable = fixture.current_draft(thread);
+    let faults = fixture.faults.clone();
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let store = Arc::new(store);
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 116, 117, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let resident = host.binding().unwrap();
+    host.test_arm_publication_before_execute_fault(move |_, _| {
+        faults.fail_next(beryl_home_store::test_faults::FaultPoint::AfterCommitBeforePersist);
+    });
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage.clone(), marker_authority)
+            .unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        store.clone(),
+        slot,
+    ));
+    let weak_service = Arc::downgrade(&service);
+    let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
+    control
+        .install_route_for_test(
+            thread,
+            thread,
+            BindingRevision::new(1).unwrap(),
+            NativeLineageOperation::Resume,
+            1,
+            true,
+        )
+        .unwrap();
+    let mounted_service = service.clone();
+    let (root, mut cx) = cx.add_window_view(|window, cx| {
+        let mount = cx.new(|mount_cx| {
+            MainWindowConversationComposerMount::new(
+                mounted_service,
+                Box::new(|selection| {
+                    MainWindowConversationComposerConfig::new(
+                        selection,
+                        widget_config(
+                            selection.binding().range_binding(),
+                            selection.binding().presentation_generation(),
+                        ),
+                    )
+                    .map_err(|error| error.to_string())
+                }),
+                marker_seals,
+                submission_source(),
+                window,
+                mount_cx,
+            )
+            .unwrap()
+        });
+        NativeLineageMountRoot { mount }
+    });
+    drive(&mut cx, 16);
+    let mount = root.read_with(cx, |root, _| root.mount.clone());
+    cx.update(|_, app| {
+        mount.update(app, |mount, mount_cx| {
+            mount.attach_native_lineage_recovery(control.clone(), mount_cx)
+        })
+    });
+    wait_for_native_lineage_prompt(&mut cx, &mount, "disposal reconciliation drop prompt");
+    assert!(matches!(
+        cx.update(|window, app| mount.update(app, |mount, mount_cx| {
+            mount.begin_disposal(window, mount_cx)
+        }))
+        .unwrap(),
+        MainWindowConversationComposerMountFlushStart::Started(_)
+    ));
+    for _ in 0..64 {
+        cx.update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.advance_disposal(window, mount_cx)
+            })
+        })
+        .unwrap();
+        drive(&mut cx, 2);
+        if mount.read_with(cx, |mount, _| {
+            mount
+                .test_native_lineage_disposal_diagnostics()
+                .mount_last_disposal_advance
+        }) == Some(
+            beryl_app::main_window::MainWindowComposerDisposalAdvance::ReconciliationPending,
+        ) {
+            break;
+        }
+    }
+    let pending = mount.read_with(cx, |mount, _| {
+        mount.test_native_lineage_disposal_diagnostics()
+    });
+    assert_eq!(
+        pending.mount_last_disposal_advance,
+        Some(beryl_app::main_window::MainWindowComposerDisposalAdvance::ReconciliationPending)
+    );
+    assert!(pending.mount_release_present, "{pending:?}");
+    assert!(!pending.mount_contribution_present, "{pending:?}");
+    assert!(pending.mount_flush_ticket_present, "{pending:?}");
+    assert!(pending.slot_disposal_flushing, "{pending:?}");
+    assert_eq!(pending.host_barriers, 1, "{pending:?}");
+
+    cx.update(|window, _| window.remove_window());
+    drop(mount);
+    drop(root);
+    cx.cx.update(|_| ());
+    cx.run_until_parked();
+    drop(service);
+    for _ in 0..64 {
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        if weak_service.upgrade().is_none() {
+            break;
+        }
+    }
+    assert!(weak_service.upgrade().is_none());
+    let syndic_storage::DraftEditorCandidateSessionReadOutcomeV1::Disposed(terminal) = storage
+        .draft_editor_candidate_session(
+            &store,
+            resident.candidate().draft_id(),
+            resident.candidate().session_id(),
+        )
+        .unwrap()
+    else {
+        panic!("detached disposal did not retain the exact terminal session");
+    };
+    assert_eq!(terminal.newest_root(), resident.root());
+    assert_eq!(terminal.newest_history(), durable.draft().history());
+    assert!(terminal.disposal_operation_id().is_some());
+    assert_eq!(
+        storage
+            .current_draft(
+                &store,
+                thread,
+                syndic_storage::SyndicPointReadLimit::new(65_536).unwrap()
+            )
+            .unwrap()
+            .unwrap(),
+        durable
+    );
+}
+
+#[gpui::test]
 fn native_lineage_prompt_survives_disposal_admission_and_advance_failures(
     cx: &mut gpui::TestAppContext,
 ) {
@@ -1344,8 +1502,20 @@ fn native_lineage_prompt_survives_disposal_admission_and_advance_failures(
             mount.advance_disposal(window, mount_cx)
         })
     });
-    assert!(advance_error.is_err());
-    drive(&mut cx, 2);
+    assert!(matches!(
+        advance_error.unwrap(),
+        MainWindowConversationComposerMountDisposalAdvance::Retained(_)
+    ));
+    for _ in 0..64 {
+        drive(&mut cx, 1);
+        if mount.read_with(cx, |mount, _| {
+            mount
+                .test_native_lineage_mount_diagnostics()
+                .failure_present
+        }) {
+            break;
+        }
+    }
     assert_native_lineage_disposal_failure_preserved(
         &mut cx,
         &mount,

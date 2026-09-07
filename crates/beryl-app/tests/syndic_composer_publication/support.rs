@@ -87,6 +87,44 @@ pub fn insert_two_markers(
     )
 }
 
+pub fn insert_two_markers_with_readiness(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    binding: ComposerHostBinding,
+    operation: u64,
+    assets: [AssetId; 2],
+) -> ComposerHostBinding {
+    let point = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects);
+    let first = InlineObjectId::new(0x1001);
+    let first_after = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::after(InlineObjectNeighbor::new(first, InlineObjectOrder::new(1))),
+    );
+    let binding = insert_marker_at(
+        host,
+        store,
+        Some(storage),
+        binding,
+        operation,
+        point,
+        first,
+        1,
+        assets[0],
+    );
+    insert_marker_at(
+        host,
+        store,
+        Some(storage),
+        binding,
+        operation + 1,
+        first_after,
+        InlineObjectId::new(0x1002),
+        2,
+        assets[1],
+    )
+}
+
 pub fn insert_published_marker(
     host: &mut SyndicComposerHost,
     store: &HomeStore,

@@ -14,16 +14,20 @@ fn marker_noncommit_ends_each_autosave_stage_once_and_rearms() {
         let seed = 10_u8.wrapping_add((index as u8).wrapping_mul(12));
         let (_home, mut store, storage, thread) = base::fixture("marker-autosave-noncommit", seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let asset = publication::publish_image_asset(&store, assets, &[seed; 16]);
-        let seals = publication::service(&store, storage, assets, 1, 1);
-        let (mut host, empty) = composer::activated(storage, &store, thread, seed + 1, seed + 2);
-        let _ = publication::insert_published_marker(&mut host, &store, empty, 1, asset).0;
+        let asset = publication::publish_image_asset(&store, assets.clone(), &[seed; 16]);
+        let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+        let (mut host, empty) =
+            composer::activated(storage.clone(), &store, thread, seed + 1, seed + 2);
+        let _ = publication::insert_published_marker_with_readiness(
+            &mut host, &store, &storage, empty, 1, asset,
+        )
+        .0;
         let timer = host.autosave_timer().unwrap();
         let ticket = match host
             .fire_autosave(
                 &store,
                 timer,
-                assets,
+                assets.clone(),
                 &seals,
                 composer::operation_id(2),
                 Some(publication::authority(seed + 3)),
@@ -42,7 +46,7 @@ fn marker_noncommit_ends_each_autosave_stage_once_and_rearms() {
             );
         }
         seals.test_arm_before_command_fault(move |store| {
-            base::bump_home_revision(storage, store, seed + 4)
+            base::bump_home_revision(storage.clone(), store, seed + 4)
         });
         assert_eq!(
             host.advance_autosave(&store, ticket).unwrap(),
@@ -65,16 +69,20 @@ fn marker_noncommit_ends_each_flush_stage_once_and_rearms() {
         let seed = 50_u8.wrapping_add((index as u8).wrapping_mul(12));
         let (_home, mut store, storage, thread) = base::fixture("marker-flush-noncommit", seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let asset = publication::publish_image_asset(&store, assets, &[seed; 16]);
-        let seals = publication::service(&store, storage, assets, 1, 1);
-        let (mut host, empty) = composer::activated(storage, &store, thread, seed + 1, seed + 2);
-        let _ = publication::insert_published_marker(&mut host, &store, empty, 1, asset).0;
+        let asset = publication::publish_image_asset(&store, assets.clone(), &[seed; 16]);
+        let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
+        let (mut host, empty) =
+            composer::activated(storage.clone(), &store, thread, seed + 1, seed + 2);
+        let _ = publication::insert_published_marker_with_readiness(
+            &mut host, &store, &storage, empty, 1, asset,
+        )
+        .0;
         let (flush, _) = started_flush(&mut host, ComposerHostFlushPurpose::Submission);
         let publication = match host
             .capture_flush_publication(
                 &store,
                 flush,
-                assets,
+                assets.clone(),
                 &seals,
                 composer::operation_id(2),
                 Some(publication::authority(seed + 3)),
@@ -93,7 +101,7 @@ fn marker_noncommit_ends_each_flush_stage_once_and_rearms() {
             ));
         }
         seals.test_arm_before_command_fault(move |store| {
-            base::bump_home_revision(storage, store, seed + 4)
+            base::bump_home_revision(storage.clone(), store, seed + 4)
         });
         assert_eq!(
             host.advance_flush(&store, flush).unwrap(),

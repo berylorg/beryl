@@ -274,7 +274,11 @@
 - [x] Established and independently accepted responsive submission quiescence with exact editor
   fencing, newest-state preparation and bounded waiting/cancellation, with
   [submission evidence](../../failures/mounted-submission-quiescence.md).
-- [ ] Establish [unchanged-opening durable correspondence](../../failures/pristine-editor-publication.md), clean flush and submission, and exact normal disposal before accepting resident-preserving ordinary-close flush.
+- [x] Established and independently accepted [unchanged-opening durable correspondence and host
+  integration](../../failures/pristine-editor-publication.md), clean flush and submission, normalized
+  normal disposal and native disposal custody with actual widget release.
+- [ ] Establish shared exact close-gate release and accept resident-preserving close flush before
+  mounting ordinary main-window close.
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
