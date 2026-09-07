@@ -42,23 +42,33 @@ changes; the earlier 113-test marker regression run and locked local Syndic/Home
 The accepted widget evidence, fresh readiness, and admitted target resolver prerequisites remain
 ready for production composition.
 
-# Phase 337: Preserve Persistent Sequence Split Heights (pending)
+# Phase 337: Continue Bounded Sequence Range Repairs (pending)
 
-Proposed prerequisite, awaiting Operator direction and bounded repair readiness. The long-operation
-test exposed an existing recursive split defect: a collapsed child loses its returned height when
-reattached beneath the original parent height. At fragment 129, a leaf is consequently looked up as
-an internal node. The [failure record](failures/syndic-draft-piece-split-height.md) contains the exact
-reproduction and source evidence. No tree-algorithm repair has been applied.
+The Operator approved the split-height repair and subsequent outcome/app completion. Readiness
+proved that repairing whole-fragment surgery inside one command cannot satisfy the existing
+aggregate byte ceiling for every supported tree. A canonical counterexample requires at least
+4,251,960 acquired/emitted reference bytes before record overhead. The
+[budget evidence](failures/syndic-draft-piece-range-budget.md) records both the rejected local join
+strategy and the stronger one-command lower bound. No tree-algorithm changes have been made.
 
-Establish a repair that preserves subtree heights and canonical balance under the existing
-[draft-tree contract](../crates/syndic-storage/doc/design-draft-storage.md#draft-and-root-authority)
-and V7 bounds. Verify recursive splits across the 128-child boundary, exact text and root results,
-bounded construction, and the preserved 257-fragment operation. Obtain the package-required
-independent adversarial review before accepting this prerequisite and resuming outcome verification.
+Proposed revised boundary, awaiting Operator direction and owning-design readiness: make partial
+range surgery resumable through canonical intermediate working roots and an exact remaining range
+or repair cursor. Preserve actual subtree heights, canonical occupancy and immutable reuse, and
+charge all selected reads/emissions before exceeding the existing 256-record/4,194,304-byte limits.
+Each quantum must commit authenticated progress; rejection of the same unchanged frontier is not
+continuation. Define exact cursor/receipt/head binding, replay, cancellation, corruption rejection,
+and final transition to insertion in the owning draft-storage and V7 schema authority before
+implementation. Whether the existing fields can carry that cursor remains an explicit design
+question; the plan does not authorize a format assumption.
 
-# Phase 336: Reconcile Durable Staged Build Outcomes (wip)
+Verify the [height-transition reproduction](failures/syndic-draft-piece-split-height.md), both range
+edges, UTF-8 and marker gaps, exact text/root/history results, restart and replay across partial
+repair, measured whole-quantum bounds, and the preserved 257-fragment operation. Obtain independent
+semantic and package-required adversarial review before acceptance and resumed outcome verification.
 
-Blocked after partial implementation by the separately proposed persistent split repair above.
+# Phase 336: Reconcile Durable Staged Build Outcomes (pending)
+
+Blocked after partial implementation by the approved persistent split repair above.
 The initial locked production check passed. The latest focused run excluding the separate long
 reproduction passed 5 tests and failed 3: settlement replay returns `EmptyContribution`, mixed-marker
 advance reports `InvalidGapWitness`, and a fixture expects one window where two are observed.

@@ -33,6 +33,9 @@ the existing canonical tree and bounded-construction contract. Establish repair 
 height transitions around the 128-child boundary, and rerun the unchanged long-operation test.
 Do not increase traversal limits, flatten the entire draft, or weaken the operation requirement.
 
-Implementation stopped under the Operator's technical-plan rule. The proposed prerequisite and
-blocked outcome/app integration remain in [the implementation plan](../plan.md). The staged outcome
-source and tests are preserved but unaccepted; no persistent-tree repair has been authorized yet.
+Implementation stopped under the Operator's technical-plan rule. The Operator subsequently
+authorized the bounded repair and continued outcome/app completion. Readiness then established
+that whole-fragment surgery cannot meet the full declared
+[range-repair budget](syndic-draft-piece-range-budget.md). The proposed resumable repair and blocked
+integration remain in [the implementation plan](../plan.md). The staged outcome source and tests
+are preserved but unaccepted.
