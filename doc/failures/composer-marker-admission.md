@@ -1,20 +1,17 @@
 # Composer Marker Admission
 
-## Confirmed Gap
+## Invalidated App-Only Assumption
 
-GUI marker insertion reaches draft staging without the required marker writer admission. This
-predates the recovery-view switching change and is not resolved by waiting for more GUI frames.
+GUI marker insertion originally reached draft staging without marker writer admission. This
+predated the recovery-view switching change and could not be resolved by waiting for more frames.
 
-The composer slot dispatches through `SyndicComposerHost::begin_mutation`, whose production path
-selects ordinary admission. The marker-readiness branch and marker-specific entry point in
-`composer_host/mutation/execution.rs` are available only with `test-faults`. Translation emits an
-insertion marker effect, but normal staging rejects marker effects when writer admission is absent
+The composer slot dispatched through ordinary admission, while marker readiness was available only
+with `test-faults`. Translation emitted an insertion marker effect, which normal staging rejected
+when writer admission was absent
 (`syndic-storage/src/draft_piece/staging/prepare_begin_page.rs`).
 
-All three affected mounted tests report the same owner error: draft mutation staging failed with
-an invalid staging request. They retain their expected marker counts and now report the owner
-error at the failing assertion. Their fixtures are not repaired by suppressing the error or
-extending fixed frame loops.
+Three mounted tests reported invalid staging requests. Suppressing their owner errors, changing
+expected marker counts, or extending fixed frame loops would not correct that authority gap.
 
 ## Suggested Correction
 
@@ -57,18 +54,39 @@ a second proof. Keep the retry's exact attempt exclusive and bind proof issuance
 command. Verify no-mutation retry, competing-attempt rejection, drop-to-cleanup, and real journal
 failure reconciliation through the public API.
 
-## Evidence
+## Remaining Staged Build Settlement Boundary
 
-After correcting four stale flush-test drivers, the final serial GUI run passed 32 of 35 tests,
-with zero skipped. The remaining failures are:
+Production composition exposed another unsupported handoff. The app's
+`composer_host/mutation/drive.rs::run_build_command` reads terminal operation status and discards
+the HomeStore command outcome's local-finalization capability. That status read does not resolve
+writer progress or release and reclaim settled writer authority.
 
-- `mount_retains_one_coherent_contribution_until_exact_publish_and_disposal`
-- `mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits`
-- `recoverable_mounted_autosave_releases_rearms_and_does_not_spin`
+Syndic's public `draft_piece/read.rs::reconcile_draft_piece_command_outcome` performs those actions
+but unconditionally requests original fragment pages from ordinal one. The bounded app owns
+durable staged authority, not a full fragment inventory. `draft_piece_operation_status_page`
+requires actual fragments while fragments remain; an empty callback cannot satisfy it. The
+durable staging window exposes fragments only under `test-faults`, and no production authenticated
+fragment reader or endpoint-based reconciliation boundary was found.
 
-Run `b5a20fd7-9b8f-4adc-bb5f-3d9d29723a9e` used `cargo +stable --config .cargo/local.toml nextest run
---locked -p beryl-app --features test-faults --test main_window_composer_mount
---test pending_composer_activation --test main_window_composer_slot --test-threads 1 --no-fail-fast`
-with process-local `RUST_MIN_STACK=16777216` and TMP/TEMP in the ignored task directory. Independent
-semantic review confirmed both the unchanged assertions and the admission gap. No production
-marker or execution code changed during this verification.
+The proposed correction is a bounded Syndic outcome reconciliation API authenticated by durable
+staging/build authority and its exact endpoint. It must consume local finalization, resolve writer
+progress, release successful settlement, and establish noncommit cleanup while retaining unresolved
+custody. Do not substitute status reads, fabricate fragments, buffer the full edit, or add unrelated
+global cleanup to compensate. Independent review and root inspection confirmed the public gap;
+implementation stopped under the Operator's technical-plan rule.
+
+## Evidence And Status
+
+The typed-refusal prerequisite is accepted in `a50186a`, with 113 prior marker regressions and 41
+final submission, assignment and cleanup cases passing. The resumed app implementation remains
+uncommitted and unaccepted. It adds bounded evidence/restart, AssetId-only fresh metadata, target
+resolution, shared typed diagnostics, and exact-operation cleanup. Existing marker assertions and
+the 256-byte fixture limit remain intact; compact fresh metadata fixed the surface-capacity failure.
+
+Combined run `30310164` passed 35 of 37 tests across `composer_marker_evidence`,
+`main_window_composer_mount`, `main_window_composer_slot`, and `pending_composer_activation`.
+The latest corrected-fixture run `083f9ade` passed one of three focused tests. Evidence cancellation
+passes; the public success case fails with `Restoration(InvalidRoot)`, and mounted coherence remains
+at `Retained(Progress(CaptureRequired))`. These remain acceptance failures to investigate after the
+public settlement boundary is corrected; they do not replace the independent API-gap evidence.
+All runs used locked local Cargo configuration and serial test execution. Task processes exited.
