@@ -167,6 +167,8 @@ fn prepare_assignment(
             return Err(AssignmentMutationError::Authority);
         }
         let index = prepare_empty_draft_marker_admission_index_successor_v1(
+            reader,
+            head.owner(),
             head.source_root(),
             head.target_root(),
             prior_receipt.retained_predecessor_nodes(),
@@ -225,7 +227,7 @@ fn finish_prepared_assignment(
     command_limit: AssignmentCommandLimit,
 ) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
     let source_closure =
-        assignment_source_closure(&prior_head, assignment.source_label, assignment.asset_id);
+        assignment_source_closure(&prior_head, assignment.group, assignment.asset_id);
     let target_closure = assignment_target_closure(&prior_head, assignment.assigned_label);
     finish_assignment_transition(
         capacity,
@@ -432,6 +434,8 @@ fn assignment_head(
         index.source_root(),
         index.target_root(),
         prior.occurrence_commitment(),
+        prior.allocating_occurrence_count(),
+        prior.occurrence_count(),
         index.source_root().count(),
         (!ready).then_some(continuation),
         if ready {
@@ -446,12 +450,12 @@ fn assignment_head(
 
 fn assignment_source_closure(
     head: &DraftMarkerAdmissionHeadV1,
-    label: ImageLabelOrdinal,
+    group: crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1,
     asset: AssetId,
 ) -> Box<[u8]> {
     let mut bytes = Vec::with_capacity(120);
     bytes.extend_from_slice(head.digest().as_bytes());
-    bytes.extend_from_slice(&label.get().to_le_bytes());
+    bytes.extend_from_slice(&group.canonical_bytes());
     bytes.extend_from_slice(&asset.digest());
     bytes.extend_from_slice(&asset.length().get().to_le_bytes());
     bytes.into_boxed_slice()

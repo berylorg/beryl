@@ -2,12 +2,15 @@
 
 use std::num::NonZeroU64;
 
-use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
+use beryl_model::{
+    AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
+};
 use syndic_storage::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS,
     DRAFT_MARKER_ADMISSION_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_HEADS,
     DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT, DraftEditorCandidateSessionIdV1,
-    DraftMarkerAdmissionChildV1, DraftMarkerAdmissionCodecFixtureV1,
+    DraftMarkerAdmissionAssignmentGroupV1, DraftMarkerAdmissionChildV1,
+    DraftMarkerAdmissionCodecFixtureV1,
     DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionNodeIdV1,
     DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodeV1,
     DraftMarkerAdmissionOperationIdV1, DraftMarkerAdmissionOwnerV1,
@@ -36,6 +39,16 @@ fn label(value: u64) -> ImageLabelOrdinal {
     ImageLabelOrdinal::new(value).unwrap()
 }
 
+fn accepted_evidence(label: ImageLabelOrdinal, asset: AssetId) -> DraftMarkerAdmissionEvidenceV1 {
+    let mut bytes = vec![0; 194];
+    bytes[0] = 1;
+    bytes[145..153].copy_from_slice(&label.get().to_le_bytes());
+    bytes[153] = asset.version() as u8;
+    bytes[154..186].copy_from_slice(&asset.digest());
+    bytes[186..].copy_from_slice(&asset.length().get().to_le_bytes());
+    DraftMarkerAdmissionEvidenceV1::new(bytes).unwrap()
+}
+
 fn source_leaf(id: u8, label_value: u64, marker: u8) -> DraftMarkerAdmissionNodeV1 {
     DraftMarkerAdmissionNodeV1::source_leaf(
         DraftMarkerAdmissionNodeKeyV1::new(
@@ -44,10 +57,10 @@ fn source_leaf(id: u8, label_value: u64, marker: u8) -> DraftMarkerAdmissionNode
             DraftMarkerAdmissionNodeIdV1::from_bytes([id; 16]),
         ),
         DraftMarkerAdmissionSourceKeyV1::new(
-            label(label_value),
+            DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label(label_value)),
             SyndicDraftMarkerId::from_bytes([marker; 16]),
         ),
-        DraftMarkerAdmissionEvidenceV1::new([id, marker].as_slice()).unwrap(),
+        accepted_evidence(label(label_value), asset(id)),
         asset(id),
     )
     .unwrap()
@@ -191,10 +204,10 @@ fn target_leaf_and_evidence_bounds_are_canonical() {
             DraftMarkerAdmissionCommandIdV1::from_bytes([12; 16]),
             NonZeroU64::MIN,
         ),
-        DraftMarkerAdmissionEvidenceV1::new([13, 14].as_slice()).unwrap(),
-        label(15),
+        accepted_evidence(label(15), asset(16)),
+        DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label(15)),
         asset(16),
-        DraftMarkerAdmissionTargetDispositionV1::Assigned(label(17)),
+        DraftMarkerAdmissionTargetDispositionV1::Assigned(label(15)),
     )
     .unwrap();
     assert!(draft_marker_admission_codec_accepts(
@@ -207,6 +220,80 @@ fn target_leaf_and_evidence_bounds_are_canonical() {
     assert_eq!(
         DraftMarkerAdmissionEvidenceV1::new(vec![0; 65_537]),
         Err(DraftMarkerAdmissionSchemaErrorV1::EvidenceLength)
+    );
+}
+
+#[test]
+fn assignment_groups_have_exact_keys_and_reject_mismatched_evidence() {
+    let preserve = DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label(0x0102));
+    assert_eq!(
+        preserve.canonical_bytes(),
+        [vec![0], 0x0102_u64.to_be_bytes().to_vec()].concat()
+    );
+
+    let allocate = DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+        SyndicThreadId::from_bytes([3; 16]),
+        label(0x0102),
+    );
+    assert_eq!(
+        allocate.canonical_bytes(),
+        [vec![1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], 0x0102_u64.to_be_bytes().to_vec()].concat()
+    );
+
+    let fresh_asset = AssetId::sha256_v1([4; 32], NonZeroU64::new(0x0102).unwrap());
+    let fresh = DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(fresh_asset);
+    assert_eq!(
+        fresh.canonical_bytes(),
+        [
+            vec![2, fresh_asset.version() as u8],
+            vec![4; 32],
+            0x0102_u64.to_be_bytes().to_vec(),
+        ]
+        .concat()
+    );
+
+    let key = DraftMarkerAdmissionNodeKeyV1::new(
+        owner(),
+        DraftMarkerAdmissionNodeKindV1::Leaf,
+        DraftMarkerAdmissionNodeIdV1::from_bytes([30; 16]),
+    );
+    assert_eq!(
+        DraftMarkerAdmissionNodeV1::source_leaf(
+            key,
+            DraftMarkerAdmissionSourceKeyV1::new(preserve, SyndicDraftMarkerId::from_bytes([31; 16])),
+            accepted_evidence(label(3), asset(30)),
+            asset(30),
+        ),
+        Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree)
+    );
+
+    let mut fresh_evidence = vec![2, fresh_asset.version() as u8];
+    fresh_evidence.extend_from_slice(&fresh_asset.digest());
+    fresh_evidence.extend_from_slice(&fresh_asset.length().get().to_le_bytes());
+    assert_eq!(fresh_evidence.len(), 42);
+    assert_eq!(
+        DraftMarkerAdmissionNodeV1::source_leaf(
+            key,
+            DraftMarkerAdmissionSourceKeyV1::new(fresh, SyndicDraftMarkerId::from_bytes([31; 16])),
+            DraftMarkerAdmissionEvidenceV1::new(fresh_evidence).unwrap(),
+            asset(30),
+        ),
+        Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree)
+    );
+    assert_eq!(
+        DraftMarkerAdmissionNodeV1::target_leaf(
+            key,
+            SyndicDraftMarkerId::from_bytes([31; 16]),
+            DraftMarkerAdmissionPageIdentityV1::new(
+                DraftMarkerAdmissionCommandIdV1::from_bytes([32; 16]),
+                NonZeroU64::MIN,
+            ),
+            accepted_evidence(label(0x0102), asset(30)),
+            preserve,
+            asset(30),
+            DraftMarkerAdmissionTargetDispositionV1::Assigned(label(4)),
+        ),
+        Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree)
     );
 }
 

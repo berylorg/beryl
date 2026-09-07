@@ -261,6 +261,8 @@ fn head_with_charge(
         prior.source_root(),
         prior.target_root(),
         prior.occurrence_commitment(),
+        prior.allocating_occurrence_count(),
+        prior.occurrence_count(),
         prior.unassigned_count(),
         prior.assignment_continuation(),
         prior.remaining_builder_count(),

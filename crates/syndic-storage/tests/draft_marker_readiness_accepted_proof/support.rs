@@ -15,7 +15,18 @@ pub(super) struct AcceptedFixture {
 
 impl AcceptedFixture {
     pub(super) fn new(name: &str, seed: u8) -> Self {
-        let (home, mut store, storage, thread) = fixture(name, seed);
+        Self::build(name, seed, None)
+    }
+
+    pub(super) fn with_faults(name: &str, seed: u8, faults: FaultController) -> Self {
+        Self::build(name, seed, Some(faults))
+    }
+
+    fn build(name: &str, seed: u8, faults: Option<FaultController>) -> Self {
+        let (home, mut store, storage, thread) = match faults {
+            Some(faults) => fixture_with_faults(name, seed, faults),
+            None => fixture(name, seed),
+        };
         let state = BerylState::register(&mut store).unwrap();
         let label = ImageLabelOrdinal::new(7).unwrap();
         let marker = SyndicDraftMarkerId::from_bytes([seed.wrapping_add(20); 16]);
@@ -133,7 +144,7 @@ pub(super) fn advance_syndic_revision(fixture: &AcceptedFixture) {
     crate::support::commit(&fixture.store, fixture.storage.clone(), records);
 }
 
-fn publish_metadata(store: &HomeStore, state: &BerylState, bytes: &[u8]) -> AssetId {
+pub(super) fn publish_metadata(store: &HomeStore, state: &BerylState, bytes: &[u8]) -> AssetId {
     let sidecar = store
         .admit_sidecar(
             beryl_home_store::SidecarNamespace::new("images").unwrap(),
@@ -321,7 +332,7 @@ fn publish_local_origin(
     let _ = asset_id;
 }
 
-fn publish_inheriting_child(
+pub(super) fn publish_inheriting_child(
     store: &HomeStore,
     storage: SyndicStorage,
     parent: SyndicThreadId,

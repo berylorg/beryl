@@ -21,7 +21,7 @@ mod readiness_support;
 use readiness_support::{association, owner, two_marked_session};
 
 #[test]
-fn allocate_assigns_least_source_order_and_reuses_equal_label_asset() {
+fn allocation_permitted_preserves_candidate_source_labels_and_equal_label_assets() {
     let faults = FaultController::new();
     let (_home, store, storage, thread) = fixture_with_faults("allocate", 1, faults.clone());
     let (session, first, second) = two_marked_session(&storage, &store, thread, 2);
@@ -39,11 +39,7 @@ fn allocate_assigns_least_source_order_and_reuses_equal_label_asset() {
         ],
     );
 
-    let range = proof
-        .allocation_range()
-        .expect("allocation proof retains its package-derived range");
-    assert!(range.first().get() > proof.protection().protected_maximum().get());
-    assert_eq!(range.count(), 3);
+    assert!(proof.allocation_range().is_none());
     let associations = storage
         .inspect_draft_marker_label_readiness_proof_for_test(&store, &proof)
         .unwrap();
@@ -52,8 +48,8 @@ fn allocate_assigns_least_source_order_and_reuses_equal_label_asset() {
     let second_assigned = assigned_label(&associations, 31);
     let repeated_assigned = assigned_label(&associations, 32);
     assert_eq!(repeated_assigned, first_assigned);
-    assert_eq!(first_assigned, range.first());
-    assert_eq!(second_assigned, range.first().checked_next().unwrap());
+    assert_eq!(first_assigned, first.label());
+    assert_eq!(second_assigned, second.label());
     assert_eq!(proof.owner(), operation);
     assert_eq!(proof.assigned_target_root().count(), 3);
     let ready = storage
@@ -116,7 +112,7 @@ fn reuse_preserves_source_labels_and_proof_moves_once_ready() {
 }
 
 #[test]
-fn concurrent_allocate_operations_reserve_disjoint_destination_ranges() {
+fn concurrent_preserving_operations_need_no_destination_ranges() {
     let (_home, store, storage, thread) = fixture("concurrent-allocation", 60);
     let (session, marker) = readiness_support::marked_session(&storage, &store, thread, 61);
     let first_operation = owner(&session, 62);
@@ -160,15 +156,12 @@ fn concurrent_allocate_operations_reserve_disjoint_destination_ranges() {
         DraftMarkerLabelAssignmentOutcomeV1::Ready { proof, .. } => proof,
         _ => panic!("second live Allocate operation did not become ready"),
     };
-    let first_range = first.allocation_range().unwrap();
-    let second_range = second.allocation_range().unwrap();
-    assert!(first_range.first().get() > first.protection().protected_maximum().get());
-    assert!(second_range.first().get() > second.protection().protected_maximum().get());
-    assert!(second_range.first() > first_range.last());
+    assert!(first.allocation_range().is_none());
+    assert!(second.allocation_range().is_none());
 }
 
 #[test]
-fn allocation_exhaustion_refuses_before_eof_creates_assignment_custody() {
+fn preserving_eof_does_not_reserve_even_at_allocation_exhaustion() {
     let (_home, store, storage, thread) = fixture("allocation-exhaustion", 70);
     let (session, marker) = readiness_support::marked_session(&storage, &store, thread, 71);
     let operation = owner(&session, 72);
@@ -193,7 +186,7 @@ fn allocation_exhaustion_refuses_before_eof_creates_assignment_custody() {
                     None,
                 ),
             )
-            .is_err()
+            .is_ok()
     );
     let snapshot = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, operation, &[])

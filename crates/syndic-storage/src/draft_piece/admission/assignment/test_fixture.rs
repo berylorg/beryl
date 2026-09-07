@@ -314,7 +314,13 @@ fn ready_target_fixture_records(
         DraftMarkerAdmissionNodeIdV1::from_bytes(*marker.marker_id().as_bytes()),
     );
     let page = DraftMarkerAdmissionPageIdentityV1::new(command, NonZeroU64::MIN);
-    let evidence = DraftMarkerAdmissionEvidenceV1::new(b"ready-target-fixture".as_slice())
+    let mut evidence_bytes = vec![0; 145];
+    evidence_bytes[0] = 1;
+    evidence_bytes.extend_from_slice(&marker.label().get().to_le_bytes());
+    evidence_bytes.push(marker.asset_id().version() as u8);
+    evidence_bytes.extend_from_slice(&marker.asset_id().digest());
+    evidence_bytes.extend_from_slice(&marker.asset_id().length().get().to_le_bytes());
+    let evidence = DraftMarkerAdmissionEvidenceV1::new(evidence_bytes)
         .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
     let node = DraftMarkerAdmissionNodeV1::target_leaf(
         node_key,
@@ -364,6 +370,8 @@ fn ready_target_fixture_records(
             empty_source,
             target_root,
             authority.occurrence_commitment(),
+            0,
+            1,
             0,
             None,
             1,

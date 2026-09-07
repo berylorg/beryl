@@ -14,8 +14,8 @@ use sha2::{Digest, Sha256};
 use super::{
     ASSET_COMPLETION_EVIDENCE_LIMIT, AssetDomain, AssetEntryKey, AssetLabelFirstKey,
     AssetMetadataCodec, AssetReferenceCompletionEvidenceCodec, AssetReferenceEntryCodec,
-    AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec, AssetState, entry_point_limit,
-    index_point_limit, manifest_point_limit, metadata_point_limit, read,
+    AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec, AssetSidecarState, AssetState,
+    entry_point_limit, index_point_limit, manifest_point_limit, metadata_point_limit, read,
 };
 
 const PAGE_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-page/v1";
@@ -23,6 +23,8 @@ const PAGE_MAX_ASSOCIATIONS: usize = 256;
 const PAGE_MAX_CANONICAL_BYTES: usize = 65_536;
 const ACCEPTED_ASSOCIATION_CANONICAL_BYTES: usize = 194;
 const ACCEPTED_EVIDENCE_TAG: u8 = 0x01;
+const FRESH_ASSET_CANONICAL_BYTES: usize = 42;
+const FRESH_ASSET_EVIDENCE_TAG: u8 = 0x02;
 
 #[cfg(feature = "test-faults")]
 thread_local! {
@@ -95,13 +97,18 @@ impl From<ReadError> for AssetDraftMarkerLabelReadinessError {
     }
 }
 
-pub(crate) struct WitnessInput {
+pub(crate) enum WitnessInput {
+    Accepted(AcceptedWitnessInput),
+    FreshAssets(FreshAssetWitnessInput),
+}
+
+pub(crate) struct AcceptedWitnessInput {
     ordinal: u64,
     eof: bool,
     associations: Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
 }
 
-impl WitnessInput {
+impl AcceptedWitnessInput {
     fn new(
         ordinal: u64,
         eof: bool,
@@ -142,6 +149,38 @@ impl WitnessInput {
     }
 }
 
+pub(crate) struct FreshAssetWitnessInput {
+    ordinal: u64,
+    eof: bool,
+    asset_ids: Vec<AssetId>,
+}
+
+impl FreshAssetWitnessInput {
+    fn new(
+        ordinal: u64,
+        eof: bool,
+        mut asset_ids: Vec<AssetId>,
+    ) -> Result<Self, AssetDraftMarkerLabelReadinessError> {
+        let raw_bytes = asset_ids
+            .len()
+            .checked_mul(FRESH_ASSET_CANONICAL_BYTES)
+            .ok_or_else(AssetDraftMarkerLabelReadinessError::rejected)?;
+        if ordinal == 0
+            || asset_ids.len() > PAGE_MAX_ASSOCIATIONS
+            || raw_bytes > PAGE_MAX_CANONICAL_BYTES
+            || (asset_ids.is_empty() && !eof)
+        {
+            return Err(AssetDraftMarkerLabelReadinessError::rejected());
+        }
+        asset_ids.sort_unstable_by_key(|asset_id| fresh_asset_evidence(*asset_id));
+        Ok(Self {
+            ordinal,
+            eof,
+            asset_ids,
+        })
+    }
+}
+
 pub(crate) enum SourceInput {}
 
 impl ProofDomain for AssetDomain {
@@ -172,14 +211,30 @@ impl ProofDomain for AssetDomain {
         input: &Self::WitnessInput,
         reader: &DomainReader<'_, Self>,
     ) -> Result<ProofCorrelationBytes, Self::Error> {
-        let mut validated = BTreeSet::new();
-        for (proof, label, asset_id) in input.associations.iter().copied() {
-            if validated.insert(association_evidence(proof, label, asset_id)) {
-                note_validation_read_set();
-                validate_association(reader, proof, label, asset_id)?;
+        match input {
+            WitnessInput::Accepted(input) => {
+                let mut validated = BTreeSet::new();
+                for (proof, label, asset_id) in input.associations.iter().copied() {
+                    if validated.insert(association_evidence(proof, label, asset_id)) {
+                        note_validation_read_set();
+                        validate_association(reader, proof, label, asset_id)?;
+                    }
+                }
+                Ok(ProofCorrelationBytes::new(page_correlation(input)))
+            }
+            WitnessInput::FreshAssets(input) => {
+                let mut validated = BTreeSet::new();
+                for asset_id in input.asset_ids.iter().copied() {
+                    if validated.insert(asset_id) {
+                        note_validation_read_set();
+                        validate_fresh_asset(reader, asset_id)?;
+                    }
+                }
+                Ok(ProofCorrelationBytes::new(fresh_asset_page_correlation(
+                    input,
+                )))
             }
         }
-        Ok(ProofCorrelationBytes::new(page_correlation(input)))
     }
 }
 
@@ -219,7 +274,31 @@ impl AssetState {
         let handle = self.handle.clone();
         move |store, ordinal, eof, associations| {
             let revision = store.domain_revision(&handle)?;
-            let input = WitnessInput::new(ordinal, eof, associations)?;
+            let input =
+                WitnessInput::Accepted(AcceptedWitnessInput::new(ordinal, eof, associations)?);
+            Ok(handle.proof_witness::<DraftMarkerLabelReadinessPageProtocol>(revision, input))
+        }
+    }
+
+    pub fn draft_marker_fresh_asset_readiness_witness_factory(
+        &self,
+    ) -> impl FnOnce(
+        &HomeStore,
+        u64,
+        bool,
+        Vec<AssetId>,
+    ) -> Result<
+        ProofWitnessContribution<
+            FixedDigestHomeProofProtocol<0x53444d5244595631, 0x5244595041474531>,
+        >,
+        AssetDraftMarkerLabelReadinessError,
+    > + Send
+    + 'static {
+        let handle = self.handle.clone();
+        move |store, ordinal, eof, asset_ids| {
+            let revision = store.domain_revision(&handle)?;
+            let input =
+                WitnessInput::FreshAssets(FreshAssetWitnessInput::new(ordinal, eof, asset_ids)?);
             Ok(handle.proof_witness::<DraftMarkerLabelReadinessPageProtocol>(revision, input))
         }
     }
@@ -278,12 +357,25 @@ fn validate_association(
     Ok(())
 }
 
+fn validate_fresh_asset(
+    reader: &DomainReader<'_, AssetDomain>,
+    asset_id: AssetId,
+) -> Result<(), AssetDraftMarkerLabelReadinessError> {
+    let metadata = reader
+        .point::<AssetMetadataCodec>(&asset_id, metadata_point_limit())?
+        .ok_or_else(AssetDraftMarkerLabelReadinessError::rejected)?;
+    if metadata.asset_id() != asset_id || metadata.sidecar_state() != AssetSidecarState::Committed {
+        return Err(AssetDraftMarkerLabelReadinessError::rejected());
+    }
+    Ok(())
+}
+
 fn completion_evidence_point_limit() -> PointReadLimit {
     PointReadLimit::new(ASSET_COMPLETION_EVIDENCE_LIMIT + 4)
         .expect("completion evidence point bound is nonzero")
 }
 
-fn page_correlation(input: &WitnessInput) -> [u8; 32] {
+fn page_correlation(input: &AcceptedWitnessInput) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(PAGE_DOMAIN);
     hasher.update(input.ordinal.to_le_bytes());
@@ -311,6 +403,27 @@ fn page_correlation(input: &WitnessInput) -> [u8; 32] {
         hasher.update(asset_id.length().get().to_le_bytes());
     }
     hasher.finalize().into()
+}
+
+fn fresh_asset_page_correlation(input: &FreshAssetWitnessInput) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(PAGE_DOMAIN);
+    hasher.update(input.ordinal.to_le_bytes());
+    hasher.update([u8::from(input.eof)]);
+    hasher.update((input.asset_ids.len() as u64).to_le_bytes());
+    for asset_id in input.asset_ids.iter().copied() {
+        hasher.update(fresh_asset_evidence(asset_id));
+    }
+    hasher.finalize().into()
+}
+
+fn fresh_asset_evidence(asset_id: AssetId) -> [u8; FRESH_ASSET_CANONICAL_BYTES] {
+    let mut bytes = [0_u8; FRESH_ASSET_CANONICAL_BYTES];
+    bytes[0] = FRESH_ASSET_EVIDENCE_TAG;
+    bytes[1] = asset_id.version() as u8;
+    bytes[2..34].copy_from_slice(&asset_id.digest());
+    bytes[34..].copy_from_slice(&asset_id.length().get().to_le_bytes());
+    bytes
 }
 
 fn association_evidence(

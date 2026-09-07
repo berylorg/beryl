@@ -372,6 +372,18 @@ fn required_node<R: AdmissionNodeReader>(
         .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)
 }
 
+pub(super) fn exact_target_leaf_key<R: AdmissionNodeReader>(
+    ledger: &mut ReadLedger<'_, R>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    target: SyndicDraftMarkerId,
+) -> Result<Option<DraftMarkerAdmissionNodeKeyV1>, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    match authenticate_path(ledger, owner, root, SearchKey::Target(target))? {
+        RootPath::Occupied(path) if path.exact => Ok(Some(path.leaf.key())),
+        _ => Ok(None),
+    }
+}
+
 pub(super) fn authenticate_replay_deletions<R: AdmissionNodeReader>(
     ledger: &mut ReadLedger<'_, R>,
     owner: DraftMarkerAdmissionOwnerV1,
@@ -457,7 +469,7 @@ fn rebuild_leaf(
             target_marker_id,
             page,
             evidence,
-            source_label,
+            group,
             asset_id,
             disposition,
         } => DraftMarkerAdmissionNodeV1::target_leaf(
@@ -465,7 +477,7 @@ fn rebuild_leaf(
             *target_marker_id,
             *page,
             evidence.clone(),
-            *source_label,
+            *group,
             *asset_id,
             *disposition,
         ),

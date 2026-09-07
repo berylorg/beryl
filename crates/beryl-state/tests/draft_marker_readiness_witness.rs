@@ -198,20 +198,69 @@ impl Fixture {
         self.store.consume_proof_receipt(consumer, receipt).unwrap();
         Ok(())
     }
+
+    fn compose_fresh_assets(
+        &self,
+        ordinal: u64,
+        eof: bool,
+        asset_ids: Vec<AssetId>,
+    ) -> Result<(), ProofCompositionError> {
+        let correlation = fresh_asset_page_correlation(ordinal, eof, &asset_ids);
+        let witness = (self
+            .state
+            .assets()
+            .draft_marker_fresh_asset_readiness_witness_factory())(
+            &self.store,
+            ordinal,
+            eof,
+            asset_ids,
+        )
+        .unwrap();
+        let source = self.source.proof_source::<Protocol>(
+            self.store.domain_revision(&self.source).unwrap(),
+            correlation,
+        );
+        let mut command = HomeProofCommand::new(
+            self.store.health().generation().unwrap(),
+            self.store.home_revision().unwrap(),
+            source,
+        )
+        .unwrap();
+        command.add_witness(witness).unwrap();
+        let (command, consumer) = command.seal().unwrap();
+        let receipt = self.store.compose_proof(command)?;
+        self.store.consume_proof_receipt(consumer, receipt).unwrap();
+        Ok(())
+    }
 }
 
 #[test]
 fn occurrences_preserve_pinned_digest_while_identical_tuple_reads_coalesce() {
+    let fixed_asset = AssetId::sha256_v1([0x31; 32], NonZeroU64::new(9).unwrap());
+    let fixed_label = ImageLabelOrdinal::new(7).unwrap();
+    let fixed_associations = vec![
+        (
+            fixed_sealed_proof(0x41, 0x51, 2, 9, 0x61, 0x71),
+            fixed_label,
+            fixed_asset,
+        ),
+        (
+            fixed_sealed_proof(0x42, 0x52, 3, 10, 0x62, 0x72),
+            fixed_label,
+            fixed_asset,
+        ),
+    ];
+    assert_eq!(
+        page_correlation(3, true, &fixed_associations),
+        [
+            216, 222, 11, 64, 214, 114, 161, 147, 123, 252, 115, 167, 58, 249, 207, 250, 253, 99,
+            165, 73, 171, 216, 251, 96, 159, 233, 88, 59, 78, 119, 121, 194,
+        ]
+    );
+
     let fixture = Fixture::new();
     let associations = fixture.associations();
     let digest = page_correlation(3, true, &associations);
-    assert_eq!(
-        digest,
-        [
-            34, 224, 39, 79, 71, 115, 29, 135, 237, 137, 162, 125, 246, 250, 8, 168, 83, 28, 206,
-            222, 185, 165, 52, 179, 70, 106, 161, 250, 212, 57, 173, 150,
-        ]
-    );
     fixture.compose(3, true, associations).unwrap();
 
     let duplicates = vec![(fixture.first_proof, fixture.label, fixture.asset_id); 256];
@@ -364,6 +413,83 @@ fn missing_asset_metadata_rejects_the_witness_after_valid_reference_sealing() {
         &fixture,
         vec![(fixture.first_proof, fixture.label, fixture.asset_id)],
     );
+}
+
+#[test]
+fn fresh_asset_witness_composes_exact_sorted_page_correlation() {
+    let fixed_page = [
+        AssetId::sha256_v1([0x22; 32], NonZeroU64::new(1).unwrap()),
+        AssetId::sha256_v1([0x11; 32], NonZeroU64::new(2).unwrap()),
+        AssetId::sha256_v1([0x11; 32], NonZeroU64::new(256).unwrap()),
+    ];
+    assert_eq!(
+        fresh_asset_page_correlation(13, true, &fixed_page),
+        [
+            243, 233, 138, 190, 53, 145, 191, 223, 137, 27, 240, 195, 205, 237, 117, 133, 120, 1,
+            42, 106, 222, 19, 69, 62, 144, 181, 158, 141, 175, 90, 195, 71,
+        ]
+    );
+
+    let fixture = Fixture::new();
+    let other_asset = publish_metadata(&fixture.store, &fixture.state, b"fresh-second-asset");
+    let page = vec![other_asset, fixture.asset_id, fixture.asset_id];
+    let digest = fresh_asset_page_correlation(13, true, &page);
+    assert_eq!(
+        digest,
+        fresh_asset_page_correlation(13, true, &[fixture.asset_id, other_asset, fixture.asset_id])
+    );
+    fixture.compose_fresh_assets(13, true, page).unwrap();
+}
+
+#[cfg(feature = "test-faults")]
+#[test]
+fn fresh_asset_witness_hashes_duplicate_occurrences_and_coalesces_metadata_reads() {
+    let fixture = Fixture::new();
+    let duplicates = vec![fixture.asset_id; 256];
+    fixture
+        .state
+        .assets()
+        .reset_draft_marker_label_readiness_validation_read_sets_for_test();
+    fixture.compose_fresh_assets(14, true, duplicates).unwrap();
+    assert_eq!(
+        fixture
+            .state
+            .assets()
+            .draft_marker_label_readiness_validation_read_sets_for_test(),
+        1
+    );
+}
+
+#[test]
+fn fresh_asset_witness_rejects_unpublished_metadata_substitution_and_invalid_pages() {
+    let fixture = Fixture::new();
+    let substituted = AssetId::sha256_v1([23; 32], NonZeroU64::new(42).unwrap());
+    assert!(matches!(
+        fixture.compose_fresh_assets(15, true, vec![substituted]),
+        Err(ProofCompositionError::Callback {
+            domain: "beryl-assets",
+            ..
+        })
+    ));
+
+    for (ordinal, eof, asset_ids) in [
+        (0, true, Vec::new()),
+        (1, false, Vec::new()),
+        (1, true, vec![fixture.asset_id; 257]),
+    ] {
+        assert!(
+            (fixture
+                .state
+                .assets()
+                .draft_marker_fresh_asset_readiness_witness_factory())(
+                &fixture.store,
+                ordinal,
+                eof,
+                asset_ids,
+            )
+            .is_err()
+        );
+    }
 }
 
 fn assert_callback_rejection(
@@ -532,6 +658,25 @@ fn ordered_summary(
     OrderedMarkerAssetSummaryV1::new(digest, count)
 }
 
+fn fixed_sealed_proof(
+    set_byte: u8,
+    sequential_byte: u8,
+    count: u64,
+    maximum: u64,
+    ordered_byte: u8,
+    chain_byte: u8,
+) -> SealedAssetReferenceSetProof {
+    let maximum = ImageLabelOrdinal::new(maximum).unwrap();
+    SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([set_byte; 16]),
+        SequentialMarkerSummaryV1::new([sequential_byte; 32], count, Some(maximum)).unwrap(),
+        OrderedMarkerAssetSummaryV1::new([ordered_byte; 32], count),
+        count,
+        AssetReferenceSetDigest::from_bytes([chain_byte; 32]),
+    )
+    .unwrap()
+}
+
 fn page_correlation(
     ordinal: u64,
     eof: bool,
@@ -564,4 +709,31 @@ fn page_correlation(
         hasher.update(asset_id.length().get().to_le_bytes());
     }
     hasher.finalize().into()
+}
+
+fn fresh_asset_page_correlation(ordinal: u64, eof: bool, asset_ids: &[AssetId]) -> [u8; 32] {
+    let mut entries = asset_ids
+        .iter()
+        .copied()
+        .map(fresh_asset_evidence)
+        .collect::<Vec<_>>();
+    entries.sort_unstable();
+    let mut hasher = Sha256::new();
+    hasher.update(b"syndic/draft-marker-label-readiness-page/v1");
+    hasher.update(ordinal.to_le_bytes());
+    hasher.update([u8::from(eof)]);
+    hasher.update((entries.len() as u64).to_le_bytes());
+    for entry in entries {
+        hasher.update(entry);
+    }
+    hasher.finalize().into()
+}
+
+fn fresh_asset_evidence(asset_id: AssetId) -> [u8; 42] {
+    let mut bytes = [0_u8; 42];
+    bytes[0] = 0x02;
+    bytes[1] = asset_id.version() as u8;
+    bytes[2..34].copy_from_slice(&asset_id.digest());
+    bytes[34..].copy_from_slice(&asset_id.length().get().to_le_bytes());
+    bytes
 }

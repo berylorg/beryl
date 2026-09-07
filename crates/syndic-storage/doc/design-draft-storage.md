@@ -114,8 +114,13 @@ only by complete AssetId within that operation; all final labels are allocated i
 The [V7 byte contract](design-schema-v7.md#draft-marker-label-readiness-byte-contract) owns page
 correlation bytes; its admission-family contract owns durable group encoding and replay closure.
 
-Exact evidence EOF precedes bounded assignment and final proof issuance. The final move-only proof
-enters storage MutationBegin custody; no public label, digest, group, or binding substitutes for it.
+Exact evidence EOF precedes bounded assignment and final proof issuance. A stream may close
+nonempty evidence through a separate source-only empty EOF page at the exact next
+ingestion ordinal, under the captured reuse-only or allocation-permitted disposition. It preserves
+all association counts and exact roots and selects assignment through the ordinary durable receipt;
+empty non-EOF, changed disposition, skipped ordinal, post-EOF input, and conflicting replay reject.
+The final move-only proof enters storage MutationBegin custody; no public label, digest, group,
+or binding substitutes for it.
 The builder point-consumes assigned targets and verifies complete effect closure before adoption.
 While the exact candidate session still owns Staging custody, a bounded target resolver validates
 the transferred admission head, staging/readiness binding, captured predecessor and generation,

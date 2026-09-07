@@ -313,6 +313,8 @@ fn duplicate_resource_and_revision_refusals_preserve_durable_state() {
         original.source_root(),
         original.target_root(),
         original.occurrence_commitment(),
+        original.allocating_occurrence_count(),
+        original.occurrence_count(),
         original.unassigned_count(),
         original.assignment_continuation(),
         original.remaining_builder_count(),
@@ -360,17 +362,29 @@ fn final_eof_is_durable_before_source_order_assignment() {
     let (_home, store, storage, thread) = fixture("eof", 110);
     let (session, marker) = marked_session(&storage, &store, thread, 111);
     let operation_owner = owner(&session, 112);
-    let page = proven_page(
+    let prefix = proven_page(
         &storage,
         &store,
         operation_owner,
         113,
         1,
-        true,
+        false,
         vec![association(114, &session, marker.marker_id())],
     );
     committed(
-        store.execute_current(publication(operation_owner, 113).current_command(&storage, page)),
+        store.execute_current(publication(operation_owner, 113).current_command(&storage, prefix)),
+    );
+    let eof = proven_page(
+        &storage,
+        &store,
+        operation_owner,
+        114,
+        2,
+        true,
+        Vec::new(),
+    );
+    committed(
+        store.execute_current(publication(operation_owner, 114).current_command(&storage, eof)),
     );
     let snapshot = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, operation_owner, &[])
@@ -380,9 +394,83 @@ fn final_eof_is_durable_before_source_order_assignment() {
     assert_eq!(head.source_root().count(), 1);
     assert_eq!(head.target_root().count(), 1);
     assert_eq!(head.unassigned_count(), 1);
+    assert_eq!(head.occurrence_count(), 1);
+    assert_eq!(head.allocating_occurrence_count(), 0);
     assert!(head.assignment_continuation().is_some());
     assert!(snapshot.capacity().is_some());
     assert!(snapshot.receipt().is_some());
+}
+
+#[test]
+fn separate_empty_eof_preserves_the_prefix_and_rejects_successors() {
+    let (_home, store, storage, thread) = fixture("empty-eof", 120);
+    let (session, marker) = marked_session(&storage, &store, thread, 121);
+    let operation_owner = owner(&session, 122);
+    let prefix = vec![association(123, &session, marker.marker_id())];
+    publish_page_quantum(
+        &storage,
+        &store,
+        operation_owner,
+        124,
+        1,
+        false,
+        prefix.clone(),
+        124,
+    );
+    assert_progress(&storage, &store, operation_owner, 1, 2, 0);
+
+    let eof = proven_page(
+        &storage,
+        &store,
+        operation_owner,
+        125,
+        2,
+        true,
+        Vec::new(),
+    );
+    committed(store.execute_current(
+        publication(operation_owner, 125).current_command(&storage, eof),
+    ));
+    let snapshot = storage
+        .draft_marker_admission_publication_snapshot_for_test(&store, operation_owner, &[])
+        .unwrap();
+    let head = snapshot.head().unwrap();
+    assert!(head.evidence_eof());
+    assert_eq!(head.source_root().count(), 1);
+    assert_eq!(head.target_root().count(), 1);
+    assert_eq!(head.occurrence_count(), 1);
+    assert_eq!(head.allocating_occurrence_count(), 0);
+
+    let before = durable_identity(&storage, &store, operation_owner);
+    assert!(
+        storage
+            .prepare_draft_marker_label_readiness_page_for_test(
+                &store,
+                operation_owner,
+                page_id(126),
+                NonZeroU64::new(3).unwrap(),
+                true,
+                Vec::new().into_boxed_slice(),
+                None,
+            )
+            .is_err()
+    );
+    assert_durable_identity(&storage, &store, operation_owner, before);
+
+    let changed = proven_page(
+        &storage,
+        &store,
+        operation_owner,
+        125,
+        2,
+        true,
+        vec![association(127, &session, marker.marker_id())],
+    );
+    let error = not_committed(store.execute_current(
+        publication(operation_owner, 125).current_command(&storage, changed),
+    ));
+    assert!(error.contains("Collision") || error.contains("ObsoletePage"), "{error}");
+    assert_durable_identity(&storage, &store, operation_owner, before);
 }
 
 #[allow(clippy::too_many_arguments)]

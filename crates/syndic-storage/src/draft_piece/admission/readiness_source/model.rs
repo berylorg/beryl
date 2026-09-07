@@ -32,17 +32,36 @@ const EMPTY_OCCURRENCE_DOMAIN: &[u8] = b"syndic/draft-marker-label-readiness-occ
 pub(crate) type PageProtocol = FixedDigestHomeProofProtocol<0x53444d5244595631, 0x5244595041474531>;
 
 pub struct DraftMarkerReadinessWitnessFactoryV1 {
-    factory: Box<
-        dyn FnOnce(
-                &HomeStore,
-                u64,
-                bool,
-                Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
-            ) -> Result<
-                ProofWitnessContribution<PageProtocol>,
-                DraftMarkerReadinessSourceErrorV1,
-            > + Send,
-    >,
+    factory: WitnessFactory,
+}
+
+enum WitnessFactory {
+    Accepted(
+        Box<
+            dyn FnOnce(
+                    &HomeStore,
+                    u64,
+                    bool,
+                    Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
+                ) -> Result<
+                    ProofWitnessContribution<PageProtocol>,
+                    DraftMarkerReadinessSourceErrorV1,
+                > + Send,
+        >,
+    ),
+    Fresh(
+        Box<
+            dyn FnOnce(
+                    &HomeStore,
+                    u64,
+                    bool,
+                    Vec<AssetId>,
+                ) -> Result<
+                    ProofWitnessContribution<PageProtocol>,
+                    DraftMarkerReadinessSourceErrorV1,
+                > + Send,
+        >,
+    ),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -96,10 +115,12 @@ impl DraftMarkerReadinessWitnessFactoryV1 {
             + 'static,
     {
         Self {
-            factory: Box::new(move |store, ordinal, eof, associations| {
-                factory(store, ordinal, eof, associations)
-                    .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)
-            }),
+            factory: WitnessFactory::Accepted(Box::new(
+                move |store, ordinal, eof, associations| {
+                    factory(store, ordinal, eof, associations)
+                        .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)
+                },
+            )),
         }
     }
 
@@ -110,7 +131,42 @@ impl DraftMarkerReadinessWitnessFactoryV1 {
         eof: bool,
         associations: Vec<(SealedAssetReferenceSetProof, ImageLabelOrdinal, AssetId)>,
     ) -> Result<ProofWitnessContribution<PageProtocol>, DraftMarkerReadinessSourceErrorV1> {
-        (self.factory)(store, ordinal, eof, associations)
+        match self.factory {
+            WitnessFactory::Accepted(factory) => factory(store, ordinal, eof, associations),
+            WitnessFactory::Fresh(_) => Err(DraftMarkerReadinessSourceErrorV1::Rejected),
+        }
+    }
+
+    pub fn fresh<F, E>(factory: F) -> Self
+    where
+        F: FnOnce(
+                &HomeStore,
+                u64,
+                bool,
+                Vec<AssetId>,
+            ) -> Result<ProofWitnessContribution<PageProtocol>, E>
+            + Send
+            + 'static,
+    {
+        Self {
+            factory: WitnessFactory::Fresh(Box::new(move |store, ordinal, eof, assets| {
+                factory(store, ordinal, eof, assets)
+                    .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)
+            })),
+        }
+    }
+
+    pub(super) fn build_fresh(
+        self,
+        store: &HomeStore,
+        ordinal: u64,
+        eof: bool,
+        assets: Vec<AssetId>,
+    ) -> Result<ProofWitnessContribution<PageProtocol>, DraftMarkerReadinessSourceErrorV1> {
+        match self.factory {
+            WitnessFactory::Fresh(factory) => factory(store, ordinal, eof, assets),
+            WitnessFactory::Accepted(_) => Err(DraftMarkerReadinessSourceErrorV1::Rejected),
+        }
     }
 }
 
@@ -194,6 +250,7 @@ pub enum DraftMarkerReadinessSourceSelectorV1 {
     Candidate(DraftMarkerReadinessCandidateSourceV1),
     Cut(DraftMarkerReadinessCutSourceV1),
     Accepted(DraftMarkerReadinessAcceptedSourceV1),
+    FreshAsset(AssetId),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -261,7 +318,7 @@ impl Error for DraftMarkerReadinessSourceErrorV1 {}
 pub(crate) struct CanonicalEntry {
     pub(crate) target_marker_id: SyndicDraftMarkerId,
     pub(crate) selector: DraftMarkerReadinessSourceSelectorV1,
-    pub(crate) label: ImageLabelOrdinal,
+    pub(crate) group: crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1,
     pub(crate) asset_id: AssetId,
     pub(crate) accepted_origin: Option<crate::ImageLabelOriginSpanRecord>,
 }
@@ -274,6 +331,7 @@ impl CanonicalEntry {
     pub(crate) fn evidence_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         match self.selector {
+            DraftMarkerReadinessSourceSelectorV1::FreshAsset(_) => bytes.push(2),
             DraftMarkerReadinessSourceSelectorV1::Candidate(source) => {
                 bytes.push(SOURCE_ENTRY_TAG);
                 bytes.push(CANDIDATE_SELECTOR_TAG);
@@ -313,11 +371,20 @@ impl CanonicalEntry {
                     .extend_from_slice(&source.asset_reference_set.asset_chain_digest().as_bytes());
             }
         }
-        bytes.extend_from_slice(&self.label.get().to_le_bytes());
+        if let Some(label) = self.group.source_label() {
+            bytes.extend_from_slice(&label.get().to_le_bytes());
+        }
         bytes.push(self.asset_id.version() as u8);
         bytes.extend_from_slice(&self.asset_id.digest());
         bytes.extend_from_slice(&self.asset_id.length().get().to_le_bytes());
         bytes
+    }
+
+    pub(crate) fn order_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.group
+            .source_label()
+            .cmp(&other.group.source_label())
+            .then_with(|| self.evidence_bytes().cmp(&other.evidence_bytes()))
     }
 }
 
@@ -462,6 +529,8 @@ pub(crate) fn page_closure_bytes(
     }
     for entry in page.entries.iter() {
         let evidence = entry.evidence_bytes();
+        source.extend_from_slice(&entry.group.canonical_bytes());
+        target.extend_from_slice(&entry.group.canonical_bytes());
         source.extend_from_slice(&evidence);
         target.extend_from_slice(entry.target_marker_id.as_bytes());
         target.extend_from_slice(&evidence);
@@ -478,6 +547,7 @@ pub(super) fn selector_tag(selector: DraftMarkerReadinessSourceSelectorV1) -> u8
         DraftMarkerReadinessSourceSelectorV1::Candidate(_) => CANDIDATE_SELECTOR_TAG,
         DraftMarkerReadinessSourceSelectorV1::Cut(_) => CUT_SELECTOR_TAG,
         DraftMarkerReadinessSourceSelectorV1::Accepted(_) => 2,
+        DraftMarkerReadinessSourceSelectorV1::FreshAsset(_) => 3,
     }
 }
 

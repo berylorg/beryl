@@ -30,35 +30,17 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 331: Expose Bounded Edit Evidence Before Admission (finished)
+# Phase 332: Authenticate Fresh Assets And Mixed Label Assignment (finished)
 
-Accepted the [text-input package](../../gpui-text-input/doc/design.md) evidence/replay boundary:
-exact producer/pass identity, asynchronous page acknowledgement, explicit EOF, bounded replay,
-and complete closure before commit. Independent semantic review passed after the late-response
-settlement correction; 22 mutation tests, three mounted evidence tests, and the locked local check
-passed. Production marker composition remains Phase 329.
-
-# Phase 332: Authenticate Fresh Assets And Mixed Label Assignment (pending)
-
-Extend existing Syndic readiness and Asset witnesses to ordinary admitted fresh AssetIds, keeping
-all final label allocation in Syndic and preserving existing labels in mixed edits. Authority is
-the [image-asset system](systems/image-assets/design.md), [Syndic system](systems/syndic-conversation-history/design.md),
-[Syndic package](../crates/syndic-storage/doc/design.md), and [Asset package](../crates/beryl-state/doc/design.md).
-
-- Add the homogeneous fresh evidence shape and exact 42-byte correlation entries through the
-  existing typed source/witness composition; reject missing, malformed, or substituted metadata.
-- Derive authenticated preservation, foreign source-thread/label allocation, and fresh AssetId
-  allocation groups in Syndic; bind them through canonical storage, byte-exact replay, assignment,
-  target consumption, and terminal closure. Reserve only from authenticated allocating counts.
-- Verify repeated fresh assets across pages, mixed preserved/fresh/foreign sources, duplicate
-  targets, cross-shape rejection, witness substitution, exact vectors/codecs, exhaustion,
-  reservation separation, cancellation, indeterminate reconciliation, and generation retirement.
-- Run focused readiness/assignment/Asset tests and locked local package checks; obtain independent
-  semantic review plus the package-required adversarial pass over authority and custody boundaries.
-
-Readiness: independent architecture review passed, including the separate admitted-target resolver
-boundary below. Source/witness, grouping, canonical bytes, reservation, and custody contracts are
-ready for implementation after the widget phase is accepted.
+Accepted fresh metadata witnesses, canonical source groups, mixed label preservation/allocation,
+separate EOF with byte-exact replay, and bounded terminal reclamation under the
+[Syndic system](systems/syndic-conversation-history/design.md) and
+[image-asset system](systems/image-assets/design.md). Independent semantic and adversarial review
+passed after replay and [cleanup accounting](failures/draft-marker-replay-cleanup-accounting.md)
+corrections. Asset witnesses passed 7 tests; schema targets passed 32; final fresh/close/tree targets
+passed 27, alongside focused readiness, assignment, and writer checks. Locked local checks passed
+for both owning packages. The accepted widget evidence component remains in its local checkout;
+production composition remains Phase 329.
 
 # Phase 334: Resolve Admitted Marker Targets For Staging (pending)
 

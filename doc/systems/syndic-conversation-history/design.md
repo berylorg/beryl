@@ -399,7 +399,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   above the protection head and every live destination reservation. A missing protection head,
   checked ordinal exhaustion, or retained-resource refusal is an ordinary unavailable result and
   creates no usable proof.
-- Every evidence page has exactly one homogeneous proof shape. A candidate/cut-only page contains
+- Every nonempty evidence page has exactly one homogeneous proof shape. A candidate/cut-only page contains
   only same-conversation candidate or cut associations and uses a source-only HomeStore proof
   composition. An accepted-only page contains only local or inherited accepted associations and
   uses one typed Syndic source role to validate immutable origin authority plus one typed Beryl-
@@ -457,6 +457,15 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   page's proof shape or labels to follow another's. Every validated association is inserted into
   both operation trees, and duplicate target identities reject even when they occur on different
   pages.
+- End-of-evidence may be a separate empty EOF page at the exact next ingestion ordinal, including
+  after any number of nonempty pages and under either operation disposition. It carries no witness
+  or associations and uses source-only proof composition to authenticate the current destination,
+  operation, and ingestion frontier. This closes a stream whose producer learns EOF only after
+  earlier pages were acknowledged. Empty non-EOF pages, skipped ordinals, changed disposition,
+  conflicting replay, and new input after EOF reject. The accepted EOF changes no association,
+  target, or allocation count; it freezes the existing exact roots/counts and enters assignment
+  through the same durable head and receipt protocol. Initial empty EOF remains the zero-entry
+  readiness path for removal-only work. No buffered last page or invented source is required.
 - Syndic derives a closed per-occurrence assignment group while authenticating the selector.
   Candidate/cut sources in the destination thread and accepted sources addressed through that
   thread use `PreserveLabel(label)`, including inherited accepted origins. Accepted sources
@@ -479,7 +488,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   canonical empty roots.
   The current head commits request and proof-custody authority, lifecycle, ingestion frontier,
   occurrence commitment, one head-selected replay receipt while readiness is active, both root identities/heights/digests/counts,
-  unassigned and allocating-occurrence counts, assignment continuation, remaining builder count, and exact retained-
+  unassigned, total-occurrence, and allocating-occurrence counts, assignment continuation, remaining builder count, and exact retained-
   association and encoded-byte charges.
 - After exact evidence EOF, Syndic repeatedly authenticates and removes the least source-order leaf,
   carrying only the prior assigning group/asset/final label and allocation cursor. Preserve groups

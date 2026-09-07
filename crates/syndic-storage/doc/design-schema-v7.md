@@ -553,8 +553,8 @@ canonical byte comparison of the point-read target closure.
   operation identity. Values repeat that owner and commit package-owned request/proof-custody
   authority, lifecycle, ingestion frontier, optional head-selected replay-receipt reference while
   readiness is active, source-order and
-  target-id root identities/heights/digests/counts, occurrence commitment, unassigned and
-  allocating-occurrence counts,
+  target-id root identities/heights/digests/counts, occurrence commitment, unassigned,
+  total-occurrence, and allocating-occurrence counts,
   assignment continuation, remaining builder count, exact retained-association and encoded-byte
   charges and limits, terminal cleanup cursor, and their digest. Each canonical empty root contains
   no node and has count zero.
@@ -1005,3 +1005,11 @@ byte, digest, and nonzero length. Every integer in this correlation preimage is 
 The evidence-byte ceiling counts entry bytes only, excluding the domain, page header, and HomeStore
 framing. These correlation integers must not be normalized to the unsigned big-endian encoding used
 by persisted ordered keys.
+
+An empty EOF page has EOF byte `1`, count zero, and no entry bytes or witness. Its ordinal is the
+exact next ingestion ordinal, initially one or the successor of the last accepted page. It uses
+source-only proof composition and the same domain/header digest. The private request and durable
+receipt still bind the exact operation, unchanged disposition, ingestion frontier, and complete
+source/target root closure. It freezes the existing historical counts without adding associations.
+Empty non-EOF and input after the selected EOF are invalid; exact immediate replay remains subject
+to the ordinary byte-equal receipt rules.

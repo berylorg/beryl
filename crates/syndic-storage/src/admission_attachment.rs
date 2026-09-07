@@ -212,7 +212,7 @@ fn allocation_range(
         (DraftMarkerLabelReadinessDispositionV1::Reuse, None) => Ok(None),
         (DraftMarkerLabelReadinessDispositionV1::Reuse, Some(_)) => Err(()),
         (DraftMarkerLabelReadinessDispositionV1::Allocate, None) => Ok(None),
-        (DraftMarkerLabelReadinessDispositionV1::Allocate, Some(0)) => Err(()),
+        (DraftMarkerLabelReadinessDispositionV1::Allocate, Some(0)) => Ok(None),
         (DraftMarkerLabelReadinessDispositionV1::Allocate, Some(count)) => {
             let maximum = state
                 .operations

@@ -10,10 +10,13 @@ use beryl_home_store::{
     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     WholeHomeScrubTrigger,
 };
-use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId};
+use beryl_model::{
+    AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
+};
 use syndic_storage::{
     DRAFT_MARKER_ADMISSION_PAGE_MAX_ASSOCIATIONS, DraftEditorCandidateSessionIdV1,
-    DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionChildV1,
+    DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionAssignmentGroupV1,
+    DraftMarkerAdmissionChildV1,
     DraftMarkerAdmissionCleanupCursorV1, DraftMarkerAdmissionCodecFixtureV1,
     DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionEvidenceV1,
     DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodeIdV1,
@@ -111,6 +114,8 @@ fn settled_head_for(
         canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::TargetId),
         DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
         0,
+        0,
+        0,
         None,
         0,
         DraftMarkerAdmissionRetainedChargeV1::new(1, 0, encoded_bytes),
@@ -119,11 +124,43 @@ fn settled_head_for(
     .unwrap()
 }
 
+fn asset(seed: u8) -> AssetId {
+    AssetId::sha256_v1([seed; 32], NonZeroU64::MIN)
+}
+
+fn accepted_evidence(label: ImageLabelOrdinal, asset: AssetId) -> DraftMarkerAdmissionEvidenceV1 {
+    let mut bytes = vec![0; 194];
+    bytes[0] = 1;
+    bytes[145..153].copy_from_slice(&label.get().to_le_bytes());
+    bytes[153] = asset.version() as u8;
+    bytes[154..186].copy_from_slice(&asset.digest());
+    bytes[186..].copy_from_slice(&asset.length().get().to_le_bytes());
+    DraftMarkerAdmissionEvidenceV1::new(bytes).unwrap()
+}
+
 fn source_leaf(
     owner: DraftMarkerAdmissionOwnerV1,
     id: u8,
     label: u64,
     marker: u8,
+) -> DraftMarkerAdmissionNodeV1 {
+    source_leaf_with_group(
+        owner,
+        id,
+        label,
+        marker,
+        DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+            ImageLabelOrdinal::new(label).unwrap(),
+        ),
+    )
+}
+
+fn source_leaf_with_group(
+    owner: DraftMarkerAdmissionOwnerV1,
+    id: u8,
+    label: u64,
+    marker: u8,
+    group: DraftMarkerAdmissionAssignmentGroupV1,
 ) -> DraftMarkerAdmissionNodeV1 {
     DraftMarkerAdmissionNodeV1::source_leaf(
         DraftMarkerAdmissionNodeKeyV1::new(
@@ -131,12 +168,9 @@ fn source_leaf(
             DraftMarkerAdmissionNodeKindV1::Leaf,
             DraftMarkerAdmissionNodeIdV1::from_bytes([id; 16]),
         ),
-        DraftMarkerAdmissionSourceKeyV1::new(
-            ImageLabelOrdinal::new(label).unwrap(),
-            SyndicDraftMarkerId::from_bytes([marker; 16]),
-        ),
-        DraftMarkerAdmissionEvidenceV1::new([id, marker].as_slice()).unwrap(),
-        AssetId::sha256_v1([id; 32], NonZeroU64::MIN),
+        DraftMarkerAdmissionSourceKeyV1::new(group, SyndicDraftMarkerId::from_bytes([marker; 16])),
+        accepted_evidence(ImageLabelOrdinal::new(label).unwrap(), asset(id)),
+        asset(id),
     )
     .unwrap()
 }
@@ -163,6 +197,26 @@ fn target_leaf_with_disposition(
     marker: u8,
     disposition: DraftMarkerAdmissionTargetDispositionV1,
 ) -> DraftMarkerAdmissionNodeV1 {
+    target_leaf_with_group(
+        owner,
+        id,
+        label,
+        marker,
+        DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+            ImageLabelOrdinal::new(label).unwrap(),
+        ),
+        disposition,
+    )
+}
+
+fn target_leaf_with_group(
+    owner: DraftMarkerAdmissionOwnerV1,
+    id: u8,
+    label: u64,
+    marker: u8,
+    group: DraftMarkerAdmissionAssignmentGroupV1,
+    disposition: DraftMarkerAdmissionTargetDispositionV1,
+) -> DraftMarkerAdmissionNodeV1 {
     DraftMarkerAdmissionNodeV1::target_leaf(
         DraftMarkerAdmissionNodeKeyV1::new(
             owner,
@@ -174,9 +228,9 @@ fn target_leaf_with_disposition(
             DraftMarkerAdmissionCommandIdV1::from_bytes([7; 16]),
             NonZeroU64::MIN,
         ),
-        DraftMarkerAdmissionEvidenceV1::new([id, marker].as_slice()).unwrap(),
-        ImageLabelOrdinal::new(label).unwrap(),
-        AssetId::sha256_v1([id; 32], NonZeroU64::MIN),
+        accepted_evidence(ImageLabelOrdinal::new(label).unwrap(), asset(id)),
+        group,
+        asset(id),
         disposition,
     )
     .unwrap()
@@ -206,7 +260,7 @@ fn allocation_continuation(
     first: ImageLabelOrdinal,
     last: ImageLabelOrdinal,
     next: ImageLabelOrdinal,
-    prior: Option<(ImageLabelOrdinal, AssetId)>,
+    prior: Option<(DraftMarkerAdmissionAssignmentGroupV1, AssetId, ImageLabelOrdinal)>,
 ) -> Result<DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionSchemaErrorV1> {
     DraftMarkerAdmissionAssignmentContinuationV1::allocate(
         DraftMarkerLabelAllocationRangeV1::new_for_test(first, last)?,
@@ -305,6 +359,8 @@ fn active_fixture(fault: ActiveFixtureFault) -> DraftMarkerAdmissionFixtureSnaps
             source_root,
             target_root,
             DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
+            0,
+            1,
             1,
             None,
             0,
@@ -370,6 +426,8 @@ fn terminal_fixture(cursor_after: u8) -> DraftMarkerAdmissionFixtureSnapshotV1 {
             empty_target,
             DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
             0,
+            1,
+            0,
             None,
             0,
             DraftMarkerAdmissionRetainedChargeV1::new(1, 1, encoded_bytes),
@@ -409,14 +467,43 @@ fn assigning_fixture(
     processed_target_unassigned: bool,
 ) -> DraftMarkerAdmissionFixtureSnapshotV1 {
     let owner = owner();
-    let source = source_leaf(owner, 80, 11, 81);
+    let source = source_leaf_with_group(
+        owner,
+        80,
+        11,
+        81,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(11).unwrap(),
+        ),
+    );
     let processed_disposition = if processed_target_unassigned {
         DraftMarkerAdmissionTargetDispositionV1::Unassigned
     } else {
         DraftMarkerAdmissionTargetDispositionV1::Assigned(ImageLabelOrdinal::new(100).unwrap())
     };
-    let target_a = target_leaf_with_disposition(owner, 82, 10, 80, processed_disposition);
-    let target_b = target_leaf(owner, 83, 11, 81);
+    let target_a = target_leaf_with_group(
+        owner,
+        82,
+        10,
+        80,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(10).unwrap(),
+        ),
+        processed_disposition,
+    );
+    let target_b = target_leaf_with_group(
+        owner,
+        83,
+        11,
+        81,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(11).unwrap(),
+        ),
+        DraftMarkerAdmissionTargetDispositionV1::Unassigned,
+    );
     let target = DraftMarkerAdmissionNodeV1::internal(
         DraftMarkerAdmissionNodeKeyV1::new(
             owner,
@@ -451,8 +538,12 @@ fn assigning_fixture(
         ImageLabelOrdinal::new(101).unwrap(),
         ImageLabelOrdinal::new(100).unwrap(),
         Some((
-            ImageLabelOrdinal::new(prior_label).unwrap(),
-            AssetId::sha256_v1([prior_asset_seed; 32], NonZeroU64::MIN),
+            DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                SyndicThreadId::from_bytes([79; 16]),
+                ImageLabelOrdinal::new(prior_label).unwrap(),
+            ),
+            asset(prior_asset_seed),
+            ImageLabelOrdinal::new(100).unwrap(),
         )),
     )
     .unwrap();
@@ -471,6 +562,8 @@ fn assigning_fixture(
             source_root,
             target_root,
             DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
+            2,
+            2,
             1,
             Some(continuation),
             0,
@@ -524,7 +617,11 @@ fn page_cursor_and_assignment_continuation_enforce_their_bounds() {
         first,
         last,
         next,
-        Some((first, AssetId::sha256_v1([30; 32], NonZeroU64::MIN))),
+        Some((
+            DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(first),
+            asset(30),
+            first,
+        )),
     )
     .unwrap();
     assert_eq!(continuation.allocation_range().unwrap().first(), first);
@@ -535,8 +632,9 @@ fn page_cursor_and_assignment_continuation_enforce_their_bounds() {
         Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)
     );
     let reuse = DraftMarkerAdmissionAssignmentContinuationV1::reuse(Some((
+        DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(first),
+        asset(31),
         first,
-        AssetId::sha256_v1([31; 32], NonZeroU64::MIN),
     )));
     assert_eq!(reuse.allocation_range(), None);
     assert_eq!(reuse.next_allocation(), None);
@@ -561,6 +659,8 @@ fn page_cursor_and_assignment_continuation_enforce_their_bounds() {
             empty_target,
             DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
             0,
+            0,
+            0,
             None,
             0,
             DraftMarkerAdmissionRetainedChargeV1::new(1, 0, 0),
@@ -573,9 +673,38 @@ fn page_cursor_and_assignment_continuation_enforce_their_bounds() {
 #[test]
 fn assigning_heads_enforce_reservation_cardinality_and_progress() {
     let owner = owner();
-    let remaining_source = source_leaf(owner, 80, 11, 81);
-    let target_a = target_leaf(owner, 82, 10, 80);
-    let target_b = target_leaf(owner, 83, 11, 81);
+    let remaining_source = source_leaf_with_group(
+        owner,
+        80,
+        11,
+        81,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(11).unwrap(),
+        ),
+    );
+    let target_a = target_leaf_with_group(
+        owner,
+        82,
+        10,
+        80,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(10).unwrap(),
+        ),
+        DraftMarkerAdmissionTargetDispositionV1::Assigned(ImageLabelOrdinal::new(100).unwrap()),
+    );
+    let target_b = target_leaf_with_group(
+        owner,
+        83,
+        11,
+        81,
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(11).unwrap(),
+        ),
+        DraftMarkerAdmissionTargetDispositionV1::Unassigned,
+    );
     let target = DraftMarkerAdmissionNodeV1::internal(
         DraftMarkerAdmissionNodeKeyV1::new(
             owner,
@@ -602,6 +731,8 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
             root(&remaining_source),
             root(&target),
             DraftMarkerAdmissionDigestV1::from_bytes([6; 32]),
+            2,
+            2,
             1,
             Some(continuation),
             0,
@@ -610,8 +741,12 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
         )
     };
     let prior = Some((
-        ImageLabelOrdinal::new(10).unwrap(),
-        AssetId::sha256_v1([82; 32], NonZeroU64::MIN),
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            SyndicThreadId::from_bytes([79; 16]),
+            ImageLabelOrdinal::new(10).unwrap(),
+        ),
+        asset(82),
+        ImageLabelOrdinal::new(100).unwrap(),
     ));
     let exact = allocation_continuation(
         ImageLabelOrdinal::new(100).unwrap(),

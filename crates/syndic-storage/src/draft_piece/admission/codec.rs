@@ -137,14 +137,52 @@ fn dec_node_key(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionNodeKeyV1, Co
 }
 
 fn enc_source_key(e: &mut Encoder, key: DraftMarkerAdmissionSourceKeyV1) {
-    e.u64(key.source_label().get());
+    enc_group(e, key.group());
     e.fixed16(key.target_marker_id().as_bytes());
+}
+
+fn enc_group(e: &mut Encoder, group: DraftMarkerAdmissionAssignmentGroupV1) {
+    match group {
+        DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label) => {
+            e.u8(0);
+            e.u64(label.get());
+        }
+        DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(thread, label) => {
+            e.u8(1);
+            e.fixed16(thread.as_bytes());
+            e.u64(label.get());
+        }
+        DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(asset) => {
+            e.u8(2);
+            enc_asset(e, asset);
+        }
+    }
+}
+
+fn dec_group(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionAssignmentGroupV1, CodecError> {
+    Ok(match d.u8()? {
+        0 => DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft-marker group label", error))?,
+        ),
+        1 => DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+            beryl_model::SyndicThreadId::from_bytes(d.fixed16()?),
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft-marker group label", error))?,
+        ),
+        2 => DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(dec_asset(d)?),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "draft-marker assignment group",
+                tag,
+            });
+        }
+    })
 }
 
 fn dec_source_key(d: &mut Decoder<'_>) -> Result<DraftMarkerAdmissionSourceKeyV1, CodecError> {
     Ok(DraftMarkerAdmissionSourceKeyV1::new(
-        ImageLabelOrdinal::new(d.u64()?)
-            .map_err(|error| invalid("draft-marker source label", error))?,
+        dec_group(d)?,
         SyndicDraftMarkerId::from_bytes(d.fixed16()?),
     ))
 }
@@ -171,27 +209,40 @@ fn dec_asset(d: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
 
 fn enc_assignment_prior_source(
     e: &mut Encoder,
-    prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+    prior_source: Option<(
+        DraftMarkerAdmissionAssignmentGroupV1,
+        AssetId,
+        ImageLabelOrdinal,
+    )>,
 ) {
     match prior_source {
         None => e.u8(0),
-        Some((label, asset)) => {
+        Some((group, asset, label)) => {
             e.u8(1);
-            e.u64(label.get());
+            enc_group(e, group);
             enc_asset(e, asset);
+            e.u64(label.get());
         }
     }
 }
 
 fn dec_assignment_prior_source(
     d: &mut Decoder<'_>,
-) -> Result<Option<(ImageLabelOrdinal, AssetId)>, CodecError> {
+) -> Result<
+    Option<(
+        DraftMarkerAdmissionAssignmentGroupV1,
+        AssetId,
+        ImageLabelOrdinal,
+    )>,
+    CodecError,
+> {
     match d.u8()? {
         0 => Ok(None),
         1 => Ok(Some((
-            ImageLabelOrdinal::new(d.u64()?)
-                .map_err(|error| invalid("draft-marker prior source label", error))?,
+            dec_group(d)?,
             dec_asset(d)?,
+            ImageLabelOrdinal::new(d.u64()?)
+                .map_err(|error| invalid("draft-marker assigned label", error))?,
         ))),
         tag => Err(CodecError::InvalidTag {
             kind: "draft-marker prior source option",
@@ -358,6 +409,8 @@ fn enc_head_without_digest(e: &mut Encoder, parts: &DraftMarkerAdmissionHeadPart
     enc_root(e, parts.source_root);
     enc_root(e, parts.target_root);
     e.fixed32(parts.occurrence_commitment.as_bytes());
+    e.u64(parts.allocating_occurrence_count);
+    e.u64(parts.occurrence_count);
     e.u64(parts.unassigned_count);
     match parts.assignment_continuation {
         None => e.u8(0),
@@ -422,6 +475,8 @@ fn head_parts(value: &DraftMarkerAdmissionHeadV1) -> DraftMarkerAdmissionHeadPar
         source_root: value.source_root(),
         target_root: value.target_root(),
         occurrence_commitment: value.occurrence_commitment(),
+        allocating_occurrence_count: value.allocating_occurrence_count(),
+        occurrence_count: value.occurrence_count(),
         unassigned_count: value.unassigned_count(),
         assignment_continuation: value.assignment_continuation(),
         remaining_builder_count: value.remaining_builder_count(),
@@ -478,6 +533,8 @@ fn decode_head(bytes: &[u8]) -> Result<DraftMarkerAdmissionHeadV1, CodecError> {
     let source_root = dec_root(&mut d)?;
     let target_root = dec_root(&mut d)?;
     let occurrence_commitment = DraftMarkerAdmissionDigestV1::from_bytes(d.fixed32()?);
+    let allocating_occurrence_count = d.u64()?;
+    let occurrence_count = d.u64()?;
     let unassigned_count = d.u64()?;
     let assignment_continuation = match d.u8()? {
         0 => None,
@@ -552,6 +609,8 @@ fn decode_head(bytes: &[u8]) -> Result<DraftMarkerAdmissionHeadV1, CodecError> {
         source_root,
         target_root,
         occurrence_commitment,
+        allocating_occurrence_count,
+        occurrence_count,
         unassigned_count,
         assignment_continuation,
         remaining_builder_count,
@@ -597,7 +656,7 @@ fn enc_node_without_digest(
             target_marker_id,
             page,
             evidence,
-            source_label,
+            group,
             asset_id,
             disposition,
         } => {
@@ -606,7 +665,7 @@ fn enc_node_without_digest(
             e.fixed16(page.command_id().as_bytes());
             e.u64(page.page_ordinal().get());
             e.bytes(evidence.as_bytes());
-            e.u64(source_label.get());
+            enc_group(e, *group);
             enc_asset(e, *asset_id);
             match disposition {
                 DraftMarkerAdmissionTargetDispositionV1::Unassigned => e.u8(0),
@@ -682,8 +741,7 @@ fn decode_node(bytes: &[u8]) -> Result<DraftMarkerAdmissionNodeV1, CodecError> {
                 d.bytes("draft-marker target evidence")?.to_vec(),
             )
             .map_err(|error| invalid("draft-marker target evidence", error))?;
-            let source_label = ImageLabelOrdinal::new(d.u64()?)
-                .map_err(|error| invalid("draft-marker target source label", error))?;
+            let group = dec_group(&mut d)?;
             let asset_id = dec_asset(&mut d)?;
             let disposition = match d.u8()? {
                 0 => DraftMarkerAdmissionTargetDispositionV1::Unassigned,
@@ -702,7 +760,7 @@ fn decode_node(bytes: &[u8]) -> Result<DraftMarkerAdmissionNodeV1, CodecError> {
                 target_marker_id,
                 page,
                 evidence,
-                source_label,
+                group,
                 asset_id,
                 disposition,
             }

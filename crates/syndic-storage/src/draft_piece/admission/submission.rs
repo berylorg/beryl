@@ -27,6 +27,7 @@ pub enum DraftMarkerLabelReadinessPageSubmissionRefusalV1 {
 }
 
 pub enum DraftMarkerLabelReadinessPageSubmissionOutcomeV1 {
+    Replayed,
     Advanced {
         receipt: CommitReceipt,
         later_failure: Option<CommandError>,
@@ -264,6 +265,9 @@ impl SyndicStorage {
             );
         }
         match classification {
+            PublicationFailureClass::Replayed => {
+                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Replayed
+            }
             PublicationFailureClass::Obsolete => {
                 DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
                     DraftMarkerLabelReadinessPageSubmissionRefusalV1::Obsolete,

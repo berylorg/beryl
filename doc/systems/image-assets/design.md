@@ -164,7 +164,7 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   sealed assigned target-id root, and any exact contiguous allocation range. Syndic derives the
   fixed-size durable readiness binding only while moving that proof into mutation custody; no
   public input can construct, inject, replace, or use the binding as independent authority.
-- Every readiness page has exactly one homogeneous proof shape. A candidate/cut-only page contains
+- Every nonempty readiness page has exactly one homogeneous proof shape. A candidate/cut-only page contains
   only candidate or cut associations and uses Syndic's source-only proof: same-conversation reuse
   preserves the existing label only when exact destination authority proves the same `AssetId`; a
   live candidate occurrence is proved through its root-bound marker lookup, and a retained private

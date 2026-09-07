@@ -157,11 +157,7 @@ impl SyndicStorage {
             associations,
             witness_factory,
         } = request;
-        let empty_eof = associations.is_empty()
-            && ordinal == NonZeroU64::MIN
-            && eof
-            && disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
-            && witness_factory.is_none();
+        let empty_eof = associations.is_empty() && eof && witness_factory.is_none();
         if associations.len() > PAGE_MAX_ASSOCIATIONS
             || (associations.is_empty() && !empty_eof)
             || associations.windows(2).any(|associations| {
@@ -215,6 +211,23 @@ impl SyndicStorage {
         {
             return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
         }
+        if empty_eof
+            && !admission_head
+                .as_ref()
+                .map_or(ordinal == NonZeroU64::MIN, |head| {
+                    (head.lifecycle()
+                        == crate::draft_piece::DraftMarkerAdmissionLifecycleV1::Ingesting
+                        && head.next_page_ordinal() == ordinal
+                        && head.ingestion_association_cursor() == 0)
+                        || (head.lifecycle()
+                            == crate::draft_piece::DraftMarkerAdmissionLifecycleV1::Assigning
+                            && head.evidence_eof()
+                            && head.selected_receipt() == Some(page)
+                            && ordinal.get().checked_add(1) == Some(head.next_page_ordinal().get()))
+                })
+        {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
         let authority = DraftMarkerLabelReadinessRequestAuthorityV1 {
             home_generation,
             label_authority,
@@ -229,12 +242,24 @@ impl SyndicStorage {
                 return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
             }
             match association.selector {
+                DraftMarkerReadinessSourceSelectorV1::FreshAsset(asset_id) => {
+                    entries.push(CanonicalEntry {
+                        target_marker_id: association.target_marker_id,
+                        selector: association.selector,
+                        group:
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(
+                                asset_id,
+                            ),
+                        asset_id,
+                        accepted_origin: None,
+                    });
+                }
                 DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
                     let origin = resolve_accepted_preflight(self, store, source)?;
                     entries.push(CanonicalEntry {
                         target_marker_id: association.target_marker_id,
                         selector: association.selector,
-                        label: source.label,
+                        group: if source.thread_id == destination.thread_id() { crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(source.label) } else { crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(source.thread_id, source.label) },
                         asset_id: source.asset_id,
                         accepted_origin: Some(origin),
                     });
@@ -248,18 +273,19 @@ impl SyndicStorage {
                     entries.push(CanonicalEntry {
                         target_marker_id: association.target_marker_id,
                         selector: association.selector,
-                        label: occurrence.label(),
+                        group: crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(occurrence.label()),
                         asset_id: occurrence.asset_id(),
                         accepted_origin: None,
                     });
                 }
             }
         }
-        entries.sort_by(|left, right| {
-            left.label
-                .cmp(&right.label)
-                .then_with(|| left.evidence_bytes().cmp(&right.evidence_bytes()))
-        });
+        if disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
+            && entries.iter().any(|entry| entry.group.allocates())
+        {
+            return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+        }
+        entries.sort_by(CanonicalEntry::order_cmp);
         let evidence_bytes = entries
             .iter()
             .try_fold(0_usize, |total, entry| {
@@ -275,20 +301,35 @@ impl SyndicStorage {
                 DraftMarkerReadinessSourceSelectorV1::Accepted(_)
             )
         });
-        let witness = match (accepted, witness_factory) {
-            (true, Some(factory)) => {
+        let witness = match (
+            accepted,
+            entries.first().is_some_and(|entry| {
+                matches!(
+                    entry.selector,
+                    DraftMarkerReadinessSourceSelectorV1::FreshAsset(_)
+                )
+            }),
+            witness_factory,
+        ) {
+            (true, false, Some(factory)) => {
                 let witness_input = entries
                     .iter()
                     .map(|entry| match entry.selector {
                         DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
-                            Ok((source.asset_reference_set, entry.label, entry.asset_id))
+                            Ok((source.asset_reference_set, source.label, entry.asset_id))
                         }
                         _ => Err(DraftMarkerReadinessSourceErrorV1::Rejected),
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Some(factory.build(store, ordinal.get(), eof, witness_input)?)
             }
-            (false, None) => None,
+            (false, true, Some(factory)) => Some(factory.build_fresh(
+                store,
+                ordinal.get(),
+                eof,
+                entries.iter().map(|entry| entry.asset_id).collect(),
+            )?),
+            (false, false, None) => None,
             _ => return Err(DraftMarkerReadinessSourceErrorV1::Rejected),
         };
         let expected = page_correlation(ordinal, eof, &entries);
@@ -296,17 +337,33 @@ impl SyndicStorage {
             .domain_revision(&self.handle)
             .map_err(DraftMarkerReadinessSourceErrorV1::Read)?;
         let allocation_count = match (disposition, eof) {
+            (DraftMarkerLabelReadinessDispositionV1::Allocate, true)
+                if admission_head
+                    .as_ref()
+                    .is_some_and(|head| head.evidence_eof()) =>
+            {
+                Some(
+                    admission_head
+                        .as_ref()
+                        .expect("EOF head checked above")
+                        .allocating_occurrence_count(),
+                )
+            }
             (DraftMarkerLabelReadinessDispositionV1::Allocate, true) => {
                 let (retained, cursor) = admission_head.as_ref().map_or((0, 0), |head| {
                     (
-                        head.target_root().count(),
+                        head.allocating_occurrence_count(),
                         head.ingestion_association_cursor(),
                     )
                 });
-                let remaining = u64::try_from(entries.len())
-                    .ok()
-                    .and_then(|count| count.checked_sub(cursor))
-                    .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?;
+                let cursor = usize::try_from(cursor)
+                    .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?;
+                let remaining = entries
+                    .get(cursor..)
+                    .ok_or(DraftMarkerReadinessSourceErrorV1::Rejected)?
+                    .iter()
+                    .filter(|entry| entry.group.allocates())
+                    .count() as u64;
                 Some(
                     retained
                         .checked_add(remaining)

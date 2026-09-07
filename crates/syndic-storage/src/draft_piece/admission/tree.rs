@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
+use beryl_model::{AssetId, SyndicDraftMarkerId};
 
 use super::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS,
@@ -130,7 +130,7 @@ impl DraftMarkerAdmissionNodeV1 {
         target_marker_id: SyndicDraftMarkerId,
         page: DraftMarkerAdmissionPageIdentityV1,
         evidence: DraftMarkerAdmissionEvidenceV1,
-        source_label: ImageLabelOrdinal,
+        group: impl Into<super::DraftMarkerAdmissionAssignmentGroupV1>,
         asset_id: AssetId,
         disposition: DraftMarkerAdmissionTargetDispositionV1,
     ) -> Result<Self, DraftMarkerAdmissionSchemaErrorV1> {
@@ -141,7 +141,7 @@ impl DraftMarkerAdmissionNodeV1 {
             target_marker_id,
             page,
             evidence,
-            source_label,
+            group: group.into(),
             asset_id,
             disposition,
         };
@@ -246,12 +246,35 @@ impl DraftMarkerAdmissionNodeV1 {
                     return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount);
                 }
             }
-            DraftMarkerAdmissionNodePayloadV1::SourceLeaf { .. }
-                if self.key().kind() == DraftMarkerAdmissionNodeKindV1::Leaf
-                    && self.tree() == DraftMarkerAdmissionTreeV1::SourceOrder => {}
-            DraftMarkerAdmissionNodePayloadV1::TargetLeaf { .. }
-                if self.key().kind() == DraftMarkerAdmissionNodeKindV1::Leaf
-                    && self.tree() == DraftMarkerAdmissionTreeV1::TargetId => {}
+            DraftMarkerAdmissionNodePayloadV1::SourceLeaf {
+                source_key,
+                evidence,
+                asset_id,
+            } if self.key().kind() == DraftMarkerAdmissionNodeKindV1::Leaf
+                && self.tree() == DraftMarkerAdmissionTreeV1::SourceOrder =>
+            {
+                evidence.validate_group(source_key.group(), *asset_id)?;
+            }
+            DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
+                group,
+                evidence,
+                asset_id,
+                disposition,
+                ..
+            } if self.key().kind() == DraftMarkerAdmissionNodeKindV1::Leaf
+                && self.tree() == DraftMarkerAdmissionTreeV1::TargetId =>
+            {
+                evidence.validate_group(*group, *asset_id)?;
+                if let (
+                    super::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label),
+                    DraftMarkerAdmissionTargetDispositionV1::Assigned(assigned),
+                ) = (group, disposition)
+                {
+                    if label != assigned {
+                        return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree);
+                    }
+                }
+            }
             _ => return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree),
         }
         if self.digest() != super::codec::node_digest(self.key(), self.tree(), self.payload())? {
@@ -277,6 +300,8 @@ impl DraftMarkerAdmissionHeadV1 {
         source_root: DraftMarkerAdmissionRootV1,
         target_root: DraftMarkerAdmissionRootV1,
         occurrence_commitment: DraftMarkerAdmissionDigestV1,
+        allocating_occurrence_count: u64,
+        occurrence_count: u64,
         unassigned_count: u64,
         assignment_continuation: Option<DraftMarkerAdmissionAssignmentContinuationV1>,
         remaining_builder_count: u64,
@@ -298,6 +323,8 @@ impl DraftMarkerAdmissionHeadV1 {
             source_root,
             target_root,
             occurrence_commitment,
+            allocating_occurrence_count,
+            occurrence_count,
             unassigned_count,
             assignment_continuation,
             remaining_builder_count,
@@ -324,6 +351,9 @@ impl DraftMarkerAdmissionHeadV1 {
             || self.charge().heads() != 1
             || !self.charge().fits(self.limits())
             || self.charge().associations() < self.target_root().count()
+            || self.allocating_occurrence_count() > self.occurrence_count()
+            || self.occurrence_count() > super::DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS
+            || self.target_root().count() > self.occurrence_count()
             || self.unassigned_count() > self.target_root().count()
             || self.remaining_builder_count() > self.target_root().count()
             || self.ingestion_association_cursor() > DRAFT_MARKER_ADMISSION_PAGE_MAX_ASSOCIATIONS
@@ -351,6 +381,7 @@ impl DraftMarkerAdmissionHeadV1 {
                 if self.evidence_eof()
                     || self.assignment_continuation().is_some()
                     || self.source_root().count() != self.target_root().count()
+                    || self.occurrence_count() != self.target_root().count()
                     || self.unassigned_count() != self.target_root().count()
                     || self.remaining_builder_count() != 0 =>
             {
@@ -360,6 +391,7 @@ impl DraftMarkerAdmissionHeadV1 {
                 let continuation = self
                     .assignment_continuation()
                     .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
+                continuation.validate()?;
                 let occurrence_count = self.target_root().count();
                 let unassigned_count = self.source_root().count();
                 let processed_count = occurrence_count
@@ -376,7 +408,11 @@ impl DraftMarkerAdmissionHeadV1 {
                     (Some(range), Some(next), prior) => next
                         .get()
                         .checked_sub(range.first().get())
-                        .and_then(|count| count.checked_add(u64::from(prior.is_some()))),
+                        .and_then(|count| {
+                            count.checked_add(u64::from(
+                                prior.is_some_and(|(group, _, _)| group.allocates()),
+                            ))
+                        }),
                     (None, None, _) => Some(0),
                     _ => None,
                 }
@@ -385,8 +421,9 @@ impl DraftMarkerAdmissionHeadV1 {
                     || self.ingestion_association_cursor() != 0
                     || (occurrence_count != 0 && unassigned_count == 0)
                     || self.unassigned_count() != unassigned_count
+                    || self.occurrence_count() != occurrence_count
                     || self.remaining_builder_count() != 0
-                    || reservation_count.is_some_and(|count| count != occurrence_count)
+                    || reservation_count.unwrap_or(0) != self.allocating_occurrence_count()
                     || allocated_count > processed_count
                     || (processed_count == 0
                         && (continuation.prior_source().is_some() || allocated_count != 0))
@@ -399,6 +436,8 @@ impl DraftMarkerAdmissionHeadV1 {
             | DraftMarkerAdmissionLifecycleV1::Staging
             | DraftMarkerAdmissionLifecycleV1::Building
                 if !self.evidence_eof()
+                    || (self.lifecycle() != DraftMarkerAdmissionLifecycleV1::Building
+                        && self.occurrence_count() != self.target_root().count())
                     || self.ingestion_association_cursor() != 0
                     || self.assignment_continuation().is_some()
                     || self.source_root().count() != 0
@@ -444,6 +483,8 @@ impl DraftMarkerAdmissionHeadV1 {
             source_root: self.source_root(),
             target_root: self.target_root(),
             occurrence_commitment: self.occurrence_commitment(),
+            allocating_occurrence_count: self.allocating_occurrence_count(),
+            occurrence_count: self.occurrence_count(),
             unassigned_count: self.unassigned_count(),
             assignment_continuation: self.assignment_continuation(),
             remaining_builder_count: self.remaining_builder_count(),
@@ -650,7 +691,8 @@ pub(crate) fn source_key_less(
     a: DraftMarkerAdmissionSourceKeyV1,
     b: DraftMarkerAdmissionSourceKeyV1,
 ) -> bool {
-    (a.source_label().get(), a.target_marker_id()) < (b.source_label().get(), b.target_marker_id())
+    (a.group().canonical_bytes(), a.target_marker_id())
+        < (b.group().canonical_bytes(), b.target_marker_id())
 }
 
 fn envelopes_disjoint(

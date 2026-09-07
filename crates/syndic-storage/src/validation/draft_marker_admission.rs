@@ -547,13 +547,15 @@ fn validate_assignment_frontier(
         .ok_or(SyndicValidationError::Invariant(
             "draft-marker admission assignment continuation missing",
         ))?;
-    let Some((prior_label, prior_asset)) = continuation.prior_source() else {
+    let Some((prior_label, prior_asset, _)) = continuation.prior_source() else {
         return Ok(());
     };
     let (next_label, next_asset) = least_source_occurrence(reader, head.source_root())?.ok_or(
         SyndicValidationError::Invariant("draft-marker admission assigning source root is empty"),
     )?;
-    if next_label < prior_label || (next_label == prior_label && next_asset != prior_asset) {
+    if next_label.canonical_bytes() < prior_label.canonical_bytes()
+        || (next_label == prior_label && next_asset != prior_asset)
+    {
         return invariant("draft-marker admission assignment prior source disagreement");
     }
     Ok(())
@@ -562,7 +564,13 @@ fn validate_assignment_frontier(
 fn least_source_occurrence(
     reader: &DomainReader<'_, SyndicDomain>,
     root: DraftMarkerAdmissionRootV1,
-) -> Result<Option<(beryl_model::ImageLabelOrdinal, beryl_model::AssetId)>, SyndicValidationError> {
+) -> Result<
+    Option<(
+        crate::DraftMarkerAdmissionAssignmentGroupV1,
+        beryl_model::AssetId,
+    )>,
+    SyndicValidationError,
+> {
     let Some(mut key) = root.node() else {
         return Ok(None);
     };
@@ -575,7 +583,7 @@ fn least_source_occurrence(
                 source_key,
                 asset_id,
                 ..
-            } => return Ok(Some((source_key.source_label(), *asset_id))),
+            } => return Ok(Some((source_key.group(), *asset_id))),
             DraftMarkerAdmissionNodePayloadV1::Internal { children, .. } => {
                 key = children
                     .first()

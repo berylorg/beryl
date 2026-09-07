@@ -116,6 +116,7 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum PublicationFailureClass {
+    Replayed,
     Obsolete,
     Collision,
     Refused,
@@ -131,6 +132,9 @@ pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailure
     };
     match source.and_then(|source| source.downcast_ref::<DraftMarkerAdmissionPublicationErrorV1>())
     {
+        Some(DraftMarkerAdmissionPublicationErrorV1::ExactReplay) => {
+            PublicationFailureClass::Replayed
+        }
         Some(DraftMarkerAdmissionPublicationErrorV1::ObsoletePage) => {
             PublicationFailureClass::Obsolete
         }
@@ -149,6 +153,8 @@ pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailure
 
 #[derive(Debug, thiserror::Error)]
 enum DraftMarkerAdmissionPublicationErrorV1 {
+    #[error("draft-marker admission selected EOF page is byte-exact replay")]
+    ExactReplay,
     #[error(transparent)]
     Read(#[from] ReadError),
     #[error(transparent)]
@@ -310,6 +316,17 @@ fn prepare_publication(
         PublicationAuthority::Fixture => {}
     }
     let prior = read_prior(reader, &seed, &page)?;
+    if let Some(head) = prior.head.as_ref() {
+        if head.evidence_eof() {
+            progression::authenticate_empty_eof_replay(&seed, &page, &prior)?;
+            let bytes = checked_draft_marker_admission_command_charge_v1([prior.read_bytes])?;
+            if bytes > command_limit {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge.into());
+            }
+            return Err(DraftMarkerAdmissionPublicationErrorV1::ExactReplay);
+        }
+        authenticate_head(&seed, head)?;
+    }
     let progression = page_progression(prior.head.as_ref(), &page)?;
     authenticate_progression(&seed, &page, &prior, progression)?;
     let (source_before, target_before, head_revision, prior_charge) = match prior.head.as_ref() {
@@ -332,6 +349,8 @@ fn prepare_publication(
         .map_or(&[][..], |receipt| receipt.retained_predecessor_nodes());
     let index = if page.association_count() == 0 {
         prepare_empty_draft_marker_admission_index_successor_v1(
+            reader,
+            seed.owner,
             source_before,
             target_before,
             prior_replay_nodes,
@@ -364,6 +383,7 @@ fn prepare_publication(
     let provisional = build_head(
         &seed,
         &page,
+        prior.head.as_ref(),
         head_revision,
         progression,
         &index,
@@ -400,6 +420,7 @@ fn prepare_publication(
     let head = build_head(
         &seed,
         &page,
+        prior.head.as_ref(),
         head_revision,
         progression,
         &index,
@@ -460,7 +481,6 @@ fn read_prior(
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
     let receipt = match head.as_ref() {
         Some(head) => {
-            authenticate_head(seed, head)?;
             let command = head
                 .selected_receipt()
                 .ok_or(DraftMarkerAdmissionPublicationErrorV1::Authority)?;
@@ -519,14 +539,32 @@ fn read_prior(
 fn build_head(
     seed: &DraftMarkerAdmissionPublicationSeedV1,
     page: &DraftMarkerLabelReadinessProvenPageV1,
+    prior: Option<&DraftMarkerAdmissionHeadV1>,
     revision: NonZeroU64,
     progression: PageProgression,
     index: &PreparedDraftMarkerAdmissionIndexSuccessorV1,
     charge: DraftMarkerAdmissionRetainedChargeV1,
 ) -> Result<DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionSchemaErrorV1> {
+    let allocating_occurrence_count = prior
+        .map_or(0, DraftMarkerAdmissionHeadV1::allocating_occurrence_count)
+        .checked_add(u64::from(
+            page.sealed_page()
+                .entries
+                .get(progression.association_index)
+                .is_some_and(|entry| entry.group.allocates()),
+        ))
+        .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?;
     let (lifecycle, occurrence_commitment, continuation) = if progression.final_eof {
         let continuation = match seed.disposition {
             DraftMarkerLabelReadinessDispositionV1::Reuse => {
+                if seed.allocation_range.is_some() {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+                }
+                DraftMarkerAdmissionAssignmentContinuationV1::reuse(None)
+            }
+            DraftMarkerLabelReadinessDispositionV1::Allocate
+                if allocating_occurrence_count == 0 =>
+            {
                 if seed.allocation_range.is_some() {
                     return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
                 }
@@ -536,7 +574,7 @@ fn build_head(
                 let range = seed
                     .allocation_range
                     .ok_or(DraftMarkerAdmissionSchemaErrorV1::InvalidHead)?;
-                if range.count() != index.target_root().count() {
+                if range.count() != allocating_occurrence_count {
                     return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
                 }
                 DraftMarkerAdmissionAssignmentContinuationV1::allocate(range, range.first(), None)?
@@ -568,6 +606,8 @@ fn build_head(
         index.source_root(),
         index.target_root(),
         occurrence_commitment,
+        allocating_occurrence_count,
+        index.target_root().count(),
         index.target_root().count(),
         continuation,
         0,

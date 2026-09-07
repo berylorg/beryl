@@ -65,9 +65,37 @@ impl ProofDomain for SyndicDomain {
         let _page = page.page;
         let destination = session_snapshot(reader, page.owner.draft_id(), page.owner.session_id())?;
         for entry in page.entries.iter() {
+            if page.authority.disposition == DraftMarkerLabelReadinessDispositionV1::Reuse
+                && entry.group.allocates()
+            {
+                return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+            }
             match entry.selector {
+                DraftMarkerReadinessSourceSelectorV1::FreshAsset(asset) => {
+                    if entry.group
+                        != crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(
+                            asset,
+                        )
+                        || entry.asset_id != asset
+                        || entry.accepted_origin.is_some()
+                    {
+                        return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
+                    }
+                }
                 DraftMarkerReadinessSourceSelectorV1::Accepted(source) => {
-                    if entry.label != source.label || entry.asset_id != source.asset_id {
+                    if entry.group
+                        != if source.thread_id == destination.thread_id() {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(
+                                source.label,
+                            )
+                        } else {
+                            crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(
+                                source.thread_id,
+                                source.label,
+                            )
+                        }
+                        || entry.asset_id != source.asset_id
+                    {
                         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
                     }
                     let origin = entry
@@ -81,7 +109,7 @@ impl ProofDomain for SyndicDomain {
                     }
                     let (thread, occurrence) = resolve_snapshot(reader, entry.selector)?;
                     if thread != destination.thread_id()
-                        || occurrence.label() != entry.label
+                        || entry.group != crate::draft_piece::DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(occurrence.label())
                         || occurrence.asset_id() != entry.asset_id
                     {
                         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
@@ -190,10 +218,7 @@ impl DomainCallbackError for DraftMarkerReadinessSourceErrorV1 {
 fn validate_input_shape(
     page: &super::model::SealedDraftMarkerReadinessSourcePageV1,
 ) -> Result<(), DraftMarkerReadinessSourceErrorV1> {
-    let empty_eof = page.entries.is_empty()
-        && page.ordinal == std::num::NonZeroU64::MIN
-        && page.eof
-        && page.authority.disposition == DraftMarkerLabelReadinessDispositionV1::Reuse;
+    let empty_eof = page.entries.is_empty() && page.eof;
     if page.entries.len() > PAGE_MAX_ASSOCIATIONS || (page.entries.is_empty() && !empty_eof) {
         return Err(DraftMarkerReadinessSourceErrorV1::Rejected);
     }
@@ -210,11 +235,10 @@ fn validate_input_shape(
             .entries
             .iter()
             .any(|entry| !targets.insert(entry.target_marker_id))
-        || page.entries.windows(2).any(|entries| {
-            entries[0].label > entries[1].label
-                || (entries[0].label == entries[1].label
-                    && entries[0].evidence_bytes() > entries[1].evidence_bytes())
-        })
+        || page
+            .entries
+            .windows(2)
+            .any(|entries| entries[0].order_cmp(&entries[1]).is_gt())
         || page
             .entries
             .windows(2)
@@ -473,7 +497,8 @@ pub(super) fn resolve_preflight(
             }
             Ok((session.thread_id(), occurrence))
         }
-        DraftMarkerReadinessSourceSelectorV1::Accepted(_) => {
+        DraftMarkerReadinessSourceSelectorV1::Accepted(_)
+        | DraftMarkerReadinessSourceSelectorV1::FreshAsset(_) => {
             Err(DraftMarkerReadinessSourceErrorV1::Rejected)
         }
     }
@@ -533,7 +558,8 @@ fn resolve_snapshot(
             }
             Ok((session.thread_id(), occurrence))
         }
-        DraftMarkerReadinessSourceSelectorV1::Accepted(_) => {
+        DraftMarkerReadinessSourceSelectorV1::Accepted(_)
+        | DraftMarkerReadinessSourceSelectorV1::FreshAsset(_) => {
             Err(DraftMarkerReadinessSourceErrorV1::Rejected)
         }
     }

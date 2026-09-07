@@ -32,12 +32,26 @@ pub(super) fn page_progression(
 ) -> Result<PageProgression, PageProgressionError> {
     let page_ordinal = page.sealed_page().ordinal;
     if page.association_count() == 0 {
-        if head.is_some() || page_ordinal != NonZeroU64::MIN || !page.sealed_page().eof {
+        if page_ordinal
+            != head.map_or(
+                NonZeroU64::MIN,
+                DraftMarkerAdmissionHeadV1::next_page_ordinal,
+            )
+            || head
+                .is_some_and(|head| head.ingestion_association_cursor() != 0 || head.evidence_eof())
+            || !page.sealed_page().eof
+        {
             return Err(PageProgressionError::Authority);
         }
         return Ok(PageProgression {
             association_index: 0,
-            next_page_ordinal: NonZeroU64::new(2).expect("empty EOF successor is nonzero"),
+            next_page_ordinal: NonZeroU64::new(
+                page_ordinal
+                    .get()
+                    .checked_add(1)
+                    .ok_or(PageProgressionError::Overflow)?,
+            )
+            .ok_or(PageProgressionError::Overflow)?,
             next_association_cursor: 0,
             continues_selected_page: false,
             final_eof: true,
@@ -128,6 +142,52 @@ pub(super) fn authenticate_receipt_closure(
         || receipt.transition() != DraftMarkerAdmissionReceiptTransitionV1::Ingestion
     {
         return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
+    }
+    Ok(())
+}
+
+pub(super) fn authenticate_empty_eof_replay(
+    seed: &DraftMarkerAdmissionPublicationSeedV1,
+    page: &DraftMarkerLabelReadinessProvenPageV1,
+    prior: &PriorPublication,
+) -> Result<(), DraftMarkerAdmissionPublicationErrorV1> {
+    let head = prior
+        .head
+        .as_ref()
+        .ok_or(DraftMarkerAdmissionPublicationErrorV1::Authority)?;
+    let receipt = prior
+        .receipt
+        .as_ref()
+        .ok_or(DraftMarkerAdmissionPublicationErrorV1::Authority)?;
+    if head.owner() != seed.owner
+        || head.home_generation() != seed.home_generation
+        || head.request_commitment() != seed.request_commitment
+        || head.custody_commitment() != seed.custody_commitment
+        || head.lifecycle() != DraftMarkerAdmissionLifecycleV1::Assigning
+        || !head.evidence_eof()
+        || head.ingestion_association_cursor() != 0
+        || head.source_root().count() != head.target_root().count()
+        || head.occurrence_commitment() != head.source_root().digest()
+        || head
+            .assignment_continuation()
+            .and_then(|value| value.allocation_range())
+            != seed.allocation_range
+    {
+        return Err(DraftMarkerAdmissionPublicationErrorV1::Authority);
+    }
+    if !page.sealed_page().eof
+        || page.association_count() != 0
+        || head.selected_receipt() != Some(page.page_identity())
+        || page.sealed_page().ordinal.get().checked_add(1) != Some(head.next_page_ordinal().get())
+        || receipt.command_id() != page.page_identity()
+        || receipt.page_ordinal() != page.sealed_page().ordinal
+        || receipt.source_head_bytes() != seed.source_head_bytes.as_ref()
+        || receipt.target_head_bytes() != seed.target_head_bytes.as_ref()
+        || receipt.source_before() != head.source_root()
+        || receipt.target_before() != head.target_root()
+        || !receipt.retained_predecessor_nodes().is_empty()
+    {
+        return Err(DraftMarkerAdmissionPublicationErrorV1::Collision);
     }
     Ok(())
 }

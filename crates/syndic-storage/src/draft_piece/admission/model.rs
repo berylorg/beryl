@@ -254,27 +254,74 @@ impl DraftMarkerAdmissionNodeKeyV1 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DraftMarkerAdmissionSourceKeyV1 {
-    source_label: ImageLabelOrdinal,
+    group: DraftMarkerAdmissionAssignmentGroupV1,
     target_marker_id: SyndicDraftMarkerId,
 }
 
 impl DraftMarkerAdmissionSourceKeyV1 {
-    pub const fn new(
-        source_label: ImageLabelOrdinal,
+    pub fn new(
+        group: impl Into<DraftMarkerAdmissionAssignmentGroupV1>,
         target_marker_id: SyndicDraftMarkerId,
     ) -> Self {
         Self {
-            source_label,
+            group: group.into(),
             target_marker_id,
         }
     }
 
-    pub const fn source_label(self) -> ImageLabelOrdinal {
-        self.source_label
+    pub const fn group(self) -> DraftMarkerAdmissionAssignmentGroupV1 {
+        self.group
     }
 
     pub const fn target_marker_id(self) -> SyndicDraftMarkerId {
         self.target_marker_id
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DraftMarkerAdmissionAssignmentGroupV1 {
+    PreserveLabel(ImageLabelOrdinal),
+    AllocateLabel(beryl_model::SyndicThreadId, ImageLabelOrdinal),
+    FreshAsset(AssetId),
+}
+
+impl From<ImageLabelOrdinal> for DraftMarkerAdmissionAssignmentGroupV1 {
+    fn from(label: ImageLabelOrdinal) -> Self {
+        Self::PreserveLabel(label)
+    }
+}
+
+impl DraftMarkerAdmissionAssignmentGroupV1 {
+    pub const fn source_label(self) -> Option<ImageLabelOrdinal> {
+        match self {
+            Self::PreserveLabel(label) | Self::AllocateLabel(_, label) => Some(label),
+            Self::FreshAsset(_) => None,
+        }
+    }
+    pub const fn allocates(self) -> bool {
+        !matches!(self, Self::PreserveLabel(_))
+    }
+
+    pub fn canonical_bytes(self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(42);
+        match self {
+            Self::PreserveLabel(label) => {
+                bytes.push(0);
+                bytes.extend_from_slice(&label.get().to_be_bytes());
+            }
+            Self::AllocateLabel(thread, label) => {
+                bytes.push(1);
+                bytes.extend_from_slice(thread.as_bytes());
+                bytes.extend_from_slice(&label.get().to_be_bytes());
+            }
+            Self::FreshAsset(asset) => {
+                bytes.push(2);
+                bytes.push(asset.version() as u8);
+                bytes.extend_from_slice(&asset.digest());
+                bytes.extend_from_slice(&asset.length().get().to_be_bytes());
+            }
+        }
+        bytes
     }
 }
 
@@ -371,6 +418,44 @@ impl DraftMarkerAdmissionEvidenceV1 {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    pub(crate) fn validate_group(
+        &self,
+        group: DraftMarkerAdmissionAssignmentGroupV1,
+        asset: AssetId,
+    ) -> Result<(), DraftMarkerAdmissionSchemaErrorV1> {
+        let bytes = self.as_bytes();
+        let valid_shape = match (bytes.first(), group) {
+            (Some(0), DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(_)) => {
+                matches!((bytes.get(1), bytes.len()), (Some(0), 434) | (Some(1), 450))
+            }
+            (
+                Some(1),
+                DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(_)
+                | DraftMarkerAdmissionAssignmentGroupV1::AllocateLabel(_, _),
+            ) => bytes.len() == 194,
+            (Some(2), DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(expected)) => {
+                bytes.len() == 42 && expected == asset
+            }
+            _ => false,
+        };
+        if !valid_shape {
+            return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree);
+        }
+        let tail = &bytes[bytes.len() - 41..];
+        if tail[0] != asset.version() as u8
+            || tail[1..33] != asset.digest()
+            || tail[33..] != asset.length().get().to_le_bytes()
+        {
+            return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree);
+        }
+        if let Some(label) = group.source_label() {
+            if bytes[bytes.len() - 49..bytes.len() - 41] != label.get().to_le_bytes() {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -394,7 +479,7 @@ pub enum DraftMarkerAdmissionNodePayloadV1 {
         target_marker_id: SyndicDraftMarkerId,
         page: DraftMarkerAdmissionPageIdentityV1,
         evidence: DraftMarkerAdmissionEvidenceV1,
-        source_label: ImageLabelOrdinal,
+        group: super::DraftMarkerAdmissionAssignmentGroupV1,
         asset_id: AssetId,
         disposition: DraftMarkerAdmissionTargetDispositionV1,
     },
@@ -562,24 +647,82 @@ impl DraftMarkerLabelAllocationRangeV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftMarkerAdmissionAssignmentContinuationV1 {
     Reuse {
-        prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+        prior_source: Option<(
+            DraftMarkerAdmissionAssignmentGroupV1,
+            AssetId,
+            ImageLabelOrdinal,
+        )>,
     },
     Allocate {
         range: DraftMarkerLabelAllocationRangeV1,
         next_allocation: ImageLabelOrdinal,
-        prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+        prior_source: Option<(
+            DraftMarkerAdmissionAssignmentGroupV1,
+            AssetId,
+            ImageLabelOrdinal,
+        )>,
     },
 }
 
 impl DraftMarkerAdmissionAssignmentContinuationV1 {
-    pub const fn reuse(prior_source: Option<(ImageLabelOrdinal, AssetId)>) -> Self {
+    pub(crate) fn validate(self) -> Result<(), DraftMarkerAdmissionSchemaErrorV1> {
+        if let Some((group, asset, assigned)) = self.prior_source() {
+            match group {
+                DraftMarkerAdmissionAssignmentGroupV1::PreserveLabel(label)
+                    if assigned != label =>
+                {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+                }
+                DraftMarkerAdmissionAssignmentGroupV1::FreshAsset(expected)
+                    if expected != asset =>
+                {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+                }
+                _ => {}
+            }
+            if group.allocates()
+                && (self.allocation_range().is_none() || self.next_allocation() != Some(assigned))
+            {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+            }
+            if !group.allocates()
+                && self
+                    .allocation_range()
+                    .is_some_and(|range| self.next_allocation() != Some(range.first()))
+            {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+            }
+        }
+        if let Self::Allocate {
+            range,
+            next_allocation,
+            ..
+        } = self
+        {
+            if next_allocation < range.first() || next_allocation > range.last() {
+                return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
+            }
+        }
+        Ok(())
+    }
+    pub const fn reuse(
+        prior_source: Option<(
+            DraftMarkerAdmissionAssignmentGroupV1,
+            AssetId,
+            ImageLabelOrdinal,
+        )>,
+    ) -> Self {
         Self::Reuse { prior_source }
     }
 
     pub fn allocate(
         range: DraftMarkerLabelAllocationRangeV1,
         next_allocation: ImageLabelOrdinal,
-        prior_source: Option<(ImageLabelOrdinal, AssetId)>,
+        prior_source: Option<(
+            DraftMarkerAdmissionAssignmentGroupV1,
+            AssetId,
+            ImageLabelOrdinal,
+        )>,
     ) -> Result<Self, DraftMarkerAdmissionSchemaErrorV1> {
         if next_allocation < range.first() || next_allocation > range.last() {
             return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidHead);
@@ -607,7 +750,13 @@ impl DraftMarkerAdmissionAssignmentContinuationV1 {
         }
     }
 
-    pub const fn prior_source(self) -> Option<(ImageLabelOrdinal, AssetId)> {
+    pub const fn prior_source(
+        self,
+    ) -> Option<(
+        DraftMarkerAdmissionAssignmentGroupV1,
+        AssetId,
+        ImageLabelOrdinal,
+    )> {
         match self {
             Self::Reuse { prior_source } | Self::Allocate { prior_source, .. } => prior_source,
         }
@@ -629,6 +778,8 @@ pub struct DraftMarkerAdmissionHeadV1 {
     source_root: DraftMarkerAdmissionRootV1,
     target_root: DraftMarkerAdmissionRootV1,
     occurrence_commitment: DraftMarkerAdmissionDigestV1,
+    allocating_occurrence_count: u64,
+    occurrence_count: u64,
     unassigned_count: u64,
     assignment_continuation: Option<DraftMarkerAdmissionAssignmentContinuationV1>,
     remaining_builder_count: u64,
@@ -654,6 +805,8 @@ impl DraftMarkerAdmissionHeadV1 {
             source_root: parts.source_root,
             target_root: parts.target_root,
             occurrence_commitment: parts.occurrence_commitment,
+            allocating_occurrence_count: parts.allocating_occurrence_count,
+            occurrence_count: parts.occurrence_count,
             unassigned_count: parts.unassigned_count,
             assignment_continuation: parts.assignment_continuation,
             remaining_builder_count: parts.remaining_builder_count,
@@ -703,6 +856,12 @@ impl DraftMarkerAdmissionHeadV1 {
     pub const fn occurrence_commitment(&self) -> DraftMarkerAdmissionDigestV1 {
         self.occurrence_commitment
     }
+    pub const fn allocating_occurrence_count(&self) -> u64 {
+        self.allocating_occurrence_count
+    }
+    pub const fn occurrence_count(&self) -> u64 {
+        self.occurrence_count
+    }
     pub const fn unassigned_count(&self) -> u64 {
         self.unassigned_count
     }
@@ -742,6 +901,8 @@ pub(crate) struct DraftMarkerAdmissionHeadPartsV1 {
     pub source_root: DraftMarkerAdmissionRootV1,
     pub target_root: DraftMarkerAdmissionRootV1,
     pub occurrence_commitment: DraftMarkerAdmissionDigestV1,
+    pub allocating_occurrence_count: u64,
+    pub occurrence_count: u64,
     pub unassigned_count: u64,
     pub assignment_continuation: Option<DraftMarkerAdmissionAssignmentContinuationV1>,
     pub remaining_builder_count: u64,

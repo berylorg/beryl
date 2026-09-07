@@ -126,7 +126,10 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
         reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
         reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
         reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(2)?;
-        reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(CLEANUP_PAGE_ITEMS)?;
+        reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(
+            CLEANUP_PAGE_ITEMS
+                .max(usize::from(super::super::DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT) * 2 + 2),
+        )?;
         Ok(())
     }
 
@@ -200,6 +203,22 @@ fn prepare_terminalization(
     {
         return Err(TerminalMutationError::Authority);
     }
+    let (replay_targets, replay_read_bytes, replay_delete_bytes) =
+        super::super::index::prepare_draft_marker_admission_replay_target_cleanup_v1(
+            reader,
+            mutation.owner,
+            prior_head.target_root(),
+            prior_receipt.retained_predecessor_nodes(),
+        )
+        .map_err(|error| match error {
+            super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => {
+                TerminalMutationError::Read(error)
+            }
+            super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1::Schema(error) => {
+                TerminalMutationError::Schema(error)
+            }
+            _ => TerminalMutationError::Collision,
+        })?;
     let source_empty =
         canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::SourceOrder);
     let target_empty =
@@ -240,7 +259,9 @@ fn prepare_terminalization(
         .checked_sub(DraftMarkerAdmissionRetainedChargeV1::new(
             0,
             0,
-            old_metadata,
+            old_metadata
+                .checked_add(replay_delete_bytes)
+                .ok_or(TerminalMutationError::Charge)?,
         ))
         .and_then(|charge| {
             charge.checked_add(DraftMarkerAdmissionRetainedChargeV1::new(
@@ -260,6 +281,7 @@ fn prepare_terminalization(
     checked_draft_marker_admission_command_charge_v1([
         encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)?
             .checked_add(old_metadata)
+            .and_then(|bytes| bytes.checked_add(replay_read_bytes))
             .ok_or(TerminalMutationError::Charge)?,
         encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)?
             .checked_add(encoded_head_record_charge(&mutation.owner, &head)?)
@@ -267,14 +289,16 @@ fn prepare_terminalization(
                 bytes.checked_add(encoded_receipt_record_charge(&receipt_key, &receipt).ok()?)
             })
             .ok_or(TerminalMutationError::Charge)?,
-        encoded_receipt_record_charge(&prior_receipt_key, &prior_receipt)?,
+        encoded_receipt_record_charge(&prior_receipt_key, &prior_receipt)?
+            .checked_add(replay_delete_bytes)
+            .ok_or(TerminalMutationError::Charge)?,
     ])?;
     Ok(PreparedTerminalMutation {
         capacity,
         head,
         receipt_put: Some(receipt),
         receipt_delete: Some(prior_receipt_key),
-        node_deletions: Box::new([]),
+        node_deletions: replay_targets,
     })
 }
 
@@ -407,6 +431,8 @@ fn terminal_head(
         canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::SourceOrder),
         canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::TargetId),
         prior.occurrence_commitment(),
+        prior.allocating_occurrence_count(),
+        prior.occurrence_count(),
         0,
         None,
         0,

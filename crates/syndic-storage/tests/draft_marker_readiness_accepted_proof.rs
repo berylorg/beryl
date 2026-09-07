@@ -31,11 +31,11 @@ use syndic_storage::{
 };
 
 #[path = "draft_marker_readiness_accepted_proof/support.rs"]
-mod support;
+mod accepted_support;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::*;
+use accepted_support::*;
 
 fn readiness_owner(
     session: &DraftEditorCandidateSessionV1,
@@ -61,14 +61,17 @@ fn accepted_local_and_inherited_pages_share_the_fixed_vector_without_mutation() 
         let ordinal = NonZeroU64::new(index as u64 + 1).unwrap();
         let mut attempt = fixture
             .storage
-            .prepare_draft_marker_label_readiness_page_for_test(
+            .prepare_draft_marker_label_readiness_page(
                 &fixture.store,
-                readiness_owner(&fixture.session, 50),
-                DraftMarkerAdmissionCommandIdV1::from_bytes([60 + index as u8; 16]),
-                ordinal,
-                true,
-                Box::new([fixture.association(70 + index as u8, source_thread)]),
-                Some(fixture.factory()),
+                syndic_storage::DraftMarkerLabelReadinessPageRequestV1::new(
+                    readiness_owner(&fixture.session, 50),
+                    DraftMarkerAdmissionCommandIdV1::from_bytes([60 + index as u8; 16]),
+                    ordinal,
+                    true,
+                    syndic_storage::DraftMarkerLabelReadinessDispositionV1::Allocate,
+                    Box::new([fixture.association(70 + index as u8, source_thread)]),
+                    Some(fixture.factory()),
+                ),
             )
             .unwrap();
         assert_eq!(
@@ -156,7 +159,7 @@ fn accepted_occurrence_multiplicity_and_count_boundary_are_exact() {
 }
 
 #[test]
-fn empty_mixed_duplicate_and_missing_witness_pages_are_rejected() {
+fn nonterminal_empty_mixed_duplicate_and_missing_witness_pages_are_rejected() {
     let fixture = AcceptedFixture::new("shape", 3);
     let foreign = AcceptedFixture::new("foreign-witness", 33);
     let owner = readiness_owner(&fixture.session, 90);
@@ -169,7 +172,7 @@ fn empty_mixed_duplicate_and_missing_witness_pages_are_rejected() {
                 owner,
                 DraftMarkerAdmissionCommandIdV1::from_bytes([91; 16]),
                 ordinal,
-                true,
+                false,
                 Box::new([]),
                 None,
             ),
