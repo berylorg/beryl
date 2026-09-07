@@ -30,25 +30,16 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 332: Authenticate Fresh Assets And Mixed Label Assignment (finished)
+# Phase 334: Resolve Admitted Marker Targets For Staging (finished)
 
-Accepted fresh metadata witnesses, canonical source groups, mixed label preservation/allocation,
-separate EOF with byte-exact replay, and bounded terminal reclamation under the
-[Syndic system](systems/syndic-conversation-history/design.md) and
-[image-asset system](systems/image-assets/design.md). Independent semantic and adversarial review
-passed after replay and [cleanup accounting](failures/draft-marker-replay-cleanup-accounting.md)
-corrections. Asset witnesses passed 7 tests; schema targets passed 32; final fresh/close/tree targets
-passed 27, alongside focused readiness, assignment, and writer checks. Locked local checks passed
-for both owning packages. The accepted widget evidence component remains in its local checkout;
-production composition remains Phase 329.
-
-# Phase 334: Resolve Admitted Marker Targets For Staging (pending)
-
-Expose the Syndic-owned bounded target resolver under the [draft-storage contract](../crates/syndic-storage/doc/design-draft-storage.md).
-Authenticate exact current staging and transferred readiness custody before returning one typed
-marker with its assigned label. Verify unchanged counters under repeated reads, rejection of wrong
-target/asset/predecessor/generation and post-finish queries, and sole builder consumption. Accept
-this package boundary independently before app composition; no app-selected fresh label is needed.
+Accepted the bounded Syndic target resolver under the
+[draft-storage contract](../crates/syndic-storage/doc/design-draft-storage.md). Exact current staging,
+transferred readiness, predecessor, generation, target and AssetId authenticate one returned marker;
+repeated reads leave durable state unchanged, and the builder remains the sole consumer.
+Independent semantic and adversarial review passed. Fifty focused readiness, writer, index and
+staging tests plus the locked local package check passed, including Finished/Building rejection,
+corrupt custody, retired ownership, and real fresh/preserved-marker settlement. The accepted fresh
+readiness and widget evidence prerequisites remain ready for production app composition below.
 
 # Phase 329: Connect Production Marker Admission (pending)
 
@@ -57,6 +48,10 @@ MutationBegin. Preserve generic HomeStore proof composition, exact selection and
 bounded replay, cancellation and reconciliation. Remove the test-only admission restriction and
 verify fresh insertion, replacement, moves, removal, and the three previously failing mounted GUI
 cases without weakening their assertions. Broader process-provider work remains deferred.
+Use existing bounded local producers, replayable propagated cut, and the admitted-Asset marker
+entry point. The mounted rich/large clipboard event currently has no producer consumer; its
+composition remains part of the separate clipboard/image-assets rework checkpoint. Acceptance
+here does not claim end-to-end mounted clipboard image decoding or large/rich paste.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 

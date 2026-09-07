@@ -50,6 +50,8 @@ use syndic_storage::{
 mod fresh_support;
 #[path = "draft_marker_fresh_readiness/lifecycle.rs"]
 mod lifecycle;
+#[path = "draft_marker_fresh_readiness/resolution.rs"]
+mod resolution;
 
 use fresh_support::*;
 #[test]

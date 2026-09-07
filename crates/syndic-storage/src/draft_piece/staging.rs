@@ -291,6 +291,7 @@ struct StageDurableWindowMutation {
 mod acquisition;
 mod digest;
 mod integrity;
+mod marker_resolution;
 mod mutations;
 mod prepare_batch;
 mod prepare_begin_page;

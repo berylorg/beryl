@@ -941,6 +941,20 @@ fn point_target_leaf<R: AdmissionNodeReader>(
     root: DraftMarkerAdmissionRootV1,
     target: SyndicDraftMarkerId,
 ) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    point_target_leaf_with(|key| ledger.point(key), owner, root, target)
+}
+
+fn point_target_leaf_with(
+    mut point: impl FnMut(
+        &DraftMarkerAdmissionNodeKeyV1,
+    ) -> Result<
+        Option<DraftMarkerAdmissionNodeV1>,
+        DraftMarkerAdmissionIndexPreparationErrorV1,
+    >,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    target: SyndicDraftMarkerId,
+) -> Result<Option<DraftMarkerAdmissionNodeV1>, DraftMarkerAdmissionIndexPreparationErrorV1> {
     if root.tree() != DraftMarkerAdmissionTreeV1::TargetId {
         return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
     }
@@ -951,9 +965,8 @@ fn point_target_leaf<R: AdmissionNodeReader>(
     if root_key.owner() != owner {
         return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
     }
-    let mut node = ledger
-        .point(&root_key)?
-        .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
+    let mut node =
+        point(&root_key)?.ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
     node.validate()?;
     if node.key() != root_key
         || node.tree() != DraftMarkerAdmissionTreeV1::TargetId
@@ -983,8 +996,7 @@ fn point_target_leaf<R: AdmissionNodeReader>(
                     .or_else(|| children.len().checked_sub(1))
                     .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication)?;
                 let expected = children[selected];
-                let child = ledger
-                    .point(&expected.key())?
+                let child = point(&expected.key())?
                     .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
                 child.validate()?;
                 if child.key() != expected.key()
@@ -1008,6 +1020,9 @@ fn point_target_leaf<R: AdmissionNodeReader>(
         }
     }
 }
+
+mod resolution;
+pub(crate) use resolution::resolve_assigned_target;
 
 #[cfg(feature = "test-faults")]
 mod test_fixture;

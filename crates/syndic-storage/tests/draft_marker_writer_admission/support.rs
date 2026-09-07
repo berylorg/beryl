@@ -410,8 +410,23 @@ pub(super) fn stage_admitted_marker_edit_with_extent(
     syndic_storage::DraftMutationStagingIdentityV1,
     Vec<syndic_storage::DraftPieceBuildFragmentV1>,
 ) {
-    let (identity, mut active, staged) =
-        begin_admitted_marker_edit(storage, store, session, admission, proof);
+    let (_, active, staged) = begin_admitted_marker_edit(storage, store, session, admission, proof);
+    finish_admitted_marker_staging(storage, store, active, staged, replacement, final_extent)
+}
+
+pub(super) fn finish_admitted_marker_staging(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    mut active: syndic_storage::DraftEditorCandidateSessionV1,
+    staged: syndic_storage::DraftMutationStagingHeadV1,
+    replacement: DraftPieceReplacementV1,
+    final_extent: DraftLogicalExtentV1,
+) -> (
+    syndic_storage::PreparedDraftPieceEditV1,
+    syndic_storage::DraftMutationStagingIdentityV1,
+    Vec<syndic_storage::DraftPieceBuildFragmentV1>,
+) {
+    let identity = staged.identity();
     let page = prepare_one_page(
         storage,
         &staged,
