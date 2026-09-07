@@ -346,9 +346,40 @@ fn capture(
 }
 
 fn ready(fixture: &mut Host, close: ComposerHostFlushTicket, operation: u64) {
-    if fixture.host.flush_state(close).unwrap() == ComposerHostFlushState::CaptureRequired {
+    assert_eq!(
+        fixture.host.flush_state(close).unwrap(),
+        ComposerHostFlushState::CaptureRequired
+    );
+    if fixture.host.is_dirty() {
         capture(fixture, close, operation);
+        assert_eq!(
+            fixture.host.advance_flush(&fixture.store, close).unwrap(),
+            ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+        );
     }
+    assert!(!fixture.host.is_dirty());
+    let revision = fixture.store.home_revision().unwrap();
+    let binding = fixture.host.binding();
+    assert_eq!(fixture.host.publication_custody_count(), 0);
+    assert_eq!(
+        fixture
+            .host
+            .capture_flush_publication(
+                &fixture.store,
+                close,
+                fixture.assets.clone(),
+                &fixture.seals,
+                composer::operation_id(operation),
+                None,
+                SyndicTimestamp::from_unix_millis(operation),
+                &CommandCancellation::new(),
+            )
+            .unwrap(),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::CloseReady)
+    );
+    assert_eq!(fixture.store.home_revision().unwrap(), revision);
+    assert_eq!(fixture.host.binding(), binding);
+    assert_eq!(fixture.host.publication_custody_count(), 0);
     assert_eq!(
         fixture.host.advance_flush(&fixture.store, close).unwrap(),
         ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CloseReady)

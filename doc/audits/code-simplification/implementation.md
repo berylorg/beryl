@@ -98,3 +98,12 @@ The [opening integration evidence](../../failures/pristine-editor-publication.md
 52-case integrated pass, including four selected native-lineage cases, targeted formatting and
 independent source/test review. Nine other mounted scenarios were excluded from that focused run;
 this wiring correction does not certify their behavior or accept later close phases.
+
+## AM-009: Retained Close And Cleanup Ownership Boundaries
+
+Revalidated during Phase 306 on 2026-09-07. A private service helper shares exact slot release and
+matching reservation retirement across foreground, worker and unmounted cleanup. Mount/widget,
+service and native cleanup custody remain distinct, with their existing scheduling, bounds and
+actual widget-release proof. AM-009 remains retained; mandated rework earns no reduction credit.
+The [close-release evidence](../../failures/main-window-close-readiness.md) records ten passing
+focused cases, locked compilation, formatting, independent review and the remaining close scope.

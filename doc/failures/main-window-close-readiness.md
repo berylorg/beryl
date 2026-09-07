@@ -62,3 +62,45 @@ thread stack, as does the pre-autosaved submission collision case that previousl
 [The implementation record](../audits/code-simplification/implementation.md) preserves run IDs,
 commands, independent review, unrelated fixture failures and cleanup limits. These focused results
 do not accept the full resident-close suite or the remaining submission-quiescence work.
+
+## Accepted Exact Close-Gate Release
+
+Phase 306 was accepted on 2026-09-07 after the opening and submission-wait prerequisites.
+`release_window_close_gate_in_slot` in
+`crates/beryl-app/src/main_window/conversation_composer_owner/service/close.rs` now shares the
+slot-release and matching service-reservation retirement decision with foreground, worker and
+`close_cleanup.rs` callers. It revalidates home/service identity after obtaining the slot and holds
+the short reservation mutex across storage-free slot release and exact retirement. Foreground
+try-lock behavior, worker locking, lock order and bounded cleanup/backoff remain unchanged.
+Pending and failed release cannot retire another attempt. Actual widget release retains its
+separate proof; reaching `WidgetReleaseRequired` does not synthesize that proof.
+
+The final `resident_close_flush` run `68525a1d-6cd6-48e3-a926-2ac00d42f7e0` passed all ten cases,
+none skipped, in 9.421 seconds. Two new cases force real busy-slot foreground-to-worker release
+and remove the actual mounted window. They verify independent disabled state, stale predecessor
+isolation from a later reservation, exact unmounted reservation release, unchanged active session
+and revision, and eventual weak-service release. The eight retained cases preserve stale,
+idempotent, pending-publication, failed-disposal and resident-interaction assertions.
+
+```powershell
+cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults --locked --config-file .cargo/local/close-release-nextest.toml --test resident_close_flush --test-threads 2 --no-fail-fast
+cargo +stable --config .cargo/local.toml check -p beryl-app --lib --locked
+```
+
+Verification used process-scoped `RUST_MIN_STACK=33554432`, restored afterward, and a temporary
+30-second per-test timeout. The locked library check, `test-faults` production/test compilation,
+targeted formatting and diff checks passed. Independent semantic review traced all callers,
+reservation/slot lock ordering, pending custody, distinct interaction and widget-release gates,
+the repaired fixture and new regressions without a blocking finding.
+
+The initial run `d9a3c182-8dc4-4ac2-96a9-dba910eac442` passed six of ten cases. Three retained
+host fixtures still assumed that clean opening or publication directly yielded close readiness.
+Their shared helper now publishes only dirty state, then authenticates saved state while proving
+unchanged revision/binding and zero publication custody. The new drop test initially drove a
+removed window; its post-drop pumping now uses the window-independent executor. No production
+semantics changed to accommodate those test failures.
+
+The temporary configuration was removed and named fixture/process scans were clean. The existing
+[policy-blocked directory](../audits/code-simplification/implementation.md) was untouched.
+This accepts the shared release decision, not the remaining integrated resident-close or ordinary
+OS-window close boundaries.

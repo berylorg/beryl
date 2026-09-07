@@ -7,6 +7,20 @@ use crate::main_window::MainWindowConversationComposerCloseTicket;
 use std::sync::TryLockError;
 
 impl MainWindowConversationComposerService {
+    #[cfg(feature = "test-faults")]
+    pub fn test_with_close_slot_locked<T>(&self, action: impl FnOnce() -> T) -> T {
+        let _slot = self.slot.lock().unwrap();
+        action()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_window_close_is_current(
+        &self,
+        ticket: MainWindowConversationComposerCloseTicket,
+    ) -> bool {
+        self.window_close_is_current(ticket)
+    }
+
     pub(in crate::main_window) fn begin_window_close_gate(
         &self,
         ticket: MainWindowConversationComposerCloseTicket,
@@ -111,18 +125,8 @@ impl MainWindowConversationComposerService {
                 return Err("conversation composer service lock failed".to_owned());
             }
         };
-        if (flush.is_some() || slot.window_close_is_current(ticket))
-            && !slot
-                .release_window_close_gate(ticket, flush)
-                .map_err(|error| format!("conversation composer close release failed: {error}"))?
-        {
-            return Ok(Some(false));
-        }
-        *self
-            .window_close
-            .lock()
-            .map_err(|_| "conversation composer close gate lock failed".to_owned())? = None;
-        Ok(Some(true))
+        self.release_window_close_gate_in_slot(&mut slot, ticket, flush)
+            .map(Some)
     }
 
     pub(in crate::main_window) fn authorize_window_close_disposal(
@@ -168,6 +172,25 @@ impl MainWindowConversationComposerService {
             .slot
             .lock()
             .map_err(|_| "conversation composer service lock failed".to_owned())?;
+        self.release_window_close_gate_in_slot(&mut slot, ticket, flush)
+    }
+
+    pub(super) fn release_window_close_gate_in_slot(
+        &self,
+        slot: &mut MainWindowComposerSlot,
+        ticket: MainWindowConversationComposerCloseTicket,
+        flush: Option<ComposerHostFlushTicket>,
+    ) -> Result<bool, String> {
+        if !self.window_close_is_current(ticket) {
+            return Ok(false);
+        }
+        let mut current = self
+            .window_close
+            .lock()
+            .map_err(|_| "conversation composer close gate lock failed".to_owned())?;
+        if *current != Some(ticket) {
+            return Ok(false);
+        }
         if (flush.is_some() || slot.window_close_is_current(ticket))
             && !slot
                 .release_window_close_gate(ticket, flush)
@@ -175,7 +198,7 @@ impl MainWindowConversationComposerService {
         {
             return Ok(false);
         }
-        self.finish_window_close_gate(ticket);
+        *current = None;
         Ok(true)
     }
 }

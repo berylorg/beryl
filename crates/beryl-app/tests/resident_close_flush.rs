@@ -13,5 +13,7 @@ mod host;
 mod mounted;
 #[path = "resident_close_flush/mutation.rs"]
 mod mutation;
+#[path = "resident_close_flush/release.rs"]
+mod release;
 #[path = "resident_close_flush/support.rs"]
 mod support;

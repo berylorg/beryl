@@ -56,14 +56,7 @@ impl MainWindowConversationComposerService {
             return Ok(CleanupStep::Finished);
         }
         if !disposing {
-            if (flush.is_some() || slot.window_close_is_current(ticket))
-                && !slot
-                    .release_window_close_gate(ticket, flush)
-                    .map_err(|error| format!("unmounted close release failed: {error}"))?
-            {
-                return Ok(CleanupStep::Finished);
-            }
-            self.finish_window_close_gate(ticket);
+            self.release_window_close_gate_in_slot(&mut slot, ticket, flush)?;
             return Ok(CleanupStep::Finished);
         }
         if !slot.window_close_is_current(ticket) {
@@ -90,12 +83,7 @@ impl MainWindowConversationComposerService {
                 *disposal_captured = true;
                 match capture {
                     ComposerHostFlushCapture::Unsatisfied(_) | ComposerHostFlushCapture::Stale => {
-                        if slot
-                            .release_window_close_gate(ticket, Some(flush))
-                            .map_err(|error| format!("unmounted close release failed: {error}"))?
-                        {
-                            self.finish_window_close_gate(ticket);
-                        }
+                        self.release_window_close_gate_in_slot(&mut slot, ticket, Some(flush))?;
                         Ok(CleanupStep::Finished)
                     }
                     _ => Ok(CleanupStep::Pending),
@@ -106,12 +94,7 @@ impl MainWindowConversationComposerService {
                 Ok(CleanupStep::Finished)
             }
             Ok(MainWindowComposerDisposalAdvance::Failed) | Err(_) => {
-                if slot
-                    .release_window_close_gate(ticket, Some(flush))
-                    .map_err(|error| format!("unmounted close release failed: {error}"))?
-                {
-                    self.finish_window_close_gate(ticket);
-                }
+                self.release_window_close_gate_in_slot(&mut slot, ticket, Some(flush))?;
                 Ok(CleanupStep::Finished)
             }
             Ok(MainWindowComposerDisposalAdvance::Disposed) => {
