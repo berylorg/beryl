@@ -1,0 +1,334 @@
+[
+  {
+    "id": "AU-001",
+    "title": "Share bounded dynamic-tool wire mechanics across diagnostic, child, GUI and settings adapters",
+    "paths": [
+      "crates/beryl-app/src/diagnostic_dynamic_tools.rs",
+      "crates/beryl-app/src/diagnostic_child_dynamic_tools.rs",
+      "crates/beryl-app/src/gui_control_dynamic_tools.rs",
+      "crates/beryl-app/src/settings_dynamic_tools.rs",
+      "crates/beryl-app/src/settings_dynamic_tools/parser.rs",
+      "crates/beryl-app/src/settings_dynamic_tools/response.rs",
+      "crates/beryl-app/src/settings_dynamic_tools/schema.rs"
+    ],
+    "symbols": [
+      "compact_json",
+      "truncate_diagnostic_string",
+      "bounded_child_string",
+      "truncate_control_string",
+      "parse_arguments",
+      "empty_object_schema",
+      "limited_read_schema",
+      "media_events_schema_with_limits",
+      "EmptyArguments",
+      "LimitedReadArguments"
+    ],
+    "evidence": [
+      "Full bodies reviewed. diagnostic_dynamic_tools.rs:1230-1246,1333-1424 and diagnostic_child_dynamic_tools.rs:720-730,789-818,848-855,892-929,1067-1085 repeat closed argument types, schemas, serialization and byte truncation. GUI equivalents are at gui_control_dynamic_tools.rs:329-350,436-464; settings response.rs:1-50 repeats response envelope and encoding mechanics.",
+      "Repeated success/error responses use ok/result or ok/error, with kind/message/tool/callId error fields. Leaf policies differ: child namespace must be explicit; supervisor-side legacy diagnostics allow omitted namespace; settings empty arguments may normalize null; GUI excessive limits reject while diagnostics clamp."
+    ],
+    "proposal": "Introduce a small private tool-wire module using existing serde/serde_json for compact response encoding, parameterized UTF-8-safe byte truncation, identical closed-object schemas and identical argument structs. Keep thin typed error adapters and policy checks at each caller. Deserialize already admitted bounded Values by reference instead of cloning them where serde supports it. Net estimate 150-220 lines after helper declarations, imports, adapters and focused wire-contract verification; central estimate 180. This excludes error Display derives counted by AU-004 and excludes canonical streaming argument parsers.",
+    "required_contract_changes": [
+      "None for the compatible extraction. Preserve namespace admission, target identity, distinct 512/1024-byte caps, missing/null behavior, exact envelope/error wording, strict unknown-field handling and each limit policy. Do not apply whole-Value parsing to conversation, lifecycle or branch-resolution ingress."
+    ],
+    "estimated_net_lines": -180,
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation should retain existing diagnostic/settings/GUI tool tests and compare valid and invalid envelopes, Unicode truncation edges, namespace omission, unknown fields, null/empty inputs, exact target mismatch and per-tool limit behavior. Add only uncovered shared-helper boundary cases."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-002",
+    "title": "Consolidate small repeated diagnostic ring mechanics only if the helper remains smaller",
+    "paths": [
+      "crates/beryl-app/src/diagnostic_dynamic_tools.rs"
+    ],
+    "symbols": [
+      "MediaDiagnosticLog",
+      "TranscriptFrameMetricsLog",
+      "TranscriptScrollInputLog",
+      "media_events_result",
+      "transcript_frame_metrics_result"
+    ],
+    "evidence": [
+      "Full bodies reviewed. Three logs at diagnostic_dynamic_tools.rs:552-584,662-759 repeat next_sequence, capacity, VecDeque construction, saturating assignment and oldest-first eviction. Result filtering at 1276-1319 repeats after-sequence then limit handling; scroll summaries require recomputation after filtering.",
+      "Typed record sanitization and three typed snapshot products are meaningful; most of the visible snapshot code remains necessary after extraction."
+    ],
+    "proposal": "Evaluate one private const-capacity sequenced ring with a narrow record interface, retaining typed log facades and snapshot assembly. Reuse only the identical filter/truncate primitive where it pays for its callback/interface cost. Conservative net estimate 20-40 lines after generic declarations, typed adapters and verification; central estimate 30. Treat this as a low-priority local cleanup, not a substantial new framework. Do not include snapshot demand or shell count/projection changes already covered by AS7.",
+    "required_contract_changes": [
+      "None. Preserve independent sequence domains starting at one, saturating increment, capacities, bounded strings, chronological results, cursor semantics, snapshot next_sequence and post-filter continuity recomputation."
+    ],
+    "estimated_net_lines": -30,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation, retain ring eviction, saturated cursor, UTF-8 sanitization and scroll-continuity tests; compare snapshots before and after filtering. Reject the extraction if final helper and adapters exceed deleted code."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-003",
+    "title": "Define common memory milestone log fields once",
+    "paths": [
+      "crates/beryl-app/src/memory_diagnostics.rs",
+      "crates/beryl-app/tests/memory_diagnostics.rs"
+    ],
+    "symbols": [
+      "MemoryMilestone::log",
+      "optional_usize",
+      "optional_bool"
+    ],
+    "evidence": [
+      "Full bodies reviewed. memory_diagnostics.rs:229-502 builds retained-state aliases and repeats the same retained diagnostic fields in success and OS-counter failure events at 349-423 and 426-499. Both branches also emit retained_state using Debug.",
+      "Success includes numeric private/working-set/pagefile counters; failure emits memory_counters_available=false and the error. tests/memory_diagnostics.rs verifies disabled logging does not evaluate retained-state construction."
+    ],
+    "proposal": "Use one local field-list emission macro with branch-specific counter/error fields and message arguments, preserving both existing event schemas. Keep common field conversion and lazy enabled checks. Net estimate 60-85 lines after macro and focused event-schema verification; central estimate 70. A larger 200-plus-line deletion could remove all flattened aliases in favor of retained_state, but that changes diagnostic consumer format and is not included in this estimate. This does not count AS7 shell-side retained-count projection work.",
+    "required_contract_changes": [
+      "None for preserving the two event schemas. Removing flat field aliases instead would require explicit diagnostics output-contract and consumer changes; that alternative remains unapproved."
+    ],
+    "estimated_net_lines": -70,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation, capture success and unavailable events to compare field names, value types, messages and content-free payload; keep the disabled-evaluation test. Preserve Windows counter meanings and unavailable behavior on other targets."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-004",
+    "title": "Derive remaining bounded app errors with the existing thiserror dependency",
+    "paths": [
+      "crates/beryl-app/src/theme_runtime/error.rs",
+      "crates/beryl-app/src/gui_control_dynamic_tools.rs",
+      "crates/beryl-app/src/diagnostic_dynamic_tools.rs"
+    ],
+    "symbols": [
+      "PreviewSourceError",
+      "AdapterRegistrationError",
+      "DurablePublicationError",
+      "PreviewPublicationError",
+      "GuiControlToolError",
+      "DynamicDiagnosticToolError",
+      "exhausted_error"
+    ],
+    "evidence": [
+      "Full bodies reviewed. theme_runtime/error.rs:29-35,106-120,137-155,162-179 and GUI/diagnostic error tails repeat fixed Display matches and empty Error impls. The exhausted_error macro already shares its implementation; count only the macro body, never expanded generated types.",
+      "Root Cargo.toml:54 selects thiserror 2.0.18 and beryl-app/Cargo.toml:36 already consumes it. Exact upstream API and tagged manifest inspected 2026-09-06; field interpolation directly expresses these bounded messages."
+    ],
+    "proposal": "Use derive(thiserror::Error) with the exact existing message attributes, including within the existing exhausted_error macro if it reduces source. Keep variants, fields, kind() mapping and intentionally hidden nested details. Net estimate 45-70 lines after attributes and message/source verification; central estimate 55. No manifest or version change is needed, and AU-001 excludes this code.",
+    "required_contract_changes": [
+      "None. Do not use transparent, from, source or inferred named-source/backtrace behavior that would expose causes currently omitted by the empty Error impls."
+    ],
+    "estimated_net_lines": -55,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation compare every variant's Display and source topology, including WindowSet nested failures; retain existing tool rejection and theme publication tests."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "status": "recommended_existing_app_dependency",
+        "maturity": "Existing Beryl dependency with established 1.x/2.x release lineage; no new dependency closure or upgrade proposed.",
+        "license": "MIT OR Apache-2.0",
+        "features": "Existing default std; thiserror-impl =2.0.18.",
+        "platform": "Pure Rust derive; upstream MSRV 1.68 is below workspace Rust 1.92.",
+        "semantic_gaps": "Automatic source and transparent forwarding must remain disabled for intentionally hidden nested errors. No advisory clearance or build was performed.",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+          "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-005",
+    "title": "Remove duplicate theme retirement and discarded invalid outcome construction",
+    "paths": [
+      "crates/beryl-app/src/theme_runtime/service.rs",
+      "crates/beryl-app/src/theme_runtime/service/lifecycle.rs",
+      "crates/beryl-app/src/theme_runtime/service/publication.rs"
+    ],
+    "symbols": [
+      "ThemeRuntime::retire_with",
+      "ThemeRuntime::retire",
+      "ThemeLiveEditOutcome::invalid"
+    ],
+    "evidence": [
+      "Full bodies reviewed. service.rs:464-478 and service/lifecycle.rs:156-170 perform the same subscription shutdown, appearance retirement, repository/identity clear and retained diagnostics capture; only the supplied failure differs.",
+      "service/publication.rs:133-149 constructs and discards ThemeLiveEditOutcome::invalid twice before calling retain. The state-side constructor was inspected and only creates an enum value; no required side effect is lost."
+    ],
+    "proposal": "Delegate retire() to retire_with(Retired) and directly map/retain invalid live-load or resolution failures without constructing discarded outcomes or cloning their identities. Net estimate 20-30 lines after delegation and focused verification; central estimate 25. Keep valid ThemeLiveEditOutcome processing and the prior prepared appearance. Do not combine external-rejection retention with confirmed durable retries merely to merge similar publication methods.",
+    "required_contract_changes": [
+      "None. Preserve shutdown order, actual subscription/appearance retirement, retained diagnostics and failure classes. Preview, current and durable identities remain separate."
+    ],
+    "estimated_net_lines": -25,
+    "verification": [
+      "Audit only; no tests run.",
+      "Use existing theme runtime retirement, invalid reload, rejected publication/retry and GPUI shutdown tests. Verify repeated retirement and failed-start retirement preserve the same retained diagnostics."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-006",
+    "title": "Share theme runtime test setup and paired scenario scaffolding",
+    "paths": [
+      "crates/beryl-app/tests/theme_runtime_cases/production.rs",
+      "crates/beryl-app/tests/theme_runtime_cases/production/corrections.rs",
+      "crates/beryl-app/tests/theme_runtime_cases/production/gpui.rs"
+    ],
+    "symbols": [
+      "production theme runtime startup helpers",
+      "startup and refresh count/byte limit scenarios",
+      "rejected full/live refresh scenarios",
+      "GPUI preview fixture construction"
+    ],
+    "evidence": [
+      "All bodies and cfg branches reviewed. production.rs repeats runtime startup configuration and paired count/byte-limit startup/refresh scenarios at 353-446. production/corrections.rs:212-329 repeats rejected full/live refresh retained-identity and retry scaffolding.",
+      "production/gpui.rs repeats preview appearance construction across separate prepare, commit, closed-root and queued-publication tests. Existing gpui_fixture.rs:1-351 was fully examined and supplies meaningful real paint/editor continuity evidence."
+    ],
+    "proposal": "Move repeated runtime construction and preview creation into the existing theme test support; express paired byte/count admission cases with explicit inputs and expected failure, and share rejected-refresh assertions with an explicit manifest-changed parameter. Keep operation cuts and intermediate assertions visible in individual tests. Net estimate 120-190 lines after helper interfaces and call sites; central estimate 150. Excludes shell AS8 fixtures and state test fixtures.",
+    "required_contract_changes": [
+      "None. Preserve all scenarios, byte/count caps, last-good identity, retry/reread distinction, preview precedence, one-slot capacity, reentrant prepare/commit cuts, actual GPUI painting and editor snapshot continuity."
+    ],
+    "estimated_net_lines": -150,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation, run the same theme_runtime integration target under its applicable GPUI platform configuration. Confirm parameterized cases retain separate failure names and all original intermediate assertions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-007",
+    "title": "Reuse catalog execution validation and fact projection during window acquisition",
+    "paths": [
+      "crates/beryl-app/src/catalog_projection.rs",
+      "crates/beryl-app/src/window_acquisition.rs",
+      "crates/beryl-app/tests/catalog_projection.rs",
+      "crates/beryl-app/tests/window_acquisition.rs"
+    ],
+    "symbols": [
+      "validate_execution_binding",
+      "validate_execution",
+      "project_facts",
+      "project_unclaimed_facts"
+    ],
+    "evidence": [
+      "Full bodies reviewed. catalog_projection.rs:169-182 and window_acquisition.rs:1214-1226 contain the same four execution-binding checks; the former merely retrieves the binding from the summary.",
+      "catalog_projection.rs:208-259 and window_acquisition.rs:1228-1278 repeat title/archive/lineage/execution/facts conversion exactly except the latter fixes claim to Unclaimed."
+    ],
+    "proposal": "Expose two crate-private pure catalog helpers: execution validation accepting &ExecutionBinding, and fact projection accepting the explicit CatalogClaimSummary. Call them from both preparation paths and remove project_unclaimed_facts. Net estimate 55-75 lines after imports, arguments and focused parity verification; central estimate 60.",
+    "required_contract_changes": [
+      "None. Preserve every runtime/root/path check, title source, archive state, lineage validation, availability and claim value. Stable-home fences, atomic cross-domain command assembly, bounded oldest-pristine scanning and acquisition custody remain at their current owners."
+    ],
+    "estimated_net_lines": -60,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation retain catalog projection no-op/mismatch/claim tests plus acquisition create/reuse scenarios. Exercise generated/history-derived title and lineage mismatch via the shared helper if existing scenario coverage lacks them."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-008",
+    "title": "Share acquisition and abandonment integration fixtures",
+    "paths": [
+      "crates/beryl-app/tests/window_acquisition.rs",
+      "crates/beryl-app/tests/window_abandonment.rs"
+    ],
+    "symbols": [
+      "Fixture::new",
+      "Fixture::from_directory",
+      "Fixture::request",
+      "Fixture::publish_pristine_thread",
+      "Fixture::mark_catalog_row_stale",
+      "initialize_empty_session",
+      "placement",
+      "history_policy",
+      "host_path",
+      "native_path",
+      "execute_contribution",
+      "execute_command"
+    ],
+    "evidence": [
+      "Every body and cfg branch reviewed. acquisition.rs:45-190 and abandonment.rs:37-202 repeat the same home/state/Syndic/process/service fixture, registration, request, pristine-thread publication and catalog-stale helpers. Abandonment adds acquire/prepare conveniences.",
+      "acquisition.rs:1088-1152 and abandonment.rs:614-678 duplicate the full session initialization and path/placement/history/command helpers. Acquisition's from_directory supports actual crash/reopen cases; abandonment's 351-454 explicitly closes and reopens the same home."
+    ],
+    "proposal": "Create behavior-named shared window-operation test support holding common Fixture construction and utility methods, preserving from_directory and extension conveniences. Both integration targets import it using existing test support conventions. Net estimate 170-220 lines after shared module imports, visibility changes and helpers; central estimate 190. Keep close/reopen and fault timing explicit. No shell, catalog-only or state fixture savings are counted.",
+    "required_contract_changes": [
+      "None. Preserve seeded identities, actual storage registration, fault controller, process registry continuity, pristine-thread and stale-row setup. Keep 256-flight capacity, real subprocess crash/reopen, acknowledgement loss, created/reused abandonment, cancellation and active-job/reverse-claim rejection evidence."
+    ],
+    "estimated_net_lines": -190,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation run both window_acquisition and window_abandonment integration targets with the existing test-fault feature/platform requirements. Confirm subprocess reentry continues to select its intended test helper and actual true-home reopen still occurs."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AU-009",
+    "title": "Retain diagnostic child process ownership rather than adopting process-wrap",
+    "paths": [
+      "crates/beryl-app/src/diagnostic_child_supervisor.rs",
+      "crates/beryl-app/src/diagnostic_child_supervisor/launch.rs",
+      "crates/beryl-app/src/diagnostic_child_protocol.rs",
+      "crates/beryl-app/src/diagnostic_child_target.rs",
+      "crates/beryl-app/tests/diagnostic_child_supervisor.rs"
+    ],
+    "symbols": [
+      "DiagnosticHostProcessTree",
+      "DiagnosticChildSupervisor",
+      "DiagnosticChildTarget"
+    ],
+    "evidence": [
+      "Full bodies and platform branches reviewed. supervisor.rs:831-902 configures a Windows kernel job with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and explicit termination/release; the rest of the supervisor retains protocol handshake, process identity, cleanup failure custody and bounded readiness/stop behavior.",
+      "Tagged process-wrap v10.0.0 std/job_object.rs:97 calls make_job_object(handle, false); the public JobObject is a unit struct and job port is private. Exact upstream source was checked 2026-09-06 and agrees with the existing backend dependency investigation."
+    ],
+    "proposal": "Retain the current app supervisor. process-wrap could replace only the small OS job wrapper, and its synchronous API lacks the required kernel kill-on-close configuration. A new custom wrapper/fork plus typed error and cleanup adapters would erase the already modest line savings; no removal estimate is claimed. Generic RPC or async task frameworks likewise do not replace Beryl's identity and custody protocol.",
+    "required_contract_changes": [
+      "Adopting the currently inspected synchronous API would require weakening kernel owner-exit cleanup or introducing a maintained custom fork; neither is recommended."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no processes launched or tests run.",
+      "Retain current real child handshake and cleanup failure tests. No new package, target, background process or temporary resource was created."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "process-wrap",
+        "version": "10.0.0",
+        "status": "rejected_for_app_supervisor",
+        "maturity": "Existing root investigation records release 2026-08-24, lineage since 2024 and substantial registry downloads; successor to command-group. Adoption counts alone do not resolve semantic mismatch.",
+        "license": "Apache-2.0 OR MIT",
+        "features": "A hypothetical std integration would disable defaults and select std/job-object/creation-flags; no Tokio conversion proposed.",
+        "platform": "Windows job wrappers and Unix local process groups; upstream MSRV 1.87 below workspace 1.92, per existing registry investigation.",
+        "semantic_gaps": "Synchronous job configuration omits kernel kill-on-close. Private job ownership prevents configuring it through the public wrapper. Beryl's bounded protocol handshake, identity, termination outcomes and retained failed-cleanup custody remain custom. No advisory clearance or runtime verification performed.",
+        "sources": [
+          "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/std/job_object.rs",
+          "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/windows.rs",
+          "https://docs.rs/process-wrap/10.0.0/process_wrap/",
+          "doc/memory/crates.io/process-wrap/10.0.0/backend-process-ownership.md"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high",
+    "disposition": "retained"
+  }
+]

@@ -1,0 +1,372 @@
+[
+  {
+    "id": "SC-001",
+    "title": "Specialize legacy prepared-piece construction for its sole UTF-8 caller",
+    "paths": [
+      "crates/syndic-storage/src/content.rs",
+      "crates/syndic-storage/src/content/chunks.rs"
+    ],
+    "symbols": [
+      "PreparedPiece",
+      "PreparedTextRange",
+      "PreparedContent::utf8",
+      "PreparedContent::from_encoded",
+      "encoded_chunk_ranges",
+      "prepared_content_pieces"
+    ],
+    "evidence": [
+      "Full bodies inspected. Serena references identify PreparedContent::utf8 as the sole from_encoded caller; rg confirms the private helpers have no other construction path.",
+      "ComposerV1 exclusively uses ComposerV1Fold. PreparedPiece::ImageMarker is never constructed, while chunks.rs retains its full marker emission branch and mixed-range segmentation.",
+      "UTF8 always supplies one whole-text range, encoding Utf8V1, atom_count=1, zero markers, seed marker digest, no maximum label and break_before=false."
+    ],
+    "proposal": "Remove the unused marker variant and specialize the legacy helper to borrowed &str UTF8 chunking. Derive each text span directly from the exact chunk range. Eliminate the PreparedPiece/PreparedTextRange vector and generic mixed-piece intersection logic, retaining canonical chunks, hashes, checked ordinals, UTF8 boundaries and empty-input semantics.",
+    "required_contract_changes": "None. Preserve existing API, exact V7 bytes, typed failure/custody and resource bounds.",
+    "estimated_net_lines": {
+      "minimum": 115,
+      "maximum": 175,
+      "basis": "About 250 legacy range/type/branch/construction lines become a focused ~90-125 line UTF8 path; reserve integration and parity checks. No ComposerV1 fold or published API removal.",
+      "overlap": "Disjoint from SQ-002/003/007 read-side page sharing and SX parser work. Does not count mandatory rework deletions."
+    },
+    "verification": [
+      "Compare exact chunks, content IDs, summaries, span/piece digests and boundaries for empty text and text around 65,536-byte Unicode cuts.",
+      "Retain ComposerV1 multi-marker/fragmentation and independent complete decoder tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-002",
+    "title": "Derive core error formatting with the existing thiserror dependency",
+    "paths": [
+      "crates/syndic-storage/src/admission_attachment.rs",
+      "crates/syndic-storage/src/error.rs",
+      "crates/syndic-storage/src/mutation/error.rs"
+    ],
+    "symbols": [
+      "DraftMarkerAdmissionAttachmentError",
+      "SyndicReadError",
+      "SyndicValidationError",
+      "SyndicMutationError"
+    ],
+    "evidence": [
+      "All enum, Display, Error, From and callback bodies inspected.",
+      "SyndicReadError has exactly one Read source and From; SyndicMutationError has six source variants and matching From conversions. SyndicValidationError deliberately has source=None despite carrying ReadError. Attachment error exposes Read as source with no existing From.",
+      "Record, recovery and creation errors already derive thiserror."
+    ],
+    "proposal": "Use thiserror::Error with exact existing message attributes. Mark existing cause/From pairs only; use #[source] without From for attachment Read. Keep validation Read unsourced and retain its explicit From/callback mapping. Preserve numeric .get() formatting. Leave already-derived errors unchanged.",
+    "required_contract_changes": "None. Preserve existing API, exact V7 bytes, typed failure/custody and resource bounds.",
+    "estimated_net_lines": {
+      "minimum": 315,
+      "maximum": 395,
+      "basis": "Replace roughly 550-590 manual Display/Error/From lines with ~140-175 attributes/derive/retained exception lines; reserve focused message/source verification.",
+      "overlap": "Core error enums only; excludes SS-006, SA-008, DP-006, all other error findings, and example/test harness errors."
+    },
+    "verification": [
+      "Compare every Display variant, source presence/absence and existing conversion; verify DomainCallbackSource::Read extraction still preserves provenance.",
+      "Compile default and test-faults consumers when implementing."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "thiserror",
+        "version": "2.0.18",
+        "decision": "Use existing direct workspace dependency; no new crate required.",
+        "fit": "Derives exact Display/Error/From boilerplate while keeping the public enums and callback implementations.",
+        "features": "Existing std default; proc macro thiserror-impl pinned to =2.0.18 by upstream. No runtime framework or optional integration is needed.",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "Upstream 2.0.18 package declares Rust 1.68.",
+        "platforms": "Formatting and standard error derivation are platform-neutral; no Windows-specific API change.",
+        "maturity": "Established thiserror 1.x/2.x family with multiple existing Beryl consumers; exact versioned documentation and source checked. No separate advisory or release-cadence scan was performed.",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+          "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md"
+        ],
+        "constraints": "#[from] also makes a source. Use #[source] alone where existing From is absent. Do not use transparent errors for variants that currently expose Some(wrapped_error), because transparent forwarding changes the source chain. Preserve validation Read source=None."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-003",
+    "title": "Declare Syndic family registration and reconciliation membership once",
+    "paths": [
+      "crates/syndic-storage/src/domain.rs"
+    ],
+    "symbols": [
+      "V7_FAMILIES",
+      "SyndicDomain::reconcile"
+    ],
+    "evidence": [
+      "The complete 86-entry RecordFamily list and all 86 classify! invocations enumerate the same codecs in the same order.",
+      "classify_records still checks every supplied record's exact old/new values; its side accumulator rejects absent/ambiguous/mixed closures."
+    ],
+    "proposal": "Use one local explicit codec list macro to emit the registration array and reconciliation dispatch. Keep schema-version declarations and family order visible, retain the independent expected-family test inventory, and keep classify_records and ReconciliationSides unchanged.",
+    "required_contract_changes": "None. Preserve existing API, exact V7 bytes, typed failure/custody and resource bounds.",
+    "estimated_net_lines": {
+      "minimum": 65,
+      "maximum": 80,
+      "basis": "Remove 86 duplicate list invocations less ~10-20 macro/declaration plumbing lines.",
+      "overlap": "Do not derive physical corruption test expectations from production family inventory. No codec/tag consolidation savings from SS counted."
+    },
+    "verification": [
+      "Compare expanded family names/order/schema and reconciliation dispatch against baseline; preserve empty, mixed, exact-old and exact-new cases.",
+      "Reconcile current 86-family implementation with independently scheduled terminal-repair 90-family authority before implementation; adding missing families is not simplification savings."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-004",
+    "title": "Factor pristine-thread required reads while preserving stable missing-record classification",
+    "paths": [
+      "crates/syndic-storage/src/pristine_thread.rs"
+    ],
+    "symbols": [
+      "SyndicStorage::inspect_pristine_thread_state",
+      "stable_inspection"
+    ],
+    "evidence": [
+      "All 854 lines reviewed, including complete facts comparison, removal audit, closure validation, eligibility, fallback fingerprint and atomic delete/reservation lists.",
+      "After the special missing-thread read, 17 required reads repeat family point limits and stable_inspection returning a distinct missing-record Conflict message."
+    ],
+    "proposal": "Introduce a small function-local required-record macro for those 17 reads. Each expansion performs the existing point read at the existing position and returns the same revision-stabilized Conflict on absence. Keep the special Missing thread outcome, read-error propagation, post-acquisition stability checks, history authentication and all eligibility/removal predicates explicit.",
+    "required_contract_changes": "None. Preserve existing API, exact V7 bytes, typed failure/custody and resource bounds.",
+    "estimated_net_lines": {
+      "minimum": 125,
+      "maximum": 165,
+      "basis": "Roughly 220-250 repeated missing-record acquisition lines replaced by 65-95 explicit invocations and ~15-20 macro lines; allow call formatting and focused verification.",
+      "overlap": "No initial-record expected-state or fixture sharing counted; no validation deletion."
+    },
+    "verification": [
+      "Preserve each missing constituent's diagnostic, source read order, read-error propagation and concurrent-change precedence.",
+      "Run existing pristine inspection/deletion/fault reconciliation and exact-old/exact-absent/mixed-closure tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-005",
+    "title": "Use one example stage-outcome handler while retaining seal custody",
+    "paths": [
+      "crates/syndic-storage/examples/provider_observation.rs"
+    ],
+    "symbols": [
+      "main",
+      "ExampleOutcome"
+    ],
+    "evidence": [
+      "The live provider_observation example repeats five matching StageOutcome handlers: begin, scalar control, BeginField, fragment, EndField.",
+      "Every copy installs indeterminate reconciliation before returning, reports the exact committed receipt, and treats later_failure distinctly. Seal uses a different consumed custody type and remains separate.",
+      "lib.rs advertises the compiled provider example; these first-party examples have actual public API demonstration purpose."
+    ],
+    "proposal": "Extract an example-local generic stage-outcome helper that prints the caller-supplied phase label and returns the typed value, retaining all NotCommitted/CommittedLaterFailure/Indeterminate distinctions and reconciliation installation. Keep the consuming seal match explicit and retain the example.",
+    "required_contract_changes": "None. Preserve existing API, exact V7 bytes, typed failure/custody and resource bounds.",
+    "estimated_net_lines": {
+      "minimum": 75,
+      "maximum": 95,
+      "basis": "Delete four ~25-line stage handler copies, add helper signature/calls and formatting glue. Error enum/Display retained.",
+      "overlap": "Disjoint from SP-005 test setup and all TempDir candidates."
+    },
+    "verification": [
+      "Compile examples and exercise outcome-handler cases with existing typed outcomes when implementing; preserve phase labels and exact custody installation.",
+      "Keep seal's move-only consumed-stager installation separate."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-006",
+    "title": "Share test-only fixture dispatch declarations without sharing production oracles",
+    "paths": [
+      "crates/syndic-storage/src/test_faults.rs",
+      "crates/syndic-storage/src/test_faults/fixture_command.rs",
+      "crates/syndic-storage/src/test_faults/fixture_put.rs",
+      "crates/syndic-storage/src/test_faults/physical/family.rs"
+    ],
+    "symbols": [
+      "FixtureRecord",
+      "FixtureRecord::family",
+      "put_record",
+      "PhysicalFamily",
+      "PhysicalFamily::ALL",
+      "PhysicalFamily::name",
+      "reserve_family"
+    ],
+    "evidence": [
+      "All fixture facade/put/delete/command/physical bodies reviewed. FixtureRecord has 60 variants with repeated family and codec/key dispatch; PhysicalFamily independently lists 63 enum/ALL/name entries and reserve_family repeats their codecs.",
+      "Composite keys require explicit record expressions; three provider physical families have no FixtureRecord variant. Existing FixtureDelete tuple/struct shapes and physical corruption tag offsets are observable test interfaces."
+    ],
+    "proposal": "Use a small test-only declaration for FixtureRecord variant, record type, physical family, codec and explicit borrowed key expression to emit its enum, family method and put dispatch. Separately declare PhysicalFamily variant/literal family name/codec once to emit its enum, ALL, name and reservation dispatch. Preserve FixtureDelete and its exact composite-key dispatch rather than adding a general fixture framework.",
+    "required_contract_changes": "None. Preserve current behavior and explicit test fault coverage; no authority changes.",
+    "estimated_net_lines": {
+      "minimum": 220,
+      "maximum": 300,
+      "basis": "Roughly 450 record enum/family/put lines and ~295 physical enum/list/name/reserve lines can lose ~220-300 after explicit key/name/codec declarations and macro plumbing. No FixtureDelete savings counted.",
+      "overlap": "Test-local inventory only; disjoint from SC-003 production list and codec findings. Keep the 63 physical names and fault bytes independent of production registration. No savings for mandatory schema-family additions."
+    },
+    "verification": [
+      "Check every generated variant retains the current physical name, put key, codec, reservation count and ordinal/order.",
+      "Retain independent family matrix, all physical corruption targets, duplicate fixture behavior, max-operation limit and exact delete tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-007",
+    "title": "Reuse local corruption reconstruction while retaining every deliberate malformed state",
+    "paths": [
+      "crates/syndic-storage/src/test_faults/draft_composer.rs",
+      "crates/syndic-storage/src/test_faults/draft_piece_corruption.rs"
+    ],
+    "symbols": [
+      "inject_draft_composer_build_corruption",
+      "inject_draft_piece_coordinated_stage_target_replacement",
+      "coordinated_build_replacement",
+      "inject_draft_piece_build_corruption"
+    ],
+    "evidence": [
+      "Full fault files reviewed. Six composer encoder branches repeat fourteen fields while changing only cursor/source count/byte frontier/maximum label.",
+      "The stage-target replacement repeats the existing coordinated_build_replacement receipt/session-custody/contribution logic; both authenticate the same changed build and update all three records.",
+      "Paired inserting-cursor and byte-cursor cases and marker-scan cases can choose altered scalar fields before one unchanged constructor. Distinct overflow, in-range mismatch, digest and malformed-shape variants remain."
+    ],
+    "proposal": "Select changed fields locally before one encoder constructor for the six ordinary composer cases. Reuse coordinated_build_replacement for the stage-target fault after constructing the changed build. Merge only paired local scalar selection into shared constructors. Keep special maximal composer shapes, malformed tree envelopes, hash alterations and all fault variants explicit.",
+    "required_contract_changes": "None. Preserve current behavior and explicit test fault coverage; no authority changes.",
+    "estimated_net_lines": {
+      "minimum": 150,
+      "maximum": 190,
+      "basis": "Composer ordinary encoder reconstruction ~55-65 net; stage-target helper reuse ~65-75; local paired frontier/scan constructor selection ~30-50. Excludes large DraftPieceBuildRecord payload copying.",
+      "overlap": "Supersedes PRE-007 for draft_piece_corruption.rs: its concrete subrange is 95-125 net, not additive to the preliminary 100-150. Excludes DT-002 shared build-progress payload/digest helper and DP-002 staging-head/receipt reconstruction."
+    },
+    "verification": [
+      "Compare exact altered records and untouched fields for each corruption variant; preserve the full enum-driven rejection matrix.",
+      "Confirm coordinated replacement still updates build, progress receipt and session custody together and reserves the same three families.",
+      "Keep local malformed fixtures capable of bypassing production validation; do not route their construction through a stricter production builder."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-008",
+    "title": "Reuse the existing history-record deletion for frontier-only faults",
+    "paths": [
+      "crates/syndic-storage/src/test_faults/draft_edit_history.rs"
+    ],
+    "symbols": [
+      "delete_draft_edit_history_frontier",
+      "DeleteDraftEditHistoryFrontier",
+      "DeleteDraftEditHistoryRecord",
+      "DraftEditHistoryRecordDeletion::Frontier"
+    ],
+    "evidence": [
+      "The frontier-only wrapper has its own unit tuple mutation and 27-line DomainMutation impl.",
+      "DeleteDraftEditHistoryRecord already has the same Frontier key, SyndicMutationError type, no-op prepare, single-family reservation and delete effect."
+    ],
+    "proposal": "Have the existing public frontier helper invoke delete_draft_edit_history_record with Frontier(key), then remove the redundant private mutation type and impl. Preserve the public helper and all transition/session/publication faults.",
+    "required_contract_changes": "None. Preserve current behavior and explicit test fault coverage; no authority changes.",
+    "estimated_net_lines": {
+      "minimum": 25,
+      "maximum": 35,
+      "basis": "Remove the private type and ~27-line impl plus duplicated contribution setup, allowing the forwarding call.",
+      "overlap": "Disjoint from draft-history production findings; no multi-record replacement or fault case is removed."
+    },
+    "verification": [
+      "Verify frontier deletion contributes the same key, revision, codec and reservation and returns the same error type.",
+      "Retain separate transition deletion and all history corruption cases."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-009",
+    "title": "Delete populated provider fixture construction that every consumer discards",
+    "paths": [
+      "crates/syndic-storage/tests/support/populated.rs",
+      "crates/syndic-storage/tests/support/populated/active.rs",
+      "crates/syndic-storage/tests/support/populated/active/item_records.rs",
+      "crates/syndic-storage/tests/support/populated/provider.rs",
+      "crates/syndic-storage/tests/support/populated/seed.rs"
+    ],
+    "symbols": [
+      "populated_records",
+      "active::records",
+      "item_records::records",
+      "ItemRecordFacts",
+      "provider_command_owned",
+      "pre_event_records",
+      "ProviderItemFixture"
+    ],
+    "evidence": [
+      "populated_records unconditionally retains !provider_command_owned after appending active::records. The only other private active::records caller filters active_route_fact in pre_event_records; repository rg verified both references after Serena returned no integration-target references.",
+      "Every record produced by active/item_records.rs (392 lines) is rejected by both filters. Producer-only fields and setup in active.rs become unnecessary.",
+      "Large provider source-event/item/projection/resource/transcript/activity groups in populated_records are also always rejected. Family-matrix consumers inspect only the already-filtered records; their existing exclusions explicitly preserve dedicated provider/physical-family coverage.",
+      "Side effects checked: agent_item_fixture/provider_item_fixture and prepare_provider_frame perform in-memory validation, counting, hashing and immutable frame construction, with no store handle or durable execution. Projection fixture helpers are deterministic constructors/hashes. Actual durable ProviderItemFixture::seed, active/provider_seed.rs and all seeding commands remain.",
+      "canonical_empty_root_history_pair_for opens/registers a temporary store for retained draft references: retain that path and the shared active route facts. Do not treat all active::records construction as dead."
+    ],
+    "proposal": "Remove active/item_records.rs and its fact plumbing, the always-discarded provider construction in populated_records/active::records, and producer-only frame/canonical bookkeeping. Continue to construct the exact retained static records and route facts; keep real provider seeding and subsequent convergence intact. Remove or narrow provider_command_owned only after the retained result set is explicitly preserved.",
+    "required_contract_changes": "None. Preserve current behavior and explicit test fault coverage; no authority changes.",
+    "estimated_net_lines": {
+      "minimum": 780,
+      "maximum": 1020,
+      "basis": "Delete the full 392-line item record module; roughly 240-320 discarded producer/setup lines in active.rs and 220-320 in populated_records; allow ~70-140 lines for explicit retained-record composition, shared-route setup and output parity verification. No durable seeding deletion counted.",
+      "overlap": "SP-005 covers positive provider staging/setup sharing: this finding counts only records unconditionally discarded before return and their producer-only metadata, not SP-005 stage/seed helpers. PRE-004 temporary-home replacement is excluded. Existing logical/physical family tests and their exclusions remain."
+    },
+    "verification": [
+      "Compare the exact ordered populated_records output and pre_event_records output before/after, including IDs, revisions, route facts, retained text, bindings and deferred context.",
+      "Run the existing populated family matrix, strict physical corruption matrix, seeded semantic/binding/recovery and provider tests; retain pre-event/deferred-context scrubs and receipt assertions.",
+      "Confirm removed constructor calls have no registration, durable mutation or required counter side effect; preserve canonical_empty_root_history_pair_for calls needed for retained drafts."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "SC-010",
+    "title": "Share the semantic fixture lifecycle while keeping registration and recovery checks distinct",
+    "paths": [
+      "crates/syndic-storage/tests/support/semantic.rs"
+    ],
+    "symbols": [
+      "exercise_case",
+      "exercise_seeded_populated_case",
+      "assert_registration_rejected",
+      "assert_rejected"
+    ],
+    "evidence": [
+      "Both complete functions repeat the same two-home sequence: clean seed/scrub, corruption, routine reopen success, explicit schema validation rejection, same-home scrub rejection, candidate reacquisition/publication and close.",
+      "Their differences are only initial fixture seeding and corruption callbacks; the first also duplicates assert_registration_rejected's exact domain/message match."
+    ],
+    "proposal": "Use one private lifecycle helper receiving seed and corrupt callbacks over store/storage. Keep the current public wrappers to adapt thread-based and populated setup; reuse the existing exact registration assertion. Keep registration and recovery on separate fresh homes with distinct assertions and close boundaries.",
+    "required_contract_changes": "None. Preserve current behavior and explicit test fault coverage; no authority changes.",
+    "estimated_net_lines": {
+      "minimum": 35,
+      "maximum": 50,
+      "basis": "Replace one repeated ~50-line lifecycle body with two short adapters and a shared callback signature; retain all assertions and separate homes.",
+      "overlap": "No test cases, strict/routine reopen distinction or PRE-004 temporary-directory code counted. Does not overlap provider staging setup."
+    },
+    "verification": [
+      "Run the existing semantic suites and confirm both public wrappers still exercise both fresh-home paths.",
+      "Preserve exact expected domain/message failures, routine registration success and candidate publish/reacquire behavior."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  }
+]

@@ -1,0 +1,334 @@
+[
+  {
+    "id": "BJ-001",
+    "title": "Share bounded scalar probes and compact ordered-control grammar",
+    "paths": [
+      "crates/beryl-backend/src/incoming_json/provider/machine/thread_closed.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/thread_status.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/turn_started.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/normal_terminal.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/normal_terminal/grammar.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/normal_terminal/scalar.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/classifier_support.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/approval.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/dynamic_tool/state.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/web_other.rs"
+    ],
+    "symbols": [
+      "IdentityBytes",
+      "Probe",
+      "ExactProbe",
+      "ChoiceProbe",
+      "ClassifierProbe",
+      "ApprovalFixedBytes",
+      "ThreadClosedMachine",
+      "ThreadStatusChangedMachine",
+      "TurnStartedMachine",
+      "NormalTerminalMachine"
+    ],
+    "evidence": [
+      "Four compact control implementations repeat fixed identity storage, exact/candidate byte probes, scalar start/fragment/end validation, and ordered object steps. thread_closed.rs:189-218, thread_status.rs:273-335, and turn_started.rs:340-404 expose near-identical primitive bodies.",
+      "classifier_support.rs and response/common.rs already implement bounded scalar/probe responsibilities; approval and dynamic-tool controls repeat additional fixed buffers. WebActionProbe/OtherNameProbe repeat the same incremental matching core.",
+      "Status domains are deliberately different: loaded-thread controls accept three statuses; lineage response supports notLoaded. Thread-status notification unknown flags are discarded, while response-specific duplicate handling remains separately checked. These are not interchangeable semantic decoders."
+    ],
+    "proposal": "Move the private fixed byte and exact/candidate match implementations to one bounded helper module, preserving immediate-error versus overflow-marking policies at typed call sites. Use a small closed grammar/scalar helper for common control mechanics while keeping each family's ordered fields, admission, diagnostic truncation, and sink operation explicit. Do not introduce a generic JSON schema framework.",
+    "required_contract_changes": [
+      "No public behavior or bound change. Any internal organization decision belongs in backend documentation; preserve exact 0.146.0 control shapes and synchronous ordered sink semantics."
+    ],
+    "estimated_net_lines": {
+      "min": 300,
+      "max": 450,
+      "basis": "Control/helper consolidation after roughly 100-180 replacement helper/adapter lines; source-only estimate, no implementation performed.",
+      "overlap": "Do not add response/common.rs or NumberBytes scalar savings separately to BJ-003. If BJ-003 is extended to these compact controls, absorb this finding into that larger replacement."
+    },
+    "verification": [
+      "Existing incoming_json_ingress thread_closed, normal_terminal, streamed_turn_start and streamed_turn_steer cases at every configured fragmentation size.",
+      "Exercise 255/256/257-byte identities, escaped UTF-8 splits, long unknown names/flags, invalid scalar kind, missing/extra/reordered fields, exact sink operation and typed unexpected completion.",
+      "Independent semantic review required by backend effective engineering rigor before implementation completion."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "existing bounded-json plus private fixed helpers",
+        "version": "local 0.1.0",
+        "decision": "Reuse; no new dependency. A fixed storage/probe utility does not justify a parsing framework."
+      }
+    ],
+    "confidence": "high duplication evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BJ-002",
+    "title": "Extract one leased-page output core for provider and dynamic-tool captures",
+    "paths": [
+      "crates/beryl-backend/src/incoming_json/provider/capture.rs",
+      "crates/beryl-backend/src/incoming_json/provider/dynamic_capture.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/dynamic_tool.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/target_io.rs"
+    ],
+    "symbols": [
+      "ObservationCapture::output_window",
+      "ObservationCapture::acquire_empty_page",
+      "ObservationCapture::exchange_full_page",
+      "DynamicToolCapture::output_window",
+      "DynamicToolCapture::acquire_empty_page",
+      "DynamicToolCapture::exchange_page",
+      "page_needs_exchange",
+      "submit_applied"
+    ],
+    "evidence": [
+      "capture.rs:63-181 and dynamic_capture.rs:56-188 duplicate acquire-empty validation, MIN_OUTPUT_CAPACITY exchange threshold, checked produced-length commitment, nonempty flushing, lease replacement validation, and recovery of the rejected original lease.",
+      "The two files total 498 lines. Provider capture additionally owns context and UTF-8 fixed-byte copying; dynamic capture owns scalar kind/offset and ingress custody. steering_capture.rs:1-209 owns verifier selection/correlation and has no page exchange loop, so it is explicitly excluded."
+    ],
+    "proposal": "Use one private leased-page writer with closed typed provider/dynamic submission adapters. Centralize output window, produced-length commit, empty/minimum-capacity validation and rejected-lease recovery. Retain capture-specific begin/control/seal/abandon, provider context, dynamic successful-exchange-only offset advancement, and drop-before-terminal ownership semantics.",
+    "required_contract_changes": [
+      "No external contract change. The shared helper must keep exact ownership-return and zero-held-page seal/abandon invariants from backend provider stream and beryl-stream authority."
+    ],
+    "estimated_net_lines": {
+      "min": 100,
+      "max": 170,
+      "basis": "Approximately 230-280 duplicated mechanical lines replaced by one 110-150-line core plus small typed adapters; conservative net estimate.",
+      "overlap": "Independent of BJ-003 response parsing; excludes steering capture and excludes protocol/registry sink implementations outside audit scope."
+    },
+    "verification": [
+      "Existing provider_observation_ingress page-boundary, malformed escape, undersized lease, timeout, cancellation and sink-rejection cases.",
+      "Dynamic-tool argument fragmentation and byte-offset checks, failed exchange retaining exact original lease, ingress abandon exactly once, zero leases at scalar end/seal/abandon.",
+      "Preserve no additional read while sink submission is blocked; independent resource/semantic review."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "existing beryl-stream PageLease",
+        "version": "workspace 0.1.0",
+        "decision": "Reuse; registry I/O-buffer crates would not understand typed lease return and capture abandonment and would add adapters without deleting these responsibilities."
+      }
+    ],
+    "confidence": "high duplication evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BJ-003",
+    "title": "Replace response continuation machines with synchronous pull parsing over bounded-json",
+    "paths": [
+      "crates/beryl-backend/src/incoming_json/provider/machine/response.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/common.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config/multi_agent.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config/object.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config/origin_metadata.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config/origins.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/config/result.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/failure.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/initialize.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/lineage/result.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/lineage/status.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/lineage/thread.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/model/efforts.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/model/page.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/model/record.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/number.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/ordered_object.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/success.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/thread_read/result.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/thread_read/source.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/thread_read/thread.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/turn_start.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/turn_steer.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/unsubscribe.rs",
+      "crates/beryl-backend/src/incoming_json/provider.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/classifier.rs",
+      "crates/beryl-backend/src/incoming_json.rs",
+      "crates/beryl-backend/src/incoming_json/response.rs"
+    ],
+    "symbols": [
+      "decode_inner",
+      "SuccessResultMachine",
+      "InitializeResultMachine",
+      "ConfigResultMachine",
+      "ModelPageMachine",
+      "LineageResultMachine",
+      "ThreadReadResultMachine",
+      "ThreadReadSourceMachine",
+      "TurnStartResultMachine",
+      "TurnSteerResultMachine",
+      "UnsubscribeResultMachine",
+      "OrderedObjectMachine",
+      "ValueTracker"
+    ],
+    "evidence": [
+      "The response subtree and response.rs comprise 6,156 fully reviewed source lines. Almost every object parser stores Start/Name/NameScalar/Value/Discard/Remainder/Fallback/Complete, then forwards scratch bytes, repeats depth draining, and manually resumes child parsing.",
+      "Concrete small schemas carry disproportionate continuation code: InitializeResultMachine 156 lines for four ordered strings; UnsubscribeResultMachine 155 lines for one closed status; OrderedObjectMachine 159 lines; ThreadReadResultMachine 207 lines for one required thread object. TurnStartResultMachine and its child total 484 lines.",
+      "provider.rs:45-165 already runs one synchronous Read/BufReader loop driving Parser::advance. Bounded responses neither yield a resumable public decoder nor publish partial results. Synchronous ordered sink submission already blocks at the source position. Explicit per-object continuation is therefore not required by the entry-point execution model.",
+      "Existing bounded-json exposes consumed/produced counts and scalar-fragment events without retaining proportional data. The replacement can use the same recognizer and current input position; it need not reparse or allocate a complete scalar/document.",
+      "Owned-dependency seam checked directly: ../bounded-json/src/parser.rs:169-202 takes caller input/output windows and returns one owned Step. ../bounded-json/src/types.rs:77-127 defines Copy Event/Progress/Step with exact consumed/produced counts and no borrowed event payload. ../bounded-json/src/string.rs:46-170 and number.rs:36-109 keep continuation inside Parser and return individual scalar fragment/end steps. No callback inversion, event queue, or recognizer API change is required by this API.",
+      "Envelope handoff is at a scalar boundary: classifier.rs:83-89 selects error after ScalarEnd(Name); classifier.rs:143-151 selects result after ScalarEnd(Name). machine.rs:285-304 creates the response decoder without replaying that event. Cursor can resume the same Parser before the result/error value, with the root object already open.",
+      "Closed unavailable-family caller check: semantic references plus repository source/test search find no construction or installation of ResponseFamily::ThreadRollback; its only value reference is method(). session.rs:795-805 rollback_thread returns the separate ManagedBackendError::ResponseFamilyUnavailable before dispatch; lifecycle_test_support/response.rs:27-67 installs only implemented families. Thus SuccessResultMachine::Unavailable and complete_unavailable are internal uninstalled-family scaffolding that may be removed within this response rewrite. Do not remove the separate public rollback unavailable behavior.",
+      "KnownControlUnavailable remains reachable: classifier.rs:285-304 maps thread/started, thread/tokenUsage/updated, account/rateLimits/updated and codex/event/collab_agent_spawn_end to DiscardDisposition::Unavailable(Compact); discard.rs:113-115 emits that error. KnownControlFamily::Approval/DynamicTool/Provider have no constructors and the family payload is discarded. Their tiny cleanup is not a separate substantial savings claim."
+    ],
+    "proposal": "Introduce a private synchronous cursor over the existing bounded-json Parser and transport buffering, with bounded scalar/probe operations, expected event/name consumption, iterative skip_value, and one outer failure drain. Express each closed response schema as ordinary nested Rust functions returning its bounded result. Dispatch into those functions after the envelope classifier selects the exact response family/id. Keep provider TargetMachine direct-page event handling and its sink lifecycle intact. Use bounded typed recursion only for known schema nesting; arbitrary ignored nesting stays in bounded-json/iterative draining. The cursor owns Parser, BufReader and the existing 256-byte scratch; a returned event is owned, and any returned scratch slice borrows the cursor only until the caller processes that fragment. Nested readers must drop that borrow before advancing. Preserve produced bytes from failing calls, exact consumed offset, final-input resubmission, and existing provider large-fragment backpressure. No owned-dependency source change is currently indicated.",
+    "required_contract_changes": [
+      "Document the private cursor ownership and error-drain boundary in backend design before implementation. No second streamed-provider recognizer, whole DOM, generic message cap, arbitrary-order acceptance, or broadened pinned schemas.",
+      "Maintain exact response expectation id/family and poison transitions, full consumption where required for malformed/oversized/unknown responses, duplicate and order checks, 256-byte identities, 4096-byte diagnostics, 1024-byte labels/cursors, and 64-record model pages.",
+      "Confirm the envelope handoff never loses current Parser input/output/event state and provider scratch versus direct leased output behavior remains unchanged.",
+      "Architectural candidate requiring a focused prototype before implementation commitment: source API supports the conversion, but the Beryl Machine-to-cursor handoff, Rust borrow integration, diagnostics/error precedence and exact draining behavior have not been compiled or executed. Budget integration within the net estimate and revisit it if prototype needs new dependency APIs."
+    ],
+    "estimated_net_lines": {
+      "min": 1800,
+      "max": 2600,
+      "basis": "Conservative removal of about 3000-4000 lines of continuation/forwarding/drain code, allowing about 1200-1400 lines for the shared cursor, direct schema functions and integration. Architectural estimate from complete source review, not a measured patch.",
+      "overlap": "Includes BJ-004 effort branch deletion and any response-only BJ-001 scalar consolidation. Do not sum those overlapping lines. Compact control BJ-001 range is separate unless cursor scope is extended."
+    },
+    "verification": [
+      "All incoming_json_ingress response-family tests across fragment sizes; exact full consumption and maximum buffered-input assertions are acceptance checks.",
+      "Adversarial malformed root and nested shapes, retained-limit boundaries, unknown huge names/scalars/containers, wrong/late/duplicate ids, expected-family mismatch, error-before-id failures, and trailing mutations.",
+      "Preserve configuration sessionFlags origin proof; thread-read top-level/nested nickname agreement; start/fork/resume distinct required facts; closed turn status and activeTurnNotSteerable error data.",
+      "Independent semantic review and focused backend verification after implementation; no build/test was run for this audit."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "bounded-json",
+        "version": "local 0.1.0",
+        "license": "Apache-2.0",
+        "features": "Existing strict incremental Parser; no new feature or package.",
+        "platform": "Existing Rust 1.92 workspace dependency.",
+        "decision": "Preferred recognizer. Add only a Beryl-owned cursor/typed functions; generic serde_json or struson replacement is assessed and retained against in BJ-005."
+      }
+    ],
+    "consumed_dependency_revision": {
+      "path": "../bounded-json",
+      "commit": "d3397fa5e41dfad7e7a1476f15048141e30568be",
+      "worktree": "clean",
+      "observed_date": "2026-09-06"
+    },
+    "confidence": "medium architectural candidate; dependency event/count/lifetime seam source-verified, Beryl integration and net estimate require prototype",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BJ-004",
+    "title": "Delete unsupported model reasoning-effort container alternatives",
+    "paths": [
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/model/efforts.rs",
+      "crates/beryl-backend/tests/incoming_json_ingress/responses/model_page.rs"
+    ],
+    "symbols": [
+      "SupportedEffortsState::ArrayString",
+      "SupportedEffortsState::MapName",
+      "SupportedEffortsState::MapNameScalar",
+      "SupportedEffortsState::MapValue",
+      "SupportedEffortsState::MapDiscard",
+      "SupportedEffortsMachine::array_string",
+      "SupportedEffortsMachine::map_name",
+      "SupportedEffortsMachine::map_name_scalar",
+      "SupportedEffortsMachine::map_value",
+      "model_page_normalizes_all_effort_shapes_and_discards_large_incidental_values"
+    ],
+    "evidence": [
+      "efforts.rs:206-212 and 242-275 dispatch bare-string array and keyed-map alternatives; start at 292-299 admits both array and object; map-specific methods occupy 358-407.",
+      "Exact Codex 0.146.0 commit e363b08c9175ac1cbe5893615dd2cb9ddf95043b protocol/v2/model.rs:75-116 defines supported_reasoning_efforts as Vec<ReasoningEffortOption>, whose wire fields are reasoningEffort then description. It emits an array of records, not a string array or keyed object. Source: https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/v2/model.rs",
+      "crates/beryl-backend/doc/design.md:34 makes this exact generated schema/source the compatibility authority and prohibits response-shape tolerance from broadening it.",
+      "Current model_page.rs test explicitly normalizes all three shapes and most other fixtures use string arrays, so passing those fixtures currently preserves unauthorized compatibility rather than the pinned producer contract."
+    ],
+    "proposal": "Keep only the array-of-records parser; delete bare-string and object-map states/methods. Align valid fixtures to exact pinned record shape and assert former alternatives fail after required consumption. Keep bounded closed effort facts and discard unknown nonempty effort text as authority requires. Separately ensure retained record validation reflects pinned required description shape; this audit does not count additional hardening as deletion savings.",
+    "required_contract_changes": [
+      "No authority change needed: implementation and fixtures must conform to the existing exact-version rule. This deliberately removes currently accepted input outside that rule."
+    ],
+    "estimated_net_lines": {
+      "min": 100,
+      "max": 140,
+      "basis": "Direct deletion of five alternative states, their forwarding/dispatch, array-string handler and roughly 50 map-method lines, after small rejection-path adjustments. Test fixture changes are excluded.",
+      "overlap": "Fully included in BJ-003 if the response rewrite is selected; may be implemented independently earlier."
+    },
+    "verification": [
+      "Valid ordered record arrays including long incidental descriptions and unknown nonempty effort values remain bounded.",
+      "Former bare-string arrays, mixed string/record arrays and keyed object maps reject with MalformedResponse and exact consumption/poison behavior.",
+      "Retain 64/65 record, identity/display/cursor boundary and fragmentation coverage using producer-correct fixtures."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BJ-005",
+    "title": "Retain bounded-json recognition and bounded decimal accumulation after dependency comparison",
+    "paths": [
+      "crates/beryl-backend/src/incoming_json/provider.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/number.rs",
+      "crates/beryl-backend/src/incoming_json/provider/machine/response/common.rs"
+    ],
+    "symbols": [
+      "NumberAccumulator",
+      "NumberAccumulator::push",
+      "NumberAccumulator::finish",
+      "decode_inner",
+      "FixedScalar"
+    ],
+    "evidence": [
+      "number.rs:1-269 contains the bounded number accumulator and decimal normalization helpers (whole file 406 lines also contains target routing/finish). It retains at most 768 significant decimal digits plus sticky nonzero information and exponent/sign state, allowing finite structured-number projection without retaining an arbitrarily long wire spelling. A contiguous-slice float parser does not remove that incremental responsibility.",
+      "backend design.md:33 requires bounded-json to remain the sole streamed-provider recognizer. Fixed final result capacity alone does not bound a generic deserializer's intermediate escaped-string or member-name storage.",
+      "Registry metadata was queried directly on 2026-09-06 for exact versions, release history, license, MSRV, features and adoption; official API/source was checked. No package was installed, built, or added."
+    ],
+    "proposal": "Retain the existing recognizer and decimal accumulator. Use BJ-003's private cursor for structural simplification. Do not replace them with a generic deserializer or float parser based only on shorter call sites; that would retain adapter/proof complexity or broaden the memory/input contract.",
+    "required_contract_changes": [
+      "No change proposed. A future recognizer replacement would require explicit design revision and demonstrated incremental scalar/name/number and exact failure/consumption equivalence."
+    ],
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "No compatible net-deleting dependency replacement established.",
+      "overlap": "Dependency rejection supports BJ-003; do not count hypothetical whole-parser deletion."
+    },
+    "verification": [
+      "Future numeric changes require finite/nonfinite, signed zero, i64/u64 bounds, exponent extremes, arbitrarily long spellings, sticky rounding ties, subnormal rounding, and fragmentation invariance.",
+      "Future parser changes require allocation-bound evidence for unknown and retained escaped names/strings before acceptance, plus exact source-order backpressure and drain semantics."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "serde_json",
+        "version": "1.0.151",
+        "license": "MIT OR Apache-2.0",
+        "maturity": "First release 2015-08-07; stable 1.0 since 2017; current release 2026-07-20; roughly 1.26 billion cumulative registry downloads as observed.",
+        "features": "std default; alloc, arbitrary_precision, float_roundtrip, preserve_order, raw_value, unbounded_depth optional. MSRV 1.71.",
+        "platform": "Portable Rust; no new native runtime requirement identified, but no build performed.",
+        "adaptation_cost": "Requires custom visitors for field order/duplicates and bounds, plus a recognizer fork or scalar-fragment adapter to enforce intermediate retention. Official de.rs:27-30 owns scratch Vec<u8>; deserialize_str parses an entire decoded string before visitor invocation at 1432-1439. float_roundtrip long-number paths also grow scratch. RawValue/Value would violate existing storage authority.",
+        "decision": "Reject as drop-in; its mature visitor API does not delete Beryl's hardest bounded streaming responsibilities.",
+        "sources": [
+          "https://crates.io/api/v1/crates/serde_json",
+          "https://docs.rs/crate/serde_json/1.0.151",
+          "https://raw.githubusercontent.com/serde-rs/json/v1.0.151/src/de.rs"
+        ]
+      },
+      {
+        "name": "struson",
+        "version": "0.7.2",
+        "license": "MIT OR Apache-2.0",
+        "maturity": "First release 2023-04-22; current release 2026-02-10; about 245000 cumulative registry downloads. Smaller 0.x project; simple API explicitly experimental.",
+        "features": "No default feature set; serde and simple-api optional. Advanced reader avoids both. MSRV 1.85.0.",
+        "platform": "Documented Windows MSVC, macOS and Linux targets; portable Read-based API.",
+        "adaptation_cost": "Closest off-the-shelf pull-reader shape and supports streaming string values, but next_name returns a complete str/String and numbers are complete scalar spellings. Default number restriction rejects exponent magnitude over 99 and spellings over 100 characters; disabling it does not create incremental bounded name/number output. Additional typed schema, duplicate/order, lease and failure adapters remain.",
+        "decision": "Retain against: useful evidence for a pull API, but replacing bounded-json violates current sole-recognizer rule and requires a fork/new memory proof. Prefer the much smaller cursor over existing Parser.",
+        "sources": [
+          "https://crates.io/api/v1/crates/struson",
+          "https://docs.rs/struson/latest/struson/",
+          "https://docs.rs/struson/latest/struson/reader/struct.JsonStreamReader.html",
+          "https://docs.rs/struson/latest/struson/reader/struct.ReaderSettings.html"
+        ]
+      },
+      {
+        "name": "fast-float2",
+        "version": "0.2.4",
+        "license": "MIT OR Apache-2.0",
+        "maturity": "Fork registry first release 2024-10-30; current release 2026-08-14; about 18.5 million cumulative registry downloads; established decimal-conversion algorithm lineage.",
+        "features": "std default, no_std supported by disabling defaults. MSRV 1.37.",
+        "platform": "Portable Rust numeric API; no native dependency or installation required by API, no local build performed.",
+        "adaptation_cost": "Exact v0.2.4 source parse/parse_partial accepts AsRef<[u8]>, not resumable fragmented mantissa/exponent state. Replacing final std parse would keep NumberAccumulator and its normalization/rounding proof. Removing that accumulator would require retaining unbounded scalar bytes or introducing another custom incremental converter.",
+        "decision": "Reject for simplification; possible performance comparison is outside this audit and has zero demonstrated source reduction.",
+        "sources": [
+          "https://crates.io/api/v1/crates/fast-float2",
+          "https://raw.githubusercontent.com/Alexhuszagh/fast-float-rust/v0.2.4/src/lib.rs",
+          "https://docs.rs/fast-float2/0.2.3/fast_float2/"
+        ]
+      }
+    ],
+    "confidence": "high API mismatch evidence; no benchmark or compiled proof claimed",
+    "disposition": "retained"
+  }
+]

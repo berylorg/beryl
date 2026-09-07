@@ -1,0 +1,315 @@
+[
+  {
+    "id": "AC-001",
+    "title": "Represent exact retirement reservations by their identity and share settlement mechanics",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/authority.rs"
+    ],
+    "symbols": [
+      "ExactAuthorityState",
+      "ConnectionAuthorityState",
+      "ConnectionRegistryAuthority::settle_cleanup_owner",
+      "ConnectionRegistryAuthority::settle_scheduled_promotion"
+    ],
+    "evidence": "Full file reviewed. ExactAuthorityState has only Live; cleanup_owners maps IDs to that single value, and scheduled_promotion wraps ID plus Live. Both settlement methods repeat the same master-gate commit_or_transfer, exact removal, retirement completion, notification, and fail-closed cleanup. All assigned connection and router tests are now reviewed; retirement coordinator tests outside this assignment remain the root auditor's integration responsibility.",
+    "proposal": "Use HashSet<CleanupAuthorityId> and Option<PromotionAuthorityId>. A private reservation selector removes or validates the correct exact ID; one shared settlement implementation runs under the existing connection gate and the existing master-gate callbacks. Keep distinct move-only cleanup and promotion public owners and their different finish results.",
+    "required_contract_changes": "None intended. Preserve exact identity, ordinary-versus-persistent-failure election, lock order, session/lease/promotion exclusions, condition-variable notification, poison handling and physical shutdown outside authority gates.",
+    "estimated_net_lines": {
+      "min": 80,
+      "max": 120,
+      "basis": "Source-only net after selector and shared helper plus allowance for focused verification; no savings counted from unread tests or unrelated master-gate implementation."
+    },
+    "verification": "Not run. Review and focused existing retirement, persistent-failure election, promotion/cleanup Drop and poison tests; prove cleanup and promotion exact-ID mismatch handling and waiters both before/after retirement.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-002",
+    "title": "Share driver post-operation settlement across ordinary and source-backed calls",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/driver.rs",
+      "crates/beryl-app/src/cas_projection/connection/target_command.rs"
+    ],
+    "symbols": [
+      "ConnectionDriver::call_classified_checked",
+      "ConnectionDriver::call_classified_checked_with_source",
+      "ConnectionDriver::call_classified_with_recovery_source",
+      "turn_start_invalidates_connection",
+      "turn_steer_invalidates_connection"
+    ],
+    "evidence": "All bodies reviewed. The three call variants repeat invalidates_connection handling, approval-interruption drain, sticky broker routing-failure sampling, and connection retirement. The turn-start and turn-steer invalidation classifiers have identical NonIdempotentRequestOutcome branches.",
+    "proposal": "Extract one DriverContext helper returning the routing failure after the same ordered settlement steps. Keep per-call authorization, source/recovery exchange, typed completion channels and classification hooks separate. Share the two generic outcome classifiers if their generic bounds stay local and small.",
+    "required_contract_changes": "None intended. Preserve classify-before-drain ordering, exact admitted attachment, permission-denial interruption before completion, backend/router versus target-only failure, nondispatch rejection evidence and source ownership return.",
+    "estimated_net_lines": {
+      "min": 35,
+      "max": 60,
+      "basis": "Net after helper, call sites, generic classifier and focused verification allowance. Excludes BR-004 ingress metric and any backend response-pump findings."
+    },
+    "verification": "Not run. Existing command-queue, approval interruption, normal-terminal, source-broker and recovery-source tests; compare error precedence and typed cancellation/possible-dispatch outcomes in all three paths.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-003",
+    "title": "Share shutdown bookkeeping while retaining the distinct retirement order",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/lifecycle.rs",
+      "crates/beryl-app/src/cas_projection/connection/attachment.rs"
+    ],
+    "symbols": [
+      "ProjectionConnection::settle_ordinary_shutdown_locked",
+      "ProjectionConnection::settle_terminal_shutdown_locked",
+      "ProjectionConnection::execute_ordinary_shutdown",
+      "ProjectionConnection::execute_terminal_shutdown",
+      "ConnectionAttachment::stop_and_join_ingester_terminal"
+    ],
+    "evidence": "All bodies reviewed. The settlement methods duplicate Unsettled/Clean/Failed caching. Execution repeats runtime extraction with poison retention, driver stop/join, ingester join, page diagnostics and final hub detachment. Ordinary shutdown retires registry authority BEFORE driver join; terminal shutdown retires it AFTER driver join.",
+    "proposal": "Share the cached-settlement wrapper and bounded mechanical join/final-detach helpers. Leave ordinary and terminal coordinators explicit, including their different authority-retirement ordering and first-error precedence. Do not replace both paths with an undifferentiated shutdown function.",
+    "required_contract_changes": "None intended. Retain cancellation before acquiring the runtime lock, all joins despite preceding errors, exact generation receipt validation, worker admission release only at the permitted terminal cut, poisoned-handle cleanup and sticky failed shutdown.",
+    "estimated_net_lines": {
+      "min": 40,
+      "max": 70,
+      "basis": "Net source reduction after helpers and test allowance. No assumed deletion of lifecycle behavior or existing fault scenarios."
+    },
+    "verification": "Not run. Existing shutdown, service-failure, poisoned-ingester and forced-join-failure scenarios must prove physical retirement and retained error precedence; inspect related tests before implementation.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-004",
+    "title": "Remove unused frame-staging adapter residue",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/consumer/staging.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/staging.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/core.rs"
+    ],
+    "symbols": [
+      "FrameCommitter::dispatch_batch",
+      "StageCommitter::home_generation",
+      "StageCommitter::command",
+      "Ingester::committer"
+    ],
+    "evidence": "All three files fully reviewed. Serena finds no reference to FrameCommitter::dispatch_batch; exact rg finds only its definition in this type (another independent provider_frame::dispatch_batch exists outside scope). FrameCommitter::commit instead calls stage_provider_observation_frame directly. StageCommitter stores home_generation and command but its sole stage_batch implementation reads neither.",
+    "proposal": "Delete the unused private dispatch_batch method and remove the unread StageCommitter fields and their construction arguments. Preserve the actual begin/complete verification, stage callback, typed outcome matching and immediate custody installation.",
+    "required_contract_changes": "None intended. Do not infer that unused fields currently enforce cancellation or generation fences; do not remove the real live-command guards elsewhere. Retain all test-fault fields that stage_batch actually reads.",
+    "estimated_net_lines": {
+      "min": 15,
+      "max": 25,
+      "basis": "Net after constructor/call adjustments. No credit for similarly named functions outside this scope or generated code."
+    },
+    "verification": "Not run. Focused compilation and provider stage/seal custody tests; confirm no conditional/macro use before removal. Source bodies and current semantic/exact-text references support the private dead-method claim.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-005",
+    "title": "Reassess the broker's unused split construction protocol",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/provider_broker.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/construction.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/lifecycle.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/disposition.rs",
+      "crates/beryl-app/src/cas_projection/connection/lifecycle.rs",
+      "crates/beryl-app/tests/unit/provider_broker_ingester.rs"
+    ],
+    "symbols": [
+      "ProviderBroker::prepare",
+      "ProviderBroker::start",
+      "ProviderBrokerBuildResources",
+      "ProviderBrokerLaunchEscrow",
+      "ProviderBrokerStartToken",
+      "StartBlockedProviderBrokerIngester"
+    ],
+    "evidence": "All listed files fully reviewed. Production ProjectionConnection::new calls ProviderBroker::start, which immediately prepares, destructures and starts the broker. prepare_with_initial_start has only prepare and test callers; try_activate has no references; cancel_and_join has no production references. Build-error resource snapshots serve tests. Historical failure note cas-phase82-inert-adoption-ownership explains this protocol's adoption-era purpose. Current CAS-live/backend-runtime authority forbids retaining old service internals, but fresh unpublished candidate construction remains required and unimplemented in the paused rework. Construction tests have now been fully reviewed: page-pool/channel/spawn failures assert the exact retained resource snapshot until error Drop; cancellation and join of a start-blocked broker returns an unarmed worker admission. These prove current mechanics, not a current Operator-owned need to transfer those resources to a retained-service adopter.",
+    "proposal": "Retain the dormant start/publication capability until fresh candidate construction is implemented against current authority. Reassess only the build-error resource-return and launch-escrow residue at that point, using direct resource-owned failure disposal if no target workflow requires returning those resources. This audit does not endorse deleting the split protocol.",
+    "required_contract_changes": "Unresolved. Fresh unpublished candidate construction and failure/cancellation must still dispose and join every worker before reporting failure, with no publication before the whole-stack fence. Removing split preparation is acceptable only if the target candidate workflow needs no caller-held dormant broker capability; otherwise retain that capability and simplify only proven residue. Historical adoption requirements are not current design authority.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "No savings accepted: current construction tests are fully reviewed, but fresh unpublished candidate construction remains an unfinished architectural requirement and must not be mistaken for dead code."
+    },
+    "verification": "Not run. All assigned broker construction tests reviewed. Any future simplification must prove pre-spawn and OS-spawn failure resource release, cancellation before activation, no ingestion before the publication fence, exact worker admission disposition and physical join custody. Current tests asserting error-held resources must be rewritten only after the target ownership decision.",
+    "dependency_candidates": [],
+    "confidence": "low",
+    "disposition": "deferred",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-006",
+    "title": "Give the ingester one shared immutable broker context",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester.rs",
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/construction.rs"
+    ],
+    "symbols": [
+      "ProviderBrokerControl",
+      "Ingester",
+      "ProviderBroker::prepare_with_initial_start_inner"
+    ],
+    "evidence": "Full declarations and construction bodies reviewed, plus all ingester operational files. ProviderBrokerControl and Ingester duplicate home identity/generation, authority/router/coordinators/commands/failure notification, cancelled/ack/routing/approval/steering state, page pool and test metrics; construction clones them into both records. The mutable receiver, current command, active ingress and authority_lost are ingester-only. Fully reviewed broker construction, checked-user, steering, compaction and residency fixtures exercise these attachments and exact release. No public behavior change is needed for the smaller context representation.",
+    "proposal": "Have Ingester retain Arc<ProviderBrokerControl> (or a small shared context retained by both) alongside only its receiver and private mutable fields. Use explicit shared-field access, without Deref magic or a new actor framework. Keep shared context non-owning with respect to ingester handle so no reference cycle is introduced.",
+    "required_contract_changes": "None intended. Preserve exact immutable connection/home/service attachment, shared cancellation and routing slots, non-cloneable ingress/receiver, loss mutex semantics and release of page/control references at shutdown.",
+    "estimated_net_lines": {
+      "min": 45,
+      "max": 75,
+      "basis": "Net declaration/construction reduction after explicit call-site adjustments and focused verification allowance. Excludes split-construction protocol removal AC-005; an implementation combining them must recount overlap."
+    },
+    "verification": "Not run. Broker construction/loss/cancellation and page-residency tests; check Arc ownership graph has no cycle and no reference crosses service replacement.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-007",
+    "title": "Consider one neutral vocabulary for normalized provider observation values",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/provider_broker/translation.rs"
+    ],
+    "symbols": [
+      "begin",
+      "item_kind",
+      "context",
+      "field",
+      "control",
+      "map_container",
+      "map_scalar",
+      "enum_value"
+    ],
+    "evidence": "All 349 lines including map_unit_enum macro definition and every invocation reviewed. Backend→Syndic conversion is almost entirely exhaustive identity mapping for begin/lifecycle/kind/field/context/container/enum/control values; finite float is revalidated from an already finite backend value. Existing macro already reduces repetitive match arms.",
+    "proposal": "Cross-subsystem candidate: move only shared normalized observation value types into an existing suitably neutral lower-level package and consume them at both boundaries, retaining separate transport parsing, capability ownership and durable serialization/versioning. Root auditor must correlate backend/Syndic proposals and select one owner for any savings.",
+    "required_contract_changes": "Explicit backend/Syndic public type and dependency contract changes. Preserve closed enum exhaustiveness, exact field/ordinal/depth semantics, finite-float invariant, raw reasoning and base64 ingress exclusions, storage-format independence and absence of raw backend JSON in app/storage boundaries.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Unquantified pending cross-package synthesis. Do not count all 349 lines as removable, macro-generated arms as handwritten deletion, or duplicate backend/Syndic declarations before their owner validates the shared replacement."
+    },
+    "verification": "Not run. Full normalized item-union and malformed-input mapping evidence, serialization compatibility and dependency boundary review; root synthesis must inspect consumers before acceptance.",
+    "dependency_candidates": [],
+    "confidence": "low",
+    "disposition": "deferred",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-008",
+    "title": "Share router test target setup and exact loss-request waiting",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/connection/router/tests/active_steering.rs",
+      "crates/beryl-app/src/cas_projection/connection/router/tests/delayed_steering.rs",
+      "crates/beryl-app/src/cas_projection/connection/router/tests/provider_publication.rs",
+      "crates/beryl-app/src/cas_projection/connection/router/tests/stop_election.rs"
+    ],
+    "symbols": [
+      "active_target",
+      "activate",
+      "exact_target",
+      "wait_until_loss_requested"
+    ],
+    "evidence": "Every body in all four modules reviewed. delayed_steering and provider_publication duplicate the active-only exact_target helper; active_steering::active_target duplicates its activate helper, and stop_election repeats the same pending-registration activation and SteeringTargetProof construction. The exact loss_requested deadline loop appears in active_steering, delayed_steering and provider_publication.",
+    "proposal": "Move shared behavior helpers into a router test support module: keep active-only registration and durably activated pending registration as distinct named constructors; share activation/SteeringTargetProof construction and the exact target loss_requested wait. Keep each test's ownership acquisition, interleaving, callback and terminal assertions explicit.",
+    "required_contract_changes": "None. Preserve actual publication activation, owner/registration/generation identities, deadline and yield policy, and active-only versus pending-activation eligibility. Do not replace the tests with a generic scenario engine or remove intermediate observations.",
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 100,
+      "basis": "Test-only net after the shared module, imports/call adjustments and distinct constructor wrappers. No scenario deletion, production savings or generic wait-framework savings counted."
+    },
+    "verification": "Not run. Run the existing router test modules, retaining all named scenarios, exact callback-count/lock assertions, permit release and terminal-winner interleavings.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-009",
+    "title": "Reuse checked-frame lookup assertions in terminal success and loss tests",
+    "paths": [
+      "crates/beryl-app/tests/normal_terminal/loss.rs",
+      "crates/beryl-app/tests/normal_terminal/verification.rs"
+    ],
+    "symbols": [
+      "source_event",
+      "assert_checked_frame",
+      "assert_durable_loss",
+      "assert_durable_success"
+    ],
+    "evidence": "Both files fully reviewed. source_event is identical. loss.rs independently repeats started/completed frame item identity, ordinal and lifecycle summary checks already represented by verification::assert_checked_frame.",
+    "proposal": "Expose or move the source-event and checked-frame assertion helpers into common terminal-test support and call them from both tests. Retain the additional started-at, finalization, absent-fifth-event and stale-binding assertions in the loss scenario.",
+    "required_contract_changes": "None. Successful terminal retains provider source and valid binding; connection loss terminal has no provider source and abandons the exact active binding. The shared helper must not hide or unify those differences.",
+    "estimated_net_lines": {
+      "min": 30,
+      "max": 45,
+      "basis": "Test-only net from one duplicate source lookup and two expanded checked-frame assertions after calls and visibility/import changes."
+    },
+    "verification": "Not run. Existing ordinary-success and raw-connection-loss integration tests; verify exactly four events and their different terminal provenance/binding outcomes.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-010",
+    "title": "Share broker fixture infrastructure while leaving durable scenarios explicit",
+    "paths": [
+      "crates/beryl-app/tests/unit/provider_broker_checked_user/support.rs",
+      "crates/beryl-app/tests/unit/provider_broker_steering_user/support.rs",
+      "crates/beryl-app/tests/unit/provider_broker_compaction_marker.rs"
+    ],
+    "symbols": [
+      "CheckedUserFixture::new_with_start_authority",
+      "CheckedUserFixture::close",
+      "SteeringFixture::build",
+      "SteeringFixture::close",
+      "Fixture::new"
+    ],
+    "evidence": "All construction, scenario and teardown bodies reviewed. Each builds a test failure notification and master gate, scheduler signal, stop/compaction coordinators, router, three-permit worker pool and ProviderBroker::start environment. Checked-user and steering also repeat stop/join exact-receipt validation, authority/router retirement, home uniqueness/close and zero-worker assertions.",
+    "proposal": "Add a small test broker environment with explicit setup and start methods receiving the already-created home/storage/authority and caller-built target registration. Share only environment construction and exact shutdown assertions. Leave each test's durable binding/activation, accepted-input route, compaction mount, image replay and fault installation in its existing fixture.",
+    "required_contract_changes": "None. Preserve construction order around operation mounting and router registration, failure notification binding, active versus pending target state, separate lifecycle-owner release before shutdown, exact join receipt, and home/worker release assertions. Do not introduce a boolean-heavy universal fixture or start workers before caller registration is ready.",
+    "estimated_net_lines": {
+      "min": 100,
+      "max": 160,
+      "basis": "Test-only net after shared environment/argument types, module wiring, explicit registration hooks and scenario-specific wrappers. Excludes production context consolidation AC-006; recount if constructor signatures change together."
+    },
+    "verification": "Not run. Existing checked-user/terminal, steering text/image/correlation and compaction marker/failure modules. Confirm all scenario-specific setup remains observable and workers/home references retire in the same order.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AC-011",
+    "title": "Share the small WebSocket fixture protocol helpers",
+    "paths": [
+      "crates/beryl-app/tests/normal_terminal/server.rs",
+      "crates/beryl-app/tests/provider_residency/server.rs"
+    ],
+    "symbols": [
+      "complete_admission",
+      "complete_projection",
+      "send_json",
+      "read_json",
+      "read_until_close"
+    ],
+    "evidence": "Both server files fully reviewed together with their generators and callers. Admission/config responses and thread-start response vocabulary are repeated, as are text-send and close-read loops. The two read_json loops differ in Ping handling; residency assumes initialize id 1 while normal-terminal echoes the observed id.",
+    "proposal": "Use a shared test support module for the explicit admission/config response exchange, thread-load response builder and bounded JSON/close transport helpers. Keep scenario command/event loops separate. Make observed request-id echo and control-frame behavior explicit at the helper boundary and retain all per-scenario request assertions.",
+    "required_contract_changes": "None intended. Preserve authorization checks, timeouts, Ping/Pong and closure behavior, normal-terminal JSON-RPC/input assertions, optional resumed response fields and strict unexpected-frame failures. Keep residency's handwritten fragmented frame generator and fixed scratch buffer independent; whole-message mock servers cannot replace that evidence.",
+    "estimated_net_lines": {
+      "min": 50,
+      "max": 85,
+      "basis": "Test-only net after shared helpers, parameterization and caller assertion wrappers. No deletion of fragmented generator, scenario drivers or cross-scope test fixtures counted."
+    },
+    "verification": "Not run. Existing normal-terminal success/loss and residency scale/backpressure/failure tests; inspect control-frame behavior and initialize IDs for every shared helper caller.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  }
+]

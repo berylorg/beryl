@@ -1,0 +1,1873 @@
+{
+  "schema_version": 1,
+  "scope": "syndic-storage subsystem synthesis",
+  "baseline_commit": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "reviewed_at": "2026-09-07",
+  "status": "complete_observational_subsystem_synthesis",
+  "boundary": "Fresh synthesis of completed first-party file reports and targeted cross-layer source/authority checks; not implementation, independent acceptance, adversarial signoff, or a claim of irreducibility.",
+  "coverage": {
+    "files": 782,
+    "lines": 250804,
+    "full_bodies": 747,
+    "declarations_only": 35,
+    "source_inventory_lines": 154847,
+    "test_inventory_lines": 85020,
+    "test_support_inventory_lines": 10937,
+    "source": "inventory.json and coverage.tsv; complete root baseline verification reused. Report TSV counts and Syndic ledger totals independently reconciled here.",
+    "input_report_entries": 93,
+    "unique_original_finding_ids": 92,
+    "duplicate_entry_resolution": "SP-003 appears in provider and projection reports; the projection entry is an incremental extension, combined once.",
+    "preliminary_leads_reconciled": 7,
+    "new_findings": 2,
+    "canonical_ledger_rows": 101
+  },
+  "inputs": [
+    {
+      "report": "syndic-admission",
+      "files": 49,
+      "lines": 23728,
+      "full_bodies": 45,
+      "declarations_only": 4,
+      "findings": "reviews/syndic-admission-findings.json",
+      "coverage": "reviews/syndic-admission.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-core",
+      "files": 70,
+      "lines": 23648,
+      "full_bodies": 68,
+      "declarations_only": 2,
+      "findings": "reviews/syndic-core-findings.json",
+      "coverage": "reviews/syndic-core.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-draft-operations",
+      "files": 56,
+      "lines": 24447,
+      "full_bodies": 53,
+      "declarations_only": 3,
+      "findings": "reviews/syndic-draft-operations-findings.json",
+      "coverage": "reviews/syndic-draft-operations.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-draft-tree",
+      "files": 18,
+      "lines": 19626,
+      "full_bodies": 18,
+      "declarations_only": 0,
+      "findings": "reviews/syndic-draft-tree-findings.json",
+      "coverage": "reviews/syndic-draft-tree.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-history",
+      "files": 46,
+      "lines": 15728,
+      "full_bodies": 39,
+      "declarations_only": 7,
+      "findings": "reviews/syndic-history-findings.json",
+      "coverage": "reviews/syndic-history.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-lifecycle",
+      "files": 113,
+      "lines": 34760,
+      "full_bodies": 108,
+      "declarations_only": 5,
+      "findings": "reviews/syndic-lifecycle-findings.json",
+      "coverage": "reviews/syndic-lifecycle.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-projection",
+      "files": 93,
+      "lines": 24172,
+      "full_bodies": 90,
+      "declarations_only": 3,
+      "findings": "reviews/syndic-projection-findings.json",
+      "coverage": "reviews/syndic-projection.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-provider",
+      "files": 97,
+      "lines": 23166,
+      "full_bodies": 88,
+      "declarations_only": 9,
+      "findings": "reviews/syndic-provider-findings.json",
+      "coverage": "reviews/syndic-provider.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-queries",
+      "files": 133,
+      "lines": 36929,
+      "full_bodies": 131,
+      "declarations_only": 2,
+      "findings": "reviews/syndic-queries-findings.json",
+      "coverage": "reviews/syndic-queries.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    },
+    {
+      "report": "syndic-schema",
+      "files": 107,
+      "lines": 24600,
+      "full_bodies": 107,
+      "declarations_only": 0,
+      "findings": "reviews/syndic-schema-findings.json",
+      "coverage": "reviews/syndic-schema.tsv",
+      "consumption": "Complete finding report consumed; source inspection below targets interconnections instead of repeating exhaustive bodies."
+    }
+  ],
+  "authority": [
+    {
+      "path": "crates/syndic-storage/doc/design.md",
+      "scope": "Complete entry point including Engineering Rigor; typed durable boundary, exact V7, bounded natural closures and distinct failures.",
+      "rigor": "production-application/v2 + persistent-state-integrity/v2 + shared-resource-protection/v2; explicit package adversarial pass for changed persistence/custody/boundedness boundaries."
+    },
+    {
+      "path": "crates/syndic-storage/doc/design-draft-storage.md",
+      "scope": "Complete supplement: three authenticated structures, root/history pairing, candidate published/newest separation, staging/build/settlement, retention and exact-root materialization."
+    },
+    {
+      "path": "crates/syndic-storage/doc/design-history-storage.md",
+      "scope": "Complete supplement: independent revision domains, normal/repair authority, exact completion, bounded projection/resources/recovery and privacy."
+    },
+    {
+      "path": "crates/syndic-storage/doc/design-mutation-protocols.md",
+      "scope": "Complete supplement: all-record atomic effects, canonical-byte replay, linear custody, cancellation, first/last mutable anchors, acknowledgement loss and bounded commit shape."
+    },
+    {
+      "path": "crates/syndic-storage/doc/design-schema-v7.md",
+      "scope": "Target90-family inventory/versions and focused root/staging/build/receipt/byte-bound sections. Original full codec review supplies detailed per-family evidence; no schema change is authorized here."
+    },
+    {
+      "path": "doc/systems/syndic-conversation-history/design.md",
+      "scope": "Ownership/document routing, candidate/staging/build history relationships, marker publication/seal, exact-root materialization and Engineering Rigor.",
+      "rigor": "production-application/v2 + persistent-state-integrity/v2 + shared-resource-protection/v2; named marker authority semantic review."
+    },
+    {
+      "path": "doc/systems/syndic-conversation-history/concepts.md",
+      "scope": "Normative exact source-preserving bounded Markdown, resource thresholds, checkpoint and stable-prefix identity."
+    },
+    {
+      "path": "doc/systems/cas-live-syndic-transcript/design.md",
+      "scope": "Ownership, exact live capture and narrative equality, submission, stop, compaction, volatile continuation, recovery, concurrency and Engineering Rigor.",
+      "rigor": "production-application/v2 + privileged-access/v1 + external-side-effects/v2."
+    },
+    {
+      "path": "doc/systems/beryl-home-storage/design.md",
+      "scope": "Typed domain/family ownership, single generation attachment, reserved bounded reconciliation, physical exhaustive validation, callback provenance and Engineering Rigor.",
+      "rigor": "production-application/v2; coherent snapshots/atomic batches/SyncAll/exact reconciliation protect the named outcome without unrelated whole-home revalidation."
+    },
+    {
+      "path": "doc/systems/bounded-resource-dataflow/design.md",
+      "scope": "Risk-based resource boundaries, editor logical size versus page/operation limits and Engineering Rigor.",
+      "rigor": "production-application/v2; no global RSS theorem or dependency-private exact accounting."
+    },
+    {
+      "path": "doc/features/composer/design.md",
+      "scope": "Large draft support, bounded active residency, durable adoption versus autosave publication, dirty/flush behavior and Engineering Rigor.",
+      "rigor": "production-application/v2 + external-side-effects/v2."
+    },
+    {
+      "path": "doc/rework/beryl-home/REWORK.md",
+      "scope": "Current implemented-family cutover exception and already scheduled bootstrap marker-service ownership/tree-balancing cleanup. Target authority is not dead-code evidence."
+    }
+  ],
+  "architecture_conclusion": {
+    "thesis": "The credible current-contract reduction is duplicated process-local representation, derivation and fixture construction around a real durable protocol. The subsystem has several removable layer chains, but the durable heads/receipts, independent read phases and distinct root/history/projection authorities protect different facts.",
+    "layer_chains": [
+      {
+        "chain": "Record fields → parallel Parts/EncoderWork fields → field-copy bridges → provisional record → digest → reconstructed final record → duplicated prepared effect.",
+        "decision": "Collapse private payload/carry/update representations and borrow the exact effect already owned by the settlement. Keep constructor validation, source-versus-target ownership and separately durable record encodings. This removes the need for conversion layers rather than merely renaming constructors.",
+        "findings": [
+          "SA-001",
+          "SA-003",
+          "DT-001",
+          "DT-002",
+          "DP-001",
+          "DP-002",
+          "DH-001",
+          "DH-002",
+          "DH-005",
+          "DH-006",
+          "SX-001",
+          "SX-006",
+          "SS-004"
+        ]
+      },
+      {
+        "chain": "Typed or observation source → first counting encode → second narrative counting encode → durable staging encode → production streaming validation → independent bounded test decoder.",
+        "decision": "Remove the second counting encode by retaining one optional narrative span until the first final digest is known. Share physical byte writing between source traversals. Actual durable staging, complete source validation and exact completion comparison remain; the bounded decoder remains an independent oracle, not redundant production machinery.",
+        "findings": [
+          "SP-001",
+          "SP-002",
+          "SP-003",
+          "SP-004",
+          "SP-006",
+          "SQ-004",
+          "SQ-005"
+        ]
+      },
+      {
+        "chain": "Writer, public query and scrub each acquire authority → repeated pure route/phase/order/stack formulas → boundary-specific classification.",
+        "decision": "Share exact pure calculations and narrowly bounded byte transport, while retaining independent acquisition times, required read meters, stable-drift checks, physical orphan scans and domain-specific errors. A common all-purpose reader or snapshot would hide meaningful temporal and fault boundaries and is not justified.",
+        "findings": [
+          "SL-004",
+          "SX-003",
+          "DH-003",
+          "DH-004",
+          "SQ-001",
+          "SQ-002",
+          "SQ-R01",
+          "SQ-R02",
+          "DP-009",
+          "SA-010"
+        ]
+      },
+      {
+        "chain": "Populated fixture constructs obsolete provider records → both callers filter them out → real provider commands later seed the authoritative records.",
+        "decision": "Delete the provably discarded producer chain first, including the392-line item_records module and producer-only facts. Then share positive fixture construction. Keep the real provider seed and the temporary store that supplies retained empty draft/history references; constructor purity is essential to the deletion claim.",
+        "findings": [
+          "SC-009",
+          "SP-005",
+          "SX-007",
+          "SL-005"
+        ]
+      },
+      {
+        "chain": "Many fixture-specific TestHome types and ordinary-edit constructors → included support modules → repeated caller adaptation.",
+        "decision": "Use one feature-neutral temporary-home implementation and one ordinary-edit core, paying shared helper cost once. Adapt narrow callers with explicit IDs, history budgets, caret/selection and prepared endpoints; never share independently expected codec/charge/fault results.",
+        "findings": [
+          "SYN-SYN-001",
+          "SYN-SYN-002",
+          "DH-008",
+          "DP-007",
+          "DT-006",
+          "SC-006"
+        ]
+      }
+    ],
+    "retained_responsibilities": [
+      "The sequence tree answers positional text/marker questions; the identity index proves stable marker occurrence/uniqueness; the marker-order tree commits marker order, count and maximum label. Source-order and target-id admission indexes have different key/consumption duties. One in-memory map cannot substitute for their authenticated durable node and bounded command contracts.",
+      "Staging owns streamed authored input and release/replay custody; build progress owns bounded path-copy continuation; settlement owns one exact logical outcome; publication selects a captured candidate/history pair. Removing a process wrapper does not remove one of these durable responsibilities.",
+      "Historical transitions/ancestry witnesses make logarithmic lineage retention and direct-root undo possible without replaying inverse bytes. Published/newest history differs intentionally; a root match alone does not make a candidate saved.",
+      "Materializer planning establishes digest-derived content identity before output writes; writing/draining bound chunks and indexes; atomic sealing alone exposes the exact-root content mapping. A synchronous resident fold does not preserve resumable arbitrary-size operation.",
+      "Binding, stop and compaction witnesses distinguish definite non-dispatch, possible dispatch, exact terminal authority and ordinary/provider-specific successors. Generic state-machine crates cannot replace those effects and provenance.",
+      "Typed values, exact codec bytes, writer-time admission, point-read closure checks and exhaustive physical scrub answer different validity questions. Shared formulas must not make production constructors the independent corruption or byte oracle."
+    ],
+    "alternatives": [
+      {
+        "id": "PRE-015",
+        "decision": "A bounded resident editor plus snapshot undo could remove large categories of bespoke durable editing work only by changing supported scope.",
+        "choices_needed": [
+          "Maximum logical draft size and oversize behavior, not merely a page/clipboard/marker-operation ceiling.",
+          "Whether adopted unsaved edits and undo/redo history survive which interruption/reopen events.",
+          "Bounded snapshot history retention and caret/directed-selection semantics.",
+          "Marker identity/order/label/asset ownership and publication behavior.",
+          "Replacement persisted representation, exact-byte policy, autosave captured/newest behavior and move-only ambiguous outcome custody."
+        ],
+        "net": "Unmeasured; no gross tree/history/materializer LOC converted into savings. A replacement still needs atomic publish, exact source selection, markers and error/custody integration. Overlaps all affected local simplifications and SS-009.",
+        "fit": "Ropey/im's resident representations make them relevant only after that new envelope exists; current negative screens remain valid."
+      },
+      {
+        "id": "SS-009",
+        "decision": "Postcard1.1.3 is a record-value-only candidate for new format authority; ordered keys, hashes, validated DTO conversion, collection caps and EOF wrappers remain.",
+        "net": "Unmeasured and alternative to local codec reductions; not a hidden V7 replacement."
+      },
+      {
+        "id": "DT-004",
+        "decision": "The marker-free no-op build frontier is removable only with an explicit continuation/schema decision. Corrected conditional net60–85; active marker removal phase remains.",
+        "net": "Reported separately; not included in current-contract total."
+      }
+    ],
+    "larger_replacement_limit": "The reviewed dependency screens do not establish a compatible large durable-tree, history, parser or serializer replacement. This is a conclusion about these concrete candidates and contracts, not an exhaustive claim about crates.io or that remaining source is irreducible."
+  },
+  "source_relationship_checks": [
+    {
+      "paths": [
+        "src/draft_piece/persistent.rs:2176",
+        "src/draft_piece/persistent.rs:2399",
+        "src/draft_piece/persistent.rs:1827",
+        "src/draft_piece/persistent.rs:2113"
+      ],
+      "finding": "DT-003",
+      "result": "Full paired root finalizers and compression bodies inspected; normalization/read-error order differs even though successful summary formulas coincide. Preserve preludes or extract post-normalization metadata."
+    },
+    {
+      "paths": [
+        "src/draft_piece/model.rs:2590",
+        "src/draft_piece/persistent.rs:3056",
+        "src/draft_piece/persistent.rs:3295",
+        "src/draft_piece/codec.rs:507",
+        "src/draft_piece/codec.rs:565",
+        "src/draft_piece/tree.rs:1694",
+        "src/draft_piece/mutation.rs:1462"
+      ],
+      "finding": "DT-004",
+      "result": "Exact115-line frontier-only gross basis; builder_model and builder_continuation Removing are another phase and excluded. Planning must go to Applying, not skip actual deletion."
+    },
+    {
+      "paths": [
+        "src/draft_piece/persistent.rs:1648",
+        "src/draft_piece/persistent.rs:1902"
+      ],
+      "finding": "PRE-016",
+      "result": "Identity insertion selects by marker-id; marker-order insertion selects by checked rank/count. Shared fanout packing exists, but selectors/digests/ownership cannot be erased by a general collection."
+    },
+    {
+      "paths": [
+        "src/draft_piece/session.rs:673",
+        "src/draft_piece/history/adoption/model.rs:237"
+      ],
+      "finding": "DP-010,DH-011",
+      "result": "Full critical predicates inspected and both static correctness findings retained at zero savings. Current constructors emit all-or-none historical effects; no exploit/runtime reproduction claimed."
+    },
+    {
+      "paths": [
+        "src/draft_piece/staging/digest.rs:89",
+        "src/draft_piece/checkpoint/reader.rs"
+      ],
+      "finding": "DP-002,DH-004",
+      "result": "Receipt reconstruction zeroes only an excluded hash suffix; existing CheckpointReader separately delegates store versus transaction frontier/progress authentication."
+    },
+    {
+      "paths": [
+        "src/draft_piece/admission/readiness_source/attempt.rs:71",
+        "src/draft_piece/admission/writer/begin.rs:18"
+      ],
+      "finding": "SA-004,SA-003",
+      "result": "Consume-by-value field optionality and shadow-induced second head read inspected. Writer read is on DomainReader; save prior charge, preserving admission/error/charge policy."
+    },
+    {
+      "paths": [
+        "src/mutation/provider_frame/prepare.rs:148",
+        "src/mutation/provider_frame/prepare.rs:327",
+        "src/mutation/provider_frame/prepare.rs:397",
+        "src/provider_observation/compiler/stage/prepare.rs:25",
+        "src/provider_observation/compiler/stage/staging/count.rs:11"
+      ],
+      "finding": "SP-003",
+      "result": "Both complete preparation functions and first counting sink bodies inspected. The second encode is separate from the later durable stage traversal. A further generic whole preparation pipeline is not counted; error/source adapters and different acquisition remain."
+    },
+    {
+      "paths": [
+        "src/mutation/promotion/records/route.rs:95",
+        "src/read/promotion/exact.rs:317"
+      ],
+      "finding": "SL-004",
+      "result": "Full paired derivations confirm same successor records but no-write differs from preserve-observed unrelated head. Typed arithmetic diagnostics and prior transition proof must remain."
+    },
+    {
+      "paths": [
+        "tests/support/populated.rs:511",
+        "tests/support/populated/seed.rs:3",
+        "tests/support/populated/seed.rs:85",
+        "tests/support/populated/seed.rs:353",
+        "tests/support/populated/active/item_records.rs"
+      ],
+      "finding": "SC-009",
+      "result": "Both active::records consumers and complete filter predicates checked. All item-record output is filtered; active route and real provider seed remain. Producer purity and canonical-empty draft store were established by complete SC review and root validation, reused here."
+    },
+    {
+      "paths": [
+        "tests/piece_tree.rs:797",
+        "tests/syndic_range_source.rs:401",
+        "tests/draft_candidate_adoption.rs:1991",
+        "tests/draft_edit_history/support.rs:231"
+      ],
+      "finding": "SYN-SYN-001",
+      "result": "Complete four transaction constructors inspected; the two omitted caller copies match, and the ordinary-edit core can preserve all explicit position facts."
+    },
+    {
+      "paths": [
+        "tests/catalog_summary.rs:68",
+        "tests/recovery_item_budget_faults.rs:16",
+        "tests/delivery_recovery/support.rs:18",
+        "tests/support/syndic_command_fixture.rs:18",
+        "tests/support/mod.rs:41",
+        "tests/thread_properties.rs:35"
+      ],
+      "finding": "SYN-SYN-002",
+      "result": "All22 local TestHome structs/impls/Drop bodies read in full and counted; feature-neutral sharing avoids support/mod test-fault dependencies. Multiple aggregate fixtures currently place home before store, requiring explicit destruction-order correction. Manual thread-properties scope already closes store before cleanup."
+    },
+    {
+      "paths": [
+        "../beryl-app/src/composer_marker_seal.rs:30",
+        "../beryl-app/src/composer_marker_seal.rs:324"
+      ],
+      "finding": "PRE-016",
+      "result": "Registry belongs to App; exact caller/registry text traced only to identify cross-subsystem ownership. Full registry body review remains App synthesis, not a new Syndic savings claim."
+    }
+  ],
+  "dependency_assessment": [
+    {
+      "crate": "thiserror",
+      "version": "2.0.18",
+      "decision": "positive_existing_direct_dependency",
+      "findings": [
+        "SS-006",
+        "SA-008",
+        "DP-006",
+        "SC-002",
+        "DH-010"
+      ],
+      "evidence": "Reused exact-version memory and complete enum/source-chain findings. MIT OR Apache-2.0, declared MSRV1.68, default std, matching proc macro; already direct in syndic-storage. No new runtime/platform boundary. Inference of source/from/transparent is the material adapter risk.",
+      "memory": "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+      "sources": [
+        "https://docs.rs/thiserror/2.0.18/thiserror/",
+        "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml"
+      ],
+      "limitations": "No new security clearance or build performed; exact existing messages/conversions/source=None exceptions are required."
+    },
+    {
+      "crate": "tempfile",
+      "version": "3.27.0",
+      "decision": "positive_existing_workspace_dependency_new_syndic_dev_dependency_only",
+      "findings": [
+        "SYN-SYN-002"
+      ],
+      "evidence": "Existing workspace3.27.0; Foundation refresh confirms MIT OR Apache-2.0, MSRV1.63, default getrandom. Current Syndic manifest lacks direct dev dependency; add workspace=true only during implementation. TempDir provides exclusive creation and ordinary cleanup, not durability or retry. Root owns full refreshed registry/API/adoption/security evidence.",
+      "memory": "doc/memory/crates.io/tempfile/3.27.0/adjacent-durable-writes.md",
+      "sources": [
+        "https://docs.rs/tempfile/3.27.0/tempfile/struct.TempDir.html",
+        "https://docs.rs/tempfile/3.27.0/tempfile/struct.Builder.html"
+      ],
+      "limitations": "TempDir Drop ignores cleanup failures and does not retry; close returns an error and forgets ownership. Preserve existing explicit eight-attempt removal against the retained TempDir path in the shared wrapper, while store/leases drop first. Do not use close as a retryable ownership-return API. Retry/helper cost paid once; destruction-order correction earns zero separate savings."
+    },
+    {
+      "crate": "ropey",
+      "version": "1.6.1",
+      "decision": "negative_current_durable_contract",
+      "findings": [
+        "DT-007",
+        "DH-012",
+        "PRE-015"
+      ],
+      "memory": "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md",
+      "sources": [
+        "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/Cargo.toml",
+        "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/src/rope.rs"
+      ],
+      "evidence": "Existing exact release/API/adoption/maintenance screen: MIT, private resident Arc tree, no authenticated external node I/O or durable continuation API. Full import/export and different empty/line semantics need adapters; no released MSRV guarantee or native Windows test claim. Helix adoption supports maturity, not durable fit."
+    },
+    {
+      "crate": "im",
+      "version": "15.1.0",
+      "decision": "negative_current_durable_contract",
+      "findings": [
+        "SA-009",
+        "DT-007",
+        "DH-012"
+      ],
+      "memory": "doc/memory/crates.io/im/15.1.0/durable-admission-index-screen.md",
+      "sources": [
+        "https://docs.rs/im/15.1.0/im/struct.OrdMap.html",
+        "https://docs.rs/crate/im/15.1.0/source/Cargo.toml"
+      ],
+      "evidence": "Existing source/API screen: MPL-2.0+, MSRV1.46, in-memory immutable B-tree, archived upstream. Ordered operations do not supply authenticated persisted nodes/charges/custody; related Cargo im-rc adoption does not prove that fit."
+    },
+    {
+      "crate": "postcard",
+      "version": "1.1.3",
+      "decision": "deferred_new_format_only",
+      "findings": [
+        "SS-009"
+      ],
+      "memory": "doc/memory/crates.io/postcard/1.1.3/syndic-record-value-codecs.md",
+      "sources": [
+        "https://docs.rs/crate/postcard/1.1.3/source/Cargo.toml",
+        "https://postcard.jamesmunns.com/wire-format.html"
+      ],
+      "evidence": "Existing exact manifest/API/license/adoption screen: MIT OR Apache-2.0, default-features=false/alloc candidate, required serde/cobs, no declared release MSRV. Default varints/discriminants/lengths differ from V7; exact EOF, validated DTOs and bounded allocation remain. Current rust-analyzer adoption supports maturity; no measured net or Windows build."
+    },
+    {
+      "crate": "pulldown-cmark",
+      "version": "0.13.4",
+      "decision": "negative_whole_item_or_unmeasured_closed_block_fit",
+      "findings": [
+        "SX-R01"
+      ],
+      "memory": "doc/memory/crates.io/pulldown-cmark/0.13.4/durable-projection-parser-screen.md",
+      "sources": [
+        "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/parse.rs",
+        "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/firstpass.rs"
+      ],
+      "evidence": "Existing release manifest/API/advisory-tree screen: MIT, MSRV1.71.1, no-default-feature parser candidate. Eager full-string first pass with private parser state has no durable append/checkpoint restore. Closed-block integration still needs Beryl partitioning, markers, thresholds and resume; no net gain established."
+    },
+    {
+      "crate": "url",
+      "version": "2.5.8",
+      "decision": "negative_incremental_exact_locator_fit",
+      "findings": [
+        "SP-007"
+      ],
+      "memory": "doc/memory/crates.io/url/2.5.8/incremental-provider-locators.md",
+      "sources": [
+        "https://docs.rs/url/2.5.8/url/"
+      ],
+      "evidence": "Existing exact API/manifest screen: MIT OR Apache-2.0, MSRV1.63, default std; complete input and owned normalized String conflict with streamed exact locator validation. Screen ended at fit; no broad security/adoption/platform clearance."
+    },
+    {
+      "crate": "bincode",
+      "version": "3.0.0",
+      "decision": "negative_maintenance_screen",
+      "findings": [
+        "SP-006"
+      ],
+      "memory": "doc/memory/crates.io/bincode/3.0.0/provider-codec-screen.md",
+      "sources": [
+        "https://docs.rs/crate/bincode/3.0.0"
+      ],
+      "evidence": "Official current package is an unmaintained compile-error sentinel. Legacy serializer versions were not approved or investigated as replacements."
+    },
+    {
+      "crate": "serde_json",
+      "version": "1.0.151 investigated;1.0.149 audit baseline",
+      "decision": "negative_bounded_exact_PIV1_fit",
+      "findings": [
+        "SP-006"
+      ],
+      "memory": "doc/memory/crates.io/serde_json/1.0.151/bounded-ingress-replacement.md",
+      "sources": [
+        "https://docs.rs/crate/serde_json/1.0.151"
+      ],
+      "evidence": "Existing screen reused: whole retained-string scratch and generic DOM semantics do not satisfy arbitrary-length bounded PIV1/source spans, duplicate-key order and typed assets. No new version update proposed."
+    }
+  ],
+  "overlap_accounting": {
+    "rule": "Positive reductions include replacement/adapters/verification. Every canonical current-contract ID appears once and in exactly one coherent package. Original reports remain detailed evidence; preliminary and cross-report extensions are never summed independently.",
+    "source_report_entry_to_canonical": "Every one of93 entries maps by its original ID to92 canonical decisions; the two SP-003 entries map to one combined180–255 decision.",
+    "important_merges": [
+      "SP-003 compiler90–130 + mutation90–125 =180–255 once; provider subtotal710–1095 includes it; SX local525–750 excludes it.",
+      "SQ-005 owns both mutation error adapters; SX-R02 adds zero. SQ-R02 activity/phase moves to SX-00345–75 and route-only derivation to SL-00455–85, leaving zero in SQ-R02.",
+      "DT-002 owns progress model/digest construction; DP-001 owns mutation header callers. SC-007 owns malformed-field reconstruction only; DP-002 staging digest/construction differs from both.",
+      "DT-001 includes session/publication downcast callers; DP-003 immutable identity and DP-004 contribution writer exclude those lines.",
+      "SC-009 dead provider fixture production is disjoint from SP-005 positive observation setup and SX-007 typed-frame setup. Live seed and empty-root store remain.",
+      "DH-008 pays ordinary-edit common support once; DP-007 excludes its support implementation, DT-006 owns its narrower helpers, SYN-SYN-001 adds only two omitted callers/generalization.",
+      "SYN-SYN-002 excludes DT-006's17-line label-protection home; all other fixture estimates exclude TestHome bodies and directory replacement.",
+      "Foundations ST-005's four command API spelling adaptations in tests/thread_properties/archive.rs contribute zero Syndic savings."
+    ],
+    "estimate_totals": {
+      "current_contract": {
+        "rows": 75,
+        "positive_rows": 74,
+        "net_min": 7862,
+        "net_max": 11383
+      },
+      "deferred": {
+        "rows": 2,
+        "positive_rows": 0,
+        "net_min": 0,
+        "net_max": 0
+      },
+      "contract_alternative": {
+        "rows": 3,
+        "positive_rows": 1,
+        "net_min": 60,
+        "net_max": 85
+      },
+      "existing_rework": {
+        "rows": 2,
+        "positive_rows": 0,
+        "net_min": 0,
+        "net_max": 0
+      },
+      "retained": {
+        "rows": 11,
+        "positive_rows": 0,
+        "net_min": 0,
+        "net_max": 0
+      },
+      "correctness": {
+        "rows": 3,
+        "positive_rows": 0,
+        "net_min": 0,
+        "net_max": 0
+      },
+      "overlap": {
+        "rows": 5,
+        "positive_rows": 0,
+        "net_min": 0,
+        "net_max": 0
+      }
+    },
+    "current_contract_original_subtotal": {
+      "positive_findings": 72,
+      "net_min": 7582,
+      "net_max": 11013
+    },
+    "incremental_synthesis_subtotal": {
+      "positive_findings": 2,
+      "net_min": 280,
+      "net_max": 370
+    },
+    "current_contract_total": {
+      "positive_findings": 74,
+      "zero_line_cleanup": 1,
+      "net_min": 7862,
+      "net_max": 11383
+    },
+    "contract_alternative_total": {
+      "net_min": 60,
+      "net_max": 85,
+      "quantified": "DT-004 only",
+      "unquantified": [
+        "PRE-015",
+        "SS-009"
+      ],
+      "additive_to_current_contract": false
+    },
+    "physical_source_test_split": "Not claimed: several production findings already deduct added verification/caller cost, and test-fault support lives under src. Coherent package totals describe work responsibility, not a fabricated physical source/test split.",
+    "cross_crate_scope": "All counted production/test changes are Syndic-owned. Tempfile's existing workspace version needs only a Syndic dev-dependency when implemented. Model context owner reuse adds a local trait impl, not a model rewrite. App marker-service bootstrap ownership and Foundation ST-005 API adaptation are zero here."
+  },
+  "temp_home_inventory": {
+    "all_groups": 22,
+    "all_group_body_lines": 464,
+    "excluded_path": "crates/syndic-storage/tests/draft_label_protection.rs",
+    "excluded_body_lines": 17,
+    "remaining_groups": 21,
+    "remaining_group_body_lines": 447,
+    "additional_manual_scope": "crates/syndic-storage/tests/thread_properties.rs:35–101",
+    "bodies": [
+      {
+        "path": "crates/syndic-storage/tests/atomic_staging_batches/support.rs",
+        "body_lines": 17,
+        "ranges": "27-27,29-39,41-45"
+      },
+      {
+        "path": "crates/syndic-storage/tests/catalog_summary.rs",
+        "body_lines": 26,
+        "ranges": "39-41,43-60,62-66"
+      },
+      {
+        "path": "crates/syndic-storage/tests/default.rs",
+        "body_lines": 21,
+        "ranges": "12-12,14-28,30-34"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_candidate_publication.rs",
+        "body_lines": 17,
+        "ranges": "42-42,44-54,56-60"
+      },
+      {
+        "path": "crates/syndic-storage/tests/compaction_storage/support.rs",
+        "body_lines": 28,
+        "ranges": "31-33,35-54,56-60"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_candidate_adoption.rs",
+        "body_lines": 17,
+        "ranges": "53-53,55-65,67-71"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_edit_history/support.rs",
+        "body_lines": 17,
+        "ranges": "49-49,51-61,63-67"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_label_protection.rs",
+        "body_lines": 17,
+        "ranges": "27-27,29-39,41-45"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_marker_admission_schema.rs",
+        "body_lines": 17,
+        "ranges": "43-43,45-55,57-61"
+      },
+      {
+        "path": "crates/syndic-storage/tests/draft_mutation_staging.rs",
+        "body_lines": 17,
+        "ranges": "77-77,79-89,91-95"
+      },
+      {
+        "path": "crates/syndic-storage/tests/durable_builder/support.rs",
+        "body_lines": 17,
+        "ranges": "45-45,47-57,59-63"
+      },
+      {
+        "path": "crates/syndic-storage/tests/historical_root_adoption/support.rs",
+        "body_lines": 17,
+        "ranges": "32-32,34-44,46-50"
+      },
+      {
+        "path": "crates/syndic-storage/tests/provider_observation_compiler.rs",
+        "body_lines": 21,
+        "ranges": "23-23,25-39,41-45"
+      },
+      {
+        "path": "crates/syndic-storage/tests/provider_observation_seal_custody.rs",
+        "body_lines": 28,
+        "ranges": "26-28,30-49,51-55"
+      },
+      {
+        "path": "crates/syndic-storage/tests/provider_staging/restart.rs",
+        "body_lines": 21,
+        "ranges": "14-14,16-30,32-36"
+      },
+      {
+        "path": "crates/syndic-storage/tests/live_history/support.rs",
+        "body_lines": 23,
+        "ranges": "14-16,18-32,34-38"
+      },
+      {
+        "path": "crates/syndic-storage/tests/syndic_range_source.rs",
+        "body_lines": 17,
+        "ranges": "38-38,40-50,52-56"
+      },
+      {
+        "path": "crates/syndic-storage/tests/stop_storage/support.rs",
+        "body_lines": 28,
+        "ranges": "42-44,46-65,67-71"
+      },
+      {
+        "path": "crates/syndic-storage/tests/thread_properties/title_usage.rs",
+        "body_lines": 26,
+        "ranges": "38-40,42-59,61-65"
+      },
+      {
+        "path": "crates/syndic-storage/tests/threads_and_drafts.rs",
+        "body_lines": 17,
+        "ranges": "21-21,23-33,35-39"
+      },
+      {
+        "path": "crates/syndic-storage/tests/support/mod.rs",
+        "body_lines": 27,
+        "ranges": "41-43,44-62,63-67"
+      },
+      {
+        "path": "crates/syndic-storage/tests/support/syndic_command_fixture.rs",
+        "body_lines": 28,
+        "ranges": "18-18,20-34,36-47"
+      }
+    ],
+    "lifetime_examples": [
+      "tests/catalog_summary.rs::Fixture",
+      "tests/recovery_item_budget_faults.rs::BudgetFixture",
+      "tests/delivery_recovery/support.rs::RecoveryHome",
+      "tests/atomic_staging_batches/support.rs::ReceivingFixture",
+      "tests/stop_storage/support.rs::PendingTurnFixture",
+      "tests/stop_storage/support/active_stop.rs::ActiveStopFixture",
+      "tests/activity_query_corruption/support.rs",
+      "tests/draft_marker_readiness_accepted_proof/support.rs::AcceptedFixture"
+    ],
+    "replacement_policy": "One feature-neutral TempDir-backed helper, exact per-test label, exclusive creation, narrow existing cleanup retry; store/lease ownership destroyed before the directory. Default feature tests cannot import common support/mod.rs's unconditional test-fault API."
+  },
+  "prioritized_packages": [
+    {
+      "id": "fixture_construction",
+      "title": "Delete dead fixture production before consolidating successful construction",
+      "findings": [
+        "SC-009",
+        "DP-008",
+        "SQ-006",
+        "SC-006",
+        "SC-007",
+        "SC-008",
+        "SC-010",
+        "SP-005",
+        "SA-007",
+        "DT-006",
+        "DP-007",
+        "DH-008",
+        "DH-009",
+        "SL-005",
+        "SL-006",
+        "SX-007",
+        "SYN-SYN-001",
+        "SYN-SYN-002"
+      ],
+      "net_min": 3746,
+      "net_max": 5128,
+      "judgment": "First eliminate unreachable producers and unused private helpers; then share each behavior-owned fixture. Preserve independent expected bytes, all scenario/fault entries and default/test-faults isolation. DH-008 precedes SYN-SYN-001; TempDir cost is paid once."
+    },
+    {
+      "id": "diagnostics",
+      "title": "Derive existing error presentations without changing provenance",
+      "findings": [
+        "SS-006",
+        "SA-008",
+        "DP-006",
+        "SC-002",
+        "DH-010"
+      ],
+      "net_min": 443,
+      "net_max": 598,
+      "judgment": "No new crate; compare exact Display/From/source topology, including deliberate source=None and opaque source-returning errors. This package does not unify semantic error domains."
+    },
+    {
+      "id": "canonical_declarations",
+      "title": "Declare exact scalar mappings and existing canonical bodies once",
+      "findings": [
+        "SS-001",
+        "SS-002",
+        "SS-003",
+        "SS-007",
+        "SC-003",
+        "DH-007"
+      ],
+      "net_min": 388,
+      "net_max": 587,
+      "judgment": "Keep tags/order/EOF and key-specific diagnostics explicit. Production family inventory and independent fault inventories remain separate. Reconcile required90-family rework without treating new work as savings."
+    },
+    {
+      "id": "draft_representations",
+      "title": "Remove duplicate process-local payload and successor construction layers",
+      "findings": [
+        "SA-001",
+        "SA-003",
+        "SA-004",
+        "SA-005",
+        "SA-006",
+        "DT-001",
+        "DT-002",
+        "DP-001",
+        "DP-002",
+        "DP-003",
+        "DP-004",
+        "DP-005",
+        "DH-001",
+        "DH-002",
+        "DH-005",
+        "DH-006"
+      ],
+      "net_min": 1125,
+      "net_max": 1800,
+      "judgment": "Choose private payload ownership before adapting constructors. SA-001 precedes SA-003, DT-002 precedes DP-001; DT-001 and DP publication updates must be coordinated. Keep every independently durable head/receipt, exact hash preimage and move-only custody boundary."
+    },
+    {
+      "id": "draft_authenticated_mechanics",
+      "title": "Share bounded local traversal and pure proof calculations",
+      "findings": [
+        "SA-002",
+        "DT-003",
+        "DT-005",
+        "DH-003",
+        "DH-004"
+      ],
+      "net_min": 265,
+      "net_max": 465,
+      "judgment": "Keep read policies, charged acquisition, natural keys and source/custody errors explicit. DT-003 preserves normalization/read-error order. This is not a common unmetered snapshot or generic durable-tree framework."
+    },
+    {
+      "id": "queries_and_lifecycle",
+      "title": "Share bounded transport and pure lifecycle records",
+      "findings": [
+        "SQ-001",
+        "SQ-002",
+        "SQ-003",
+        "SQ-007",
+        "SC-004",
+        "SL-001",
+        "SL-002",
+        "SL-003",
+        "SL-004"
+      ],
+      "net_min": 930,
+      "net_max": 1345,
+      "judgment": "Authenticate independently at each call boundary; preserve first/last anchors, required read schedules, missing-versus-drift classification and write ordering. No broad recovery/stop state-machine merge."
+    },
+    {
+      "id": "provider_and_projection",
+      "title": "Remove deterministic redundant preparation while keeping independent validation",
+      "findings": [
+        "SP-001",
+        "SP-002",
+        "SP-003",
+        "SP-004",
+        "SQ-004",
+        "SQ-005",
+        "SX-001",
+        "SX-002",
+        "SX-003",
+        "SX-004",
+        "SX-005",
+        "SX-006",
+        "SC-001",
+        "SS-004",
+        "SS-008"
+      ],
+      "net_min": 890,
+      "net_max": 1365,
+      "judgment": "Share byte writing and pure formulas, remove only the second narrative target encode, and simplify prepared effects. Keep actual durable staging encode, source validation, exact completion-byte comparison, checkpointed projection and independent bounded decoder."
+    },
+    {
+      "id": "example_outcomes",
+      "title": "Share the live provider example's stage outcome handling",
+      "findings": [
+        "SC-005"
+      ],
+      "net_min": 75,
+      "net_max": 95,
+      "judgment": "Keep the example and its seal-specific consuming custody. Stage helper retains reconciliation installation and committed-later-failure distinctions."
+    }
+  ],
+  "verification_and_order": {
+    "first": "Address or explicitly sequence SA-011 test wiring, DP-010 read ordering and DH-011 malformed successor rejection before relying on affected targets/closures as simplification evidence. They add zero savings and may add implementation lines.",
+    "readiness": "This audit does not amend authority or doc/plan.md. Accepted implementation packages must reconcile the active rework and the owning exact contracts; PRE-015/SS-009/DT-004 require their explicit decisions first.",
+    "objective_gates": [
+      "Exact key/value/tag/order/digest vectors across changed codecs and constructors, with independent expected vectors retained.",
+      "Source versus target canonical closure, no split/partial effects, replay collision, real Read provenance and move-only acknowledgement-loss reconciliation.",
+      "Mutable-anchor drift and stable corruption remain different; preserve public read/byte ceilings and exact race hooks where already specified.",
+      "Default and test-faults integration configurations, independent physical corruption/fault matrices and all existing scenario entry points.",
+      "Fixture before/after record bytes, IDs, revisions, command counts, positions, fault cuts and Windows store-before-directory cleanup."
+    ],
+    "review": "Apply package-required focused semantic/adversarial review to changed consequential persistence/custody boundaries during implementation. This synthesis is not that independent review or acceptance pass.",
+    "runtime_execution": "None: no builds, tests, GUI, installs, downloads, store creation or product/manifest/plan/design edits.",
+    "proposed_order": [
+      "Dead fixture/helper deletion and explicit correctness/wiring prerequisites.",
+      "Error derives and local exact declarations with independent vectors.",
+      "Private payload ownership before its caller construction cleanup.",
+      "Bounded writer/query/projection mechanics with preserved error/read ordering.",
+      "Feature-neutral fixture consolidation; DH-008 common edit core before SYN-SYN-001 caller extension; TempDir lifecycle changes counted once."
+    ],
+    "blocked_by_missing_authority": "Only the stated contract alternatives; ordinary current-contract private refactors do not invent an additional approval gate."
+  },
+  "canonical_decisions": [
+    {
+      "id": "SS-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 180,
+      "net_max": 270,
+      "overlap_group": "SS-001"
+    },
+    {
+      "id": "SS-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 110,
+      "overlap_group": "SS-002"
+    },
+    {
+      "id": "SS-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 28,
+      "net_max": 42,
+      "overlap_group": "SS-003"
+    },
+    {
+      "id": "SS-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 95,
+      "net_max": 145,
+      "overlap_group": "SS-004"
+    },
+    {
+      "id": "SS-005",
+      "disposition": "deferred",
+      "bucket": "deferred",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SS-005"
+    },
+    {
+      "id": "SS-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 13,
+      "net_max": 18,
+      "overlap_group": "SS-006"
+    },
+    {
+      "id": "SS-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 55,
+      "overlap_group": "SS-007"
+    },
+    {
+      "id": "SS-008",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SS-008"
+    },
+    {
+      "id": "SS-009",
+      "disposition": "deferred",
+      "bucket": "contract_alternative",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SS-009",
+      "decision": "Defer to an independently authorized new value format; Postcard cannot be hidden under exact V7. It overlaps local value-codec work and any bounded-editor redesign; no gross codec area is booked."
+    },
+    {
+      "id": "SS-010",
+      "disposition": "existing_rework",
+      "bucket": "existing_rework",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SS-010",
+      "decision": "Known active rework: input-gate V4 versus target V5/RepairRequired and 86 versus 90 families. Missing required families/variants are additions, not removable code or a test expectation typo."
+    },
+    {
+      "id": "SP-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 170,
+      "overlap_group": "SP-001"
+    },
+    {
+      "id": "SP-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 80,
+      "overlap_group": "SP-002"
+    },
+    {
+      "id": "SP-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 180,
+      "net_max": 255,
+      "overlap_group": "SP-003",
+      "decision": "Combine compiler 90–130 and typed mutation 90–125 once, for 180–255. Both retain one optional span until final digest; later durable encoding, source verification and exact completion comparison remain.",
+      "estimate_basis": "Delete the 126-line second sink and second traversal scaffolding; deduct the retained-span field/validation, post-digest derivation helper and focused parity cases.",
+      "source_reports": [
+        "reviews/syndic-provider-findings.json",
+        "reviews/syndic-projection-findings.json"
+      ]
+    },
+    {
+      "id": "SP-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 40,
+      "overlap_group": "SP-004"
+    },
+    {
+      "id": "SP-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 350,
+      "net_max": 550,
+      "overlap_group": "SP-005"
+    },
+    {
+      "id": "SP-006",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SP-006"
+    },
+    {
+      "id": "SP-007",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SP-007"
+    },
+    {
+      "id": "SA-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 110,
+      "net_max": 170,
+      "overlap_group": "SA-001"
+    },
+    {
+      "id": "SA-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 80,
+      "overlap_group": "SA-002"
+    },
+    {
+      "id": "SA-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 140,
+      "net_max": 240,
+      "overlap_group": "SA-003",
+      "decision": "Finalize one caller-supplied successor payload with exact checked metadata exchange; keep operation-specific admission and command preflight. writer/begin uses one DomainReader snapshot, so save original charge instead of rereading the shadowed head. Preserve declared accounting policy."
+    },
+    {
+      "id": "SA-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 65,
+      "overlap_group": "SA-004"
+    },
+    {
+      "id": "SA-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 85,
+      "net_max": 130,
+      "overlap_group": "SA-005"
+    },
+    {
+      "id": "SA-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 65,
+      "overlap_group": "SA-006"
+    },
+    {
+      "id": "SA-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 140,
+      "net_max": 240,
+      "overlap_group": "SA-007"
+    },
+    {
+      "id": "SA-008",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 45,
+      "net_max": 80,
+      "overlap_group": "SA-008"
+    },
+    {
+      "id": "SA-009",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SA-009"
+    },
+    {
+      "id": "SA-010",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SA-010"
+    },
+    {
+      "id": "SA-011",
+      "disposition": "correctness_correction",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SA-011"
+    },
+    {
+      "id": "SQ-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 250,
+      "net_max": 350,
+      "overlap_group": "SQ-001"
+    },
+    {
+      "id": "SQ-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 140,
+      "net_max": 220,
+      "overlap_group": "SQ-002"
+    },
+    {
+      "id": "SQ-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 100,
+      "overlap_group": "SQ-003"
+    },
+    {
+      "id": "SQ-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 65,
+      "overlap_group": "SQ-004"
+    },
+    {
+      "id": "SQ-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 85,
+      "overlap_group": "SQ-005",
+      "decision": "One internal Read/Invariant domain replaces only lossless internal maps. The completion and live publication mutation maps remain explicit and counted here once; SC-002 preserves the reused enum's unsourced Error behavior."
+    },
+    {
+      "id": "SQ-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 105,
+      "net_max": 115,
+      "overlap_group": "SQ-006"
+    },
+    {
+      "id": "SQ-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "overlap_group": "SQ-007"
+    },
+    {
+      "id": "SQ-R01",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SQ-R01"
+    },
+    {
+      "id": "SQ-R02",
+      "disposition": "deferred",
+      "bucket": "deferred",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SQ-R02",
+      "decision": "Resolve the route-only derivation in SL-004 and activity/phase derivations in SX-003, with zero here. Broad stop/recovery snapshot unification remains deferred because independent missing records and the eighth/thirty-third-read race schedule matter."
+    },
+    {
+      "id": "DT-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 100,
+      "overlap_group": "DT-001"
+    },
+    {
+      "id": "DT-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 100,
+      "overlap_group": "DT-002"
+    },
+    {
+      "id": "DT-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 90,
+      "overlap_group": "DT-003",
+      "decision": "Refine direct delegation: finalize_build_root compresses all roots and checks session before wrapping a singleton sequence, whereas build_roots wraps before index/order compression. Share post-normalization summary construction or preserve those caller preludes exactly; direct delegation alone is not established read/error equivalent. Keep 60–90 net for the bounded extraction.",
+      "estimate_basis": "Remove approximately one duplicated normalization/summary body minus root conversion and regression assertions; no tree algorithm removal."
+    },
+    {
+      "id": "DT-004",
+      "disposition": "contract_gated",
+      "bucket": "contract_alternative",
+      "net_min": 60,
+      "net_max": 85,
+      "overlap_group": "DT-004",
+      "decision": "Replace only DraftPieceBuildFrontierV1::Removing with a schema-authorized Planning→Applying transition. Correct paths are model.rs, codec.rs, tree.rs, persistent.rs and one mutation.rs match. DraftPieceActiveMarkerPhaseV1::Removing in builder_model/builder_continuation remains required. Revised conditional net60–85 supersedes both preliminary95–130 and file-review40–100.",
+      "estimate_basis": "Approximately115 existing source lines: frontier model9; codec encoder18 and decoder9; hash18; shared match3; cursor validator26; no-op advance28; Planning fields3 and mutation phase match1. Deduct30–55 direct-transition/caller and byte/restart/diagnostic verification adjustments. Active-marker phase fields/codecs excluded."
+    },
+    {
+      "id": "DT-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 80,
+      "overlap_group": "DT-005"
+    },
+    {
+      "id": "DT-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 120,
+      "overlap_group": "DT-006",
+      "decision": "Keep 70–120 for existing command/publication-capture/marker-limit/CandidateDraft reuse. This owns draft_label_protection's local home body; new TempDir share excludes it completely. DP-007 excludes these constructor ranges even where durable_builder support is shared."
+    },
+    {
+      "id": "DT-007",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DT-007"
+    },
+    {
+      "id": "DP-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 110,
+      "net_max": 170,
+      "overlap_group": "DP-001"
+    },
+    {
+      "id": "DP-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 170,
+      "net_max": 260,
+      "overlap_group": "DP-002"
+    },
+    {
+      "id": "DP-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 40,
+      "overlap_group": "DP-003"
+    },
+    {
+      "id": "DP-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 25,
+      "overlap_group": "DP-004"
+    },
+    {
+      "id": "DP-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "overlap_group": "DP-005"
+    },
+    {
+      "id": "DP-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 60,
+      "overlap_group": "DP-006"
+    },
+    {
+      "id": "DP-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 330,
+      "net_max": 520,
+      "overlap_group": "DP-007",
+      "decision": "Share candidate/staging mechanics with explicit positions, policy, order and prepared endpoints. DH-008 owns the ordinary-edit helper implementation; DP owns its own caller/registration/staging ranges, not historical support, DT-006 or any TestHome deletion."
+    },
+    {
+      "id": "DP-008",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 81,
+      "net_max": 88,
+      "overlap_group": "DP-008"
+    },
+    {
+      "id": "DP-009",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DP-009"
+    },
+    {
+      "id": "DP-010",
+      "disposition": "correctness_correction",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DP-010",
+      "decision": "Confirmed static head/head/closure ordering can misclassify a valid concurrent advance as invariant failure. Bracket closure acquisition with mutable-anchor observations; no retry loop or savings claim."
+    },
+    {
+      "id": "SL-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 70,
+      "overlap_group": "SL-001"
+    },
+    {
+      "id": "SL-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 120,
+      "net_max": 180,
+      "overlap_group": "SL-002"
+    },
+    {
+      "id": "SL-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 120,
+      "overlap_group": "SL-003"
+    },
+    {
+      "id": "SL-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 85,
+      "overlap_group": "SL-004"
+    },
+    {
+      "id": "SL-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 500,
+      "net_max": 580,
+      "overlap_group": "SL-005"
+    },
+    {
+      "id": "SL-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 80,
+      "overlap_group": "SL-006"
+    },
+    {
+      "id": "SL-R01",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SL-R01"
+    },
+    {
+      "id": "SX-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 45,
+      "overlap_group": "SX-001"
+    },
+    {
+      "id": "SX-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 90,
+      "overlap_group": "SX-002"
+    },
+    {
+      "id": "SX-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 45,
+      "net_max": 75,
+      "overlap_group": "SX-003"
+    },
+    {
+      "id": "SX-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 30,
+      "overlap_group": "SX-004"
+    },
+    {
+      "id": "SX-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 50,
+      "net_max": 80,
+      "overlap_group": "SX-005"
+    },
+    {
+      "id": "SX-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 30,
+      "overlap_group": "SX-006"
+    },
+    {
+      "id": "SX-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 300,
+      "net_max": 400,
+      "overlap_group": "SX-007"
+    },
+    {
+      "id": "SX-R01",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SX-R01"
+    },
+    {
+      "id": "SX-R02",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SX-R02"
+    },
+    {
+      "id": "SC-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 115,
+      "net_max": 175,
+      "overlap_group": "SC-001"
+    },
+    {
+      "id": "SC-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 315,
+      "net_max": 395,
+      "overlap_group": "SC-002"
+    },
+    {
+      "id": "SC-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 80,
+      "overlap_group": "SC-003"
+    },
+    {
+      "id": "SC-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 125,
+      "net_max": 165,
+      "overlap_group": "SC-004"
+    },
+    {
+      "id": "SC-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 75,
+      "net_max": 95,
+      "overlap_group": "SC-005"
+    },
+    {
+      "id": "SC-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 220,
+      "net_max": 300,
+      "overlap_group": "SC-006"
+    },
+    {
+      "id": "SC-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 190,
+      "overlap_group": "SC-007",
+      "decision": "Count150–190 including the PRE-007 draft-piece subrange95–125. Exclude DT-002 progress payload and DP-002 staging reconstruction; deliberate malformed fields/digests and three-record coordinated updates stay."
+    },
+    {
+      "id": "SC-008",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 35,
+      "overlap_group": "SC-008"
+    },
+    {
+      "id": "SC-009",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 780,
+      "net_max": 1020,
+      "overlap_group": "SC-009",
+      "decision": "Remove the always-filtered construction chain before other fixture factoring. Both active::records consumers discard every392L item-record output; keep active_route_fact, exact retained output order, ProviderItemFixture::seed, active/provider_seed and canonical_empty_root_history_pair_for's real store."
+    },
+    {
+      "id": "SC-010",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 50,
+      "overlap_group": "SC-010"
+    },
+    {
+      "id": "DH-001",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 110,
+      "net_max": 165,
+      "overlap_group": "DH-001"
+    },
+    {
+      "id": "DH-002",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 85,
+      "net_max": 130,
+      "overlap_group": "DH-002"
+    },
+    {
+      "id": "DH-003",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 90,
+      "net_max": 145,
+      "overlap_group": "DH-003"
+    },
+    {
+      "id": "DH-004",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 70,
+      "overlap_group": "DH-004"
+    },
+    {
+      "id": "DH-005",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 55,
+      "overlap_group": "DH-005"
+    },
+    {
+      "id": "DH-006",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 30,
+      "overlap_group": "DH-006"
+    },
+    {
+      "id": "DH-007",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 30,
+      "overlap_group": "DH-007"
+    },
+    {
+      "id": "DH-008",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 200,
+      "net_max": 300,
+      "overlap_group": "DH-008",
+      "decision": "Own one ordinary-edit helper with explicit positions and budgets, plus only this cohort's caller savings. New SYN-SYN-001 adds the previously uncounted piece_tree/range-source callers and pays their generalization cost."
+    },
+    {
+      "id": "DH-009",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 120,
+      "net_max": 170,
+      "overlap_group": "DH-009"
+    },
+    {
+      "id": "DH-010",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 45,
+      "overlap_group": "DH-010"
+    },
+    {
+      "id": "DH-011",
+      "disposition": "correctness_correction",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DH-011",
+      "decision": "Confirmed partial successor options pass committed==all_three_present under noncommit. Require all three for committed and none otherwise; normal constructors currently emit all-or-none. Static malformed-record defect, zero savings."
+    },
+    {
+      "id": "DH-012",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DH-012"
+    },
+    {
+      "id": "SYN-SYN-001",
+      "title": "Reuse the ordinary-edit constructor from piece-tree and range-source tests",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 40,
+      "overlap_group": "SYN-SYN-001",
+      "source_reports": [
+        "reviews/syndic-draft-tree-findings.json",
+        "reviews/syndic-draft-operations-findings.json",
+        "reviews/syndic-history-findings.json"
+      ],
+      "paths": [
+        "crates/syndic-storage/tests/piece_tree.rs",
+        "crates/syndic-storage/tests/syndic_range_source.rs",
+        "crates/syndic-storage/tests/draft_edit_history/support.rs"
+      ],
+      "decision": "The original PRE-003 named transaction duplication survives the local reports: piece_tree::transaction(797–847) and syndic_range_source::transaction(401–452) perform the same session/header/ordered-fragment preparation, differing only in an unused seed parameter. Extend DH-008's ordinary-edit core to accept explicit replacements plus predecessor/successor caret/selection pairs; keep thin local wrappers and each Transaction's explicit session/operation/positions. Do not merge stage/advance/settle or fault points.",
+      "estimate_basis": "The two existing functions contain103 physical body lines. DH-008 owns the common ordinary-edit implementation. Retain40–48 lines of local signatures/result reconstruction, add10–18 for replacement/position generalization, and reserve13–17 for imports/caller and verification changes: replacement63–83, incremental net20–40. No DP/DH caller, TestHome, DT-006 CandidateDraft/capture or new common helper body is counted twice.",
+      "depends_on": [
+        "DH-008"
+      ],
+      "verification_reference": "Compare exact headers, fragment ordinals/chains and successor position facts; run existing piece_tree/syndic_range_source tests in their original feature modes. Preserve unadmitted marker capability, per-step limits, independent expected bytes and separate stage/advance/settle fault timing.",
+      "confidence": "high on identical functions; medium on net after helper integration"
+    },
+    {
+      "id": "SYN-SYN-002",
+      "title": "Use one TempDir-backed Syndic test-home helper",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 260,
+      "net_max": 330,
+      "overlap_group": "SYN-SYN-002",
+      "source_reports": [
+        "reviews/syndic-core-findings.json",
+        "reviews/syndic-projection-findings.json",
+        "reviews/syndic-draft-operations-findings.json",
+        "reviews/syndic-history-findings.json"
+      ],
+      "paths": [
+        "crates/syndic-storage/tests/atomic_staging_batches/support.rs",
+        "crates/syndic-storage/tests/catalog_summary.rs",
+        "crates/syndic-storage/tests/default.rs",
+        "crates/syndic-storage/tests/draft_candidate_publication.rs",
+        "crates/syndic-storage/tests/compaction_storage/support.rs",
+        "crates/syndic-storage/tests/draft_candidate_adoption.rs",
+        "crates/syndic-storage/tests/draft_edit_history/support.rs",
+        "crates/syndic-storage/tests/draft_marker_admission_schema.rs",
+        "crates/syndic-storage/tests/draft_mutation_staging.rs",
+        "crates/syndic-storage/tests/durable_builder/support.rs",
+        "crates/syndic-storage/tests/historical_root_adoption/support.rs",
+        "crates/syndic-storage/tests/provider_observation_compiler.rs",
+        "crates/syndic-storage/tests/provider_observation_seal_custody.rs",
+        "crates/syndic-storage/tests/provider_staging/restart.rs",
+        "crates/syndic-storage/tests/live_history/support.rs",
+        "crates/syndic-storage/tests/syndic_range_source.rs",
+        "crates/syndic-storage/tests/stop_storage/support.rs",
+        "crates/syndic-storage/tests/thread_properties/title_usage.rs",
+        "crates/syndic-storage/tests/threads_and_drafts.rs",
+        "crates/syndic-storage/tests/support/mod.rs",
+        "crates/syndic-storage/tests/support/syndic_command_fixture.rs",
+        "crates/syndic-storage/tests/thread_properties.rs"
+      ],
+      "decision": "Reuse tempfile3.27.0 through one feature-neutral test helper with new(label)/path(), exclusive random directory creation and bounded cleanup retry. Route existing support modules to that helper without importing test-faults into default targets. Replace the manually scoped default-feature thread-properties directory. Keep live stores/leases/handles before the home in field destruction order; preserve explicit close/reopen and local-binding order. This is Syndic's PRE-004 share only.",
+      "estimate_basis": "Fully inspected22 TestHome struct/impl groups total464 lines. Exclude DT-006's17-line draft_label_protection group, leaving447; add21 one-line counters and approximately10 manual-scope lines for gross478. Subtract35–45 shared helper/retry lines,60–95 module/path/feature adapters,15–30 lifetime/tuple integration adjustments and38–48 focused verification adjustments: net260–330. Unused import/blank-line deletion is not needed to reach the estimate. All other fixture budgets explicitly exclude these home bodies.",
+      "depends_on": [],
+      "verification_reference": "On Windows verify normal/panic cleanup after store destruction, repeated same-label exclusive allocation, close/reopen under retained home, and retry handling without early directory removal. Include default and test-faults targets. Reorder ownership fields rather than hiding an open store with best-effort deletion. No test directories or processes were created during this audit.",
+      "confidence": "high on exact remaining implementations; medium on adapters and net"
+    },
+    {
+      "id": "PRE-001",
+      "title": "Ineffective piece-removal progress",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "DT-004",
+      "merged_into": [
+        "DT-004"
+      ],
+      "decision": "DT-004's corrected frontier-only60–85 schema-gated estimate supersedes preliminary95–130; retain the distinct active-marker Removing phase."
+    },
+    {
+      "id": "PRE-003",
+      "title": "Durable-edit test fixtures",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "durable_edit_fixture_family",
+      "merged_into": [
+        "DP-007",
+        "DH-008",
+        "DH-009",
+        "DT-006",
+        "SYN-SYN-001"
+      ],
+      "decision": "Replace the preliminary250–350 blanket estimate with the owned fixture budgets. DH-008 pays the ordinary-edit implementation, DP-007 pays its own setup/callers, DT-006 owns marker/capture mechanics, DH-009 owns materializer-local setup, and SYN-SYN-001 pays only the omitted piece_tree/range-source caller extension."
+    },
+    {
+      "id": "PRE-004",
+      "title": "Temporary test homes",
+      "disposition": "merged",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SYN-SYN-002",
+      "merged_into": [
+        "SYN-SYN-002"
+      ],
+      "decision": "The original global260–350 lead is not additive. SYN-SYN-002 owns only the confirmed Syndic incremental260–330 after other fixture findings; root integrates other crates separately."
+    },
+    {
+      "id": "PRE-007",
+      "title": "Corruption fixture reconstruction",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "SC-007",
+      "merged_into": [
+        "SC-007"
+      ],
+      "decision": "The draft-piece95–125 component is contained in SC-007150–190. DT-002 build progress and DP-002 staging receipt reconstruction are disjoint and remain separate."
+    },
+    {
+      "id": "PRE-009",
+      "title": "Authentication and publication predicates",
+      "disposition": "partially_subsumed_retained_elsewhere",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "authenticated_draft_predicates",
+      "merged_into": [
+        "DP-003",
+        "DH-003",
+        "DH-004"
+      ],
+      "decision": "Confirmed pure immutable opening/frontier/settlement pieces total155–255 inside those existing budgets. The broader unmetered common authentication reader is not adopted: DP-009 and SA-010 retain distinct writer/acquisition/preflight checks. Preliminary250–360 is discarded, not added."
+    },
+    {
+      "id": "PRE-015",
+      "title": "Bounded resident editor and snapshot history alternative",
+      "disposition": "deferred_contract_decision",
+      "bucket": "contract_alternative",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "resident_editor_alternative",
+      "decision": "Unsized product/system/schema alternative. It must explicitly select maximum logical draft size, history persistence/retention, marker semantics and interrupted edit/save behavior. It could remove entire durable-tree/staging/history/materializer responsibilities, but retained publication, asset correlation and custody still require a concrete replacement. Ropey/im do not preserve the existing contract; no gross subsystem LOC is an estimate."
+    },
+    {
+      "id": "PRE-016",
+      "title": "Tree balancing and marker-seal ownership",
+      "disposition": "existing_rework",
+      "bucket": "existing_rework",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "planned_tree_and_seal_ownership",
+      "decision": "REWORK Checkpoint8 already schedules narrow persistent-tree rebalancing sharing and bootstrap-owned marker-service injection. Root compression shares mechanics, but identity-key versus rank selection and authenticated aggregates differ. App owns the global Weak registry; Syndic durable seal/capacity rules remain. Neither planned cleanup is counted again."
+    }
+  ],
+  "uncertainties": [
+    "Net ranges are reviewed estimates, not measured implementation diffs. Helpers may be declined if full adapters do not remain smaller.",
+    "All file coverage is supplied by completed baseline-bound reviews; fresh synthesis checks are targeted interconnections. No whole upstream or owned-fork source audit is claimed.",
+    "External screens are reused at their recorded dates and limitations; no new latest-version, advisory-free, native Windows or MSRV-build claim.",
+    "DT-003 must preserve normalization/read-error sequence; DT-004 must not remove the distinct active-marker phase.",
+    "TempDir support needs feature/module integration and audited aggregate ownership order; its conservative net reserves those changes, not just nominal type replacement.",
+    "A simpler product editor or new value format could dominate local work, but requires specified replacement contracts and costs. No unsized whole-subsystem reduction is invented."
+  ],
+  "original_report_mapping": {
+    "SS": "syndic-schema",
+    "SP": "syndic-provider",
+    "SA": "syndic-admission",
+    "SQ": "syndic-queries",
+    "DT": "syndic-draft-tree",
+    "DP": "syndic-draft-operations",
+    "SL": "syndic-lifecycle",
+    "SX": "syndic-projection",
+    "SC": "syndic-core",
+    "DH": "syndic-history"
+  },
+  "unchanged_decision_evidence": "The normalized TSV gives every row's decision evidence; the ten original complete finding reports retain detailed alternatives, source paths and verification. JSON expands only consequential synthesis refinements, merges, preliminary leads and new findings."
+}

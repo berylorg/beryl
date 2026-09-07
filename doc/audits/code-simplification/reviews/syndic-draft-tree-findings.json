@@ -1,0 +1,269 @@
+[
+  {
+    "id": "DT-001",
+    "title": "Flatten the candidate-session receipt wrapper",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/model.rs",
+      "crates/syndic-storage/src/draft_piece/codec.rs"
+    ],
+    "symbols": [
+      "DraftEditorCandidateSessionOpenReceiptV1",
+      "DraftEditorCandidateSessionRecordV1"
+    ],
+    "evidence": [
+      "model.rs:1022-1096 stores a private Open/Publication(Box)/Disposal(Box) union inside the nominal open receipt; model.rs:1192 exposes only Head/OpenReceipt at the record level.",
+      "codec.rs:1176-1346 classifies and downcasts the nested receipt payload while encoding/decoding four existing canonical tags.",
+      "2026-09-07 caller validation: all candidate-session record/open-receipt named references under crates are confined to syndic-storage. session.rs:143-178 and 614-632 require a concrete open receipt before building its occupied proof; publication.rs:488-495,600-607,673-680,1002-1009,1028-1034,1206-1214,1374-1380,1484-1491,1569-1575,1651-1658 and publication/abandon_fresh.rs:90-97,224,269-276 immediately downcast a known publication/disposal key. Direct record variants remove the second test; they do not remove validation.",
+      "Exhaustive non-head matches in staging/status.rs:99, staging/mutations.rs:28, mutation.rs:627,1857 and test_faults/draft_piece_staging.rs:231 need all three receipt variants. read/admission.rs:234-235 can match DisposalReceipt directly. Open request_bytes/head getters and the public occupied-open proof remain meaningful with a concrete open payload. Box publication/disposal variants to preserve bounded stack layout."
+    ],
+    "proposal": "Represent Head, OpenReceipt, PublicationReceipt and DisposalReceipt directly at the storage-record boundary, retaining concrete open receipts and removing the secondary classification/downcast layer. Update exhaustive internal callers together.",
+    "required_contract_changes": "Preserve canonical V7 key/value tags 0-3, all request/root/history/generation validation and separately durable immutable receipts. Keep the opaque open-receipt constructor/getters and collision-proof API. The public storage Record enum gains explicit variants, so coordinate its Rust API declaration and exhaustive internal caller changes; no persisted format or product behavior change. No compatibility wrapper is needed for repository callers.",
+    "estimated_net_lines": {
+      "low": 60,
+      "high": 100,
+      "basis": "Approximately 45-55 lines from the 75-line nested model representation, 5-15 from redundant codec wrapping, and 35-55 from immediate downcasts/receipt constructors, less 25-35 for byte-equivalence fixtures and exhaustive caller adaptations: conservative 60-100 net. Includes only this receipt-layer change; coordinate caller overlap with publication/session audit and do not sum those same deletions twice. Not related to SA-001 admission payload savings."
+    },
+    "verification": [
+      "Existing candidate-session open/publication/disposal exact replay and collision cases; V7 canonical-byte equivalence fixtures for every tag and malformed tag/key pair.",
+      "Do not execute while implementation is paused.",
+      "Caller scan and focused bodies checked 2026-09-07; no callers require publication/disposal values to masquerade as open receipts. Keep wrong-kind natural-key rejection and owned-versus-borrowed Box extraction behavior."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on behavior-preserving representation; medium on estimated net",
+    "disposition": "final audit proposal; coordinated Rust API/exhaustive caller update required, V7 unchanged"
+  },
+  {
+    "id": "DT-002",
+    "title": "Share build progress payload and receipt digest traversal",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/model.rs",
+      "crates/syndic-storage/src/draft_piece/tree.rs",
+      "crates/syndic-storage/src/draft_piece/codec.rs"
+    ],
+    "symbols": [
+      "DraftPieceBuildRecordV1",
+      "DraftPieceBuildProgressReceiptV1"
+    ],
+    "evidence": [
+      "model.rs:2645-2848 and 2880-2996 duplicate the mutable head and immutable receipt progress fields/accessors.",
+      "tree.rs:1309-1369 and 1434-1493 independently hash the same progress payload from a build and a receipt; tree.rs:973-1003 and 1495-1518 copy extensive positional fields.",
+      "2026-09-07 focused accounting: the identical progress subset is working_roots, base/successor frontiers, next_record_ordinal, frontier, durable_continuation, marker_effect_continuation, writer_admission, successor, build_digest and lifecycle. tree.rs:1521-1568 can compare that exact payload while retaining key/reference, fragment count/chain, digest and predecessor-ordinal checks.",
+      "Constructor callers in crates are confined to syndic-storage: codec.rs:1808,1988; tree.rs:974,1290,1503; mutation.rs:881,980,1034,1086,1160,1284,1559 and test-fault constructors. mutation.rs:1078-1117 restores a template with receipt progress and validates both; next_build_record at 1559-1592 copies header metadata. These callers can retain existing opaque constructors/accessors while the private representation changes. Their additional header-copy cleanup is excluded here."
+    ],
+    "proposal": "Introduce one private progress payload shared by the two distinct record representations and one canonical receipt-digest traversal over that payload plus receipt key, previous endpoint and fragment endpoint. Retain existing public constructors/accessors as delegating interfaces; create a private receipt-from-build payload copy and a test-fault reference replacement helper. Compare shared payload equality in progress_receipt_matches_build while retaining all nonshared authentication checks.",
+    "required_contract_changes": "No persisted record merge: V7 explicitly requires independently durable head and append-only receipt. Preserve both complete encodings, all hash domains and field order, exact replay bytes, fixed-size custody, and receipt transition/effects validation. Keep opaque public accessors where required.",
+    "estimated_net_lines": {
+      "low": 60,
+      "high": 100,
+      "basis": "About 50-55 net lines from sharing the duplicate 60-line digest traversal after thin wrappers, 10-15 from receipt snapshot/reference-replacement plumbing, 10 from payload equality, and 8-10 from duplicate stored field declarations. Reserve 20-30 for private helpers and byte/digest equivalence coverage: conservative 60-100 net. Public accessors and canonical encoders stay and are not counted as deleted. Excludes tree.rs:974 header-copy rewrite and all mutation.rs caller cleanup, SA-001 and staging/publication transition savings."
+    },
+    "verification": [
+      "Compare old/new bytes and digests across initial, fragment-stage, active marker-effect, complete and terminal records.",
+      "Retain missing/ahead/forked receipt, exact closure, restart, and source/target custody tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on exact shared subset; medium on estimated net",
+    "disposition": "final audit proposal; private representation only, both durable records retained"
+  },
+  {
+    "id": "DT-003",
+    "title": "Build final root metadata through the existing build_roots routine",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/persistent.rs"
+    ],
+    "symbols": [
+      "finalize_build_root",
+      "build_roots"
+    ],
+    "evidence": [
+      "persistent.rs:2176-2298 finalize_build_root duplicates persistent.rs:2399-2499 build_roots: sequence compression/root wrapping, canonical empty summary, index/order root summaries, and combined structure facts."
+    ],
+    "proposal": "Have finalization obtain the complete structure roots/summaries from build_roots, then attach the final root key and combined digest. Retain exact allocation order and selected-root normalization.",
+    "required_contract_changes": "None if immutable node identities, allocation order, canonical empty/nonempty summaries, encoded bytes, record/read accounting and limits remain identical.",
+    "estimated_net_lines": {
+      "low": 60,
+      "high": 90,
+      "basis": "Remove approximately one duplicated normalization/summary body minus root conversion and regression assertions; no tree algorithm removal."
+    },
+    "verification": [
+      "Byte/digest/record-identity equivalence for empty, singleton and multi-level sequence/index/order structures.",
+      "Existing marker-order reuse, restart, bounded staging diagnostic and corruption tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "DT-004",
+    "title": "Remove the marker-free replacement's no-op Removing continuation",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/persistent.rs",
+      "crates/syndic-storage/src/draft_piece/builder_model.rs",
+      "crates/syndic-storage/src/draft_piece/codec/builder_continuation.rs",
+      "crates/syndic-storage/tests/piece_tree.rs"
+    ],
+    "symbols": [
+      "DraftPieceBuildFrontierV1::Removing"
+    ],
+    "evidence": [
+      "persistent.rs:3293 rejects a replacement cut containing markers before selecting Removing at 3295.",
+      "persistent.rs:3305-3332 advances only next_rank, with no removed-leaf loads or effects; removed_markers is constrained to zero by persistent.rs:3056-3080.",
+      "piece_tree.rs:592 asserts the exact [1,1,1,7,1] per-quantum staged-record diagnostic and must be reconsidered if a quantum is eliminated."
+    ],
+    "proposal": "After authenticating and splitting the marker-free removal range, move directly to insertion and remove unused Removing cursor/counter machinery in a coordinated replacement continuation design.",
+    "required_contract_changes": "This is PRE-001 confirmation, not an approved local refactor. Removing is a serialized/hash-bound frontier in current V7; eliminating it changes accepted durable continuation shapes, transition history and exact diagnostics. Operator-owned schema/build continuation authority must select the replacement shape first. Do not add a compatibility branch silently.",
+    "estimated_net_lines": {
+      "low": 40,
+      "high": 100,
+      "basis": "One no-effect transition plus associated field/codec/validation plumbing minus direct transition tests; conditional estimate only, excluded from safe-preserving total and not additive to PRE-001."
+    },
+    "verification": [
+      "Replacement over empty/single/many text leaves, edits around same-anchor markers, exact record allocation and final root equality.",
+      "Restart/replay at every retained phase and updated bounded read/write diagnostics."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on redundant work; medium on net",
+    "disposition": "contract-gated; no implementation authorization"
+  },
+  {
+    "id": "DT-005",
+    "title": "Share forward and reverse sequence cursor descent mechanics",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/persistent.rs",
+      "crates/syndic-storage/tests/large_draft_storage/marker_acquisition.rs"
+    ],
+    "symbols": [
+      "descend_matching",
+      "descend_matching_reverse",
+      "advance_matching",
+      "retreat_matching"
+    ],
+    "evidence": [
+      "persistent.rs:3695-3741 and 3798-3844 implement nearly identical matching descent with position versus rposition.",
+      "persistent.rs:3743-3796 and 3846-3889 repeat checked prefix byte/rank accumulation and parent stack rebuilding.",
+      "large_draft_storage/marker_acquisition.rs:297-344 already covers ordered forward/backward pages, continuation, retained bytes and record-read limits."
+    ],
+    "proposal": "Use a small private direction parameter for first/last matching child selection and share checked prefix/rank and cursor-stack construction. Keep text demand semantics and edge classification explicit at callers.",
+    "required_contract_changes": "None; preserve scalar-safe exact anchoring, exclusive marker continuation, ascending returned marker order, all same-anchor gaps, checked aggregate arithmetic and read ceilings.",
+    "estimated_net_lines": {
+      "low": 40,
+      "high": 80,
+      "basis": "Shared mechanics after direction helper, explicit callers and boundary tests; excludes text reader or required authenticated traversal deletion."
+    },
+    "verification": [
+      "Forward/backward empty and nonempty pages at root/child boundaries, same-anchor pages and byte-ceiling trimming.",
+      "Corrupt child envelopes and aggregate overflow continue failing closed."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "DT-006",
+    "title": "Reuse existing test fixture plumbing without weakening boundary checks",
+    "paths": [
+      "crates/syndic-storage/tests/draft_label_protection.rs",
+      "crates/syndic-storage/tests/draft_root_marker_summary.rs",
+      "crates/syndic-storage/tests/large_draft_storage/support.rs",
+      "crates/syndic-storage/tests/large_draft_storage/marker_acquisition.rs",
+      "crates/syndic-storage/tests/piece_tree.rs"
+    ],
+    "symbols": [
+      "TestHome",
+      "capture_publication_source",
+      "fixture_with_marker_limit",
+      "marker_fixture",
+      "CandidateDraft"
+    ],
+    "evidence": [
+      "draft_label_protection.rs:25-58 and 74-84 repeat temporary-home/execution/command helpers; piece_tree.rs:34-40 already consumes tests/support/syndic_command_fixture.rs.",
+      "draft_root_marker_summary.rs:343-374 and large_draft_storage/support.rs:205-236 repeat publication capture construction.",
+      "draft_root_marker_summary.rs:411-445 and large_draft_storage/marker_acquisition.rs:250-279 repeat marker-limit fixture creation.",
+      "piece_tree.rs:100-125 CandidateDraft duplicates session-derived id/root behind adapter getters; revision is populated at 1004 but unused in the fully read file.",
+      "2026-09-07 compatibility review: tests/support/syndic_command_fixture.rs:18-65 has the same temporary-home naming and clean-commit predicate, plus bounded cleanup retry and path(). Label protection can reuse TestHome and execute_contribution/assert_committed while retaining its [211]/[212] execution binding and local creation. No need to alter identity-sensitive fixture inputs.",
+      "durable_builder/support.rs:300-329 differs from the two marker fixtures only by maximum_markers; a fixture_with_marker_limit helper with the current fixture delegating limit=1 shares their TestHome and all execution IDs. Both capture_publication_source copies use active_session from that support and identical request-derived activation facts, so one helper there preserves the call contract and both existing include-based targets. No consolidation of their bounded operation assertions is needed."
+    ],
+    "proposal": "Reuse the existing TestHome and command execution/assertion helpers for label protection, keeping its own execution identities. Put one marker-limit fixture and one publication-capture helper in the already-shared durable_builder support; preserve existing fixture(name,seed) as the limit=1 entry point. Remove duplicate CandidateDraft storage/getters in piece_tree in favor of session facts while retaining explicit fixture positions. Keep all bounded staging/acquisition/materialization assertions in their tests.",
+    "required_contract_changes": "No production/persisted changes. Shared fixture bodies and their callers have been checked for compatible identities, Home options, commit predicate, marker policy and activation binding. Path-based TestHome use replaces direct tuple access where needed. Coordinate shared support ownership and deduplicate against whole-codebase test-support findings.",
+    "estimated_net_lines": {
+      "low": 70,
+      "high": 120,
+      "basis": "Approximately 25-30 net from one duplicate publication capture, 25-40 from two marker-limit fixture copies after a shared parameterized helper/default wrapper, 15-25 from label-protection home/command reuse after imports/adapters, and 15-25 from the local CandidateDraft facade. Conservative 70-120 total including caller adaptations; exclude unrelated shared TestHome consolidation and retain execution identities and every semantic assertion."
+    },
+    "verification": [
+      "Affected focused integration targets with test-faults once implementation is authorized; retain corruption/reopen/custody and acquisition ceiling checks."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on helper compatibility; medium on estimated net",
+    "disposition": "final audit proposal; test support only, coordinate shared-path overlap"
+  },
+  {
+    "id": "DT-007",
+    "title": "Retain the authenticated durable tree; Ropey is not a replacement",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/persistent.rs",
+      "crates/syndic-storage/src/draft_piece/model.rs",
+      "crates/syndic-storage/src/draft_piece/tree.rs",
+      "crates/syndic-storage/src/draft_piece/persistent/marker_identity_lookup.rs"
+    ],
+    "symbols": [
+      "BuildContext",
+      "SequenceRef",
+      "MarkerIdentityLookupReader"
+    ],
+    "evidence": [
+      "All 11 source files and 7 test files were fully read before concluding the dependency fit screen.",
+      "Package design-draft-storage.md:28 requires immutable fanout-128/height-64 structures; design-schema-v7.md:175-205 and 637-709 require three authenticated structures, exact natural keys, bounded node work, durable progress and canonical replay.",
+      "Ropey v1.6.1 src/rope.rs:82-84 owns a private Arc<Node>; from_reader at 129 streams into a RopeBuilder and write_to at 216 writes every chunk. These are text import/export APIs rather than external durable-node loading.",
+      "Ropey len_lines at 247-248 returns line_break_count+1 even when empty; default Unicode/CR line features differ from Beryl's exact newline/empty-line summaries."
+    ],
+    "proposal": "Retain the bespoke persistent/authenticated storage traversal. Ropey may be considered independently for a bounded resident text window if a real editor need is demonstrated, but that does not remove this storage implementation. Reuse im 15.1.0 negative screen from SA-009 as the persistent-collection comparison.",
+    "required_contract_changes": "A whole-draft Rope replacement would require abandoning bounded active residency or adding a new durable-node layer, exact marker structures, Beryl line semantics and replay protocol. Those adapters retain the hard parts and provide no defensible positive storage net reduction under current authority.",
+    "estimated_net_lines": {
+      "low": 0,
+      "high": 0,
+      "basis": "Rejected dependency screen. Do not count the 19,626-line slice, required trees, codec families, or progress machinery as removable."
+    },
+    "verification": [
+      "No dependency installation, manifest change, build or benchmark performed.",
+      "Any future bounded-window use needs focused byte/char conversion, empty/LF line semantics, marker representation, resource and platform tests."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "ropey",
+        "version": "1.6.1",
+        "decision": "reject for authenticated durable piece tree",
+        "checked_at": "2026-09-06",
+        "registry": "https://crates.io/api/v1/crates/ropey",
+        "registry_facts": "Stable 1.6.1, not yanked, published 2023-10-18; 2.0.0-beta.1 is newer prerelease; 11,186,818 total / 3,811,712 recent downloads at check.",
+        "license": "MIT",
+        "msrv": "Exact v1.6.1 tag and registry have no rust-version declaration. Current master declares 1.65 but cannot establish released 1.6.1 MSRV.",
+        "features": "Defaults unicode_lines and simd; unicode_lines enables cr_lines; simd enables str_indices/simd. Normal dependencies smallvec ^1.0.0 and str_indices ^0.4 with default features disabled. small_chunks is internal test-only feature.",
+        "platforms": "Pure Rust APIs; exact v1.6.1 CI tests stable/beta/Miri on Ubuntu only. Windows compatibility was not built or established by that CI evidence.",
+        "maintenance_adoption": "Upstream repository not archived, pushed 2026-08-04, 1669 stars at check. Helix master helix-core consumes workspace Ropey and root workspace pins version 1.6.1 with defaults off and simd on.",
+        "advisories": "Complete nontruncated RustSec tree at 5a0ebedfe8bdd2e295b171f4162f8c977bcad9a5 contains no ropey or str_indices package entries; it contains five historical smallvec entries. This is not a resolved transitive dependency security clearance; patched ranges/resolution were not investigated because candidate is rejected.",
+        "api_fit": "Private resident Arc tree with text scalar indices; from_reader/RopeBuilder build complete resident Rope, chunks/write_to export complete text. No public authenticated external node reader/writer, record identities/digests, triple marker roots, or durable per-command continuation API.",
+        "sources": [
+          "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/Cargo.toml",
+          "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/src/rope.rs",
+          "https://docs.rs/ropey/1.6.1/ropey/struct.Rope.html",
+          "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/.github/workflows/ci.yml",
+          "https://api.github.com/repos/cessen/ropey",
+          "https://raw.githubusercontent.com/helix-editor/helix/master/Cargo.toml",
+          "https://raw.githubusercontent.com/helix-editor/helix/master/helix-core/Cargo.toml",
+          "https://api.github.com/repos/rustsec/advisory-db/git/trees/main?recursive=1"
+        ],
+        "memory_path": "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md"
+      },
+      {
+        "name": "im",
+        "version": "15.1.0",
+        "decision": "reuse SA-009 negative durable-node fit screen",
+        "memory_path": "doc/memory/crates.io/im/15.1.0/durable-admission-index-screen.md",
+        "scope": "In-memory persistent collections do not supply authenticated durable node/replay API. Do not duplicate SA-009 net accounting."
+      }
+    ],
+    "confidence": "high for rejection under current authority",
+    "disposition": "screened-negative"
+  }
+]

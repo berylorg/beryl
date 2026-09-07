@@ -1,0 +1,428 @@
+[
+  {
+    "id": "AI-001",
+    "title": "Remove impossible promotion reconciliation states",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/next_turn/worker.rs"
+    ],
+    "symbols": [
+      "execute_candidate"
+    ],
+    "evidence": "Full body: reconcile_promotion(...).map(|status| Some((true,status))) constructs only Some and true after command failure was already returned. The let-else None branch and false/Prior match arm cannot execute.",
+    "proposal": "Match reconcile_promotion directly, then require Exact; keep Prior and Collision fatal on this successful-command path. Preserve the earlier typed command failures and reservation.release ordering.",
+    "required_contract_changes": "None.",
+    "estimated_net_lines": {
+      "min": 12,
+      "max": 22,
+      "basis": "Net source reduction after direct match and allowance for focused verification; no scenario deletion."
+    },
+    "verification": "Not run; retain successful exact promotion, collision/Prior, command failure, reservation loss and no-provider-before-reconciliation scenarios.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-002",
+    "title": "Share error traversal while retaining two health-failure predicates",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/failure/health.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/failure/provenance.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/failure/settlement.rs"
+    ],
+    "symbols": [
+      "is_current_health_loss_*",
+      "is_cut_correlated_*",
+      "classify_active_steering_delivery"
+    ],
+    "evidence": "Paired full-body traversals in health.rs:37-126, provenance.rs:31-158 and settlement.rs:28-192 inspect the same closed error trees. Current-health-loss accepts matching-generation unhealthy gates; cut correlation requires matching Failed gates or an explicit persistent-failure cut. Several callers intentionally ask only the latter.",
+    "proposal": "Use one private traversal per error family producing a two-predicate evidence value, or accepting a private closed predicate selector. Keep separate named predicate entry points. Preserve generation matching and explicit coordinator/steering cut evidence; do not replace cut-only tests with broad unhealthy classification.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 150,
+      "max": 240,
+      "basis": "Net estimate after shared evidence/mode machinery, all retained entry-point wrappers, import adjustments and additional classification tests; no errors or call-site fences removed. Excludes AC-007 vocabulary proposal and AI-007 enum savings."
+    },
+    "verification": "Not run (audit only). Exercise healthy/closing/failed and matching/foreign generations, explicit cut, nested replay/sidecar/publication failures, plus callers requiring cut-only evidence. Preserve typed ordinary outcome precedence.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-003",
+    "title": "Centralize identical steering attempt checks",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/active_steering.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/outcome.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/outcome/rejection.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/outcome/success.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/predispatch.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/settle.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/target.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/worker.rs"
+    ],
+    "symbols": [
+      "ensure_attempt_current",
+      "observe_attempt_failure",
+      "acquire_attempt"
+    ],
+    "evidence": "Six copies of ensure_attempt_current and five copies of observe_attempt_failure have identical bodies and map the same attempt methods to PersistentFailureCut. The calls occur at deliberately different before/after-operation boundaries. target::acquire_attempt separately expands the arm_waiter argument into identical structural branches.",
+    "proposal": "Move the two checks into one private active_steering helper location, preserving every call position and its method. Pass arm_waiter directly to acquire_active_steering_attempt without changing acquisition outcomes.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 88,
+      "max": 107,
+      "basis": "About 110 lines of repeated definitions replaced by two definitions and imports, plus 8-12 lines from the boolean branch; net includes focused verification allowance. Excludes publication parameter/call plumbing in AI-006."
+    },
+    "verification": "Not run (audit only). Retain failure cuts before claim/arm/authorization, after errors and before settlement; run steering sibling-admission, retry-versus-loss and no-dispatch fault tests.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-004",
+    "title": "Share ordinary scheduler worker launch and completion mechanics",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/native_lineage.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/next_turn/worker.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/recovered_pending.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/runtime.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/workers.rs"
+    ],
+    "symbols": [
+      "native_lineage::spawn_worker",
+      "next_turn::worker::spawn_worker",
+      "recovered_pending::spawn_worker",
+      "register_next_worker"
+    ],
+    "evidence": "Three launch bodies repeat Builder spawn, catch_unwind/AssertUnwindSafe, panic-to-Fatal mapping, completion publication, WorkerCompleted wake and next-worker registration. Their work closure and thread name differ. Steering launch has different gate/wake ownership and is excluded.",
+    "proposal": "Add a private runtime launch helper taking thread name, thread identity and a move closure. Preserve completion publication before wake, ownership of reservation/lease in the closure, exact spawn-error drop behavior and registration/join handling.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 35,
+      "max": 55,
+      "basis": "Net after a typed FnOnce helper and per-family closures; allowance for existing/focused spawn-panic-shutdown verification. Distinct from AI-001's execute_candidate reconciliation and existing service worker proposals."
+    },
+    "verification": "Not run (audit only). Verify normal result, panic, spawn failure, completion-before-registration race, cancellation and shutdown join with retained reservation/lease cleanup.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-005",
+    "title": "Derive empty scheduler signal state",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/signal/state.rs",
+      "crates/beryl-app/src/cas_projection/accepted_input_scheduler/signal/tests.rs"
+    ],
+    "symbols": [
+      "ActiveSteeringRetryState",
+      "AcceptedInputSchedulerDiagnostics",
+      "SignalState::new"
+    ],
+    "evidence": "signal/state.rs:79-128 initializes pending/shutdown and the diagnostics snapshot with zero counters, false flags and Ineligible retry state. No field requires a runtime-specific default; all state bodies and tests were reviewed.",
+    "proposal": "Derive Default for AcceptedInputSchedulerDiagnostics and mark Ineligible as the retry enum's default, replacing the explicit diagnostics initializer with default(). Optionally derive Default for private SignalState too, retaining new as a small delegate. Keep wake masks, pending signals and mutation logic unchanged.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 35,
+      "max": 45,
+      "basis": "Net from replacing the long zero-state initializer after derive/default attributes and any constructor wrapper; no diagnostics accessors or transition tests removed."
+    },
+    "verification": "Not run (audit only). Assert the same initial diagnostic snapshot and run wake coalescing, independent family bits and parked/reopened retry tests.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-006",
+    "title": "Remove unused steering publication forwarding",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/active_steering/outcome.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/outcome/rejection.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/outcome/success.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/predispatch.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/publication.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/settle.rs",
+      "crates/beryl-app/src/cas_projection/active_steering/worker.rs"
+    ],
+    "symbols": [
+      "publication::begin",
+      "publication::retry",
+      "publication::complete",
+      "publication::reject",
+      "publish_reconciled"
+    ],
+    "evidence": "publication.rs:10-105 has four wrappers cloning owned requests and forwarding home identity/generation to underscore parameters; each limit is also ignored. The only common operation is execute_current plus exact CommandOutcome mapping and indeterminate custody installation.",
+    "proposal": "Expose one private executor accepting CurrentDomainCommand and build the typed current_* command at each call site. Remove clones and arguments used only by the deleted wrappers. Retain home/generation/limit values still used for replay preparation, lifecycle arm, source validation or other actual fences.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 40,
+      "max": 70,
+      "basis": "Net conservative estimate after expanded command constructors at call sites and focused outcome verification; does not count attempt helper bodies in AI-003."
+    },
+    "verification": "Not run (audit only). Preserve all four publication outcomes, later failure receipts, immediate reconciliation.install(), no re-dispatch after indeterminate publication and sibling route descendant handling.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-007",
+    "title": "Use one canonical input replay error representation",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/input_replay/accepted.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/error.rs",
+      "crates/beryl-app/src/cas_projection/ordinary/error.rs"
+    ],
+    "symbols": [
+      "AcceptedInputReplayError",
+      "InputReplayPrepareError",
+      "From<InputReplayPrepareError> for AcceptedInputReplayError",
+      "OrdinaryTurnExecutionError"
+    ],
+    "evidence": "accepted.rs and error.rs declare the same 24-variant replay error domain; accepted.rs additionally contains an exhaustive variant-for-variant From translation. Root confirmed the variant count against both enum symbol trees. Ordinary execution's mapping adds real semantic classification and must remain.",
+    "proposal": "Make one canonical enum with the existing accepted error's Display/source annotations. Preserve the existing AcceptedInputReplayError name with a reexport/type alias if needed, and remove the identity conversion. Keep ordinary error mapping and all leaf payloads intact.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 120,
+      "max": 170,
+      "basis": "Net after canonical annotations, public-name alias/reexports and conversion call-site updates; includes compatibility checks. Distinct from AI-002 traversal sharing."
+    },
+    "verification": "Not run (audit only). Check existing accepted replay names and pattern matches, Display and source chains, all cancellation/home-generation/accepted-record/asset-owner errors, and ordinary error conversion.",
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "disposition": "existing_dependency_only",
+        "features": "Existing workspace dependency/default std; no new package or feature needed.",
+        "source": "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.68 (upstream crate; workspace requirement remains higher)",
+        "limitations": "No new upstream investigation or security clearance claimed; candidate is canonicalizing identical enums using the dependency already consumed."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-008",
+    "title": "Delete an unreferenced item-freeze comparison island",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/ordinary/converge/item.rs"
+    ],
+    "symbols": [
+      "exact_freeze_progress",
+      "exact_freeze_state",
+      "exact_frozen_provider",
+      "exact_frozen_manifest",
+      "exact_projection_manifest_after_freeze",
+      "next_is"
+    ],
+    "evidence": "ordinary/converge/item.rs:146-257 contains six private helpers. Exact entry point has no semantic references; crate-wide string searches find only their definitions/internal calls. Live freeze_live_item uses current command/reconciliation flow and does not call this island. Root confirmed this deletion is not already a mandatory rework obligation.",
+    "proposal": "Delete these six private helpers and now-unused imports only. Preserve freeze_live_item, current command contribution, terminal proof and active projection convergence.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 105,
+      "max": 115,
+      "basis": "112 body lines plus possible imports; conservative net 105-115 after any formatting/reference validation. No mandatory rework savings included."
+    },
+    "verification": "Not run (audit only). Recheck references/cfgs, compile affected crate and retain ordinary terminal/freeze/current-command reconciliation tests; no test scenario deletion.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-009",
+    "title": "Share running and parked ordinary execution payload",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/scheduled_ordinary.rs",
+      "crates/beryl-app/tests/unit/scheduled_ordinary_admission.rs"
+    ],
+    "symbols": [
+      "ScheduledOrdinaryExecutionLease",
+      "ParkedScheduledOrdinaryExecution",
+      "park",
+      "resume"
+    ],
+    "evidence": "scheduled_ordinary.rs:231-259 repeats eleven fields between running and parked types; park/resume manually destructure and rebuild the same authority payload. The running form uniquely owns a worker permit; parking deliberately releases only that permit while preserving session and flight custody.",
+    "proposal": "Extract a private common payload while keeping distinct running/parked types. Running lease retains its worker separately; park explicitly drops that worker and moves the payload, resume attaches a newly acquired worker. Preserve original field/drop order or explicit destruction where nesting would change it.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 40,
+      "max": 65,
+      "basis": "Net after common payload, accessor redirection, preserving distinct types, explicit permit release and additional drop-order validation. Does not remove Admission.terminal_disposer or change custody graph."
+    },
+    "verification": "Not run (audit only). Verify permit release before parking, session/flight retention while parked, resume identity, foreign session/assets/runtime rejection, shutdown return and exact single wake behavior.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-010",
+    "title": "Narrow ordinary live capture to the known-success start path",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/ordinary/execute/capture_loop.rs",
+      "crates/beryl-app/src/cas_projection/ordinary/execute/start.rs"
+    ],
+    "symbols": [
+      "begin_capture",
+      "run_capture",
+      "execute_in_flight",
+      "converge_completion_unknown_start"
+    ],
+    "evidence": "begin_capture has one caller in start::execute_in_flight's ExactResponse branch. Its completion_unknown option is therefore always None; genuine CompletionUnknown dispatches separately to converge_completion_unknown_start. run_capture's closed case needlessly selects between two causes.",
+    "proposal": "Narrow begin_capture's input proof to exact response/activation evidence or keep an explicit exact-response guard. Remove completion_unknown storage and parameter from run_capture and directly report TargetClosed on that path. Retain all response_activation_failure handling and the separate real unknown-start convergence.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 10,
+      "max": 25,
+      "basis": "Net after narrowing or explicit guard and caller changes; leaves non-idempotent outcome enum intact. No overlapping AI-001 promotion savings."
+    },
+    "verification": "Not run (audit only). Retain exact response with activation failure, delayed lifecycle, exact response then target loss, and actual completion-unknown start scenarios; no unknown outcome becomes retryable.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-011",
+    "title": "Share accepted scheduler session-admission fixture setup",
+    "paths": [
+      "crates/beryl-app/tests/accepted_next_scheduler.rs",
+      "crates/beryl-app/tests/accepted_next_scheduler/shutdown.rs",
+      "crates/beryl-app/tests/accepted_next_scheduler/support.rs",
+      "crates/beryl-app/tests/accepted_next_scheduler/support/execution.rs"
+    ],
+    "symbols": [
+      "accepted_next_scheduler tests",
+      "shutdown tests",
+      "Fixture",
+      "SessionSlot"
+    ],
+    "evidence": "Scheduler and shutdown test bodies repeat prepared parent, ready provider/session slot, connector, process-generation and admission setup across roughly six scenarios. Fault controller, worker capacity, server scenario and shutdown point are intentional variations; later intermediate observations differ.",
+    "proposal": "Add a support fixture constructor returning the concrete service/session/server handles needed by each test, parameterized only by existing scenario differences. Keep each fault arming, barrier release, wait predicate, ownership assertion and close action visible in the scenario.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 80,
+      "max": 130,
+      "basis": "Net after parameterized fixture setup, result owner structure/destructuring and call-site changes; no server codec, scenario, fault timing or assertions removed. Excludes other-cohort common test server proposals."
+    },
+    "verification": "Not run (audit only). Run unchanged scheduler progression, unavailable provider, cancellation/recovery and shutdown cases with exact worker/session return assertions.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-012",
+    "title": "Share accepted promotion command construction and assertions",
+    "paths": [
+      "crates/beryl-app/tests/accepted_promotion.rs",
+      "crates/beryl-app/tests/accepted_promotion/support.rs"
+    ],
+    "symbols": [
+      "Fixture::promotion",
+      "accepted_input_promotion_command",
+      "accepted promotion tests"
+    ],
+    "evidence": "accepted_promotion.rs repeats exact promotion command-builder/execute-success sequences and validation-rejection outcome matching. These are setup/assertion mechanics; individual route, owner, no-commit and indeterminate assertions remain distinct.",
+    "proposal": "Add a fixture helper executing an already specified promotion and a small validation-rejection assertion helper. Keep intentional command-build failure and faulted execution paths explicit and keep expected durable state independent.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 80,
+      "max": 130,
+      "basis": "Net after helpers and rewritten calls, including preservation of all failure diagnostics. Does not include removal of unmounted files in AI-013."
+    },
+    "verification": "Not run (audit only). Retain exact promotion, source/route conflicts, image-owner transfers, mutation rejection, not-committed, committed-later-failure and indeterminate reconciliation assertions.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-013",
+    "title": "Delete unmounted accepted-promotion fixture modules",
+    "paths": [
+      "crates/beryl-app/tests/accepted_promotion/support/assets.rs",
+      "crates/beryl-app/tests/accepted_promotion/support/records.rs"
+    ],
+    "symbols": [
+      "admit_owner_set",
+      "prepared_content_records",
+      "unmounted record builders"
+    ],
+    "evidence": "All 117 and 298 lines reviewed. Parent support.rs declares neither assets nor records, has no include/path mounts, and current fixture delegates to composer_support/publication_support. Whole-repository path searches found no inclusions, and app-local helper-name searches find definitions only. Manifest has no custom build script or targets mounting these paths. Same-named syndic test helpers belong to different mounted modules.",
+    "proposal": "Delete both unmounted files. Preserve the active accepted_promotion/support.rs and all actual test cases; check inclusion graph again at implementation baseline.",
+    "required_contract_changes": "None; retain existing authoritative behavior and public names where applicable.",
+    "estimated_net_lines": {
+      "min": 415,
+      "max": 415,
+      "basis": "Exactly 415 currently tracked physical lines; no replacement required, no runnable scenario removed, and no saving from AI-012's active fixture helpers counted here."
+    },
+    "verification": "Not run (audit only). Validate module/include/build-target references and compare discovered test identities before/after; compile the active accepted-promotion and exact-root-submission tests.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AI-014",
+    "title": "Retain bounded replay, custody and independent wire oracles",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/input_replay.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/authority.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/identity.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/page.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/path.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/source.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/marker/walk.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/page.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/prepared.rs",
+      "crates/beryl-app/src/cas_projection/input_replay/record.rs",
+      "crates/beryl-app/tests/submitted_input_residency.rs",
+      "crates/beryl-app/tests/submitted_input_residency/backpressure.rs",
+      "crates/beryl-app/tests/submitted_input_residency/content.rs",
+      "crates/beryl-app/tests/submitted_input_residency/failure/common.rs",
+      "crates/beryl-app/tests/submitted_input_residency/failure/dispatch.rs",
+      "crates/beryl-app/tests/submitted_input_residency/failure/publication.rs",
+      "crates/beryl-app/tests/submitted_input_residency/failure/source.rs",
+      "crates/beryl-app/tests/submitted_input_residency/failure/target.rs",
+      "crates/beryl-app/tests/submitted_input_residency/fixture.rs",
+      "crates/beryl-app/tests/submitted_input_residency/scale.rs",
+      "crates/beryl-app/tests/submitted_input_residency/server.rs",
+      "crates/beryl-app/tests/submitted_input_residency/server/admission.rs",
+      "crates/beryl-app/tests/submitted_input_residency/verification.rs",
+      "crates/beryl-app/tests/submitted_input_residency/wire.rs",
+      "crates/beryl-app/tests/submitted_input_residency/wire/content.rs",
+      "crates/beryl-app/tests/submitted_input_residency/wire/frame.rs",
+      "crates/beryl-app/tests/submitted_input_residency/wire/generator.rs",
+      "crates/beryl-app/tests/submitted_input_residency/wire/message.rs"
+    ],
+    "symbols": [
+      "InputReplayFactory",
+      "marker/page/source walkers",
+      "submitted_input_residency wire generators and frame verifier"
+    ],
+    "evidence": "Full replay and residency cohort bodies retain generation/record/owner rechecks, bounded pages and buffers, exact ordinal/byte continuity, cancellation, non-idempotent completion distinctions and independent expected wire bytes. Raw frame oracle deliberately inspects masking, fragmentation and byte/frame cutoffs below a whole-message WebSocket API.",
+    "proposal": "Retain these mechanisms. A generic serializer/WebSocket or whole-document iterator replacement would lose the independent bounded oracle or require comparable adapters. No substantial new crates.io replacement with demonstrated semantic fit emerged for this cohort; keep existing bounded protocol and standard library primitives.",
+    "required_contract_changes": "None. Removing independent bounded evidence or relaxing source/custody fences would require explicit design decisions; no such change is proposed.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Retained finding; zero removable lines and excluded from proposed totals."
+    },
+    "verification": "Not run (audit only). Preserve marker-free/many-marker/multi-megabyte scale, cutoff/backpressure/cancellation/source drift, exact response and publication failures; audit only, no runtime evidence generated.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  }
+]

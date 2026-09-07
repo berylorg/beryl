@@ -1,0 +1,339 @@
+[
+  {
+    "id": "SQ-001",
+    "title": "Use one steering-input acquisition path for ready and delivering reads",
+    "paths": [
+      "crates/syndic-storage/src/read/accepted_delivery/ready.rs",
+      "crates/syndic-storage/src/read/accepted_delivery/validation.rs",
+      "crates/syndic-storage/src/read/delivering_steering.rs",
+      "crates/syndic-storage/src/read/delivering_steering/validation.rs",
+      "crates/syndic-storage/tests/delivering_steering_read.rs"
+    ],
+    "symbols": [
+      "SyndicStorage::resolve_ready_steering",
+      "SyndicStorage::resolve_delivering_steering",
+      "ready_missing_gate / missing_gate",
+      "ready_gate_invariant / gate_invariant",
+      "ready_route_invariant / route_invariant",
+      "ready_binding_invariant / binding_invariant",
+      "validate_execution"
+    ],
+    "evidence": [
+      "ready.rs:87-377 and delivering_steering.rs:81-388 acquire the same input, leaf, gate, generation, route head, binding head, binding, snapshot and active-CAS-turn closure, then recheck mutable anchors; each maintains an almost identical family of early-missing/drift helpers.",
+      "accepted_delivery/validation.rs:68-127 and delivering_steering/validation.rs:61-120 repeat the same execution relationship predicate. Their route predicates differ in eligible lifecycle and aggregate counter.",
+      "delivering_steering_read.rs:328-390 requires exactly twelve point reads even for a 384-member generation. Existing ready and delivering metrics must keep identifying their public operation."
+    ],
+    "proposal": "Introduce a private SteeringReadKind enum and one acquired steering view. Keep thin public wrappers returning their existing types. Parameterize eligibility, route counter, operation-specific diagnostics and metrics; share acquisition, anchor confirmations and the exact execution predicate. Keep ready non-Routed input as stabilized absence while delivering non-Routed remains an anchor-confirmed invariant. Do not broaden the closure or scan generation membership.",
+    "required_contract_changes": "None. Preserve all public result types, error categories/operation names, constituent point limits, two-read mutable anchors, loaded generation and timestamp checks. Internal helper names/types may change.",
+    "estimated_net_lines": {
+      "minimum": 250,
+      "maximum": 350,
+      "basis": "Deduplicate acquisition and anchor helpers plus one ~60-line execution predicate; reserve 70-110 lines for the kind policy, shared view, wrappers and regression adjustments. Excludes the independent test-fixture loop removal SQ-006."
+    },
+    "verification": [
+      "Run existing ready/delivering eligibility, missing-record, corruption and drift cases with test-faults.",
+      "Keep exactly twelve eligible-path point reads and bounded behavior for large generations; compare metrics separately for both APIs.",
+      "Add only missing lifecycle asymmetry cases if existing tests do not cover non-Routed ready versus delivering and per-anchor mutation timing."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-002",
+    "title": "Share bounded encoded-content range filling",
+    "paths": [
+      "crates/syndic-storage/src/read/content_text/segment/marker.rs",
+      "crates/syndic-storage/src/read/range/provider.rs",
+      "crates/syndic-storage/src/validation/content/range.rs",
+      "crates/syndic-storage/tests/content_text_segment_range/corruption.rs",
+      "crates/syndic-storage/tests/content_text_range.rs"
+    ],
+    "symbols": [
+      "read_marker_bytes",
+      "append_span",
+      "append_provider_encoded_range",
+      "append_provider_byte_span",
+      "validation::content::range::read_encoded_range"
+    ],
+    "evidence": [
+      "marker.rs:81-179 and provider.rs:239-360 both locate a ContentByteSpans predecessor and continue forwards while filling a bounded destination; each separately loads/checks chunks and slices offsets.",
+      "validation/content/range.rs:145-246 repeats the same encoded-range transport into a Vec and is reused for marker validation and provider completion/source checks.",
+      "The caller contracts differ: marker output is exactly 25 bytes, public provider output carries accounting and independently validates spans/chunks, while validation ranges reject zero length and cap each returned range at 65,536 bytes."
+    ],
+    "proposal": "Implement one concrete encoded-content fill algorithm over a caller-supplied bounded output slice, with small store/DomainReader read adapters and a one-chunk cache. Return separate index/chunk accounting so wrappers preserve current public stored/decoded byte semantics. Keep each wrapper's range/frontier validation and diagnostics. Let the validation Vec wrapper allocate only the already bounded requested length. Share byte transport, not the narrative-generation/chain or marker semantic proof.",
+    "required_contract_changes": "None. Preserve marker tag/ID/label bytes and SHA-256, physical chunk identity/digest/length and span-key checks, gap detection, fixed page/point bounds, typed ReadError provenance, provider source frontier and terminal chain checks. Arbitrary encoded byte windows must not be replaced by UTF8-clipping text pages.",
+    "estimated_net_lines": {
+      "minimum": 140,
+      "maximum": 220,
+      "basis": "Replace three copies of predecessor/forward/chunk slicing mechanics; reserve 100-160 lines for shared fill and two transport/accounting adapters. Excludes logical text frontend SQ-003 and provider structural narrative append SQ-004."
+    },
+    "verification": [
+      "Run sealed content/segment range tests including forged marker bytes, changed boundary, missing chunk, UTF8 clipping and exact accounting.",
+      "Run provider narrative/completion range tests for crossing span/chunk/page boundaries, first mismatch, stale source, gaps and final chain.",
+      "Verify maximum payload/cached-chunk residency and preserve no whole-content allocation."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-003",
+    "title": "Share sealed text page orchestration for whole content and proven segments",
+    "paths": [
+      "crates/syndic-storage/src/read/content_text.rs",
+      "crates/syndic-storage/src/read/content_text/segment.rs",
+      "crates/syndic-storage/tests/content_text_range.rs",
+      "crates/syndic-storage/tests/content_text_segment_range.rs",
+      "crates/syndic-storage/tests/content_text_segment_range/corruption.rs"
+    ],
+    "symbols": [
+      "SyndicStorage::sealed_content_text_range_inner",
+      "SyndicStorage::sealed_content_text_segment_range_inner",
+      "TextPageAssembly",
+      "MarkerPolicy"
+    ],
+    "evidence": [
+      "content_text.rs:143-219 and segment.rs:261-347 repeat input ceiling checks, stabilized manifest absence, manifest validation, empty-page assembly, desired end calculation, existing read_text_page invocation, second manifest equality, UTF8 boxing and residency release.",
+      "They already share read_text_page and MarkerPolicy, so an additional private page orchestrator removes actual duplication without inventing a general streaming framework.",
+      "Whole-content offset validation occurs after manifest acquisition; segment offset validation occurs before it. Marker-free and proven-segment physical boundary semantics must stay distinct."
+    ],
+    "proposal": "Use a private content/segment request enum to drive shared manifest-stabilized assembly and a common internal text-page result; retain each public wrapper and its validation order, operation diagnostics and segment fields. Eliminate the second pure validate_manifest after second==first proves the previously validated manifest unchanged. Keep proof acquisition separate from page reading.",
+    "required_contract_changes": "None. Preserve marker rejection versus opaque segment authorization, offset error variants/order, terminal empty page, exact continuation, zero-copy into_text behavior, independent page-time marker boundary checking and test-fault residency drop timing.",
+    "estimated_net_lines": {
+      "minimum": 65,
+      "maximum": 100,
+      "basis": "Deduplicate the ~75-line orchestration bodies while retaining request-specific validation and result wrappers; reserve helper/policy/regression glue. No byte transport savings counted here."
+    },
+    "verification": [
+      "Run content_text_range and content_text_segment_range with fault features, especially missing/reference mismatch precedence, nonprogress UTF8, leading/adjacent/trailing empty segments.",
+      "Retain manifest-change concurrent error, zero-copy pointer assertion and bounded later-page reads after a large proof scan.",
+      "Retain lifecycle residency tests through both tracked production paths."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-004",
+    "title": "Share staged and published provider narrative-span authentication",
+    "paths": [
+      "crates/syndic-storage/src/validation/provider_frame.rs",
+      "crates/syndic-storage/src/validation/provider_frame/published.rs",
+      "crates/syndic-storage/src/validation/provider_frame/prefix.rs"
+    ],
+    "symbols": [
+      "FrameSpanVerifier::write_text_span",
+      "PublishedSpanVerifier::append_narrative_span",
+      "advance_narrative"
+    ],
+    "evidence": [
+      "provider_frame.rs:335-388 and published.rs:281-330 repeat checked logical-base offsets, contiguous frontier comparison, ProviderNarrativeSpanRecord construction, one bounded indexed point read, exact equality and advance_narrative.",
+      "Staged write_text_span has persisted completion-check matching and key/value validation; published write_text_span has narrative-role/completion-shape policy. Their narrative_seed rules differ on first generation."
+    ],
+    "proposal": "Extract a private append-authenticated-narrative-span helper receiving target frame/content, logical base, prior narrative and decoded text span; return the next narrative frontier. Keep staged/published completion handling, source-byte availability and generation seed checks in their current callers. Retain exact key/value validation in the shared helper and allow operation-specific diagnostics where tests require them.",
+    "required_contract_changes": "None. Retain fixed 1024-byte narrative point limit, exact reconstructed span equality, chain/count progression, partial staging rules, published first-generation requirement and completion span cardinality.",
+    "estimated_net_lines": {
+      "minimum": 40,
+      "maximum": 65,
+      "basis": "Remove one ~55-line duplicate append block, reserve helper signature/policy glue and small verification adjustments. Error adapter removal belongs only to SQ-005."
+    },
+    "verification": [
+      "Run staged provider frame, published source replay, narrative prefix and completion validation cases.",
+      "Exercise changed key/value, frame digest, source offsets, wrong chain, multiple completion spans and partial staging.",
+      "Retain physical ReadError classification."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-005",
+    "title": "Use the existing validation error for identical internal error domains",
+    "paths": [
+      "crates/syndic-storage/src/validation.rs",
+      "crates/syndic-storage/src/validation/provider_frame.rs",
+      "crates/syndic-storage/src/validation/provider_frame/completion.rs",
+      "crates/syndic-storage/src/validation/provider_frame/prefix.rs",
+      "crates/syndic-storage/src/validation/provider_frame/published.rs",
+      "crates/syndic-storage/src/validation/provider_frame/source.rs",
+      "crates/syndic-storage/src/validation/content/physical.rs",
+      "crates/syndic-storage/src/validation/projections/source.rs"
+    ],
+    "symbols": [
+      "ProviderFrameStorageValidationError",
+      "FrameSpanError",
+      "SyndicValidationError",
+      "provider_frame_validation_error",
+      "storage_error",
+      "frame_error",
+      "validation_error",
+      "frame_span_validation_error",
+      "provider_validation_error"
+    ],
+    "evidence": [
+      "provider_frame.rs:33-36 and :264-267 both declare exactly Read(ReadError) and Invariant(&'static str), identical to error.rs:430-433 SyndicValidationError.",
+      "Seven helpers/inline matches in completion, prefix, published, source, physical and projection source merely translate those variants losslessly.",
+      "Only two mutation callers use ProviderFrameStorageValidationError (mutation/provider_frame/completion.rs:108-111 and mutation/live/event/item/publication.rs:39-40); their Read versus domain-specific mutation failure distinction must remain as explicit boundary maps."
+    ],
+    "proposal": "Use the existing crate-private SyndicValidationError throughout provider storage and span validation, including the text-span sink associated Error. Remove both duplicate internal enums and lossless conversion helpers. Update the two mutation boundary imports/patterns while preserving their domain-specific mappings. Keep the FrameChunkReader ReadError side channel required to cross std::io unchanged; do not parse Display/source chains.",
+    "required_contract_changes": "None. Public mutation/read/registration error domains stay unchanged. The reused crate-private enum already implements DomainCallbackError with an explicit Read channel. Do not alter its existing Display/Error behavior as part of this finding.",
+    "estimated_net_lines": {
+      "minimum": 55,
+      "maximum": 85,
+      "basis": "Delete two small enums and lossless internal mapping bodies/calls, subtract import and two caller boundary adjustments. Excludes root-wide manual Error/Display derive opportunities and SQ-004 append sharing."
+    },
+    "verification": [
+      "Run provider staging/completion/source replay and schema validation corruption tests.",
+      "Verify physical failures still become DomainCallbackSource::Read and mutation physical Read variants; invariant failures retain typed domain rejection.",
+      "Check default and test-faults builds for sink generic constraints and updated internal exports."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-006",
+    "title": "Construct the delivering-read fixture once",
+    "paths": [
+      "crates/syndic-storage/tests/delivering_steering_read.rs"
+    ],
+    "symbols": [
+      "seed_large_delivering_generation"
+    ],
+    "evidence": [
+      "The records vector at lines 74-166 directly constructs the final eight records. Lines 168-276 then rebuild those same variants with the same field values.",
+      "Seven rewrites are exact identities. The HistorySummary arm advances revision a second time; preserve that final revision by constructing it directly at line 92.",
+      "The later additions split at line 320 and commits establish 384 members; the actual test requires twelve point reads."
+    ],
+    "proposal": "Delete the eight-variant rewrite loop and construct HistorySummary with its existing final revision in the initial vector. Keep fixture commit chunking, source admission linkage, generation totals and every test assertion.",
+    "required_contract_changes": "None; test fixture's final durable bytes/values remain identical.",
+    "estimated_net_lines": {
+      "minimum": 105,
+      "maximum": 115,
+      "basis": "Remove the 109-line loop, add one extra checked revision advance in construction; no new helper or test dependency needed."
+    },
+    "verification": [
+      "Run delivering_steering_read with test-faults and keep exactly twelve point reads.",
+      "Review the final eight fixture values before/after, including the double summary revision advancement and split_off(8)."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-007",
+    "title": "Share revision-fenced accepted-source page transport",
+    "paths": [
+      "crates/syndic-storage/src/read/accepted_ready/source.rs",
+      "crates/syndic-storage/src/read/accepted_next/source.rs"
+    ],
+    "symbols": [
+      "SyndicStorage::accepted_ready_source_page",
+      "SyndicStorage::accepted_next_source_page",
+      "accepted_ready_limits",
+      "accepted_next_limits"
+    ],
+    "evidence": [
+      "Both ~90-line modules construct the same global ThreadRouteKey bounds, validate a revision-bearing cursor, clamp limits, read one forward page, validate identity, recheck domain revision and construct a continuation.",
+      "AcceptedNext wraps each record in AcceptedNextSource with source_revision, while ready returns the record. Public cursors and stale/invalid diagnostics deliberately differ."
+    ],
+    "proposal": "Introduce a private ThreadRouteKey source-page transport specialized through two small family/record adapters. It should return bounded records, accounting and last key after revision confirmation. Keep public cursors/types and their validation in thin wrappers; avoid extending this into a general query framework.",
+    "required_contract_changes": "None. Preserve domain revision fence before and after every page, strict cursor identity, per-API clamped maxima and next-source revision wrapper.",
+    "estimated_net_lines": {
+      "minimum": 35,
+      "maximum": 55,
+      "basis": "Deduplicate ~70 lines of transport and metadata logic after retaining two cursor/result wrappers and minimal family identity adapters."
+    },
+    "verification": [
+      "Run accepted ready/next source-page continuation, stale source, invalid cursor and key/value mismatch cases.",
+      "Retain empty-page-with-has_more invariant and exact stored/decoded accounting."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SQ-R01",
+    "title": "Retain exhaustive corruption validation and historical descendant boundaries",
+    "paths": [
+      "crates/syndic-storage/src/validation/scan.rs",
+      "crates/syndic-storage/src/validation/content/physical.rs",
+      "crates/syndic-storage/src/validation/graph.rs",
+      "crates/syndic-storage/src/validation/ordering.rs",
+      "crates/syndic-storage/src/validation/projections/item_replay.rs",
+      "crates/syndic-storage/src/validation/projections/transcript/snapshot.rs",
+      "crates/syndic-storage/src/validation/draft_marker_admission.rs",
+      "crates/syndic-storage/tests/recovery_reads.rs",
+      "crates/syndic-storage/tests/context_temporal.rs",
+      "crates/syndic-storage/tests/reopen.rs"
+    ],
+    "symbols": [
+      "scan / scan_range",
+      "validate_chunks / validate_byte_spans",
+      "validate_path_state_snapshot",
+      "ProjectionReplay",
+      "validate_live_membership",
+      "exercise_physical_corruption_partition"
+    ],
+    "evidence": [
+      "Explicit validation must visit malformed physical records outside typed ranges and orphan reverse indexes; recovery_reads exercises 63 families x three malformed encodings.",
+      "Historical context, binding, promotion, compaction and transcript witnesses intentionally permit selected-away paths and allowed descendant revisions.",
+      "Provider/item replay already reuses canonical parser/materialization logic and streams compact state. Draft marker admission membership is explicitly bounded by its admitted tree envelope."
+    ],
+    "proposal": "Reject replacing exhaustive validators with ordinary bounded read methods, sampling, only forward-reference checks, current-record equality, or whole-home collections. Reject generic ORM/serde/state-machine dependencies for these exact V7 key/tag and provenance contracts. Local pure predicates may be shared only after identifying an identical relationship and retaining context-specific acquisition and temporal rules.",
+    "required_contract_changes": "Those rejected alternatives would weaken physical corruption coverage, exact durable provenance or historical lifecycle semantics; no such contract change is recommended.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Retained boundary, no savings counted."
+    },
+    "verification": [
+      "Keep exhaustive malformed physical record matrix and explicit schema-validation versus routine reopen distinction.",
+      "Keep selected-away context, old projection generation, prefix replay and frontier corruption tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retain"
+  },
+  {
+    "id": "SQ-R02",
+    "title": "Defer broader recovery/stop consolidation and cross-slice expected-record reuse",
+    "paths": [
+      "crates/syndic-storage/src/read/stop_admission.rs",
+      "crates/syndic-storage/src/read/promotion/exact.rs",
+      "crates/syndic-storage/src/read/promotion/exact/descendant.rs",
+      "crates/syndic-storage/src/read/delivery_recovery/classifier/active.rs",
+      "crates/syndic-storage/src/validation/stop.rs",
+      "crates/syndic-storage/src/validation/projections/source.rs",
+      "crates/syndic-storage/src/validation/queries/activity.rs",
+      "crates/syndic-storage/tests/stop_admission_read.rs"
+    ],
+    "symbols": [
+      "StopAdmissionPass",
+      "validate_target",
+      "validate_execution",
+      "merge_assistant_phase",
+      "activity_order"
+    ],
+    "evidence": [
+      "Stop admission contains overlapping recovery facts and stop observations, but its raw-pass versus complete-pass confirmation schedule is exercised by mutation at the eighth and thirty-third read.",
+      "Several immutable target tuples recur in recovery and validation; current-gate revision constraints and binding kinds differ.",
+      "Promotion successor derivation and activity/assistant phase folds may duplicate mutation-owned code, but caller body ownership lies in another audit slice."
+    ],
+    "proposal": "Do not assign savings for a broad unified recovery snapshot or wholesale validator merge without a concrete race-preserving design. Coordinate pure expected-record/phase/order helper opportunities with the mutation reviewer and count them once there if confirmed. Retain option fields needed to represent independently missing corrupt constituents.",
+    "required_contract_changes": "None proposed. Any changed corruption-versus-drift result or observation boundary would require explicit authority review.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Deferred/coordination opportunity, no speculative or double-counted savings."
+    },
+    "verification": [
+      "If later pursued, preserve all stop-admission fault races, missing/reverse authority cases and typed ineligibility states.",
+      "Trace pure constructors across mutation and reconciliation before estimating deletion."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "defer"
+  }
+]

@@ -1,0 +1,345 @@
+[
+  {
+    "id": "AM-001",
+    "title": "Share pure request translation between initial seed matching and mounted dispatch",
+    "paths": [
+      "crates/beryl-app/src/main_window/composer_slot/dispatch/translate.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/construction.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/selected_preparation.rs"
+    ],
+    "symbols": [
+      "page_seed_compatible",
+      "object_seed_compatible",
+      "page_purpose",
+      "object_purpose",
+      "MainWindowConversationComposerActivationSeed"
+    ],
+    "evidence": [
+      "All four files fully reviewed. construction.rs:301-432 repeats the text-demand, marker-scope/direction and page/object-purpose conversions in composer_slot/dispatch/translate.rs:35-49,118-146,355-390.",
+      "conversation_composer_owner.rs:92-95 wraps already tagged ComposerHostResponse values in a second Page/ObjectPage enum; construction and selected_preparation unwrap or reconstruct that tag. Seed eligibility additionally checks kind, purpose, no marker cursor and request capacities, so it is not equivalent to ordinary request dispatch."
+    ],
+    "proposal": "Expose small private pure conversion functions at the existing main_window adapter boundary and use them from seed compatibility and normal dispatch. Store the existing tagged response directly if doing so removes the second enum without weakening seed-kind checks. Net reduction 60-95 lines, central 80, after helper signatures, caller adapters and focused verification. No host request/lifecycle changes and no AP-003 activation cleanup savings included.",
+    "required_contract_changes": [
+      "None. Preserve unsupported-purpose rejection, exact selection/binding validation, forward/backward/validation text demand, inclusive-range versus exact-anchor marker scope, cursor-free seed eligibility, object count and retained-byte limits, and the separate purpose mapping for MutationSuccessor."
+    ],
+    "estimated_net_lines": -80,
+    "estimated_net_reduction_range": [
+      60,
+      95
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Retain initial_composer, selected_composer_preparation, pending_composer_activation and main_window_composer coverage for compatible/incompatible seeds, bad kind/binding, pending activation cancellation and stale completion. Keep forward/backward, anchor/range and unsupported-purpose behavior explicit; tests must not calculate expected values through the new production converter."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-002",
+    "title": "Project native recovery prompt presentation once",
+    "paths": [
+      "crates/beryl-app/src/main_window/conversation_composer_mount/native_lineage/prompt.rs"
+    ],
+    "symbols": [
+      "test_native_lineage_prompt_diagnostics",
+      "render_native_lineage_prompt",
+      "render_native_lineage_command"
+    ],
+    "evidence": [
+      "The entire prompt module was reviewed. test_native_lineage_prompt_diagnostics:40-182 and render_native_lineage_prompt:276-430 independently derive labels, enabled/running/failed states and disabled explanations from the same loading/unavailable/leaving/session snapshot.",
+      "The diagnostic's generic disabled explanations for loading/unavailable/leaving differ from the renderer's actual wording. The two projections therefore provide weaker evidence than a diagnostic of the actual presented state."
+    ],
+    "proposal": "Prepare one private prompt-view value with command labels, status, enabled flags and disabled explanations, plus the existing detail/backend-error information and disposal overlay. Render and expose diagnostics from that value. Use defaults with narrow overrides for repeated ready/failed command tuples. Net reduction 100-160 lines, central 130, after the view type, both consumer adaptations and verification. Keep keyboard/action routing and GPUI rendering in their current owner.",
+    "required_contract_changes": [
+      "None. Preserve doc/features/backend-runtime-recovery/gui.md and doc/gui/widgets/native-lineage-recovery-prompt/spec.md: fixed action placement, focus ownership, shortcut eligibility, loading/running/failed states, disabled explanations, and complete widget quiescence before prompt entry. Do not change displayed copy merely to match old diagnostic strings."
+    ],
+    "estimated_net_lines": -130,
+    "estimated_net_reduction_range": [
+      100,
+      160
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Retain mounted recovery entry/restoration/disposal tests and existing native-lineage prompt GUI tests. Verify actual rendered labels/tooltips and keyboard/focus behavior as well as diagnostics; helper-only assertions cannot establish rendered behavior."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-003",
+    "title": "Use one quantity value for residency bounds and observed usage",
+    "paths": [
+      "crates/beryl-app/src/main_window/conversation_composer.rs"
+    ],
+    "symbols": [
+      "MainWindowComposerResidencyBound",
+      "MainWindowComposerResidencyUsage",
+      "MainWindowComposerActivationResidency",
+      "checked_add",
+      "admit"
+    ],
+    "evidence": [
+      "conversation_composer.rs:19-219 repeats the same seven quantities in bound, usage and current activation snapshot fields. Bound and usage separately implement the same checked per-field addition; admission copies all seven values into a third layout.",
+      "The maximum and observed quantities have distinct meanings. The two-times-resident plus pending budget arithmetic and componentwise admission checks are required, including checked conversion/multiplication/addition."
+    ],
+    "proposal": "Retain distinct bound and usage wrappers over one private seven-field quantity value, and let the admitted activation snapshot retain its usage value directly. Share checked addition and remove the snapshot field-copy list while retaining existing public getters. Net reduction 20-35 lines, central 25, after wrapper/helper costs. This is deliberately a small representation cleanup, not a generic units framework or relaxed admission.",
+    "required_contract_changes": [
+      "None. Preserve typed bound versus observed usage, every checked arithmetic failure, componentwise <= checks, current object-page accounting, all text/object byte/item/request limits, and observable residency diagnostics. This does not impose a logical draft size cap."
+    ],
+    "estimated_net_lines": -25,
+    "estimated_net_reduction_range": [
+      20,
+      35
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Retain conversation_composer_gpui, pending_composer_activation and mounted_composer_scale residency assertions, including simultaneous old/new ownership, overflow/admission rejection, pending requests and large drafts. Add only an uncovered overflow branch if needed."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-004",
+    "title": "Reuse the test-fault gate primitive across mount and service",
+    "paths": [
+      "crates/beryl-app/src/main_window/conversation_composer_mount/submission/test_faults.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/service.rs"
+    ],
+    "symbols": [
+      "CutPreparationTestGate",
+      "PendingCompletionTestGate",
+      "SubmissionAdvanceTestGate",
+      "install_pending_test_gate",
+      "MainWindowComposerPendingDispatchTestRelease"
+    ],
+    "evidence": [
+      "service.rs:68-192 repeats Arc<Mutex<...>> state, released/waker management and Future polling across cut preparation and pending work; pending dispatch and completion have duplicated release handles.",
+      "submission/test_faults.rs:14-106 repeats the entered/released/waker gate and release/poll mechanics. service.rs:785-843 and the submission installer also repeat initial state construction; the native-lineage gates already reuse PendingCompletionTestGate."
+    ],
+    "proposal": "Use one private cfg(test-faults) gate/release pair with explicit entered observation and wake-on-release. Keep behavior-named outer release handles and the existing placement/admission methods. Net reduction 90-140 lines, central 115, after the common primitive, wrappers, imports and call adaptations. Count only these two source files; no AP fixture or test setup savings. No external synchronization crate is justified for this small primitive.",
+    "required_contract_changes": [
+      "None. Preserve explicit release, cloning behavior, wake-after-registration and release-before-first-poll behavior, no second installed gate, and distinct fault placement before dispatch, after dispatch, during seed validation, before cut deletion and during submission advance. Do not turn release into implicit drop behavior or erase fault timing."
+    ],
+    "estimated_net_lines": -115,
+    "estimated_net_reduction_range": [
+      90,
+      140
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Retain blocked cut clipboard, pending activation pre/post-dispatch, native-lineage validation/source cleanup and mounted submission cancellation tests. Ensure existing release-before-poll and lost-route/drop paths remain covered; do not replace timing assertions with gate-unit-only checks."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-005",
+    "title": "Share mounted-composer widget configuration and construction fixtures",
+    "paths": [
+      "crates/beryl-app/tests/conversation_composer_gpui.rs",
+      "crates/beryl-app/tests/main_window_composer_mount.rs",
+      "crates/beryl-app/tests/mounted_composer_scale.rs",
+      "crates/beryl-app/tests/mounted_composer_submission.rs",
+      "crates/beryl-app/tests/pending_composer_activation.rs",
+      "crates/beryl-app/tests/pending_composer_activation/support.rs"
+    ],
+    "symbols": [
+      "widget_config",
+      "mounted_submission_fixture",
+      "MainWindowConversationComposerMount::new"
+    ],
+    "evidence": [
+      "Every body in these six test/support files was reviewed. Widget configuration repeats in conversation_composer_gpui.rs:1273-1346, main_window_composer_mount.rs:3001-3074, mounted_composer_submission.rs:872-946, pending_composer_activation/support.rs:129-208 and mounted_composer_scale.rs:1375-1451; scale deliberately uses different capacities.",
+      "Mount constructor/fixture-to-host-to-slot-to-service setup repeats across main_window_composer_mount.rs, pending_composer_activation.rs and mounted_composer_submission.rs. The first submission scenarios repeat the existing mounted_submission_fixture mechanics at :753-803."
+    ],
+    "proposal": "Add behavior-named test support for the common widget profile with explicit identity/budget/page-capacity/clipboard overrides, plus a thin mount constructor accepting an existing service, seal service, configuration, window and context. Reuse the existing submission fixture where its inputs match. Preserve test-specific payload, setup order and rendering roots. Net reduction 350-600 lines, central 475, after shared helpers, parameters, imports and local wrappers. Excludes all asset admission/publication helpers (AP-005), durable draft seeding (AM-006), generic host protocol helpers (AP-006), TestHome construction and changes already mandated by graph-owned service construction.",
+    "required_contract_changes": [
+      "None. Keep each scenario's residency/geometry/object budgets, identity/generation, settlement coordinator, page limits, clipboard policy, focus routing, actual mount-child rendering versus contribution-only rendering, and drop/cancellation ownership. No parameterized mega-harness and no assertion or timing-scenario removal."
+    ],
+    "estimated_net_lines": -475,
+    "estimated_net_reduction_range": [
+      350,
+      600
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Run the existing six affected GPUI/integration test targets after implementation using their existing fault feature configuration. Retain the large-draft and 257-marker scale scenarios, geometry and bounds assertions, request counts, route switch/drop, native cleanup capacity, pending activation and submission failure timing. Fixture refactoring needs no mirror tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-006",
+    "title": "Share durable streamed draft seeding in scale and pending-activation fixtures",
+    "paths": [
+      "crates/beryl-app/tests/mounted_composer_scale/support.rs",
+      "crates/beryl-app/tests/pending_composer_activation/support.rs"
+    ],
+    "symbols": [
+      "seed_large_published_draft",
+      "seed_activation_published_draft_chunks",
+      "open_session",
+      "open_activation_session",
+      "append_chunk",
+      "append_activation_chunk",
+      "prepare_page",
+      "begin_input",
+      "selector"
+    ],
+    "evidence": [
+      "Both physical support files were fully reviewed. mounted_composer_scale/support.rs:97-166,300-518 and pending_composer_activation/support.rs:217-546 duplicate session opening, per-chunk page begin/transfer/durable staging, bounded build advancement, settlement, publication and selector/position mechanics.",
+      "Payload builders deliberately differ: scale uses 32,768-byte chunks and varied bytes; activation uses smaller chunks with newline placement. The bounded 16,384-iteration build loops and explicit publication are setup semantics, not redundant test scenarios."
+    ],
+    "proposal": "Extract a streamed durable seed driver with caller-supplied chunk text, offsets/counts and explicit identities. Retain scenario-owned text generation and independent expected byte/tail assertions, and reuse the common open/stage/settle/publication mechanics. Net reduction 180-260 lines, central 220, after shared support/parameters/imports and adapters. Charge the common implementation once; if AP-006 supplies lower-level support later, do not count its implementation or external files again. Excludes widget/mount construction in AM-005, asset helpers in AP-005 and all production storage code.",
+    "required_contract_changes": [
+      "None. Preserve chunked bounded processing without flattening, exact operation/session identities, expected extent and positions, bounded retries with failure on exhaustion, outcome/later-failure checks, publication capture/reconciliation, saved root/history selector and scenario-specific content. Test oracles remain independent of the seeding helper."
+    ],
+    "estimated_net_lines": -220,
+    "estimated_net_reduction_range": [
+      180,
+      260
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Run mounted_composer_scale and pending_composer_activation with their existing feature configuration. Retain saved opening with nonzero candidate generation, varied tail bytes, newline navigation, large-draft bounded ownership, route changes and full native restoration seed quiescence."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-007",
+    "title": "Track the mounted allocator reset under the existing host-numbering defect",
+    "paths": [
+      "crates/beryl-app/src/main_window/composer_slot/dispatch.rs"
+    ],
+    "symbols": [
+      "MainWindowComposerDispatcher::replace_binding"
+    ],
+    "evidence": [
+      "dispatch.rs:133-136 resets the dispatcher request sequence on binding replacement. The same-host edit/history adoption fence reset is already AP-007.",
+      "crates/beryl-app/doc/design-catalog-and-composer.md:33-37 requires one monotonic host request sequence for a live host/session; only a fresh host generation may reset it. The mounted allocator and host high-water rejection must agree."
+    ],
+    "proposal": "Extend AP-007's separately authorized correctness work to the mounted allocation owner. Preserve the allocator high-water mark on same-host candidate replacement; retain stale-request cancellation and fresh-generation resets. This is one cross-layer defect, not a second simplification finding. Zero savings.",
+    "required_contract_changes": [
+      "None; restore the existing host request-numbering contract. Widget mutation/history operation numbering is a separate identity domain."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "No compiler or runtime evidence claimed. In implementation, admit a high request ID, adopt edit/undo/redo in the same host, reject reuse and accept a larger ID; separately verify fresh-host reset and exhaustion."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "deferred",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-008",
+    "title": "Resolve duplicate test support module declarations before compiling the mount target",
+    "paths": [
+      "crates/beryl-app/tests/main_window_composer_mount.rs"
+    ],
+    "symbols": [
+      "support"
+    ],
+    "evidence": [
+      "At the recorded baseline, main_window_composer_mount.rs:5-8 declares two unconditional mod support items, with #[path] values native_lineage_gui/support.rs and main_window_composer_slot/support.rs. The enclosing file is cfg(feature = \"test-faults\").",
+      "git show e6172f7c49bebef78d51831e621e70c8ac0d6a07:crates/beryl-app/tests/main_window_composer_mount.rs confirms both declarations are in the baseline. Both helpers are used: native marker-readiness support and slot Fixture/operation_id support."
+    ],
+    "proposal": "During separately authorized implementation, give the two modules distinct behavior-named aliases and qualify their existing consumers. Static inspection predicts a duplicate module-name compilation error when test-faults enables this target; no compilation was run. Zero simplification savings and no deletion of either support module.",
+    "required_contract_changes": [
+      "None. Preserve native marker readiness and slot fixture behavior; this is a test namespace repair."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Compile the main_window_composer_mount integration target with test-faults during implementation, then retain its behavior suite. No current run result is claimed."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "deferred",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AM-009",
+    "title": "Retain distinct mount, widget, service and native cleanup custody boundaries",
+    "paths": [
+      "crates/beryl-app/src/main_window/composer_slot.rs",
+      "crates/beryl-app/src/main_window/composer_slot/retirement.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/close.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/close/work.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/native_disposal.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/native_lineage.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/native_lineage/realization.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_mount/pending_presentation.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/clipboard.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/clipboard/collection.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/clipboard/paging.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/dispatch.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/lifecycle.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/prepublication.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/service.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/service/close.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/service/close_cleanup.rs",
+      "crates/beryl-app/src/main_window/conversation_composer_owner/service/native_disposal.rs",
+      "crates/beryl-app/src/main_window/image_marker_surface.rs",
+      "crates/beryl-app/src/main_window/initial_composer.rs",
+      "crates/beryl-app/src/main_window/initial_composer/activation.rs",
+      "crates/beryl-app/src/main_window/initial_composer/retirement.rs",
+      "crates/beryl-app/src/main_window/marker_metadata_authority.rs"
+    ],
+    "symbols": [
+      "MainWindowConversationComposerMount",
+      "MainWindowConversationComposerService",
+      "MainWindowComposerSlot",
+      "MainWindowConversationComposer",
+      "retire_native_lineage_sources",
+      "start_native_lineage_cleanup_driver"
+    ],
+    "evidence": [
+      "All cohort source and tests reviewed together. Mount visibility, widget realization, service-held durable session/close work and retiring native sources terminate at different moments. The service intentionally retains cleanup custody after widget/route loss; tests exercise blocked validation, two retained cleanup sources and capacity rearm.",
+      "Saved opening is clean based on the authenticated saved selector even with nonzero candidate generation. Resident close retains a read-only selectable/copyable/scrollable widget until final disposal, and close failure must not clear an independent unavailable state. Clipboard paging retains bounded range state and one marker tail across physical pages.",
+      "Native prompt state has many optional fields, but cancellation ordering, restoration seed, current/estimated predecessor and service-owned cleanup are not interchangeable. A wholesale enum/RAII replacement did not establish a conservative net reduction without moving these responsibilities."
+    ],
+    "proposal": "Retain these domain boundaries and the existing RangeClipboardCoordinator integration. Local aggregate-field or terminal-tail cleanup can be reconsidered during implementation but has no counted savings here. No substantial dependency replacement was identified in this cohort: the remaining cost is exact identity, bounded editor ownership and durable cleanup integration; replacing it with a generic lifecycle/task framework would retain those adapters. This is a boundary assessment, not a claim of an exhaustive crates.io survey. Exclude already-mandated lifecycle/registry removal and keep PRE-015 a proposal; unmounted required architecture is not dead code.",
+    "required_contract_changes": [
+      "None. Effective authority remains composer feature/GUI and beryl-app design, plus backend runtime recovery GUI/native prompt contracts. Preserve exact root/history submission, stale generation fencing, checked range/object/geometry budgets, mark/image metadata authentication, close/flush attempt identity and cleanup release ordering."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "verification": [
+      "Observational audit only; no build, tests or GUI execution performed.",
+      "Implementation of any later cleanup must retain exact_root_submission, saved_opening, resident_close_flush, composer_lifecycle, mounted/pending activation, scale and native recovery scenario evidence. No tests or dependencies were changed during this audit."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  }
+]

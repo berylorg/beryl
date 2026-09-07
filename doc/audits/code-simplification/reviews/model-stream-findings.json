@@ -1,0 +1,295 @@
+[
+  {
+    "id": "MS-001",
+    "title": "Derive model errors with the existing workspace thiserror dependency",
+    "paths": [
+      "crates/beryl-model/src/asset.rs",
+      "crates/beryl-model/src/ids.rs",
+      "crates/beryl-model/src/placement.rs",
+      "crates/beryl-model/src/recovery.rs",
+      "crates/beryl-model/src/revision.rs",
+      "crates/beryl-model/src/runtime.rs",
+      "crates/beryl-model/src/syndic.rs",
+      "crates/beryl-model/Cargo.toml"
+    ],
+    "symbols": [
+      "ImageLabelOrdinalError",
+      "AssetProofError",
+      "IdentityParseError",
+      "PlacementError",
+      "RecoveryItemSequenceError",
+      "RevisionError",
+      "ValueError",
+      "CasGenerationError",
+      "CasNativeTurnCountError"
+    ],
+    "evidence": [
+      "Nine error enums repeat manual Display match arms and empty Error implementations: asset.rs:115-124,405-421; ids.rs:33-51; placement.rs:49-58; recovery.rs:182-222; revision.rs:14-23; runtime.rs:48-79; syndic.rs:110-116,158-166.",
+      "Root Cargo.toml:54 already declares thiserror 2.0.18; Cargo.lock:5597-5602 resolves it; beryl-stream already consumes it. Every model formatting arm maps directly to an error attribute with the same named-field interpolation."
+    ],
+    "proposal": "Add thiserror.workspace = true to beryl-model and replace only handwritten error formatting/Error impls with derive(Error) and exact existing messages. Preserve all enum variants, fields, validation, serde behavior, and non-error Display implementations. Estimated reduction 90-115 lines including new attributes/imports; no lockfile upgrade needed.",
+    "required_contract_changes": [
+      "No product or public error-shape change. Model purity permits this compile-time error derive dependency; record dependency-boundary clarification only if Operator wants it explicit."
+    ],
+    "estimated_net_lines": -100,
+    "verification": [
+      "Not executed: audit is read-only.",
+      "On implementation: verify every old/new error message and source()==None; focused model nextest coverage; metadata and focused Cargo check before analyzer restart because the member manifest changes."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "status": "recommended_existing_workspace_dependency",
+        "maturity": "Published 1.0 lineage since 2019; workspace already relies on this exact resolved version. Current docs also list newer 2.0.20, but no upgrade is necessary for this reduction.",
+        "license": "MIT OR Apache-2.0",
+        "features": "Workspace default features; default std; thiserror-impl =2.0.18.",
+        "platform": "Pure Rust derive output; no platform-specific runtime or I/O dependency. Upstream rust-version 1.68 is below workspace 1.92.",
+        "semantic_gaps": "None identified for these field-only error enums. Retain exact messages and avoid introducing from/source/backtrace attributes.",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://docs.rs/crate/thiserror/2.0.18",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "MS-002",
+    "title": "Replace manual channel ring bookkeeping with a preallocated VecDeque and direct message moves",
+    "paths": [
+      "crates/beryl-stream/src/channel.rs",
+      "crates/beryl-stream/tests/page_and_channel.rs"
+    ],
+    "symbols": [
+      "fixed_channel",
+      "ChannelState",
+      "FixedChannelSender::try_send",
+      "FixedChannelSender::send_timeout",
+      "take_head"
+    ],
+    "evidence": [
+      "channel.rs:10-44 initializes Vec<Option<T>> and separate head, tail, len fields; :63-80 retains this duplicate ring state.",
+      "try_send at :85-103 and send_timeout at :105-149 duplicate enqueue bookkeeping; timed send wraps an always-retained T in Option and takes it only on paths that immediately return.",
+      "take_head at :251-258 manually clears an occupied slot, advances head and decrements len. Admission already rejects at configured capacity under the same mutex.",
+      "Official std docs checked 2026-09-06: VecDeque::capacity is the element count available without reallocation, and try_reserve_exact (stable since Rust 1.57) guarantees sufficient capacity after success while returning allocation/overflow errors: https://doc.rust-lang.org/std/collections/struct.VecDeque.html#method.try_reserve_exact . Physical spare capacity may exceed the request, so configured logical capacity must remain separate."
+    ],
+    "proposal": "Use std::collections::VecDeque<T> with fallible up-front reserve and retain a separate configured logical capacity. Admit push_back only when queue.len() < configured capacity; pop_front under the existing lock. This preserves fixed backing after construction and removes head/tail/len/Option-slot state. Carry the timed-send message directly as T and move it only in terminal return branches; unify duplicate expiry handling locally. Preserve all channel outcome and telemetry semantics. Estimated reduction 20-40 lines; do not build a generic channel framework.",
+    "required_contract_changes": [
+      "None for message count, order, wakeups, custody, or timeout behavior. Preserve explicit representability/allocation failures before backing allocation; do not quietly alter endpoint-close lifecycle."
+    ],
+    "estimated_net_lines": -30,
+    "verification": [
+      "Not executed: audit is read-only.",
+      "On implementation: existing capacity/FIFO, exact Full/Timeout/Closed messages, zero and unrepresentable deadline, backpressure, closure and high-water tests; add focused non-Copy/drop-count custody and repeated wraparound evidence if the representation change needs it.",
+      "Check no push can exceed configured capacity even when VecDeque allocates a larger physical capacity; keep callbacks/destructors out of locked mutation paths."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "MS-003",
+    "title": "Remove page-lease generation machinery used only as test instrumentation",
+    "paths": [
+      "crates/beryl-stream/src/page.rs",
+      "crates/beryl-stream/tests/page_and_channel.rs",
+      "crates/beryl-app/tests/unit/provider_broker_channel.rs"
+    ],
+    "symbols": [
+      "PagePoolState::next_generation",
+      "take_generation",
+      "PageLease::generation",
+      "PagePoolError::GenerationExhausted",
+      "page_pool_is_fixed_transferable_and_weakly_observable",
+      "cancellation_during_fragment_ack_wait_releases_lease_for_later_broker_work"
+    ],
+    "evidence": [
+      "page.rs:32,63,77-88,94,119-123,137,187-189,246-247 stores a monotonic number, branches on exhaustion, and exports it on each lease.",
+      "Serena PageLease::generation references plus scoped textual follow-up found only stream test :23 and app provider_broker_channel test :83,127,141,187; no production consumer. App test body :76-197 was additionally inspected.",
+      "The app custody test already proves exact fragment bytes/context, one-page occupancy, release to zero, successful subsequent work, high-water 1, and total_leases 2. Package/system bounded-dataflow contracts require transferable owned pages, bounded residency and observable lease counts, not per-lease numeric identity."
+    ],
+    "proposal": "Delete generation state, take_generation, accessor, and GenerationExhausted error. Keep non-cloneable PageLease ownership and existing total_leases diagnostics. Replace generation-specific test assertions with unchanged total_leases while custody is outstanding and exact bytes/occupancy/release checks. This removes a permanent exhaustion failure unrelated to available pages. Estimated reduction 25-35 source/test lines.",
+    "required_contract_changes": [
+      "Public API removal of PageLease::generation and PagePoolError::GenerationExhausted; Operator acceptance should record the boundary removal if adopted. No current authoritative product/system requirement needs numeric page generations.",
+      "Update the named app custody test in the eventual implementation slice; it was inspected for references only and is outside this worker's coverage inventory."
+    ],
+    "estimated_net_lines": -30,
+    "verification": [
+      "Not executed: audit is read-only.",
+      "On implementation: confirm full-workspace reference search after removal; focused stream and provider_broker_channel nextest targets preserve exact returned payload, no re-lease during handoff, release and later reuse."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "MS-004",
+    "title": "Share page diagnostic snapshot construction and derive nongeneric Clone implementations",
+    "paths": [
+      "crates/beryl-stream/src/page.rs"
+    ],
+    "symbols": [
+      "PagePool::diagnostics",
+      "PagePoolObserver::diagnostics",
+      "Clone for PagePool",
+      "Clone for PagePoolObserver"
+    ],
+    "evidence": [
+      "page.rs:97-109 and :159-171 independently assemble the same seven-field PagePoolDiagnostics snapshot under the pool lock.",
+      "page.rs:12-18 and :148-154 are mechanical Arc/Weak clone implementations on nongeneric wrappers. channel.rs already centralizes snapshot construction in diagnostics()."
+    ],
+    "proposal": "Add one PagePoolInner snapshot method used by both observers and owners, and derive Clone for PagePool and PagePoolObserver. Keep PageLease non-Clone and observers Weak. Do not mechanically derive the generic FixedChannelObserver<T> clone, which may introduce an unwanted T: Clone bound.",
+    "required_contract_changes": [],
+    "estimated_net_lines": -18,
+    "verification": [
+      "Not executed: audit is read-only.",
+      "On implementation: existing weak-observer release and occupancy tests; compare pool/observer snapshots from the same quiescent pool."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "MS-005",
+    "title": "Remove redundant marker-digest test construction while retaining independent encoding vectors",
+    "paths": [
+      "crates/beryl-model/tests/asset_identity.rs"
+    ],
+    "symbols": [
+      "ordered_marker_asset_summary_is_deterministic_and_order_sensitive",
+      "ordered_marker_asset_summary_binds_asset_identity_but_not_sequential_summary",
+      "ordered_marker_asset_digest_has_the_canonical_v1_encoding"
+    ],
+    "evidence": [
+      "asset_identity.rs:120-152 repeats three nested two-entry chain constructions, two with identical inputs; :165-179 constructs the same sequential summary twice even though the changed asset is not an input to that function.",
+      "The pinned seed/entry byte-vector assertions at :198-227 provide independent canonical encoding evidence and should remain."
+    ],
+    "proposal": "Use one small test-local fold over ordered marker/label/asset tuples for forward, repeat and reverse cases; remove the duplicate identical sequential-summary construction/assertion in the asset-change test. Keep order sensitivity, asset association sensitivity, proof count mismatch cases, and pinned V1 vectors. A support abstraction beyond this one test file is unnecessary.",
+    "required_contract_changes": [],
+    "estimated_net_lines": -25,
+    "verification": [
+      "Not executed: audit is read-only.",
+      "On implementation: existing asset_identity nextest target retains order, exact encoding, label boundaries and proof mismatch assertions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "MS-006",
+    "title": "Retain strongly typed model domains and existing small macros",
+    "paths": [
+      "crates/beryl-model/src/asset.rs",
+      "crates/beryl-model/src/availability.rs",
+      "crates/beryl-model/src/ids.rs",
+      "crates/beryl-model/src/lib.rs",
+      "crates/beryl-model/src/placement.rs",
+      "crates/beryl-model/src/provenance.rs",
+      "crates/beryl-model/src/recovery.rs",
+      "crates/beryl-model/src/revision.rs",
+      "crates/beryl-model/src/runtime.rs",
+      "crates/beryl-model/src/syndic.rs",
+      "crates/beryl-model/tests/asset_identity.rs",
+      "crates/beryl-model/tests/identities.rs",
+      "crates/beryl-model/tests/recovery_sequence.rs",
+      "crates/beryl-model/tests/runtime_values.rs",
+      "crates/beryl-model/tests/shared_values.rs",
+      "crates/beryl-model/tests/syndic_values.rs"
+    ],
+    "symbols": [
+      "stable_identity",
+      "typed_revision",
+      "bounded_external_value",
+      "fixed_digest",
+      "cas_generation",
+      "AssetId",
+      "ExecutionBinding",
+      "RecoveryItemSequenceAccumulator"
+    ],
+    "evidence": [
+      "All 16 model source/test files were inspected in full, including macro definitions and every invocation, validated serde constructors, digest hashing, checked arithmetic and fixed vectors.",
+      "IDs already share one text/serde macro; revisions, external strings, fixed digests and CAS generations already use narrow macros.",
+      "SequentialMarkerSummaryV1 and DraftMarkerCommitmentV1 have similar fields but explicitly different digest semantics; AssetId, full content digest, accepted identity and promoted owner proof remain distinct authoritative domains."
+    ],
+    "proposal": "Retain these value boundaries. A universal newtype/generic validation framework or wholesale identity replacement would obscure domain separation and exact serialization while removing little beyond existing macros. Keep pure cross-platform admitted path syntax validation; std::path alone cannot validate foreign runtime syntax. Small getter/roundtrip tests are concise public-boundary evidence, and there are no source-text shape scans in these test files.",
+    "required_contract_changes": [],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Full body inspection only; no builds/tests run."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  },
+  {
+    "id": "MS-007",
+    "title": "Retain channel custody outcomes and weak observation; no wholesale channel dependency proposed",
+    "paths": [
+      "crates/beryl-stream/src/channel.rs",
+      "crates/beryl-stream/src/lib.rs",
+      "crates/beryl-stream/tests/page_and_channel.rs"
+    ],
+    "symbols": [
+      "SendError",
+      "ReceiveError",
+      "ChannelDiagnostics",
+      "FixedChannelObserver",
+      "FixedChannelSender",
+      "FixedChannelReceiver"
+    ],
+    "evidence": [
+      "Full ring construction, send/receive wait loops, both endpoint drops, weak observation and diagnostics bodies inspected.",
+      "Stream package design explicitly requires exact retained messages for rejected sends, distinct immediate full vs timeout, endpoint wakeups, content-free counters and only standard library plus error-derive dependencies.",
+      "Existing tests cover order, backpressure, blocked-sender receiver drop, sender drain before close, zero/unrepresentable deadlines, and backing-size overflow."
+    ],
+    "proposal": "Retain these boundaries and the current small synchronous wrapper. MS-002 can simplify its private storage using std without introducing another dependency or telemetry adapter. No external channel crate recommendation is claimed or researched; a library switch would first need a quantified reduction after preserving fallible backing admission and exact observer semantics. Local tests repeat two blocking-send arrangements, but a generic concurrency harness would add more surface than it removes.",
+    "required_contract_changes": [],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Full body inspection only; no builds/tests run.",
+      "Coverage caveat: two test readiness loops spin until send_waits becomes nonzero with no local deadline; do not treat them as evidence that all regressions terminate promptly."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  },
+  {
+    "id": "MS-008",
+    "title": "Keep explicitly required range/replay contracts even when an adapter is currently unmounted",
+    "paths": [
+      "crates/beryl-stream/src/stream.rs",
+      "crates/beryl-stream/src/lib.rs",
+      "crates/beryl-stream/tests/stream_contract.rs"
+    ],
+    "symbols": [
+      "BoundedSource",
+      "BoundedSink",
+      "ReplayableSource",
+      "ReplayIdentity",
+      "SourcePage",
+      "StreamCursor",
+      "SliceSource",
+      "CollectSink"
+    ],
+    "evidence": [
+      "stream.rs:1-181 inspected fully: page validation checks empty nonterminal/overflow; cursor checks terminal, identity and offset before mutation; traits preserve owning-service errors.",
+      "Serena BoundedSink references found only the public re-export and CollectSink test adapter. Nevertheless both package design and bounded-resource-dataflow system explicitly require source/sink contracts.",
+      "stream_contract.rs:1-183 inspected including all adapter bodies and four cases. CollectSink collects only the fixed 13-byte fixture, not a production whole-stream buffer."
+    ],
+    "proposal": "Retain these small required contracts rather than deleting them solely for lack of production references. Replay revision and stream identity are semantic authority distinct from removable page-lease generation. Tests exercise offset gaps/overlap, post-terminal and invalid-page release without source-shape coupling. No simplification finding for these files.",
+    "required_contract_changes": [
+      "Deleting BoundedSink would require an explicit Operator-owned package/system design change; current implementation audit does not justify that deletion."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Full body inspection only; no builds/tests run."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  }
+]

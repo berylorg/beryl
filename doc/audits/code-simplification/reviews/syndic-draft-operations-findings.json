@@ -1,0 +1,431 @@
+[
+  {
+    "id": "DP-001",
+    "title": "Construct immutable build identity once and overlay only transition state",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/mutation.rs"
+    ],
+    "symbols": [
+      "build_record",
+      "initial_build_for_staging",
+      "terminal_first_build",
+      "build_from_progress_receipt",
+      "stage_transition",
+      "staged_page_transition",
+      "next_build_record"
+    ],
+    "evidence": [
+      "mutation.rs:868-1076 constructs ordinal-one DraftPieceBuildRecordV1 three times. Each repeats the same header fields, canonical header bytes, empty fragment chain, predecessor roots, origin boundaries and placeholder receipt; only initial frontier, lifecycle and explicitly attached continuation/writer facts differ.",
+      "mutation.rs:1078-1117,1160-1190,1284-1317,1544-1593 repeats immutable draft/session/predecessor/operation/position/proposal header copying when updating mutable progress. The independent receipt-to-build reconstruction still checks progress_receipt_matches_build and build_record_is_exact.",
+      "All mutation bodies and associated candidate-adoption, staging, durable-builder, replay and corruption tests were examined. Their separate admission, source-selected and target-selected checks are semantic authority, not duplicated constructors to delete."
+    ],
+    "proposal": "Use one private initial-record constructor parameterized by the already validated initial frontier and lifecycle, with the existing explicit continuation/writer attachments at callers. Use a private header-preserving record update path for later transitions, passing the exact new staged count/chain, selected receipt and progress values. Keep initial normal-edit, staging-transfer and terminal-first validation at their existing callers; keep receipt authentication independent.",
+    "required_contract_changes": "None for private construction helpers. Preserve exact V7 field order, canonical header bytes, record identities, immutable head/receipt separation, writer presence and all checked arithmetic. DT-002 may supply the private shared progress payload; its model/digest/accessor changes are excluded from this estimate.",
+    "estimated_net_lines": {
+      "low": -170,
+      "high": -110,
+      "basis": "About 60-80 net lines from consolidating three roughly 45-line initial constructors, plus 50-90 from four later immutable-header copies after paying for the shared update helper, caller adapters and byte-equivalence verification.",
+      "overlap": "Only mutation.rs caller construction. Excludes DT-002 private progress declarations/digests/accessors and tree.rs constructors, DT-001 receipt wrapping, settlement outcome construction, DP-002 staging head constructors and all test setup."
+    },
+    "verification": [
+      "Compare canonical build/progress bytes for ordinary begin, terminal-first, source-only staging, empty finished transfer, fragment stage, marker continuation, receipt reconstruction and terminal lifecycle.",
+      "Retain initial no-writer versus explicit writer-admission fields, immutable proposal identity, all occupied/ahead/forked receipt and candidate-generation cases; preserve measured acquisition reads/bytes.",
+      "No builds or tests were run during this audit."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on shared immutable header; medium on net estimate",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-002",
+    "title": "Centralize staging head and receipt authentication construction",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/staging/prepare_begin_page.rs",
+      "crates/syndic-storage/src/draft_piece/staging/prepare_finish.rs",
+      "crates/syndic-storage/src/draft_piece/staging/prepare_terminal.rs",
+      "crates/syndic-storage/src/draft_piece/staging/integrity.rs",
+      "crates/syndic-storage/src/draft_piece/staging/digest.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model/receipt_status.rs"
+    ],
+    "symbols": [
+      "prepare_draft_mutation_staging_begin",
+      "prepare_draft_mutation_staging_page_step",
+      "prepare_draft_mutation_staging_finish",
+      "prepare_draft_mutation_terminal_before_begin",
+      "prepare_draft_mutation_staging_terminal_validated",
+      "prepare_draft_mutation_staging_transfer",
+      "make_receipt",
+      "receipt_digest",
+      "head_digest"
+    ],
+    "evidence": [
+      "Six preparation paths repeat receipt-key/ordinal construction, a provisional head with placeholder selected-receipt digest, head digest, make_receipt, receipt reference and final head reconstruction. The source optionality, lifecycle and custody election differ; the digest construction order is identical.",
+      "staging/integrity.rs:121-181 constructs all 18 receipt fields twice solely to attach the computed digest. staging/digest.rs:90-122 reconstructs all 18 fields again to zero the last digest before hashing the encoded prefix that excludes that very field.",
+      "Focused codec confirmation: codec/staging_progress.rs:343-385 encodes the receipt fields then encodes its digest as the final 32 bytes; canonical_staging_progress_bytes simply calls that encoder. The digest field has no effect on the hashed prefix.",
+      "Conversation-history design's staging contract explicitly defines the one-way head/receipt digest construction and separately authenticated selected receipt. Atomic-batch and draft_mutation_staging tests exercise independent wrong-page/receipt/head bytes, ordinal overflow and source/target custody."
+    ],
+    "proposal": "Have one private authenticated staging-transition constructor derive the provisional/final head and receipt from explicit source/begin, target lanes/lifecycle and closed command evidence, returning the same separate records. Preserve all command-specific admission/terminal/custody checks. Borrow the original receipt for prefix hashing and add a narrowly scoped internal digest attachment operation to avoid full receipt reconstruction; retain unrestricted codec/fault construction where malformed-record tests require it.",
+    "required_contract_changes": "None if both persisted records, selected receipt key, hash domains, prefix framing and exact canonical bytes remain identical. Do not merge head and receipt, replace equality with digest equality, infer terminal evidence, or widen public proof constructors.",
+    "estimated_net_lines": {
+      "low": -260,
+      "high": -170,
+      "basis": "Consolidate six 40-60-line digest/finalization sequences with one approximately 65-90-line helper and explicit small call-site arguments, including adapters and byte/digest fixtures. About 25-35 additional net lines come from eliminating digest-only receipt reconstruction; those are included in this total.",
+      "overlap": "Staging-only construction and staging receipt digest. Excludes DT-002 draft-piece build receipt digest work, DP-001 build creation, SA admission sealing, public staging-model accessors and independent canonical test encoders."
+    },
+    "verification": [
+      "Old/new canonical bytes and digests for begin, both lanes, finish, transfer and every terminal evidence shape, including ordinal-one terminal-before-begin.",
+      "Keep selected-key commitment independent from selected-receipt digest, malformed natural identity/tag cases, noncanonical and occupied-byte cases and checked ordinal/total overflow.",
+      "Keep atomic 257-page admission, post-finish 256-page/fragment and 65,536 inserted-byte ceilings, 14+2*pages acquisition bound, partial-prefix rejection, replay and all actual writer cuts."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on exact digest redundancy; medium-high on shared transition helper",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-003",
+    "title": "Share the immutable candidate-session opening identity predicate",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/session.rs",
+      "crates/syndic-storage/src/draft_piece/publication.rs"
+    ],
+    "symbols": [
+      "receipt_matches_head",
+      "adopted_head_matches_current",
+      "publication_source_matches",
+      "captured_publication_source_matches",
+      "session_descends_from_publication"
+    ],
+    "evidence": [
+      "session.rs:162-207 and publication.rs:309-341,423-449 repeat the same thread, draft, session, opening operation, durable-base selector revision, durable-base root and durable-base history equality.",
+      "Each surrounding predicate then applies different necessary facts: opening active lifecycle, generation ordering, exact published selector/pair, captured candidate ancestry or disposal semantics. Full publication tests intentionally allow publication of a captured older candidate while the newest candidate advances."
+    ],
+    "proposal": "Extract one private equality predicate for the seven immutable opening fields and use it at the five predicates. Keep each caller's generation ordering, publication, candidate, lifecycle and disposal checks visibly local.",
+    "required_contract_changes": "None. This is exact field equality only; do not replace distinct live/captured/historical source authentication with a broad session-equivalence test.",
+    "estimated_net_lines": {
+      "low": -40,
+      "high": -25,
+      "basis": "Five seven-field comparisons collapse to one helper plus five calls, subtracting helper signature and verification. Some multiline layout adds uncertainty.",
+      "overlap": "No DT-001 receipt variant/downcast removal and no DP-010 read ordering changes."
+    },
+    "verification": [
+      "Existing older-candidate publication, pristine open/replay, adopted successor, disposed receipt and wrong-base/wrong-generation cases.",
+      "Exercise one mismatched immutable field at a time without using the new predicate as the expected-result oracle."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-004",
+    "title": "Reuse the prepared two-record disposal contribution after distinct validation",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/publication/abandon_fresh.rs",
+      "crates/syndic-storage/src/draft_piece/publication/disposal.rs"
+    ],
+    "symbols": [
+      "PreparedAbandonFreshMutation",
+      "AbandonFreshMutation::contribute",
+      "PreparedCandidateDisposal",
+      "PreparedCandidateDisposal::contribute",
+      "prepare_candidate_disposal"
+    ],
+    "evidence": [
+      "publication/abandon_fresh.rs:139-183 prepares request/after/receipt and writes the session head plus disposal receipt; publication/disposal.rs:3-7,56-81 retains and writes the same three fields.",
+      "Fresh abandonment validates pristine opening identity and does not depend on later durable-selector drift. Ordinary saved-checkpoint disposal requires exact current publication and frontier. abandon_fresh_candidate tests and submission_disposal tests prove these are different admission protocols."
+    ],
+    "proposal": "Provide one private prepared disposal-contribution constructor usable only after the existing distinct validators succeed; let fresh abandonment reuse the existing contribution writer and remove its duplicate payload/writes. Preserve the fresh/ordinary preparation and outcome APIs.",
+    "required_contract_changes": "None. Preserve two-record atomicity, exact receipt bytes and ownership; retain fresh history reset versus ordinary saved-checkpoint history behavior. A shared private writer must not become an unchecked public disposal path.",
+    "estimated_net_lines": {
+      "low": -25,
+      "high": -15,
+      "basis": "Remove the duplicate three-field payload and two-write contribution body, subtract one restricted constructor/adaptation and regression checks.",
+      "overlap": "Excludes DT-001 from_disposal/record-wrapper deletions and all test helpers."
+    },
+    "verification": [
+      "Fresh abandon versus mutation/publication in both serial orders, stale/dirty/custody/disposed rejection, exact replay and codec tag-three distinctions.",
+      "Idle and queued submission retain exact ordinary disposal receipt, atomic fault cuts and no partial current-draft clear on occupied receipt."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on common write closure; medium on small net estimate",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-005",
+    "title": "Share repeated staging lifecycle and local-finalization mechanics",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/staging/status.rs",
+      "crates/syndic-storage/src/draft_piece/staging/mutations.rs",
+      "crates/syndic-storage/src/draft_piece/staging/transfer_builder.rs"
+    ],
+    "symbols": [
+      "reconcile_draft_mutation_staging_command_outcome",
+      "reconcile_draft_mutation_staging_page_batch_outcome",
+      "draft_mutation_staging_status",
+      "StagingMutation::prepare",
+      "TransferMutation::prepare"
+    ],
+    "evidence": [
+      "staging/status.rs:241-269 and 345-373 repeat the same committed receipt generation check, attachment access, optional admission home-generation check, finalize_writer_committed_unknown call and distinct LocalFinalization/LocalCustody mapping.",
+      "staging/mutations.rs:93-146,193-197, staging/status.rs:87-91 and staging/transfer_builder.rs:261-265 repeat the identical four-terminal-lifecycle membership test. The terminal evidence and public outcome matches remain necessary and separate."
+    ],
+    "proposal": "Extract a private committed-writer finalization operation and a small private terminal-lifecycle membership predicate. Reuse only these mechanics; leave source/target reconciliation, evidence classification, generation comparison and error distinctions in their owning paths.",
+    "required_contract_changes": "None. Preserve exact home-generation ownership, attachment capability, single finalization, terminal release and fail-closed local custody. Do not treat a committed local-finalization failure as a retryable unadmitted command.",
+    "estimated_net_lines": {
+      "low": -55,
+      "high": -35,
+      "basis": "Repeated lifecycle membership and one duplicated roughly 25-line finalization closure, less helper signatures, call adapters and focused verification.",
+      "overlap": "Does not count public outcome-union changes, SA writer lifecycle internals, DP-002 transition construction or DP-006 error formatting."
+    },
+    "verification": [
+      "Run existing marker admission/staging outcome tests for source/target selection, stale/foreign generation, committed local failure and terminal release.",
+      "Retain all terminal evidence pattern matches and exact home attachment boundaries."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on repeated mechanics; medium on net estimate",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-006",
+    "title": "Use the existing thiserror derive for three disjoint command errors",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/session.rs",
+      "crates/syndic-storage/src/draft_piece/publication.rs",
+      "crates/syndic-storage/src/draft_piece/staging.rs"
+    ],
+    "symbols": [
+      "DraftEditorCandidateSessionCommandErrorV1",
+      "DraftEditorCandidatePublicationCommandErrorV1",
+      "DraftMutationStagingErrorV1"
+    ],
+    "evidence": [
+      "session.rs:31-55, publication.rs:156-192 and staging.rs:18-59 manually implement Display and Error. The staging error explicitly exposes Read/Reconciliation/LocalFinalization sources; the session and publication enums expose no source despite wrapping errors.",
+      "syndic-storage/Cargo.toml:23 already directly consumes thiserror.workspace; root Cargo.toml:54 selects 2.0.18. Exact version/API/license/MSRV/default-feature evidence is retained in doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md.",
+      "publication.rs:82-116 has a separate move-only source-returning preparation error with a non-Error field literally named source and a deliberately opaque Debug implementation. It is excluded: derive source inference would require an additional field rename/adapter for negligible savings."
+    ],
+    "proposal": "Derive thiserror::Error for the three enums with exact existing Display attributes. Use source/from only where the current staging implementation already exposes the same cause and conversion; retain manual From implementations for session/publication so their current source=None behavior stays unchanged.",
+    "required_contract_changes": "None. Preserve exact public variants, formatted messages, Debug and cause chains; do not introduce transparent forwarding, extra From conversions or implicit named-source/backtrace behavior.",
+    "estimated_net_lines": {
+      "low": -60,
+      "high": -40,
+      "basis": "Remove three Display/Error implementations and only the compatible staging From implementation, less per-variant attributes and focused diagnostic checks.",
+      "overlap": "Only these three file-local enums. Excludes MS-001, SA-008, other cohorts' errors and the captured-source preparation error."
+    },
+    "verification": [
+      "Compare every variant's Display string, Error::source presence and existing From behavior; retain opaque source Debug behavior.",
+      "Focused compilation with normal and test-faults configurations when implementation is authorized; no dependency/version change needed."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "fit": "Existing direct dependency; compatible procedural derive for inspected enums with manual source=None exceptions retained.",
+        "features": "Existing workspace/default std feature; matching thiserror-impl version.",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.68; below workspace 1.92",
+        "platform": "No new runtime or platform API; procedural derive at build time.",
+        "maintenance_and_adoption": "Existing workspace use and long-established 1.x/2.x release line, supported by the reused exact-version investigation.",
+        "limits": "No advisory scan or benchmark performed; from implies source and named source is inferred, so manual exceptions matter.",
+        "research_memory": "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://docs.rs/crate/thiserror/2.0.18",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml"
+        ]
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-007",
+    "title": "Share candidate and staging test construction mechanics while retaining scenarios",
+    "paths": [
+      "crates/syndic-storage/tests/draft_candidate_adoption.rs",
+      "crates/syndic-storage/tests/draft_candidate_publication.rs",
+      "crates/syndic-storage/tests/draft_mutation_staging.rs",
+      "crates/syndic-storage/tests/draft_publication_evidence.rs",
+      "crates/syndic-storage/tests/durable_builder/support.rs",
+      "crates/syndic-storage/tests/durable_builder/later_pages.rs",
+      "crates/syndic-storage/tests/durable_builder/replay_faults.rs",
+      "crates/syndic-storage/tests/atomic_staging_batches/support.rs",
+      "crates/syndic-storage/tests/abandon_fresh_candidate/shared.rs"
+    ],
+    "symbols": [
+      "fixture",
+      "fixture_with_faults",
+      "open_session",
+      "current",
+      "selector",
+      "execute",
+      "committed",
+      "stage_replacement",
+      "stage_interleaved_replacements",
+      "prepare_uncommitted_window",
+      "transfer_single_staged_piece",
+      "capture_publication_source"
+    ],
+    "evidence": [
+      "Candidate adoption/publication, draft mutation staging and durable_builder/support independently repeat HomeStore registration, ordinary-thread creation, current-selector construction, session open/reconcile and command execution. Atomic staging uses the same mechanics inside its ReceivingFixture, with different seeds and a larger history budget.",
+      "durable_builder/support.rs:64-232, later_pages.rs:1-155, replay_faults.rs:1-149 and draft_mutation_staging.rs:2214-2291 repeat begin/page/finish/transfer setup. Their significant differences are explicit input lane ordering, final extent/positions, staged versus uncommitted endpoint and acquisition limits.",
+      "Existing abandon_fresh_candidate and submission_disposal suites already reuse draft_edit_history support through path modules; draft_publication_evidence includes durable_builder support. These cross-suite uses show why shared helpers need responsibility-based support modules rather than textual inclusion of an entire scenario file.",
+      "All 31 scoped test files were fully read, including cfg(test-faults), raw codec mutation, independent canonical digest bytes, hidden-active-root corruption, actual writer cuts, restart, 257-page/effect boundaries, source-only continuation, terminal custody and captured older publication.",
+      "Adoption's thread-local position registry is keyed by exact history reference and preserves before/after caret/selection. Do not silently replace these facts with point(0), coalesce fragment/order scenarios, or change when faults fire."
+    ],
+    "proposal": "Create narrowly named test support for home/thread/session construction and staged-input setup, parameterizing history policy, identity seeds, page order/limits and final positions. Reuse mechanics and return explicit prepared endpoints so each test retains its fault cut and intermediate-state assertions. Keep all scenario bodies and independent expected canonical bytes.",
+    "required_contract_changes": "None to product or persisted contracts. Preserve all test cases and exact source/target evidence; keep default/test-faults feature visibility explicit. Shared support must close stores before removing temporary homes and retain explicit reopen ownership.",
+    "estimated_net_lines": {
+      "low": -520,
+      "high": -330,
+      "basis": "Approximately 250-360 net lines from repeated registration/open/current/selector/execution mechanics plus 120-220 from common staged setup, less 40-60 for typed helper options, caller adapters and retained position/fault handling.",
+      "overlap": "Excludes DP-008 unused helper deletion, all DT-006 and SA-010 owned paths, shared draft_edit_history/support.rs changes outside this cohort, independent oracle deletion and root-wide TestHome-to-tempfile savings. TestHome bodies are retained in this estimate."
+    },
+    "verification": [
+      "Run every current scoped integration target with normal and test-faults modes when implementation resumes; compare test discovery and scenario count.",
+      "Keep explicit fault timings (before commit, after commit before persist, after persist and before verification where present), canonical corruptions, intermediate root/custody assertions and exact acquisition diagnostics.",
+      "Retain arbitrary cumulative u64 operations, terminal-before-begin conflict versus admitted conflict prohibition, older captured publication and ordinary/fresh disposal distinctions."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "tempfile",
+        "version": "3.27.0",
+        "fit": "Potential shared TestHome implementation is already a root-wide candidate; not added or counted here.",
+        "research_memory": "doc/memory/crates.io/tempfile/3.27.0/adjacent-durable-writes.md",
+        "limits": "Existing note covers TempDir cleanup and Windows lifecycle. This report does not establish a new broader dependency recommendation; preserve store-before-directory drop and diagnostic prefix if root adopts it."
+      }
+    ],
+    "confidence": "high on duplicate setup; medium on net estimate",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-008",
+    "title": "Delete three unreferenced private adoption-test helpers",
+    "paths": [
+      "crates/syndic-storage/tests/draft_candidate_adoption.rs"
+    ],
+    "symbols": [
+      "build_and_reject",
+      "settled_head",
+      "marker"
+    ],
+    "evidence": [
+      "Full bodies: build_and_reject at 2071-2122 is 52 lines; settled_head at 2183-2203 is 21; marker at 2359-2366 is 8. Total 81 body lines.",
+      "Scoped Serena find_referencing_symbols returned no references for each symbol. rg over the test tree confirms build_and_reject and this settled_head have no call sites; same-named helpers in draft_marker_admission_schema are distinct.",
+      "Repository test/manifest text search found no path/include of draft_candidate_adoption.rs. Its top-level integration target is not used as another suite's textual helper source. No #[test] body is part of this deletion."
+    ],
+    "proposal": "Remove only these three private unreferenced functions and imports that become unused. Retain fixture position recording used by the remaining active helpers.",
+    "required_contract_changes": "None. This is proven local private dead code, not removal of an unmounted target architecture.",
+    "estimated_net_lines": {
+      "low": -88,
+      "high": -81,
+      "basis": "81 exact function-body lines, with at most seven additional blank/import lines; no replacement code and no scenario deletion.",
+      "overlap": "Excluded from DP-007 test support savings."
+    },
+    "verification": [
+      "Compile the adoption integration test target in normal and test-faults modes; retain unchanged discovered test cases.",
+      "Recheck references after concurrent implementation work before deletion."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review"
+  },
+  {
+    "id": "DP-009",
+    "title": "Retain distinct durable authentication and bounded acquisition paths",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/mod.rs",
+      "crates/syndic-storage/src/draft_piece/mutation.rs",
+      "crates/syndic-storage/src/draft_piece/mutation/settlement.rs",
+      "crates/syndic-storage/src/draft_piece/session.rs",
+      "crates/syndic-storage/src/draft_piece/staging/acquisition.rs",
+      "crates/syndic-storage/src/draft_piece/staging/integrity.rs",
+      "crates/syndic-storage/src/draft_piece/staging/prepare_batch.rs",
+      "crates/syndic-storage/src/draft_piece/staging/terminal.rs",
+      "crates/syndic-storage/src/draft_piece/staging/transfer_builder.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model/begin_page.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model/identity.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model/receipt_status.rs",
+      "crates/syndic-storage/src/draft_piece/staging_model/terminal.rs",
+      "crates/syndic-storage/src/draft_piece/test_unadmitted_marker.rs"
+    ],
+    "symbols": [
+      "authenticate_progress_receipt_from_acquisition",
+      "authenticate_progress_receipt_from_store",
+      "authenticate_progress_receipt",
+      "active_operation_custody_is_exact",
+      "DraftPieceStagingAcquisition",
+      "DraftMutationStagingTerminalEvidenceV1",
+      "DraftMutationStagingProgressReceiptV1",
+      "UnadmittedMarkerBuilderForTest"
+    ],
+    "evidence": [
+      "Acquisition authentication rejects active marker effects, meters every nested point read and uses the exact fixed 14-read closure plus two reads per page. Ordinary build/status authentication must also prove published and hidden active marker roots; transactional authentication runs on a DomainReader and has different error mapping.",
+      "staging/acquisition.rs enforces read and encoded-value budgets before acquisition; mod.rs fixed limits and maximum-window tests make these observable. Replacing the paths with an unmetered generic reader or scanning released pages would violate authority.",
+      "Terminal-before-begin Conflict has None-to-None custody and immutable observed same-session evidence; admitted terminalization permits only Rejected/Cancelled/Error with Staging-to-None. Builder settlement owns terminal outcomes after transfer. Distinct evidence variants are not interchangeable errors.",
+      "Persisted keys and values deliberately repeat identity; independently durable head/receipt, build/fragment endpoints, canonical bytes and immediate predecessor proofs detect missing, ahead, occupied or mismatched records. All associated model/codec-facing constructors and public getters were examined.",
+      "test_unadmitted_marker.rs is an explicit cfg-limited test-only authorization registry, not an alternative production marker-admission API. Durable marker suites intentionally use it to create independent malformed or unadmitted inputs."
+    ],
+    "proposal": "Retain the bounded authentication, independent records, closed evidence variants and test-only capability boundary. Any future common reader must preserve metering and exact error/custody semantics and demonstrate actual net benefit; no such generalization is counted here.",
+    "required_contract_changes": "Deleting independent receipt/head authority, reconstructing from caller pages, collapsing terminal classes or bypassing acquisition accounting would require incompatible system/schema changes and is rejected under current authority.",
+    "estimated_net_lines": {
+      "low": 0,
+      "high": 0,
+      "basis": "Retained mechanisms; no savings assigned.",
+      "overlap": "Private construction sharing in DP-001/DP-002 does not delete these checks. Existing Ropey/im whole-tree negative findings remain DT-007/SA-009 and are not repeated as new dependency investigations."
+    },
+    "verification": [
+      "Retain missing durable continuation, each published/hidden root corruption, predecessor receipt, coordinated scan count/chain mismatch, atomic source/target prefix and no-fabricated-settlement tests.",
+      "Any implementation proposal must preserve fixed read/byte counters and bounded restart from the exact durable endpoint."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DP-010",
+    "title": "Bracket candidate-session closure reads with the mutable head observations",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/session.rs"
+    ],
+    "symbols": [
+      "SyndicStorage::draft_editor_candidate_session",
+      "candidate_session_closure_is_exact_in_store",
+      "candidate_session_adoption_is_exact",
+      "active_operation_custody_is_exact"
+    ],
+    "evidence": [
+      "session.rs:673-705 reads first and second session heads consecutively at 681-682, returns ConcurrentChange if they differ, and only then reads the natural closure at 691. There is no final head observation.",
+      "Focused supporting source: syndic-storage/src/read.rs:570-584 delegates every point to HomeStore::read_point; beryl-home-store/src/read.rs:396-413 creates a fresh database snapshot for each point call. The composite read does not share one snapshot.",
+      "Concrete valid interleaving: both initial reads capture session H selecting build/staging endpoint n; a normal admitted page/fragment advance commits endpoint n+1 and its session successor; active_operation_custody_is_exact (session.rs:288-373) reads the new endpoint and compares it to H's old custody. It returns false, so the public read reports InvariantFailure although the observed head changed during closure acquisition.",
+      "Authority: syndic-storage/doc/design-mutation-protocols.md:94-107 requires mutable anchors first and last and distinguishes drift from a missing/disagreeing closure under a stable anchor. Conversation-history design:1169-1173 and1216-1218 requires mutable wrappers to stabilize the selected session/pair rather than combine selections. The API already has ConcurrentChange.",
+      "Statically demonstrated interleaving only; no concurrency reproduction, build or test was run. Existing examined tests cover stable corrupted closure and serial mutation races, not this between-point-read schedule."
+    ],
+    "proposal": "Read the named session head, acquire its bounded natural-closure result, then re-read the same head before classifying that result. Return ConcurrentChange on head drift; only a stable head permits Active/Disposed or InvariantFailure classification. Keep absence/wrong-kind and read-failure handling explicit and bounded; do not introduce an unbounded retry loop.",
+    "required_contract_changes": "No new product or persistence contract; this restores existing stabilization/error-classification intent. A deterministic read interleaving hook or shared bounded snapshot approach must be selected during implementation. Retain stable corruption as InvariantFailure and real storage errors as errors.",
+    "estimated_net_lines": {
+      "low": 0,
+      "high": 0,
+      "basis": "Correctness issue, not a simplification saving; implementation and deterministic regression coverage may add lines.",
+      "overlap": "Independent from DP-003 immutable identity predicate. Does not claim every staging status/reconciliation path has been fixed by this one change."
+    },
+    "verification": [
+      "Deterministically pause after the second current head read, commit a valid staging page, build fragment or settlement successor, then resume closure reads; expected ConcurrentChange.",
+      "Keep stable missing selected receipt, ahead build, substituted history and disposed-receipt corruption classified as InvariantFailure.",
+      "Verify bounded read count and no retry spin; normal stable active/disposed/absent behavior remains unchanged."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high on ordering defect and valid interleaving; runtime reproduction not performed",
+    "disposition": "proposed",
+    "finding_kind": "correctness_defect",
+    "evidence_maturity": "subsystem_review"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "baseline_commit":"e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "source_selection":{
+    "candidate_extensions":[".rs",".ps1"],
+    "included_extensions":[".rs",".ps1 (none live; rework probes excluded)"],
+    "excluded_patterns":["doc/rework/**/old-code/**: archived_rework_old_code","doc/rework/**/old-doc/**: archived_rework_old_doc","doc/rework/**/old-crates/**: archived_rework_old_crates","doc/rework/**/probes/**: historical_rework_probe_pinned_codex_cli_0.144.1_precedes_live_root_design_0.146.0"],
+    "ambiguities":["The two tracked PowerShell files are historical rework evidence under doc/rework, pin Codex CLI 0.144.1, and predate the live root design requirement for 0.146.0; excluded.tsv records them rather than treating them as live product scripts."]
+  },
+  "tracked_extension_counts":{".bin":1,".json":1,".lock":1,".md":507,".png":1,".ps1":2,".rs":2249,".svg":3,".toml":12,".txt":1,".yaml":17,"[none]":2},
+  "included_totals_by_kind":{"source":{"files":1189,"bytes":12582239,"lines":353487},"test":{"files":640,"bytes":6935807,"lines":202037},"test_support":{"files":81,"bytes":791856,"lines":23341}},
+  "included_totals_by_crate_and_kind":{"beryl":{"source":{"files":1,"bytes":136,"lines":3}},"beryl-app":{"source":{"files":423,"bytes":4293989,"lines":118936},"test":{"files":228,"bytes":2731183,"lines":77986},"test_support":{"files":34,"bytes":337418,"lines":10014}},"beryl-backend":{"source":{"files":124,"bytes":1073836,"lines":31526},"test":{"files":64,"bytes":429969,"lines":11739},"test_support":{"files":8,"bytes":58111,"lines":1655}},"beryl-home-store":{"source":{"files":55,"bytes":576820,"lines":16789},"test":{"files":42,"bytes":455321,"lines":13158},"test_support":{"files":2,"bytes":13661,"lines":427}},"beryl-model":{"source":{"files":10,"bytes":67081,"lines":2137},"test":{"files":6,"bytes":21566,"lines":640}},"beryl-state":{"source":{"files":84,"bytes":935637,"lines":28427},"test":{"files":39,"bytes":430156,"lines":13113},"test_support":{"files":2,"bytes":10230,"lines":308}},"beryl-stream":{"source":{"files":4,"bytes":23583,"lines":822},"test":{"files":2,"bytes":12354,"lines":381}},"syndic-storage":{"source":{"files":488,"bytes":5611157,"lines":154847},"test":{"files":259,"bytes":2855258,"lines":85020},"test_support":{"files":35,"bytes":372436,"lines":10937}}},
+  "generated_source_paths":[],
+  "dependency_assessment":{
+    "workspace_manifest":"Cargo.toml",
+    "workspace_and_member_manifests":["Cargo.toml","crates/beryl-app/Cargo.toml","crates/beryl-backend/Cargo.toml","crates/beryl-home-store/Cargo.toml","crates/beryl-model/Cargo.toml","crates/beryl-state/Cargo.toml","crates/beryl-stream/Cargo.toml","crates/beryl/Cargo.toml","crates/syndic-storage/Cargo.toml"],
+    "external_path_dependency_roots":["../bounded-json","../fjall-fork"],
+    "external_dependency_manifests":[]
+  },
+  "validation":{
+    "initial_ledger_status":"all pending at inventory creation; current status is in coverage.tsv",
+    "initial_ledger_review_depth":"all none at inventory creation; current depth is in coverage.tsv",
+    "baseline_blob_binding":"git ls-tree baseline and git ls-files stage 0 matched for every included path",
+    "live_source_diff":"git diff --name-only baseline over candidate source paths was empty"
+  }
+}

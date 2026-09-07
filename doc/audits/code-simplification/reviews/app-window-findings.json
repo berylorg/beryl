@@ -1,0 +1,418 @@
+[
+  {
+    "id": "AW-001",
+    "title": "Share the shell's repeated prepared-theme value projection",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review",
+    "paths": [
+      "crates/beryl-app/src/main_window/creation/command.rs",
+      "crates/beryl-app/src/main_window/notices/widget/render.rs",
+      "crates/beryl-app/src/main_window/shell/appearance.rs",
+      "crates/beryl-app/tests/notice_widget/geometry.rs"
+    ],
+    "symbols": [
+      "creation::command::{theme_color,theme_font,CreationFont}",
+      "notices::widget::render::{theme_color,theme_color_with_fallback,theme_font}",
+      "MainWindowShellAppearance::prepare"
+    ],
+    "evidence": [
+      "creation/command.rs:118-176 and notices/widget/render.rs:509-568 independently scan the same immutable AppearanceGeneration roles, resolve properties and convert RGB/font values; one returns CreationFont and the other an equivalent tuple.",
+      "shell/appearance.rs:21-34 repeats the role/property lookup and RGB conversion but deliberately requires canonical properties instead of providing a fallback.",
+      "Notice severity role selection and the creation tooltip's live root observer are policy-bearing consumers, not duplicated theme resolvers."
+    ],
+    "proposal": "Use one small app-private prepared-role accessor with shared color and font conversion. Return one named font value. Let strict shell preparation require a property and optional widget roles supply their existing fallback explicitly. Keep role names, severity selection, transparency, widget geometry and live tooltip observation at their consumers. Do not introduce a generic styling framework or a new cache.",
+    "contracts_retained": [
+      "One complete appearance generation per frame and all-window atomic publication.",
+      "Exact RGB/font overrides and existing strict-versus-fallback behavior.",
+      "Notice severity propagation and unchanged pointer, keyboard, tooltip and inert behavior."
+    ],
+    "authority_change": "None for equivalent extraction; no theme schema expansion.",
+    "estimated_net_reduction_range": [
+      45,
+      65
+    ],
+    "estimated_net_lines": -55,
+    "estimate_basis": "Approximately 130-150 repeated projection lines become 65-80 shared lines plus 10-15 adapter/call-site lines and focused verification allowance. No entire button renderers or existing theme service parsing are counted.",
+    "confidence": "high",
+    "verification": [
+      "Run existing creation rendered-input and notice geometry/theme tests, plus two-shell atomic appearance adoption. Compare fallback RGB, transparent RGBA, family/size/weight overrides and strict missing-property rejection.",
+      "Confirm no runtime role cache crosses appearance generations."
+    ],
+    "overlap": [
+      "No AU-005 theme retirement or AU-006 theme runtime test-fixture lines are counted.",
+      "Can coexist with AW-003: shared theme code remains needed for header, close and owner commands after Copy Detail."
+    ],
+    "dependency_candidates": [],
+    "audit_context": {
+      "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+      "scope": {
+        "files": 41,
+        "lines": 11301,
+        "source_files": 18,
+        "source_lines": 5523,
+        "test_and_support_files": 23,
+        "test_and_support_lines": 5778,
+        "full_bodies": 39,
+        "declarations_only": 2
+      },
+      "method": "Exact pending ledger cohort derived before source reading. Every physical implementation body, declaration, macro and cfg branch in the cohort was directly read; Serena depth-0 overviews mapped large owner/host/widget/detail/render files. No sampling. All 41 worktree Git blobs matched their frozen ledger blobs and HEAD matched baseline.",
+      "inspected_authority": [
+        "doc/audits/code-simplification/README.md and relevant findings register entries",
+        "crates/beryl-app/doc/design.md, design-shell-lifecycle.md and design-feature-adapters.md",
+        "doc/design.md: persistence, bounded responsiveness, platform targeting and Engineering Rigor",
+        "doc/features/main-windows/design.md and gui.md",
+        "doc/features/notifications/design.md and gui.md",
+        "doc/features/status-line/design.md and gui.md",
+        "doc/gui/integration.md and doc/gui/widgets/main-window-notice/spec.md",
+        "doc/systems/beryl-home-storage/design.md: thread claims, prepublication abandonment, session windows and Engineering Rigor",
+        "doc/systems/theme-runtime/design.md: canonical identities/schema, atomic publication, bounded adapters and Engineering Rigor",
+        "doc/plan.md scope: existing missing target mounts and paused rework",
+        "doc/failures/main-window-notice-readiness.md: historical optional TextInput rejection and queued-dismissal regression"
+      ],
+      "effective_rigor": {
+        "profile": "production-application/v2",
+        "root_modifiers": [
+          "persistent-state-integrity/v2",
+          "shared-resource-protection/v2"
+        ],
+        "app_and_notification_status_theme_modifiers": [
+          "external-side-effects/v2"
+        ],
+        "main_windows_and_home_storage_modifiers": [],
+        "application": "Preserve protected authoritative state, exact custody/publication, bounded retention and explicit failure outcomes. Semantic review is required for consequential lifecycle changes; mechanical helper/fixture extraction may use focused objective evidence and self-review where those guarantees are proven. This bounded audit is observational and does not claim implementation acceptance."
+      },
+      "research": {
+        "external_lookup_performed": false,
+        "reason": "No substantial credible new crates.io replacement was established for the 16-entry policy queue, three-command GPUI control surface or typed durable custody. Existing unicode-segmentation and GPUI APIs already provide the low-level primitives; adapters carry application-specific guarantees. Read-only existing memory search and the exact historical pinned-fork failure note informed the optional detail alternative. No current crate maintenance/security/version claim is made.",
+        "historical_text_input_revision": "fc17c5738c35350e58e32437cdae74e28ebc31af",
+        "new_dependency_recommendation": null
+      },
+      "verification_performed": [
+        "Full physical body/declaration audit.",
+        "Exact ledger count and all 41 baseline Git blob identities checked.",
+        "Read-only arithmetic confirms 6370-byte initial continuity fixture and identical bounded prefix after append.",
+        "No Cargo checks, tests, GUI execution, installs, downloads or source modifications."
+      ],
+      "summary": {
+        "behavior_preserving_proposals": [
+          "AW-001",
+          "AW-002",
+          "AW-004"
+        ],
+        "behavior_preserving_net_reduction_range": [
+          193,
+          287
+        ],
+        "conditional_alternative": "AW-003 replaces AW-004 if Operator explicitly changes notice selection/copy authority; total with AW-001/AW-002 then 515-705 net lines.",
+        "zero_savings_findings": [
+          "AW-005",
+          "AW-006",
+          "AW-007"
+        ],
+        "limitations": "Estimates are proposals after replacement/adaptation/verification allowance, not measured patch results. No proof of irreducibility is claimed. Broader subsystem and whole-codebase synthesis remains with root."
+      }
+    }
+  },
+  {
+    "id": "AW-002",
+    "title": "Share mounted-window and theme fixture construction without merging lifecycle scenarios",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review",
+    "paths": [
+      "crates/beryl-app/tests/main_window_creation/gpui.rs",
+      "crates/beryl-app/tests/main_window_creation/support.rs",
+      "crates/beryl-app/tests/notice_mount/support.rs",
+      "crates/beryl-app/tests/main_window_shell.rs",
+      "crates/beryl-app/tests/main_window_shell/gpui.rs",
+      "crates/beryl-app/tests/main_window_shell/support.rs",
+      "crates/beryl-app/tests/notice_widget/support.rs"
+    ],
+    "symbols": [
+      "main_window_creation::gpui_cases::{Mounted,mount,finish}",
+      "notice_mount::support::{Mounted,mount,finish}",
+      "ShellFixture::{new,additional}",
+      "notice_widget::support::Mounted::{with_theme_document,set_theme_document}"
+    ],
+    "evidence": [
+      "main_window_creation/gpui.rs:7-109 and notice_mount/support.rs:10-95,244-274 repeat initial composer preparation, creation-owner installation, hidden construct/readiness/publication, owner fencing, window teardown and exact reservation cleanup. Notice support additionally retains a preview coordinator; creation support additionally accepts an explicit configure hook.",
+      "main_window_shell.rs:60-164 and 196-278 duplicate acquisition request, exact selected claim lookup, composer host activation, slot and service assembly for initial and additional windows.",
+      "notice_widget/support.rs:179-217 and 293-326 repeat strict theme-document parsing, admitted theme identity, resolver and prepared appearance construction for initial and replacement appearances."
+    ],
+    "proposal": "Move the common mounted creation lifecycle into a behavior-named support module with explicit service customization and preview-coordinator attachment. Keep fault injection, clock advancement, source release, geometry and intermediate assertions in each scenario. Extract acquisition-plus-composer assembly inside ShellFixture, passing the exact seed/session choices explicitly. Share notice test appearance construction from bytes and an explicit theme identity. Preserve the existing real storage/GPUI boundaries.",
+    "contracts_retained": [
+      "Published versus unpublished cleanup remains distinct; fencing waits for custody settlement before window release.",
+      "Foreign-home matching IDs, cancellation, acknowledgement loss and more-than-four-conflict progress remain individually asserted.",
+      "The notice preview variant still attaches its actual publication target; fixture sharing does not replace appearance transactions with direct assignments.",
+      "Store/service/coordinator handles must drop before TempDir cleanup on Windows."
+    ],
+    "authority_change": "None.",
+    "estimated_net_reduction_range": [
+      140,
+      210
+    ],
+    "estimated_net_lines": -175,
+    "estimate_basis": "Net after retained shared helper implementations, imports, explicit customization and verification: 90-130 mounted setup/finish lines; 30-50 shell acquisition/composer setup lines; 20-30 notice theme construction lines. Scenario assertions, glyph raster/paint plumbing and timing mechanisms are excluded.",
+    "confidence": "high",
+    "verification": [
+      "Run all existing creation, shell, custody and notice-mount/widget cases after extraction. Preserve separate failure names and every intermediate occupancy/publication/appearance assertion.",
+      "Exercise both with-preview and without-preview fixture configuration, and verify cleanup after failure as well as success."
+    ],
+    "overlap": [
+      "AU-008 owns acquisition/abandonment test fixtures elsewhere; this estimate covers only these assigned shell/creation/mount files.",
+      "AU-006 owns theme_runtime_cases production fixtures; this estimate covers notice_widget/support only.",
+      "PRE-004 owns global TempDir consolidation and cleanup fixes. No directory-creation/deletion savings are counted here.",
+      "AW-003 excludes removal of selection tests or their fixture plumbing, so these ranges remain disjoint."
+    ]
+  },
+  {
+    "id": "AW-003",
+    "title": "Offer Copy Detail as an explicit alternative to partial notice text selection",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review",
+    "category": "requires_product_contract_change",
+    "paths": [
+      "crates/beryl-app/src/main_window/notices/widget.rs",
+      "crates/beryl-app/src/main_window/notices/widget/detail.rs",
+      "crates/beryl-app/src/main_window/notices/widget/detail/element.rs",
+      "crates/beryl-app/src/main_window/notices/widget/render.rs",
+      "crates/beryl-app/tests/notice_widget/selection.rs",
+      "crates/beryl-app/tests/notice_widget/continuity.rs",
+      "crates/beryl-app/tests/notice_widget/geometry.rs"
+    ],
+    "symbols": [
+      "MainWindowNoticeWidget::{select_all,copy_selection,extend_detail_selection}",
+      "previous_boundary",
+      "next_boundary",
+      "DetailState::{begin_drag,extend_drag,vertical_target,line_edge,caret_vertical_bounds}",
+      "DetailLayout::{index_for_position,vertical_target,line_edge,grapheme_boundary}",
+      "selection_quads",
+      "append_selection_quad",
+      "NoticeDetailElement::{paint,request_layout}"
+    ],
+    "evidence": [
+      "widget.rs:481-600,644-659 contains bounded copy, grapheme navigation, selection extension and caret reveal; detail.rs:13-212,237-334,369-429 supplies state, hit-testing, visual-row navigation and selection quads.",
+      "detail/element.rs:149-194 installs generation-fenced pointer selection routes and its paint body draws selected ranges. render.rs:208-234 connects selection/copy/navigation shortcuts.",
+      "Shaping, line ranges, top-visible geometry/prefix validation and scrolling remain necessary even after selection removal. The detail is capped at 4096 bytes and at most one record is mounted."
+    ],
+    "proposal": "If Operator accepts the behavior change, replace partial pointer/keyboard selection with one widget-owned Copy Detail command that copies only the current bounded detail. Fence it by exact visible token and inert state, give it explicit focus behavior, and retain measured readonly wrapping, overflow scrolling, prefix/geometry-sensitive continuity, owner-command capacity and close behavior. This copy control must not consume one of the three owner-command slots.",
+    "contracts_retained": [
+      "Single visible notice, exact priority/identity/revision routing, bounded source projection and content-free diagnostics.",
+      "Header/close/owner command reachability, valid same-identity scroll preservation, reset on new identity and stale/inert input rejection.",
+      "No transcript, thread or durable-state mutation from copying."
+    ],
+    "authority_change": "Required in doc/features/notifications/design.md and doc/gui/widgets/main-window-notice/spec.md (selection/copy, focus, anatomy and diagnostics). This is not an implementation-only cleanup and must not weaken the present selection contract by inference.",
+    "estimated_net_reduction_range": [
+      330,
+      430
+    ],
+    "estimated_net_lines": -380,
+    "estimate_basis": "Roughly 470-550 source lines dedicated to selection/hit-testing/caret movement can go; retain the shaped text/scroll-anchor core and subtract approximately 110-140 lines for bounded copy control, focus/input adaptation and replacement verification. No gross deletion of the entire 672-line detail subsystem and no test-file deletion credit.",
+    "confidence": "medium",
+    "verification": [
+      "Before implementation, accept exact copy scope, command placement, keyboard activation and focus fallback in authority.",
+      "Verify current bounded UTF-8 copy, stale token/revision rejection, all inert paths, replacement during press, three owner commands plus copy control at narrow allocation, and unchanged scroll continuity/appearance behavior.",
+      "Use a changed bounded append fixture as described by AW-005; current oversized append test is insufficient."
+    ],
+    "overlap": [
+      "Supersedes PRE-014's preliminary 350-480 estimate; do not add both.",
+      "Mutually exclusive with AW-004's small preserved-selection helper extraction.",
+      "AW-001 and AW-002 may be combined; their estimated lines are outside the selection-specific deletion estimate."
+    ],
+    "dependency_candidates": [
+      {
+        "candidate": "existing gpui-text-input unchanged",
+        "disposition": "not_established_as_replacement",
+        "evidence": "Historical pinned-fork findings in doc/failures/main-window-notice-readiness.md record missing disabled-input inert fencing and set_text scroll restoration at fc17c5738c35350e58e32437cdae74e28ebc31af. This audit reused that prior evidence only; it did not re-inspect or certify a current upstream version.",
+        "reason": "Do not count all custom detail code as removable by unchanged reuse. Repair/adaptation and current-source revalidation would be separate work."
+      }
+    ]
+  },
+  {
+    "id": "AW-004",
+    "title": "Centralize the existing visual-row caret fallback",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review",
+    "paths": [
+      "crates/beryl-app/src/main_window/notices/widget/detail.rs",
+      "crates/beryl-app/tests/notice_widget/selection.rs"
+    ],
+    "symbols": [
+      "DetailState::caret_vertical_bounds",
+      "DetailLayout::{vertical_target,line_edge,visual_row_index}"
+    ],
+    "evidence": [
+      "detail.rs:200-207,276-283,315-321 each validate a retained caret-row index against the current byte offset, accept its inclusive end boundary, then fall back to visual_row_index."
+    ],
+    "proposal": "Add one private resolved_caret_row(rows, offset, preferred_row) helper and use it for caret reveal, vertical movement and Home/End. Keep each operation's distinct no-layout and boundary result outside the helper. Do not change row representation or add a cache solely for this small cleanup.",
+    "contracts_retained": [
+      "Preferred row disambiguates a shared wrapped-row byte boundary.",
+      "Vertical movement keeps preferred x; Home/End resets it; copy remains grapheme/UTF-8 safe."
+    ],
+    "authority_change": "None.",
+    "estimated_net_reduction_range": [
+      8,
+      12
+    ],
+    "estimated_net_lines": -10,
+    "estimate_basis": "Three repeated 7-8-line predicates become one roughly 10-line private helper plus three call sites; small integration allowance included.",
+    "confidence": "high",
+    "verification": [
+      "Retain all physical/wrapped Home/End and Shift+Down exact-copy tests and check shared row-end offset, absent layout and first/last visual row."
+    ],
+    "overlap": [
+      "Alternative only when partial selection remains. Omit if AW-003 is chosen; those bodies are then removed."
+    ]
+  },
+  {
+    "id": "AW-005",
+    "title": "Repair notice-test evidence gaps before relying on continuity and inert-control coverage",
+    "disposition": "proposed",
+    "evidence_maturity": "file_review",
+    "category": "verification_gap",
+    "paths": [
+      "crates/beryl-app/tests/notice_widget/continuity.rs",
+      "crates/beryl-app/tests/notice_widget/support.rs",
+      "crates/beryl-app/tests/notice_widget/commands.rs",
+      "crates/beryl-app/tests/notice_mount/support.rs",
+      "crates/beryl-app/src/main_window/notices/widget.rs",
+      "crates/beryl-app/src/main_window/notices/widget/render.rs"
+    ],
+    "symbols": [
+      "revision_clears_selection_and_preserves_only_valid_scroll_geometry",
+      "notice_widget::support::Mounted::command_selector",
+      "notice_mount::support::command_selector",
+      "MainWindowNoticeWidget::{replace,set_inert,set_appearance}",
+      "MainWindowNoticeWidget::render_command"
+    ],
+    "evidence": [
+      "continuity.rs:13-61 builds 180 lines (6370 ASCII bytes), then appends 49 bytes. Both NoticeContent values truncate to the identical first 4093 bytes plus ellipsis under NOTICE_DETAIL_BYTES=4096. The append test changes revision but not the projected text, so it does not establish continuity across a real append.",
+      "widget/render.rs:12-14 renders command selectors from widget_instance_id and interaction_generation. Both support selectors (notice_widget/support.rs:360-369; notice_mount/support.rs:186-199) substitute diagnostics.replacements.",
+      "widget.rs:167-170 advances both counters on token replacement, but set_inert at 213 and set_appearance at 259 advance only interaction_generation. commands.rs:278 looks up a command using the mismatched helper after becoming inert. Static source analysis establishes counter divergence; no GUI test was run to claim an observed execution failure."
+    ],
+    "proposal": "Use an overflowing yet below-cap initial detail and assert that the admitted bounded text really changes after append while the saved prefix remains equal. Give commands a stable content-free debug selector separate from their generation-bearing interaction ElementId, or query the actual rendered generation through a narrow test interface. Keep generation-bearing interaction identity intact. Return owned selector strings where the test API permits it instead of leaking them merely for convenience.",
+    "contracts_retained": [
+      "Actual stale-input fences and generation rotation remain mandatory.",
+      "Tests must establish both same-identity changed-text continuity and all post-inert input rejections."
+    ],
+    "authority_change": "None; verification correction.",
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "estimated_net_lines": 0,
+    "confidence": "high",
+    "verification": [
+      "Run the focused continuity case with explicit before/after bounded-text inequality and equal saved prefix.",
+      "Run the full persistent/inert input-path case after selector correction and a command lookup after appearance change. Count emitted events and focus/scroll state, rather than only finding a control."
+    ],
+    "overlap": [
+      "No code-reduction credit; repair cost is reserved in affected proposal estimates. Independent of AS-009 positive-source-string test removal."
+    ]
+  },
+  {
+    "id": "AW-006",
+    "title": "Retain explicit creation and shell custody boundaries",
+    "disposition": "retained",
+    "evidence_maturity": "file_review",
+    "paths": [
+      "crates/beryl-app/src/main_window/creation.rs",
+      "crates/beryl-app/src/main_window/creation/owner.rs",
+      "crates/beryl-app/src/main_window/creation/work.rs",
+      "crates/beryl-app/src/main_window/shell.rs",
+      "crates/beryl-app/src/main_window/shell/custody.rs",
+      "crates/beryl-app/src/main_window/shell/host.rs",
+      "crates/beryl-app/src/main_window/shell/appearance.rs",
+      "crates/beryl-app/tests/main_window_creation.rs",
+      "crates/beryl-app/tests/main_window_creation/gpui.rs",
+      "crates/beryl-app/tests/main_window_reservations.rs",
+      "crates/beryl-app/tests/main_window_shell.rs",
+      "crates/beryl-app/tests/main_window_shell/custody.rs",
+      "crates/beryl-app/tests/main_window_shell/gpui.rs"
+    ],
+    "symbols": [
+      "CreationState",
+      "CreationEntry",
+      "MainWindowCreationOwner::{complete,publish_or_abandon}",
+      "MainWindowShellPrepared",
+      "MainWindowShellUnpublished",
+      "MainWindowShellAbandonment",
+      "MainWindowShellAbandonmentReconciliation",
+      "GpuiMainWindowShellHost::construct_hidden",
+      "MainWindowShell::{ready_to_publish,publish,close_before_publication,release_published_handle}"
+    ],
+    "evidence": [
+      "Creation work distinguishes request, acquire, acquisition/repair reconciliation, acquired, initial, retiring, unpublished, abandonment and abandonment reconciliation. These states carry different non-cloneable capabilities and reservations.",
+      "shell/custody.rs preserves the native-window reservation across initial composer retirement, NotCommitted and Pending outcomes; terminal settlement releases it. A generic drop/RAII cleanup cannot safely perform these potentially indeterminate durable mutations.",
+      "host.rs retains prepared facts if native construction fails, returns unpublished custody after mounted construction fails, and only publishes after exact first-presentable selection and appearance readiness. Published handle release follows a different lifecycle from prepublication abandonment.",
+      "Source repeats small validity predicates in complete and publish_or_abandon, but the recheck occurs at separate asynchronous/native publication cuts. It is not redundant validation to remove wholesale."
+    ],
+    "proposal": "Retain the current lifecycle distinctions. Any future CreationEntry enum cleanup must preserve detached worker completion, hidden readiness observation, cancellation timeout and continuation task lifetimes and prove a net improvement; no conservative deletion estimate is established here.",
+    "contracts_retained": [
+      "256-window admission before allocation; per-window exact selected claim.",
+      "No stale home/source completion becomes visible.",
+      "Reused pristine thread preservation versus exact created-fallback deletion.",
+      "Atomic appearance adoption and ordinary-close/Exit separation."
+    ],
+    "authority_change": "None.",
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "estimated_net_lines": 0,
+    "confidence": "high",
+    "verification": [
+      "Existing tests exercise wrong/foreign identities, cancellation cuts, real acknowledgement loss, pending reconcile, stale selection, native publication failure, deadline, repeated release and atomic appearance rejection. They are meaningful scenario evidence, not interchangeable scaffolding."
+    ],
+    "overlap": [
+      "Target shell mounts absent in host render remain paused rework under doc/plan.md; no dead-code or correctness savings are claimed.",
+      "ShellFixture in main_window_shell.rs:43-57 declares TempDir before store/service-bearing fields. Explicit creation cleanup drops store handles first. Reconcile this existing cleanup hazard under PRE-004, with zero additional credit.",
+      "AP-007/AM-007 request-sequence reset and AP-008 mandatory marker-seal registry ownership remain separately tracked, zero credit here."
+    ]
+  },
+  {
+    "id": "AW-007",
+    "title": "Retain the bounded notice arbiter and exact mounted-route validation",
+    "disposition": "retained",
+    "evidence_maturity": "file_review",
+    "paths": [
+      "crates/beryl-app/src/main_window/notices.rs",
+      "crates/beryl-app/src/main_window/notices/model.rs",
+      "crates/beryl-app/src/main_window/shell/notices.rs",
+      "crates/beryl-app/tests/notice_arbiter.rs",
+      "crates/beryl-app/tests/notice_mount.rs"
+    ],
+    "symbols": [
+      "MainWindowNoticeArbiter::{admit,update,replace_protected,dismiss,refresh_visible,dispose}",
+      "NoticeRecordToken",
+      "NoticeVisibleToken",
+      "MainWindowNoticeIngress::validate",
+      "MainWindowShellRoot::{route_notice_event,sync_notices}"
+    ],
+    "evidence": [
+      "notices.rs stores at most 16 entries, reserves three condition classes by admitting at most 13 general records, and uses straightforward bounded scans for priority, FIFO and eviction.",
+      "Owner/admission/condition/revision tokens and a fresh exposure identity prevent old dismissal from affecting a re-exposed record. Same-condition revision updates are different from protected-condition replacement.",
+      "shell/notices.rs adds window, home and mount-incarnation rejection at the GUI lifetime boundary; command forwarding validates the current visible token and current enabled command.",
+      "Widget full rendering is justified by a single 4096-byte detail and at most three owner commands. Queue capacity never multiplies the visible widget tree."
+    ],
+    "proposal": "Keep the bounded Vec and exact typed route. A priority-queue crate, generalized event bus, or universal async workflow framework would leave most custom policy and ownership adapters in place, so no substantial compatible crates.io replacement target is established by these bodies.",
+    "contracts_retained": [
+      "Zero or one visible notice, stable anchor, exact priority/FIFO/preemption.",
+      "Protected conditions remain representable at saturation; unrelated conditions never merge.",
+      "Stale route/visibility/revision rejection, inert input rejection, retirement and content-free diagnostics."
+    ],
+    "authority_change": "None.",
+    "estimated_net_reduction_range": [
+      0,
+      0
+    ],
+    "estimated_net_lines": 0,
+    "confidence": "high",
+    "verification": [
+      "Retain arbiter saturation/protected/UTF-8/identity tests and mounted real owner-command, queued dismissal, retirement, resize and two-window isolation cases.",
+      "Best-effort warning at-most-once admission/timers and remaining feature producers are existing unimplemented rework, not deletable arbiter obligations."
+    ],
+    "overlap": [
+      "Existing notification-audio lane replacement and persistent playback-object requirement remain separate from this queue. notifications.rs test of the old bounded channel receives no replacement savings credit."
+    ]
+  }
+]

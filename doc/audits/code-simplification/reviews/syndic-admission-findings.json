@@ -1,0 +1,449 @@
+[
+  {
+    "id": "SA-001",
+    "title": "Keep one private canonical payload for each admission head and replay receipt",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/model.rs",
+      "crates/syndic-storage/src/draft_piece/admission/codec.rs",
+      "crates/syndic-storage/src/draft_piece/admission/tree.rs"
+    ],
+    "symbols": [
+      "DraftMarkerAdmissionHeadV1/from_parts",
+      "DraftMarkerAdmissionHeadPartsV1",
+      "DraftMarkerAdmissionReplayReceiptV1/from_parts",
+      "DraftMarkerAdmissionReplayReceiptPartsV1",
+      "head_parts",
+      "receipt_parts",
+      "DraftMarkerAdmissionHeadV1/validate",
+      "DraftMarkerAdmissionReplayReceiptV1/validate"
+    ],
+    "evidence": [
+      "model.rs:618-753 declares the same 20 head fields twice and moves every field through from_parts; model.rs:799-890 repeats that pattern for the receipt. codec.rs:410-433 and :759-777 reconstruct those payloads field by field, and tree.rs validators reconstruct them again for digest checking.",
+      "Receipt reconstruction allocates/copies source_head_bytes, target_head_bytes and retained_predecessor_nodes solely to validate or encode an already borrowed receipt. Complete codec and tree bodies, including cfg test fixtures, were reviewed.",
+      "Package design.md, design-schema-v7.md and the conversation-history system require canonical V7 encoding, exact replay closure and bounded retained state; they do not require two private representations."
+    ],
+    "proposal": "Store each existing private Parts value inside its opaque public record and derive Clone/Debug/Eq/PartialEq on Parts. Keep public constructors and const accessors; expose a crate-private borrowed parts accessor for codec and validation. Decode builds Parts once and wraps it after existing checks. Remove the parallel field declarations and field-copy conversion functions. Keep digest recomputation and byte-limit checks; do not expose mutable Parts publicly.",
+    "required_contract_changes": [
+      "None: preserve public opacity, exact Debug field presentation if treated as a diagnostic contract, constructor validation, V7 field order/tags/digest bytes, EOF rejection and byte charges. A hand-written Debug adapter, if needed, is deducted from the estimate."
+    ],
+    "estimated_net_lines": -140,
+    "estimated_net_line_range": {
+      "minimum_reduction": 110,
+      "maximum_reduction": 170,
+      "basis": "About 160-185 lines of duplicate field declarations/conversions become borrowed payload access; deduct 15-35 helper/derive/diagnostic-adapter lines and 15-25 focused vector assertions.",
+      "overlap": "Counts model/from_parts and codec/tree reconstruction only. SA-003 counts operation-specific provisional/final construction sites, not these lines. No macro expansion or public getter deletion counted."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Retain schema round-trip/digest-damage and tree structural tests. Add exact pre-change head/receipt byte vectors including nonempty closure boxes and retained predecessors; compare encoded charge and formatting where contractual. Confirm borrowed validation performs no closure clone."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-002",
+    "title": "Share authenticated root and child checks across admission tree readers",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/index.rs",
+      "crates/syndic-storage/src/draft_piece/admission/index/tree_edit.rs"
+    ],
+    "symbols": [
+      "point_target_leaf",
+      "least_leaf",
+      "authenticate_path",
+      "ReadLedger",
+      "required_node"
+    ],
+    "evidence": [
+      "index.rs:858-933 and index/tree_edit.rs:262-375 repeat owner/tree/key/height/digest/count root and child predicates. The path-capturing editor also retains PathStep values; point lookup and least-source lookup do not.",
+      "authenticate_path has a distinct nonroot minimum-fanout check and maps malformed shapes to NodeFanout. least_leaf uses child(&child_node) comparison. The duplicate routes are similar but not semantically interchangeable."
+    ],
+    "proposal": "Extract small authenticated_root and authenticated_child functions over the existing ReadLedger and explicit expected root/child descriptor. Reuse them in the three loops while keeping selection, empty-root outcome, fanout policy, error mapping and optional path recording at each caller. Do not route point reads through RootPath or allocate editor paths merely to find a leaf.",
+    "required_contract_changes": [
+      "None. Preserve every existing fail-closed boundary and its error classification. Any decision to unify differing fanout acceptance is a separate authority/defect decision, not part of this reduction."
+    ],
+    "estimated_net_lines": -55,
+    "estimated_net_line_range": {
+      "minimum_reduction": 35,
+      "maximum_reduction": 80,
+      "basis": "Roughly 105-135 repeated predicate/read lines replaced by two 40-55-line helpers and compact calls; deduct 10-20 verification cases.",
+      "overlap": "Only descent validation, excluding the dual-tree successor assembly in SA-006 and codec shape checks in SA-001."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Exercise empty roots, absent nodes, cross-owner/tree links, mismatched key/digest/count/envelope/height, and nonroot fanout through both lookup and edit paths. Keep existing split/height/command-limit tests and check ReadLedger byte counts remain unchanged."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-003",
+    "title": "Centralize exact metadata charge exchange and successor head finalization",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/publication.rs",
+      "crates/syndic-storage/src/draft_piece/admission/assignment/mutation.rs",
+      "crates/syndic-storage/src/draft_piece/admission/terminal/mutation.rs",
+      "crates/syndic-storage/src/draft_piece/admission/writer/begin.rs",
+      "crates/syndic-storage/src/draft_piece/admission/writer/consumption.rs",
+      "crates/syndic-storage/src/draft_piece/admission/writer/settlement.rs",
+      "crates/syndic-storage/src/draft_piece/admission/writer/release.rs"
+    ],
+    "symbols": [
+      "prepare_publication",
+      "finish_assignment_transition",
+      "assignment_head",
+      "prepare_terminalization",
+      "prepare_cleanup",
+      "exchange_capacity",
+      "prepare_draft_marker_writer_begin_v1",
+      "prepare_draft_marker_writer_consumption_v1",
+      "prepare_draft_marker_writer_settlement_v1",
+      "prepare_draft_marker_writer_terminal_v1"
+    ],
+    "evidence": [
+      "publication.rs:297-437 and assignment/mutation.rs:247-446 construct provisional/final heads, measure prior/successor head-plus-receipt metadata, apply checked node-charge deltas, and replace the owner's aggregate charge. terminal/mutation.rs already has a narrow exchange_capacity helper.",
+      "writer/begin.rs:18-150 repeats the 18-argument head construction twice and re-reads the prior head after shadowing it solely to recover prior charge. writer/consumption.rs and both settlement paths repeat the same provisional/final accounting pattern.",
+      "Tests distinguish retained owner limits, aggregate home limits, authority read bytes, revision overflow, receipt deletion/replacement, empty-ready birth, and compact-terminal settlement. These remain caller-visible acceptance boundaries."
+    ],
+    "proposal": "Add private helpers for checked revision/capacity exchange and for finalizing one caller-supplied head payload with exact old/new metadata and explicit node charge delta. Build operation-specific fields once, compute encoded size from the provisional payload, assign the exact charge, then compute/validate the final digest. Callers retain authority reads, lifecycle selection, receipt construction and operation-specific command-byte preflight. Save prior_charge before constructing the new writer head instead of issuing a second read. Use explicit no-receipt/receipt inputs, not a general deferred-effects engine.",
+    "required_contract_changes": [
+      "None. Preserve arithmetic order where overflow/refusal classification is observable, production and injected limits, all read/write/delete charges, same command atomicity, terminal cleanup residue, exact replay and callback provenance. Do not treat a digest as sufficient old/new equality."
+    ],
+    "estimated_net_lines": -180,
+    "estimated_net_line_range": {
+      "minimum_reduction": 140,
+      "maximum_reduction": 240,
+      "basis": "Remove repeated provisional/final constructor arguments, metadata exchange arithmetic and capacity increments from seven sites; deduct roughly 90-125 helper/caller-adapter lines and 25-40 focused verification lines. Savings exclude generic Parts conversion removed by SA-001.",
+      "overlap": "SA-001 owns model/codec/tree field-copy bridges; SA-006 owns node-plan aggregation. Home-store HS-002 proof-command sealing is unrelated and not counted."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Retain publication capacity/revision/receipt tests, assignment authority-byte and exhaustion tests, writer replay/settlement/cancellation tests and terminal charge mismatch/final transfer tests. Compare exact head/receipt/capacity bytes and charged totals before/after each lifecycle and fault cut; ensure the removed repeated writer read cannot change required read accounting."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-004",
+    "title": "Make readiness attempt custody mandatory and consume it once",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/readiness_source/attempt.rs"
+    ],
+    "symbols": [
+      "DraftMarkerLabelReadinessPageAttemptV1",
+      "consume",
+      "consume_for_submission",
+      "take_proven_page"
+    ],
+    "evidence": [
+      "attempt.rs:30-36 wraps command, consumer, page, publication and reservation in Option. The constructor always initializes all five; only command needs extraction through &mut self.",
+      "Both consume methods take self by value, repeat command-not-taken rejection and receipt consumption, then take the mandatory fields through impossible None errors. The attempt type has no Drop implementation that requires Option extraction."
+    ],
+    "proposal": "Keep command as Option for take_command; store consumer/page/publication/reservation directly. Implement one consuming private receipt-acceptance method that destructures self, checks command absence, consumes the exact receipt and returns mandatory custody. Standalone consume returns the page and drops the reservation/publication; submission moves them into its flight.",
+    "required_contract_changes": [
+      "None. Preserve one-shot ownership, receipt/consumer correlation, home and generation checks, the command-taken precondition, and reservation rollback on every error or standalone consume/drop. Do not make proof or reservation Clone."
+    ],
+    "estimated_net_lines": -50,
+    "estimated_net_line_range": {
+      "minimum_reduction": 35,
+      "maximum_reduction": 65,
+      "basis": "Remove duplicate receipt acceptance and fallible mandatory-field take helpers; deduct the common consuming helper and drop-path verification.",
+      "overlap": "Does not simplify the home-store seal/consumer internals in HS-002 or remove independent expected/observed proof correlations."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Keep take_command-twice, substituted receipt/consumer, stale reopen, prepared/ready drop capacity, invalidated reservation and reconciliation retry tests. Explicitly check standalone consume and each rejected receipt release the reservation exactly once."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-005",
+    "title": "Use one internal seal terminal transition for cancel, fail and supersede",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/marker_seal.rs"
+    ],
+    "symbols": [
+      "PreparedDraftMarkerSealCancelV1",
+      "PreparedDraftMarkerSealFailV1",
+      "PreparedDraftMarkerSealSupersedeV1",
+      "prepare_terminal_transition",
+      "CancelMutation",
+      "FailMutation",
+      "SupersedeMutation",
+      "validate_terminal_mutation"
+    ],
+    "evidence": [
+      "marker_seal.rs:381-427 has three prepared wrappers with identical expected/next custody. Their DomainMutation implementations at :1435-1538 are identical except wrapper type.",
+      "Fail and supersede already use prepare_terminal_transition at :809; cancel maintains a separate copy of the same terminal record preparation. AdvanceMutation has different replay behavior and is excluded."
+    ],
+    "proposal": "Introduce one private prepared terminal-transition payload and one TerminalMutation. Keep the public named cancellation/failure/supersede wrappers and methods as small wrappers around that payload. Reuse prepare_terminal_transition for cancellation, with a closed terminal request enum or existing validated lifecycle construction limiting outcomes to Cancelled, Failed(reason), and Superseded.",
+    "required_contract_changes": [
+      "None. Preserve natural identity collision checks, expected-versus-next equality, terminal replay as empty contribution, one-record reconciliation reservation, captured-root custody and refusal to transition a sealed record through an unrelated terminal path."
+    ],
+    "estimated_net_lines": -105,
+    "estimated_net_line_range": {
+      "minimum_reduction": 85,
+      "maximum_reduction": 130,
+      "basis": "Remove two approximately 35-line mutation implementations plus duplicated cancellation preparation and expected/next storage; deduct private payload, wrappers and terminal-path regression overhead.",
+      "overlap": "Counts terminal wrappers/implementations only; SA-008 counts error formatting. Advance/seal cursor traversal is not merged."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Retain cancel/fail/supersede, natural identity collision, corruption, reopen and exact replay tests. Verify the three typed entry points cannot construct an Open or Sealed terminal mutation and still reserve exactly one record."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-006",
+    "title": "Finalize the two authenticated index edits through one bounded assembler",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/index.rs"
+    ],
+    "symbols": [
+      "prepare_draft_marker_admission_assignment_v1",
+      "prepare_with_reader",
+      "PreparedDraftMarkerAdmissionIndexSuccessorV1"
+    ],
+    "evidence": [
+      "index.rs:428-475 and :749-804 each combine source/target path keys, authenticate reclaimable replay nodes and fresh puts, sum write/delete bytes, concatenate predecessors and construct the same successor footprint.",
+      "Ingestion adds one association; assignment adds zero. The custom command-limit check belongs to the ingestion testable path; both enforce the production maximum."
+    ],
+    "proposal": "Create one private finish_index_successor receiving the already authenticated source/target edit results, ReadLedger, prior replay descriptors, explicit association delta and command limit. It performs bounded protection/reclaim/put validation and produces the successor. Keep source/target editing and assigned-label continuity logic at their existing callers.",
+    "required_contract_changes": [
+      "None. Preserve deterministic source-before-target output order, authenticated fresh node IDs, protected predecessor exclusion, retained replay closure, byte accounting and both injected/production limits."
+    ],
+    "estimated_net_lines": -45,
+    "estimated_net_line_range": {
+      "minimum_reduction": 30,
+      "maximum_reduction": 65,
+      "basis": "Two approximately 50-line finish blocks become a roughly 50-60-line helper plus calls; deduct small delta/limit verification additions.",
+      "overlap": "Disjoint from descent predicates SA-002 and head/capacity accounting SA-003."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Retain first insert, fanout split/propagation, target duplicate and footprint tests; compare exact puts/deletions/predecessor order and charge delta for ingestion versus assignment."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-007",
+    "title": "Share repeated test setup without merging fault timelines or canonical oracles",
+    "paths": [
+      "crates/syndic-storage/tests/draft_marker_admission_submission.rs",
+      "crates/syndic-storage/tests/draft_marker_admission_index_updates.rs",
+      "crates/syndic-storage/tests/draft_marker_admission_page_progression.rs",
+      "crates/syndic-storage/tests/draft_marker_admission_publication.rs",
+      "crates/syndic-storage/tests/draft_marker_readiness_source_proof/support.rs",
+      "crates/syndic-storage/tests/draft_marker_label_assignment.rs",
+      "crates/syndic-storage/tests/draft_marker_writer_admission/support.rs"
+    ],
+    "symbols": [
+      "marked_session",
+      "complete_marker_edit",
+      "proven_page",
+      "eof_then_assign",
+      "ready_proof",
+      "complete_admitted_marker_edits",
+      "stage_admitted_marker_edit_with_extent"
+    ],
+    "evidence": [
+      "admission_submission.rs duplicates source-proof support's owner/association/marked_session/complete_marker_edit setup. Index/publication/page-progression suites each repeat the same prepare/take-command/compose/consume helper with small command/ordinal/EOF differences.",
+      "writer_admission/support.rs:3-100 duplicates the whole empty readiness path before performing the same nonempty page/assignment loops; :209-328 and :399-491 duplicate admitted staging finish/transfer/window setup.",
+      "Canonical manual_candidate_entry/manual_cut_entry/manual_accepted_entry and their correlation routines deliberately provide independent byte-layout oracles and must remain independent of production codecs. Readiness fixture marker insertion and writer-admitted insertion are different entry paths."
+    ],
+    "proposal": "Create a behavior-named shared marker-readiness test support module for identical owner/association/proven-page setup. Parameterize ordinal and EOF directly. Have writer ready_proof use a page/assignment quantum count of max(1, association_count) with an explicit final-ready assertion; reuse that helper for ordinary assignment setup with disposition as an argument. Factor only the common admitted finish/transfer/window tail into one helper returning prepared identity/fragments, leaving single versus multi-page proposal submission visible in callers.",
+    "required_contract_changes": [
+      "None. Preserve every scenario, named assertion, feature gate, fault injection point, exact command seed/ordinal, independent canonical byte oracle and distinct admitted versus fixture seed path. Do not make tests use production accounting helpers to compute expected charges."
+    ],
+    "estimated_net_lines": -190,
+    "estimated_net_line_range": {
+      "minimum_reduction": 140,
+      "maximum_reduction": 240,
+      "basis": "Approximately 85 duplicate source setup lines, 50-60 repeated proven-page lines, 30 empty readiness lines and 65-90 shared staging-tail lines; deduct new shared module/imports and 40-65 helper/adaptation lines. No test case deletion or generated-line accounting.",
+      "overlap": "Only the listed test/support files. Excludes durable_builder/support.rs (context only), root-wide tempfile candidates, accepted-proof namespace correction SA-011 and independent canonical encoders."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Run each affected existing test target under its original feature configuration after future implementation. Confirm all fault injections/assertions remain at the same point and both empty and multi-association readiness exercise production APIs."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-008",
+    "title": "Use the existing thiserror derive for four admission boundary errors",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/assignment.rs",
+      "crates/syndic-storage/src/draft_piece/admission/terminal.rs",
+      "crates/syndic-storage/src/draft_piece/admission/readiness_source/model.rs",
+      "crates/syndic-storage/src/draft_piece/marker_seal.rs"
+    ],
+    "symbols": [
+      "DraftMarkerLabelAssignmentErrorV1",
+      "DraftMarkerAdmissionTerminalErrorV1",
+      "DraftMarkerReadinessSourceErrorV1",
+      "DraftMarkerSealErrorV1"
+    ],
+    "evidence": [
+      "assignment.rs:75-92, terminal.rs:50-69, readiness_source/model.rs:228-258 and marker_seal.rs:283-313 manually implement Display and Error for small closed enums.",
+      "Readiness source error deliberately has an empty Error implementation despite wrapped errors; the other three expose only their Read variant as source. Seal has an existing From<SyndicReadError>.",
+      "syndic-storage/Cargo.toml:23 already directly consumes thiserror.workspace; root Cargo.toml selects 2.0.18. Exact 2.0.18 API docs confirm message interpolation and that from implies source."
+    ],
+    "proposal": "Derive thiserror::Error with exact existing message attributes. Add #[source] only to the three currently sourced Read variants; use #[from] only on seal Read where the existing conversion/source already agrees. Leave readiness wrapped fields unsourced and retain other explicit conversions. Preserve DomainCallbackError implementations and typed refusal classification.",
+    "required_contract_changes": [
+      "None. Preserve Display strings, Error::source chains and existing conversions exactly. Do not use transparent, blanket From, automatic named-source fields or backtrace inference that changes behavior."
+    ],
+    "estimated_net_lines": -60,
+    "estimated_net_line_range": {
+      "minimum_reduction": 45,
+      "maximum_reduction": 80,
+      "basis": "Replace roughly 100 manual Display/Error/From lines with about 20-30 attributes and derive changes; deduct message/source-chain verification. Existing derive dependency means no manifest or runtime adapter growth.",
+      "overlap": "Does not count SS-006 crate codec errors, ST-002, MS-001 or BR-007. Excludes index error, which currently lacks Error and should not gain it solely for line savings."
+    },
+    "verification": [
+      "Audit only; no builds or tests run.",
+      "Compare every Display message and source presence/absence, including readiness wrapped errors remaining unsourced. Retain callback refusal tests and seal read conversion."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "decision": "reuse existing direct workspace dependency",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://docs.rs/crate/thiserror/2.0.18",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+          "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md"
+        ],
+        "evidence": "Exact API checked 2026-09-06. Repository memory documents crates.io metadata, long-established 1.x/2.x adoption, MIT/Apache-2.0, Rust 1.68 MSRV versus workspace 1.92, default std and matching thiserror-impl 2.0.18. Already consumed by Beryl backend/stream and syndic-storage. Adds compile-time derive expansion, no new runtime dependency or platform I/O. No advisory scan, build or benchmark performed; no advisory-free claim. Tuple wrapped fields avoid named-source inference."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SA-009",
+    "title": "Retain the durable authenticated tree rather than replacing it with im::OrdMap",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/index.rs",
+      "crates/syndic-storage/src/draft_piece/admission/index/tree_edit.rs",
+      "crates/syndic-storage/src/draft_piece/admission/tree.rs",
+      "crates/syndic-storage/src/draft_piece/admission/codec.rs"
+    ],
+    "symbols": [
+      "ReadLedger",
+      "NodeIdFactory",
+      "edit_tree",
+      "rewrite_tree",
+      "PreparedDraftMarkerAdmissionIndexSuccessorV1"
+    ],
+    "evidence": [
+      "The complete tree/index/codecs implement storage-key ownership, cryptographic child authentication, deterministic operation-scoped node identity, bounded path-copy mutation, exact retained predecessor closure and explicit read/write/delete charges.",
+      "The exact im 15.1.0 OrdMap API supplies ordered in-memory operations (get/get_min/update/remove/diff) and structural sharing. Its public API exposes no Beryl storage-node reader, authenticated descriptor, deterministic persisted-node codec or reconciliation reservation boundary.",
+      "The current upstream repository is archived; this reinforces the maintenance screen but is not the reason it fails the storage contract."
+    ],
+    "proposal": "Retain the existing bounded durable tree and perform the local predicate/assembly reductions in SA-002 and SA-006. Do not claim the 1,500-plus-line tree/index implementation disappears by collecting records into an immutable map. A collection-backed replacement would retain authentication and replay machinery or materialize the complete operation state, producing no demonstrated net reduction under current authority.",
+    "required_contract_changes": [
+      "Adoption would require an explicit persistent-format/storage architecture redesign and a new proof of bounded memory, command bytes, restart/custody and exact replay. No such change is recommended here."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no build, benchmark or advisory scan performed. Screening stopped at architectural incompatibility; no claim of production suitability."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "im",
+        "version": "15.1.0",
+        "decision": "rejected for durable admission indexes",
+        "sources": [
+          "https://docs.rs/im/15.1.0/im/struct.OrdMap.html",
+          "https://docs.rs/crate/im/15.1.0/source/Cargo.toml",
+          "https://github.com/bodil/im-rs",
+          "https://github.com/rust-lang/cargo/blob/master/Cargo.toml"
+        ],
+        "evidence": "Inspected 2026-09-06. OrdMap is an immutable in-memory B-tree with ordered get/minimum/update/removal/diff. Registry-package manifest declares Rust 1.46.0, MPL-2.0+, edition 2018; normal dependencies include bitmaps, rand_core, rand_xoshiro, sized-chunks and typenum; optional serde/rayon/refpool/testing features. No target-specific dependency section found in that manifest; Windows/MSRV runtime not tested. Upstream describes im as thread-safe and im-rc as the non-thread-safe variant. Upstream GitHub reports archive on 2026-05-03, 486 commits and roughly 1.6k stars; Cargo's official manifest uses sibling im-rc 15.1.0 (related-family adoption, not proof of Beryl storage suitability). No advisory-free claim; comprehensive advisory/dependency review was unnecessary once architecture fit failed. Runtime adapters would still need all durable node I/O/authentication/byte accounting or whole-operation loading, so net saving is unproven and estimated as zero."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "rejected"
+  },
+  {
+    "id": "SA-010",
+    "title": "Retain independent preflight and snapshot proof observations and canonical marker commitments",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/admission/readiness_source/proof.rs",
+      "crates/syndic-storage/src/draft_piece/admission/readiness_source/model.rs",
+      "crates/syndic-storage/src/draft_piece/marker_commitment.rs",
+      "crates/syndic-storage/src/draft_piece/admission/submission.rs",
+      "crates/syndic-storage/src/draft_piece/admission/writer/model.rs",
+      "crates/syndic-storage/src/draft_piece/admission/terminal/closure.rs"
+    ],
+    "symbols": [
+      "resolve_preflight",
+      "resolve_snapshot",
+      "session_preflight",
+      "session_snapshot",
+      "validate_accepted_owner_preflight",
+      "validate_accepted_snapshot",
+      "page_correlation",
+      "DraftMarkerWriterBindingV1",
+      "TerminalClosureState"
+    ],
+    "evidence": [
+      "Proof preparation and in-command source observation both resolve candidate/cut/accepted ownership. They operate at distinct authority times with different read/error types; an earlier observation cannot establish later validity.",
+      "Canonical readiness evidence records every source occurrence in its canonical order, while target custody separately binds private target identity. Source-proof tests retain fixed 434/450-byte candidate/cut entries and accepted proof tests retain 194-byte entries and exact multiplicity limits.",
+      "Marker commitment functions combine authenticated summaries and maximum labels with explicit empty/count/overflow checks; replacing them with a generic tree hash would alter canonical semantics. Writer/terminal types carry live generation and exact closure conditions that cannot be dropped because main bootstrap is incomplete."
+    ],
+    "proposal": "Keep both independent read phases and exact proof/terminal custody. Small common pure record predicates may be extracted during adjacent work only if they remain materially smaller after adapters; no positive saving is claimed now. Preserve independent canonical test encoders and the existing SHA-256 domain-separated functions.",
+    "required_contract_changes": [
+      "None for retention. Eliminating execution-time reads, target/occurrence identity, generation fences, exact closure equality or distinct digest semantics would contradict current authority."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no builds/tests run. Keep stale-source/asset revision, wrong witness/store, consumer substitution, canonical multiplicity/order, retirement and compact-terminal charge tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  },
+  {
+    "id": "SA-011",
+    "title": "Repair the accepted-proof test's duplicate support module name before using it as validation",
+    "paths": [
+      "crates/syndic-storage/tests/draft_marker_readiness_accepted_proof.rs",
+      "crates/syndic-storage/tests/draft_marker_readiness_accepted_proof/support.rs"
+    ],
+    "symbols": [
+      "mod support",
+      "AcceptedFixture",
+      "advance_syndic_revision",
+      "publish_local_origin",
+      "publish_inheriting_child"
+    ],
+    "evidence": [
+      "draft_marker_readiness_accepted_proof.rs:32-35 declares both #[path = \"draft_marker_readiness_accepted_proof/support.rs\"] mod support and #[path = \"support/mod.rs\"] mod support in the same module.",
+      "The fixture support uses crate::support::commit/timestamp for common test helpers, so simply deleting the common declaration would lose those references. This is a static source finding, not a build result."
+    ],
+    "proposal": "Rename the fixture-specific declaration to accepted_support (keep its existing #[path]) and import accepted_support::*; keep common support as support so its qualified commit/timestamp references continue to resolve. Then compile/run this test target under test-faults before relying on it for the simplifications.",
+    "required_contract_changes": [
+      "None. This is test wiring, not product behavior or a new implementation phase."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "No build/test run during audit. Future correction: cargo check/test the existing accepted-proof target with test-faults and verify fixed-vector, occurrence count, stale cross-domain evidence and substitution scenarios remain present."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "test_wiring_correction"
+  }
+]

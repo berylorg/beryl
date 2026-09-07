@@ -1,0 +1,518 @@
+[
+  {
+    "id": "BR-001",
+    "title": "Share the neutral serialized-response wait across six method owners",
+    "paths": [
+      "crates/beryl-backend/src/session/bounded_request.rs",
+      "crates/beryl-backend/src/session/compaction.rs",
+      "crates/beryl-backend/src/session/interruption.rs",
+      "crates/beryl-backend/src/session/ordered_turn_stream.rs",
+      "crates/beryl-backend/src/session/streamed_turn_start.rs",
+      "crates/beryl-backend/src/session/streamed_turn_steer.rs",
+      "crates/beryl-backend/src/session/thread_injection.rs"
+    ],
+    "symbols": [
+      "await_bounded_response",
+      "await_compact_response",
+      "await_streamed_turn_start",
+      "await_streamed_turn_steer",
+      "await_thread_injection",
+      "poll_ordered_turn_stream_progress"
+    ],
+    "evidence": [
+      "bounded_request.rs:267, compaction.rs:339, interruption.rs:279, streamed_turn_start.rs:110, streamed_turn_steer.rs:101 and thread_injection.rs:170 each implement the same deadline/remaining-time/read/Quiet/ordered-progress/approval-routing loop.",
+      "Each loop deliberately continues after ApprovalTargetFailed; other failures flow to caller-specific retirement and dispatch classification. Full request and streamed-input tests confirm start requires both checked echo acknowledgements while steer may return before delayed echoes.",
+      "streamed_admission.rs and session/outbound.rs already share streamed request reservation and source-aware JSON writing; this finding excludes those completed consolidations."
+    ],
+    "proposal": "private await_response(method, timeout)->Result<RequestCompletion,ManagedBackendError> handles deadline, Quiet, ordered progress and approval routing; returns typed bounded result/rejection; caller owns family check, retire_connection, start verifier removal and dispatch outcome mapping",
+    "required_contract_changes": [
+      "No public contract change. Keep method-specific profile and source gates, expected family/identity, exact request retirement, response versus rejection, durable/volatile interruption normalization, and fresh injection target consumption at callers."
+    ],
+    "estimated_net_lines": {
+      "min": 150,
+      "max": 220,
+      "basis": "Replace six ~30–50-line neutral pump portions with one ~50–70-line helper and small typed call sites; exclude method-specific postprocessing.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing context_compaction, exact_interruption, request_flow, lineage_flow, thread_read_flow, thread_injection_session and incoming_json_ingress streamed start/steer tests.",
+      "Specifically preserve approval-target continuation, absolute deadline, prebyte cancellation/reuse, after-byte transport loss, successful-start-before-echo error, exact rejection before echoes, wrong response family/identity, and poisoned expectation behavior.",
+      "Run focused Cargo verification and independent semantic review when implementing; no tests were executed during this audit."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "Rust standard library and existing private helpers",
+        "version": "workspace Rust 1.92",
+        "decision": "No new dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-002",
+    "title": "Use std VecDeque for bounded pre-bind approvals",
+    "paths": [
+      "crates/beryl-backend/src/session/pre_bind.rs"
+    ],
+    "symbols": [
+      "PreBindApprovalPrefix",
+      "ApprovalNode",
+      "clear_nodes"
+    ],
+    "evidence": [
+      "pre_bind.rs is 106 lines: an explicit newest/ready two-stack linked FIFO uses boxed nodes, reversal, a linear fallback back traversal and iterative manual Drop.",
+      "Capacity, admissions, high-water and full counters are separate semantic state and must remain. The full pre_bind_approval_ordering suite checks capacity 70, rejection before denial, FIFO binding and release on fatal failure."
+    ],
+    "proposal": "VecDeque<IncomingMessage> with explicit len==capacity rejection before push and unchanged ownership-return error; preserve content-free counters, max occupancy, admission-before-denial FIFO",
+    "required_contract_changes": [
+      "No behavior change. VecDeque allocation capacity must not become the admission bound: preserve the configured logical maximum and return the exact rejected IncomingMessage before any push or denial."
+    ],
+    "estimated_net_lines": {
+      "min": 35,
+      "max": 55,
+      "basis": "Delete boxed-node/reversal/traversal/destruction mechanics after retaining a small explicit-capacity VecDeque wrapper.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing pre_bind_approval_ordering success/failures suite, including configured capacity above 64 and sink binding failure at first versus later item.",
+      "Check mixed push/pop/back/clear order with the actual session admission contract; no unbounded fallback allocation on full."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "std::collections::VecDeque",
+        "version": "Rust standard library",
+        "sources": [
+          "https://doc.rust-lang.org/std/collections/struct.VecDeque.html"
+        ],
+        "decision": "Use existing standard-library FIFO; explicit len bound remains Beryl-owned."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-003",
+    "title": "Consolidate WebSocket write lifecycle around existing source-aware writer",
+    "paths": [
+      "crates/beryl-backend/src/websocket_transport.rs",
+      "crates/beryl-backend/src/session/outbound.rs"
+    ],
+    "symbols": [
+      "WebSocketClientTransport::write_message",
+      "WebSocketClientTransport::write_streamed_message",
+      "WebSocketClientTransport::write_injection_message",
+      "write_source_aware_json"
+    ],
+    "evidence": [
+      "websocket_transport.rs:204–399 repeats closed/fault checks, bounded writer construction, serializer/transport conversion, dispatch-progress publication and partial-write poisoning in three wrappers.",
+      "Streamed and injection variants differ primarily in source slot/error type and final domain error construction; session/outbound.rs:203 already abstracts source failure type E. Actual first-underlying-byte tracking is shared and must remain authoritative."
+    ],
+    "proposal": "Shared private prewrite check/writer setup and normalize_outbound_failure; generic source-aware helper<E> taking domain error mapper removes identical input/recovery wrappers; preserve explicit public profile gates, first-source-error precedence, actual-byte progress and poison-on-partial-write",
+    "required_contract_changes": [
+      "No behavior change; public foreground/request-only gates remain separate. Preserve first source failure over the serializer sentinel and concrete transport failure, exact bytes-written status and never flush residual bytes after source failure."
+    ],
+    "estimated_net_lines": {
+      "min": 100,
+      "max": 150,
+      "basis": "Share prewrite setup and failure normalization, with one generic source-aware adapter and typed error-mapping closures; do not count existing writer core.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing streamed start/steer predispatch and source-failure cases, thread_injection_session failures and lifecycle cases.",
+      "Validate WriteZero, partial writes, source failure before/after first frame, fragment flush failure, authority poisoning and exact cause chain."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "Rust standard library and existing private helpers",
+        "version": "workspace Rust 1.92",
+        "decision": "No new dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-004",
+    "title": "Use stack-owned read bookkeeping and remove inert per-message state",
+    "paths": [
+      "crates/beryl-backend/src/websocket_transport.rs",
+      "crates/beryl-backend/src/websocket_transport/message.rs",
+      "crates/beryl-backend/src/websocket_transport/provider.rs",
+      "crates/beryl-backend/src/websocket_transport/reader.rs",
+      "crates/beryl-backend/src/session.rs"
+    ],
+    "symbols": [
+      "PayloadReaderState",
+      "PayloadReaderShared",
+      "WebSocketPayloadReader",
+      "MessagePayload",
+      "WebSocketIngressStats",
+      "last_websocket_ingress_test_metrics"
+    ],
+    "evidence": [
+      "reader.rs:12–81 wraps one ordinary per-message struct in Rc<RefCell>, clones it into a reader consumed synchronously by incoming_json::decode_reader_with_provider, and then reads it after that call. An exclusive stack borrow spans exactly that call; no reader escapes and no callback accesses the bookkeeping concurrently.",
+      "MessagePayload contains text/continuation/control frame counters with no reads. Its saturating note_bytes checks against message_budget, but the sole constructor chain always passes WEBSOCKET_PROTOCOL_PAYLOAD_BUDGET=usize::MAX, so this budget cannot fire. Real bytes_read and chunk/timing metrics live separately.",
+      "provider.rs:133 exhaustively maps every IncomingMessage variant to retained_item_result_present=false; it is a constant, not measured retention. Cross-scope consumers: crates/beryl-app/src/cas_projection/connection/driver.rs:259 and test_faults/provider.rs:46–87; app tests normal_terminal/verification.rs:285 and provider_residency/fixture.rs:289 only assert false."
+    ],
+    "proposal": "PayloadReaderState ordinary struct passed &mut into scoped WebSocketPayloadReader instead of Rc<RefCell> clone; after consumed reader exits state inspected directly. Remove never-read frame counters, never-triggerable saturating usize::MAX message budget, and constant-false retained_item_result field test evidence after validation; keep actual byte/latency/buffering metrics and full framing errors.",
+    "required_contract_changes": [
+      "Keep framing limits/validation, no whole canonical message cap, raw byte and latency metrics, transport-failure precedence and actual pool/fragment privacy evidence.",
+      "If deleting the constant metric, update the app test-only tuple/snapshot adapters and two tautological assertions together; do not delete the remaining ingress metrics or substantive privacy tests. This is a test-seam signature change only."
+    ],
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 110,
+      "basis": "Remove Rc/shared wrapper, clone/borrow/accessor scaffolding and dead budget/counter/constant-flag plumbing after retaining stack state methods. App adapter/test changes are required but excluded from the net estimate.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing provider ingress fragmentation, invalid UTF-8, binary/control/close and transport-loss tests.",
+      "Existing app provider_residency and normal_terminal tests with remaining observed bytes/chunks/pool behavior intact; do not treat the old constant flag as evidence of no retention.",
+      "Compile both ordinary and lifecycle-test-support/test-faults configurations when implemented."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "Rust standard library and existing private helpers",
+        "version": "workspace Rust 1.92",
+        "decision": "No new dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-005",
+    "title": "Share repeated authenticated initialization fixtures",
+    "paths": [
+      "crates/beryl-backend/tests/request_flow/support.rs",
+      "crates/beryl-backend/tests/request_flow/lifecycle.rs",
+      "crates/beryl-backend/tests/request_flow/release_admission.rs",
+      "crates/beryl-backend/tests/lineage_flow/exact.rs",
+      "crates/beryl-backend/tests/lineage_flow/lifecycle.rs",
+      "crates/beryl-backend/tests/thread_read_flow/exact.rs",
+      "crates/beryl-backend/tests/thread_read_flow/lifecycle.rs",
+      "crates/beryl-backend/tests/exact_interruption/binding.rs",
+      "crates/beryl-backend/tests/exact_interruption/gates.rs",
+      "crates/beryl-backend/tests/exact_interruption/interrupt.rs",
+      "crates/beryl-backend/tests/exact_interruption/volatile.rs",
+      "crates/beryl-backend/tests/exact_interruption/support.rs",
+      "crates/beryl-backend/tests/context_compaction.rs",
+      "crates/beryl-backend/tests/incoming_json_ingress/streamed_turn_start.rs",
+      "crates/beryl-backend/tests/incoming_json_ingress/streamed_turn_start_failures.rs",
+      "crates/beryl-backend/tests/incoming_json_ingress/streamed_turn_steer.rs",
+      "crates/beryl-backend/tests/thread_injection_session/fixtures.rs",
+      "crates/beryl-backend/tests/thread_injection_session/gates.rs"
+    ],
+    "symbols": [
+      "assert_initialize",
+      "send_initialize_response",
+      "assert_initialized",
+      "initialize_server",
+      "connect_initialized_foreground"
+    ],
+    "evidence": [
+      "Across all 71 backend test files, exact text matching found 65 identical three-statement server initialize/response/initialized sequences and 37 foreground candidate constructor occurrences. Every containing file was read fully.",
+      "request_flow/support.rs already centralizes authentication, read/write and profile assertions, but most suites inline the three-step handshake and six-to-eight-line successful foreground client setup. Streamed-start-failure and injection fixtures each add their own initialize_server helper.",
+      "Failure timing, profile rejection, source call/drop counters, synchronous sink acknowledgement and method-specific assertions remain meaningful and are not candidates for deletion."
+    ],
+    "proposal": "Add a small shared initialize_server(socket, request_only) helper and a successful initialized foreground-session helper with explicit capacity. Keep sink binding at each case or in its existing typed fixture. Replace only ordinary successful setup; preserve raw setup in uninitialized, incompatible-initialize and provenance tests.",
+    "required_contract_changes": [
+      "No product change and no test case/acceptance reduction. Keep request-only notification opt-outs asserted independently of production constants and retain explicit fault placement."
+    ],
+    "estimated_net_lines": {
+      "min": 220,
+      "max": 330,
+      "basis": "65 server sequences save about 120 lines after helper cost; ordinary foreground setup and duplicate local initialization wrappers add roughly 100–210 net lines. Excludes consolidating case bodies or fault-specific sources/sinks.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Run the affected backend lifecycle test targets after implementation; preserve every existing distinct test name and outcome assertion.",
+      "Ensure shared setup does not pre-initialize sessions used to exercise uninitialized/profile/provenance gates or hide request order."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "Rust standard library and existing private helpers",
+        "version": "workspace Rust 1.92",
+        "decision": "No new dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-006",
+    "title": "Remove exact source-spelling assertions where behavior is already exercised",
+    "paths": [
+      "crates/beryl-backend/tests/production_source_boundary.rs"
+    ],
+    "symbols": [
+      "foreground_websocket_ingress_calls_only_the_incremental_decoder",
+      "production_sources_exclude_runtime_probe_admission_and_target_touching_regressions"
+    ],
+    "evidence": [
+      "production_source_boundary.rs:73–132 locates literal reader and decoder statements, insists on one exact spelling and slices implementation text using the order of foreground and request-only impl blocks. These are organization assertions coupled to the existing implementation.",
+      "The same file contains meaningful no-DOM, removed runtime-probe and coarse cleanup exclusions; retain them. Provider fragmentation/pool/privacy cases and request release-admission wire tests provide behavioral coverage.",
+      "The release-admission source guard uses an exact Rust doc-comment sentence as the end delimiter. That marker conflicts with the repository's rule that source documentation is not authority; it also makes harmless comment removal break a test."
+    ],
+    "proposal": "Delete exact helper-name, statement-order, occurrence-count and impl-block-order checks. Retain or fold the existing prohibited whole-DOM/read-to-end routes into the semantic source-boundary scan. Replace the doc-comment delimiter with a bounded code-structure boundary if the target-touching source exclusion remains useful; do not remove the exclusion itself.",
+    "required_contract_changes": [
+      "No architecture relaxation. Preserve incremental bounded provider ingestion, no whole DOM, no runtime compatibility probes, no target-touching release admission and no coarse cleanup operations."
+    ],
+    "estimated_net_lines": {
+      "min": 30,
+      "max": 50,
+      "basis": "Only implementation-spelling scaffolding removed, after keeping semantic exclusion checks; no broad source-guard deletion and no net credit for delimiter adjustment.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing architecture boundary scan still detects prohibited API families.",
+      "Provider multi-fragment/large-payload and release_admission exact-wire/provenance tests remain unchanged; build validates helper call relationships."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "Rust standard library and existing private helpers",
+        "version": "workspace Rust 1.92",
+        "decision": "No new dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-007",
+    "title": "Derive simple owned-error presentation while retaining redacted leaves",
+    "paths": [
+      "crates/beryl-backend/src/ordered_turn_stream.rs",
+      "crates/beryl-backend/src/turn/steering.rs"
+    ],
+    "symbols": [
+      "OrderedTurnStreamSubmitError",
+      "SteeringUserMessageSelectionError",
+      "CheckedSteeringUserMessageSubmitError",
+      "SteeringUserMessageSelection",
+      "CheckedSteeringUserMessage"
+    ],
+    "evidence": [
+      "Three owned error structs implement the same Debug field list, one fixed Display prefix plus cause, and Error::source returning Some(&cause): ordered_turn_stream.rs:249–274 and turn/steering.rs:340–416.",
+      "SteeringUserMessageSelection and CheckedSteeringUserMessage Debug implementations list every field in declaration order and can derive Debug.",
+      "SteeringUserMessageSource intentionally omits its replay source; ClientUserMessageId and operation/fragment presentation contain intentional redaction. Those leaf/variant implementations must not be blindly derived."
+    ],
+    "proposal": "Use the already consumed thiserror::Error with exact existing #[error(...)] text and an explicit #[source] cause field on each of the three wrappers, plus Debug derive where all fields already appear. Keep ownership accessors and redacted/non-exhaustive presentation exceptions.",
+    "required_contract_changes": [
+      "Preserve identical Display text, concrete cause chain, rejected-operation ownership and content redaction. No new From or transparent conversion and no new dependency declaration needed."
+    ],
+    "estimated_net_lines": {
+      "min": 80,
+      "max": 110,
+      "basis": "Three manual error presentation groups (~25 lines each) and two exact-field Debug bodies, less derive/message/source attributes. No source documentation cleanup counted.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Compare Display and Error::source for representative causes; preserve source-chain topology.",
+      "Existing ordered sink failure and delayed steering ownership tests; inspect Debug output for private input/page/replay leakage.",
+      "Focused backend Cargo verification when implemented."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "thiserror",
+        "version": "2.0.18",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.68 (below workspace 1.92)",
+        "features": "existing default std and matching thiserror-impl 2.0.18; no change",
+        "platforms": "platform-neutral derive",
+        "maturity": "Established 1.x/2.x crate already used by backend and stream; root investigation retained exact metadata.",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+          "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md"
+        ],
+        "decision": "Reuse installed workspace dependency; explicit source marking preserves current chain."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-008",
+    "title": "Use derived fixed recovery-item wire shapes around the streaming text leaf",
+    "paths": [
+      "crates/beryl-backend/src/thread_injection/wire.rs"
+    ],
+    "symbols": [
+      "ThreadInjectionItemWire",
+      "ThreadInjectionContentWire",
+      "ThreadInjectionTextContentWire",
+      "ThreadInjectionTextWire"
+    ],
+    "evidence": [
+      "wire.rs:106–178 has three handwritten Serialize impls for a fixed message object, a one-element content array and a two-field text object.",
+      "The only stateful work belongs in ThreadInjectionItemsWire and ThreadInjectionTextWire::Display/Serialize: replay validation, per-page text emission and source-failure sentinel. The surrounding fixed structural serialization does not need handwritten serializers."
+    ],
+    "proposal": "Construct derived private message/text wire structs with renamed type fields and a one-element array of content. Keep the existing lazy streaming text wrapper by reference and the stateful sequence/replay serializer unchanged.",
+    "required_contract_changes": [
+      "No wire-order, role/content-type, source-read timing or error precedence changes. Never collect text or an entire recovery sequence into a String/Vec to enable derive."
+    ],
+    "estimated_net_lines": {
+      "min": 35,
+      "max": 55,
+      "basis": "Replace ~70 lines of trivial serializers/wrappers with ~20–35 lines of fixed derived wire shape and construction; text streaming and source error machinery excluded.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "Existing injection exact user/assistant request serialization, prebyte source failure, postbyte source failure and page-bound tests.",
+      "Verify derived field declaration order remains type/role/content and type/text, and the streamed text source is traversed exactly once per item."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "serde",
+        "version": "existing workspace selection",
+        "decision": "Reuse Serialize derive already enabled in the workspace; no new parser/DOM or dependency."
+      }
+    ],
+    "confidence": "high duplication/source evidence; medium net estimate",
+    "disposition": "proposed"
+  },
+  {
+    "id": "BR-009",
+    "title": "Retain specialized process and fragmented WebSocket ownership after dependency comparison",
+    "paths": [
+      "crates/beryl-backend/src/managed_process.rs",
+      "crates/beryl-backend/src/command.rs",
+      "crates/beryl-backend/src/websocket_transport.rs",
+      "crates/beryl-backend/src/websocket_transport/reader.rs",
+      "crates/beryl-backend/src/websocket_transport/message.rs"
+    ],
+    "symbols": [
+      "HostProcessTree",
+      "WslProcessGroup",
+      "WebSocketPayloadReader",
+      "WebSocketClientTransport"
+    ],
+    "evidence": [
+      "Official crates.io API and tagged source inspected 2026-09-06. process-wrap 10.0.0 std::JobObject calls private make_job_object(handle, false); JobObject is a unit struct, JobObjectChild.job_port is private, windows module/helpers are private, and std exports no KillOnDrop configuration (Tokio does). Public custom wrappers can kill on Drop but cannot set the library-owned job handle's kernel kill-on-close flag.",
+      "Beryl HostProcessTree is only ~110 lines gross and preserves explicit create/configure/assign/terminate error context and kill-on-job-close. A fork could expose/configure that one flag, but adapter/error changes leave perhaps 40–70 conditional net lines while adding fork maintenance. Existing bounded grace/kill wait and remote Windows-hosted WSL process-group cleanup remain outside the library's local Unix process-group API.",
+      "tungstenite 0.30.0 FrameSocket::read calls FrameCodec::read_frame, which reserves the full declared payload length and returns only after all frame bytes are buffered. Even its low-level public API cannot replace Beryl's incremental payload reader without a complete-frame allocation or new protocol cap."
+    ],
+    "proposal": "Retain current process ownership and low-level soketto-based fragment streaming. A future process-wrap fork is possible but not recommended solely to remove this small Host wrapper. Do not replace canonical ingress with tungstenite complete-frame/message APIs.",
+    "required_contract_changes": [
+      "None for retention. A new library/fork would require explicit kernel process-owner and bounded teardown equivalence, WSL cleanup retention and error-contract review; a canonical input cap is not proposed."
+    ],
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "No accepted net deletion. Process-wrap could remove at most ~40–70 net lines under a new fork/configuration and adapter; tungstenite offers no compatible canonical ingress cut.",
+      "overlap": "None; estimates count source or test lines in this finding only."
+    },
+    "verification": [
+      "No install/build/benchmark performed. Source-level fit investigation only.",
+      "Any future process change needs Windows descendant cleanup, shutdown idempotence/drop, assignment-failure cleanup, owner-exit behavior and WSL grace/kill evidence."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "process-wrap",
+        "version": "10.0.0",
+        "license": "Apache-2.0 OR MIT",
+        "msrv": "1.87.0",
+        "features": "Would use default-features=false with std, job-object, creation-flags; no Tokio conversion proposed",
+        "platforms": "Windows jobs; local Unix process groups/sessions; no Windows-to-WSL remote-group cleanup",
+        "maturity": "First release 2024-03-11; latest stable release 2026-08-24; crates.io reported 12,808,610 downloads; maintained successor to command-group.",
+        "sources": [
+          "https://crates.io/api/v1/crates/process-wrap",
+          "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/std/job_object.rs",
+          "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/windows.rs",
+          "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/std.rs"
+        ],
+        "decision": "Retain current implementation; missing public std job configuration plus low net scope. A fork is technically possible, not a drop-in."
+      },
+      {
+        "name": "command-group",
+        "version": "5.0.1",
+        "license": "Apache-2.0 OR MIT",
+        "msrv": "1.68.0",
+        "features": "default none; optional with-tokio",
+        "platforms": "Windows job/Unix group abstraction",
+        "maturity": "First release 2021-07-20; stable release 2023-11-18; crates.io reported 7,207,901 downloads; process-wrap documents itself as successor.",
+        "sources": [
+          "https://crates.io/api/v1/crates/command-group",
+          "https://docs.rs/process-wrap/10.0.0/process_wrap/"
+        ],
+        "decision": "Prefer investigating maintained successor; no separate adoption recommendation."
+      },
+      {
+        "name": "tungstenite",
+        "version": "0.30.0",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.85",
+        "features": "default handshake; no TLS needed for loopback; backend currently uses 0.29.0 only as dev dependency",
+        "platforms": "Synchronous Read+Write framing on supported Rust platforms",
+        "maturity": "First release 2017-03-17; latest stable 2026-07-11; crates.io reported 294,398,645 downloads.",
+        "sources": [
+          "https://crates.io/api/v1/crates/tungstenite",
+          "https://raw.githubusercontent.com/snapview/tungstenite-rs/v0.30.0/src/protocol/frame/mod.rs",
+          "https://docs.rs/tungstenite/latest/tungstenite/protocol/frame/struct.FrameSocket.html"
+        ],
+        "decision": "Retain as test-server library; public complete-frame buffering violates canonical ingress working-set requirements."
+      }
+    ],
+    "confidence": "high API/source evidence; estimates are conditional",
+    "disposition": "retained"
+  },
+  {
+    "id": "BR-010",
+    "title": "Keep typed Serde caps as an explicit ancillary-response alternative, not a drop-in",
+    "paths": [
+      "crates/beryl-backend/src/websocket_transport/provider.rs",
+      "crates/beryl-backend/src/protocol/response/model.rs",
+      "crates/beryl-backend/tests/incoming_json_ingress/responses/model_page.rs",
+      "crates/beryl-backend/tests/thread_read_flow/exact.rs"
+    ],
+    "symbols": [
+      "recv_json_value_timeout",
+      "ModelPage",
+      "InitializeResultMachine",
+      "ConfigResultMachine",
+      "ModelPageMachine"
+    ],
+    "evidence": [
+      "BJ-003's synchronous pull cursor preserves arbitrary-length discarded strings/unknown metadata and existing exact ordered field semantics over the already selected bounded-json recognizer.",
+      "Typed serde_json Deserialize for selected ancillary initialize/config/model-list responses could remove most explicit response continuation code without a new dependency, but complete reader strings/names may allocate and field matching is normally unordered. A finite input budget would be new accepted-input policy, not merely an implementation bound.",
+      "Model responses retain only 64 records and bounded labels/cursors, yet discarded descriptions and incidental metadata are not input-bounded. Config can carry arbitrarily large unrelated settings; thread/read metadata fixtures deliberately contain 96 KiB historical text, and terminal notifications may carry large repeated turn items. Their retained result sizes do not establish safe input caps.",
+      "Classification currently consumes a prefix before selecting the family. A whole-object typed route needs an explicitly bounded captured/replayed classifier prefix or another documented handoff, plus drain/poison semantics. It cannot simply restart serde_json on the remaining transport reader."
+    ],
+    "proposal": "If Operator explicitly chooses a restricted ancillary input policy, separately design a per-family budget (for example, a candidate 1 MiB initialize/config/model-list budget to evaluate, not an established safe limit), normal field-order semantics, bounded retained types and full-body validation. Compare that concrete design against BJ-003 with a prototype before selecting it. Current recommendation remains the bounded-json pull cursor; canonical provider content, user input and thread-repair history receive no new cap.",
+    "required_contract_changes": [
+      "Required before any typed capped alternative: backend design must explicitly approve selected families, byte/depth budgets, acceptance loss for formerly valid oversized discarded metadata, ordinary Serde field-order/duplicate handling, memory accounting, response classification handoff, full consumption and connection poison behavior.",
+      "Do not apply the example budget generically to canonical provider items, streamed input, recovery history, turn-completed items or thread/read history. No such authority changes are made by this audit."
+    ],
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Conditional alternative only, excluded from totals. Initialize/config/model parsing totals roughly 2.3k existing lines; a typed rewrite might remove ~1.2k–1.8k after strict retained projection, prefix capture and budget/drain adapters, but this is not additive with BJ-003 and cannot be accepted as equivalent without authority changes.",
+      "overlap": "Mutually exclusive/overlapping alternative to corresponding BJ-003 response work; no accepted line savings."
+    },
+    "verification": [
+      "Before selection, prototype against large ignored config/model fields, Unicode expansion, duplicate/reordered keys, exact matched/mismatched response ids, malformed suffixes and budget exhaustion; quantify runtime/peak memory and legitimate pinned-producer cases rejected.",
+      "No prototype or benchmark was run; cap value is deliberately a reviewable candidate, not a safety claim."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "serde_json",
+        "version": "1.0.151",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.71",
+        "features": "existing default std; derive via existing serde",
+        "platforms": "platform-neutral reader deserialization",
+        "maturity": "Established dependency; exact official version and scalar allocation behavior investigated in BJ-005.",
+        "sources": [
+          "https://docs.rs/serde_json/1.0.151/serde_json/",
+          "https://raw.githubusercontent.com/serde-rs/json/v1.0.151/src/de.rs",
+          "https://crates.io/api/v1/crates/serde_json"
+        ],
+        "decision": "Conditional reuse only after ancillary acceptance-policy change; bounded-json remains required for canonical streams."
+      }
+    ],
+    "confidence": "high API/source evidence; estimates are conditional",
+    "disposition": "retained"
+  }
+]

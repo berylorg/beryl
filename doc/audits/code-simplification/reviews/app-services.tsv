@@ -1,0 +1,55 @@
+path	status	review_depth	finding_ids	evidence
+crates/beryl-app/src/backend_failure.rs	audited	full_bodies		Examined 1-69. Bounded user-detail formatting; character limits intentionally differ from byte-limited diagnostics.
+crates/beryl-app/src/branch_discussion_dynamic_tools.rs	audited	full_bodies		Examined 1-170. Shared streaming object sink already enforces nonempty scalar and byte bounds; move-only feature dispatch retained.
+crates/beryl-app/src/catalog_projection.rs	audited	full_bodies	AU-007	Examined 1-259. One typed atomic cross-domain join; stable home fence and exact-current no-op are required. AU-007 consolidates duplicated pure execution-binding validation and fact projection with window_acquisition.
+crates/beryl-app/src/conversation_tools.rs	audited	full_bodies		Examined 1-274. Canonical ordered registry and exact SHA-256 profile; rejecting sink retains no request payload.
+crates/beryl-app/src/conversation_tools/arguments.rs	audited	full_bodies		Examined 1-209. Already shared streaming closed-object state machine; whole-Value replacement violates ingress contract.
+crates/beryl-app/src/diagnostic_child_control.rs	audited	full_bodies		Examined 1-150. Bounded normalization and exact stop/optional wait identities serve different admission semantics.
+crates/beryl-app/src/diagnostic_child_dynamic_tools.rs	audited	full_bodies	AU-001	Examined 1-1085. Repeated bounded wire utilities and limited-read schemas; child-specific target/wait/namespace policy remains.
+crates/beryl-app/src/diagnostic_child_protocol.rs	audited	full_bodies	AU-009	Examined 1-404. Bounded newline drain, request correlation and response-size fallback retained; generic RPC package not smaller.
+crates/beryl-app/src/diagnostic_child_supervisor.rs	audited	full_bodies	AU-009	Examined 1-928. Exact process ownership, handshake and failed-cleanup custody remain; inspected process-wrap std JobObject cannot preserve kernel kill-on-close.
+crates/beryl-app/src/diagnostic_child_supervisor/launch.rs	audited	full_bodies	AU-009	Examined 1-105. Absolute explicit executable, metadata and Unix execute-bit validation are deliberate launcher boundary.
+crates/beryl-app/src/diagnostic_child_target.rs	audited	full_bodies	AU-009	Examined 1-210. Bounded bridge and atomic pending/claimed/cancelled transition prevent late execution.
+crates/beryl-app/src/diagnostic_dynamic_tools.rs	audited	full_bodies	AU-001;AU-002;AU-004	Examined 1-1466. Repeated wire helpers and three equivalent sequenced ring mechanics; typed snapshots/redaction remain.
+crates/beryl-app/src/dynamic_tool_namespace.rs	audited	declarations_only		Examined 1-3. Single namespace constant.
+crates/beryl-app/src/gui_control_dynamic_tools.rs	audited	full_bodies	AU-001;AU-004	Examined 1-506. Repeated bounded wire utilities; exact child control conversion and scroll finite bounds remain.
+crates/beryl-app/src/input_admission.rs	audited	full_bodies		Examined 1-353. Already shared owner-transfer command; first-acceptance and promotion reconciliation preserve distinct statuses.
+crates/beryl-app/src/lib.rs	audited	declarations_only		Examined 1-199. Exports and module composition only; historical doc examples examined, not removal work.
+crates/beryl-app/src/lifecycle_dynamic_tools.rs	audited	full_bodies		Examined 1-219. Allocation-free closed enum matcher shares product sink; no substantial smaller alternative.
+crates/beryl-app/src/memory_diagnostics.rs	audited	full_bodies	AU-003	Examined 1-600. MemoryMilestone::log duplicates retained-state flat output in success/error branches after already logging whole retained snapshot.
+crates/beryl-app/src/settings_dynamic_tools.rs	audited	full_bodies	AU-001	Examined 1-122. Shared diagnostic/tool wire helper candidate; keep typed settings update authority.
+crates/beryl-app/src/settings_dynamic_tools/parser.rs	audited	full_bodies	AU-001	Examined 1-232. Missing versus null and field-specific errors retained; borrowed deserialization can remove Value clone.
+crates/beryl-app/src/settings_dynamic_tools/response.rs	audited	full_bodies	AU-001	Examined 1-50. Repeated success/error envelope, compact serialization and UTF-8 byte truncation.
+crates/beryl-app/src/settings_dynamic_tools/schema.rs	audited	full_bodies	AU-001	Examined 1-63. Closed empty-object schema can share helper; settings-specific update schema remains.
+crates/beryl-app/src/theme_runtime.rs	audited	declarations_only		Examined 1-49. Module/export boundary only; target theme runtime remains required.
+crates/beryl-app/src/theme_runtime/adapter.rs	audited	full_bodies		Examined 1-55. Narrow publication trait and exact bounded snapshot; no smaller cross-thread replacement identified.
+crates/beryl-app/src/theme_runtime/coordinator.rs	audited	full_bodies		Examined 1-369. Distinct durable/current/preview and attempt identities retain required precedence and retry behavior.
+crates/beryl-app/src/theme_runtime/error.rs	audited	full_bodies	AU-004	Examined 1-179. Manual Display/Error boilerplate can use existing thiserror without changing redaction/source topology.
+crates/beryl-app/src/theme_runtime/gpui_publication.rs	audited	full_bodies		Examined 1-374. One-slot bridge and prepare/validate/infallible commit retain retirement/reentrancy/window-epoch guarantees.
+crates/beryl-app/src/theme_runtime/identity.rs	audited	full_bodies		Examined 1-166. Existing macro already shares monotonic identity mechanics while keeping domains distinct.
+crates/beryl-app/src/theme_runtime/publication.rs	audited	full_bodies		Examined 1-472. Atomic publication already shared; durable versus external-rejected retention and preview precedence differ intentionally.
+crates/beryl-app/src/theme_runtime/service.rs	audited	full_bodies	AU-005	Examined 1-487. Retirement duplicates lifecycle::retire; bounded hint reduction and service ownership otherwise retained.
+crates/beryl-app/src/theme_runtime/service/lifecycle.rs	audited	full_bodies	AU-005	Examined 1-171. retire duplicates retire_with body and can delegate with Retired failure class.
+crates/beryl-app/src/theme_runtime/service/load.rs	audited	full_bodies		Examined 1-206. Bounded manifest selection plus typed startup/live failure mapping; full manifest retention is not allowed.
+crates/beryl-app/src/theme_runtime/service/operations.rs	audited	full_bodies		Examined 1-157. Settings/repository/reconciliation routing preserves exact durable result and appearance separation.
+crates/beryl-app/src/theme_runtime/service/publication.rs	audited	full_bodies	AU-005	Examined 1-259. Discarded ThemeLiveEditOutcome::invalid constructors have no effects; preserve separate external rejection and durable retry semantics.
+crates/beryl-app/src/window_acquisition.rs	audited	full_bodies	AU-007	Examined 1-1329. validate_execution and project_unclaimed_facts duplicate catalog projection helpers; retain bounded global-oldest scan/flight custody.
+crates/beryl-app/src/window_acquisition/abandonment.rs	audited	full_bodies		Examined 1-836. Move-only atomic abandonment and natural reconciliation retain precise acquired/abandoned/collision states; generic transaction wrapper not clearly smaller.
+crates/beryl-app/tests/catalog_projection.rs	audited	full_bodies	AU-007	Examined 1-277. Behavioral no-op, claim and execution mismatch checks; fixture setup may share outcome helper with window fixtures.
+crates/beryl-app/tests/conversation_tools.rs	audited	full_bodies		Examined 1-73. Wire shape and golden digest independently pin durable profile; do not replace with self-computed expected digest.
+crates/beryl-app/tests/diagnostic_child_protocol.rs	audited	full_bodies		Examined 1-158. Behavioral frame limits/drain/correlation and removed hard-stop denial retained.
+crates/beryl-app/tests/diagnostic_child_supervisor.rs	audited	full_bodies	AU-009	Examined 1-398. Real process handshake and cleanup fault cases; platform fixtures preserve launch semantics.
+crates/beryl-app/tests/memory_diagnostics.rs	audited	full_bodies	AU-003	Examined 1-39. Small lazy-construction test distinguishes disabled diagnostic work.
+crates/beryl-app/tests/theme_runtime_cases/adapter.rs	audited	full_bodies		Examined 1-34. Small rejection/no-op scenarios retain exact epoch and eligibility evidence.
+crates/beryl-app/tests/theme_runtime_cases/arbitration.rs	audited	full_bodies		Examined 1-253. Distinct precedence, failure, restoration and content-free lifetime assertions; shared support already used.
+crates/beryl-app/tests/theme_runtime_cases/production.rs	audited	full_bodies	AU-006	Examined 1-609. Repeated runtime startup and paired count/byte limit scenario setup can share helpers.
+crates/beryl-app/tests/theme_runtime_cases/production/corrections.rs	audited	full_bodies	AU-006	Examined 1-329. Full/live rejected refresh cases duplicate retained-identity checks and retry scaffolding.
+crates/beryl-app/tests/theme_runtime_cases/production/gpui_fixture.rs	audited	full_bodies		Examined 1-351. Real paint/composer fixture proves generation and retained editor continuity; do not replace with mock-only coverage.
+crates/beryl-app/tests/theme_runtime_cases/production/gpui.rs	audited	full_bodies	AU-006	Examined 1-518. Repeated preview construction can share helper while prepare/commit/closed-root/pending cuts stay explicit.
+crates/beryl-app/tests/theme_runtime_cases/publication.rs	audited	full_bodies		Examined 1-200. Distinct adapter rejection/epoch/capacity/identity scenarios; golden state and pointer checks retain semantics.
+crates/beryl-app/tests/theme_runtime_cases/static_boundary.rs	audited	full_bodies		Examined 1-42. Negative authority boundary assertions retained; mount assertion transient but too small standalone finding.
+crates/beryl-app/tests/theme_runtime_cases/support.rs	audited	full_bodies		Examined 1-160. Already shared pure fixture and recording adapter; replacing all with GPUI adds integration cost.
+crates/beryl-app/tests/theme_runtime_cases/window_set.rs	audited	full_bodies		Examined 1-184. Test publication target separates pure coordinator scenarios from real GPUI publication tests.
+crates/beryl-app/tests/theme_runtime.rs	audited	declarations_only		Examined 1-12. Integration target module wiring only.
+crates/beryl-app/tests/window_abandonment.rs	audited	full_bodies	AU-008	Examined 1-678. Read 1-678 including every test and fixture; share construction/session/path/command setup with acquisition tests while retaining true close/reopen, created/reused custody, acknowledgement-loss, cancellation, active-job and reverse-claim assertions.
+crates/beryl-app/tests/window_acquisition.rs	audited	full_bodies	AU-007;AU-008	Examined 1-1152. Runtime/home/session fixture and path/command helpers duplicate abandonment test setup; preserve 256-flight and real crash cases.

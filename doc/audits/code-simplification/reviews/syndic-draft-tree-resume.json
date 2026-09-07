@@ -1,0 +1,116 @@
+{
+  "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "stop_reason": "Resumed on explicit Operator continue 2026-09-07; assigned bounded audit now complete.",
+  "scope_files": 18,
+  "scope_lines": 19626,
+  "completed_files": 18,
+  "review_depth": "full_bodies",
+  "unread_owned_ranges": [],
+  "all_owned_ranges": "Every line of each assigned file read in bounded complete source/test passes, including cfg/macros and include directives. Included external support bodies not claimed as owned coverage.",
+  "artifacts": [
+    "doc/audits/code-simplification/reviews/syndic-draft-tree.tsv",
+    "doc/audits/code-simplification/reviews/syndic-draft-tree-findings.json",
+    "doc/audits/code-simplification/reviews/syndic-draft-tree-resume.json"
+  ],
+  "findings_state": "Seven finalized audit findings: five behavior-preserving simplification proposals (DT-001,002,003,005,006), one contract-gated PRE-001 duplicate (DT-004), and one negative dependency screen (DT-007). Caller impact, private payload accounting and shared-helper compatibility checked. None is implementation authorization.",
+  "remaining": [
+    "Root integrates findings and deduplicates publication/session caller changes and shared test support against sibling audit estimates.",
+    "No owned source/test reads or audit validation remain. Operator-owned implementation/design decisions are separate work."
+  ],
+  "dependency_screen": {
+    "ropey": "1.6.1 exact tag/API/registry/features/license/CI/adoption/maintenance and package advisory-path screen saved in DT-007; rejected for durable node API/residency mismatch.",
+    "im": "Reuse SA-009 and root memory; not recounted.",
+    "not_done": "No resolved transitive security clearance, benchmark, compilation or Windows check; none supports claiming adoption."
+  },
+  "resources": "No spawned subagents, background processes, listeners, downloaded files, scratch directories, or dependency installation. HTTP responses were memory-only. Only three explicitly authorized review artifacts written.",
+  "unrun_checks": "No tests, builds, cargo commands, installs, commits, source/test/manifest/design/plan/Markdown edits.",
+  "read_ranges": [
+    {
+      "path": "crates/syndic-storage/src/draft_piece/builder_model.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/codec.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/codec/builder_continuation.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/codec/staging_head.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/codec/staging_page.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/codec/staging_progress.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/model.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/persistent.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/persistent/marker_identity_lookup.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/read.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/src/draft_piece/tree.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/draft_label_protection.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/draft_root_marker_summary.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/large_draft_storage.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/large_draft_storage/large_text_history.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/large_draft_storage/marker_acquisition.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/large_draft_storage/support.rs",
+      "state": "fully read; see TSV evidence"
+    },
+    {
+      "path": "crates/syndic-storage/tests/piece_tree.rs",
+      "state": "fully read; see TSV evidence"
+    }
+  ],
+  "completed_validation": [
+    "2026-09-07: exact 18-path set matches coverage.tsv; no duplicate rows; all rows audited/full_bodies with evidence; every finding reference resolves to one of seven unique IDs.",
+    "All 18 current Git blobs equal their coverage baseline_blob; HEAD equals frozen e6172f7c49bebef78d51831e621e70c8ac0d6a07; line sum 19,626.",
+    "DT-001 named caller scan confined to syndic-storage; concrete open collision proof remains and all publication/disposal downcasts map to explicit record variants.",
+    "DT-002 common progress fields/digest order/equality confirmed; retained opaque APIs and two canonical encodings excluded from deletion estimate.",
+    "DT-006 shared fixture bodies match Home/commit/activation requirements; retain local label-protection execution identities.",
+    "Root preserved Ropey screen at doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md."
+  ],
+  "estimated_net_lines": {
+    "conditional_DT004_low": 40,
+    "behavior_preserving_low": 290,
+    "exclusions": "DT-004 is PRE-001 duplicate and never additive; DT-007 zero; root must deduplicate shared callers/test support; estimates are unimplemented, not measured savings.",
+    "behavior_preserving_high": 490,
+    "conditional_DT004_high": 100
+  }
+}

@@ -1,0 +1,440 @@
+[
+  {
+    "id": "SX-001",
+    "title": "Reuse the existing activity effect for child handoff publication",
+    "paths": [
+      "crates/syndic-storage/src/mutation/activity.rs",
+      "crates/syndic-storage/src/mutation/live/event/activity.rs"
+    ],
+    "symbols": [
+      "HandoffRecords",
+      "ActivityEffect",
+      "PublishActivityChildHandoffMutation::records",
+      "HandoffRecords::contribute",
+      "ActivityEffect::contribute"
+    ],
+    "evidence": [
+      "mutation/activity.rs:78-83 and live/event/activity.rs:17-22 hold the same head, source, deletion-key vector and optional entry.",
+      "HandoffRecords::contribute at activity.rs:233-263 is the same concrete family/key/write sequence as ActivityEffect::contribute at live/event/activity.rs:351-381."
+    ],
+    "proposal": "Return ActivityEffect from the handoff preparation path and expose its constructor or fields only within crate::mutation. Delete HandoffRecords and its duplicate writer. Keep the handoff-specific source, final-answer, selected-path and retention admission unchanged.",
+    "required_contract_changes": "None. Prepared effect representation is internal; durable records, reservations and write order remain unchanged.",
+    "estimated_net_lines": {
+      "minimum": 35,
+      "maximum": 45,
+      "basis": "Remove a seven-line duplicate representation and approximately 32-line writer plus imports; reserve small construction/visibility adjustment. No activity derivation or retention savings counted."
+    },
+    "verification": [
+      "Run child handoff, activity lifecycle/retention/corruption and reopen tests.",
+      "Compare exact reconciliation record families and contribution write order before and after."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-002",
+    "title": "Share next-item admission and selected-history effects for freeze and finalize",
+    "paths": [
+      "crates/syndic-storage/src/mutation/live.rs",
+      "crates/syndic-storage/src/mutation/live/finalize.rs",
+      "crates/syndic-storage/src/mutation/live/freeze.rs"
+    ],
+    "symbols": [
+      "FreezeNextTurnItemMutation::records",
+      "FinalizeNextTurnItemMutation::records",
+      "FreezeRecords::contribute",
+      "FinalizationRecords::contribute"
+    ],
+    "evidence": [
+      "freeze.rs:34-79 and finalize.rs:21-66 repeat required thread/turn/state/summary reads and same origin, revision, terminal lifecycle, next ordinal and turn-item identity admission.",
+      "Both paths derive selected history timestamp as max(existing, request), conditionally mark selected summary incomplete, and write the same state/summary/transcript invalidation prefix.",
+      "Freeze additionally authenticates/freezes provider content and updates item/index state; finalization checks current projection and advances its own frontier. These transitions are not interchangeable."
+    ],
+    "proposal": "Introduce one typed next-item admission result and pure selected-summary update helper, then reuse the small common contribution prefix. Leave freeze content authentication, finalization projection admission, selected-path lookup placement and each caller's invalidation order explicit.",
+    "required_contract_changes": "None. Preserve first failing read/error, exact state revision and ordinal fences, selected-path-only summary changes, and visible-and-selected transcript invalidation.",
+    "estimated_net_lines": {
+      "minimum": 60,
+      "maximum": 90,
+      "basis": "Approximately 45-55 admission lines, 18 summary lines and 25 writer-prefix lines duplicated; subtract typed result/signature/call-site glue and focused regression adjustment. No provider lifecycle or transcript builder simplification counted."
+    },
+    "verification": [
+      "Run live history replay/finalization, pending-tail, canonical-finalization and mutation fault tests.",
+      "Check off-selected-path and invisible item behavior, current versus stale projection rejection, revision/ordinal conflict ordering and freeze/finalize read failures."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-003",
+    "title": "Share pure canonical presentation, assistant phase and activity order derivations",
+    "paths": [
+      "crates/syndic-storage/src/mutation/live/event/activity.rs",
+      "crates/syndic-storage/src/mutation/live/event/item.rs",
+      "crates/syndic-storage/src/mutation/live/event/item/helpers.rs",
+      "crates/syndic-storage/src/validation/projections/source.rs",
+      "crates/syndic-storage/src/validation/queries/activity.rs"
+    ],
+    "symbols": [
+      "first_presentation",
+      "validate_current_presentation",
+      "assistant_phase_for_frame",
+      "merge_assistant_phase",
+      "activity_order"
+    ],
+    "evidence": [
+      "live/event/item.rs:295 onward maps the same narrative/operational/activity provider kinds in first_presentation and validate_current_presentation; user correlation and generated-media state have distinct caller-owned behavior.",
+      "live/event/item/helpers.rs:140 onward and validation/projections/source.rs merge_assistant_phase implement the same monotonic assistant-phase fold with different typed diagnostics.",
+      "live/event/activity.rs:390 onward and validation/queries/activity.rs activity_order implement the same order choice from provider lifecycle/timestamps, with distinct missing-record diagnostics."
+    ],
+    "proposal": "Extract pure derivations over already-authenticated domain values with a small typed failure result. Map failures at existing mutation and scrub boundaries. Share only common provider-kind presentation mapping; keep user/media effects explicit. The writer and validator must still acquire and authenticate their records independently.",
+    "required_contract_changes": "None. No weakening of physical corruption validation, current/historical checks, timestamp presence, ordering or phase monotonicity. This consumes the activity/phase portion of deferred SQ-R02; SL-004 promotion construction remains separate.",
+    "estimated_net_lines": {
+      "minimum": 45,
+      "maximum": 75,
+      "basis": "Deduplicate roughly 25-35 presentation lines, 30 phase-fold lines and 25 order lines; reserve typed-result/error mapping and caller glue. Count once here; SQ-R02 carried zero and no SL promotion savings overlap."
+    },
+    "verification": [
+      "Run activity corruption/ordering and canonical assistant phase/replay tests, including missing lifecycle timestamp and forbidden phase regression.",
+      "Retain independent scrub detection for malformed provider/source records and mutation-specific typed errors."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-004",
+    "title": "Verify initial content chunks and spans through one presence-aware loop",
+    "paths": [
+      "crates/syndic-storage/src/mutation/initial_content.rs"
+    ],
+    "symbols": [
+      "validate_initial_content"
+    ],
+    "evidence": [
+      "initial_content.rs:1-68 has the same chunk and text-span point-read traversal in existing-manifest and absent-manifest branches; only expected equality versus absence differs."
+    ],
+    "proposal": "Validate the manifest branch first, derive whether each initial record must match or be absent, and run each bounded chunk/span traversal once. Compare against Some(expected) or None without merging record families.",
+    "required_contract_changes": "None. Retain manifest collision before chunk/span reads, exact encoded-record equality, per-family identity collision, and point-read error propagation.",
+    "estimated_net_lines": {
+      "minimum": 20,
+      "maximum": 30,
+      "basis": "Remove duplicated traversal/key/error blocks from the 68-line module, subtract presence predicate and branch glue."
+    },
+    "verification": [
+      "Run content initial staging/creation collision and chunked content tests.",
+      "Exercise absent, exact present, manifest collision, missing child and unequal existing child cases with the same read ordering."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-005",
+    "title": "Share paragraph and fallback text-buffer mechanics without changing checkpoints",
+    "paths": [
+      "crates/syndic-storage/src/mutation/projection/parser.rs",
+      "crates/syndic-storage/src/mutation/projection/parser/output.rs",
+      "crates/syndic-storage/src/mutation/projection/parser/syntax.rs"
+    ],
+    "symbols": [
+      "append_fallback",
+      "append_open_text",
+      "flush_open_spans",
+      "finish_open_block",
+      "MarkdownOpenBlock::Paragraph",
+      "MarkdownOpenBlock::Fallback"
+    ],
+    "evidence": [
+      "parser/output.rs:22-147 repeatedly takes, matches and restores Paragraph and Fallback variants to append or flush identical buffered source/span state.",
+      "finish_open_block repeats the inline text output construction for the same two variants; fence and table output paths have different resource, digest and source-range requirements."
+    ],
+    "proposal": "Use borrowed or-patterns for common buffer append. Take the text block once around a bounded flush loop and restore it once; share the final text-output helper while retaining variant-specific block kind and EOF behavior. Keep the existing durable MarkdownOpenBlock representation and all specialized fence/table mechanics.",
+    "required_contract_changes": "None. Preserve exact source bytes including CRLF/bare CR, UTF-8 split boundaries, 16384 paragraph threshold/8192 spans, bounded checkpoint carry, zero-width markers and terminal frontiers. No parser grammar or persisted format change.",
+    "estimated_net_lines": {
+      "minimum": 50,
+      "maximum": 80,
+      "basis": "About 20 duplicate append lines, 30-45 repeated take/restore lines and 15-25 common finish lines, less helper/destructuring glue. No syntax parser replacement, materializer or dependency savings counted."
+    },
+    "verification": [
+      "Run item projection and projection-boundary tests, including threshold equality/plus-one, Unicode, CRLF, bare CR, unfinished fences, tables and malformed fallback.",
+      "Verify byte-identical IDs/digests/checkpoints and output sequence after resume at each bounded parser checkpoint."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-006",
+    "title": "Keep projection records and their publication state together",
+    "paths": [
+      "crates/syndic-storage/src/mutation/projection/advance.rs",
+      "crates/syndic-storage/src/mutation/projection/advance/finish.rs"
+    ],
+    "symbols": [
+      "AdvanceBuildRecords",
+      "AdvanceBuildMutation::records",
+      "AdvanceBuildRecords::finish",
+      "AdvanceBuildMutation::contribute"
+    ],
+    "evidence": [
+      "advance.rs:13-26 stores three separate record vectors and three parallel presence vectors; preparation fills these after exact occupied-record checks and contribution zips them again.",
+      "next_build, set and head are three Options but finish creates exactly a continuation build or a completed set/head pair; contribution dynamically checks the already-established pairing."
+    ],
+    "proposal": "Retain only absent records in prepared write vectors after all exact equality checks, or pair each record with its presence at the point it is checked. Preserve independent resource and resource-index existence flags. Return a typed continuation-versus-completed effect from finish instead of three independently optional fields.",
+    "required_contract_changes": "None. Keep materialization before identity reads, projection/stable-index/unstable-index/resource-index read order, independent occupied-record comparisons, reservations and contribution order. Do not replace exact record checks with a shared presence bit.",
+    "estimated_net_lines": {
+      "minimum": 15,
+      "maximum": 30,
+      "basis": "Remove duplicate presence-vector fields, initialization, transfer and nested zip/guard plumbing; reserve record/effect construction and typed enum match. No separate line savings assigned to the enum itself; benefit includes eliminating impossible prepared combinations."
+    },
+    "verification": [
+      "Run stable/volatile item projection reuse, pending-tail identity and projection fault/reconciliation tests.",
+      "Check independently missing/exact/conflicting resource and resource-index combinations plus final set/head collision and continuing parser steps."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SX-007",
+    "title": "Share repeated integration fixture mechanics while retaining scenario oracles",
+    "paths": [
+      "crates/syndic-storage/tests/catalog_summary.rs",
+      "crates/syndic-storage/tests/live_history/mismatch.rs",
+      "crates/syndic-storage/tests/live_history/turn_helpers.rs",
+      "crates/syndic-storage/tests/mutation_fault_reconciliation.rs",
+      "crates/syndic-storage/tests/recovery_preflight.rs",
+      "crates/syndic-storage/tests/recovery_projection.rs",
+      "crates/syndic-storage/tests/transcript_construction.rs",
+      "crates/syndic-storage/tests/transcript_fault_reconciliation.rs"
+    ],
+    "symbols": [
+      "publish_exact_current",
+      "publish_replacement",
+      "prepare_item_frame",
+      "stage_item_frame_for_publication",
+      "stage_mismatched_completion",
+      "same_home_path_records",
+      "SubmittedTurn",
+      "project_item",
+      "complete_turn"
+    ],
+    "evidence": [
+      "live_history/turn_helpers.rs and mutation_fault_reconciliation.rs duplicate provider frame plan construction and staged-build/completion setup; mismatch.rs needs access to the staging-only result before its two explicit comparison assertions.",
+      "recovery_preflight.rs and recovery_projection.rs duplicate same_home_path_records almost verbatim; the latter additionally seeds the canonical empty thread before record construction.",
+      "transcript_construction.rs and transcript_fault_reconciliation.rs duplicate SubmittedTurn, ordinary creation, activation/correlation/end/freeze/project/finalize setup. Generation selection and timestamps differ and must remain explicit arguments/policies.",
+      "catalog_summary.rs:458-598 duplicates runtime/session source capture, catalog row construction and source validation around distinct exact-current validation-only versus replacement mutation contributions."
+    ],
+    "proposal": "Move only these concrete mechanics into responsibility-named support modules: provider prepare/stage-only/finish helpers, pure recovery path records with explicit caller seeding, transcript item completion helpers with explicit generation/timestamps, and a catalog command builder accepting the correct typed summary contribution. Keep every fault cut, intermediate assertion, current/historical distinction, fixed wire/digest vector, expected publication constructor and final result assertion at its existing scenario boundary.",
+    "required_contract_changes": "None. Tests remain separate named behavior cases and retain all independent oracles. Preserve indeterminate reconciliation installation, clean-commit requirements, bounded completion iteration caps, page lease return and exact-versus-replacement catalog admission. No production helper used to compute expected fault outcomes.",
+    "estimated_net_lines": {
+      "minimum": 300,
+      "maximum": 400,
+      "basis": "Provider setup net 90-120; recovery path record copy net 65-85; transcript preparation net 110-150; catalog setup net 35-45. Includes shared module/signature/parameterization/import costs. Excludes PRE-004 temporary home replacement, SP-005 observation fixture paths, SQ-006 delivering fixture and SL-005 lifecycle fixture paths; no assertions or scenarios counted as deletions."
+    },
+    "verification": [
+      "Run each affected integration target with test-faults plus catalog summary default coverage.",
+      "Compare named scenario count, fault-cut matrices, independent expected record/byte vectors, retained-custody handling and intermediate checkpoint assertions before/after."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "recommended"
+  },
+  {
+    "id": "SP-003",
+    "title": "Extend the first-encode narrative derivation to typed provider-frame preparation",
+    "paths": [
+      "crates/syndic-storage/src/mutation/provider_frame/prepare.rs",
+      "crates/syndic-storage/src/mutation/provider_frame/stage.rs"
+    ],
+    "symbols": [
+      "prepare_provider_frame",
+      "CountingSink",
+      "NarrativeCountingSink",
+      "requires_narrative",
+      "stage_provider_frame"
+    ],
+    "evidence": [
+      "mutation/provider_frame/prepare.rs encodes the same typed frame first through CountingSink and then through NarrativeCountingSink before later durable staging traversal.",
+      "Typed AgentMessage and Plan encoding have at most one Narrative text span; Encoder::text emits no span for empty text and exactly one whole logical span for nonempty inline or referenced text. Citation/other metadata spans do not carry the Narrative role.",
+      "The initial content hash is only known after the first encode; narrative capture therefore must retain the span's logical metadata until finalizing that digest."
+    ],
+    "proposal": "During the first CountingSink traversal capture the sole narrative span for narrative-bearing item kinds, preserving role/multiplicity validation. After the first frame digest is known derive narrative append/reference/completion metadata from that capture and delete NarrativeCountingSink plus its second full encode comparison. Keep the durable stage_provider_frame traversal and all receipts/reconciliation handling.",
+    "required_contract_changes": "None. Retain exact frame bytes, source offset, prior narrative append semantics, empty narrative behavior, completion mismatch comparison, chunk bounds and move-only staging custody.",
+    "estimated_net_lines": {
+      "minimum": 90,
+      "maximum": 125,
+      "basis": "Remove NarrativeCountingSink struct/new/impl (~135 lines) and second encode/reference/frontier comparison (~36 lines); retain ~45-65 lines of one-span capture, role/multiplicity validation and post-digest narrative/completion derivation plus regression adjustments. Incremental mutation-only estimate excludes existing compiler90-130. This is an extension of existing SP-003, not a second independent finding or the whole SP-003 estimate; root must add this mutation-only increment once."
+    },
+    "verification": [
+      "Compare first/subsequent AgentMessage and Plan frames, empty starts/deltas/completions, references and citation metadata.",
+      "Run provider staging/resume/fault and segmented completion-mismatch tests; require identical target metadata and encoded bytes."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "extension_to_existing_finding"
+  },
+  {
+    "id": "SX-R01",
+    "title": "Retain the bounded durable Markdown parser after screening pulldown-cmark",
+    "paths": [
+      "crates/syndic-storage/src/mutation/projection/parser.rs",
+      "crates/syndic-storage/src/mutation/projection/parser/output.rs",
+      "crates/syndic-storage/src/mutation/projection/parser/syntax.rs",
+      "crates/syndic-storage/tests/projection_boundaries.rs"
+    ],
+    "symbols": [
+      "MarkdownParserCheckpoint",
+      "MarkdownOpenBlock",
+      "advance",
+      "process_line",
+      "flush_open_spans"
+    ],
+    "evidence": [
+      "Beryl concepts.md:367-424 fixes byte-preserving block/source semantics and bounded paragraph/code/table/page limits; persisted checkpoints include carry, block state, digests and source cursors.",
+      "pulldown-cmark v0.13.4 Parser::new_with_broken_link_callback calls run_first_pass(text, options) before returning its iterator. firstpass.rs:24-40 reserves a tree proportional to input size; FirstPass::run:68-79 scans the entire supplied string.",
+      "The public Parser has private input/tree/allocation state. Its constructors, reference_definitions and into_offset_iter expose no append input, checkpoint serialization or restore entry point. serde derives apply to event/tag/value types in lib.rs, not Parser.",
+      "Offset event ranges can overlap for structural events and are not themselves Beryl's exact source-byte partition; source-backed slices and Beryl fallback/marker handling would remain necessary."
+    ],
+    "proposal": "Do not replace the durable parser in this audit. A future experiment could parse already-bounded closed blocks, but must keep Beryl block recognition, source partitioning and persisted checkpoint logic and prove substantial net deletion after adapters before proposing adoption.",
+    "required_contract_changes": "Direct whole-item adoption conflicts with existing bounded residency/resume and exact byte-source contracts. No contract change is proposed or authorized.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "No credible substantial net reduction established. Existing parser.rs/output.rs/syntax.rs total 1057 lines include persisted state, bounded accumulation, resources and markers that this event parser does not replace; adapter cost is not hidden as savings."
+    },
+    "verification": [
+      "If revisited, independently compare byte source ranges/digests, Unicode and CRLF/bare-CR behavior, zero-width markers, threshold boundaries and interrupted fence/table checkpoint resume.",
+      "Measure peak resident memory for unbounded input and adapter line count before accepting replacement. No dependency was installed or code compiled during this audit."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "pulldown-cmark",
+        "version": "0.13.4",
+        "disposition": "defer_no_substantial_net_savings",
+        "checked_on": "2026-09-07",
+        "release": {
+          "published_at": "2026-05-20T08:48:23.62105Z",
+          "yanked": false,
+          "crate_checksum": "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e",
+          "git_tag": "v0.13.4",
+          "tag_commit": "38e4d08f14ec4bd9783270e9623db7681ebed968"
+        },
+        "license": "MIT",
+        "rust_version": "1.71.1",
+        "edition": "2021",
+        "screened_configuration": {
+          "default_features": false,
+          "features": [],
+          "reason": "Parser API only. Default getopts/html are unnecessary; html pulls pulldown-cmark-escape. serde does not provide durable Parser state; optional SIMD is unnecessary."
+        },
+        "mandatory_dependencies": [
+          "bitflags ^2",
+          "unicase ^2.6",
+          "memchr ^2.5"
+        ],
+        "maintenance_and_adoption": [
+          "Version 0.13.4 release documents a TightParagraph panic fix; upstream CI exercises MSRV/stable/nightly, no-default/default/serde/SIMD modes, WASM build and DoS regression fixtures.",
+          "Official rust-lang/cargo Cargo.toml at commit 77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f declares pulldown-cmark ^0.13.3 with default-features=false, features=[html]. This is ecosystem adoption evidence, not proof Cargo resolves exactly 0.13.4."
+        ],
+        "platform_assessment": "Pure Rust parser; upstream README excludes optional SIMD from its no-unsafe statement and identifies SIMD as x64. Screened configuration leaves SIMD off. Inspected CI covered Ubuntu and WASM; no claim of verified native Windows behavior.",
+        "security_assessment": "No pulldown-cmark package advisory path found in the complete, nontruncated official RustSec advisory-db tree at revision 5a0ebedfe8bdd2e295b171f4162f8c977bcad9a5. This bounded registry check is not a security audit or a claim that no vulnerabilities exist. Input-proportional eager first-pass tree remains the architectural concern.",
+        "adapter_cost": "Must retain closed-block detection, durable fence/table counters and digests, bounded UTF-8 carry, exact source-byte partition/fallback, source cursors, stable output IDs and marker handling. Parsing closed bounded slices avoids whole-item residency but does not remove most present code; no net saving demonstrated.",
+        "sources": [
+          "https://crates.io/api/v1/crates/pulldown-cmark/0.13.4",
+          "https://github.com/pulldown-cmark/pulldown-cmark/releases/tag/v0.13.4",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/Cargo.toml",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/parse.rs",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/firstpass.rs",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/lib.rs",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/README.md",
+          "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/.github/workflows/rust.yml",
+          "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml",
+          "https://api.github.com/repos/rustsec/advisory-db/git/trees/5a0ebedfe8bdd2e295b171f4162f8c977bcad9a5?recursive=1"
+        ]
+      }
+    ],
+    "confidence": "high_for_deferral",
+    "disposition": "retain"
+  },
+  {
+    "id": "SX-R02",
+    "title": "Retain exact durable witnesses, independent validation and historical distinctions",
+    "paths": [
+      "crates/syndic-storage/src/mutation/content.rs",
+      "crates/syndic-storage/src/mutation/content/validation.rs",
+      "crates/syndic-storage/src/mutation/live/complete.rs",
+      "crates/syndic-storage/src/mutation/live/event.rs",
+      "crates/syndic-storage/src/mutation/live/event/issue.rs",
+      "crates/syndic-storage/src/mutation/live/event/item/effect.rs",
+      "crates/syndic-storage/src/mutation/live/event/item/publication.rs",
+      "crates/syndic-storage/src/mutation/live/terminal.rs",
+      "crates/syndic-storage/src/mutation/live/terminal/gate.rs",
+      "crates/syndic-storage/src/mutation/projection.rs",
+      "crates/syndic-storage/src/mutation/projection/lifecycle.rs",
+      "crates/syndic-storage/src/mutation/projection/materialize.rs",
+      "crates/syndic-storage/src/mutation/projection/range.rs",
+      "crates/syndic-storage/src/mutation/projection/start.rs",
+      "crates/syndic-storage/src/mutation/provider_frame/completion.rs",
+      "crates/syndic-storage/src/mutation/provider_frame/contribution.rs",
+      "crates/syndic-storage/src/mutation/provider_frame/stage.rs",
+      "crates/syndic-storage/src/mutation/provider_frame/stage/batch.rs",
+      "crates/syndic-storage/src/mutation/provider_observation.rs",
+      "crates/syndic-storage/src/mutation/thread_properties.rs",
+      "crates/syndic-storage/src/mutation/thread_properties/catalog.rs",
+      "crates/syndic-storage/src/mutation/transcript.rs",
+      "crates/syndic-storage/src/mutation/transcript/advance.rs",
+      "crates/syndic-storage/src/mutation/transcript/invalidate.rs",
+      "crates/syndic-storage/src/mutation/transcript/path.rs",
+      "crates/syndic-storage/src/mutation/transcript/publication.rs",
+      "crates/syndic-storage/src/mutation/transcript/refresh.rs",
+      "crates/syndic-storage/src/mutation/transcript/start.rs"
+    ],
+    "symbols": [
+      "validate_initial_content",
+      "validate_projection_source",
+      "validate_sealed_frame",
+      "compare_provider_completion",
+      "stage_provider_frame",
+      "ProviderObservationMutation",
+      "publish",
+      "finish_publication"
+    ],
+    "evidence": [
+      "All 43 source files in this cohort were inspected at full-body depth except the 16-line provider_frame module declaration root. Runtime callbacks and independent point reads enforce persisted source, target, first/last mutable anchors and exact record identity rather than redundant local shape checks.",
+      "Provider observation stream and typed PIV1 source remain different validation/representation boundaries; AC-007 normalized vocabulary deferral does not justify deleting either.",
+      "Current transcript snapshots, stable/volatile item generations, terminal finalization, historical native/recovery bindings and physical read failures have distinct authority and lifecycle semantics."
+    ],
+    "proposal": "Keep the explicit bounded traversal, exact record admission, reconciliation reservations/receipts, independent validator reads and old-generation state. Apply only the narrowly identified representations and pure helper changes. Treat transcript counter cleanup as low-value follow-up with zero separate estimate; do not trade read ordering for a one-pass shortcut.",
+    "required_contract_changes": "None. SQ-005 internal validation-error reuse is confirmed at mutation/provider_frame/completion.rs and live/event/item/publication.rs: physical Read stays distinct from domain-specific completion/frame rejection. All SQ savings remain counted there.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Retention and cross-cohort coordination only. PRE-004 owns all temporary-home savings, SQ-005 error-domain savings and AC-007 deferred normalized vocabulary; no additive estimate here."
+    },
+    "verification": [
+      "No source implementation, build or test was performed; this is observational audit evidence.",
+      "When implementing accepted findings, run focused default/test-faults and corruption/reopen/fault cases according to the effective persistent, shared-resource and external-input rigor contracts."
+    ],
+    "dependency_candidates": [
+      {
+        "name": "tempfile",
+        "version": "3.27.0",
+        "disposition": "existing_PRE-004_global_candidate",
+        "scope": [
+          "crates/syndic-storage/tests/catalog_summary.rs",
+          "crates/syndic-storage/tests/live_history/support.rs",
+          "crates/syndic-storage/tests/recovery_item_budget_faults.rs",
+          "crates/syndic-storage/tests/thread_properties.rs",
+          "crates/syndic-storage/tests/thread_properties/title_usage.rs",
+          "crates/syndic-storage/tests/threads_and_drafts.rs"
+        ],
+        "note": "Four TestHome implementations and one production manual temporary directory inspected; recovery budget and catalog Fixture store/home field drop order must be reconciled. Count only once under PRE-004; reuse existing root dependency evidence."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "retain"
+  }
+]

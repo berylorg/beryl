@@ -1,0 +1,38 @@
+{
+  "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "state": "complete",
+  "files": 41,
+  "lines": 11301,
+  "source_files": 18,
+  "source_lines": 5523,
+  "test_and_support_files": 23,
+  "test_and_support_lines": 5778,
+  "full_bodies": 39,
+  "declarations_only": 2,
+  "coverage": "doc/audits/code-simplification/reviews/app-window.tsv",
+  "findings": "doc/audits/code-simplification/reviews/app-window-findings.json",
+  "verification": "Exact 41 ledger paths, unique rows, audited statuses, known finding IDs and all baseline Git blobs validated. No implementation or tests run.",
+  "behavior_preserving_source_net_reduction": [
+    53,
+    77
+  ],
+  "fixture_net_reduction": [
+    140,
+    210
+  ],
+  "behavior_preserving_total": [
+    193,
+    287
+  ],
+  "conditional_copy_detail_source_net_reduction": [
+    330,
+    430
+  ],
+  "overlap": "AW-003 supersedes PRE-014 and replaces AW-004; no global TempDir, AU-006/AU-008 or prior mandatory-rework savings added.",
+  "blockers": [],
+  "next_steps": [
+    "Root validates and accepts final 41 rows.",
+    "Root performs fresh subsystem and whole-codebase synthesis."
+  ],
+  "read_completion": "All 41 physical source/test files completely read, including conditional code, macros and declarations."
+}

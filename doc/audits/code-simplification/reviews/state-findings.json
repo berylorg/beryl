@@ -1,0 +1,657 @@
+[
+  {
+    "id": "ST-001",
+    "title": "Generate the closed set of state-handle registration and receipt adapters once",
+    "paths": [
+      "crates/beryl-state/src/asset.rs",
+      "crates/beryl-state/src/catalog.rs",
+      "crates/beryl-state/src/durable_job.rs",
+      "crates/beryl-state/src/runtime_root.rs",
+      "crates/beryl-state/src/session.rs",
+      "crates/beryl-state/src/settings.rs",
+      "crates/beryl-state/src/state.rs"
+    ],
+    "symbols": [
+      "BerylStateBootstrap::complete",
+      "BerylState::register",
+      "BerylState::register_with_schema_validation",
+      "BerylState::reacquire",
+      "BerylState::reacquire_candidate",
+      "RuntimeRootState",
+      "SessionState",
+      "SettingsState",
+      "DurableJobState",
+      "CatalogState",
+      "AssetState",
+      "StatePage"
+    ],
+    "evidence": [
+      "state.rs repeats the same six-domain construction and domain-name/error association across ordinary registration, schema-validation registration, reacquisition and recovery-candidate acquisition (roughly 230 lines). The individual domain facades repeat register/reacquire/revision/committed_revision forwarding with the same type-specific handle relationship.",
+      "Ordinary bootstrap registers the session first and deliberately defers dormant-domain exhaustive validation. Candidate acquisition binds the recovery generation. These are semantic modes, so a blanket constructor that changes mode/order would be incorrect.",
+      "Runtime-root, settings and durable-job listing paths repeatedly reconstruct StatePage from the same home-store page metadata."
+    ],
+    "proposal": "Use one private declarative inventory for the fixed domain handles, expanding the existing typed facade adapters and the repeated BerylState construction. Keep explicit ordinary/schema-validation/candidate entry points, bootstrap ordering, domain names and attachment behavior. A small StatePage conversion can remove repeated metadata forwarding. Estimated net removal 180–260 lines after the macro and adapters; avoid a public dynamic domain registry.",
+    "required_contract_changes": [
+      "No public type, bootstrap timing, validation boundary, receipt authority or recovery-generation change. Internal implementation description may mention the fixed inventory."
+    ],
+    "estimated_net_lines": -220,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Preserve existing reopen_validation, recovery and commit_receipts scenarios, including ordinary reopen deferral and rejection of prior-generation handles/receipts. Review macro expansion for every domain and acquisition mode."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-002",
+    "title": "Use thiserror for conventional state errors while preserving error-source topology",
+    "paths": [
+      "crates/beryl-state/Cargo.toml",
+      "crates/beryl-state/src/asset/error.rs",
+      "crates/beryl-state/src/catalog.rs",
+      "crates/beryl-state/src/catalog/acquisition.rs",
+      "crates/beryl-state/src/catalog/codec.rs",
+      "crates/beryl-state/src/catalog/error.rs",
+      "crates/beryl-state/src/durable_job.rs",
+      "crates/beryl-state/src/durable_job/acquisition.rs",
+      "crates/beryl-state/src/durable_job/value.rs",
+      "crates/beryl-state/src/encoding.rs",
+      "crates/beryl-state/src/runtime_root/catalog_source.rs",
+      "crates/beryl-state/src/runtime_root/error.rs",
+      "crates/beryl-state/src/session/catalog_source.rs",
+      "crates/beryl-state/src/session/error.rs",
+      "crates/beryl-state/src/settings.rs",
+      "crates/beryl-state/src/settings/codec.rs",
+      "crates/beryl-state/src/settings/mutation.rs",
+      "crates/beryl-state/src/settings/value.rs",
+      "crates/beryl-state/src/state.rs",
+      "crates/beryl-state/src/theme/command.rs",
+      "crates/beryl-state/src/theme/document.rs",
+      "crates/beryl-state/src/theme/execution.rs",
+      "crates/beryl-state/src/theme/manifest.rs",
+      "crates/beryl-state/src/theme/mod.rs",
+      "crates/beryl-state/src/theme/model.rs",
+      "crates/beryl-state/src/theme/resolver.rs",
+      "crates/beryl-state/src/theme/service.rs",
+      "crates/beryl-state/src/theme/startup.rs",
+      "crates/beryl-state/src/value.rs",
+      "crates/beryl-state/src/window_acquisition.rs"
+    ],
+    "symbols": [
+      "BerylStateRegistrationError",
+      "BerylStateReacquireError",
+      "RuntimeRootMutationError",
+      "SessionMutationError",
+      "SettingsMutationError",
+      "DurableJobMutationError",
+      "CatalogMutationError",
+      "AssetMutationError",
+      "ThemeManifestDecodeError",
+      "ThemeDocumentLoadError",
+      "WindowAcquisitionAuditError"
+    ],
+    "evidence": [
+      "Manual Display/Error/From implementations recur throughout all six domains and theme services. Representative bodies: state.rs:392-463; runtime_root/error.rs:41-166; session/error.rs:128-286; durable_job.rs:400-547; catalog.rs:409-620; asset/error.rs:231-369; theme/manifest.rs:710-867.",
+      "Many wrappers expose Some(inner) through Error::source while displaying the inner message. #[error(transparent)] can skip that wrapper layer. AssetMutationError and several theme errors currently implement empty Error despite carrying other errors. A field named source is inferred by thiserror even without explicit attributes.",
+      "Root Cargo.toml already selects thiserror 2.0.18. Shared exact-version investigation is retained in doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md."
+    ],
+    "proposal": "Add the existing workspace thiserror dependency to beryl-state. Derive conventional error formatting and sources with exact messages and explicit per-variant source decisions. Preserve DomainCallbackError classification manually. Retain manual Error/From implementations where a derive would expose a hidden cause; do not force opaque readiness errors into a different public representation. Estimated net removal 600–900 lines excluding error code deleted by ST-003 or the optional ST-014 parser replacement.",
+    "required_contract_changes": [
+      "None if enum shape, messages, source chains and conversions remain identical. Any intentional source-topology change is a separate API decision, not a simplification assumption."
+    ],
+    "estimated_net_lines": -750,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Compare every variant's Display and complete source chain, especially wrapper-versus-transparent and inferred fields named source/backtrace. Keep direct-read versus semantic DomainCallbackError provenance tests.",
+      "Member-manifest implementation requires locked metadata validation and focused Cargo check before analyzer restart; then existing focused state nextest coverage."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "status": "recommended_existing_workspace_dependency",
+        "maturity": "Already used by Beryl backend/stream; upstream 1.x/2.x lineage and exact API checked in the shared memory note. Cargo also currently consumes thiserror 2.0.18.",
+        "license": "MIT OR Apache-2.0",
+        "features": "Workspace defaults select std and exact matching thiserror-impl.",
+        "platform": "Pure Rust derive; MSRV 1.68 below Beryl 1.92.",
+        "semantic_gaps": "Source-name inference, #[from], transparent forwarding and backtrace behavior require explicit exceptions. No dependency upgrade or advisory clearance is claimed.",
+        "sources": [
+          "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+          "https://raw.githubusercontent.com/rust-lang/cargo/master/Cargo.toml"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-003",
+    "title": "Reuse the existing binary encoder and decoder in settings and catalog",
+    "paths": [
+      "crates/beryl-state/src/catalog/codec.rs",
+      "crates/beryl-state/src/catalog/codec/parts.rs",
+      "crates/beryl-state/src/encoding.rs",
+      "crates/beryl-state/src/settings/codec.rs"
+    ],
+    "symbols": [
+      "settings::codec::Encoder",
+      "settings::codec::Decoder",
+      "catalog::codec::Encoder",
+      "catalog::codec::Decoder",
+      "encoding::Encoder",
+      "encoding::Decoder",
+      "catalog::codec::parts"
+    ],
+    "evidence": [
+      "settings/codec.rs:176-277 and catalog/codec.rs:76-182 each implement private primitive byte/string/integer encoder-decoder machinery already present in encoding.rs.",
+      "catalog/codec/parts.rs repeats admitted-host-path and unavailable-reason field processing which has equivalent shared helpers. The durable-job, session and asset codecs already establish the reuse pattern.",
+      "Persisted versions, endian order, key ordering, normalized-title checks, discriminants and strict trailing-byte validation remain domain contracts."
+    ],
+    "proposal": "Route primitive parsing and writing through encoding.rs, with narrow conversions back to existing SettingsCodecError/CatalogCodecError semantics and shared host-path helpers where layouts are identical. Keep specialized schema and normalized-title checks at their current boundary. Estimated net removal 130–190 lines after adapters, without changing record format or adding serialization dependencies.",
+    "required_contract_changes": [
+      "None for durable formats or public typed errors. If a new common codec error variant is exposed, document that API change explicitly; prefer adapters preserving existing categories."
+    ],
+    "estimated_net_lines": -160,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Use existing settings/catalog round-trip, persisted-version, corruption and unsupported-field tests; compare exact old/new encoded bytes and malformed-input error categories, including length bounds, trailing bytes, host paths and Unicode-normalized title evidence."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-004",
+    "title": "Consolidate state test fixtures and exact outcome helpers without deleting scenario coverage",
+    "paths": [
+      "crates/beryl-state/src/session/mutation/create.rs",
+      "crates/beryl-state/src/window_acquisition/tests.rs",
+      "crates/beryl-state/tests/asset_owner_validation.rs",
+      "crates/beryl-state/tests/asset_owner_validation_cases/absence.rs",
+      "crates/beryl-state/tests/asset_owner_validation_cases/corruption.rs",
+      "crates/beryl-state/tests/asset_owner_validation_cases/present.rs",
+      "crates/beryl-state/tests/assets_v3.rs",
+      "crates/beryl-state/tests/assets_v3_cases/completion.rs",
+      "crates/beryl-state/tests/assets_v3_cases/digest.rs",
+      "crates/beryl-state/tests/assets_v3_cases/lifecycle.rs",
+      "crates/beryl-state/tests/assets_v3_cases/owner_proof.rs",
+      "crates/beryl-state/tests/assets_v3_cases/staging.rs",
+      "crates/beryl-state/tests/catalog.rs",
+      "crates/beryl-state/tests/catalog_source_validation.rs",
+      "crates/beryl-state/tests/command_outcomes.rs",
+      "crates/beryl-state/tests/commit_receipts.rs",
+      "crates/beryl-state/tests/concurrency_core.rs",
+      "crates/beryl-state/tests/concurrency_domains.rs",
+      "crates/beryl-state/tests/draft_marker_readiness_witness.rs",
+      "crates/beryl-state/tests/durable_job.rs",
+      "crates/beryl-state/tests/durable_job_failure_compatibility.rs",
+      "crates/beryl-state/tests/durable_job_failure_corruption.rs",
+      "crates/beryl-state/tests/durable_job_schema.rs",
+      "crates/beryl-state/tests/record_versions.rs",
+      "crates/beryl-state/tests/recovery.rs",
+      "crates/beryl-state/tests/reopen_validation.rs",
+      "crates/beryl-state/tests/runtime_root.rs",
+      "crates/beryl-state/tests/session.rs",
+      "crates/beryl-state/tests/session_schema.rs",
+      "crates/beryl-state/tests/settings.rs",
+      "crates/beryl-state/tests/settings_schema.rs",
+      "crates/beryl-state/tests/support/mod.rs",
+      "crates/beryl-state/tests/support/state_fixture.rs",
+      "crates/beryl-state/tests/theme_execution.rs",
+      "crates/beryl-state/tests/theme_identities.rs",
+      "crates/beryl-state/tests/theme_physical_service.rs",
+      "crates/beryl-state/tests/theme_semantics.rs",
+      "crates/beryl-state/tests/window_abandonment.rs"
+    ],
+    "symbols": [
+      "support::execute",
+      "support::state_fixture::race_commands",
+      "expect_committed",
+      "assert_committed",
+      "byte_codec",
+      "passthrough_codec",
+      "Fixture",
+      "assets_v3::digest_vector",
+      "concurrent_duplicate_executable_commands_publish_only_one_runtime"
+    ],
+    "evidence": [
+      "Clean committed-outcome matches and local macros recur across domain, recovery, receipt, concurrency, acquisition and theme tests. Some require local_finalization: None while others intentionally allow a value; helper names must preserve that distinction.",
+      "Raw schema probes repeatedly implement pass-through codecs, trivial errors and registration glue in settings_schema, durable_job_schema, record_versions, reopen_validation and session_schema. Keep each independent raw layout/version fixture.",
+      "Asset metadata/sealed-reference helpers repeat in assets_v3.rs:117-217, asset_owner_validation.rs:152-246 and draft_marker_readiness_witness.rs:414-501. Theme tests repeatedly open/acquire/observe/install and define identical limit helpers. Existing support modules can own the shared fixture responsibilities.",
+      "runtime_root.rs's concurrent duplicate executable test chains lazy map(spawn).map(join), joining one worker before spawning the next. Existing barrier-based race_commands is both shorter and actually concurrent.",
+      "assets_v3.rs:219-280 accepts content_id_byte/content_digest_byte but discards both at line 238; digest.rs changes only an ignored parameter for its content-neutrality equality assertion. That comparison exercises identical effective inputs.",
+      "Durable-job compatibility and corruption suites repeat the same expected failure-stage matrix; preserving an independent expected matrix shared between tests removes duplicate setup without importing the production compatibility predicate."
+    ],
+    "proposal": "Create behavior-named support helpers for distinct committed outcomes, raw probe codecs, asset setup, theme repository fixtures and independent durable-job expected cases. Move only repeated plumbing; leave fault timing, actions, per-step assertions and golden/raw fixtures readable in each scenario. Replace the serialized spawn/join helper with the existing barrier race helper. Delete the vacuous digest comparison and its unused phantom arguments; retain real digest sensitivity evidence. Estimated net removal 650–1,050 lines after helpers; no blanket deletion of cross-layer tests.",
+    "required_contract_changes": [
+      "None. Existing tests remain evidence of all semantic behaviors. Do not normalize away later_failure/local_finalization distinctions or couple expected wire/digest values to the implementation under test."
+    ],
+    "estimated_net_lines": -850,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "On implementation, count and compare scenario assertions before/after; run affected integration tests and the real contention test. Keep corrupted raw bytes, page bounds, race checkpoints, receipt/recovery identity and independent digest expectations."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-005",
+    "title": "Represent the closed durable-job transition family with one mutation implementation",
+    "paths": [
+      "crates/beryl-state/src/durable_job.rs",
+      "crates/beryl-state/src/durable_job/mutation.rs",
+      "crates/beryl-state/src/durable_job/mutation/transition.rs",
+      "crates/beryl-state/tests/durable_job.rs",
+      "crates/beryl-state/tests/durable_job_failure_compatibility.rs",
+      "crates/beryl-state/tests/durable_job_failure_corruption.rs"
+    ],
+    "symbols": [
+      "CompleteResolvingTurn",
+      "StartParentHandoff",
+      "RecordParentCasAcceptance",
+      "RecordRetryableHandoffFailure",
+      "RetryBranchHandoff",
+      "RecordTerminalHandoffFailure",
+      "SucceedBranchHandoff",
+      "failure_state_is_compatible"
+    ],
+    "evidence": [
+      "durable_job/mutation/transition.rs contains 505 lines for seven related transition structs and DomainMutation implementations. Each reads one JobRecordV1, checks expected revision/lifecycle, advances the record, reserves one job plus one live-index slot and publishes the job with a live-index put/delete.",
+      "The differing transition predicates and updates are a closed finite match. The authoritative failure compatibility matrix in record.rs:265-301 also governs decode validation; admission is a different five-family closure and must remain separate."
+    ],
+    "proposal": "Use a private closed transition enum carrying variant-specific payloads and one DomainMutation implementation for common read/revision/reservation/contribution mechanics. Preserve existing typed constructors/facade methods as concise factories. Keep each lifecycle/failure predicate explicit in the match and preserve terminal index deletion. Estimated net removal 200–260 lines after the enum and factories.",
+    "required_contract_changes": [
+      "No lifecycle, retry policy, command footprint, durable version or public constructor change. Any consolidation of the public API would be a separate contract proposal."
+    ],
+    "estimated_net_lines": -230,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Run durable_job, failure-compatibility, failure-corruption and concurrency-domain tests; preserve all legal/illegal stage-failure pairs, stale revisions, retry attempt identity, live index and reopen evidence."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-006",
+    "title": "Share exhaustive cursor-loop mechanics while keeping domain invariants explicit",
+    "paths": [
+      "crates/beryl-state/src/asset/validate.rs",
+      "crates/beryl-state/src/asset/validate/range.rs",
+      "crates/beryl-state/src/catalog/validate.rs",
+      "crates/beryl-state/src/durable_job/validate.rs",
+      "crates/beryl-state/src/runtime_root/validate.rs",
+      "crates/beryl-state/src/settings/validate.rs"
+    ],
+    "symbols": [
+      "runtime_root::validate::scan",
+      "asset::validate::range",
+      "durable_job::validate",
+      "catalog::validate",
+      "settings::validate"
+    ],
+    "evidence": [
+      "runtime_root/validate.rs:149-238 already centralizes typed full-range scans. Asset validation has its own range helper, while durable-job validation repeats five paginated loops and catalog validation repeats two.",
+      "The repeated pieces are range initialization, page request, empty-with-has_more rejection and exclusive continuation. Each domain still owns cross-index equality, carry state, bounded limits and its semantic error variant.",
+      "Session bootstrap/acquisition deliberately performs one bounded page with fixed window/claim budgets; window acquisition's catalog scan carries cancellation, repair precedence and one retained match. Those are not instances to absorb into a universal scan."
+    ],
+    "proposal": "Introduce or reuse one private visitor helper for explicit lower/upper bounds, page limits and continuation, with a narrow error adapter. Keep each invariant visitor and its cross-page carry state local. Do not collect a whole domain or merge ordinary reads with exhaustive scrub. Estimated net removal 100–180 lines after generic bounds and adapters; abandon the abstraction if those costs erase the reduction.",
+    "required_contract_changes": [
+      "None for ordinary-versus-exhaustive validation, page limits, record ordering, cancellation or typed corruption provenance."
+    ],
+    "estimated_net_lines": -140,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing explicit scrub/reopen corruption coverage plus multi-page boundary cases for missing index copies, cross-page owner/job carry state and empty continuation; ensure no whole-domain collection is introduced."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-007",
+    "title": "Remove duplicated catalog row validation and unnecessary deep row copies",
+    "paths": [
+      "crates/beryl-state/src/catalog/acquisition.rs",
+      "crates/beryl-state/src/catalog/mutation.rs",
+      "crates/beryl-state/tests/catalog.rs"
+    ],
+    "symbols": [
+      "CatalogState::current_page",
+      "CatalogState::current_row_source",
+      "ReleaseCatalogClaim::prepare",
+      "DeleteCatalogClaimedRow::prepare"
+    ],
+    "evidence": [
+      "catalog/acquisition.rs:140-190 validates a page and clones each row for comparison and again into its output while the original page remains live; current_row_source compares against Some(row.clone()).",
+      "catalog/mutation.rs:212-250 and :275-305 repeat claimed-row, selection, runtime/root and exact-current checks. Release rejects initial rows while delete requires them; that origin distinction is exercised by window_abandonment tests."
+    ],
+    "proposal": "Consume page rows into the checked result and compare borrowed row values. Extract the shared exact claimed-row checks into one private helper with explicit origin requirements, retaining release-versus-delete publication. Estimated net removal 35–60 lines, with fewer bounded but potentially large row copies.",
+    "required_contract_changes": [
+      "None; preserve stale-row repair/error precedence, exact recency copy checks and created-versus-reused origin rejection."
+    ],
+    "estimated_net_lines": -45,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing catalog corruption/page/claim tests and window_abandonment cross-origin, retained-index and unrelated-progress tests; check exact output order and page metadata."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-008",
+    "title": "Retain exact Unicode 17 NFKC_Casefold until a replacement proves the full mapping contract",
+    "paths": [
+      "crates/beryl-state/src/catalog/normalization.rs",
+      "crates/beryl-state/tests/catalog.rs",
+      "crates/beryl-state/tools/generate_nfkc_cf.rs"
+    ],
+    "symbols": [
+      "CatalogNormalizationProfile",
+      "CatalogNormalizedQuery",
+      "NfkcCasefoldChars",
+      "parse_mappings"
+    ],
+    "evidence": [
+      "catalog/normalization.rs consumes a 160,384-byte generated Unicode 17 mapping table (10,583 mappings and 8,343 mapped values), then uses pinned unicode-normalization 0.1.25 for NFC. The table generator reads NFKC_CF from DerivedNormalizationProps rather than a generic lowercase/casefold table.",
+      "Unicode default ignorables, compatibility mappings, expansion ordering, canonical composition and exact version pinning affect durable normalized-title bytes. Existing tests exercise soft hyphen, combining sequences, expansions and a pinned table digest.",
+      "Official icu_normalizer 2.3.0 ComposingNormalizer documentation exposes NFC/NFKC constructors; ICU4X CaseMapper is a separate component. Combining those APIs is not evidence that Beryl's exact Unicode 17 R5 transformation is preserved."
+    ],
+    "proposal": "Retain the custom mapping table, generator and pinned NFC dependency in this audit. A future ICU4X adapter must prove exact Unicode-version data, default-ignorable removal, full casefold ordering and bounded expansion against the entire pinned UCD corpus before a replacement can be priced. Generic case-insensitive equality, lowercase or NFKC alone is not an accepted substitute. No line-saving claim is included.",
+    "required_contract_changes": [
+      "None for retention. Changing normalized bytes or Unicode revision would be a persisted catalog-format/semantic change and must be explicitly designed rather than hidden in a dependency swap."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "No builds or corpus comparisons executed. Existing Unicode golden cases and table-digest assertions remain required.",
+      "Any later replacement needs exhaustive per-code-point NFKC_CF comparison plus interacting multi-code-point normalization sequences and catalog encode/decode compatibility."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "icu_normalizer + icu_casemap (+ properties if needed)",
+        "version": "2.3.0",
+        "status": "retained_current_code_semantic_fit_unproved",
+        "maturity": "Unicode Consortium ICU4X maintained project; actual component API reviewed. Not qualified as a drop-in NFKC_Casefold replacement.",
+        "license": "Unicode-3.0",
+        "features": "Normalizer defaults compiled_data, utf8_iter and utf16_iter; compiled_data includes matching baked data. A proposed adapter would need exact coordinated component/data versions.",
+        "platform": "Pure Rust, workspace MSRV 1.88 below Beryl 1.92; no native ICU install needed for ICU4X.",
+        "semantic_gaps": "No direct NFKC_Casefold constructor in reviewed ComposingNormalizer API; combined normalizer/casemap/property semantics and precise Unicode 17 data not proved. Dependency closure/advisories not qualified; no safety clearance claimed.",
+        "sources": [
+          "https://docs.rs/icu_normalizer/latest/icu_normalizer/struct.ComposingNormalizer.html",
+          "https://docs.rs/icu_casemap/latest/icu_casemap/struct.CaseMapper.html",
+          "https://raw.githubusercontent.com/unicode-org/icu4x/icu@2.3.0/Cargo.toml",
+          "https://raw.githubusercontent.com/unicode-org/icu4x/icu@2.3.0/components/normalizer/Cargo.toml",
+          "https://github.com/unicode-org/icu4x",
+          "https://docs.rs/unicode-normalization/0.1.25/unicode_normalization/"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high_for_retention",
+    "disposition": "retained"
+  },
+  {
+    "id": "ST-009",
+    "title": "Share the prepared session-window removal publication",
+    "paths": [
+      "crates/beryl-state/src/session/mutation/window.rs",
+      "crates/beryl-state/tests/session.rs",
+      "crates/beryl-state/tests/window_abandonment.rs"
+    ],
+    "symbols": [
+      "RemoveSessionWindow",
+      "AbandonSessionWindow"
+    ],
+    "evidence": [
+      "session/mutation/window.rs:164-209 and :211-276 repeat header-reference removal/revision advancement, the four-family reconciliation reservation and window/claim deletion plus header publication.",
+      "Abandonment additionally requires exact target/fallback and a mandatory current claim; ordinary removal has different admissions. Those checks must remain explicit."
+    ],
+    "proposal": "Use a small private prepared-removal payload and contribution/reservation helper shared by RemoveSessionWindow and AbandonSessionWindow. Keep the two prepare validation paths separate. Estimated net removal 35–55 lines; do not introduce a generic session mutation framework.",
+    "required_contract_changes": [
+      "None for claim requirements, fallback, removed-window authority or atomic session/catalog abandonment."
+    ],
+    "estimated_net_lines": -45,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Preserve session removal and window_abandonment exact acquired/abandoned/collision, stale/replayed, cross-origin and capacity-release scenarios."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-010",
+    "title": "Centralize asset proof construction, evidence bytes and point limits",
+    "paths": [
+      "crates/beryl-state/src/asset.rs",
+      "crates/beryl-state/src/asset/draft_marker_label_readiness.rs",
+      "crates/beryl-state/src/asset/model.rs",
+      "crates/beryl-state/src/asset/mutation.rs",
+      "crates/beryl-state/src/asset/mutation/owner_heads.rs",
+      "crates/beryl-state/src/asset/read.rs",
+      "crates/beryl-state/src/asset/test_support.rs",
+      "crates/beryl-state/src/asset/validate.rs",
+      "crates/beryl-state/src/asset/validate/range.rs",
+      "crates/beryl-state/tests/draft_marker_readiness_witness.rs"
+    ],
+    "symbols": [
+      "AssetReferenceSetManifest",
+      "page_correlation",
+      "association_evidence",
+      "sealed_proof_evidence",
+      "metadata_point_limit",
+      "manifest_point_limit"
+    ],
+    "evidence": [
+      "asset/draft_marker_label_readiness.rs:286-314 manually feeds the same accepted association layout to SHA-256 that association_evidence constructs immediately below. Hashing that existing canonical byte array removes the duplicate field ordering. Occurrences must still be hashed in order even when readiness checking deduplicates associations.",
+      "asset/read.rs, mutation/owner_heads.rs and validate.rs repeatedly reconstruct SealedAssetReferenceSetProof from the same manifest fields. A private method can compute the proof while each caller retains its lifecycle, expected-evidence and error checks.",
+      "The same schema-max point limits recur in asset.rs, mutation.rs, validate/range.rs, read.rs, readiness and test_support. Shared private limit constructors eliminate copies without altering each query's scope."
+    ],
+    "proposal": "Hash association_evidence for each input occurrence; add a private checked manifest-to-proof method and common schema point-limit constructors. Preserve independent test expected-digest construction. Estimated net removal 70–110 lines after helpers. Do not merge independent owner/entry replay validation or trust a stored proof without checking current manifest evidence.",
+    "required_contract_changes": [
+      "None for canonical evidence bytes, digest domains, duplicate semantics, sealed lifecycle or point-read bounds."
+    ],
+    "estimated_net_lines": -90,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing readiness witness pinned digest, duplicate count, mismatched evidence, owner-proof, completion and corruption tests; verify exact proof/evidence bytes and unchanged failure categories."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-011",
+    "title": "Share the theme lexical primitives under the existing streaming contract",
+    "paths": [
+      "crates/beryl-state/src/theme/document.rs",
+      "crates/beryl-state/src/theme/manifest.rs",
+      "crates/beryl-state/tests/theme_documents.rs",
+      "crates/beryl-state/tests/theme_manifest.rs",
+      "crates/beryl-state/tests/theme_physical_service.rs"
+    ],
+    "symbols": [
+      "document::strip_comment",
+      "document::parse_basic_string",
+      "document::parse_unicode_escape",
+      "document::quote_string",
+      "manifest::strip_comment",
+      "manifest::parse_string",
+      "manifest::quote_string"
+    ],
+    "evidence": [
+      "theme/document.rs:569-687,888-909 and theme/manifest.rs:458-484,563-669 each implement comment/quoted-string/escape mechanics.",
+      "The accepted subsets differ: documents support basic and literal strings plus typed role values and InstalledLoad omission; manifest strings use a stricter subset, and the two writers differ in which Unicode controls they escape. The document and manifest line/CRLF byte-accounting limits also differ.",
+      "Current system authority requires incremental parsing and package authority forbids whole-document residency; local lexical reuse can satisfy both."
+    ],
+    "proposal": "Share only equivalent basic-string escape decoding and small lexical mechanics, with explicit mode arguments for supported quote forms/control handling where needed. Keep field admission, installed omission, duplicate detection, canonical output ordering and line/page budgets local. Estimated net removal 70–110 lines after adapters. Prefer this low-risk local option when the whole-document alternative ST-014 is not selected; do not add both alternatives' savings.",
+    "required_contract_changes": [
+      "None if existing syntax and canonical bytes are preserved. Unifying previously different admitted syntax or escaping is an explicit theme-format decision."
+    ],
+    "estimated_net_lines": -90,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing document and physical-manifest tests, plus focused equivalence at escaped quotes/backslashes, literal quotes, Unicode escapes and controls, trailing comments, CRLF limit edges, installed unknown values and duplicate entries. Preserve typed limits and exact digest identity."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-012",
+    "title": "Carry one theme execution context and one checked manifest input instead of repeated forwarding",
+    "paths": [
+      "crates/beryl-state/src/theme/execution.rs",
+      "crates/beryl-state/src/theme/execution/transform.rs",
+      "crates/beryl-state/src/theme/service.rs",
+      "crates/beryl-state/tests/theme_execution.rs",
+      "crates/beryl-state/tests/theme_physical_service.rs"
+    ],
+    "symbols": [
+      "execute_theme_command",
+      "execute_update",
+      "execute_save",
+      "execute_install_like",
+      "execute_manifest_only",
+      "execute_delete",
+      "hash_manifest_transform",
+      "manifest_transform_reader",
+      "open_manifest_input",
+      "CheckedManifestDecoder",
+      "open_manifest_decoder"
+    ],
+    "evidence": [
+      "theme/execution.rs:161-261 forwards the same service/store/snapshot/logical manifest/physical manifest/operation/limits through a seven-command dispatch. Update/Save wrappers at :432-477 only forward again; several functions have 9–11 arguments.",
+      "Manifest-change preparation repeats across execute_install_like:631-700, execute_manifest_only:703-754 and execute_delete:756-850. The delete path's final authoritative reference acquisition and SaveAs's original-draft binding are meaningful late guards.",
+      "execution/transform.rs:294-347 and service.rs:715-750 both open a PhysicalThemeReader, retain its physical-error side channel, open the manifest decoder and bind identity. Execution maps physical limit errors differently, so a shared checked reader must leave error classification with the caller."
+    ],
+    "proposal": "Introduce a private operation context borrowing the exact snapshot/service/store/limits and exposing short domain-specific methods. Factor common prepared manifest-change metadata and checked physical-decoder construction. Retain the two-pass hash-then-stream physical API, command-specific guards and immediate pre-publication freshness/reference checks. Estimated net removal 150–240 lines after context/helper types; no global execution framework.",
+    "required_contract_changes": [
+      "None for exact snapshot identity, staging order, reconciliation, page bounds or freshness. The context is private and must not cache or refresh authority implicitly."
+    ],
+    "estimated_net_lines": -195,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing theme_execution/physical_service tests for all repository operations, 1,024 entries, 1 MiB manifest, smaller source caps, no-stage refusal, SaveAs binding, concurrent physical replacement and exact old/new/collision reconciliation."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-013",
+    "title": "Replace theme reconciliation's temporary optional payloads with complete internal outcomes",
+    "paths": [
+      "crates/beryl-state/src/theme/command.rs",
+      "crates/beryl-state/src/theme/execution.rs",
+      "crates/beryl-state/src/theme/runtime.rs",
+      "crates/beryl-state/tests/theme_execution.rs",
+      "crates/beryl-state/tests/theme_semantics.rs"
+    ],
+    "symbols": [
+      "ThemeIndeterminateOperation",
+      "ExpectedPublication",
+      "ThemeNaturalRepositoryIdentity",
+      "ThemeReconciliationDescriptor",
+      "map_mutation_outcome",
+      "register_outcome",
+      "RetainedOperation"
+    ],
+    "evidence": [
+      "ThemeIndeterminateOperation at execution.rs:52-57 temporarily carries evidence: Some and expected: Some. register_outcome:370-411 takes both, installs a complete RetainedOperation and constructs a second boxed operation with both fields None. Public callers only observe operation().",
+      "ThemeNaturalRepositoryIdentity::checked at command.rs:473-492 validates an allocated document Vec then retains only the manifest. ThemeReconciliationDescriptor validates old/new homes/generations then retains only operation. expected_publication allocates/duplicates those wrappers; map_mutation_outcome constructs the descriptor after an indeterminate physical mutation.",
+      "Serena references show natural-identity/descriptor use is private to theme execution and its crate-private re-export. The public indeterminate type is produced only by the two internal outcome mappers, so its opaque operation identity can remain unchanged."
+    ],
+    "proposal": "Use a complete private pending outcome containing operation/evidence/expected, and expose the existing public operation handle only after ownership is registered. Consolidate expected-publication validation into one checked constructor before physical mutation, storing old manifest, publication and operation without disposable document vectors/wrappers. Preserve service-scoped retention, exact comparison and collision gates. Estimated net removal 80–130 lines beyond ST-012; keep any necessary validation rather than merely deleting it.",
+    "required_contract_changes": [
+      "No public outcome or operation-id semantics need change because fields are private. Move validation before side effects without weakening accepted old/new identity relations."
+    ],
+    "estimated_net_lines": -105,
+    "verification": [
+      "Audit only; no tests/builds executed.",
+      "Existing theme exact-old/exact-new/collision tests, dropped public handle, independent service versus shared clone ownership, registry release and unknown-operation rejection. Review every indeterminate path to ensure custody enters the registry once and cannot be lost."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "ST-014",
+    "title": "Replace the theme-document parser with existing TOML deserialization after explicitly allowing capped whole-document parsing",
+    "paths": [
+      "crates/beryl-state/Cargo.toml",
+      "crates/beryl-state/src/theme/document.rs",
+      "crates/beryl-state/tests/theme_documents.rs",
+      "crates/beryl-state/tests/theme_physical_service.rs"
+    ],
+    "symbols": [
+      "ThemeDocument::parse_reader",
+      "Parser",
+      "BoundedLines",
+      "ThemeParseMode",
+      "ThemeDocument::to_canonical_toml"
+    ],
+    "evidence": [
+      "theme/document.rs is 909 lines and owns hand-written line/assignment/string/numeric parsing alongside semantic role admission and canonical output. The newly fixed 256 KiB document ceiling creates a concrete bounded whole-input alternative.",
+      "doc/systems/theme-runtime/design.md:75-78 currently mandates an incremental parser with no whole-document alternate path; crates/beryl-state/doc/design-theme-settings.md:39-42 says no read requires a whole document resident. This proposal therefore changes authority rather than claiming the existing TOML crate is a drop-in fit.",
+      "Exact workspace-resolved toml is 0.9.12+spec-1.1.0. Its tagged parser materializes tokens, events and a DeTable before serde conversion and retains an 80-level recursion guard unless unbounded is enabled. An input-byte ceiling is not an exact heap ceiling.",
+      "The tagged ValueDeserializer can visit u64/u128; toml::Value::Integer is i64. Direct typed deserialization preserves full-width numeric fields better than a generic Value intermediate. The library supports TOML 1.1 syntax beyond the current compact subset, and malformed unknown InstalledLoad fields currently may be skipped before value parsing."
+    ],
+    "proposal": "Choose one parser for all theme-document entry points: read through a cap+1 bounded reader, validate UTF-8 and existing line/property/role bounds, deserialize bounded raw theme records with the existing toml/serde dependencies, then apply the existing semantic validator and mode-specific unknown-field policy. Preserve exact file length/digest observations and final physical freshness checks. Keep manifest streaming/paging and the physical publication protocol unchanged. Decide admitted TOML grammar explicitly and retain canonical serialization if byte compatibility is required. Estimated net removal 350–550 lines including raw DTOs, error adapters and bound checks. This is an alternative to ST-011, not additive savings; prototype allocation/diagnostic fit before implementation planning.",
+    "required_contract_changes": [
+      "Change theme-runtime and package authority to allow one 256 KiB capped whole-document parse, with a documented temporary dependency allocation limitation and bounded concurrent parser count. Preserve existing feature size/role/property limits.",
+      "Specify whether standard TOML 1.1 syntax becomes accepted and whether malformed unknown InstalledLoad values now fail syntax validation. Either decision must be visible in the supported theme-format contract; do not silently narrow installed-load behavior.",
+      "Update exact parser-error classification/line diagnostics only through an explicit contract decision. Reconcile the bounded-resource rule on whole-value dependencies at this fixed document boundary; no allowance for whole manifest, draft, transcript or catalog residency is proposed."
+    ],
+    "estimated_net_lines": -450,
+    "verification": [
+      "Audit only; no prototype, builds or tests executed.",
+      "Before adopting: compare current syntax/mode corpus against the proposed parser, including duplicate roles/properties, unknown malformed values, literal/basic strings, nonfinite/numeric bounds, Unicode escapes, CRLF line limits and canonical output.",
+      "Measure allocation/latency at 256 KiB with many tiny tokens and nested unknown values while the default recursion guard is enabled; set and exercise a finite concurrency envelope. Preserve physical race rejection and all existing theme document/semantic tests."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "toml",
+        "version": "0.9.12+spec-1.1.0",
+        "status": "conditional_existing_workspace_dependency",
+        "maturity": "Registry version published 2026-02-10, not yanked; exact version had 65,402,886 downloads when queried 2026-09-06. Cargo currently uses toml in production. Existing workspace selection avoids a new package-version upgrade.",
+        "license": "MIT OR Apache-2.0",
+        "features": "Defaults std, serde, parse, display. Keep unbounded disabled; no need preserve_order/fast_hash/debug for semantic theme parsing.",
+        "platform": "Native Rust implementation; declared MSRV 1.76 below Beryl 1.92. No platform-specific native library or installation required.",
+        "semantic_gaps": "Whole-input tokens/events/DOM and broader TOML 1.1 grammar require the explicit contracts above. Direct typed deserialization handles u64; generic Value cannot hold all u64. Strict unknown-field behavior and current permissive InstalledLoad skipping need separate policy.",
+        "advisories": "On 2026-09-06 POST https://api.osv.dev/v1/query with crates.io package toml and version 0.9.12+spec-1.1.0 returned {}. This exact-package query is not a dependency-closure or future advisory clearance; no full audit tool was run.",
+        "sources": [
+          "https://crates.io/api/v1/crates/toml/0.9.12%2Bspec-1.1.0",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/Cargo.toml",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/Cargo.toml",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/deserializer/value.rs",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/parser/mod.rs",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/value.rs",
+          "https://raw.githubusercontent.com/rust-lang/cargo/master/Cargo.toml",
+          "https://api.osv.dev/v1/query"
+        ],
+        "checked_at": "2026-09-06"
+      },
+      {
+        "crate": "serde",
+        "version": "1.0.228",
+        "status": "reuse_existing_workspace_dependency_with_toml",
+        "maturity": "Already selected with derive in workspace Cargo.toml; TOML's typed Deserialize seam inspected.",
+        "semantic_gaps": "The relevant new design cost is raw theme DTO and mode-specific semantic admission, not a second serialization framework.",
+        "sources": [
+          "Cargo.toml",
+          "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/deserializer/value.rs"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "medium_conditional_on_contract_and_prototype",
+    "disposition": "proposed"
+  }
+]

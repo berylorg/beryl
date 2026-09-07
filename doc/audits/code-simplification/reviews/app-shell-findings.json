@@ -1,0 +1,394 @@
+[
+  {
+    "id": "AS-001",
+    "title": "Share bounded coalesced derived-result cache lifecycle and drop redundant retained request payloads",
+    "paths": [
+      "crates/beryl-app/src/shell/render/code_panel_projection_cache.rs",
+      "crates/beryl-app/src/shell/render/code_panel_projection_cache/accounting.rs",
+      "crates/beryl-app/src/shell/render/code_panel_projection_cache/request.rs",
+      "crates/beryl-app/src/shell/render/code_panel_projection_cache/state.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/cache.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/cache/accounting.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/cache/request.rs",
+      "crates/beryl-app/tests/syntax_highlight_cache.rs",
+      "crates/beryl-app/tests/code_panel_projection_cache.rs"
+    ],
+    "symbols": [
+      "SyntaxHighlightCache",
+      "CodePanelProjectionCache",
+      "SyntaxHighlightInFlight",
+      "CodePanelProjectionInFlight",
+      "complete_highlight",
+      "complete_projection",
+      "prune_if_needed"
+    ],
+    "evidence": [
+      "Both cache full bodies repeat scope generation, represented byte count, access tick, outstanding request, latest pending input, completion acceptance, follow-up scheduling, owner retain/release, minimum-last_used eviction and stats plumbing. Syntax cache 183-264/305-462 parallels projection cache 128-216/258-480.",
+      "In-flight source String (syntax) and source_revision (projection) are never read to perform or accept work: only request payload performs it; retained in-flight copies are consulted by accounting. Syntax lookup_missing retains latest + in-flight source and creates worker source clone. Projection displayed_revision remains necessary to pair coherent old display and action source while new revision is pending."
+    ],
+    "proposal": "Use a small private typed cache core for entry lifecycle, keyed request identity, owner release, weights and pruning; keep language normalization and projection old-display policy in their adapters. Store latest source in Arc and in-flight request identity/charge only, without a second payload solely for estimation. Use exact unique request tickets for release/reacquire (do not weaken completion fencing). Avoid a generic async framework or shared cache capacity across unrelated owners.",
+    "required_contract_changes": [
+      "No intended visible behavior change. Preserve syntax plain-while-pending versus projection coherent-old-display distinction, wrap-mode invalidation, every owner/generation fence and each independent count/byte budget. Account worker-retained capacity explicitly rather than deleting its charge."
+    ],
+    "estimated_net_lines": {
+      "min": 160,
+      "max": 280,
+      "basis": "Approximately 450-550 lines of duplicate lifecycle/admission/release/stat paths replaced by 250-340 lines of typed common core and adapter hooks, after request-identity and focused verification cost. Does not count whole caches as deletions.",
+      "overlap": "Includes redundant cache payload/accounting cleanup; do not sum another cache/LRU replacement estimate."
+    },
+    "verification": [
+      "Existing cache targets plus release/reacquire same owner/source, ABA completion, inline supersession of outstanding projection, multi-update coalescing, budget rejection and coherent copy-source pairing. Inspect worker ownership before deleting retained payload."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-002",
+    "title": "Store code-line ranges once and unify the two syntax-span projection loops",
+    "paths": [
+      "crates/beryl-app/src/shell/render/code_panel/projection.rs",
+      "crates/beryl-app/src/shell/render/code_panel/syntax_projection.rs",
+      "crates/beryl-app/src/shell/render/code_panel.rs",
+      "crates/beryl-app/tests/code_panel_syntax_projection.rs",
+      "crates/beryl-app/tests/code_panel_syntax_rendering.rs",
+      "crates/beryl-app/tests/transcript_command_preview.rs"
+    ],
+    "symbols": [
+      "CodePanelDisplayLine",
+      "CodePanelSourceLine",
+      "CodePanelLineSegment",
+      "code_panel_display_lines",
+      "code_panel_display_line_syntax_spans",
+      "code_panel_display_line_syntax_spans_for_window"
+    ],
+    "evidence": [
+      "projection.rs 175-199 allocates source-line String then segment String then duplicates identical segment into display_text/raw_text. max_display_text clones another line. All constructions make raw_text equal display_text; exact source_range already exists.",
+      "syntax_projection.rs 58-101 and 104-162 duplicate intersection and local UTF-8 span conversion; window path differs principally by initial token binary search/range stop. Consumers in inspected tests pass ordered syntax tokens."
+    ],
+    "proposal": "Represent realized lines as source byte ranges and break metadata over one immutable source handle; materialize only the bounded selected viewport. Use one span projection worker over a token slice selected for the requested source window, with an explicit sorted/nonoverlapping token invariant or robust range indexing. Remove conversion-only source-line/segment vectors and duplicate full/window loops; keep copy-source versus display-source distinction at the owning revision boundary.",
+    "required_contract_changes": [
+      "No product change. Range-backed bounded layout is already required by code-panel spec; this narrow cleanup does not by itself implement the complete target range-backed wrap index. Keep CRLF offsets, empty trailing lines, delimiter-preserving smart-wrap preference and copy reconstruction semantics."
+    ],
+    "estimated_net_lines": {
+      "min": 70,
+      "max": 130,
+      "basis": "Remove roughly 120-190 lines of duplicated span loop/intermediate string conversion and replace with 40-70 lines of range iteration/accessors plus focused test adaptation. No savings claimed for unimplemented range-backed index.",
+      "overlap": "Independent of AS-001 cache lifecycle; excludes source revision/accounting work already there."
+    },
+    "verification": [
+      "Existing syntax projection/rendering and transcript_command_preview scenarios; compare UTF-8 ranges and CRLF/empty-line/wrap metadata; verify overlapping/error tokens cannot be skipped by partition_point assumptions; bounded visible allocations and exact copied source."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-003",
+    "title": "Share syntax assertion support without collapsing distinct recovery scenarios",
+    "paths": [
+      "crates/beryl-app/tests/syntax_highlighting.rs",
+      "crates/beryl-app/tests/syntax_highlighting_ini.rs",
+      "crates/beryl-app/tests/syntax_highlighting_toml.rs"
+    ],
+    "symbols": [
+      "assert_has",
+      "assert_all_ranges_slice_source",
+      "role_texts"
+    ],
+    "evidence": [
+      "Three targets repeat the same assert_has, source-range safety assertion and diagnostic role_texts implementation (syntax_highlighting.rs 484-548, ini.rs 221-303, toml.rs 57-91). INI-specific count/absence and JSON-specific exact offsets remain distinct."
+    ],
+    "proposal": "Move common behavior-named syntax assertion helpers and their shared module bootstrap into one tests/support module. Keep current invalid/non-ASCII escape, independent JSONL records, strict JSON dialect rejection and Windows INI dialect cases.",
+    "required_contract_changes": [],
+    "estimated_net_lines": {
+      "min": 50,
+      "max": 75,
+      "basis": "About 75-95 duplicate helper lines removed after one shared helper set/imports; no scenario deletion.",
+      "overlap": "Could be subsumed by whole-app test-support consolidation; count once."
+    },
+    "verification": [
+      "Run the three current syntax targets after support extraction; diagnostics still identify role/range/source expectation."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-004",
+    "title": "Retain current syntax adapters; Syntect is substantial but not a drop-in simplification",
+    "paths": [
+      "crates/beryl-app/src/shell/syntax_highlighting.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/ini.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/json.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/language.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/markdown.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/model.rs",
+      "crates/beryl-app/src/shell/syntax_highlighting/toml.rs"
+    ],
+    "symbols": [
+      "highlight_markdown",
+      "highlight_json_tokens",
+      "highlight_toml",
+      "highlight_windows_ini",
+      "SyntaxTokenRole"
+    ],
+    "evidence": [
+      "Full local language bodies reviewed: JSON uses already-resolved jsonc-parser 0.32.4 scanner plus strict parse/key/error overlay; TOML uses taplo 0.14.0 syntax tree; Windows INI is a 111-line deliberately narrow dialect; Markdown tokenizes literal code-panel source. These are not transcript Markdown parsing/reconstruction.",
+      "A general scope highlighter could replace substantial adapters only by accepting grammar-derived styling instead of the current strict error/key/delimiter distinctions. Existing resolved parser reuse is preferable when preserving those distinctions; the historical markdown 1.0.0 note refers to removed renderer implementation and is not present resolved-package evidence.",
+      "Reusable external investigation retained by the root audit at doc/memory/crates.io/syntect/5.3.0/bounded-code-panel-highlighting.md."
+    ],
+    "proposal": "Keep current parser adapters under current semantics. If Operator chooses general grammar-based code highlighting, prototype Syntect scope-to-Beryl-role mapping with bounded per-line input and admitted persistent parse state; compare it against sharing existing parser token/range utilities before adopting. Do not add Syntect only to replace the small INI scanner or basic Markdown scanner.",
+    "required_contract_changes": [
+      "For broad replacement, approve grammar-based best-effort syntax versus strict JSON/Windows-INI errors and exact role segmentation; preserve source bytes and unknown-label fallback. Define explicit overlong-line syntax-unavailable behavior and bounded parser-state checkpoint ownership. No change approved by this audit."
+    ],
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Retained/inconclusive alternative, not included in savings. Gross local adapters ~1,144 lines; scope mapping, dialect exceptions, grammar assets, errors, line admission and regression verification could erase material savings. No defendable net until fit prototype.",
+      "overlap": "Would subsume language-specific adapter cleanups, not AS-001 cache ownership."
+    },
+    "verification": [
+      "Read-only evidence only. Candidate would require exact-version Windows and secondary-platform checks with Rust 1.92, grammar output comparisons for all current syntax cases, long-line/regex work limits, cancellation between admitted lines, and source-preserving role output; no install/build performed."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "syntect",
+        "version": "5.3.0",
+        "checked_at": "2026-09-06",
+        "registry": {
+          "url": "https://crates.io/api/v1/crates/syntect/5.3.0",
+          "published_at": "2025-09-27T11:22:43.779471Z",
+          "yanked": false,
+          "latest_stable": "5.3.0",
+          "license": "MIT",
+          "rust_version": null
+        },
+        "features": "Proposed default-features=false, features=[parsing,default-syntaxes,regex-fancy]; avoid default-onig C dependency and unnecessary HTML/plist/YAML/default-theme paths. Bundled grammar coverage must be checked, no assumed INI/TOML fit.",
+        "msrv": "No rust-version in release manifest/registry; release CI policy tests stable minus two releases (rolling last-three-stable policy), not fixed 1.92 guarantee.",
+        "platform": "Pure-Rust fancy-regex avoids Oniguruma native linkage. Tagged CI inspected is Ubuntu; Windows support asserted by design portability, not qualified by this audit.",
+        "maintenance_adoption": "Upstream describes mostly complete, maintained/PR-reviewed project; release CI runs bat syntax regressions and fancy engine tests. Typst current manifest consumes syntect 5.3 with regex-fancy; concrete adoption beyond download counts.",
+        "semantic_limits": "parse_line requires one contiguous logical line and returns scope operations; parser state persists across lines, scope stack retained separately. It is not strict syntax validation, provides no Beryl byte/concurrency/CPU budgets, and no GPUI integration. Upstream warns fancy-regex debug performance and feature-specific production exposure differ from default engine.",
+        "runtime_and_wrapper_cost": "Scope mapping and fixed grammar assets plus lazy regex compilation, byte-role translation, bounded checkpoint cache, overlong-line fallback and work scheduling remain Beryl responsibilities. Existing taplo/jsonc-parser may remain for strict validation, eliminating package reduction.",
+        "advisories": "Queried official RustSec advisory-db main recursive tree for crates/syntect and crates/fancy-regex on audit date: no matching direct advisory paths returned. This is not a transitive dependency or clean-bill audit; final resolved feature graph requires review before adoption.",
+        "sources": [
+          "https://docs.rs/crate/syntect/5.3.0/source/Cargo.toml.orig",
+          "https://docs.rs/syntect/5.3.0/syntect/parsing/struct.ParseState.html",
+          "https://raw.githubusercontent.com/trishume/syntect/v5.3.0/Readme.md",
+          "https://raw.githubusercontent.com/trishume/syntect/v5.3.0/.github/workflows/CI.yml",
+          "https://github.com/typst/typst/blob/main/Cargo.toml",
+          "https://api.github.com/repos/RustSec/advisory-db/git/trees/main?recursive=1"
+        ]
+      }
+    ],
+    "confidence": "high on non-equivalence; net alternative unqualified",
+    "disposition": "retained"
+  },
+  {
+    "id": "AS-005",
+    "title": "Narrow the app-private virtual list to its actual bounded rendering modes",
+    "paths": [
+      "crates/beryl-app/src/shell/virtual_list/mod.rs",
+      "crates/beryl-app/src/shell/virtual_list/element.rs",
+      "crates/beryl-app/src/shell/virtual_list/layout_state.rs",
+      "crates/beryl-app/src/shell/virtual_list/state.rs"
+    ],
+    "symbols": [
+      "ListSizingBehavior",
+      "ListMeasuringBehavior",
+      "ListHorizontalSizingBehavior",
+      "ListState::measure_all",
+      "StateInner::layout_all_items"
+    ],
+    "evidence": [
+      "Full six-file list implementation and virtual_trailing_list tests reviewed. rg across all app source/tests finds measure_all and with_sizing_behavior only at definitions; ListHorizontalSizingBehavior has no use. Infer branch duplicates layout/style setup; Measure adds a whole-list render/measurement mode, state flag and reset path.",
+      "The private fork has real additional virtual-tail intent, dirty measured height and anchor preservation behavior, so replacing/deleting all of it merely because ordinary lib does not mount shell is unjustified."
+    ],
+    "proposal": "Delete unused Infer, Measure and unconstrained-horizontal configuration APIs and their state/whole-list layout branches, retaining only bounded visible measurement and the current flexible-layout entry. Keep the fork-specific anchor, focus and virtual-tail rules. Recheck actual target mounts before implementation, because currently unmounted target source is still authority-required.",
+    "required_contract_changes": [
+      "No product change if all live/target consumers continue using visible measurement. This is an internal app surface reduction; any future requirement for whole-list measurement would need explicit small-count justification."
+    ],
+    "estimated_net_lines": {
+      "min": 90,
+      "max": 130,
+      "basis": "Remove ~140-170 lines of unused enums/config/mode handling and whole-list/Infer branches, minus simplifying request-layout wiring and verification. Does not count comment cleanup or entire list removal.",
+      "overlap": "Independent from source-string test finding; do not also count full fork replacement."
+    },
+    "verification": [
+      "Run virtual_trailing_list and focused GPUI layout/resize/focus tests with bounded render count; trace target renderer usages and compare initial, resized and bottom-filled viewport placement."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-006",
+    "title": "Share realized-record lookup and geometry validation across transcript interactions",
+    "paths": [
+      "crates/beryl-app/src/shell/syndic_transcript/renderer_selection.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/renderer_context_menu.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/renderer_media_action.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/selection.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/core.rs",
+      "crates/beryl-app/tests/syndic_transcript_renderer_selection.rs",
+      "crates/beryl-app/tests/syndic_transcript_selection_copy.rs",
+      "crates/beryl-app/tests/syndic_transcript_media_actions.rs"
+    ],
+    "symbols": [
+      "realized_record_for_selection",
+      "realized_record_for_context_menu",
+      "realized_record_for_media_action",
+      "snapshot_record_for_frame_record",
+      "ResidentSelectionRecordGeometry"
+    ],
+    "evidence": [
+      "Renderer selection122-178, context-menu109-165 and media-action174-230 repeat the same frame-id scan, resident-vs-unrealized distinction, indexed snapshot identity check and geometry construction, changing only unavailable enum names.",
+      "Core1080-1119 also repeats the same indexed resident lookup three times. Selection geometry already has a frame-record constructor at selection63-69, currently private while two other constructors and three free functions repeat it."
+    ],
+    "proposal": "Introduce one private realized-record resolver returning references and a small common geometry failure value; map that value at the three action boundaries. Reuse one geometry constructor and a borrowed core lookup. Keep selection/copy, quote, context menu and media-specific source eligibility and range rejection separate. Do not introduce a general interaction framework.",
+    "required_contract_changes": [
+      "None intended. Preserve missing resident versus missing realized versus stale indexed record distinctions, finite positive geometry, action-specific provenance, revision fencing and menu/media geometry-change dismissal. Synthetic discussion context remains copyable but never quote/menu targetable under target authority; do not equate selection and quote eligibility."
+    ],
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 105,
+      "basis": "Approximately 170-190 repeated lookup/geometry lines replaced with 70-100 common logic and boundary conversion, after focused behavior verification adjustments.",
+      "overlap": "Includes core lookup cleanup; excludes command newtype elimination, action eligibility, target prototype/page replacement and the separate count/snapshot finding."
+    },
+    "verification": [
+      "Run renderer-selection, selection-copy, media-actions and context-menu scenarios for not resident/not realized/stale index/invalid geometry; verify selection reordering and media range readiness do not broaden action eligibility."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-007",
+    "title": "Separate resident payload ownership from content-free counts and snapshot reads",
+    "paths": [
+      "crates/beryl-app/src/shell/syndic_transcript/core.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/host.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/diagnostics.rs",
+      "crates/beryl-app/src/shell/syndic_transcript/status_facts.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_projection_records.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_release.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_resources.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_view_pages.rs",
+      "crates/beryl-app/tests/syndic_transcript_status_facts.rs"
+    ],
+    "symbols": [
+      "ResidentSyndicDataSnapshot",
+      "refresh_resident_record_counts",
+      "refresh_budget_accounting",
+      "core_snapshot",
+      "SyndicTranscriptHost/status_facts",
+      "SyndicTranscriptHost/diagnostic_snapshot"
+    ],
+    "evidence": [
+      "ResidentSyndicDataSnapshot3001-3045 contains seven collection-length fields plus release_decision_count alongside the actual Vec collections. refresh_resident_record_counts1575-1583, refresh_budget_accounting2440-2479 and admission/reset paths repeatedly synchronize them.",
+      "All members in manual Default3047-3095 have the ordinary zero/empty/None default, unlike ProviderRequestBook whose next_request_id intentionally starts at1.",
+      "host/status_facts60-65 and diagnostic_snapshot247-254 construct core_snapshot; core147-164 deep-clones complete resident payloads and presentation/resource bytes merely to read counts/state."
+    ],
+    "proposal": "Keep one mutable resident owner; derive collection lengths directly into a small content-free stats view and use borrowed lightweight state for status/diagnostic projection. Remove redundant mutable length copies and their synchronization calls, and derive Default for the resident data state. Preserve incrementally maintained byte/capacity accounting as real admission state. Align with immutable shared-page rework rather than creating another snapshot owner.",
+    "required_contract_changes": [
+      "No visible contract change. Diagnostics remain exact content-free bounded facts. Collection len is not byte accounting: retained capacities, aliased owner transfers, worker-held bytes, pins, generations and provider retirement still require explicit charges and release. Known pending target gap remains tracked in Checkpoint4, not asserted fixed."
+    ],
+    "estimated_net_lines": {
+      "min": 70,
+      "max": 115,
+      "basis": "About50 manual default lines,30-45 copied-length declarations/assignments/refresh plumbing, and needless full-snapshot caller plumbing removed, minus lightweight stats adaptation and relevant test adjustment.",
+      "overlap": "Narrow count/read path only. No savings claimed for complete immutable-page redesign, enforcing currently unused policy fields, or whole transcript prototype removal."
+    },
+    "verification": [
+      "Resident resources/release/view/projection tests must still check exact counts before/after admission and eviction. Verify status and diagnostics allocate/copy no resident text/resource buffers; run page-generation and pin-release regressions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-008",
+    "title": "Share resident test fixture construction and provider dispatch helpers",
+    "paths": [
+      "crates/beryl-app/tests/syndic_transcript_activation.rs",
+      "crates/beryl-app/tests/syndic_transcript_media_actions.rs",
+      "crates/beryl-app/tests/syndic_transcript_render_coverage.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_projection_records.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_release.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_resources.rs",
+      "crates/beryl-app/tests/syndic_transcript_resident_view_pages.rs",
+      "crates/beryl-app/tests/syndic_transcript_selection_copy.rs",
+      "crates/beryl-app/tests/syndic_transcript_status_facts.rs"
+    ],
+    "symbols": [
+      "handle_provider_request",
+      "provenance",
+      "view_record",
+      "text_projection",
+      "seed_text_presentation",
+      "seed_text_core",
+      "admit_start_page",
+      "admit_start_page_and_projections",
+      "seed_media_presentation"
+    ],
+    "evidence": [
+      "Nine test targets contain the same 10–11-line handle_provider_request wrapper (activation:70, media_actions:108, render_coverage:131, resident_projection_records:99, resident_release:129, resident_resources:99, resident_view_pages:60, selection_copy:152, status_facts:59).",
+      "Activation:17–58 and status_facts:17–57 repeat text record/provenance builders; their seed functions repeat view/projection admission. Release:23–167, render_coverage:23–169, selection_copy:19–161 and media_actions:23–170 repeat more general variants plus dispatch setup.",
+      "Existing support/syndic_transcript_core.rs and syndic_transcript_contract.rs reexport actual source and the existing InMemorySyndicTranscriptProvider. The fixture provider already accepts provider-shaped records and overrides but offers no shared construction/admission helpers."
+    ],
+    "proposal": "Add a small behavior-named support module for explicit provider record/provenance defaults and common core admission. Let tests override revision, narrative kind, identity, copy/resource ranges and policy. Share identical dispatch wrappers and seed setup; leave each test’s failure injection and expected behavior visible. Keep provider-only fixtures independent of resident-core support.",
+    "required_contract_changes": [
+      "None. Preserve distinct renderer/core validation cases, fake-provider contract tests, action-specific payload outcomes, incomplete history, pin ownership and budget assertions. Do not change scenarios to fit one default fixture or claim fixture-provider tests prove production Syndic conformance."
+    ],
+    "estimated_net_lines": {
+      "min": 250,
+      "max": 400,
+      "basis": "Approximately 650–850 repeated construction/admission lines replaced by 300–400 lines of small shared builders and test call sites, allowing for focused adjustment. Only shared setup is counted; no scenario/assertion deletion.",
+      "overlap": "Separate from syntax helper sharing (AS-003), production count/read paths (AS-007), and positive source assertions (AS-009). Shared support files are context outside this owned coverage cohort; count their additions against savings."
+    },
+    "verification": [
+      "Run all nine affected targets and compare named case coverage before/after. Preserve deliberate missing/stale provenance, nondefault budgets and late responses as explicit inputs. Confirm provider-only targets still compile without resident-core dependency."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AS-009",
+    "title": "Replace positive implementation-string assertions with behavioral checks and compact architectural exclusions",
+    "paths": [
+      "crates/beryl-app/tests/transcript_rework_source_boundary.rs",
+      "crates/beryl-app/tests/virtual_trailing_list.rs"
+    ],
+    "symbols": [
+      "syndic_transcript_host_forwards_frame_demand_facts_to_residency",
+      "syndic_transcript_live_autoscroll_stays_on_resident_host_boundary",
+      "syndic_transcript_status_facts_stay_on_resident_host_boundary",
+      "syndic_transcript_selection_copy_stays_on_resident_boundary",
+      "syndic_transcript_quote_domain_stays_on_resident_boundary",
+      "syndic_transcript_renderer_context_menu_target_stays_on_resident_boundary"
+    ],
+    "evidence": [
+      "transcript_rework_source_boundary.rs:179–304 asserts literal host/frame statements and internal state names rather than execution. Lines 334–358 even require from_core_snapshot, preventing AS-007's lighter borrowed status view despite unchanged facts.",
+      "Lines 582–623,692–712,766–790,840–857,905–924 and974–992 list internal helper/type/call strings plus repeated contains loops; passing cannot show correct geometry, pin lifetime or provenance.",
+      "Read behavioral tests syndic_transcript_realized_frame, renderer_selection, selection_copy, media_actions, status_facts and render_coverage exercise many corresponding effects. Host/panel dispatch still needs focused behavioral coverage where these pure-core tests do not reach it.",
+      "virtual_trailing_list.rs:541–655 contains positive implementation-shape checks and manual brace-body scanning; architecture exclusion assertions serve a separate retained purpose."
+    ],
+    "proposal": "Retain and consolidate negative checks for forbidden renderer/provider/storage/legacy dependencies. Remove required internal spelling checks when covered by direct behavioral tests; add focused host/panel/callback tests for uncovered dispatch wiring before removing their only assertions. Replace virtual-list positive body-shape assertions with observable scroll/state behavior. Keep the test inventory and authoritative exclusions explicit.",
+    "required_contract_changes": [
+      "No relaxation of architectural boundaries or UI behavior. Positive presence of a function/type string is not an architecture contract. Preserve compact typed metadata validation-before-connect behavior with a meaningful observable test; no deletion estimate for that unverified replacement."
+    ],
+    "estimated_net_lines": {
+      "min": 220,
+      "max": 320,
+      "basis": "About 350–430 lines of required-needle arrays, contains loops and duplicated read/brace scaffolding removed, minus 110–150 lines of focused behavior/boundary harness work. Net estimate is contingent on closing host/panel dispatch coverage.",
+      "overlap": "Supersedes parent PRE-006 seed estimate rather than adding to it. Includes only test shape scaffolding, not AS-008 fixture construction or AS-005 virtual-list production branch removal."
+    },
+    "verification": [
+      "Run retained architectural exclusion tests, realized-frame/selection/copy/media/status/render-coverage behavior suites and virtual-trailing-list tests. Verify callbacks report demand and invalidate stale actions by execution. A harmless helper rename should not break behavior tests; inserting a forbidden dependency should fail retained boundary checks."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed"
+  }
+]

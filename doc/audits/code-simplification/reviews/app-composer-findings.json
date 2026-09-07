@@ -1,0 +1,267 @@
+[
+  {
+    "id": "AP-001",
+    "title": "Prepare widget and internal staging pages through one retained-page constructor",
+    "paths": [
+      "crates/beryl-app/src/composer_host/mutation.rs",
+      "crates/beryl-app/src/composer_host/mutation/drive.rs",
+      "crates/beryl-app/src/composer_host/mutation/execution.rs",
+      "crates/beryl-app/src/composer_host/mutation/translation.rs"
+    ],
+    "symbols": [
+      "prepare_translated_page",
+      "stage_internal_translated_page",
+      "ComposerHostInFlightPage",
+      "ComposerHostMutationCoordinator",
+      "TranslatedWidgetPage",
+      "apply_in_flight_page_target"
+    ],
+    "evidence": [
+      "All bodies and cfg branches reviewed. mutation/drive.rs:215-316 repeats the lane selection, checked per-item cursor advance, one-item/65,536-byte staging input construction, batch preparation and retained-page initialization for widget pages and synthetic internal deletion pages. Only the explicit page kind and the outer drive behavior differ.",
+      "mutation.rs:237-279 and mutation/translation.rs:18-26 repeat the same five-field translation-progress payload; drive.rs:526-554 commits those fields only after the exact target is established. The payload appears in coordinator, translated result and retained page because their ownership moments differ, not because the facts differ."
+    ],
+    "proposal": "Introduce one private retained-page preparation helper taking the existing explicit Widget/Internal kind and translated page. Keep stage_internal_translated_page responsible for the no-existing-custody check and immediate drive. Factor the five translation progress fields into one small private value passed by value at the existing custody boundaries. Preserve separate source/proposal widget frontiers. Conservative net reduction 55-85 lines, central 70, after helper signatures, call adaptations and focused boundary verification. Counts only app translation/preparation; excludes durable storage payload/codec changes in DT-002 and admission/staging work elsewhere.",
+    "required_contract_changes": [
+      "None. Keep checked cursor overflow, one physical staging input per translated item, current page/item/byte bounds, exact retry identity, Widget versus Internal retained payload, test custody serials, and cancellation/reconciliation ownership. Advance the coordinator's progress only for an exact target; do not reconstruct pages on source retry or fail-closed reconciliation."
+    ],
+    "estimated_net_lines": -70,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation retain syndic_composer_mutations protocol_pages, empty_custody, outcomes, marker_conflict and metadata_intake cases, including 257 physical pages, two independent lanes, 256/257 metadata admission, exact payload owner counts, internal finish extent/position collision, source retry, cancellation and indeterminate/fail-closed cuts. Add only an uncovered shared-helper branch case if existing scenarios do not cover it."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-002",
+    "title": "Classify publication completion once and apply submission flush results once",
+    "paths": [
+      "crates/beryl-app/src/composer_host/lifecycle/autosave.rs",
+      "crates/beryl-app/src/composer_host/lifecycle/flush.rs",
+      "crates/beryl-app/src/composer_host/submission.rs"
+    ],
+    "symbols": [
+      "finish_autosave_completion",
+      "finish_flush_publication",
+      "advance_submission_flush"
+    ],
+    "evidence": [
+      "All lifecycle and submission bodies reviewed. lifecycle/autosave.rs:154-204 and lifecycle/flush.rs:330-371 repeat the same six publication-completion-to-flush-failure mappings while their success and timer policies differ.",
+      "submission.rs:153-218 repeats the same four stage/outcome actions for capture and advance results: remain Flushing, advance to Capturing, clear as NotCommitted, or clear as Stale."
+    ],
+    "proposal": "Use a small exhaustive private completion classification for pending, successful and typed failure outcomes, with each lifecycle caller retaining its own state effects. Normalize capture/advance results to the same private submission disposition before one stage-application match. Conservative net reduction 20-40 lines, central 30, after enum/helper and caller costs; accept only if the final local helper is smaller. No generic lifecycle or asynchronous custody framework. Excludes other service outcome mappings.",
+    "required_contract_changes": [
+      "None. Preserve autosave timer generation and settings rearm checks, close-ticket gating, dirty-adoption checks, barrier checkpoint clearing, publication recapture after success/supersession, typed failure distinctions, and exact pending-submission restoration on errors."
+    ],
+    "estimated_net_lines": -30,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation retain the existing autosave, close/flush, submission and publication behavioral suites with current cfg fault coverage. Check each completion class once plus caller-specific dirty successor, stale timer, close gate and non-submission Satisfied behavior. Do not merge success policies merely because failure mapping is common."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-003",
+    "title": "Centralize initial activation response preparation and terminal cleanup",
+    "paths": [
+      "crates/beryl-app/src/composer_host/activation.rs"
+    ],
+    "symbols": [
+      "activate_with_open_custody",
+      "validate_initial_request",
+      "finish_initial_activation"
+    ],
+    "evidence": [
+      "Entire activation module reviewed. activate_with_open_custody:58-61 duplicates validate_initial_request's demand-count and monotonic-order validation.",
+      "finish_initial_activation:183-290 repeats conditional self.active clearing for restoration mismatch, restoration read failure, text/marker/proof demand errors, cancellation and post-read health/generation failure. The active session must be installed before the fault cut and preparation because production retains open-session custody on terminal preparation failure."
+    ],
+    "proposal": "Reuse validate_initial_request and isolate bounded restoration/first-demand/health preparation into a private result-producing step with a distinct cancellation result. Apply conditional terminal cleanup once in the outer function, then perform the existing successful lifecycle activation. Conservative net reduction 25-45 lines, central 35, after the result type/helper and regression costs. This changes local control flow only; it does not delete the production-versus-test open-custody distinction.",
+    "required_contract_changes": [
+      "None. Preserve first-demand order and caps, exact root/extent restoration checks, preinstalled open-session custody, fault timing, per-demand cancellation, final health/generation observation, all typed errors, and production retain_open_on_terminal behavior. Only successful preparation updates lifecycle and request high-water state."
+    ],
+    "estimated_net_lines": -35,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation retain activation replay, restoration, initial demand failure/cancellation and health-generation fault scenarios, plus production open/disposal custody coverage. Verify failed production preparation retains the exact opened session and test_activate's explicitly different cleanup remains intact."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-004",
+    "title": "Reuse marker-seal completion and release admission tails",
+    "paths": [
+      "crates/beryl-app/src/composer_marker_seal/drive.rs",
+      "crates/beryl-app/src/composer_marker_seal/terminal.rs"
+    ],
+    "symbols": [
+      "drive_begin",
+      "completed_nonempty",
+      "DraftMarkerSealService::release"
+    ],
+    "evidence": [
+      "Both files fully reviewed. drive.rs:73-93 duplicates completed_nonempty:288-313 for a sealed nonempty Syndic proof: complete the Asset reference set, validate its frontier, then retain SealingAsset or return ChangedNonempty.",
+      "terminal.rs:20-80 repeats driving/busy admission and extraction of storage/fault hooks after checking an existing terminal intent and after authenticating/installing a fresh one."
+    ],
+    "proposal": "Call completed_nonempty from drive_begin. In release, validate an already installed intent or authenticate and install a new one, then use one common busy/admission tail. Conservative net reduction 20-35 lines, central 25, including caller changes and verification. Excludes the lower-level durable seal terminal transition in SA-005 and all already-mandated process-global registry removal.",
+    "required_contract_changes": [
+      "None. An existing exact terminal intent must skip fresh supersession authentication after unrelated candidate drift; mismatched intent must still return ConflictingIntent. Preserve drop-lock/authenticate/relock ordering, active-drive deferral, exact Asset frontier checks and generation retirement."
+    ],
+    "estimated_net_lines": -25,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation retain draft_marker_seal_service and draft_marker_seal_lifecycle tests for sealed resume, empty/nonempty, source/target reconciliation, terminal replay after candidate drift, conflicting intents, active/final drive release/disposal races and home retirement. Preserve the atomic Syndic/Asset command pairing."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-005",
+    "title": "Share marker-seal session and asset fixture mechanics",
+    "paths": [
+      "crates/beryl-app/tests/draft_marker_seal_service/support.rs",
+      "crates/beryl-app/tests/draft_marker_seal_lifecycle/support.rs",
+      "crates/beryl-app/tests/syndic_composer_publication/support.rs",
+      "crates/beryl-app/tests/syndic_marker_summary.rs"
+    ],
+    "symbols": [
+      "marker_session",
+      "published_marker_session",
+      "marker_session_with_marker",
+      "request",
+      "admitted",
+      "admit_asset_sidecar",
+      "publish_asset",
+      "publish_admitted_asset",
+      "publish_image_asset"
+    ],
+    "evidence": [
+      "All support bodies reviewed. draft_marker_seal_service/support.rs:3-87 and draft_marker_seal_lifecycle/support.rs:3-54 repeat open-session/text/marker construction with deliberate text and asset differences; request/admitted helpers at service:110-137 and lifecycle:132-159 are duplicate mechanics.",
+      "Asset sidecar admission and metadata publication repeat in service/support.rs:139-193, lifecycle/support.rs:73-110, publication/support.rs:396-428 and syndic_marker_summary.rs:567-603. The service fixture already separates sidecar admission from metadata publication for delayed-readiness tests."
+    ],
+    "proposal": "Move shared test setup into behavior-named support modules with explicit text, marker, bytes and supplied Asset state. Reuse sidecar admission and metadata publication separately so tests can still hold an admitted but unpublished asset. Keep exact request/flight extraction mechanics shared and thin scenario wrappers readable. Conservative net reduction 130-210 lines, central 170, after shared modules/imports, wrappers and fixture verification. Excludes service constructor/new_service replacements because graph-owned construction is already mandated; excludes shared TestHome and every external syndic-storage support file, SA-007 and DT-006 savings.",
+    "required_contract_changes": [
+      "None. Preserve intentionally unpublished metadata, marker identity/order/label/asset values, distinct text and byte payloads, asset hashing and sidecar namespace/byte limits, command outcome assertions including later_failure checks where present, and explicit session/operation identities. Do not replace atomic marker-summary integration assertions with helper-computed expectations."
+    ],
+    "estimated_net_lines": -170,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation run the existing seal service/lifecycle, composer publication and marker-summary suites with their current fault feature configuration. Retain delayed metadata, distinct ordered/sequential digest mismatch, atomic rollback, caps/coalescing and release race assertions. Fixture factoring should need no new mirror tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-006",
+    "title": "Share test page submission mechanics while keeping protocol scenarios explicit",
+    "paths": [
+      "crates/beryl-app/tests/syndic_composer_history/support.rs",
+      "crates/beryl-app/tests/syndic_composer_mutations.rs",
+      "crates/beryl-app/tests/syndic_composer_host/support/populate.rs",
+      "crates/beryl-app/tests/syndic_composer_publication/support.rs",
+      "crates/beryl-app/tests/syndic_composer_publication.rs"
+    ],
+    "symbols": [
+      "commit_text",
+      "stage_text",
+      "commit_items",
+      "commit_page",
+      "empty_finish",
+      "candidate_text",
+      "mutation_key",
+      "insert_text_after_published_marker",
+      "insert_marker_at",
+      "publish_ticket",
+      "drive_ticket_ready",
+      "publish_lower",
+      "publish_lower_source"
+    ],
+    "evidence": [
+      "All owned test bodies and cfg branches reviewed. history/support.rs:61-138,283-358; mutations.rs:43-105,137-248; host/support/populate.rs:354-432; publication/support.rs:147-231,257-394 repeat ordinary one-page begin/stage/finish/commit mechanics and stream-finish construction.",
+      "history/support.rs:397-422,451-470 and mutations.rs:291-299,320-354 also duplicate bounded candidate text reading and identity/empty-finish helpers. Publication's publish_ticket repeats drive_ticket_ready and publish_lower repeats the prepared publication execution/reconcile tail.",
+      "The source and proposal lanes, synthetic empty deletion, late pages, readiness acquisition/release and injected fault timelines are explicit distinct tests. Mutation reactivation disposes/replaces a host; history reactivation expects disposal elsewhere, so those lifecycle helpers are not interchangeable."
+    ],
+    "proposal": "Create a small behavior-named test support API for begin, submit one explicit page, finish with explicit expected extent/positions and predecessor identity, and drive to commit. Layer existing convenient text/object fixture wrappers on it; reuse candidate-text/key/empty-finish helpers. Let admitted marker setup keep readiness custody around the common page mechanics. Reuse existing publication drive helper and a shared prepared-publication execution tail locally. Conservative net reduction 170-290 lines, central 230, after parameters, wrappers, imports and support adaptation; excludes AP-005 asset/session fixture savings, mandatory service construction rewrite, all protocol/fault scenario deletions and external support files.",
+    "required_contract_changes": [
+      "None. Keep expected text bytes and canonical outcomes independently asserted; require callers to state source position, replacement range, resulting extent, directed positions, metadata, and non-root predecessor when relevant. Preserve readiness seed/begin/release order, bounded retry behavior at current callers and explicit fault cuts. Do not use production translation/settlement helpers to calculate test oracles."
+    ],
+    "estimated_net_lines": -230,
+    "verification": [
+      "Audit only; no tests run.",
+      "On implementation run existing composer host/history/mutations/publication suites. Retain UTF-8 and marker ordering/range assertions, two-lane cumulative identities, 258-page streams and 257-page translation boundaries, metadata 256/257 checks, stale host completion, source retry/fail-closed payload ownership, undo/redo/restart and current-versus-candidate publication assertions. Do not parameterize away timing-specific cases."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "AP-007",
+    "title": "Preserve the host request high-water mark across edit and history adoption",
+    "paths": [
+      "crates/beryl-app/src/composer_host/history.rs",
+      "crates/beryl-app/src/composer_host/mutation/settlement.rs",
+      "crates/beryl-app/src/composer_host/request.rs",
+      "crates/beryl-app/tests/syndic_composer_host/stale_completion.rs"
+    ],
+    "symbols": [
+      "finish_history_outcome",
+      "finish_build_settlement",
+      "begin_request"
+    ],
+    "evidence": [
+      "Separate correctness observation, not a simplification estimate. design-catalog-and-composer.md:33-37 requires one monotonic request sequence across publication, editing and history adoption for a live host/session, reset only for a fresh host generation.",
+      "history.rs:388-408 and mutation/settlement.rs:64-80 build a successor binding using the same host generation/session and then set last_request_id to zero. request.rs:8-31 enforces the high-water rejection only against that reset value. A small reused request ID can therefore be admitted for the successor candidate in the same host lifetime.",
+      "stale_completion.rs fully reviewed: its ABA tests replace the host generation, where a fresh request sequence is allowed. They do not establish that same-generation adoption preserves the high-water mark."
+    ],
+    "proposal": "In a separately authorized correctness implementation, preserve the high-water mark while still cancelling/clearing old candidate requests on same-host edit/history adoption. Reset only at the existing fresh generation/terminal lifecycle boundaries. Record zero savings; do not mix removal of two assignments with simplification totals. Coordinate with the active composer mount implementation so the host allocation owner and service rejection fence agree.",
+    "required_contract_changes": [
+      "None; this repairs implementation against existing request-numbering authority. Do not alter widget mutation/history operation numbering, which has a distinct allocator and legitimately different reset/replay semantics."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no tests run; defect established by body and authority inspection.",
+      "Implementation needs a focused behavioral regression: admit high request ID, commit edit or adopt undo/redo without host generation replacement, reject a lower/reused request ID and accept a larger one; retain pending-clear and stale-completion rejection. Separately verify a fresh host generation can begin a new sequence and exhaustion does not wrap."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "deferred"
+  },
+  {
+    "id": "AP-008",
+    "title": "Exclude already-mandated marker-seal registry removal from new savings",
+    "paths": [
+      "crates/beryl-app/src/composer_marker_seal.rs",
+      "crates/beryl-app/tests/draft_marker_seal_service.rs",
+      "crates/beryl-app/tests/draft_marker_seal_lifecycle.rs"
+    ],
+    "symbols": [
+      "SharedHomeRegistry",
+      "SHARED_HOME_STATES",
+      "acquire_shared_home_state",
+      "DraftMarkerSealService::new",
+      "Drop for DraftMarkerSealService"
+    ],
+    "evidence": [
+      "All bodies reviewed. composer_marker_seal.rs:29-33,322-428 contains the process-global weak registry, constructor lookup and custom drop bookkeeping.",
+      "design-shell-lifecycle.md:14-19 already mandates one marker-seal service constructed only by the validated home graph and injected as shared clones, and explicitly forbids process-global consumer rediscovery. Existing service/lifecycle tests exercise constructor coalescing, immutable shared limits and retirement races."
+    ],
+    "proposal": "Keep registry deletion, constructor restriction and corresponding construction-test replacement in the already-authorized architecture implementation accounting. Do not count them as newly discovered audit savings. Preserve logical shared flight capacity and the explicit disposal/retirement protocol under injected ownership. No new dependency candidate was justified for the remaining exact custody state machines; their logic is domain-specific, and existing error types already use thiserror.",
+    "required_contract_changes": [
+      "No new audit contract change. The owning graph/worker implementation must satisfy the existing shell lifecycle authority. Unmounted composer architecture is still required; PRE-015 remains a proposed design choice and authorizes no deletion."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no tests run.",
+      "When the existing architecture change lands, verify clones share one immutable capacity, no consumer constructs/discovers a new service, active-drive disposal defers correctly, and home-generation retirement rejects stale completion. Coordinate test changes with that implementation rather than counting them twice here."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  }
+]

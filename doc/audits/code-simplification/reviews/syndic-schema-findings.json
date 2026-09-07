@@ -1,0 +1,461 @@
+[
+  {
+    "id": "SS-001",
+    "title": "Declare closed scalar codec tag pairs once",
+    "paths": [
+      "crates/syndic-storage/src/codec/parts/value.rs",
+      "crates/syndic-storage/src/codec/parts/value/turn.rs",
+      "crates/syndic-storage/src/codec/parts/value/provider.rs",
+      "crates/syndic-storage/src/codec/parts/value/content.rs",
+      "crates/syndic-storage/src/codec/parts/value/projection.rs",
+      "crates/syndic-storage/src/codec/parts/provider.rs"
+    ],
+    "symbols": [
+      "enc_turn_lifecycle/dec_turn_lifecycle",
+      "enc_turn_terminal_outcome/dec_turn_terminal_outcome",
+      "enc_provider_item_kind/dec_provider_item_kind",
+      "enc_next_turn_reason/dec_next_turn_reason",
+      "enc_resource_kind/dec_resource_kind",
+      "enc_content_encoding/dec_content_encoding",
+      "enc_projection_lifecycle/dec_projection_lifecycle"
+    ],
+    "evidence": [
+      "parts/value/turn.rs:27-114 repeats complete forward/reverse maps and identical InvalidTag branches for three closed scalar types; parts/value/provider.rs:3-105 repeats this for provider kind, assistant phase and provider lifecycle.",
+      "parts/value.rs:45-74 preserves an intentionally retired NextTurnReason tag 4; turn kind is explicitly 0/2/1 by semantic declaration order. General turn-kind codec and stop-local turn-kind codec are NOT byte-identical: the latter adds a provider-operation-kind byte.",
+      "All codec source files were read, including payload-bearing variants, unknown tags and test-fault helpers; only closed scalar pairs belong in this proposal."
+    ],
+    "proposal": "Use one small package-local macro taking exact encode/decode function names, concrete enum type, diagnostic kind, and explicit variant => byte pairs. Generate both matches from that one declaration. Keep all payload-bearing codecs explicit and keep retired/reserved tags absent. Start with the existing one-byte scalar pairs; do not introduce a serializer trait hierarchy or infer persisted tags from declaration order.",
+    "required_contract_changes": [
+      "No V7 byte, ordering, error or public API change. The declarations continue to spell exact Operator-owned tags."
+    ],
+    "estimated_net_lines": -220,
+    "estimated_net_line_range": {
+      "minimum_reduction": 180,
+      "maximum_reduction": 270,
+      "basis": "Approximately 14 existing closed scalar pairs collapse from roughly 20-55 lines each to 8-30 declaration lines; deduct 20-30 lines for the common macro and explicit map entries. Estimate counts maintained source, not generated expansion.",
+      "overlap": "SS-002 covers counter wrappers only; SS-007 covers composite span/options only. These same codec lines would be superseded by SS-009; do not add both."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: exact pre-change V7 bytes for every affected variant, unknown and retired tag rejection, truncation and EOF; retain separate stop/general turn-kind vectors. Run focused codec and schema-foundation tests with relevant test-faults coverage."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-002",
+    "title": "Reuse existing counter and nonce macros instead of maintaining duplicate implementations",
+    "paths": [
+      "crates/syndic-storage/src/codec/parts.rs",
+      "crates/syndic-storage/src/codec/parts/provider.rs",
+      "crates/syndic-storage/src/codec/parts/value.rs",
+      "crates/syndic-storage/src/value.rs",
+      "crates/syndic-storage/src/value/ordering.rs",
+      "crates/syndic-storage/src/value/stop.rs",
+      "crates/syndic-storage/src/value/compaction.rs"
+    ],
+    "symbols": [
+      "revision_helpers",
+      "ordinal_helpers",
+      "one_based_value",
+      "nonzero_compaction_value",
+      "stop_nonce",
+      "compaction_nonce"
+    ],
+    "evidence": [
+      "codec/parts.rs:145-154 and :327-336 define identical helper macros: u64 encoding plus type::new decoding with the same error wrapper.",
+      "value/ordering.rs:7-40 and value/compaction.rs:82-111 implement the same NonZeroU64 new/get/FIRST/checked_next contract and ZeroOrdinal/OrdinalExhausted errors.",
+      "value/stop.rs:7-27 and value/compaction.rs:7-25 implement the same 16-byte nonce wrapper. codec/parts/provider.rs:5-31,247-259 and parts/value.rs:76-96 handwrite codec pairs already expressible using the counter helper."
+    ],
+    "proposal": "Place the existing macro implementations at their common module scope, reuse them for compaction/stop nonce and compatible positive counter domains, and replace matching manual codec pairs with existing helper invocations. Preserve nominal Rust types, exact error kind strings, derived traits, constness and overflow behavior. Do not merge counters with different error contracts or expose raw integers.",
+    "required_contract_changes": [
+      "No semantic or byte-format change. No source documentation additions; existing comments are outside the savings calculation."
+    ],
+    "estimated_net_lines": -90,
+    "estimated_net_line_range": {
+      "minimum_reduction": 70,
+      "maximum_reduction": 110,
+      "basis": "Delete two duplicate value macros (about 45 non-comment lines), one duplicate 10-line codec macro and shorten five manual codec pairs; deduct shared-scope imports/declarations and explicit invocations.",
+      "overlap": "Disjoint from scalar enum maps in SS-001. Does not count deleting all nominal types or generated methods."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: zero rejection and u64::MAX checked-next errors across each affected domain, exact NonZero encoding, existing nonce equality/ordering and pure-values tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-003",
+    "title": "Use the model discussion owner directly as the context-envelope key",
+    "paths": [
+      "crates/syndic-storage/src/codec/keys.rs",
+      "crates/syndic-storage/src/codec/parts.rs",
+      "crates/syndic-storage/src/codec/primary.rs",
+      "crates/syndic-storage/src/read.rs",
+      "crates/syndic-storage/src/mutation/admission/idle.rs",
+      "crates/syndic-storage/src/validation/graph.rs",
+      "crates/syndic-storage/src/test_faults/fixture_put.rs",
+      "crates/syndic-storage/src/test_faults/fixture_delete.rs",
+      "crates/syndic-storage/src/test_faults/physical.rs"
+    ],
+    "symbols": [
+      "ContextOwnerKey",
+      "DiscussionContextOwnerId",
+      "enc_context_key",
+      "dec_context_key",
+      "ContextEnvelopesFamily"
+    ],
+    "evidence": [
+      "codec/keys.rs:94-113 duplicates DiscussionContextOwnerId as Draft/Turn and adds conversions in both directions. Its :124-152 codec repeats the same 0/1 + exact 16-byte owner payload as parts.rs:252-275.",
+      "Repository reference search finds one ContextEnvelopesFamily key association, wrapper conversions in read/admission/graph/fixture boundaries, and one fixture construction. The local ScanKey trait can be implemented directly for the model enum; no orphan-rule obstruction."
+    ],
+    "proposal": "Change ContextEnvelopesFamily::Key to DiscussionContextOwnerId, implement local ScanKey for it, remove ContextOwnerKey and both conversions, and share the owner encoder. Keep a key decoder wrapper for exact EOF and its existing context-owner-key diagnostic label; the wire tag remains 0 for Draft and 1 for SubmittedTurn.",
+    "required_contract_changes": [
+      "No external public type or V7 byte change: the removed key type is pub(crate). Update all directly traced internal callers and fixtures."
+    ],
+    "estimated_net_lines": -35,
+    "estimated_net_line_range": {
+      "minimum_reduction": 28,
+      "maximum_reduction": 42,
+      "basis": "Remove roughly 20 lines of duplicate enum/conversions and 10 lines of encoder match; retain scan endpoints/key EOF wrapper and count caller rewrites.",
+      "overlap": "No family inventory declaration savings included. A future serializer rewrite must not recount this key path."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: byte vectors and round trips for both owner kinds, 17-byte exact key limit, unknown tag/trailing rejection, first/last scan bounds, context admission/reparent behavior."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-004",
+    "title": "Update cloned records through one validator instead of repeating whole constructors",
+    "paths": [
+      "crates/syndic-storage/src/record/compaction/mod.rs",
+      "crates/syndic-storage/src/record/compaction/transitions.rs",
+      "crates/syndic-storage/src/record/provider/build.rs",
+      "crates/syndic-storage/src/record/thread_properties/catalog.rs"
+    ],
+    "symbols": [
+      "CompactionOperationRecord::new",
+      "claim_dispatch",
+      "observe_request",
+      "handoff_to_stop",
+      "reopen_from_stop",
+      "consume_successor",
+      "observe_provider",
+      "ProviderItemBuildRecord::advance",
+      "ProviderItemBuildRecord::advance_completion",
+      "ThreadCatalogSummaryRecord::initial",
+      "ThreadCatalogSummaryRecord::from_sources"
+    ],
+    "evidence": [
+      "compaction/transitions.rs:20-34,66-80,116-130,144-164,190-209,381-395 reconstruct thirteen fields for transitions changing only a few; revision checked-next/error conversion also repeats.",
+      "CompactionOperationRecord::new at compaction/mod.rs:320-340 owns the shared invariant predicate; extracting that predicate as a private validator permits construction and private successors to share the same postcondition.",
+      "ProviderItemBuildRecord already has validate(), but advance at provider/build.rs:377-391 and advance_completion at :420-434 still copy every unchanged field through new().",
+      "thread_properties/catalog.rs:130-148 duplicates the same source field mapping in :178-196 despite existing from_sources helper."
+    ],
+    "proposal": "For private successor construction, clone the record, update the explicit changed fields and checked revision, then run the same private invariant validator before returning. Keep operation-specific admission/lifecycle/frontier guards at their current boundaries; neither a closure framework nor a generic state machine is needed. Route catalog initial() through existing from_sources() with None title.",
+    "required_contract_changes": [
+      "No record shape, transition, persistent bytes or public construction contract change. The validating constructor remains the untrusted decode boundary; private edits must never return before validation."
+    ],
+    "estimated_net_lines": -120,
+    "estimated_net_line_range": {
+      "minimum_reduction": 95,
+      "maximum_reduction": 145,
+      "basis": "Six repeated compaction reconstructions lose about 80-100 unchanged-field forwarding lines; two provider reconstructions save about 15-25, catalog reuse about 15-20; deduct validator extraction and per-transition edits.",
+      "overlap": "Does not count removal of proof fields, lifecycle validation, stored revision checks, or tests. SS-005 representation experiments excluded."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: existing claim/reopen/request/terminal/consumption and narrative completion cases; compare full old/new returned records and exact bytes; verify overflow and invalid transition leave source unchanged. Adversarial review that every return of a successor passes the validator."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-005",
+    "title": "Consider coherent variant payloads for correlated record state",
+    "paths": [
+      "crates/syndic-storage/src/record/projection.rs",
+      "crates/syndic-storage/src/record/projection/resource.rs",
+      "crates/syndic-storage/src/record/route.rs",
+      "crates/syndic-storage/src/record/stop.rs",
+      "crates/syndic-storage/src/record/stop/operation.rs",
+      "crates/syndic-storage/src/record/stop/successor.rs",
+      "crates/syndic-storage/src/codec/primary/projection.rs",
+      "crates/syndic-storage/src/codec/secondary/route.rs"
+    ],
+    "symbols": [
+      "CanonicalItemRecord",
+      "ResourceMetadataRecord",
+      "AcceptedRouteGenerationRecord",
+      "StopAdmissionWitness",
+      "StopOperationRecord::new"
+    ],
+    "evidence": [
+      "ResourceMetadataRecord stores projection_id, ordinal, media_type and digest as separate Options even though new() sets all four for text and generated_media() sets their variant-specific alternatives. encode_resource_record at primary/projection.rs:227-250 rechecks four presences.",
+      "AcceptedRouteGenerationRecord at record/route.rs:97-98 stores two optional endpoints that constructor :125-135 requires both present or absent; secondary route codec has an unreachable mixed-pair arm.",
+      "CanonicalItemRecord stores correlated source/provider state and provider kind/lifecycle derived from the sealed frame, then validates combinations at projection.rs:225-277.",
+      "StopOperationRecord::new projects admission variants into independent Options (:168-210), reconstructing impossible combinations and an unreachable branch; direct variant matching is sufficient. Stop witness common-field projections also repeat, but have many callers."
+    ],
+    "proposal": "For resource metadata, consider a private Text payload holding required metadata and a GeneratedMedia payload, with a variant-scoped view for the encoder; derive byte length/digest where appropriate. Match StopAdmissionWitness directly in its validator. Treat route interval, canonical provider state, and common stop witness payloads as focused design candidates, not a mandate to convert all records to a new hierarchy.",
+    "required_contract_changes": [
+      "Private representation can preserve V7, but existing optional public getters and constructor signatures may need adapters. If changing public access patterns or serialized variant payloads, update package/schema authority first. Preserve all table/preview ranges, provider completion/identity and route aggregate checks."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_line_range": {
+      "minimum_reduction": 0,
+      "maximum_reduction": 0,
+      "basis": "Not booked: removing encoder presence checks may add equivalent public getter projection/adaptation code; broad canonical/stop rewrites need measured caller prototype before a positive net estimate.",
+      "overlap": "If selected later, measure after SS-004 and SS-007; never count invariant guards as disposable scaffolding."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Before selection: prototype one resource record with caller adaptations and compare net diff; exact V7 vectors, invalid constructor cases and public error behavior. Stop validation must retain target-kind and all source/successor checks."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "candidate_not_counted"
+  },
+  {
+    "id": "SS-006",
+    "title": "Derive CodecError using the already enabled thiserror dependency",
+    "paths": [
+      "crates/syndic-storage/src/codec.rs"
+    ],
+    "symbols": [
+      "CodecError",
+      "impl fmt::Display for CodecError",
+      "impl Error for CodecError"
+    ],
+    "evidence": [
+      "codec.rs:61-82 manually formats seven variants and exposes only InvalidValue's boxed source; every message maps directly to thiserror attributes.",
+      "syndic-storage/Cargo.toml:23 already enables thiserror.workspace and root Cargo.toml:54 selects 2.0.18. Existing version-specific research is doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md."
+    ],
+    "proposal": "Use derive(thiserror::Error) and exact message attributes, delete the manual Display/Error implementations and unneeded fmt import. Preserve InvalidValue's named boxed source and leave all other source chains absent.",
+    "required_contract_changes": [
+      "None. Existing dependency and error contract remain."
+    ],
+    "estimated_net_lines": -15,
+    "estimated_net_line_range": {
+      "minimum_reduction": 13,
+      "maximum_reduction": 18,
+      "basis": "Delete 22-line manual implementations and fmt import component; add seven message attributes and derive item.",
+      "overlap": "Extend root MS-001 dependency recommendation but this CodecError body is disjoint from model errors. Count once in integrated audit."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: compare all seven display strings and InvalidValue.source() chain; existing codec error rejection tests."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "status": "recommended_existing_member_dependency",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.68 (existing recorded investigation), below workspace 1.92",
+        "features": "Already resolved workspace defaults (std), no manifest change",
+        "semantic_gaps": "Named source inference matches current InvalidValue only; do not add from/transparent behavior.",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://docs.rs/crate/thiserror/2.0.18"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-007",
+    "title": "Share exact content-span bodies and existing optional/bool codec primitives",
+    "paths": [
+      "crates/syndic-storage/src/codec/parts.rs",
+      "crates/syndic-storage/src/codec/secondary/content.rs",
+      "crates/syndic-storage/src/codec/primary/thread_properties.rs",
+      "crates/syndic-storage/src/codec/primary/binding.rs",
+      "crates/syndic-storage/src/codec/primary/source.rs",
+      "crates/syndic-storage/src/codec/primary/projection/canonical.rs"
+    ],
+    "symbols": [
+      "ContentTextSpansFamily::encode_value",
+      "ContentTextSpansFamily::decode_value",
+      "ContentPiecesFamily::encode_value",
+      "ContentPiecesFamily::decode_value",
+      "enc_opt",
+      "dec_opt",
+      "dec_bool"
+    ],
+    "evidence": [
+      "secondary/content.rs:68-99 and :124-137,169-183 repeat the same content text-span ten-field wire body; only the surrounding piece tag and diagnostic kinds differ.",
+      "primary/thread_properties.rs:252-258 duplicates parts.rs:319-325 boolean decoder. Other inspected primary codecs still spell 0/1 optional matches despite existing enc_opt/dec_opt primitives."
+    ],
+    "proposal": "Add one encoder and decoder for the embedded ContentTextSpanRecord body and call it from both families, passing the existing per-context diagnostic labels. Reuse the existing bool primitive and shorten only genuinely identical option branches with enc_opt/dec_opt; retain each distinct payload/tag layout and final EOF check.",
+    "required_contract_changes": [
+      "No V7 byte change or diagnostic-label change. Avoid unifying options whose payload layouts or error policy differ."
+    ],
+    "estimated_net_lines": -40,
+    "estimated_net_line_range": {
+      "minimum_reduction": 25,
+      "maximum_reduction": 55,
+      "basis": "Share 10-field span encoding/decoding, deduct helper signatures and context parameters; remove 7-line duplicate bool helper and a few exact option branches. Does not count broad boilerplate generation.",
+      "overlap": "SS-001 scalar maps and SS-002 counter helpers excluded; SS-009 would replace overlapping composite codecs."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: standalone span bytes equal embedded Text piece bytes after its tag; malformed bool/options retain error context, source ranges still validate, trailing bytes reject in each family."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "SS-008",
+    "title": "Remove temporary owned strings from resource decoding",
+    "paths": [
+      "crates/syndic-storage/src/codec/primary/projection.rs",
+      "crates/syndic-storage/src/codec/parts.rs",
+      "crates/syndic-storage/src/record/projection/resource.rs"
+    ],
+    "symbols": [
+      "decode_resource_record",
+      "decode_resource_structure",
+      "Decoder::text",
+      "dec_opt",
+      "ResourceMetadataRecord::new",
+      "ResourceStructure::code"
+    ],
+    "evidence": [
+      "primary/projection.rs:287 allocates a String from Decoder::text, then ResourceMetadataRecord::new at resource.rs:182-187 validates and copies it again into Box<str>.",
+      "primary/projection.rs:392-394 allocates Option<Box<str>> for language then ResourceStructure::code at resource.rs:83-89 validates and copies the borrowed string again.",
+      "Decoder<'a>::text returns &'a str independent of the mutable cursor borrow. However dec_opt currently uses anonymous decoder lifetimes, so returning borrowed text through it may require an explicit shared input lifetime."
+    ],
+    "proposal": "Pass the borrowed media type directly into the validating constructor. For optional code language, make dec_opt's input lifetime explicit so a closure can return Option<&'a str>, or use an equally small borrowed decoder at this call site. Keep exactly one owned allocation after text bounds validate.",
+    "required_contract_changes": [
+      "No public or persisted behavior change. Preserve validation order and diagnostic kinds; lifetime plumbing is internal."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_line_range": {
+      "minimum_reduction": 0,
+      "maximum_reduction": 0,
+      "basis": "Primarily removes two transient allocations per text/code resource; lifetime signature changes may offset the one-line source reduction. No LOC saving booked.",
+      "overlap": "Apply after any SS-005 resource representation change; do not count allocation reduction as lines."
+    },
+    "verification": [
+      "Audit only; no tests run.",
+      "Implementation: focused compiler check for decoder lifetime closure, existing resource round trips and empty/NUL/overlong media/language rejection; inspect final path allocates owned validated text once."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed_zero_line_performance_cleanup"
+  },
+  {
+    "id": "SS-009",
+    "title": "Postcard is a substantial value-codec replacement candidate only for a newly authorized format",
+    "paths": [
+      "crates/syndic-storage/src/codec.rs",
+      "crates/syndic-storage/src/codec/parts.rs",
+      "crates/syndic-storage/src/codec/primary.rs",
+      "crates/syndic-storage/src/codec/secondary.rs",
+      "crates/syndic-storage/src/record.rs"
+    ],
+    "symbols": [
+      "Family",
+      "ExactCodec",
+      "Encoder",
+      "Decoder",
+      "Family::encode_value",
+      "Family::decode_value"
+    ],
+    "evidence": [
+      "All 107 scoped files/24,600 lines were inspected. The many record-value encoders/decoders are the substantial duplication boundary, but ordered keys, domain/family/version declarations, record constructors, bounded collection validation, digest preimages and fail-closed EOF behavior remain necessary.",
+      "Schema authority crates/syndic-storage/doc/design-schema-v7.md:3-7,11-22,603-604,621-629,873-890 fixes exact V7 bytes, fixed integer/identity fields, canonical collection bounds and rejection. Package rigor :139-150 makes these integrity contracts.",
+      "Current registry metadata was read on 2026-09-06: postcard 1.1.3 is latest stable, released 2025-07-24 and not yanked; rust_version is null. Official rust-analyzer manifest currently adopts 1.1.3 with default-features=false, alloc. Chromium vendoring evidence also exists but explicitly marks it Shipped:no."
+    ],
+    "proposal": "Do not substitute postcard behind V7 codecs. If Operator independently authorizes a new schema, prototype serde wire DTOs for bounded record VALUES only using postcard 1.1.3 and explicit domain validation. Keep ordered keys/manual canonical hashes and stream validators. Define per-family exact tags/versions, bounded allocation, EOF and compatibility policy first. The local SS-001/002/007 consolidation is immediately viable under existing authority.",
+    "required_contract_changes": [
+      "New persisted-format authority and retirement/compatibility decision required. Current V7 disallows accepting old formats through adapters.",
+      "serde derive must not directly construct invariant-bearing domain records. Borrow bounded wire strings/bytes, validate them and sequence counts before allocating, then call existing constructors; keep semantic cross-record validators.",
+      "Postcard default integer/length/discriminant representation is different. fixint::be supports scalar integer fields, but does not automatically retain V7 u32 string lengths, all explicit tag choices, optional layouts or digest preimages. Recreating those via custom serde adapters may erase the proposed savings."
+    ],
+    "estimated_net_lines": 0,
+    "estimated_net_line_range": {
+      "minimum_reduction": 0,
+      "maximum_reduction": 0,
+      "basis": "Deferred and unmeasured. Thousands of handwritten codec lines are a gross target only. Deduct wire structs/derives, model newtype adapters, constructor conversions, borrowed/capped collection visitors, family/version/EOF wrappers, schema byte vectors and old-format retirement. No defensible positive net estimate without one representative prototype.",
+      "overlap": "Alternative to, not additive with, local codec savings SS-001/002/007. Keys in SS-003 are intentionally outside replacement scope."
+    },
+    "verification": [
+      "No dependency installed, manifest changed, build, benchmark or full advisory scan executed.",
+      "Before adoption: pin metadata/MSRV with focused compile; prototype fixed record + nested enum + bounded text/collection; measure maintained source diff, allocation behavior and malformed input; require exact newly documented byte vectors and all existing semantic validation.",
+      "Use take_from_bytes and reject a nonempty remainder; plain from_bytes does not return unused bytes. Do not use unsupported serde flatten/skip_serializing_if or accidental enum variant reordering."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "postcard",
+        "version": "1.1.3",
+        "status": "deferred_new_format_only",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "No rust-version declared in published Cargo.toml or crates.io metadata; edition 2021 is not an MSRV guarantee. Workspace 1.92 compatibility remains to be compiled.",
+        "features": "Candidate default-features=false, features=[alloc] for Vec-backed bounded values, or no alloc for fixed slices. Default heapless-cas unnecessary. cobs ^0.3.0 and serde ^1.0.100 (derive, defaults disabled) are required published dependencies; optional std/heapless/CRC/defmt/experimental derive are not needed.",
+        "platform": "no_std-focused pure Rust Serde serializer intended for embedded and desktop use; no target-specific dependency sections in published manifest. Cross-platform Beryl build remains unverified.",
+        "maturity": "Stable documented 1.x wire specification; v1.0 work sponsored by Mozilla. Current official rust-analyzer workspace uses postcard 1.1.3 for proc-macro-api. Chromium vendor addition is corroborating evaluation evidence, not shipped deployment. Repository also develops separate postcard2 0.x; this assessment is specifically postcard 1.1.3.",
+        "advisories": "Targeted RustSec searches found no postcard/cobs-specific advisory, but this is not a complete resolved-dependency scan or security guarantee. Historical heapless RUSTSEC-2020-0145 affects pre-0.6.1 and is outside the proposed disabled heapless feature; rerun current dependency review before adoption.",
+        "semantic_gaps": "Default varints and positional enum discriminants differ from V7. Fixed scalar BE adapters exist, but string/sequence length and canonical tags still need explicit work. No automatic domain-constructor validation, collection allocation ceilings or schema evolution. Exact EOF needs take_from_bytes plus remainder check.",
+        "sources": [
+          "https://crates.io/api/v1/crates/postcard",
+          "https://docs.rs/crate/postcard/1.1.3/source/Cargo.toml",
+          "https://docs.rs/postcard/1.1.3/postcard/",
+          "https://postcard.jamesmunns.com/wire-format.html",
+          "https://docs.rs/postcard/latest/x86_64-pc-windows-msvc/postcard/fixint/index.html",
+          "https://github.com/jamesmunns/postcard",
+          "https://github.com/jamesmunns/postcard/releases/tag/postcard%2Fv1.1.3",
+          "https://github.com/rust-lang/rust-analyzer/blob/master/Cargo.toml",
+          "https://github.com/rust-lang/rust-analyzer/blob/master/crates/proc-macro-api/Cargo.toml",
+          "https://chromium.googlesource.com/chromium/src/+/dea0f70457cfafa8e8473a2bc310d314629df799%5E%21/",
+          "https://rustsec.org/advisories/",
+          "https://rustsec.org/advisories/RUSTSEC-2020-0145.html"
+        ],
+        "checked_at": "2026-09-06"
+      }
+    ],
+    "confidence": "high_for_V7_incompatibility_medium_for_future_net_fit",
+    "disposition": "deferred_contract_change_not_counted"
+  },
+  {
+    "id": "SS-010",
+    "title": "Track input-gate schema drift separately from simplification savings",
+    "paths": [
+      "crates/syndic-storage/src/codec/primary/input_gate.rs",
+      "crates/syndic-storage/src/codec.rs",
+      "crates/syndic-storage/src/codec/parts/value.rs",
+      "crates/syndic-storage/src/value/input_gate.rs"
+    ],
+    "symbols": [
+      "InputGatesFamily::RECORD_VERSION",
+      "every_changed_record_family_declares_its_current_version_explicitly",
+      "InputGateState"
+    ],
+    "evidence": [
+      "Authoritative crates/syndic-storage/doc/design-schema-v7.md:13-14 requires input-gates record V5; :451-458 adds RepairRequired with exact correlated CAS identity, capture-gap and consumed request provenance.",
+      "Current codec/primary/input_gate.rs:10 declares RecordVersion::new(4), and codec.rs's version test at :176-178 expects V4. The inspected InputGateState/codec has no RepairRequired variant."
+    ],
+    "proposal": "Record this as implementation-versus-current-authority drift for the parent audit. Reconcile with the active rework/plan before any codec simplification; updating the test to V5 alone would not implement the missing value contract.",
+    "required_contract_changes": [
+      "None inferred: current authority controls. Parent must reconcile active implementation scope; this read-only audit does not implement the repair protocol or revise authority."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Read-only source/authority comparison; no runtime test run."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "authority_drift_not_simplification"
+  }
+]

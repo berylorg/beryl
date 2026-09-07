@@ -6,6 +6,9 @@ Beryl needed a reusable exploration-memory note for the legacy dependency invest
 
 The legacy note is preserved below as a dependency exploration memory note for crates.io package tempfile 3.27.0. It is supporting research only; design decisions remain in design docs and implementation sequencing remains in doc/plan.md.
 
+For the current 2026-09-07 disposable test-root investigation, see
+[audit-test-homes.md](audit-test-homes.md). The migrated production call sites below are historical.
+
 # Sources
 
 - Legacy note: doc/deps/tempfile/3.27.0.md.

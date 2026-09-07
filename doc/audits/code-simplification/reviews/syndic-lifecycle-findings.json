@@ -1,0 +1,262 @@
+[
+  {
+    "id": "SL-001",
+    "title": "Remove admission reader forwarding functions and the duplicate parent-index constructor",
+    "paths": [
+      "crates/syndic-storage/src/mutation/admission/accepted.rs",
+      "crates/syndic-storage/src/mutation/admission/idle.rs",
+      "crates/syndic-storage/src/mutation/admission/shared.rs",
+      "crates/syndic-storage/src/mutation/admission_helpers.rs"
+    ],
+    "symbols": [
+      "required",
+      "point",
+      "current_draft",
+      "thread_parent_index"
+    ],
+    "evidence": [
+      "accepted.rs:416-432 and idle.rs:346-362 forward unchanged to crate::mutation readers; shared.rs:502-525 repeats those forwarders plus current_draft.",
+      "shared.rs:385-395 duplicates admission_helpers::thread_parent_index, already consumed by promotion."
+    ],
+    "proposal": "Import the existing mutation readers directly and use admission_helpers::thread_parent_index. Delete the forwarding bodies and duplicate constructor.",
+    "required_contract_changes": "None. Preserve generic bounds, error propagation, reads and parent/context ownership fields.",
+    "estimated_net_lines": {
+      "minimum": 60,
+      "maximum": 70,
+      "basis": "Approximately 71 duplicated body lines less imports/call-site adjustment; no validation removal."
+    },
+    "verification": [
+      "Focused admission and accepted-promotion checks/tests; confirm unchanged contributor read and error order."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-002",
+    "title": "Share pure pending-turn and initial projection record constructors",
+    "paths": [
+      "crates/syndic-storage/src/mutation/admission/idle.rs",
+      "crates/syndic-storage/src/mutation/promotion/records.rs",
+      "crates/syndic-storage/src/mutation/promotion/records/projection.rs",
+      "crates/syndic-storage/src/mutation/compaction/continuation.rs"
+    ],
+    "symbols": [
+      "idle::records",
+      "PromotionRecords::build",
+      "projection_records",
+      "continuation_records"
+    ],
+    "evidence": [
+      "All four files' complete bodies were inspected. Idle admission, accepted promotion and lifecycle continuation repeat the Pending turn-state frontiers, local user item/index, zero-row initial activity pair, stale transcript head/history summary and unbound binding/head constructors.",
+      "The callers intentionally differ in turn kind, selected parent, timestamp, draft replacement/preservation, asset proof, binding reason, gate counts and error timing."
+    ],
+    "proposal": "Extract small pure constructors for the pending item/state bundle and initial activity pair, then the repeated projection/binding record pairs where signatures remain smaller. Pass already computed revisions/proofs and values explicitly. Keep database reads, eligibility, checked arithmetic and mutation assembly in each caller.",
+    "required_contract_changes": "None. Preserve exact durable bytes, canonical identity/domain derivation, lifecycle continuation kind, asset ownership, draft behavior, transcript supersession and operation-specific error order. Do not create a generalized admission state machine.",
+    "estimated_net_lines": {
+      "minimum": 120,
+      "maximum": 180,
+      "basis": "Repeated record literals across three paths less helper bodies, typed parameters/results and call-site glue. Excludes mutation writers SL-003 and all read-side exact-promotion constructors."
+    },
+    "verification": [
+      "Existing first acceptance, accepted promotion and compaction lifecycle tests, including fresh identity collisions, descendant corruption, user-work priority, current draft preservation, fault cuts and scrub/reopen.",
+      "Compare contributed record keys/values for root/child, asset/no-asset and continuation paths; retain independent expected-value assertions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-003",
+    "title": "Share binding and CAS reservation contribution pairs",
+    "paths": [
+      "crates/syndic-storage/src/mutation/binding/active.rs",
+      "crates/syndic-storage/src/mutation/binding/cancel.rs",
+      "crates/syndic-storage/src/mutation/binding/abandon.rs",
+      "crates/syndic-storage/src/mutation/binding/transition.rs",
+      "crates/syndic-storage/src/mutation/stop/abandonment.rs",
+      "crates/syndic-storage/src/mutation/stop/abandonment/provider.rs",
+      "crates/syndic-storage/src/mutation/compaction/settlement.rs"
+    ],
+    "symbols": [
+      "ActivateBindingRecords::contribute",
+      "CancelBindingActivationRecords::contribute",
+      "AbandonActiveBindingRecords::contribute",
+      "PublishBindingRecords::contribute",
+      "AbandonmentRecords::contribute",
+      "ProviderAbandonmentRecords::contribute",
+      "SettleCompactionOperation"
+    ],
+    "evidence": [
+      "Binding/history-head and CAS owner/membership writes repeat at active.rs:233/254, cancel.rs:180/189, abandon.rs:454/462, transition.rs:191/200, stop/abandonment.rs:465/473, provider.rs:288/296 and settlement.rs:70/81.",
+      "Some paths interleave snapshot/route writes or conditionally omit reservations; therefore one large combined writer would hide meaningful order."
+    ],
+    "proposal": "Use two narrow typed private contribution helpers: binding plus head, and reservation plus membership. Invoke each at its existing position and keep option handling local.",
+    "required_contract_changes": "None. Keep immutable binding history, permanent CAS ownership, one-way retirement, membership provenance, exact key construction, reserve_reconciliation behavior and atomic command ownership.",
+    "estimated_net_lines": {
+      "minimum": 80,
+      "maximum": 120,
+      "basis": "Repeated concrete key/write boilerplate across seven paths less two helper bodies and calls. No constructor, validation, routing or state-machine deletion counted."
+    },
+    "verification": [
+      "Binding activation/cancellation/abandonment and stop ordinary/provider fault/reconciliation tests; retirement and malformed membership/snapshot scrub tests.",
+      "Confirm same mutation ordering, reservation presence and contributed keys."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-004",
+    "title": "Derive exact promotion route successors once",
+    "paths": [
+      "crates/syndic-storage/src/mutation/promotion/records/route.rs",
+      "crates/syndic-storage/src/read/promotion/exact.rs",
+      "crates/syndic-storage/tests/accepted_promotion.rs",
+      "crates/syndic-storage/tests/accepted_promotion/newer_generation.rs",
+      "crates/syndic-storage/tests/accepted_promotion/prior_delivery_witness.rs",
+      "crates/syndic-storage/tests/accepted_promotion_storage_faults.rs",
+      "crates/syndic-storage/tests/accepted_promotion_storage_faults/descendant_collisions.rs"
+    ],
+    "symbols": [
+      "promotion_route_records",
+      "PromotionObservation::exact_route_agrees"
+    ],
+    "evidence": [
+      "route.rs:95 onward and exact.rs:317 onward independently compute the same successor generation counters, promoted leaf with retained prior transition and new promotion proof, and optional next-source row.",
+      "The writer's optional route_head means write/no-write; exact reconciliation instead expects an unrelated newer head to remain unchanged. Read diagnostics also distinguish arithmetic/constructor failures."
+    ],
+    "proposal": "Introduce a private pure route-successor derivation shared by mutation construction and exact comparison. Keep explicit head effect semantics: compare the derived head when changed, otherwise retain/compare the observed basis head. Map typed derivation failures to the existing mutation errors and specific read invariant diagnostics.",
+    "required_contract_changes": "None. Preserve all expected-value checks, historical delivery witnesses, source-row deletion, newer head retention, collision classifications and error provenance. Keep descendant authentication separate. Resolves the route-only portion of deferred SQ-R02; count this once.",
+    "estimated_net_lines": {
+      "minimum": 55,
+      "maximum": 85,
+      "basis": "Deduplicate roughly one 80-line route-construction copy, reserving error mapping and head-effect adapters. Excludes projection constructors and all SQ estimates."
+    },
+    "verification": [
+      "Exact/prior/collision promotion tests, newer-generation and prior-delivery-witness tests, all same-revision authority drift and descendant collision cases, commit-boundary faults and reopened scrub.",
+      "Explicitly verify unchanged unrelated route head and retention of last_transition alongside promotion proof."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-005",
+    "title": "Reuse duplicate lifecycle fixture construction while retaining every scenario",
+    "paths": [
+      "crates/syndic-storage/tests/accepted_delivery/fixtures.rs",
+      "crates/syndic-storage/tests/route_generations/support.rs",
+      "crates/syndic-storage/tests/route_generations.rs",
+      "crates/syndic-storage/tests/binding_mutations.rs",
+      "crates/syndic-storage/tests/binding_invariants/route_allocator.rs",
+      "crates/syndic-storage/tests/binding_mutations/lifecycle.rs",
+      "crates/syndic-storage/tests/stop_storage/support.rs",
+      "crates/syndic-storage/tests/stop_storage/support/active_stop.rs",
+      "crates/syndic-storage/tests/awaiting_terminal.rs"
+    ],
+    "symbols": [
+      "seed_mixed_abandonment",
+      "abandonment_request",
+      "seed_queued_input",
+      "seed_unselected_accepted_input",
+      "complete_active_terminal",
+      "pending_turn_fixture",
+      "build_active_stop_fixture",
+      "ActiveFixture"
+    ],
+    "evidence": [
+      "The two 291-line mixed-abandonment fixture files differ only in constant visibility, storage borrowed/owned signature and one clone; git diff confirms exactly three changes.",
+      "binding_mutations.rs:296 and route_allocator.rs:62 duplicate the same synthetic unselected input setup. complete_active_terminal repeats publication already supported by activate_pending(..., true).",
+      "stop support pending_turn_fixture and build_active_stop_fixture repeat the compaction-backed pending lifecycle turn construction with different IDs/names; awaiting_terminal copies a subset of ActiveStopFixture into a redundant fixture struct."
+    ],
+    "proposal": "Retain one mixed-abandonment fixture module, one unselected queued-input seed, and reuse activate_pending's publication option. Extract the common compaction-backed pending-turn builder with explicit identity/time inputs; reuse ActiveStopFixture directly in awaiting-terminal tests. Keep each test entry point and all scenario-specific assertions.",
+    "required_contract_changes": "None. Preserve exact fixture records, command counts/revisions, timestamps, generated identities, default versus test-faults coverage, temp-home ownership and fault injection boundaries. Do not replace independently constructed corrupt records with production expected-state constructors.",
+    "estimated_net_lines": {
+      "minimum": 500,
+      "maximum": 580,
+      "basis": "About 291+130 duplicated fixture lines, 20 publication lines, 130-150 common stop setup and 30 fixture remapping lines; subtract 70-100 lines for parameterization/import/return-shape glue. No scenario/assertion removal and no generic temp-home replacement counted."
+    },
+    "verification": [
+      "Run existing accepted delivery/route generation, binding invariant/mutation, stop and awaiting-terminal tests in applicable default and test-faults configurations.",
+      "Compare fixture keys/values and home/domain revision count before each fault cut; preserve all reopen/whole-home-scrub assertions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-006",
+    "title": "Use one fault driver for named and generic active abandonment",
+    "paths": [
+      "crates/syndic-storage/tests/named_rejection_abandonment.rs"
+    ],
+    "symbols": [
+      "named_rejection_abandonment_fault_cuts_reconcile_old_or_exact",
+      "generic_abandonment_fault_cuts_reconcile_old_or_exact"
+    ],
+    "evidence": [
+      "The complete fault tests at lines 379-549 repeat home/controller creation, three cut selection, outcome match, retained custody close/reopen refusal and exact/prior reopened classification.",
+      "Named rejection uses a distinct seed and additionally checks the indeterminate persistence error; generic abandonment must remain a separate case."
+    ],
+    "proposal": "Factor the repeated driver into a private helper accepting the case name and request/seed constructor, with named/generic test wrappers. Preserve the union of outcome assertions, including the named persistence-error assertion and retained-custody checks.",
+    "required_contract_changes": "None. Keep both seeds, all three cuts, exact versus prior outcomes, close/reopen refusal with retained reconciliation, and independent named/generic collision scenarios.",
+    "estimated_net_lines": {
+      "minimum": 60,
+      "maximum": 80,
+      "basis": "Remove roughly one 75-90-line driver copy less helper signature and case wrappers. Disjoint from SL-005 fixture construction."
+    },
+    "verification": [
+      "Run all named_rejection_abandonment tests with test-faults; confirm six fault executions, retained reconciliation behavior and scrub/reopen checks."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SL-R01",
+    "title": "Retain explicit durable lifecycle witnesses and operation-specific state transitions",
+    "paths": [
+      "crates/syndic-storage/src/mutation/accepted/transition.rs",
+      "crates/syndic-storage/src/mutation/binding/validation.rs",
+      "crates/syndic-storage/src/mutation/compaction/continuation.rs",
+      "crates/syndic-storage/src/mutation/compaction/settlement.rs",
+      "crates/syndic-storage/src/mutation/stop/abandonment.rs",
+      "crates/syndic-storage/src/mutation/stop/abandonment/provider.rs",
+      "crates/syndic-storage/tests/stop_schema.rs",
+      "crates/syndic-storage/tests/compaction_storage/corruption.rs",
+      "crates/syndic-storage/tests/awaiting_terminal/recovery.rs"
+    ],
+    "symbols": [
+      "retirement",
+      "StopAbandonmentRecords",
+      "CompactionConsumedWitness",
+      "StopCauseFirstRevisions"
+    ],
+    "evidence": [
+      "Full source and tests show independent immutable witnesses, cause/claim ordering, exact predecessor/successor revisions, nonreplayable dispatch custody and ordinary/provider-specific durable successors.",
+      "Ordinary stop abandonment enters FinalizingHistory with source/activity/transcript updates; provider abandonment consumes compaction with its independent receipt and returns Idle. Collapsing these cases would lose authenticated recovery guarantees.",
+      "retirement currently returns Option although every successful branch is Some; a concrete return is a small optional cleanup, not grounds for dropping ownership/retirement validation."
+    ],
+    "proposal": "Retain the domain state machines, witnesses, checked counters, exact collision predicates and corruption/fault tests. Simplify construction/plumbing via SL-001 through SL-006. No substantial established-crate replacement was identified at these lifecycle boundaries; generic state-machine or serialization packages do not replace the persistent authority rules.",
+    "required_contract_changes": "Removing retained guarantees would require Operator-owned lifecycle/persistence authority changes; not recommended.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Retention decision; no savings or dependency adoption claimed."
+    },
+    "verification": [
+      "No runtime verification performed during this observational audit. Retain existing fault/corruption/reopen suites as acceptance evidence for any future simplification."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  }
+]

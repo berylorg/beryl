@@ -1,0 +1,2262 @@
+{
+  "schema_version": 1,
+  "title": "Foundational subsystem simplification synthesis",
+  "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "observed_date": "2026-09-07",
+  "scope": {
+    "files": 443,
+    "physical_lines": 121125,
+    "cohorts": {
+      "model_stream": 22,
+      "home_store": 99,
+      "state": 125,
+      "backend_json": 59,
+      "backend_rest": 137,
+      "entry": 1
+    },
+    "claim": "All 48 original findings from six completed file reports consumed; targeted new cross-layer synthesis. Complete body coverage comes from accepted baseline reports, not new blanket rereading. External/owned dependencies assessed only at consumed boundaries."
+  },
+  "review_kind": "observational subsystem synthesis; not implementation acceptance, independent semantic signoff, runtime proof, or whole-upstream audit",
+  "inspected": {
+    "reports": [
+      "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "doc/audits/code-simplification/reviews/state-findings.json",
+      "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "doc/audits/code-simplification/reviews/entry-findings.json"
+    ],
+    "coverage_reports": [
+      "doc/audits/code-simplification/reviews/model-stream.tsv",
+      "doc/audits/code-simplification/reviews/home-store.tsv",
+      "doc/audits/code-simplification/reviews/state.tsv",
+      "doc/audits/code-simplification/reviews/backend-json.tsv",
+      "doc/audits/code-simplification/reviews/backend-rest.tsv",
+      "doc/audits/code-simplification/reviews/entry.tsv"
+    ],
+    "register": "doc/audits/code-simplification/findings.md",
+    "readme": "doc/audits/code-simplification/README.md",
+    "authority": [
+      {
+        "path": "crates/beryl-model/doc/design.md",
+        "inspection": "full entry; trusted-internal-tool/v2 + untrusted-input/v1; pure identity/digest separation"
+      },
+      {
+        "path": "crates/beryl-stream/doc/design.md",
+        "inspection": "full entry; trusted-internal-tool/v2 + shared-resource-protection/v2; exact message/lease/range contracts"
+      },
+      {
+        "path": "crates/beryl-home-store/doc/design.md",
+        "inspection": "full entry; production-application/v2 + persistent-state-integrity/v2"
+      },
+      {
+        "path": "crates/beryl-home-store/doc/design-domain-api.md",
+        "inspection": "proof sealing/receipt pairing and typed boundary sections"
+      },
+      {
+        "path": "crates/beryl-home-store/doc/design-atomic-commands.md",
+        "inspection": "reconciliation custody/closed facts and fault boundary"
+      },
+      {
+        "path": "crates/beryl-home-store/doc/design-physical-repositories.md",
+        "inspection": "full supplement; manifest-last, staged streams, inert residue and hints"
+      },
+      {
+        "path": "crates/beryl-state/doc/design.md",
+        "inspection": "full entry; production-application/v2 + persistent-state-integrity/v2"
+      },
+      {
+        "path": "crates/beryl-state/doc/design-theme-settings.md",
+        "inspection": "full supplement; streaming documents/manifest and service registry"
+      },
+      {
+        "path": "crates/beryl-state/doc/design-jobs-catalog.md",
+        "inspection": "full supplement; lifecycle matrix, persisted bounds, Unicode17"
+      },
+      {
+        "path": "crates/beryl-backend/doc/design.md",
+        "inspection": "full entry; production-application/v2 + privileged-access/v1 + external-side-effects/v2"
+      },
+      {
+        "path": "crates/beryl-backend/doc/design-provider-stream.md",
+        "inspection": "full supplement; exact pinned recognition, ordered sink, direct pages"
+      },
+      {
+        "path": "crates/beryl-backend/doc/design-transport-and-admission.md",
+        "inspection": "full supplement; process/session, dispatch, input/result bounds"
+      },
+      {
+        "path": "crates/beryl/doc/design.md",
+        "inspection": "full entry; production-application/v2; composition root and paused bootstrap"
+      },
+      {
+        "path": "doc/systems/beryl-home-storage/design.md",
+        "inspection": "reconciliation scope/closed facts and Engineering Rigor; production-application/v2"
+      },
+      {
+        "path": "doc/systems/bounded-resource-dataflow/design.md",
+        "inspection": "risk/enforcement/shared primitives and cross-system invariants/Engineering Rigor; production-application/v2"
+      },
+      {
+        "path": "doc/systems/theme-runtime/design.md",
+        "inspection": "parsing/resolution and Engineering Rigor; production-application/v2 + external-side-effects/v2"
+      },
+      {
+        "path": "doc/systems/backend-runtime/design.md",
+        "inspection": "protocol ownership and Engineering Rigor; production-application/v2 + privileged-access/v1 + external-side-effects/v2"
+      },
+      {
+        "path": "doc/plan.md",
+        "inspection": "Scope and retained completed/paused work; observational audit does not resume implementation"
+      }
+    ],
+    "source": [
+      {
+        "path": "crates/beryl-backend/src/incoming_json/provider.rs",
+        "inspection": "decode_inner full symbol; synchronous BufReader/Parser/scratch, failing-call extents, handoff and poison"
+      },
+      {
+        "path": "crates/beryl-backend/src/incoming_json/provider/machine/thread_closed.rs",
+        "inspection": "ThreadClosedMachine fields"
+      },
+      {
+        "path": "crates/beryl-backend/src/incoming_json/provider/capture.rs",
+        "inspection": "exchange_full_page full symbol"
+      },
+      {
+        "path": "crates/beryl-backend/src/incoming_json/provider/dynamic_capture.rs",
+        "inspection": "exchange_page full symbol"
+      },
+      {
+        "path": "crates/beryl-backend/src/websocket_transport/provider.rs",
+        "inspection": "recv_json_value_timeout full symbol"
+      },
+      {
+        "path": "crates/beryl-backend/src/websocket_transport/reader.rs",
+        "inspection": "overview and new; scoped synchronous reader"
+      },
+      {
+        "path": "crates/beryl-backend/src/session.rs",
+        "inspection": "last_websocket_ingress_test_metrics exact body"
+      },
+      {
+        "path": "crates/beryl-home-store/src/proof/command.rs",
+        "inspection": "seal full symbol"
+      },
+      {
+        "path": "crates/beryl-home-store/src/proof/receipt.rs",
+        "inspection": "matches_receipt and consume_proof_receipt full symbols"
+      },
+      {
+        "path": "crates/beryl-home-store/src/writer.rs",
+        "inspection": "execute_current_admitted full symbol; execute_admitted preparation/receipt/contribution ordering"
+      },
+      {
+        "path": "crates/beryl-home-store/src/successor.rs",
+        "inspection": "point_fact full symbol"
+      },
+      {
+        "path": "crates/beryl-home-store/src/reconciliation/reader.rs",
+        "inspection": "symbol overview plus complete report crosscheck"
+      },
+      {
+        "path": "crates/beryl-home-store/src/ownership/windows.rs",
+        "inspection": "current configured-path and lock acquisition/share flags; historical note conflict checked"
+      },
+      {
+        "path": "crates/beryl-state/src/durable_job.rs",
+        "inspection": "public transition declarations and complete_resolving_turn full symbol"
+      },
+      {
+        "path": "crates/beryl-state/src/durable_job/mutation.rs",
+        "inspection": "reexports"
+      },
+      {
+        "path": "crates/beryl-state/src/durable_job/mutation/transition.rs",
+        "inspection": "seven transition symbol map, CompleteResolvingTurn type/DomainMutation full bodies, references"
+      },
+      {
+        "path": "crates/beryl-state/src/theme/execution.rs",
+        "inspection": "register_outcome full symbol"
+      },
+      {
+        "path": "crates/beryl-state/src/theme/runtime.rs",
+        "inspection": "retain full symbol"
+      },
+      {
+        "path": "crates/beryl-state/tests/runtime_root.rs",
+        "inspection": "concurrent_duplicate_executable_commands_publish_only_one_runtime full body"
+      },
+      {
+        "path": "crates/beryl-state/tests/assets_v3.rs",
+        "inspection": "digest_vector full body"
+      },
+      {
+        "path": "crates/beryl-state/tests/assets_v3_cases/digest.rs",
+        "inspection": "sole digest test full body"
+      },
+      {
+        "path": "crates/beryl-state/tests/support/state_fixture.rs",
+        "inspection": "existing race_commands and outcome helpers"
+      },
+      {
+        "path": "crates/beryl-state/src/window_acquisition/tests.rs",
+        "inspection": "Fixture fields/construction and no Drop search"
+      },
+      {
+        "path": "crates/beryl-state/tests/window_abandonment.rs",
+        "inspection": "Fixture fields/construction and no Drop search"
+      },
+      {
+        "path": "crates/beryl-home-store/tests/free_space_reserve.rs",
+        "inspection": "OpenedHome fields and no Drop search"
+      },
+      {
+        "path": "crates/beryl-state/tests/draft_marker_readiness_witness.rs",
+        "inspection": "Fixture field order; already places directory last"
+      },
+      {
+        "path": "crates/beryl-app/src/cas_projection/test_faults/provider.rs",
+        "inspection": "WebSocketIngressSnapshot type/impl full bodies"
+      },
+      {
+        "path": "crates/beryl-app/src/cas_projection/connection/driver.rs",
+        "inspection": "last_websocket_ingress_test_snapshot forwarding body"
+      },
+      {
+        "path": "crates/beryl-app/tests/normal_terminal/verification.rs",
+        "inspection": "constant metric assertion reference"
+      },
+      {
+        "path": "crates/beryl-app/tests/provider_residency/fixture.rs",
+        "inspection": "constant metric assertion reference"
+      },
+      {
+        "path": "crates/syndic-storage/tests/thread_properties/archive.rs",
+        "inspection": "four durable-job constructor callers; no net counted"
+      },
+      {
+        "path": "../bounded-json/src/parser.rs",
+        "inspection": "Parser::advance full symbol; consumed boundary only"
+      },
+      {
+        "path": "../bounded-json/src/types.rs",
+        "inspection": "Event full symbol; consumed boundary only"
+      }
+    ],
+    "manifests": [
+      "Cargo.toml",
+      "Cargo.lock"
+    ],
+    "dependency_memory": [
+      {
+        "path": "doc/memory/crates.io/windows/0.61.3/process-memory-counters.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/windows/0.61.3/job-object-process-tree-cleanup.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/windows/0.61.3/home-locking-path-and-durability.md",
+        "status": "historical_stricter_opened_object_remote_refusal_design; current trusted-home/tier authority and source override"
+      },
+      {
+        "path": "doc/memory/crates.io/windows/0.61.3/attention-state-apis.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/redb/4.1.0/workspace-semantic-state-storage.md",
+        "status": "historical_removed_workspace_storage; no current replacement qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/notify/8.2.0/bounded-theme-watcher.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/taplo/0.14.0/toml-highlighting-parser.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/im/15.1.0/durable-admission-index-screen.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/toml/0.9.12+spec-1.1.0/capped-theme-document.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/wait-timeout/0.2.1/child-process-wait-timeouts.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/markdown/1.0.0/transcript-markdown-parser.md",
+        "status": "historical_owned_AST_transcript_path; root declaration exists but no lock entry; no durable parser replacement proof"
+      },
+      {
+        "path": "doc/memory/crates.io/pulldown-cmark/0.13.4/durable-projection-parser-screen.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/icu_normalizer/2.3.0/exact-catalog-casefold.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/syntect/5.3.0/bounded-code-panel-highlighting.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/tokio-util/0.7.18/soketto-compat-adapter.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/url/2.5.8/incremental-provider-locators.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/hex/0.4.3/token-hex-encoding.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/jsonc-parser/0.32.4/json-jsonl-highlighting.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/process-wrap/10.0.0/backend-process-ownership.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/struson/0.7.2/bounded-ingress-replacement.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/fast-float2/0.2.4/incremental-number-replacement.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/serde_json/1.0.151/bounded-ingress-replacement.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/tempfile/3.27.0/adjacent-durable-writes.md",
+        "status": "May production-use narrative stale; test-root3.27.0 refreshed in this JSON"
+      },
+      {
+        "path": "doc/memory/crates.io/image/0.25.10/transcript-media-decoding-retention.md",
+        "status": "historical_callsite_and_retention_notes; current App synthesis owns fit; no new defect inferred"
+      },
+      {
+        "path": "doc/memory/crates.io/getrandom/0.4.2/capability-token-randomness.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/tungstenite/0.30.0/incremental-canonical-ingress.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/soketto/0.8.1/managed-websocket-transport.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/bincode/3.0.0/provider-codec-screen.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/fjall/3.1.6/cursor-read-allocation-boundary.md",
+        "status": "historical_registry_instance; do not transfer old blockers or defaults to current owned3.1.6 fork"
+      },
+      {
+        "path": "doc/memory/crates.io/fjall/3.1.6/record-size-limits.md",
+        "status": "historical_registry_instance; do not transfer old blockers or defaults to current owned3.1.6 fork"
+      },
+      {
+        "path": "doc/memory/crates.io/postcard/1.1.3/syndic-record-value-codecs.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      },
+      {
+        "path": "doc/memory/crates.io/tungstenite/0.29.0/test-websocket-helpers.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/serde_json/1.0.149/streamed-string-serialization.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/serde_json/1.0.149/json-rpc-streaming-sanitization.md",
+        "status": "explicitly_archived_architecture; retain only exact dependency facts"
+      },
+      {
+        "path": "doc/memory/crates.io/fjall/3.1.5/disk-space-accounting.md",
+        "status": "historical_registry_instance; do not transfer old blockers or defaults to current owned3.1.6 fork"
+      },
+      {
+        "path": "doc/memory/crates.io/fjall/3.1.5/home-store-atomicity-and-durability.md",
+        "status": "historical_registry_instance; do not transfer old blockers or defaults to current owned3.1.6 fork"
+      },
+      {
+        "path": "doc/memory/crates.io/rodio/0.22.2/windows-notification-playback.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/shlex/1.3.0/wsl-shell-word-quoting.md",
+        "status": "supporting_existing_dependency_note; selected lifecycle/API evidence only; not new package qualification"
+      },
+      {
+        "path": "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md",
+        "status": "current_dated_audit_screen_consumed; limitations retained"
+      }
+    ]
+  },
+  "architecture": [
+    {
+      "scope": "model and stream",
+      "judgment": "Keep semantic identity separate from physical transport state. Shared pure IDs/digests already have narrow macros; only conventional error presentation duplicates. Physical ring indices/page generations are mechanics and can shrink without equating replay identity with page reuse.",
+      "reductions": [
+        "MS-001",
+        "MS-002",
+        "MS-003",
+        "MS-004",
+        "MS-005"
+      ],
+      "retained": [
+        "Typed digest domains and exact serialization",
+        "Fallible fixed backing plus configured logical capacity",
+        "Exact rejected payload and wake/deadline outcomes",
+        "Weak diagnostics, move-only pages, range offsets and replay revisions"
+      ],
+      "cross_layer": "BJ-002 shares backend page mechanics using the existing PageLease; it does not belong in model or impose provider semantics on stream. MS-003 includes app custody-test updates exactly once."
+    },
+    {
+      "scope": "home-store",
+      "judgment": "One physical coordinator is justified by cross-domain atomicity, ownership and uncertainty. Repeated already-validated declarations/snapshots and receipt fact copies can collapse; preparation, contribution, durability and reconciliation custody cannot be fused into a generic success/failure call.",
+      "reductions": [
+        "HS-001",
+        "HS-002",
+        "HS-005",
+        "HS-006",
+        "HS-007"
+      ],
+      "retained": [
+        "All-domain preflight before attachment callbacks",
+        "Prepare-all then receipt capacity check then contribute-all",
+        "Metadata-first bounded reads, generation/TypeId ownership",
+        "NotCommitted/Committed/Indeterminate and exact old/new/successor/collision",
+        "Home keepalive, joined flights, closed scope and orderly retirement",
+        "Manifest-last physical publication and inert sidecar residue"
+      ],
+      "cross_layer": "HS-002 replaces only facts already bound by unique immutable command identity. consume_proof_receipt still compares expected versus observed correlation separately. HS-004 error provenance correction is excluded from size budget. HS-003 changes explicitly required sealed diagnostic retention."
+    },
+    {
+      "scope": "state",
+      "judgment": "The six domain facades are a fixed inventory; their repeated acquisition adapters can be generated once without a dynamic registry. Primitive codecs and exhaustive page iteration can share mechanics while each domain retains schema and semantic checks. Durable jobs are one closed lifecycle family, not seven independent protocols.",
+      "reductions": [
+        "ST-001",
+        "ST-002",
+        "ST-003",
+        "ST-004",
+        "ST-005",
+        "ST-006",
+        "ST-007",
+        "ST-009",
+        "ST-010"
+      ],
+      "retained": [
+        "Ordinary reopen defers dormant exhaustive scans",
+        "Exact persisted bytes/errors/EOF and Unicode17 normalization",
+        "Domain-local cross-page carry, index agreement, legal transitions",
+        "Exact claim origin and session/catalog atomic abandonment",
+        "Independent raw corruption/digest witnesses"
+      ],
+      "cross_layer": "ST-005 changes Rust command representation and requires state and Syndic test caller coordination, but no authority mandates the old seven struct names. Source visibility does not create an Operator gate. No new wire version or product lifecycle is proposed."
+    },
+    {
+      "scope": "theme across state and home-store",
+      "judgment": "Share physical staging mechanics within home-store and semantic execution context within state. These are distinct owners. Replace state’s temporary optional indeterminate payload with one complete private pending outcome installed before the public operation handle is returned.",
+      "reductions": [
+        "HS-006",
+        "ST-011",
+        "ST-012",
+        "ST-013"
+      ],
+      "retained": [
+        "Document identity/revision/digest freshness",
+        "Two-pass hash then stream physical input",
+        "Delete’s final references and SaveAs original binding",
+        "Pre-admitted operation slots and one service registry",
+        "Exact outcome classification and manifest-last membership"
+      ],
+      "cross_layer": "HS-006 physical helper, ST-012 context/reader setup and ST-013 pending custody occupy distinct bodies; no cross-package transaction framework is proposed. ST-014 replaces ST-011 only after whole-document/grammar/concurrency decisions; it does not obsolete physical publication or manifest streaming."
+    },
+    {
+      "scope": "backend",
+      "judgment": "Retain one incremental recognizer and direct-page provider sink path. Compact responses already finish inside a synchronous driver, making manually stored continuation states removable through a bounded pull cursor. Neutral response waiting, synchronous reader bookkeeping and source-aware outbound setup can share their local mechanics without merging process/session/request custody.",
+      "reductions": [
+        "BJ-001",
+        "BJ-002",
+        "BJ-003",
+        "BR-001",
+        "BR-002",
+        "BR-003",
+        "BR-004",
+        "BR-005",
+        "BR-006",
+        "BR-007",
+        "BR-008"
+      ],
+      "retained": [
+        "Pinned Codex CLI0.146.0 schema and ordered fields",
+        "Input/output extents including produced bytes on failure",
+        "Fragmented UTF8, arbitrary discarded scalar size and bounded scratch",
+        "Provider backpressure before further transport read",
+        "Exact request expectation, full drain/poison and method-specific echo timing",
+        "First source failure precedence and actual first-byte dispatch",
+        "Kernel process-tree ownership and separate WSL cleanup"
+      ],
+      "cross_layer": "BJ-003 obsoletes response continuation/forwarding/drain helpers, response-only BJ-001 overlap and unsupported BJ-004 branches. Its price withholds all BJ-004 corrective deletion. It does not obsolete provider capture/control/event machinery, BR-001 request lifecycle, or BR-003 transport writing."
+    },
+    {
+      "scope": "entry",
+      "judgment": "The three-line compile_error is an explicit unfinished composition boundary. An empty successful main would conceal required paused work.",
+      "reductions": [],
+      "retained": [
+        "Complete healthy typed-stack publication and future diagnostic bootstrap contract"
+      ],
+      "cross_layer": "Audit coverage is not evidence that baseline is a complete runnable application."
+    }
+  ],
+  "findings": [
+    {
+      "id": "MS-001",
+      "title": "Derive model errors with the existing workspace thiserror dependency",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 90,
+      "net_max": 115,
+      "overlap_group": "errors-model",
+      "evidence": "Exact error text and empty sources; existing thiserror. Attributes/import/member declaration deducted.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Not executed: audit is read-only.",
+        "On implementation: verify every old/new error message and source()==None; focused model nextest coverage; metadata and focused Cargo check before analyzer restart because the member manifest changes."
+      ]
+    },
+    {
+      "id": "MS-002",
+      "title": "Replace manual channel ring bookkeeping with a preallocated VecDeque and direct message moves",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 40,
+      "overlap_group": "stream-channel",
+      "evidence": "Fallible preallocation plus logical capacity remain; remove only ring bookkeeping and terminal Option moves.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Not executed: audit is read-only.",
+        "On implementation: existing capacity/FIFO, exact Full/Timeout/Closed messages, zero and unrepresentable deadline, backpressure, closure and high-water tests; add focused non-Copy/drop-count custody and repeated wraparound evidence if the representation change needs it.",
+        "Check no push can exceed configured capacity even when VecDeque allocates a larger physical capacity; keep callbacks/destructors out of locked mutation paths."
+      ]
+    },
+    {
+      "id": "MS-003",
+      "title": "Remove page-lease generation machinery used only as test instrumentation",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 35,
+      "overlap_group": "stream-page-generation",
+      "evidence": "Source API change only; authority does not require generations. Includes app custody-test adaptation; preserve total_leases and exact lease release.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": true,
+      "authority_change_required": false,
+      "verification": [
+        "Not executed: audit is read-only.",
+        "On implementation: confirm full-workspace reference search after removal; focused stream and provider_broker_channel nextest targets preserve exact returned payload, no re-lease during handoff, release and later reuse."
+      ]
+    },
+    {
+      "id": "MS-004",
+      "title": "Share page diagnostic snapshot construction and derive nongeneric Clone implementations",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 20,
+      "overlap_group": "stream-page-diagnostics",
+      "evidence": "Conservative range around original 18; one snapshot helper and derives, excluding generation fields owned by MS-003.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Not executed: audit is read-only.",
+        "On implementation: existing weak-observer release and occupancy tests; compare pool/observer snapshots from the same quiescent pool."
+      ]
+    },
+    {
+      "id": "MS-005",
+      "title": "Remove redundant marker-digest test construction while retaining independent encoding vectors",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 30,
+      "overlap_group": "model-digest-tests",
+      "evidence": "Conservative range around original 25; test-local fold cost deducted; golden byte vectors stay independent.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Not executed: audit is read-only.",
+        "On implementation: existing asset_identity nextest target retains order, exact encoding, label boundaries and proof mismatch assertions."
+      ]
+    },
+    {
+      "id": "MS-006",
+      "title": "Retain strongly typed model domains and existing small macros",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "model-domains",
+      "evidence": "Typed IDs, digest domains and validation macros already compact; no universal wrapper.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Full body inspection only; no builds/tests run."
+      ]
+    },
+    {
+      "id": "MS-007",
+      "title": "Retain channel custody outcomes and weak observation; no wholesale channel dependency proposed",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "stream-custody",
+      "evidence": "Preserve exact rejected message, endpoint wakes, timeout distinction, fixed backing and weak observers.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Full body inspection only; no builds/tests run.",
+        "Coverage caveat: two test readiness loops spin until send_waits becomes nonzero with no local deadline; do not treat them as evidence that all regressions terminate promptly."
+      ]
+    },
+    {
+      "id": "MS-008",
+      "title": "Keep explicitly required range/replay contracts even when an adapter is currently unmounted",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "stream-range",
+      "evidence": "Documented range/replay source and sink contracts remain required even without current production consumers.",
+      "source_report": "doc/audits/code-simplification/reviews/model-stream-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Full body inspection only; no builds/tests run."
+      ]
+    },
+    {
+      "id": "HS-001",
+      "title": "Validate recovered declarations once and share their physical family opening",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 180,
+      "overlap_group": "home-recovery-preflight",
+      "evidence": "Shared validated candidate and family opening; all-domain preflight before any attachment callback retained.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Retain health_recovery, domain_registration, domain_type_identity and runtime_attachments cases.",
+        "Add a multi-domain corrupted-later-registration case asserting no earlier attachment factory runs before preflight rejection.",
+        "Verify missing/oversized metadata, wrong home/schema and underlying I/O remain correctly classified without creating missing keyspaces."
+      ]
+    },
+    {
+      "id": "HS-002",
+      "title": "Replace duplicated proof receipt fences with the existing unforgeable sealed command identity",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 75,
+      "net_max": 115,
+      "overlap_group": "home-proof-seal",
+      "evidence": "Unique immutable seal binds redundant fences; independent expected/observed correlation, store/generation and execution validation retained. Clarify proof representation before implementation.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Run complete proof_composition, proof_command_identity and fixed_digest_home_proof_protocol tests plus the Syndic retained-attempt consumer tests.",
+        "Add same-command valid-shape expected-source correlation differing from observed source while witnesses agree with observed source; consumption must still return CorrelationMismatch.",
+        "Keep compile-time move-only/type boundaries and runtime foreign store, obsolete generation, substituted complete pair, role swap, identical-fact distinct command and identity-exhaustion rejection."
+      ]
+    },
+    {
+      "id": "HS-003",
+      "title": "Replace inaccessible collision fact archives with a compact closed-scope marker",
+      "disposition": "proposed",
+      "bucket": "contract_alternative",
+      "net_min": 150,
+      "net_max": 260,
+      "overlap_group": "home-collision-retention",
+      "evidence": "Explicit authority change removes retained detailed diagnostic archive only; closed scope/flight/home custody and bounded charge remain.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": true,
+      "verification": [
+        "Keep targeted_reconciliation closed-handle Busy, orderly-close, charge replacement, joined result and retry cases.",
+        "Keep full successor adversarial truth table, source/asset correlation, invalid derived record before current acquisition, malformed current record and I/O classification tests.",
+        "Assert the closed scope retains only its bounded marker/flight and that descriptor allocations release exactly once; no path converts collision into retry or successful promotion."
+      ]
+    },
+    {
+      "id": "HS-004",
+      "title": "Share bounded physical point acquisition and error provenance across readers",
+      "disposition": "proposed",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "home-physical-provenance",
+      "evidence": "Local 40–85 potential reduction excluded: shared point adapter also corrects physical errors currently misclassified by raw-box fallback.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Exercise the same physical transient/terminal/decode failure through ordinary, reconciliation and successor reads and assert intended health classification.",
+        "Retain oversized-before-acquire, malformed-current, invalid-derived-before-current and budget-versus-corruption precedence cases.",
+        "Run existing callback_error_provenance and read_health_classification tests without reducing assertions."
+      ]
+    },
+    {
+      "id": "HS-005",
+      "title": "Carry one writer-time snapshot through current-command admission",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 85,
+      "overlap_group": "home-writer-snapshot",
+      "evidence": "Reuse same held-writer snapshot and admitted facts; prepare-all/receipt-overflow/contribute-all order preserved.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Run current_domain_commands blocked-writer, stale logical validation and scoped-fault tests.",
+        "Retain validation_participants cancellation/type/duplicate role ordering and writer_concurrency coherent snapshot cases.",
+        "Add counters proving one current-command metadata acquisition and no contribution before any later participant preparation or receipt-overflow failure."
+      ]
+    },
+    {
+      "id": "HS-006",
+      "title": "Consolidate the theme repository's staged-file replacement mechanics",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 180,
+      "overlap_group": "theme-physical-publication",
+      "evidence": "Narrow staged-file publication helper; semantic state remains in state package; manifest-last and durability barriers retained.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Run every theme_repository failure cut and old/intended/collision reconciliation case.",
+        "Assert document-first/manifest-last order, complete source length/digest validation before replacement, inert residue, and committed deletion despite later cleanup failure.",
+        "Retain stale/foreign snapshot refusal and exact NotCommitted/Committed/Indeterminate evidence."
+      ]
+    },
+    {
+      "id": "HS-007",
+      "title": "Delete a literal-only envelope test and consolidate repeated behavioral fixtures",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 230,
+      "net_max": 370,
+      "overlap_group": "home-test-fixtures",
+      "evidence": "Only literal fake test and repeated codec/proof/byte/process fixture mechanics; no temporary-home construction or scenario removal.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Compare the retained test-case inventory and assertion coverage before/after fixture consolidation.",
+        "Run affected integration targets with their existing feature matrix, including real child abort and parent kill.",
+        "Ensure shared child cleanup kills only the child it owns and bounded waits preserve all crash-cut outcomes."
+      ]
+    },
+    {
+      "id": "HS-008",
+      "title": "Retain typed ownership, two-stage preparation and reconciliation custody while simplifying internals",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "home-typed-custody",
+      "evidence": "Retain generation lifetime, TypeId ownership, two-stage preparation, attachment retirement and reconciliation ownership.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing complete typed identity, attachment, finalization, concurrency, physical fault and reconciliation custody suites are the required preservation evidence."
+      ]
+    },
+    {
+      "id": "HS-009",
+      "title": "Retain the bounded watcher pending a lifecycle-compatible native backend",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "theme-watcher",
+      "evidence": "notify 8.2.0 worker retirement/native filesystem gap defeats drop-in replacement.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Before adoption: Windows event bursts and overflow; directory disappearance/recreation; atomic rename; irrelevant files; generation retirement with no surviving callbacks/worker; remote/WSL behavior; existing coalescing/shutdown tests.",
+        "No package installation, dependency resolution or tests were performed during this observational audit."
+      ]
+    },
+    {
+      "id": "HS-010",
+      "title": "Retain exact storage codecs and durable file publication instead of forcing generic crates",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "home-codecs-publication",
+      "evidence": "Retain exact small formats, owned Fjall consumed boundary, sidecar residue and physical publication semantics.",
+      "source_report": "doc/audits/code-simplification/reviews/home-store-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Preserve actual encoded family capacity, metadata-before-value bounds, sidecar barriers, physical error provenance and explicit exhaustive reopen validation tests."
+      ]
+    },
+    {
+      "id": "ST-001",
+      "title": "Generate the closed set of state-handle registration and receipt adapters once",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 180,
+      "net_max": 260,
+      "overlap_group": "state-domain-inventory",
+      "evidence": "One private fixed typed inventory; explicit modes/order, candidate generation and receipt adapters retained.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Preserve existing reopen_validation, recovery and commit_receipts scenarios, including ordinary reopen deferral and rejection of prior-generation handles/receipts. Review macro expansion for every domain and acquisition mode."
+      ]
+    },
+    {
+      "id": "ST-002",
+      "title": "Use thiserror for conventional state errors while preserving error-source topology",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 600,
+      "net_max": 900,
+      "overlap_group": "errors-state",
+      "evidence": "Exact Display/source/From topology; excludes error code removed by codec reuse and theme-parser alternative.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Compare every variant's Display and complete source chain, especially wrapper-versus-transparent and inferred fields named source/backtrace. Keep direct-read versus semantic DomainCallbackError provenance tests.",
+        "Member-manifest implementation requires locked metadata validation and focused Cargo check before analyzer restart; then existing focused state nextest coverage."
+      ]
+    },
+    {
+      "id": "ST-003",
+      "title": "Reuse the existing binary encoder and decoder in settings and catalog",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 130,
+      "net_max": 190,
+      "overlap_group": "state-codec-primitives",
+      "evidence": "PRE-011 refined: reuse existing encoding.rs with narrow exact error adapters; no stored-byte change.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Use existing settings/catalog round-trip, persisted-version, corruption and unsupported-field tests; compare exact old/new encoded bytes and malformed-input error categories, including length bounds, trailing bytes, host paths and Unicode-normalized title evidence."
+      ]
+    },
+    {
+      "id": "ST-004",
+      "title": "Consolidate state test fixtures and exact outcome helpers without deleting scenario coverage",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 570,
+      "net_max": 970,
+      "overlap_group": "state-test-fixtures",
+      "evidence": "Original650–1050 less80 conservative reserve for complete54-line false-concurrency test,22-line digest test and unused-argument lines; corrective portions FND-SYN-002 at zero; excludes temporary homes.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "On implementation, count and compare scenario assertions before/after; run affected integration tests and the real contention test. Keep corrupted raw bytes, page bounds, race checkpoints, receipt/recovery identity and independent digest expectations."
+      ]
+    },
+    {
+      "id": "ST-005",
+      "title": "Represent the closed durable-job transition family with one mutation implementation",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 200,
+      "net_max": 260,
+      "overlap_group": "durable-job-transitions",
+      "evidence": "PRE-010 refined: closed action family with coordinated source API/callsite adaptation; exact Rust struct names are not authority. Lifecycle/wire/footprint preserved; includes adapters, no external archive.rs deletion credited.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": true,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Run durable_job, failure-compatibility, failure-corruption and concurrency-domain tests; preserve all legal/illegal stage-failure pairs, stale revisions, retry attempt identity, live index and reopen evidence."
+      ]
+    },
+    {
+      "id": "ST-006",
+      "title": "Share exhaustive cursor-loop mechanics while keeping domain invariants explicit",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 180,
+      "overlap_group": "state-exhaustive-scans",
+      "evidence": "Bounded visitor/page-continuation mechanics only; domain-specific carry/invariants remain; no ordinary-read/exhaustive-scrub merger.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing explicit scrub/reopen corruption coverage plus multi-page boundary cases for missing index copies, cross-page owner/job carry state and empty continuation; ensure no whole-domain collection is introduced."
+      ]
+    },
+    {
+      "id": "ST-007",
+      "title": "Remove duplicated catalog row validation and unnecessary deep row copies",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 60,
+      "overlap_group": "catalog-checked-rows",
+      "evidence": "Consume already checked rows and factor exact claim checks with explicit origin policy; preserve row/index agreement.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing catalog corruption/page/claim tests and window_abandonment cross-origin, retained-index and unrelated-progress tests; check exact output order and page metadata."
+      ]
+    },
+    {
+      "id": "ST-008",
+      "title": "Retain exact Unicode 17 NFKC_Casefold until a replacement proves the full mapping contract",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "unicode-catalog",
+      "evidence": "ICU composition not proved exact Unicode17 NFKC_CF; generated data is not free deletion.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "No builds or corpus comparisons executed. Existing Unicode golden cases and table-digest assertions remain required.",
+        "Any later replacement needs exhaustive per-code-point NFKC_CF comparison plus interacting multi-code-point normalization sequences and catalog encode/decode compatibility."
+      ]
+    },
+    {
+      "id": "ST-009",
+      "title": "Share the prepared session-window removal publication",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "overlap_group": "session-window-removal",
+      "evidence": "Shared prepared publication after distinct ordinary/abandonment admissions.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Preserve session removal and window_abandonment exact acquired/abandoned/collision, stale/replayed, cross-origin and capacity-release scenarios."
+      ]
+    },
+    {
+      "id": "ST-010",
+      "title": "Centralize asset proof construction, evidence bytes and point limits",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 110,
+      "overlap_group": "asset-proof-encoding",
+      "evidence": "One canonical association encoding/private checked proof construction and point limits; independent expected digests retained.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing readiness witness pinned digest, duplicate count, mismatched evidence, owner-proof, completion and corruption tests; verify exact proof/evidence bytes and unchanged failure categories."
+      ]
+    },
+    {
+      "id": "ST-011",
+      "title": "Share the theme lexical primitives under the existing streaming contract",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 110,
+      "overlap_group": "theme-parser-alternatives",
+      "evidence": "Equivalent lexical primitives only; explicit dialect/escaping/CRLF/mode differences retained; mutually exclusive with ST-014.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing document and physical-manifest tests, plus focused equivalence at escaped quotes/backslashes, literal quotes, Unicode escapes and controls, trailing comments, CRLF limit edges, installed unknown values and duplicate entries. Preserve typed limits and exact digest identity."
+      ]
+    },
+    {
+      "id": "ST-012",
+      "title": "Carry one theme execution context and one checked manifest input instead of repeated forwarding",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 240,
+      "overlap_group": "theme-semantic-execution",
+      "evidence": "Private context and checked physical decoder sharing; exact snapshot, two passes, late SaveAs/delete guards retained.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing theme_execution/physical_service tests for all repository operations, 1,024 entries, 1 MiB manifest, smaller source caps, no-stage refusal, SaveAs binding, concurrent physical replacement and exact old/new/collision reconciliation."
+      ]
+    },
+    {
+      "id": "ST-013",
+      "title": "Replace theme reconciliation's temporary optional payloads with complete internal outcomes",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 130,
+      "overlap_group": "theme-pending-outcome",
+      "evidence": "Complete private pending payload installed once before exposing public handle; no disposable optional payloads or post-effect fallible wrapper construction.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Audit only; no tests/builds executed.",
+        "Existing theme exact-old/exact-new/collision tests, dropped public handle, independent service versus shared clone ownership, registry release and unknown-operation rejection. Review every indeterminate path to ensure custody enters the registry once and cannot be lost."
+      ]
+    },
+    {
+      "id": "ST-014",
+      "title": "Replace the theme-document parser with existing TOML deserialization after explicitly allowing capped whole-document parsing",
+      "disposition": "proposed",
+      "bucket": "contract_alternative",
+      "net_min": 350,
+      "net_max": 550,
+      "overlap_group": "theme-parser-alternatives",
+      "evidence": "Replace ST-011, never add it: capped256KiB whole-document TOML requires residency/grammar/InstalledLoad/concurrency authority decision and prototype; manifest remains streaming.",
+      "source_report": "doc/audits/code-simplification/reviews/state-findings.json",
+      "confidence": "medium; architectural/prototype-dependent",
+      "source_api_change": false,
+      "authority_change_required": true,
+      "verification": [
+        "Audit only; no prototype, builds or tests executed.",
+        "Before adopting: compare current syntax/mode corpus against the proposed parser, including duplicate roles/properties, unknown malformed values, literal/basic strings, nonfinite/numeric bounds, Unicode escapes, CRLF line limits and canonical output.",
+        "Measure allocation/latency at 256 KiB with many tiny tokens and nested unknown values while the default recursion guard is enabled; set and exercise a finite concurrency envelope. Preserve physical race rejection and all existing theme document/semantic tests."
+      ]
+    },
+    {
+      "id": "BJ-001",
+      "title": "Share bounded scalar probes and compact ordered-control grammar",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 300,
+      "net_max": 450,
+      "overlap_group": "backend-control-grammar",
+      "evidence": "PRE-008 refined; count compact control fixed scalar/probe grammar only; response common/number helpers belong to BJ-003.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing incoming_json_ingress thread_closed, normal_terminal, streamed_turn_start and streamed_turn_steer cases at every configured fragmentation size.",
+        "Exercise 255/256/257-byte identities, escaped UTF-8 splits, long unknown names/flags, invalid scalar kind, missing/extra/reordered fields, exact sink operation and typed unexpected completion.",
+        "Independent semantic review required by backend effective engineering rigor before implementation completion."
+      ]
+    },
+    {
+      "id": "BJ-002",
+      "title": "Extract one leased-page output core for provider and dynamic-tool captures",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 170,
+      "overlap_group": "backend-page-capture",
+      "evidence": "Shared leased output core after typed adapters; provider context/dynamic offsets/abandonment remain; steering excluded.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing provider_observation_ingress page-boundary, malformed escape, undersized lease, timeout, cancellation and sink-rejection cases.",
+        "Dynamic-tool argument fragmentation and byte-offset checks, failed exchange retaining exact original lease, ingress abandon exactly once, zero leases at scalar end/seal/abandon.",
+        "Preserve no additional read while sink submission is blocked; independent resource/semantic review."
+      ]
+    },
+    {
+      "id": "BJ-003",
+      "title": "Replace response continuation machines with synchronous pull parsing over bounded-json",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 1660,
+      "net_max": 2460,
+      "overlap_group": "backend-response-parser",
+      "evidence": "Original1800–2600 less140 at both bounds to remove all BJ-004 correctness savings; cursor/schema/drain/integration cost already deducted; medium confidence pending focused prototype.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "confidence": "medium; architectural/prototype-dependent",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "All incoming_json_ingress response-family tests across fragment sizes; exact full consumption and maximum buffered-input assertions are acceptance checks.",
+        "Adversarial malformed root and nested shapes, retained-limit boundaries, unknown huge names/scalars/containers, wrong/late/duplicate ids, expected-family mismatch, error-before-id failures, and trailing mutations.",
+        "Preserve configuration sessionFlags origin proof; thread-read top-level/nested nickname agreement; start/fork/resume distinct required facts; closed turn status and activeTurnNotSteerable error data.",
+        "Independent semantic review and focused backend verification after implementation; no build/test was run for this audit."
+      ]
+    },
+    {
+      "id": "BJ-004",
+      "title": "Delete unsupported model reasoning-effort container alternatives",
+      "disposition": "proposed",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "backend-response-parser",
+      "evidence": "Pinned producer emits reasoning-effort records only; unauthorized string/map tolerance removal is correctness. Historical100–140 lines excluded and deducted from BJ-003.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Valid ordered record arrays including long incidental descriptions and unknown nonempty effort values remain bounded.",
+        "Former bare-string arrays, mixed string/record arrays and keyed object maps reject with MalformedResponse and exact consumption/poison behavior.",
+        "Retain 64/65 record, identity/display/cursor boundary and fragmentation coverage using producer-correct fixtures."
+      ]
+    },
+    {
+      "id": "BJ-005",
+      "title": "Retain bounded-json recognition and bounded decimal accumulation after dependency comparison",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "backend-recognizer",
+      "evidence": "Generic JSON/float crates do not preserve arbitrary fragmented scalar/name residency; retain bounded-json and numeric accumulator.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-json-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Future numeric changes require finite/nonfinite, signed zero, i64/u64 bounds, exponent extremes, arbitrarily long spellings, sticky rounding ties, subnormal rounding, and fragmentation invariance.",
+        "Future parser changes require allocation-bound evidence for unknown and retained escaped names/strings before acceptance, plus exact source-order backpressure and drain semantics."
+      ]
+    },
+    {
+      "id": "BR-001",
+      "title": "Share the neutral serialized-response wait across six method owners",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 220,
+      "overlap_group": "backend-response-wait",
+      "evidence": "Neutral deadline/read/approval pump once; caller dispatch, exact family, echo timing and retirement stay explicit.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing context_compaction, exact_interruption, request_flow, lineage_flow, thread_read_flow, thread_injection_session and incoming_json_ingress streamed start/steer tests.",
+        "Specifically preserve approval-target continuation, absolute deadline, prebyte cancellation/reuse, after-byte transport loss, successful-start-before-echo error, exact rejection before echoes, wrong response family/identity, and poisoned expectation behavior.",
+        "Run focused Cargo verification and independent semantic review when implementing; no tests were executed during this audit."
+      ]
+    },
+    {
+      "id": "BR-002",
+      "title": "Use std VecDeque for bounded pre-bind approvals",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "overlap_group": "backend-approval-fifo",
+      "evidence": "VecDeque with explicit admission capacity and exact rejected payload; no generic channel framework.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing pre_bind_approval_ordering success/failures suite, including configured capacity above 64 and sink binding failure at first versus later item.",
+        "Check mixed push/pop/back/clear order with the actual session admission contract; no unbounded fallback allocation on full."
+      ]
+    },
+    {
+      "id": "BR-003",
+      "title": "Consolidate WebSocket write lifecycle around existing source-aware writer",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 150,
+      "overlap_group": "backend-outbound",
+      "evidence": "Source-aware writer setup/failure normalization only; actual first-byte dispatch/source-error priority/poison preserved.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing streamed start/steer predispatch and source-failure cases, thread_injection_session failures and lifecycle cases.",
+        "Validate WriteZero, partial writes, source failure before/after first frame, fragment flush failure, authority poisoning and exact cause chain."
+      ]
+    },
+    {
+      "id": "BR-004",
+      "title": "Use stack-owned read bookkeeping and remove inert per-message state",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 73,
+      "net_max": 120,
+      "overlap_group": "backend-ingress-bookkeeping",
+      "evidence": "Backend65–110 plus app8–10 net field/init/accessor/two tautology removals, counted only here. Connection driver forwards inferred tuple and needs checking, not necessarily editing.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": true,
+      "authority_change_required": false,
+      "verification": [
+        "Existing provider ingress fragmentation, invalid UTF-8, binary/control/close and transport-loss tests.",
+        "Existing app provider_residency and normal_terminal tests with remaining observed bytes/chunks/pool behavior intact; do not treat the old constant flag as evidence of no retention.",
+        "Compile both ordinary and lifecycle-test-support/test-faults configurations when implemented."
+      ]
+    },
+    {
+      "id": "BR-005",
+      "title": "Share repeated authenticated initialization fixtures",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 220,
+      "net_max": 330,
+      "overlap_group": "backend-test-handshake",
+      "evidence": "Successful setup only; initialization refusal, fault timing, sink binding and independent wire expectations remain.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Run the affected backend lifecycle test targets after implementation; preserve every existing distinct test name and outcome assertion.",
+        "Ensure shared setup does not pre-initialize sessions used to exercise uninitialized/profile/provenance gates or hide request order."
+      ]
+    },
+    {
+      "id": "BR-006",
+      "title": "Remove exact source-spelling assertions where behavior is already exercised",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 50,
+      "overlap_group": "backend-source-guards",
+      "evidence": "Remove spelling/order scans only; retain no-DOM, no-probe, no-target-touching and no-coarse-cleanup exclusions.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing architecture boundary scan still detects prohibited API families.",
+        "Provider multi-fragment/large-payload and release_admission exact-wire/provenance tests remain unchanged; build validates helper call relationships."
+      ]
+    },
+    {
+      "id": "BR-007",
+      "title": "Derive simple owned-error presentation while retaining redacted leaves",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 110,
+      "overlap_group": "errors-backend",
+      "evidence": "Existing thiserror/Debug derives only for identical wrapper presentations; redacted leaves and exact rejected ownership retained.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Compare Display and Error::source for representative causes; preserve source-chain topology.",
+        "Existing ordered sink failure and delayed steering ownership tests; inspect Debug output for private input/page/replay leakage.",
+        "Focused backend Cargo verification when implemented."
+      ]
+    },
+    {
+      "id": "BR-008",
+      "title": "Use derived fixed recovery-item wire shapes around the streaming text leaf",
+      "disposition": "proposed",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "overlap_group": "backend-fixed-wire",
+      "evidence": "Serde1.0.228 derives fixed object/array framing; existing serde_json1.0.149 collect_str source-aware streamed text remains.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high mechanism evidence; conservative unmeasured net estimate",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Existing injection exact user/assistant request serialization, prebyte source failure, postbyte source failure and page-bound tests.",
+        "Verify derived field declaration order remains type/role/content and type/text, and the streamed text source is traversed exactly once per item."
+      ]
+    },
+    {
+      "id": "BR-009",
+      "title": "Retain specialized process and fragmented WebSocket ownership after dependency comparison",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "backend-process-transport",
+      "evidence": "Retain kernel job ownership, bounded WSL teardown and fragmented soketto framing; generic replacements have concrete gaps.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "No install/build/benchmark performed. Source-level fit investigation only.",
+        "Any future process change needs Windows descendant cleanup, shutdown idempotence/drop, assignment-failure cleanup, owner-exit behavior and WSL grace/kill evidence."
+      ]
+    },
+    {
+      "id": "BR-010",
+      "title": "Keep typed Serde caps as an explicit ancillary-response alternative, not a drop-in",
+      "disposition": "deferred",
+      "bucket": "deferred",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "backend-response-parser",
+      "evidence": "Capped typed Serde ancillary-input alternative overlaps BJ-003 and has unresolved acceptance/allocation/prefix/drain costs. Candidate1.0.151 differs from resolved1.0.149; no upgrade implied.",
+      "source_report": "doc/audits/code-simplification/reviews/backend-rest-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Before selection, prototype against large ignored config/model fields, Unicode expansion, duplicate/reordered keys, exact matched/mismatched response ids, malformed suffixes and budget exhaustion; quantify runtime/peak memory and legitimate pinned-producer cases rejected.",
+        "No prototype or benchmark was run; cap value is deliberately a reviewable candidate, not a safety claim."
+      ]
+    },
+    {
+      "id": "EN-001",
+      "title": "Retain the explicit incomplete bootstrap boundary during the audit",
+      "disposition": "retained",
+      "bucket": "existing_rework",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "entry-bootstrap",
+      "evidence": "Three-line compile_error placeholder is paused rework, not simplification or runnable-build evidence.",
+      "source_report": "doc/audits/code-simplification/reviews/entry-findings.json",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [
+        "Read the complete source, manifest, package design, and paused root plan; no build or test run."
+      ]
+    },
+    {
+      "id": "PRE-004",
+      "title": "Temporary test-home reconciliation",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "temporary-homes",
+      "evidence": "Foundation incremental share zero: no custom TestHome definitions or manual unique temp-path cleanup found; already tempfile. Root combines App/Syndic shares once; old260–350 global lead is not additive.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": []
+    },
+    {
+      "id": "PRE-008",
+      "title": "Control parsing preliminary lead",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "backend-control-grammar",
+      "evidence": "Merged into BJ-001; response portion belongs to BJ-003 if touched.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [],
+      "merged_into": [
+        "BJ-001"
+      ]
+    },
+    {
+      "id": "PRE-010",
+      "title": "Durable-job preliminary lead",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "durable-job-transitions",
+      "evidence": "Merged into ST-005; source API adaptation explicit, lifecycle and stored format unchanged.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [],
+      "merged_into": [
+        "ST-005"
+      ]
+    },
+    {
+      "id": "PRE-011",
+      "title": "State codec preliminary lead",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "state-codec-primitives",
+      "evidence": "Merged into ST-003; use complete-review130–190 range rather than add preliminary130–160.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [],
+      "merged_into": [
+        "ST-003"
+      ]
+    },
+    {
+      "id": "PRE-012",
+      "title": "Theme parsing preliminary lead",
+      "disposition": "superseded",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "theme-parser-alternatives",
+      "evidence": "Refined into mutually exclusive ST-011 current contract and ST-014 changed residency/grammar contract.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": [],
+      "merged_into": [
+        "ST-011",
+        "ST-014"
+      ]
+    },
+    {
+      "id": "FND-SYN-001",
+      "title": "Retire test stores before temporary directories",
+      "disposition": "proposed",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "temporary-home-destruction",
+      "evidence": "Three foundation fixtures declare TempDir before live HomeStore; drop attempts cleanup before store retirement. Reorder or explicit scoped cleanup; no line reduction, runtime failure not reproduced.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": []
+    },
+    {
+      "id": "FND-SYN-002",
+      "title": "Separate corrective test evidence from fixture savings",
+      "disposition": "proposed",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "overlap_group": "state-test-evidence",
+      "evidence": "ST-004 correction portions: lazy spawn/join is serialized; digest arguments are unused so content-neutrality comparison has identical effective inputs. Preserve independent useful oracles; zero reduction credited.",
+      "source_report": "doc/audits/code-simplification/findings.md",
+      "confidence": "high bounded evidence; no implementation verification",
+      "source_api_change": false,
+      "authority_change_required": false,
+      "verification": []
+    }
+  ],
+  "dependency_matrix": [
+    {
+      "crate": "thiserror",
+      "version": "2.0.18",
+      "kind": "existing_workspace_reuse",
+      "decision": "recommend_for_exact_conventional_errors",
+      "findings": [
+        "MS-001",
+        "ST-002",
+        "BR-007"
+      ],
+      "configuration": "Existing default std; exact thiserror-impl2.0.18; add direct workspace dependency only in model/state.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.68",
+      "target": "Platform-neutral generated Rust; Beryl1.92 compatible by declared minimum, not a build claim.",
+      "maintenance": "Established1.x since2019 and2.x lineage; exact version already locked. No upgrade required.",
+      "real_adoption": "Beryl backend/stream direct use; Cargo commit77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f declares2.0.18 and consumes it in production.",
+      "advisory_limits": "No dedicated advisory or full dependency-closure scan was performed; derive suitability is not security clearance.",
+      "boundary": "Error presentation/conversion only; preserve exact source chains, private causes, public enum shape and redaction.",
+      "wrapper_cost": "Per-variant attributes and explicit manual exceptions for inferred source/backtrace/transparent/from; included in local net ranges.",
+      "memory": [
+        "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md"
+      ],
+      "checked_at": "2026-09-06; Cargo adoption corroborated2026-09-07",
+      "sources": [
+        "https://docs.rs/thiserror/2.0.18/thiserror/",
+        "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml",
+        "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml"
+      ]
+    },
+    {
+      "crate": "tempfile",
+      "version": "3.27.0",
+      "kind": "existing_workspace_reuse",
+      "decision": "recommend_test_roots_only_at_audited_custom_helpers",
+      "findings": [
+        "PRE-004"
+      ],
+      "configuration": "Existing defaults,getrandom enabled; no nightly; fastrand/once_cell plus target rustix or windows-sys. Existing lock checksum32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.63",
+      "target": "Windows generic directory backend uses std::fs::create_dir; Unix implementation is separate. No runtime verification performed.",
+      "maintenance": "Exact non-yanked release2026-03-11; upstream unarchived,pushed2026-09-05 as observed2026-09-07.",
+      "real_adoption": "Beryl test suites already consume3.27.0; Cargo pinned commit77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f declares3.27.0 and directly consumes tempfile in production.",
+      "advisory_limits": "Exact package OSV query2026-09-07 returned{}. No dependency-closure security scan; does not attest future vulnerability absence.",
+      "boundary": "Unique disposable test roots. Foundation share0; App/Syndic shares root-owned. Do not substitute automatic cleanup for production sidecar/theme inert residue.",
+      "wrapper_cost": "TempDir path adapter/module/import changes and crate-local required cleanup retry cost belong in cohort net; release store/services/children before directory. TempDir Drop ignores cleanup failure and does not retry; close returns error and forgets ownership, so retained path/retry wrapper must be deliberate if existing fixture promises retry.",
+      "semantic_fit": "create_helper retries AlreadyExists for randomized names; Windows any::create calls exclusive create_dir, not create_dir_all. TempDir close/drop do recursive removal; neither supplies publication durability. Existing NamedTempFile memory is historical application use, not current production permission.",
+      "memory": [
+        "doc/memory/crates.io/tempfile/3.27.0/adjacent-durable-writes.md"
+      ],
+      "checked_at": "2026-09-07",
+      "source_commit": "5c8fa12eb584931b4f1bccfde87eb72fbfa7dc61",
+      "sources": [
+        "https://crates.io/api/v1/crates/tempfile/3.27.0",
+        "https://docs.rs/crate/tempfile/3.27.0/source/Cargo.toml",
+        "https://docs.rs/crate/tempfile/3.27.0/source/.cargo_vcs_info.json",
+        "https://raw.githubusercontent.com/Stebalien/tempfile/5c8fa12eb584931b4f1bccfde87eb72fbfa7dc61/src/util.rs",
+        "https://raw.githubusercontent.com/Stebalien/tempfile/5c8fa12eb584931b4f1bccfde87eb72fbfa7dc61/src/dir/mod.rs",
+        "https://raw.githubusercontent.com/Stebalien/tempfile/5c8fa12eb584931b4f1bccfde87eb72fbfa7dc61/src/dir/imp/any.rs",
+        "https://api.github.com/repos/Stebalien/tempfile",
+        "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml",
+        "https://api.osv.dev/v1/query"
+      ]
+    },
+    {
+      "crate": "toml",
+      "version": "0.9.12+spec-1.1.0",
+      "kind": "contract_changing_existing_workspace_reuse",
+      "decision": "conditional_theme_document_alternative",
+      "findings": [
+        "ST-014",
+        "PRE-012"
+      ],
+      "configuration": "Workspace defaults std,serde,parse,display; keep unbounded disabled(default80-level recursion guard); no preserve_order/fast_hash/debug needed.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.76",
+      "target": "Native Rust; no native installation; Windows build/allocation not exercised.",
+      "maintenance": "Non-yanked exact release2026-02-10; dated registry/source evidence2026-09-06.",
+      "real_adoption": "Cargo uses toml in production; inspected2026-09-07 Cargo master declares1.1.5, so adoption validates project maturity, not exact0.9.12 deployment.",
+      "advisory_limits": "Exact toml0.9.12+spec-1.1.0 OSV query2026-09-06 returned{}; not transitive/future clearance.",
+      "boundary": "Only256KiB capped theme document; keep manifest paging and physical identity/publication contract.",
+      "wrapper_cost": "Cap+1 acquisition,UTF8/line/role/property bounds,typed raw DTOs,error/mode adapters,canonical writer;350–550 net including these; replaces70–110 ST-011, not additive.",
+      "semantic_fit": "Tokens/events/DeTable allocate beyond input bytes; direct typed u64 works but generic Value integer is i64. TOML1.1 grammar and syntax-first unknown-field treatment differ from current InstalledLoad. Needs authority decision and allocation/compatibility prototype.",
+      "memory": [
+        "doc/memory/crates.io/toml/0.9.12+spec-1.1.0/capped-theme-document.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://crates.io/api/v1/crates/toml/0.9.12%2Bspec-1.1.0",
+        "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/Cargo.toml",
+        "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/parser/mod.rs",
+        "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/deserializer/value.rs",
+        "https://api.osv.dev/v1/query"
+      ]
+    },
+    {
+      "crate": "serde",
+      "version": "1.0.228",
+      "kind": "existing_workspace_reuse",
+      "decision": "reuse_fixed_wire_derives_and_conditional_typed_theme_DTOs",
+      "findings": [
+        "BR-008",
+        "ST-014"
+      ],
+      "configuration": "Existing std/default and derive workspace selection; preserve wire declaration order and custom streaming Serialize leaf.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "Not separately qualified in this consolidation; current locked use, not a new dependency proposal.",
+      "target": "Existing Rust workspace use; no new native target boundary.",
+      "maintenance": "Established existing serialization framework; no version change.",
+      "real_adoption": "Beryl direct use; Cargo pinned manifest declares1.0.228 and consumes derive in production.",
+      "advisory_limits": "No dedicated source closure/advisory scan; current reuse only.",
+      "boundary": "Fixed-size object/array framing; domain constructors still validate decoded raw records.",
+      "wrapper_cost": "Fixed wire DTOs and existing reference-backed streamed leaf; no text collection or universal codec. Included BR-008/ST-014.",
+      "memory": [
+        "doc/memory/crates.io/serde_json/1.0.149/streamed-string-serialization.md",
+        "doc/memory/crates.io/toml/0.9.12+spec-1.1.0/capped-theme-document.md"
+      ],
+      "checked_at": "2026-09-06/07",
+      "sources": [
+        "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml",
+        "https://raw.githubusercontent.com/toml-rs/toml/toml-v0.9.12/crates/toml/src/de/deserializer/value.rs"
+      ]
+    },
+    {
+      "crate": "serde_json",
+      "version": "1.0.149",
+      "kind": "existing_workspace_reuse",
+      "decision": "retain_outbound_streaming_serializer",
+      "findings": [
+        "BR-003",
+        "BR-008"
+      ],
+      "configuration": "Workspace default std; existing source-aware Serializer::collect_str path.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "Existing locked version; not newly qualified by candidate1.0.151 metadata.",
+      "target": "Current synchronous writer-backed native Rust path.",
+      "maintenance": "Existing established1.x selection; no upgrade proposed.",
+      "real_adoption": "Beryl direct production writer; Cargo pinned manifest declares1.0.149 and directly consumes serde_json.",
+      "advisory_limits": "No full closure/advisory clearance;1.0.151 ingress screen is separate.",
+      "boundary": "Display emits each valid UTF8 page into serializer escaping without a whole String; first source failure is retained alongside formatter sentinel.",
+      "wrapper_cost": "Source-aware writer/error slot still required; current shared outbound core retained and wrapper simplification counted BR-003/008 only.",
+      "memory": [
+        "doc/memory/crates.io/serde_json/1.0.149/streamed-string-serialization.md",
+        "doc/memory/crates.io/serde_json/1.0.149/json-rpc-streaming-sanitization.md"
+      ],
+      "checked_at": "baseline/source note plus2026-09-07 lock check",
+      "sources": [
+        "https://docs.rs/serde_json/1.0.149/serde_json/",
+        "https://raw.githubusercontent.com/serde-rs/json/v1.0.149/src/ser.rs"
+      ]
+    },
+    {
+      "crate": "serde_json",
+      "version": "1.0.151",
+      "kind": "candidate_version_not_resolved",
+      "decision": "reject_drop_in_ingress;defer_capped_ancillary_contract_alternative",
+      "findings": [
+        "BJ-005",
+        "BR-010"
+      ],
+      "configuration": "Candidate default std; optional arbitrary_precision/float_roundtrip/raw_value/preserve_order/unbounded_depth not enabled by proposal.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.71",
+      "target": "Portable Rust; unbuilt.",
+      "maintenance": "First release2015,stable1.x since2017; exact release2026-07-20.",
+      "real_adoption": "Beryl and Cargo consume serde_json project at1.0.149; exact1.0.151 downstream deployment not established. Download totals alone not qualification.",
+      "advisory_limits": "No advisory or transitive qualification; screen stopped at semantic mismatch.",
+      "boundary": "Input parser retains complete names/escaped strings before visitors; retained result cap does not bound intermediates.",
+      "wrapper_cost": "Custom order/duplicate/bound visitors,scalar-fragment fork or new input cap,classified-prefix replay,full drain and poison. BR-010's tentative1200–1800 is unpriced/overlapping BJ-003.",
+      "semantic_fit": "Preserve bounded-json under current authority; candidate1MiB ancillary cap is a question, not an established accepted input limit. No cap for provider/input/recovery/terminal history.",
+      "memory": [
+        "doc/memory/crates.io/serde_json/1.0.151/bounded-ingress-replacement.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/crate/serde_json/1.0.151",
+        "https://raw.githubusercontent.com/serde-rs/json/v1.0.151/src/de.rs",
+        "https://crates.io/api/v1/crates/serde_json"
+      ]
+    },
+    {
+      "crate": "struson",
+      "version": "0.7.2",
+      "kind": "new_crate_screen",
+      "decision": "reject_current_contract",
+      "findings": [
+        "BJ-005"
+      ],
+      "configuration": "Advanced reader,no optional serde/simple-api.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.85.0",
+      "target": "Documented Windows MSVC,macOS,Linux; no execution.",
+      "maintenance": "0.x project since2023,exact release2026-02-10; simple API experimental.",
+      "real_adoption": "Substantial named downstream adoption not established in screen;245k downloads are not a substitute.",
+      "advisory_limits": "No advisory/closure clearance; architecture rejection preceded broad qualification.",
+      "boundary": "Streaming string values exist; member names and numbers still complete. Default numeric spellings100chars/exponent99 are narrower than Beryl.",
+      "wrapper_cost": "Would need fragmented names/numbers plus order/schema/custody/drain adapters and sole-recognizer authority change. Local bounded-json cursor is smaller.",
+      "memory": [
+        "doc/memory/crates.io/struson/0.7.2/bounded-ingress-replacement.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/struson/0.7.2/struson/reader/struct.JsonStreamReader.html",
+        "https://docs.rs/struson/0.7.2/struson/reader/struct.ReaderSettings.html",
+        "https://crates.io/api/v1/crates/struson"
+      ]
+    },
+    {
+      "crate": "fast-float2",
+      "version": "0.2.4",
+      "kind": "new_crate_screen",
+      "decision": "reject_for_simplification",
+      "findings": [
+        "BJ-005"
+      ],
+      "configuration": "std default; no_std possible,unused.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.37",
+      "target": "Portable Rust numeric API; no build.",
+      "maintenance": "Fork since2024,release2026-08-14,established algorithm lineage.",
+      "real_adoption": "Named substantial downstream adoption not established;18.5M downloads alone insufficient.",
+      "advisory_limits": "No advisory/closure clearance; no benchmark.",
+      "boundary": "parse/parse_partial require contiguous AsRef<[u8]>; Beryl accepts fragmented arbitrary-length numbers with bounded significant window and sticky state.",
+      "wrapper_cost": "Would retain NumberAccumulator/rounding normalization or require new incremental converter; no demonstrable reduction.",
+      "memory": [
+        "doc/memory/crates.io/fast-float2/0.2.4/incremental-number-replacement.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://raw.githubusercontent.com/Alexhuszagh/fast-float-rust/v0.2.4/src/lib.rs",
+        "https://crates.io/api/v1/crates/fast-float2"
+      ]
+    },
+    {
+      "crate": "notify",
+      "version": "8.2.0",
+      "kind": "new_crate_screen",
+      "decision": "reject_drop_in;future_lifecycle_platform_design_only",
+      "findings": [
+        "HS-009"
+      ],
+      "configuration": "Windows default-features=false,no optional channel/serde/debouncer; other targets require deliberate native backend choices.",
+      "license": "CC0-1.0;notify-types MIT OR Apache-2.0",
+      "msrv": "1.77",
+      "target": "Windows/Linux/macOS/BSD native backends; native events unreliable/absent on some network/WSL paths.",
+      "maintenance": "Since2014;8.2.0 released2025-08-03;9.0 prereleases through2026-08-30.",
+      "real_adoption": "Typst directly declares notify8.",
+      "advisory_limits": "No upstream published advisory or notify-specific targeted RustSec match2026-09-06; no closure audit.",
+      "boundary": "Windows worker JoinHandle discarded;Drop sends Stop without join/ack. Beryl must retire workers/generation and preserve bounded hints.",
+      "wrapper_cost": "150–190 gross scanner/worker lines versus80–150 adapter/lifecycle lines plus unresolved fallback; no accepted net.",
+      "memory": [
+        "doc/memory/crates.io/notify/8.2.0/bounded-theme-watcher.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://raw.githubusercontent.com/notify-rs/notify/notify-8.2.0/notify/src/windows.rs",
+        "https://raw.githubusercontent.com/notify-rs/notify/notify-8.2.0/notify/Cargo.toml",
+        "https://github.com/typst/typst/blob/main/Cargo.toml",
+        "https://github.com/notify-rs/notify/security/advisories"
+      ]
+    },
+    {
+      "crate": "process-wrap",
+      "version": "10.0.0",
+      "kind": "new_crate_screen",
+      "decision": "reject_for_small_boundary_and_kernel_ownership_gap",
+      "findings": [
+        "BR-009"
+      ],
+      "configuration": "Proposed default-features=false;std,job-object,creation-flags; no Tokio migration.",
+      "license": "Apache-2.0 OR MIT",
+      "msrv": "1.87.0",
+      "target": "Windows jobs,local Unix groups;no Windows-hosted WSL remote-group cleanup.",
+      "maintenance": "Maintained command-group successor;released2026-08-24,since2024.",
+      "real_adoption": "Successor lineage and registry use established; no named independent substantial adopter qualified by retained screen.",
+      "advisory_limits": "No runtime,advisory or resolved closure audit.",
+      "boundary": "std JobObject calls private make_job_object(handle,false);no public kill-on-close configuration. Explicit Drop kill is not kernel owner-exit cleanup.",
+      "wrapper_cost": "Only~110gross HostProcessTree lines;fork+error/ownership adapter leaves~40–70conditional net,WSL/grace waits remain. Fork maintenance outweighs cut.",
+      "memory": [
+        "doc/memory/crates.io/process-wrap/10.0.0/backend-process-ownership.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/std/job_object.rs",
+        "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/windows.rs",
+        "https://raw.githubusercontent.com/watchexec/process-wrap/v10.0.0/src/std.rs",
+        "https://crates.io/api/v1/crates/process-wrap"
+      ]
+    },
+    {
+      "crate": "command-group",
+      "version": "5.0.1",
+      "kind": "new_crate_early_screen",
+      "decision": "no_adoption;successor_screen_controls",
+      "findings": [
+        "BR-009"
+      ],
+      "configuration": "Default none;optional with-tokio.",
+      "license": "Apache-2.0 OR MIT",
+      "msrv": "1.68.0",
+      "target": "Windows job/local Unix group abstraction;not qualified for Beryl WSL.",
+      "maintenance": "Released2023-11-18;process-wrap is documented successor.",
+      "real_adoption": "Named downstream adopter not qualified;registry7.2M downloads not enough.",
+      "advisory_limits": "Only registry/successor screening;no semantic closure/advisory/platform acceptance.",
+      "boundary": "No separate production replacement proof.",
+      "wrapper_cost": "Unpriced;do not add a second process library to erase bounded wrappers.",
+      "memory": [
+        "doc/memory/crates.io/process-wrap/10.0.0/backend-process-ownership.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://crates.io/api/v1/crates/command-group",
+        "https://docs.rs/process-wrap/10.0.0/process_wrap/"
+      ]
+    },
+    {
+      "crate": "tungstenite",
+      "version": "0.30.0",
+      "kind": "candidate_version_not_resolved",
+      "decision": "reject_canonical_ingress;retain_existing0.29_test_use",
+      "findings": [
+        "BR-009"
+      ],
+      "configuration": "Candidate handshake,noTLS for loopback;Beryl0.29.0 dev dependency default-features=false,handshake.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.85",
+      "target": "Portable synchronous Read+Write API;Beryl current Windows test use0.29;candidate not executed.",
+      "maintenance": "Since2017;candidate released2026-07-11.",
+      "real_adoption": "Beryl direct0.29 test-server use;project maturity established,exact0.30 downstream use not independently qualified.",
+      "advisory_limits": "No resolved closure or candidate advisory clearance.",
+      "boundary": "Even FrameSocket reserves and buffers complete frame payload before returning.",
+      "wrapper_cost": "Would need a fragment API/fork or prohibited new canonical frame cap;custom payload parser cannot disappear.",
+      "memory": [
+        "doc/memory/crates.io/tungstenite/0.30.0/incremental-canonical-ingress.md",
+        "doc/memory/crates.io/tungstenite/0.29.0/test-websocket-helpers.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://raw.githubusercontent.com/snapview/tungstenite-rs/v0.30.0/src/protocol/frame/mod.rs",
+        "https://crates.io/api/v1/crates/tungstenite"
+      ]
+    },
+    {
+      "crate": "bincode",
+      "version": "3.0.0",
+      "kind": "new_crate_early_screen",
+      "decision": "reject_at_maintenance_gate",
+      "findings": [
+        "SP-006"
+      ],
+      "configuration": "Not qualified;final package intentionally contains compile_error.",
+      "license": "Not qualified by retained early screen;no adoption proposed.",
+      "msrv": "Not qualified;not usable implementation.",
+      "target": "Not applicable as buildable serializer.",
+      "maintenance": "Official3.0.0 notice says development ended;published2025-12-16.",
+      "real_adoption": "Earlier-version reputation cannot qualify an intentionally unbuildable3.0.0 package;earlier versions not proposed.",
+      "advisory_limits": "No feature,target,MSRV,advisory or adoption clearance;screen stopped immediately.",
+      "boundary": "PIV1/V7 exact tags,ordered duplicate entries,numeric representation,assets,ranges,stream validation remain independent gaps.",
+      "wrapper_cost": "No usable replacement/no net estimate.",
+      "memory": [
+        "doc/memory/crates.io/bincode/3.0.0/provider-codec-screen.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/crate/bincode/3.0.0"
+      ]
+    },
+    {
+      "crate": "url",
+      "version": "2.5.8",
+      "kind": "new_direct_dependency_screen",
+      "decision": "reject_streamed_locator_replacement",
+      "findings": [
+        "SP-007"
+      ],
+      "configuration": "Default std enables idna/percent-encoding/form_urlencoded std.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "1.63",
+      "target": "Native Rust API;broader target qualification stopped at residency mismatch.",
+      "maintenance": "Exact registry metadata checked;no broad maintenance sweep needed after mismatch.",
+      "real_adoption": "Cargo pinned commit77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f directly consumesurl2.5.8;does not establish streamed fit.",
+      "advisory_limits": "No resolved closure/advisory clearance.",
+      "boundary": "Complete &str input plus owned normalized serialization String differs from exact unnormalized fragment grammar.",
+      "wrapper_cost": "Must retain streamed parser or change residency/syntax with exact-byte/error adapters;no net deletion.",
+      "memory": [
+        "doc/memory/crates.io/url/2.5.8/incremental-provider-locators.md"
+      ],
+      "checked_at": "2026-09-06;Cargo adoption2026-09-07",
+      "sources": [
+        "https://crates.io/api/v1/crates/url/2.5.8",
+        "https://docs.rs/url/2.5.8/url/",
+        "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml"
+      ]
+    },
+    {
+      "crate": "im",
+      "version": "15.1.0",
+      "kind": "new_crate_screen",
+      "decision": "reject_durable_admission_index_replacement",
+      "findings": [
+        "SA-009"
+      ],
+      "configuration": "No change;optional serde/rayon/refpool/testing;normalbitmaps,rand_core,rand_xoshiro,sized-chunks,typenum.",
+      "license": "MPL-2.0+",
+      "msrv": "1.46",
+      "target": "Rust in-memory map;Windows/runtime not exercised.",
+      "maintenance": "Upstream archived2026-05-03.",
+      "real_adoption": "Cargo uses related im-rc15.1.0;family evidence only,not exact im deployment.",
+      "advisory_limits": "No advisory closure;screen stopped at architectural mismatch.",
+      "boundary": "Resident immutable OrdMap does not supply authenticated external node store or bounded durable traversal.",
+      "wrapper_cost": "Retain canonical IDs/codecs/hashes,path I/O,replay/charge/custody;whole map violates residency. No positive net.",
+      "memory": [
+        "doc/memory/crates.io/im/15.1.0/durable-admission-index-screen.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/im/15.1.0/im/struct.OrdMap.html",
+        "https://docs.rs/crate/im/15.1.0/source/Cargo.toml",
+        "https://github.com/bodil/im-rs"
+      ]
+    },
+    {
+      "crate": "ropey",
+      "version": "1.6.1",
+      "kind": "new_crate_screen",
+      "decision": "reject_durable_piece_tree_replacement",
+      "findings": [
+        "DT-007"
+      ],
+      "configuration": "DefaultsUnicode/CR line recognition,SIMD;smallvec,str_indices;Helix usesdefaultsfalse+SIMD.",
+      "license": "MIT",
+      "msrv": "No declared rust-version in exact release;master minimum not transferable.",
+      "target": "TaggedCIUbuntu stable/beta/Miri;Windows unverified.",
+      "maintenance": "Non-yanked stable2023-10-18,new2.0beta;active unarchived at2026-09-06/07.",
+      "real_adoption": "Helix exact1.6.1 manifests with selected features.",
+      "advisory_limits": "Pinned RustSec tree had no ropey/str_indices entries;historicalsmallvec entries not resolved/range-qualified. No clearance.",
+      "boundary": "Private residentArc<Node>;reader/writer import/export text,not external authenticated node/cursor/checkpoint storage.",
+      "wrapper_cost": "Durable IDs/hashes,markers,charges/replay survive;whole-draft residency forbidden. Bounded UI window separate unpriced question.",
+      "memory": [
+        "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md"
+      ],
+      "checked_at": "2026-09-06/07",
+      "sources": [
+        "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/Cargo.toml",
+        "https://raw.githubusercontent.com/cessen/ropey/v1.6.1/src/rope.rs",
+        "https://raw.githubusercontent.com/helix-editor/helix/master/helix-core/Cargo.toml",
+        "https://api.github.com/repos/rustsec/advisory-db/git/trees/5a0ebedfe8bdd2e295b171f4162f8c977bcad9a5?recursive=1"
+      ]
+    },
+    {
+      "crate": "pulldown-cmark",
+      "version": "0.13.4",
+      "kind": "new_crate_screen",
+      "decision": "reject_durable_projection_parser_replacement",
+      "findings": [
+        "SX-R01"
+      ],
+      "configuration": "default-features=false,nooptional features;bitflags,unicase,memchr mandatory.",
+      "license": "MIT",
+      "msrv": "1.71.1",
+      "target": "CI MSRV/stable/nightly/features/WASM;nativeWindows not verified.",
+      "maintenance": "Non-yanked2026-05-20;TightParagraph panic fix in release notes.",
+      "real_adoption": "Cargo fixed commit declares0.13.3-compatible range withHTML;not proof resolved0.13.4.",
+      "advisory_limits": "Pinned officialRustSec tree no package path;no security audit.",
+      "boundary": "Complete first pass before iterator;private parse state,no append/checkpoint/restore. Eventoffsets not exact nonoverlapping source partitions.",
+      "wrapper_cost": "Closed-block adapter retains recognition,carry,fence/table counters,digest/cursors/fallback/IDs/markers;no substantial demonstrated reduction.",
+      "memory": [
+        "doc/memory/crates.io/pulldown-cmark/0.13.4/durable-projection-parser-screen.md"
+      ],
+      "checked_at": "2026-09-07",
+      "sources": [
+        "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/parse.rs",
+        "https://raw.githubusercontent.com/pulldown-cmark/pulldown-cmark/v0.13.4/pulldown-cmark/src/firstpass.rs",
+        "https://crates.io/api/v1/crates/pulldown-cmark/0.13.4",
+        "https://raw.githubusercontent.com/rust-lang/cargo/77fb9722e3e5ec33ca7adc1e99c9e15e512bb21f/Cargo.toml"
+      ]
+    },
+    {
+      "crate": "postcard",
+      "version": "1.1.3",
+      "kind": "new_crate_contract_alternative",
+      "decision": "defer_until_independently_authorized_record_format",
+      "findings": [
+        "SS-009"
+      ],
+      "configuration": "default-features=false,alloc only if Vec-backed needed;noheapless-cas/std/CRC/defmt/experimentalderive.",
+      "license": "MIT OR Apache-2.0",
+      "msrv": "No fixed declared MSRV in registry/release;edition2021 not a1.92 compatibility proof.",
+      "target": "no_std-focused Rust,no target-specific sections;unbuilt.",
+      "maintenance": "Non-yanked2025-07-24,stable1.x wire spec,Mozilla-sponsored1.0work.",
+      "real_adoption": "rust-analyzer proc-macro-api;Chromium vendor Shipped:no is evaluation only.",
+      "advisory_limits": "Targeted no postcard/cobs advisory;historicalheaplessRUSTSEC-2020-0145 outside disabled heapless feature. No closure audit.",
+      "boundary": "Default varints/enum positions/lengths differ from V7 tags,ordered keys,digestpreimages,EOF;fixint::be insufficient for all layouts.",
+      "wrapper_cost": "Bounded wireDTOs,preallocation length checks,invariant constructors,explicit trailing remainder,format retirement. Adapters may erase cut;no credible net yet.",
+      "memory": [
+        "doc/memory/crates.io/postcard/1.1.3/syndic-record-value-codecs.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/crate/postcard/1.1.3/source/Cargo.toml",
+        "https://postcard.jamesmunns.com/wire-format.html",
+        "https://github.com/rust-lang/rust-analyzer/blob/master/crates/proc-macro-api/Cargo.toml",
+        "https://rustsec.org/advisories/RUSTSEC-2020-0145.html"
+      ]
+    },
+    {
+      "crate": "icu_normalizer + icu_casemap",
+      "version": "2.3.0",
+      "kind": "new_crate_screen",
+      "decision": "retain_current_unicode17_exact_mapping",
+      "findings": [
+        "ST-008"
+      ],
+      "configuration": "Normalizer defaultscompiled_data,utf8_iter,utf16_iter;coordinated component/data versions needed;propertiespossiblyadditional.",
+      "license": "Unicode-3.0",
+      "msrv": "1.88",
+      "target": "PureRustICU4X,no nativeICUinstall;target builds unverified.",
+      "maintenance": "Unicode Consortium maintainedICU4X;exact taggedworkspace/API inspected.",
+      "real_adoption": "Consortium provenance established;retained screen did not qualify a named external2.3.0 component adopter.",
+      "advisory_limits": "No closure/advisory qualification;no corpus equivalence proof.",
+      "boundary": "NFC/NFKC and separate case mapping do not directly prove R5Unicode17NFKC_CF+NFC including ignorables/expansions.",
+      "wrapper_cost": "Coordinated bakeddata and full corpus+sequence oracle,defaultignorable/order/bounded expansion adapter;no priced cut.",
+      "memory": [
+        "doc/memory/crates.io/icu_normalizer/2.3.0/exact-catalog-casefold.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://raw.githubusercontent.com/unicode-org/icu4x/icu@2.3.0/Cargo.toml",
+        "https://raw.githubusercontent.com/unicode-org/icu4x/icu@2.3.0/components/normalizer/Cargo.toml",
+        "https://docs.rs/icu_normalizer/2.3.0/icu_normalizer/struct.ComposingNormalizer.html",
+        "https://docs.rs/icu_casemap/2.3.0/icu_casemap/struct.CaseMapper.html"
+      ]
+    },
+    {
+      "crate": "syntect",
+      "version": "5.3.0",
+      "kind": "new_crate_contract_alternative",
+      "decision": "defer_changed_highlighting_contract;no_net_claim",
+      "findings": [
+        "AS-004"
+      ],
+      "configuration": "default-features=false;parsing,default-syntaxes,regex-fancy;avoid Oniguruma and unnecessaryHTML/plist/YAML/theme paths.",
+      "license": "MIT",
+      "msrv": "No fixed declared releaseMSRV;rolling last3stableCI not Beryl1.92 proof.",
+      "target": "TaggedUbuntuCI;Windows not executed.",
+      "maintenance": "Non-yanked2025-09-27;maintained matureproject,bat syntax/fancy engine regressions.",
+      "real_adoption": "Typst directly consumes5.3 withregex-fancy.",
+      "advisory_limits": "OfficialRustSec tree no directsyntect/fancy-regex path at check;no resolvedclosure/securityclearance.",
+      "boundary": "Contiguouslogical line and retained parse/scope state;strictJSON/error/key segmentation and WindowsINI dialect differ.",
+      "wrapper_cost": "Scope-to-role mapping,grammarassets,bytebounds,overlong-line policy,checkpoint/state ownership and possible retainedJSON/TOML validators;1144gross adapter lines not net.",
+      "memory": [
+        "doc/memory/crates.io/syntect/5.3.0/bounded-code-panel-highlighting.md"
+      ],
+      "checked_at": "2026-09-06",
+      "sources": [
+        "https://docs.rs/crate/syntect/5.3.0/source/Cargo.toml.orig",
+        "https://docs.rs/syntect/5.3.0/syntect/parsing/struct.ParseState.html",
+        "https://raw.githubusercontent.com/trishume/syntect/v5.3.0/.github/workflows/CI.yml",
+        "https://github.com/typst/typst/blob/main/Cargo.toml"
+      ]
+    }
+  ],
+  "dependency_scope_notes": [
+    "No new crate is recommended as a drop-in replacement for the major durable/streamed algorithms.",
+    "std::VecDeque is existing standard library, not a crates.io adoption.",
+    "bounded-json local0.1.0 at source-report commitd3397fa5e41dfad7e7a1476f15048141e30568be supplies owned Event/Step and exact extents; no fork edit needed by current proposal.",
+    "Current Fjall/LSM-tree are owned path forks at3.1.6. Historical registry3.1.5/3.1.6/3.1.8 notes do not describe their present journal/limits/recovery guarantees; no full fork replacement or audit claim.",
+    "Current serde_json is1.0.149;1.0.151 is a screened candidate only. TOML0.9.12+spec-1.1.0 is one workspace selection, not every transitive TOML version.",
+    "App/Syndic domain-fit judgments remain owned by their subsystem reports; root incorporates any newly researched candidate such as the App cache candidate separately."
+  ],
+  "accounting": {
+    "totals_by_bucket": {
+      "current_contract": {
+        "net_min": 5718,
+        "net_max": 8805,
+        "entries": 33
+      },
+      "retained": {
+        "net_min": 0,
+        "net_max": 0,
+        "entries": 10
+      },
+      "contract_alternative": {
+        "net_min": 500,
+        "net_max": 810,
+        "entries": 2
+      },
+      "correctness": {
+        "net_min": 0,
+        "net_max": 0,
+        "entries": 4
+      },
+      "deferred": {
+        "net_min": 0,
+        "net_max": 0,
+        "entries": 1
+      },
+      "existing_rework": {
+        "net_min": 0,
+        "net_max": 0,
+        "entries": 1
+      },
+      "overlap": {
+        "net_min": 0,
+        "net_max": 0,
+        "entries": 4
+      }
+    },
+    "current_contract": {
+      "net_min": 5718,
+      "net_max": 8805
+    },
+    "current_contract_without_response_cursor_prototype": {
+      "net_min": 4058,
+      "net_max": 6345
+    },
+    "contract_alternatives": {
+      "standalone_min": 500,
+      "standalone_max": 810,
+      "warning": "Do not add standalone total to current budget; ST-014 replaces ST-011. Both alternatives selected add430–700 to the corresponding summed base endpoints.",
+      "combined_scenario_min": 6148,
+      "combined_scenario_max": 9505
+    },
+    "production_test_split": "No global split claimed; many estimates mix adapters and necessary verification. Row evidence identifies purely test-owned portions where supportable.",
+    "rules": [
+      "Positive values are net reductions after replacement/adapters/verification allowance, not measured patch sizes.",
+      "BJ-003 reduced by140 at each endpoint to exclude all BJ-004 correctness credit.",
+      "ST-004 reduced by80 at each endpoint to exclude complete corrective-test areas now FND-SYN-002.",
+      "BR-004 includes App8–10 once; App peer excludes it. Driver forwarder has no necessary textual change.",
+      "PRE-004 foundation share0; root sums peer incremental shares once and discards preliminary global260–350.",
+      "HS-004 correctness, BJ-004 correctness, both FND-SYN correctness rows and EN-001 paused rework have zero saving."
+    ]
+  },
+  "prioritized_packages": [
+    {
+      "priority": 1,
+      "name": "Focused response cursor feasibility",
+      "ids": [
+        "BJ-003"
+      ],
+      "dependency_order": "Before choosing the large parser rewrite; BJ-001 compact-control work can remain separate.",
+      "verification": "Prototype exact classifier handoff, borrowed scratch lifetime, failing extents, final-input resubmission, unknown nesting drain and poison. Then compare complete existing response-family fragmentation corpus. No compile/runtime proof yet."
+    },
+    {
+      "priority": 2,
+      "name": "Mechanical representation and existing dependency reuse",
+      "ids": [
+        "MS-001",
+        "MS-002",
+        "MS-003",
+        "MS-004",
+        "ST-002",
+        "ST-003",
+        "BR-002",
+        "BR-004",
+        "BR-007",
+        "BR-008"
+      ],
+      "dependency_order": "Codec reuse defines deleted error surfaces before derives; update cross-crate page/metric test seams together.",
+      "verification": "Exact messages/source topology/redaction, persisted golden bytes/error categories, logical queue caps/drop custody, actual ingress metrics and lazy text emission."
+    },
+    {
+      "priority": 3,
+      "name": "Behavioral fixtures and zero-saving oracle corrections",
+      "ids": [
+        "MS-005",
+        "HS-007",
+        "ST-004",
+        "BR-005",
+        "BR-006",
+        "FND-SYN-001",
+        "FND-SYN-002"
+      ],
+      "dependency_order": "Fix false concurrency/digest evidence and fixture destruction order before relying on those witnesses for later structural changes.",
+      "verification": "Compare retained scenario/fault inventory; keep independent bytes/digests, real barrier contention, crash children, bounded waits and store-before-home cleanup."
+    },
+    {
+      "priority": 4,
+      "name": "Home and state admitted-state reuse",
+      "ids": [
+        "HS-001",
+        "HS-002",
+        "HS-005",
+        "ST-001",
+        "ST-005",
+        "ST-006",
+        "ST-007",
+        "ST-009",
+        "ST-010"
+      ],
+      "dependency_order": "Keep HS-004 provenance correction explicit; prove compact seal pairing before removing redundant receipt fences; preserve prepare/contribute sequencing.",
+      "verification": "Foreign/stale/substituted receipts, same-command mismatched correlation, all-domain preflight callback ordering, writer-time capture, lifecycle/index truth table and multiframe/page invariant cases."
+    },
+    {
+      "priority": 5,
+      "name": "Theme physical mechanics and semantic custody",
+      "ids": [
+        "HS-006",
+        "ST-012",
+        "ST-013",
+        "ST-011"
+      ],
+      "dependency_order": "Separate physical helper from private semantic context/pending outcome; choose ST-011 or authority-gated ST-014 before parser implementation.",
+      "verification": "All command/failure cuts; manifest-last, two-pass bounded input, late freshness/reference acquisition, exact old/new/collision and retained operation release."
+    },
+    {
+      "priority": 6,
+      "name": "Backend compact controls and I/O lifecycle reuse",
+      "ids": [
+        "BJ-001",
+        "BJ-002",
+        "BR-001",
+        "BR-003"
+      ],
+      "dependency_order": "Keep response-only helper ownership in BJ-003; common page output never absorbs steering verifier lifecycle.",
+      "verification": "Fragmentation/limits, exact returned leases, blocked sink no-read-ahead, start/steer echo differences, approval failure continuation and prebyte/postbyte dispatch."
+    }
+  ],
+  "unresolved": [
+    "BJ-003 cursor net/integration remains prototype-dependent; source seam supports it but audit is uncompiled.",
+    "HS-002 clarification must retain immutable seal, current generation, correlation and any actually promised presentation semantics.",
+    "ST-014 needs Operator-owned residency/grammar/InstalledLoad/concurrency decision; HS-003 needs retained-collision-evidence decision.",
+    "TempDir cleanup-before-store findings establish source ordering, not a reproduced Windows cleanup failure; no environment cleanup was performed.",
+    "Parent integrates App/Syndic estimates and any additional dependency evidence; foundation-only PRE-004 zero does not replace their inventories."
+  ],
+  "verification_performed": [
+    "Parsed all six reports and counted48 findings.",
+    "Confirmed six TSV cohort counts total443.",
+    "Targeted semantic/body and authority reads listed above.",
+    "Read current workspace dependency versions without Cargo invocation.",
+    "One bounded official tempfile3.27.0 refresh with exact source commit,registry metadata,Cargo adoption and package-only OSV query.",
+    "JSON/TSV structural accounting validation only; no source/test/manifest/plan/design edits, build, test, install, GUI, process launch or benchmark."
+  ]
+}

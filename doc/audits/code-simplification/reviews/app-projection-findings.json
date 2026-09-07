@@ -1,0 +1,566 @@
+[
+  {
+    "id": "AX-001",
+    "title": "Share exact manual and lifecycle compaction admission",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator/admission.rs",
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator.rs"
+    ],
+    "symbols": [
+      "ContextCompactionCoordinator::admit_manual",
+      "ContextCompactionCoordinator::admit_lifecycle",
+      "LocalCompaction::new"
+    ],
+    "evidence": "Both complete admission bodies repeat nonce/attempt creation, LocalCompaction installation, current-command dispatch, exact durable reread, target conversion, enqueue and failure cleanup. Manual admission obtains an existing exact projection; lifecycle admission already owns one and records yielding_turn_id.",
+    "proposal": "Move the common tail into one private helper taking the candidate, owned projection, explicit CompactionOrigin, timeout and command permit. Keep the manual projection lookup and connection identity assertion outside it; return the local operation so lifecycle can discard that return.",
+    "required_contract_changes": "None intended. Keep exact operation/attempt/target identity, manual versus lifecycle settlement, nonblocking bounded enqueue, nondispatch target reclamation and persistent failure custody. The failed-admission cleanup defect is separately AX-019.",
+    "estimated_net_lines": {
+      "min": 60,
+      "max": 90,
+      "basis": "Net source reduction after helper and call-site changes; no test deletions, no AX-019 correctness savings."
+    },
+    "verification": "Not run; observational audit only. Existing context_compaction cases cover fixed capacities, late terminal responses, lifecycle user-work precedence, shutdown after staging and exact target loss. Add focused rejected-admission coverage only with AX-019.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-002",
+    "title": "Use the existing atomic maximum operation for compaction high-water counters",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator.rs"
+    ],
+    "symbols": [
+      "update_high_water"
+    ],
+    "evidence": "The helper at coordinator.rs:459 implements a compare_exchange_weak maximum loop. Provider fault metrics in this cohort already use AtomicUsize::fetch_max for the same monotonic counter behavior.",
+    "proposal": "Replace the loop with high_water.fetch_max(candidate, Ordering::AcqRel), ignoring its prior value.",
+    "required_contract_changes": "None; preserve the monotonic maximum and ordering. Keep saturating denied-admission counters separate.",
+    "estimated_net_lines": {
+      "min": 8,
+      "max": 12,
+      "basis": "One helper body only; no callers or metrics counted twice."
+    },
+    "verification": "Not run; observational audit only. Existing compaction capacity/high-water tests and manual review of memory ordering.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-003",
+    "title": "Share native projection acquisition, retirement classification and decision validation",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/execute.rs",
+      "crates/beryl-app/src/cas_projection/execute/decision.rs",
+      "crates/beryl-app/src/cas_projection/execute/native.rs"
+    ],
+    "symbols": [
+      "CasProjectionCoordinator::use_current_source",
+      "CasProjectionCoordinator::use_resume_source",
+      "CasProjectionCoordinator::retry_native_lineage_retained_in_flight",
+      "CasProjectionCoordinator::recover_native_lineage_from_syndic_retained"
+    ],
+    "evidence": "Full bodies show near-identical current/resume acquisition and a repeated ThreadRetirement classification across execution and decision paths. Exact native-decision plan checks are repeated by consuming retry/recovery operations.",
+    "proposal": "Share acquisition using an explicit current-capability versus existing-loaded-publication mode, share retirement-to-generation/error classification, and return a validated plan from one exact-decision helper. Keep distinct native resume/fork execution and source/target publications visible.",
+    "required_contract_changes": "None intended. Preserve exact source and target revisions, recovered-generation binding, stale provenance, cross-thread source flight, target cleanup and consuming authorization; do not introduce a generic retry adapter.",
+    "estimated_net_lines": {
+      "min": 135,
+      "max": 195,
+      "basis": "Net after private helpers and their call sites; excludes cleanup arguments in AX-004 and publication wrapper removal in AX-010."
+    },
+    "verification": "Not run; observational audit only. Existing scheduler retry/recovery, coalescing, stale keys and capacity tests; review exact revision rejection and source/target retirement cases.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-004",
+    "title": "Remove redundant recovery validation and share abandonment tails",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/execute/cleanup.rs",
+      "crates/beryl-app/src/cas_projection/execute/recovery.rs",
+      "crates/beryl-app/src/cas_projection/execute/fresh.rs",
+      "crates/beryl-app/src/cas_projection/execute/native.rs"
+    ],
+    "symbols": [
+      "abandon_projection_target",
+      "forget_after_publication_failure",
+      "recover_projection"
+    ],
+    "evidence": "Cleanup functions take unused session/request/thread parameters. recover_projection checks fresh.status() != Idle and then calls fresh.into_idle(), whose backend body checks that same owned immutable status. Four typed injection outcome failures repeat target abandonment plumbing.",
+    "proposal": "Remove unused cleanup arguments. Use one into_idle match whose failure preserves the CURRENT first-check diagnostic and unknown(None) stale provenance. Build each typed primary error and abandonment reason in its outcome arm, then run the common abandonment tail. Keep success proof/publication on its distinct path.",
+    "required_contract_changes": "None intended. Removing the duplicate idle check must not start recording a loaded generation where the currently reachable branch records None. Preserve completion time sampled after successful injection, exact sequence proof, no retry, source page ownership and failure priority.",
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 105,
+      "basis": "Conservative net after shared failure tuple/tail; excludes broad context objects, AX-003 native acquisition and AX-010 wrapper changes."
+    },
+    "verification": "Not run; observational audit only. Existing recovery history stress, page residency and pre/post-dispatch cancellation cases; inspect stale bindings for nonidle fresh targets and failed publication.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-005",
+    "title": "Represent single-owner projection and worker custody directly",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/model.rs",
+      "crates/beryl-app/src/cas_projection/native_lineage_recovery.rs",
+      "crates/beryl-app/src/cas_projection/service_config.rs",
+      "crates/beryl-app/tests/unit/projection_service_config.rs"
+    ],
+    "symbols": [
+      "LoadedCasProjection",
+      "NativeLineageRecoveryWork",
+      "ProjectionWorkerPermit",
+      "ProjectionWorkerAdmission"
+    ],
+    "evidence": "LoadedCasProjection wraps a required lease in Option solely for take-plus-expect consuming methods and a Drop that only drops that lease. NativeLineageRecoveryWork similarly wraps attempt/decision/execution while its Drop only drops attempt. ProjectionWorkerPermit owns the sole never-cloned Arc<ProjectionWorkerAdmission>; committed_steering_worker is mutated only through &mut self.",
+    "proposal": "Store required lease/work fields directly, remove redundant wrapper Drop bodies and destructure consuming methods. Fold worker admission fields into ProjectionWorkerPermit, use an ordinary committed bool, and move the unchanged accounting/wake Drop to the permit.",
+    "required_contract_changes": "None intended. Preserve current owner field drop order, once-only release and gate/capacity notifications. Keep Option fields on permit pairs and returning session guards: those owners actually take components separately or transfer them in Drop.",
+    "estimated_net_lines": {
+      "min": 55,
+      "max": 85,
+      "basis": "Combined net of direct-field and unshared-Arc reductions, with no deletion of behavioral tests. Does not count AX-006 readiness fix."
+    },
+    "verification": "Not run; observational audit only. Existing all-role acquisition/drop permutations, pair atomicity, reserve and provisional steering wake tests; review parked-work return and every consuming projection conversion.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-006",
+    "title": "A readiness scan drops commandless routes' retained continuation",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/native_lineage_recovery.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler.rs"
+    ],
+    "symbols": [
+      "NativeLineageRecoveryControl::take_ready_work"
+    ],
+    "evidence": "At native_lineage_recovery.rs:548 the tuple (state.command, state.continuation.take()) evaluates take even when command is None. The failed pattern then continues, dropping a waiting route's decision and parked execution custody. Another ready route triggers this scan; HashMap iteration decides whether waiting routes are damaged first. The coalesced test submits BOTH commands and does not cover an uncommanded peer.",
+    "proposal": "Check command readiness before taking continuation under the same route lock. Retain the command when continuation is unavailable. Add a deterministic waiting-route-plus-ready-route test that submits the waiting route afterward and proves its exact retained turn still runs.",
+    "required_contract_changes": "Restores the existing retained exact-decision/turn contract; no new behavior authority is needed. This is a correctness repair, not a line-saving proposal.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Zero savings; defect isolated from AX-005 owner representation."
+    },
+    "verification": "Not run; observational audit only. Focused two-route deterministic readiness/custody test and existing scheduler cancellation/disposal/coalescing tests.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "correctness_gap",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-007",
+    "title": "Delete obsolete provider-frame dispatch and read adapters",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/provider_frame.rs",
+      "crates/beryl-app/src/cas_projection/live_source.rs"
+    ],
+    "symbols": [
+      "dispatch_batch",
+      "ProviderBatchDispatchError",
+      "map_batch_read_error",
+      "ProviderFrameReadError",
+      "map_publication_read_error",
+      "read_provider_event_status",
+      "stage_build"
+    ],
+    "evidence": "Complete bodies plus cohort-wide rg find provider_frame.rs private dispatch_batch only at its definition, with ProviderBatchDispatchError and its mapper used solely by that dead helper. Actual staging uses stage_provider_frame callbacks. read_provider_event_status likewise has no caller. stage_build has ignored home identity/generation/limit/command inputs.",
+    "proposal": "Delete the unreferenced dispatch/error island and status helper. Return ProviderFramePublicationError directly from read_build once its second consumer disappears, removing the intermediate read error and mapping. Remove unused stage_build and publish_provider_reconciled parameters.",
+    "required_contract_changes": "None intended. Retain actual stage_provider_frame current-command callbacks, exact read fences, custody installation, completion comparison and typed publication failure distinctions.",
+    "estimated_net_lines": {
+      "min": 150,
+      "max": 185,
+      "basis": "Includes dead status helper and its own one-pass loop. AX-008 excludes that deleted loop. AC-004 deletes a different dead dispatch_batch in connection/provider_broker/consumer/staging.rs; no shared lines."
+    },
+    "verification": "Not run; observational audit only. Reference/cfg scan plus existing provider ingestion, target loss and persistent failure custody tests before implementation. No unmounted architecture is treated as dead.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-008",
+    "title": "Remove the constant-false live health retry protocol",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/persistent_failure/gate.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/gate/permit.rs",
+      "crates/beryl-app/src/cas_projection/live_source.rs",
+      "crates/beryl-app/src/cas_projection/provider_frame.rs"
+    ],
+    "symbols": [
+      "LiveCommandHealthSettlement",
+      "LiveCommandHealthSettlement::requires_retry",
+      "LiveCommandHealthFence::settle_after_operation"
+    ],
+    "evidence": "LiveCommandHealthSettlement is a unit result whose only query always returns false. The remaining live_source read_provider_current and provider_frame read_initial_frontier/read_build loops can therefore execute once. All production read and gate bodies were reviewed.",
+    "proposal": "Return Result<(), LiveCommandAdmissionError> from settlement, remove the unit result and query, and use straight-line guarded reads with the same before/after health checks.",
+    "required_contract_changes": "None. Retain exact health fencing, failed-home override precedence and persistent custody handoff. Do not weaken settlement simply because no retry exists.",
+    "estimated_net_lines": {
+      "min": 20,
+      "max": 35,
+      "basis": "Only the three remaining owned loops and gate API counted. Dead status loop belongs AX-007. Two consumer/staging loops are outside this cohort and excluded; coordinate root synthesis."
+    },
+    "verification": "Not run; observational audit only. Existing gate election/poison tests and provider publication failure scenarios; source review that all callers retain post-read authority rejection.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-009",
+    "title": "Share master-gate election branches without merging local failure policy",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/persistent_failure/gate/permit.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/gate/authorizer.rs"
+    ],
+    "symbols": [
+      "LiveCommandPermit::commit_or_transfer",
+      "commit_or_transfer_persistent_only",
+      "LiveCommandAuthorizer::is_persistent_failure_cut"
+    ],
+    "evidence": "commit_or_transfer repeats nearly identical election matches after local/current checks. is_persistent_failure_cut repeats the existing inner failure_observed predicate. Persistent-only transfer gives local failure a different precedence than ordinary transfer.",
+    "proposal": "Use a guarded Open branch, combined persistent-election branches and a closed fallback. Delegate is_persistent_failure_cut to the existing predicate. Keep the persistent-only local-failure rejection explicit.",
+    "required_contract_changes": "None. Preserve ordinary-close winner stickiness, exact permit counting, gate-held callback order and the distinction between failure status and authority transfer.",
+    "estimated_net_lines": {
+      "min": 22,
+      "max": 35,
+      "basis": "Gate branch/body reduction only; AX-008 settlement result changes excluded."
+    },
+    "verification": "Not run; observational audit only. All fourteen existing exact gate scenarios, especially local failure plus persistent election and stale permit callbacks.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-010",
+    "title": "Remove publication wrappers and parameters that carry no authority",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/publication.rs",
+      "crates/beryl-app/src/cas_projection/execute.rs",
+      "crates/beryl-app/src/cas_projection/execute/decision.rs",
+      "crates/beryl-app/src/cas_projection/execute/fresh.rs",
+      "crates/beryl-app/src/cas_projection/execute/native.rs",
+      "crates/beryl-app/src/cas_projection/execute/recovery.rs",
+      "crates/beryl-app/src/cas_projection/live_source.rs",
+      "crates/beryl-app/src/cas_projection/turn_activation.rs"
+    ],
+    "symbols": [
+      "publish_active_turn_reconciled",
+      "abandon_active_reconciled",
+      "abandon_stop_reconciled",
+      "admit_live_event_reconciled",
+      "publish_valid",
+      "publish_stale"
+    ],
+    "evidence": "All publication bodies reviewed: four reconciled wrappers ignore expected home identity/generation and merely forward to current-domain command functions. Publication point-read limit arguments are likewise unused; the command protocol and outcome custody provide the real authority.",
+    "proposal": "Call the existing current-domain functions directly, delete forwarding wrappers, and remove unused point-limit/home parameters at owned call sites. Keep distinct functions that return committed binding revisions.",
+    "required_contract_changes": "None intended. This removes misleading inputs, not exact identity checks at the owner. Preserve typed current-command outcomes, failure custody and valid/stale revision results.",
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 100,
+      "basis": "Owned wrapper/caller lines only; AX-003/004 must not count these argument deletions. Analogous AI-006 affects different adapter files; outside-cohort call sites excluded."
+    },
+    "verification": "Not run; observational audit only. Existing native/recovery publication and turn activation tests; compile all actual callers when implementing and verify no authority check disappeared.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-011",
+    "title": "Share service shutdown mechanics while preserving both shutdown orders",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/service/shutdown.rs",
+      "crates/beryl-app/tests/unit/persistent_failure_cut.rs"
+    ],
+    "symbols": [
+      "ProjectionConnectionService::persistent_failure_shutdown_inner",
+      "ProjectionConnectionService::ordinary_shutdown_inner"
+    ],
+    "evidence": "Ordinary and persistent-failure shutdown repeat stop requests, taking and draining connection owners, compaction join, scheduler join and provider shutdown. Their sequence and scheduler error interpretation differ. Unit cases assert full ingester detachment even after unclean/poisoned joins and exactly one provider shutdown.",
+    "proposal": "Extract narrow request/drain/join/provider helpers. Let scheduler joining return its raw exit for caller-specific classification. Keep the two orchestration paths explicit.",
+    "required_contract_changes": "None. Persistent cut joins before worker stops; ordinary path requests stops first. All joins still run after earlier failures, exact error precedence remains, and healthy home close differs from failed-home drop.",
+    "estimated_net_lines": {
+      "min": 65,
+      "max": 100,
+      "basis": "Source-only net after helpers; AC-003 connection shutdown is a different owner and disjoint. Tests retained."
+    },
+    "verification": "Not run; observational audit only. Existing ordinary/persistent close, admitted-connection detach, unclean receipt and poisoned ingester cases; review all-join behavior and scheduler Fatal classification.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-012",
+    "title": "Remove a notify-only coordinator Condvar and one-field result wrapper",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/persistent_failure/coordinator.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/coordinator/types.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/coordinator/lifecycle.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/coordinator/worker.rs",
+      "crates/beryl-app/src/cas_projection/persistent_failure/coordinator/terminal_disposer.rs"
+    ],
+    "symbols": [
+      "PersistentFailureCutCoordinator",
+      "PendingPersistentFailureResult",
+      "CoordinatorState"
+    ],
+    "evidence": "The coordinator state is Arc<(Mutex<CoordinatorState>, Condvar)> across its owners. Full bodies and reference search show only two notify_all calls and no wait on this Condvar. PendingPersistentFailureResult contains only completion and is immediately unwrapped to call completion.wait(). Actual master-gate drain and driver completion waits are separate.",
+    "proposal": "Use Arc<Mutex<CoordinatorState>>, remove the unused notifications, and collect the actual completion owner directly.",
+    "required_contract_changes": "None. Retain the separate real drain/completion Condvars and every target result wait. Poison recovery and cut diagnostic snapshots remain unchanged.",
+    "estimated_net_lines": {
+      "min": 15,
+      "max": 25,
+      "basis": "Only representation and notification plumbing; no gate wait or terminal disposition removed."
+    },
+    "verification": "Not run; observational audit only. Existing persistent-cut and complete-target classification tests; inspect all state readers and real completion waits.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-013",
+    "title": "Remove unreachable stop reconciliation variants and unused local timeout",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/stop.rs"
+    ],
+    "symbols": [
+      "StopCoordinationError::TransitionNotCommitted",
+      "StopCoordinationError::TransitionCollision",
+      "LocalStop",
+      "StopCoordinator::execute_claim"
+    ],
+    "evidence": "Repository-wide Rust reference scan finds TransitionNotCommitted only in its definition and two checks in coordinate, and TransitionCollision only at its definition. execute_claim calls require_stop_committed, which returns the newer typed command errors. LocalStop.timeout is assigned at insertion but never read; StopDispatchOwner.timeout remains used.",
+    "proposal": "Remove the two dead error variants, unreachable old reconciliation branches and unused LocalStop timeout field/initializer. Keep the actual typed command result and conservative ClaimUnresolved behavior.",
+    "required_contract_changes": "Removing dead public error variants is an API surface change to confirm against package consumers. Do not reinterpret CommandNotCommitted as the old variant or silently add safe reopen behavior; that would require separate correctness analysis.",
+    "estimated_net_lines": {
+      "min": 15,
+      "max": 25,
+      "basis": "Dead branches/variants and local field only; no savings from weakening stop custody."
+    },
+    "verification": "Not run; observational audit only. Existing claimed/dispatching Drop, exact safe reopen and both failure-cut linearization tests; scan downstream matches before implementation.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-014",
+    "title": "Share the identical approval barrier release latch",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/test_faults.rs"
+    ],
+    "symbols": [
+      "ApprovalInstallBarrierController",
+      "ApprovalSubmitBarrierController",
+      "pause_approval_install",
+      "pause_approval_submit"
+    ],
+    "evidence": "Approval install and submit barriers repeat Arc<(Mutex<bool>, Condvar)> release and wait logic in controllers and pause hooks. Their identity registries and arrival signals differ. Other promotion/checked-user barriers have different poison and timeout semantics, so they are not included.",
+    "proposal": "Introduce a small private released-latch helper reused by just these two approval barriers; keep each exact key/token registry, arrival channel and Drop cleanup in its current owner.",
+    "required_contract_changes": "None. Preserve release-before-registry-removal, exact-token replacement protection, poison behavior, one arrival and release idempotence. Do not create a generic fault-injection framework.",
+    "estimated_net_lines": {
+      "min": 25,
+      "max": 45,
+      "basis": "Only identical local latch mechanics after helper; other source fault seams excluded."
+    },
+    "verification": "Not run; observational audit only. Existing approval install/submit race tests and controller Drop release behavior.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-015",
+    "title": "Replace two nearly identical projection test fixture trees with one shared fixture",
+    "paths": [
+      "crates/beryl-app/tests/native_lineage_scheduler/syndic.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler/syndic/assets.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler/syndic/exact.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler/syndic/history.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler/syndic/support.rs",
+      "crates/beryl-app/tests/projection/syndic.rs",
+      "crates/beryl-app/tests/projection/syndic/assets.rs",
+      "crates/beryl-app/tests/projection/syndic/exact.rs",
+      "crates/beryl-app/tests/projection/syndic/history.rs",
+      "crates/beryl-app/tests/projection/syndic/support.rs"
+    ],
+    "symbols": [
+      "Fixture",
+      "SubmittedTurn",
+      "exact::establish_turn",
+      "commit_atoms",
+      "project_item"
+    ],
+    "evidence": "Every native fixture body was reviewed; complete per-file diffs against every projection counterpart were then reviewed. assets.rs is byte-identical (same 407-line blob). The other differences are borrow-vs-clone storage plumbing, explicit-thread wrappers, runtime execution lookup and current-valid versus planned-source retirement. Base projection tree is 1,779 lines.",
+    "proposal": "Move one fixture implementation into behavior-named common support and mount it from both suites. Preserve scheduler's explicit-thread/runtime extensions and name the two retirement setups separately if their preconditions differ. Use borrowed SyndicStorage consistently. Add no compatibility layer.",
+    "required_contract_changes": "None intended. Retain real composer submission, exact provider frames, paged build loops and terminal-history completion, every test scenario and each runtime/retirement precondition.",
+    "estimated_net_lines": {
+      "min": 1650,
+      "max": 1760,
+      "basis": "Deletion of one 1,779-line base after retaining extensions and modest import/path adjustments. All savings belong to duplicate physical fixture code. No AS-008 resident fixture representation savings and no duplicate test-case count."
+    },
+    "verification": "Not run; observational audit only. Compile and run the actual suites that mount either tree, especially native scheduler pooled runtimes and projection/recovery/image cases. Verify both retirement setup semantics.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-016",
+    "title": "Share recovery test server and capacity assertion mechanics",
+    "paths": [
+      "crates/beryl-app/tests/recovery_history_stress/server.rs",
+      "crates/beryl-app/tests/recovery_history_stress/verification.rs",
+      "crates/beryl-app/tests/recovery_page_residency/server.rs",
+      "crates/beryl-app/tests/recovery_page_residency.rs",
+      "crates/beryl-app/tests/recovery_history_stress.rs",
+      "crates/beryl-app/tests/native_lineage_scheduler/support.rs"
+    ],
+    "symbols": [
+      "complete_admission",
+      "complete_fresh_target",
+      "complete_unsubscribe",
+      "read_json",
+      "await_close",
+      "assert_recovery_released",
+      "complete_counted_resume_projection"
+    ],
+    "evidence": "The two recovery server files repeat admission/config wire, fresh-target response, unsubscribe, ping-aware read/close and endpoint/join plumbing with target/auth/timeout constants as differences. Release assertions and first/second successful recovery setup repeat. Native lineage's counted resume helper repeats complete_any_resume_projection with an expected target.",
+    "proposal": "Share narrowly typed server handshake/read/start/unsubscribe helpers parameterized by actual constants, and common release-capacity assertions parameterized by expected counters. Delegate counted resume to its existing helper. A helper may run each of the two stress recoveries while returning both proof and projection for cross-run comparisons.",
+    "required_contract_changes": "None. Keep independent exact-wire expectation generation, raw WebSocket fragmentation checks, pre/post-first-byte cancellation distinction, first-page sends/receives counters, different timeouts and explicit joins.",
+    "estimated_net_lines": {
+      "min": 160,
+      "max": 230,
+      "basis": "Conservative combined net after helper modules and imports; no wire generator deletion, no fixture-tree lines (AX-015), and no outside-cohort normal-terminal server savings."
+    },
+    "verification": "Not run; observational audit only. Existing stress and page residency cases must retain every lineage/digest/frame-size/capacity and cancellation assertion; compare assertions mechanically during implementation.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-017",
+    "title": "Share repeated exact test setup and strict command-outcome assertions",
+    "paths": [
+      "crates/beryl-app/tests/context_compaction.rs",
+      "crates/beryl-app/tests/context_compaction/support.rs",
+      "crates/beryl-app/tests/support/syndic_command.rs",
+      "crates/beryl-app/tests/unit/lifecycle_test_admission.rs",
+      "crates/beryl-app/tests/unit/persistent_failure_cut.rs",
+      "crates/beryl-app/tests/unit/stop_coordinator/ownership.rs",
+      "crates/beryl-app/tests/unit/stop_coordinator/persistent_failure.rs",
+      "crates/beryl-app/tests/unit/stop_coordinator/continuation.rs",
+      "crates/beryl-app/tests/unit/stop_coordinator/support.rs"
+    ],
+    "symbols": [
+      "StopFixture",
+      "strict current CommandOutcome matches",
+      "lifecycle admission service setup"
+    ],
+    "evidence": "Stop cases repeatedly match the same primary coordinate result before scenario-specific actions. Compaction fixtures repeat exhaustive clean-commit CommandOutcome matches, while common syndic_command already centralizes contribution execution but cannot yet assert a current-command result. Lifecycle admission tests repeat service construction; persistent close cases repeat admitted-session setup.",
+    "proposal": "Add behavior-named primary-stop and admitted-test-session helpers, retaining explicit joined/error assertions where those are the scenario. Extract a strict clean-commit outcome assertion usable by both contribution and current-command fixtures. Share the two lifecycle-admission service setups.",
+    "required_contract_changes": "None. Preserve clean commit versus later failure/indeterminate rejection, exact stop cause/target, named race stages, complete detach and explicit server joins. Keep distinct cases and failure observations.",
+    "estimated_net_lines": {
+      "min": 150,
+      "max": 230,
+      "basis": "Net after focused support helpers, excluding both fixture trees already counted AX-015 and recovery servers counted AX-016. No savings from removing assertions or race scenarios."
+    },
+    "verification": "Not run; observational audit only. Existing affected tests unchanged in behavior; review that setup helpers still reject joined or failed ownership and report operation-specific diagnostics.",
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-018",
+    "title": "Replace positive source-spelling assertions with behavioral coverage during refactoring",
+    "paths": [
+      "crates/beryl-app/tests/context_compaction_source_boundary.rs",
+      "crates/beryl-app/tests/persistent_failure_terminal_boundary.rs",
+      "crates/beryl-app/tests/thread_property_source_boundary.rs",
+      "crates/beryl-app/tests/unit/lifecycle_test_admission.rs"
+    ],
+    "symbols": [
+      "positive contains checks and section slicing"
+    ],
+    "evidence": "Full boundary test bodies show assertions for literal helper names and file layout (including context_compaction shutdown expected in service.rs even though shutdown now lives in service/shutdown.rs). Negative checks for forbidden old authority are a different, useful contract. This is the same root concern as AS-009.",
+    "proposal": "Integrate these positive checks into AS-009's behavioral-coverage replacement. Retain or update narrowly scoped negative forbidden-authority checks. Do not let stale positive source assertions force compatibility symbols during simplification.",
+    "required_contract_changes": "Behavioral guarantees must remain evidenced before any positive guard is removed; no product contract change. Coordinate with the root boundary-test finding.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Zero additional savings to avoid overlap with AS-009. This entry records complete owned-file evidence only."
+    },
+    "verification": "Not run; observational audit only. Review each positive check against actual behavioral tests; retained negative authority scans still operate.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "overlap",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-019",
+    "title": "Failed durable compaction admission leaves the installed local command owner",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator/admission.rs",
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator.rs"
+    ],
+    "symbols": [
+      "ContextCompactionCoordinator::admit_manual",
+      "ContextCompactionCoordinator::admit_lifecycle",
+      "install_local",
+      "LocalCompaction::wait"
+    ],
+    "evidence": "Both admission methods install local state at lines 44/112 and immediately use require_committed_command(...)? at lines 45/113. An error returns before the fail_local cleanup present in every later error branch. The operations map retains the Arc<LocalCompaction> and its LiveCommandPermit although no work was enqueued. A subsequent admission sees retained local state and command drain can remain held until explicit disposal.",
+    "proposal": "Handle the command outcome explicitly and release/remove the exact installed local owner on definitive nondispatch admission failure; preserve typed committed-later-failure/indeterminate custody and persistent failure handling. Cover this at the admission boundary before extracting AX-001.",
+    "required_contract_changes": "Restores existing exact ownership and bounded cleanup contract. Do not turn an indeterminate durable result into a retry or claim it was uncommitted.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Zero savings; correctness repair separated from AX-001 duplicate admission reduction."
+    },
+    "verification": "Not run; observational audit only. Deterministic definitive admission rejection and indeterminate/later-failure cases must prove no local owner/permit leak and no redispatch.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "correctness_gap",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "AX-020",
+    "title": "Partial service construction lacks complete explicit worker disposition",
+    "paths": [
+      "crates/beryl-app/src/cas_projection/context_compaction/coordinator.rs",
+      "crates/beryl-app/src/cas_projection/service/construction.rs"
+    ],
+    "symbols": [
+      "ContextCompactionCoordinator::new_with_initial_start",
+      "ProjectionConnectionService::construct"
+    ],
+    "evidence": "Compaction constructor accumulates JoinHandles in a local Vec and uses ? on later thread spawn, so earlier handles are dropped on failure. Service construction starts the persistent failure owner, then compaction, then scheduler with ? exits and no explicit joining of earlier successful owners. Existing clean shutdown join tests cover fully constructed owners, not these failure paths.",
+    "proposal": "Treat as required initial-start/candidate disposition work in the active rework, with an owning construction guard that cancels startup and explicitly joins every started child before returning failure. Do not claim a new simplification or delete initial-start gating.",
+    "required_contract_changes": "Existing authority already requires explicit terminal ownership and failed-candidate disposition; reconcile with the active rework and historical preflight gap before implementation.",
+    "estimated_net_lines": {
+      "min": 0,
+      "max": 0,
+      "basis": "Mandatory rework gap, not new audit savings. No tests, source or plan were changed."
+    },
+    "verification": "Not run; observational audit only. Partial spawn/failure injection at every construction step; assert cancellation, all joins, provider disposal and no home/worker ownership left.",
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "existing_rework_gap",
+    "evidence_maturity": "subsystem_review"
+  }
+]

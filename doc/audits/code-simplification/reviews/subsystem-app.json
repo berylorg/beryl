@@ -1,0 +1,1724 @@
+{
+  "schema_version": 1,
+  "subsystem": "beryl-app",
+  "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "review_date": "2026-09-07",
+  "evidence_maturity": "subsystem_synthesis",
+  "status": "complete_observational_synthesis",
+  "scope": {
+    "files": 685,
+    "physical_lines": 206936,
+    "input_findings": 87,
+    "canonical_entries": 90,
+    "new_entries": 3,
+    "baseline_coverage_dependency": "Parent verified all 1910 first-party files / 578865 lines (1847 full bodies, 63 declaration-only) before this synthesis; application coverage is the exact eight completed review cohorts.",
+    "limits": "No new exhaustive file pass, implementation, build, test, GUI, acceptance or adversarial signoff. Complete input finding JSON and per-file TSV evidence consumed, then bounded cross-layer source/authority inspection. Existing first-party coverage is not an upstream whole-source dependency audit."
+  },
+  "inspected_reports": [
+    "doc/audits/code-simplification/reviews/app-composer-findings.json",
+    "doc/audits/code-simplification/reviews/app-connection-findings.json",
+    "doc/audits/code-simplification/reviews/app-input-findings.json",
+    "doc/audits/code-simplification/reviews/app-mount-findings.json",
+    "doc/audits/code-simplification/reviews/app-projection-findings.json",
+    "doc/audits/code-simplification/reviews/app-services-findings.json",
+    "doc/audits/code-simplification/reviews/app-shell-findings.json",
+    "doc/audits/code-simplification/reviews/app-window-findings.json"
+  ],
+  "inspected_file_evidence": [
+    "doc/audits/code-simplification/reviews/app-shell.tsv",
+    "doc/audits/code-simplification/reviews/app-services.tsv",
+    "doc/audits/code-simplification/reviews/app-connection.tsv",
+    "doc/audits/code-simplification/reviews/app-composer.tsv",
+    "doc/audits/code-simplification/reviews/app-mount.tsv",
+    "doc/audits/code-simplification/reviews/app-input.tsv",
+    "doc/audits/code-simplification/reviews/app-projection.tsv",
+    "doc/audits/code-simplification/reviews/app-window.tsv"
+  ],
+  "authority": {
+    "direct_package_authority": [
+      "crates/beryl-app/doc/design.md",
+      "crates/beryl-app/doc/design-shell-lifecycle.md",
+      "crates/beryl-app/doc/design-catalog-and-composer.md",
+      "crates/beryl-app/doc/design-live-control.md",
+      "crates/beryl-app/doc/design-live-projection-and-scheduling.md",
+      "crates/beryl-app/doc/design-live-capture.md",
+      "crates/beryl-app/doc/design-feature-adapters.md"
+    ],
+    "direct_relevant_sections": [
+      "doc/audits/code-simplification/README.md",
+      "doc/audits/code-simplification/findings.md",
+      "doc/plan.md (paused scope and required missing mounts)",
+      "doc/design.md (root constraints and Engineering Rigor)",
+      "doc/features/composer/design.md (paged editing/custody and Engineering Rigor)",
+      "doc/features/notifications/design.md (notice behavior and Engineering Rigor)",
+      "doc/features/diagnostics/design.md (Engineering Rigor)",
+      "doc/features/backend-runtime-recovery/design.md (Engineering Rigor)",
+      "doc/features/main-windows/design.md (Engineering Rigor)",
+      "doc/systems/cas-live-syndic-transcript/design.md (ownership and Engineering Rigor)",
+      "doc/systems/bounded-resource-dataflow/design.md (bounds and Engineering Rigor)",
+      "doc/systems/transcript-presentation/design.md (ownership and Engineering Rigor)",
+      "doc/systems/theme-runtime/design.md (Engineering Rigor)"
+    ],
+    "report_inherited_gui_authority": "Input reports additionally establish main-window/notification/status-line GUI mounts, integration slots and main-window-notice widget requirements. This synthesis retains those contracts; no new GUI contract is authored.",
+    "engineering_rigor": {
+      "profile": "production-application/v2",
+      "root_modifiers": [
+        "persistent-state-integrity/v2",
+        "shared-resource-protection/v2"
+      ],
+      "app_modifier": "external-side-effects/v2",
+      "additional_consequential_boundaries": [
+        "CAS live projection: privileged-access/v1",
+        "Diagnostics: untrusted-input/v1 and privileged-access/v1",
+        "Backend recovery: availability-required/v1"
+      ],
+      "acceptance_rule": "These are proposals. Future authorized implementation must derive focused acceptance and semantic review from each touched authority. Custody, failure classification, lock/drop ordering and external side effects require consequential review; helper extraction does not waive that requirement."
+    }
+  },
+  "architecture": {
+    "responsibility_layers": [
+      {
+        "layer": "window and feature integration",
+        "owners": "MainWindow, conversation composer owner/service/slot, creation and notice adapters",
+        "responsibility": "Own mounted identities, focus/inert behavior, pending activation and lifecycle handoff into feature widgets; coordinate hidden readiness and shell close."
+      },
+      {
+        "layer": "composer protocol adaptation",
+        "owners": "ComposerHost and mutation/publication/disposal coordinators, marker-seal service",
+        "responsibility": "Translate bounded widget requests into durable staged work; retain exact source/target pages, history and terminal receipts until reconciliation or external settlement."
+      },
+      {
+        "layer": "live control and ingestion",
+        "owners": "Projection service, connection registry, forwarding hub, provider broker, scheduler and recovery/compaction/stop coordinators",
+        "responsibility": "Hold exact command/worker/promotion/cleanup authority, route provider events, elect persistent failure and explicitly terminate external workers."
+      },
+      {
+        "layer": "resident projection and rendering",
+        "owners": "Resident transcript core, virtual list, syntax/projection caches, action adapters",
+        "responsibility": "Render bounded current windows of immutable source-backed content, retain coherent old displays, enforce independent resource budgets and fence stale completions."
+      },
+      {
+        "layer": "supporting services and test integration",
+        "owners": "Catalog/window acquisition, diagnostic tools/process supervision, theme runtime, behavior-specific test support",
+        "responsibility": "Keep policy at external boundaries, publish complete appearance generations and exercise real storage, worker and GPUI custody cuts with independent expectations."
+      }
+    ],
+    "state_representations": {
+      "retain": [
+        "Widget, mount/slot, host, service and durable-root state represent different custody moments; their similar identities do not make the owners interchangeable.",
+        "Selected, pending, retiring, native-suspended and externally settling composer states; successful, prior, collision and indeterminate durable outcomes.",
+        "Distinct normal and terminal shutdown orchestration, exact cleanup/promotion IDs and per-owner gate order.",
+        "Persistent-failure-cut versus broad unhealthy predicates, source-owned immutable roots and authoritative byte/capacity admission counters.",
+        "Projection coherent-old-display/action source versus syntax plain-while-pending; owner/generation/request tickets and all count/source-byte/retained-byte axes.",
+        "Notice partial selection under current contract, exact visible-token/inert fencing, shaped wrapping/overflow scrolling and owner-command capacity."
+      ],
+      "simplify": [
+        "Represent one-state reservations as IDs; one canonical accepted replay error and explicit two-predicate traversal.",
+        "Share repeated preparation/validation/settlement mechanics behind narrow typed helpers; do not create a universal lifecycle engine.",
+        "Replace redundant length/snapshot copies with content-free derived observations, retaining the single resident owner.",
+        "Use ten-field ordinary execution payload with worker and flight kept as outer fields to preserve destruction order.",
+        "Keep one duplicate durable test fixture tree and small behavior-specific support modules with explicit scenario inputs."
+      ]
+    },
+    "big_picture_judgment": "The largest credible compatible cut is duplication across test infrastructure, followed by repeated app-local settlement/validation and rendering mechanics. Replacing entire composer, scheduler, broker or widget/service layers would preserve most of their policy/custody adapters under current authority. No substantial new crates.io drop-in emerged for those layers. A bounded owned-buffer editor remains a different product contract, not an estimated compatible simplification."
+  },
+  "targeted_source_checks": [
+    "All five complete native_lineage_scheduler/syndic versus projection/syndic diffs; nine integration target mounts; exact runtime/thread/retirement differences and 407-line identical assets module.",
+    "InputReplayPrepareError 56-line declaration and AcceptedInputReplayError 24 variants plus 68-line identity From; ordinary mappings and old accepted error annotations.",
+    "Running/parked ordinary execution field order and park; native recovery direct attempt ownership, projection lease, worker permit wrappers.",
+    "ProviderBrokerControl and Ingester full field declarations and construction tail, including cfg test metrics and absence of an ingester-handle cycle.",
+    "Consumer staging execute_current and read_build control flow, preserving settlement evaluation and indeterminate dispatch priority.",
+    "Both cache prune_if_needed bodies and independent budget checks; full existing cache findings and worker payload accounting evidence.",
+    "Remaining app TestHome struct/new/Drop, both constructors, path accesses and saved_opening type/lifetime usage; existing tempfile support/manifest.",
+    "ShellFixture declaration and lack of custom Drop; explicit creation cleanup remains relevant.",
+    "ForwardingHubSink full trait implementation, bind_sink and live ProjectionConnection::new reference.",
+    "Composer service begin/advance submission, begin/advance publication, capture and disposal methods: heterogeneous preflight/fault/error/custody policy survives shared syntax."
+  ],
+  "preliminary_reconciliation": [
+    {
+      "id": "PRE-002",
+      "resolution": "Superseded by AM-005's complete 350–600 mount/widget construction range. AM-006 is separately bounded durable-seeding work; do not add the old 450–700 estimate.",
+      "owners": [
+        "AM-005",
+        "AM-006"
+      ]
+    },
+    {
+      "id": "PRE-004",
+      "resolution": "APP-SYN-001 owns only the remaining app TestHome's 12–18 incremental net; APP-SYN-002 records zero-credit directory lifetime correction. Foundation and Syndic own their separate exact scopes and shared dependency research; discard old global duplicate-count estimate.",
+      "owners": [
+        "APP-SYN-001",
+        "APP-SYN-002"
+      ]
+    },
+    {
+      "id": "PRE-005",
+      "resolution": "Refined into AC-011 normal-terminal/provider wire helpers and AX-016 recovery server/capacity mechanics. Retain distinct submitted-input/steering readers and independent request/error oracles where no compatible helper was demonstrated. Never add the preliminary 120–190.",
+      "owners": [
+        "AC-011",
+        "AX-016"
+      ]
+    },
+    {
+      "id": "PRE-006",
+      "resolution": "Superseded by AS-009 including AX-018 evidence and missing behavioral replacement cost.",
+      "owners": [
+        "AS-009"
+      ]
+    },
+    {
+      "id": "PRE-013",
+      "resolution": "AS-006, AC-003, AX-011 and APP-SYN-003 establish the concrete geometry/shutdown/hub cuts. Composer service facade remains: lock lifetime, close admission, fault hooks and typed-versus-opaque errors differ. No whole facade deletion or additional service helper estimate.",
+      "owners": [
+        "AS-006",
+        "AC-003",
+        "AX-011",
+        "APP-SYN-003"
+      ]
+    },
+    {
+      "id": "PRE-014",
+      "resolution": "AW-003's 330–430 conditional Copy Detail replaces the old estimate and AW-004; AW-001/AW-002 coexist.",
+      "owners": [
+        "AW-003",
+        "AW-004"
+      ]
+    },
+    {
+      "id": "PRE-015",
+      "resolution": "Retained unestimated product alternative. Bounded resident editing/snapshot undo would change draft/history, restart and ownership contracts. Existing Ropey investigation rejects a compatible durable external-node replacement; root/Syndic own lower tree synthesis.",
+      "owners": [
+        "AM-009",
+        "AI-014"
+      ]
+    },
+    {
+      "id": "PRE-016",
+      "resolution": "App marker-seal registry removal is already required graph-owned service rework AP-008, zero new credit. Lower-level rank/identity tree consolidation belongs Syndic synthesis.",
+      "owners": [
+        "AP-008"
+      ]
+    }
+  ],
+  "overlap_accounting": [
+    "Every original app ID appears exactly once; AM-007 maps to AP-007 and AX-018 to AS-009, with zero additional credit.",
+    "AP-005 asset/session and AP-006 page-protocol functions can share a physical support file but own different bodies. AM-005 owns widget/mount construction; AM-006 owns streamed durable seed wrappers/driver. One low-level page implementation is charged to AP-006; integrated edits must recount any shared call plumbing.",
+    "AX-015 owns duplicate physical syndic fixture trees only. AX-016 server/capacity and AX-017 stop/session/command assertion bodies are outside those trees. AS-008 resident provider fixtures are distinct.",
+    "AC-011 and AX-016 own separate server files. Helpers may share an eventual lower primitive, but its implementation/import cost must be charged once and no duplicated deletion counted.",
+    "AW-002 notice appearance/shell mounts are separate from AU-006 theme runtime and AU-008 window acquisition/abandonment fixtures.",
+    "AC-004 deletes consumer dispatch_batch; AX-007 deletes separate provider dispatch/status; AX-008 owns only remaining live health settlement signature/call changes, including app consumer methods.",
+    "AI-007 enum/From removal and AI-002 traversal sharing are distinct; implement canonical error first and count final helper adapters once.",
+    "AS-001 includes redundant cache payload/accounting and any pruning replacement. Moka/LRU receive no separate saving.",
+    "Foundation owns cross-app BR-004 constant metrics and MS-003 page-generation update savings. This report claims neither.",
+    "Existing rework, correctness repair and source/test evidence fixes receive zero credit; original preliminary estimates are superseded, not added."
+  ],
+  "dependency_assessment": {
+    "research_limits": "Exact-version primary evidence and existing repository memory were examined; no install/download, adoption, resolver change, full dependency source audit or resolved-graph security clearance. New cache research is supplied here for root-owned durable memory.",
+    "existing_memory_read": [
+      "doc/memory/crates.io/tempfile/3.27.0/adjacent-durable-writes.md",
+      "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+      "doc/memory/crates.io/process-wrap/10.0.0/backend-process-ownership.md",
+      "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md",
+      "doc/memory/crates.io/syntect/5.3.0/bounded-code-panel-highlighting.md"
+    ],
+    "existing_dependency_uses": [
+      {
+        "crate": "tempfile",
+        "version": "3.27.0",
+        "scope": "APP-SYN-001",
+        "fit": "Accept existing dev-dependency for exclusive temporary directory ownership; no new package. Root/foundation owns refreshed package maintenance/license/MSRV/security evidence.",
+        "adapter_cost": "Two constructors, three path accesses, saved_opening type and explicit store/worker-first disposal; accounted 12–18 net only. TempDir Drop is not proof of successful checked cleanup."
+      },
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "scope": "AU-004",
+        "fit": "Accept existing dependency for mechanical Display/Error boilerplate. Existing workspace use already supplies the crate.",
+        "adapter_cost": "Exact message annotations and intentionally absent source chains retained; 45–70 net counted only by AU-004, not a second global dependency estimate."
+      },
+      {
+        "crate": "process-wrap",
+        "version": "10.0.0",
+        "scope": "AU-009",
+        "fit": "Reject app supervisor replacement. The synchronous job creation does not supply required kernel kill-on-close; replacing the roughly 70-line OS wrapper leaves explicit Beryl cleanup, identity, retry and shutdown protocol.",
+        "adapter_cost": "New custom wrapper/fork and error/cleanup adapters erase modest wrapper savings. Zero."
+      },
+      {
+        "crate": "ropey",
+        "version": "1.6.1",
+        "scope": "PRE-015 app boundary",
+        "fit": "Not a drop-in for persistent externally addressed/authenticated roots, markers, paged bounded operations and crash/restart custody. Root/Syndic own the lower storage conclusion.",
+        "adapter_cost": "Resident rope plus Beryl persistence/custody adapters leaves the substantial architecture. Zero; bounded editor remains an unestimated contract alternative."
+      },
+      {
+        "crate": "syntect",
+        "version": "5.3.0",
+        "scope": "AS-004",
+        "fit": "Retain current language/dialect adapters. General grammar scopes would require Beryl role mappings, grammar assets, bounded line/state admission and dialect parity.",
+        "adapter_cost": "Approximately 1144 gross adapter lines cannot be treated as net deletion; mapping/admission/assets/verification may erase the gain. Zero until an explicitly scoped fit prototype."
+      }
+    ],
+    "new_cache_screen": [
+      {
+        "crate": "moka",
+        "assessed_version": "0.12.16",
+        "decision": "reject_as_substantial_current_contract_replacement",
+        "published_at": "2026-08-09T23:29:26.591998Z",
+        "yanked": false,
+        "license_expression": "(MIT OR Apache-2.0) AND Apache-2.0",
+        "rust_version": "1.71.1",
+        "hypothetical_features": "default-features=false, features=[sync]; no adoption performed",
+        "dependencies": "Tagged manifest: crossbeam-channel 0.5.15, crossbeam-epoch 0.9.20, crossbeam-utils 0.8.21, equivalent 1, parking_lot 0.12, portable-atomic 1.6, smallvec 1.8, tagptr 0.2, uuid 1.1 with v4; a hypothetical resolved graph was not built.",
+        "semantics": "Concurrent key/value storage with cloned values or Arc. Capacity/weight policy is best-effort and eventually consistent; policy channels can drop read records and block write recording when full. Entries are immediately visible, but bounded residency is not the same as synchronous exact admission. User-thread maintenance/run_pending_tasks is not a dedicated background worker.",
+        "fit": "Does not replace three independent exact budget axes, owner reference/generation fencing, unique request tickets, in-flight coalescing, explicit worker-retained charges, or syntax/plain versus coherent-old-projection display policy. Retaining custom admission/residency eviction/accounting and request core leaves most of the 450–550 repeated app lifecycle lines. Only small key storage/pruning mechanics are displaced; no credible net new dependency saving.",
+        "platforms": "Tagged README: Linux 64/32-bit tested in CI; Windows x64 MSVC/GNU and macOS ARM64 expected but not CI-tested there. no_std, Wasm and WASI unsupported.",
+        "adoption": "Official crates.io production repository currently declares exact moka 0.12.16 with default features disabled and future enabled. This is concrete use of the crate, not evidence that the sync configuration satisfies Beryl.",
+        "maintenance_security": "Recent tagged releases and exact registry publication demonstrate maintenance. Upstream changelog records older 0.12.12/0.12.13 timer-wheel use-after-free/deque UB fixes and 0.12.14 future compute race fixes; 0.12.15 disabled flaky GC tests. Scoped official RustSec search found no direct moka advisory; that is not a vulnerability clearance or a check of the hypothetical resolved graph.",
+        "net_range": [
+          0,
+          0
+        ],
+        "sources": [
+          "https://crates.io/api/v1/crates/moka/0.12.16",
+          "https://docs.rs/moka/0.12.16/moka/",
+          "https://docs.rs/moka/0.12.16/moka/sync/struct.Cache.html",
+          "https://raw.githubusercontent.com/moka-rs/moka/v0.12.16/Cargo.toml",
+          "https://raw.githubusercontent.com/moka-rs/moka/v0.12.16/README.md",
+          "https://raw.githubusercontent.com/moka-rs/moka/v0.12.16/CHANGELOG.md",
+          "https://raw.githubusercontent.com/rust-lang/crates.io/main/Cargo.toml"
+        ]
+      },
+      {
+        "crate": "lru",
+        "assessed_version": "0.18.3",
+        "decision": "screened_out_as_too_small_replacement_surface",
+        "published_at": "2026-08-28T00:12:31.20915Z",
+        "yanked": false,
+        "license_expression": "MIT",
+        "rust_version": "1.85.0",
+        "configuration": "Default hashbrown feature uses optional hashbrown 0.17. No selected/resolved feature set; default-features=false would require confirming the std backing implementation before adoption.",
+        "fit": "Count-capacity LRU/pop_lru can express a narrow pruning primitive, but not independent byte axes, admission or request/owner lifecycle. Both app prune_if_needed bodies are only 17 lines each. A new dependency is not justified as a substantial simplification; do not add an LRU estimate to AS-001.",
+        "security": "Official RustSec RUSTSEC-2026-0253 pop key-Drop panic use-after-free patched >=0.18.2; RUSTSEC-2026-0002 IterMut stacked-borrows issue patched >=0.16.3; RUSTSEC-2021-0130 patched >=0.7.1. All precede 0.18.3. This scoped screen is not a whole-graph security clearance.",
+        "adoption_platform_limits": "No full platform/adoption qualification was performed after the semantic surface proved too small; not endorsed for adoption.",
+        "net_range": [
+          0,
+          0
+        ],
+        "sources": [
+          "https://crates.io/api/v1/crates/lru/0.18.3",
+          "https://docs.rs/lru/0.18.3/lru/struct.LruCache.html",
+          "https://raw.githubusercontent.com/jeromefroe/lru-rs/0.18.3/Cargo.toml",
+          "https://rustsec.org/advisories/RUSTSEC-2026-0253.html",
+          "https://rustsec.org/advisories/RUSTSEC-2026-0002.html",
+          "https://rustsec.org/advisories/RUSTSEC-2021-0130.html"
+        ]
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "AP-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 85,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-001",
+      "decision": "Accept the retained-page constructor and progress value, not a shared lifecycle owner. Page kind, separate lane frontiers and custody moment remain explicit.",
+      "overlap_group": "AP-001"
+    },
+    {
+      "id": "AP-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 40,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-002",
+      "decision": "Accept only a small exhaustive classification used at existing application points; the low range already charges enum/helper overhead.",
+      "overlap_group": "AP-002"
+    },
+    {
+      "id": "AP-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 45,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-003",
+      "decision": "Initial seed and activation have a real source/target distinction; centralize terminal cleanup without folding production open custody into test behavior.",
+      "overlap_group": "AP-003"
+    },
+    {
+      "id": "AP-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 35,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-004",
+      "decision": "The repeated seal completion/admission tails are local; durable seal transitions and graph-owned service construction are excluded.",
+      "overlap_group": "AP-004"
+    },
+    {
+      "id": "AP-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 130,
+      "net_max": 210,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-005",
+      "decision": "Asset/session construction is one test-support responsibility; admitted-but-unpublished sidecars remain expressible. Shared publication support also contains AP-006, whose page protocol bodies are separately owned.",
+      "overlap_group": "AP-005"
+    },
+    {
+      "id": "AP-006",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 170,
+      "net_max": 290,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-006",
+      "decision": "Own the low-level app test page protocol driver once; preserve explicit expected extent, predecessor and custody. AM-006 owns only its separate durable seeding layer and callers.",
+      "overlap_group": "AP-006"
+    },
+    {
+      "id": "AP-007",
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-007",
+      "decision": "Canonical owner of the same-host request high-water defect; AM-007 is the mounted manifestation. Zero reduction credit.",
+      "overlap_group": "host-request-high-water"
+    },
+    {
+      "id": "AP-008",
+      "disposition": "existing_rework",
+      "bucket": "existing_rework",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-composer-findings.json",
+      "evidence_pointer": "AP-008",
+      "decision": "Current design already requires injected graph ownership and removal of the global weak registry. This is existing rework, not a new opportunity.",
+      "overlap_group": "AP-008"
+    },
+    {
+      "id": "AC-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 120,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-001",
+      "decision": "Set membership represents the one-state reservation correctly. Shared settlement must retain separate exact cleanup/promotion tokens and gate callback ordering.",
+      "overlap_group": "AC-001"
+    },
+    {
+      "id": "AC-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 60,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-002",
+      "decision": "The repeated post-operation tail can be shared while call-specific authorization, classification and completion ownership stay outside. Foundation owns BR-004 metric changes.",
+      "overlap_group": "AC-002"
+    },
+    {
+      "id": "AC-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 70,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-003",
+      "decision": "Accept mechanical drain/join/bookkeeping sharing only; terminal and ordinary authority-retirement order remains visible. AX-011 covers a different service owner.",
+      "overlap_group": "AC-003"
+    },
+    {
+      "id": "AC-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 25,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-004",
+      "decision": "The unused consumer dispatch_batch and StageCommitter residue are disjoint from AX-007 and from the live AX-008 consumer path.",
+      "overlap_group": "AC-004"
+    },
+    {
+      "id": "AC-005",
+      "disposition": "deferred",
+      "bucket": "deferred",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "low",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-005",
+      "decision": "No deletion accepted while unpublished candidate construction is mandatory and unfinished; construction tests alone cannot prove split launch obsolete.",
+      "overlap_group": "AC-005"
+    },
+    {
+      "id": "AC-006",
+      "disposition": "accepted_revised",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 35,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-006",
+      "decision": "Reduce 45–75 to 25–35. Exact Ingester declaration and construction duplicate approximately 38 physical lines; one context field/init, access redirection and focused lifecycle verification consume the difference. Context must remain non-owning of the ingester handle and preserve final resource disposition.",
+      "overlap_group": "AC-006",
+      "original_net_range": [
+        45,
+        75
+      ]
+    },
+    {
+      "id": "AC-007",
+      "disposition": "deferred",
+      "bucket": "deferred",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "low",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-007",
+      "decision": "Keep deferred. Shared observation vocabulary requires coordinated backend/Syndic authority and cannot count transport parsing, durable versioning or ownership as mere conversion overhead.",
+      "overlap_group": "AC-007"
+    },
+    {
+      "id": "AC-008",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 100,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-008",
+      "decision": "Share only target-construction mechanics and exact loss wait; pending durable activation and active registration remain distinct constructors.",
+      "overlap_group": "AC-008"
+    },
+    {
+      "id": "AC-009",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 45,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-009",
+      "decision": "Retain every loss-specific terminal assertion; only source lookup and checked-frame assertion mechanics converge.",
+      "overlap_group": "AC-009"
+    },
+    {
+      "id": "AC-010",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 160,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-010",
+      "decision": "Shared broker environment takes caller-owned durable inputs; no generic integration fixture may silently choose activation, compaction or replay state. AC-006 constructor edits must be counted once.",
+      "overlap_group": "AC-010"
+    },
+    {
+      "id": "AC-011",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 50,
+      "net_max": 85,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "evidence_pointer": "AC-011",
+      "decision": "The normal-terminal/provider-residency wire helpers are physically disjoint from AX-016 recovery servers; preserve ping, close, ID echo and scenario request assertions.",
+      "overlap_group": "AC-011"
+    },
+    {
+      "id": "AI-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 12,
+      "net_max": 22,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-001",
+      "decision": "Only impossible Some/true reconciliation wrappers disappear; Prior/Collision on successful-command reconciliation still fail.",
+      "overlap_group": "AI-001"
+    },
+    {
+      "id": "AI-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 240,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-002",
+      "decision": "A shared traversal yields two independent facts or takes an explicit predicate selector; broader unhealthy and exact persistent-cut predicates cannot become interchangeable.",
+      "overlap_group": "AI-002"
+    },
+    {
+      "id": "AI-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 88,
+      "net_max": 107,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-003",
+      "decision": "One pair of private attempt checks is justified; every call position and waiter acquisition outcome remains.",
+      "overlap_group": "AI-003"
+    },
+    {
+      "id": "AI-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 55,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-004",
+      "decision": "A typed worker-launch helper shares only completion publication, wake and registration mechanics, preserving panic/spawn/drop cases.",
+      "overlap_group": "AI-004"
+    },
+    {
+      "id": "AI-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 35,
+      "net_max": 45,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-005",
+      "decision": "Default derives match the actual empty state; retry defaults remain explicitly Ineligible.",
+      "overlap_group": "AI-005"
+    },
+    {
+      "id": "AI-006",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 40,
+      "net_max": 70,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-006",
+      "decision": "Only argument/forwarding paths with no authority disappear; current-command construction becomes visible at callers and real home/generation fences remain.",
+      "overlap_group": "AI-006"
+    },
+    {
+      "id": "AI-007",
+      "disposition": "accepted_revised",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 120,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-007",
+      "decision": "Reduce 120–170 to 100–120. Directly read 56-line duplicate InputReplayPrepareError declaration plus 68-line identity From implementation: 124 gross lines, with at most small import/call cleanup. Canonical annotations, alias/reexport, conversions and verification consume the difference. Keep ordinary error mapping and accepted Display/source semantics.",
+      "overlap_group": "AI-007",
+      "original_net_range": [
+        120,
+        170
+      ]
+    },
+    {
+      "id": "AI-008",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 105,
+      "net_max": 115,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-008",
+      "decision": "Accept the verified private, unreferenced six-helper island; do not extrapolate deadness to live freeze/contribution or required unmounted target modules.",
+      "overlap_group": "AI-008"
+    },
+    {
+      "id": "AI-009",
+      "disposition": "accepted_revised",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 50,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-009",
+      "decision": "Reduce 40–65 to 30–50. Share only ten common payload fields. Keep flight outside that payload so running fields remain payload, _worker, flight; park explicitly drops the worker, then moves payload and flight. This preserves session/tool-before-worker-before-flight destruction.",
+      "overlap_group": "AI-009",
+      "original_net_range": [
+        40,
+        65
+      ]
+    },
+    {
+      "id": "AI-010",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 10,
+      "net_max": 25,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-010",
+      "decision": "Narrow only the statically known exact-success capture path; real unknown-start and response-activation failure convergence remain explicit.",
+      "overlap_group": "AI-010"
+    },
+    {
+      "id": "AI-011",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 130,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-011",
+      "decision": "Session-admission fixture setup is disjoint from AX-015 fixture tree and the protocol servers. Fault/barrier ordering and owned handles stay in scenarios.",
+      "overlap_group": "AI-011"
+    },
+    {
+      "id": "AI-012",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 80,
+      "net_max": 130,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-012",
+      "decision": "Promotion execution/validation assertions can share mechanics; expected durable values stay independently specified.",
+      "overlap_group": "AI-012"
+    },
+    {
+      "id": "AI-013",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 415,
+      "net_max": 415,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-013",
+      "decision": "The two unmounted physical fixture modules total exactly 415 lines. No runnable scenarios are deleted; check the include graph again at implementation baseline.",
+      "overlap_group": "AI-013"
+    },
+    {
+      "id": "AI-014",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-input-findings.json",
+      "evidence_pointer": "AI-014",
+      "decision": "Bounded replay and independent wire-oracle code are retained. A serializer or task framework does not replace custody and bounded admission.",
+      "overlap_group": "AI-014"
+    },
+    {
+      "id": "AM-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 95,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-001",
+      "decision": "Seed compatibility and mounted dispatch share pure value mappings, while seed eligibility, count limits and exact binding remain separate checks.",
+      "overlap_group": "AM-001"
+    },
+    {
+      "id": "AM-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 100,
+      "net_max": 160,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-002",
+      "decision": "A single prepared prompt-view value prevents render/diagnostic drift while leaving action execution and disposal policy in the existing owner.",
+      "overlap_group": "AM-002"
+    },
+    {
+      "id": "AM-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 35,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-003",
+      "decision": "Small common quantities are acceptable inside distinct bound and usage wrappers; no permissive interchange of admission and observation.",
+      "overlap_group": "AM-003"
+    },
+    {
+      "id": "AM-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 90,
+      "net_max": 140,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-004",
+      "decision": "The identical cfg fault-gate primitive can be shared without touching production custody or AP/AM test-fixture algorithms.",
+      "overlap_group": "AM-004"
+    },
+    {
+      "id": "AM-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 350,
+      "net_max": 600,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-005",
+      "decision": "Own widget profiles and mount construction only. Asset helpers AP-005, page submission AP-006, durable seeding AM-006 and TestHome replacement are excluded.",
+      "overlap_group": "AM-005"
+    },
+    {
+      "id": "AM-006",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 180,
+      "net_max": 260,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-006",
+      "decision": "Own the streamed seeding layer and its two fixture consumers. Charge its driver once; if AP-006 is used below it, retain only one low-level page implementation and recount shared call adaptations.",
+      "overlap_group": "AM-006"
+    },
+    {
+      "id": "AM-007",
+      "disposition": "merged",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-007",
+      "decision": "Merge into AP-007; the mount allocator and host/service rejection fence are two owners in one correctness repair.",
+      "overlap_group": "host-request-high-water",
+      "merged_into": "AP-007"
+    },
+    {
+      "id": "AM-008",
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-008",
+      "decision": "Static duplicate cfg test-module declaration is a correctness issue, not permission to remove either support module.",
+      "overlap_group": "AM-008"
+    },
+    {
+      "id": "AM-009",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-mount-findings.json",
+      "evidence_pointer": "AM-009",
+      "decision": "Mount, widget, service, pending activation and native cleanup represent different custody moments. Retain them; a generic lifecycle abstraction does not erase these obligations.",
+      "overlap_group": "AM-009"
+    },
+    {
+      "id": "AX-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 90,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-001",
+      "decision": "Share the common compaction admission tail only after AX-019 establishes exact failed-admission cleanup. Explicit origin and retained projection remain inputs.",
+      "overlap_group": "AX-001"
+    },
+    {
+      "id": "AX-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 8,
+      "net_max": 12,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-002",
+      "decision": "Atomic fetch_max expresses the existing high-water operation, with identical AcqRel ordering and no extra dependency.",
+      "overlap_group": "AX-002"
+    },
+    {
+      "id": "AX-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 135,
+      "net_max": 195,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-003",
+      "decision": "Keep current-capability versus loaded-publication acquisition explicit, and retain resume/fork source/target distinctions inside shared validation mechanics.",
+      "overlap_group": "AX-003"
+    },
+    {
+      "id": "AX-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 105,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-004",
+      "decision": "Share abandonment only after preserving the current first error and unknown(None) provenance. Do not combine with AX-003 or AX-010 argument savings.",
+      "overlap_group": "AX-004"
+    },
+    {
+      "id": "AX-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 85,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-005",
+      "decision": "Single-owner wrappers may become direct fields; preserve actual field destruction order. Native recovery attempt is first, LoadedCasProjection has only one authority-bearing lease, and worker permit remains noncloneable.",
+      "overlap_group": "AX-005"
+    },
+    {
+      "id": "AX-006",
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-006",
+      "decision": "Continuation loss on commandless readiness scans is a correctness repair with zero credit, prerequisite to trusting worker custody simplifications.",
+      "overlap_group": "AX-006"
+    },
+    {
+      "id": "AX-007",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 185,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-007",
+      "decision": "Delete only the verified obsolete provider dispatch/status island. Its removed one-pass status loop is owned here, not AX-008.",
+      "overlap_group": "AX-007"
+    },
+    {
+      "id": "AX-008",
+      "disposition": "accepted_revised",
+      "bucket": "current_contract",
+      "net_min": 30,
+      "net_max": 50,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-008",
+      "decision": "Expand 20–35 to 30–50 for the two additional live consumer methods in connection/provider_broker/consumer/staging.rs. execute_current is an ordered settlement match, not a loop; read_build has the one-pass loop. Evaluate settlement even after dispatch, return indeterminate dispatch first, then map settlement failure, preserving primary custody/error precedence.",
+      "overlap_group": "AX-008",
+      "original_net_range": [
+        20,
+        35
+      ]
+    },
+    {
+      "id": "AX-009",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 22,
+      "net_max": 35,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-009",
+      "decision": "Election branch sharing preserves persistent-only local-failure rejection. Settlement signature edits belong AX-008.",
+      "overlap_group": "AX-009"
+    },
+    {
+      "id": "AX-010",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 100,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-010",
+      "decision": "Direct current-domain calls remove transparent publication wrappers only; exact revision-returning functions remain. AI-006 affects separate steering files.",
+      "overlap_group": "AX-010"
+    },
+    {
+      "id": "AX-011",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 100,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-011",
+      "decision": "Keep normal and terminal shutdown orchestration separate; share narrow joins/drains/provider mechanics and raw scheduler exit retrieval. AC-003 owns connection-level settlement.",
+      "overlap_group": "AX-011"
+    },
+    {
+      "id": "AX-012",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 25,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-012",
+      "decision": "Notify-only Condvar and one-field wrapper have no waiting/custody responsibility; retain all actual gate waits and completion owners.",
+      "overlap_group": "AX-012"
+    },
+    {
+      "id": "AX-013",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 15,
+      "net_max": 25,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-013",
+      "decision": "Only unreachable stop error variants and unused local timeout disappear; ClaimUnresolved remains conservative.",
+      "overlap_group": "AX-013"
+    },
+    {
+      "id": "AX-014",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 45,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-014",
+      "decision": "Share two identical approval latches only, without merging exact keyed registries or AM-004's separate fault-gate locations.",
+      "overlap_group": "AX-014"
+    },
+    {
+      "id": "AX-015",
+      "disposition": "accepted_revised",
+      "bucket": "current_contract",
+      "net_min": 1640,
+      "net_max": 1725,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-015",
+      "decision": "Reduce 1650–1760 to 1640–1725. All five file diffs confirm one 1779-line base and byte-identical 407-line assets module, but separate retirement preconditions, explicit-thread/runtime extensions and nine target mounts require 54–139 lines of retained/adapted setup and verification allowance. Keep the scheduler's extensions and name current-valid versus planned-source retirement separately.",
+      "overlap_group": "AX-015",
+      "original_net_range": [
+        1650,
+        1760
+      ]
+    },
+    {
+      "id": "AX-016",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 160,
+      "net_max": 230,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-016",
+      "decision": "Recovery server/capacity helpers do not overlap AX-015's syndic fixture tree or AC-011's normal-terminal/provider server bodies; preserve independent wire scenarios.",
+      "overlap_group": "AX-016"
+    },
+    {
+      "id": "AX-017",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 230,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-017",
+      "decision": "Strict command assertion and stop/session setup are outside both duplicated syndic trees. Keep fault operations and terminal custody assertions in each test.",
+      "overlap_group": "AX-017"
+    },
+    {
+      "id": "AX-018",
+      "disposition": "merged",
+      "bucket": "overlap",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-018",
+      "decision": "Merge evidence into AS-009; zero additional savings. Required positive spelling checks need behavior replacements before deletion.",
+      "overlap_group": "source-shape-behavior",
+      "merged_into": "AS-009"
+    },
+    {
+      "id": "AX-019",
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-019",
+      "decision": "Failed durable compaction admission must dispose of its exact installed local owner on definitive nondispatch outcomes; indeterminate/committed custody is retained. Zero credit.",
+      "overlap_group": "AX-019"
+    },
+    {
+      "id": "AX-020",
+      "disposition": "existing_rework",
+      "bucket": "existing_rework",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-projection-findings.json",
+      "evidence_pointer": "AX-020",
+      "decision": "Initial-start cancellation and explicit join/disposition of every partially started worker is an existing rework obligation, not new reduction savings.",
+      "overlap_group": "AX-020"
+    },
+    {
+      "id": "AU-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 150,
+      "net_max": 220,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-001",
+      "decision": "Use existing serde/serde_json for bounded wire mechanics only. Namespace, null, limit and error-envelope policy differences stay explicit; thiserror bodies belong AU-004.",
+      "overlap_group": "AU-001"
+    },
+    {
+      "id": "AU-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 40,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-002",
+      "decision": "Retain as a low-priority net-positive local helper candidate only; reject implementation if typed facade/record interfaces erase the 20–40 estimate.",
+      "overlap_group": "AU-002"
+    },
+    {
+      "id": "AU-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 60,
+      "net_max": 85,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-003",
+      "decision": "A local field-list emission macro preserves current telemetry event schemas and lazy enabled checks. Removing flattened aliases would be a separate unestimated format change.",
+      "overlap_group": "AU-003"
+    },
+    {
+      "id": "AU-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 45,
+      "net_max": 70,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-004",
+      "decision": "Use existing thiserror 2.0.18 without a manifest change. Verify exact messages and intentionally hidden sources; derive annotations must not expose extra error chains.",
+      "overlap_group": "AU-004"
+    },
+    {
+      "id": "AU-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 20,
+      "net_max": 30,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-005",
+      "decision": "Share only theme retirement and discarded invalid-outcome mechanics; rejected external refresh and durable retry policy remain distinct.",
+      "overlap_group": "AU-005"
+    },
+    {
+      "id": "AU-006",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 120,
+      "net_max": 190,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-006",
+      "decision": "Theme runtime fixture bodies are disjoint from AW-002 notice appearance setup and AS-008 resident-core fixtures.",
+      "overlap_group": "AU-006"
+    },
+    {
+      "id": "AU-007",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 55,
+      "net_max": 75,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-007",
+      "decision": "Catalog/window preparation may share pure validation and explicit-claim fact projection; retain error precedence and live storage read boundaries.",
+      "overlap_group": "AU-007"
+    },
+    {
+      "id": "AU-008",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 170,
+      "net_max": 220,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-008",
+      "decision": "The acquisition/abandonment integration fixture pair is separate from AW-002 shell/creation mounts. Explicit close/reopen cuts remain.",
+      "overlap_group": "AU-008"
+    },
+    {
+      "id": "AU-009",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-services-findings.json",
+      "evidence_pointer": "AU-009",
+      "decision": "Retain diagnostic process ownership: process-wrap's synchronous job abstraction does not provide the required kill-on-close lifecycle and replacing only the small wrapper has no credible net gain.",
+      "overlap_group": "AU-009"
+    },
+    {
+      "id": "AS-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 160,
+      "net_max": 280,
+      "confidence": "medium-high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-001",
+      "decision": "Use a private typed core, preserving separate cache policies and all three independent budget axes. Moka's best-effort/eventually consistent policy does not replace exact admission or owner/request fencing; no crate savings are added.",
+      "overlap_group": "AS-001"
+    },
+    {
+      "id": "AS-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 130,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-002",
+      "decision": "Line ranges and one projection loop may remove conversion-only copies. Do not count absent immutable-page/range-index rework as already implemented deletions.",
+      "overlap_group": "AS-002"
+    },
+    {
+      "id": "AS-003",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 50,
+      "net_max": 75,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-003",
+      "decision": "Share syntax assertions without deleting dialect/recovery scenarios; no helper body overlap with resident provider fixture builders.",
+      "overlap_group": "AS-003"
+    },
+    {
+      "id": "AS-004",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high on non-equivalence; net alternative unqualified",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-004",
+      "decision": "Retain current syntax behavior. Syntect remains an unestimated contract/fit experiment, not a compatible dependency saving.",
+      "overlap_group": "AS-004"
+    },
+    {
+      "id": "AS-005",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 90,
+      "net_max": 130,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-005",
+      "decision": "Narrow unused app-private virtual-list modes only. Bounded visible measurement, focus/anchors/tail behavior and required future mounts remain.",
+      "overlap_group": "AS-005"
+    },
+    {
+      "id": "AS-006",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 65,
+      "net_max": 105,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-006",
+      "decision": "One realized-record/geometry resolver is valid across three actions, with distinct selection/quote/menu/media eligibility and rejection preserved.",
+      "overlap_group": "AS-006"
+    },
+    {
+      "id": "AS-007",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 70,
+      "net_max": 115,
+      "confidence": "medium-high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-007",
+      "decision": "A content-free stats view is derived from one resident owner; incremental byte accounting remains real admission state. Foundation owns cross-app BR-004 and MS-003 changes.",
+      "overlap_group": "AS-007"
+    },
+    {
+      "id": "AS-008",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 250,
+      "net_max": 400,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-008",
+      "decision": "Share explicit provider/resident fixture defaults and setup, preserving record/provenance overrides and independent test expectations. Not the AX-015 durable fixture tree.",
+      "overlap_group": "AS-008"
+    },
+    {
+      "id": "AS-009",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 220,
+      "net_max": 320,
+      "confidence": "medium-high",
+      "source_report": "doc/audits/code-simplification/reviews/app-shell-findings.json",
+      "evidence_pointer": "AS-009",
+      "decision": "Canonical owner of positive source-shape replacement, including AX-018 evidence. The range already pays for missing host/panel/callback behavioral coverage and retained negative architecture checks.",
+      "overlap_group": "source-shape-behavior"
+    },
+    {
+      "id": "AW-001",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 45,
+      "net_max": 65,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-001",
+      "decision": "One prepared theme accessor retains strict missing-property rejection versus caller fallback and one appearance generation per frame.",
+      "overlap_group": "AW-001"
+    },
+    {
+      "id": "AW-002",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 140,
+      "net_max": 210,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-002",
+      "decision": "Share only mounted creation/shell acquisition/composer and notice-theme construction. AU-008/AU-006 own other fixtures; no TempDir or selection-test deletion credit.",
+      "overlap_group": "AW-002"
+    },
+    {
+      "id": "AW-003",
+      "disposition": "conditional",
+      "bucket": "contract_alternative",
+      "net_min": 330,
+      "net_max": 430,
+      "confidence": "medium",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-003",
+      "decision": "Conditional authority change only: whole bounded Copy Detail replaces partial pointer/keyboard selection. It supersedes PRE-014 and excludes AW-004 while retaining AW-001/AW-002.",
+      "overlap_group": "notice-copy-contract",
+      "authority_gate": "Operator must revise notification feature/widget selection-copy contract before implementation."
+    },
+    {
+      "id": "AW-004",
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 8,
+      "net_max": 12,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-004",
+      "decision": "Keep the small caret-row helper in the current contract subtotal. Remove its estimate if AW-003's Copy Detail alternative is selected.",
+      "overlap_group": "notice-copy-contract"
+    },
+    {
+      "id": "AW-005",
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-005",
+      "decision": "Repair continuity/inert test evidence before relying on affected refactors. Zero savings; real admitted text must change and selectors must address the actual generation.",
+      "overlap_group": "AW-005"
+    },
+    {
+      "id": "AW-006",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-006",
+      "decision": "Retain distinct creation/shell custody and required missing mounts. ShellFixture directory-first drop is recorded separately as APP-SYN-002 with zero credit.",
+      "overlap_group": "AW-006"
+    },
+    {
+      "id": "AW-007",
+      "disposition": "retained",
+      "bucket": "retained",
+      "net_min": 0,
+      "net_max": 0,
+      "confidence": "high",
+      "source_report": "doc/audits/code-simplification/reviews/app-window-findings.json",
+      "evidence_pointer": "AW-007",
+      "decision": "Bounded notice arbitration and exact mounted route carry application policy; a priority queue/event bus would leave those obligations and offers no substantial cut.",
+      "overlap_group": "AW-007"
+    },
+    {
+      "id": "APP-SYN-001",
+      "title": "Replace the app's remaining manual TestHome with existing tempfile ownership",
+      "source_report": null,
+      "source_paths": [
+        "crates/beryl-app/tests/syndic_composer_host/support.rs",
+        "crates/beryl-app/tests/saved_opening/support.rs",
+        "crates/beryl-app/tests/support/tempdir.rs",
+        "crates/beryl-app/Cargo.toml"
+      ],
+      "source_symbols": [
+        "TestHome",
+        "TestHome::new",
+        "Drop for TestHome",
+        "new_host",
+        "reopen_host",
+        "saved_opening::Fixture"
+      ],
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 12,
+      "net_max": 18,
+      "original_net_range": null,
+      "estimate_basis": "Direct inspection finds one remaining app TestHome: the 19-line struct/new/Drop plus static/import cleanup, two constructor calls and three .0 path reads. Reuse tempfile::TempDir with at most a tiny named constructor/alias; allow 6–12 lines for constructor/path/type/cleanup adaptation and verification. Do not create a new shared helper framework or count existing tests/support/tempdir.rs as deleted.",
+      "decision": "PRE-004 app-only incremental slice. Existing tempfile workspace dependency is sufficient; home identifiers/paths remain controlled by the fixture. Retain explicit store/worker-before-directory close ordering and checked close where the test asserts cleanup. No fixture algorithm or Syndic/home-store lines included.",
+      "proposal": "Use the already installed tempfile ownership type and Builder/TempDir construction at the existing fixture boundary; update saved_opening's field type and callers. Keep the fixture home after store/service fields or explicitly dispose those owners first.",
+      "retained_contract": "Exclusive directory creation and Windows-compatible store/worker-before-directory disposal; scenario identifiers, reopen semantics and cleanup failure visibility.",
+      "verification_plan": [
+        "Inspect the exact include graph and all TestHome uses at implementation baseline.",
+        "Run the existing syndic_composer_host target with applicable cfg features, including saved_opening/reopen cases.",
+        "Exercise explicit store-first close on Windows; do not infer cleanup success from TempDir Drop."
+      ],
+      "confidence": "medium",
+      "authority_gate": "No intended contract change; part of future authorized implementation and coordinated PRE-004 accounting.",
+      "overlap_group": "app-tempfile-only"
+    },
+    {
+      "id": "APP-SYN-002",
+      "title": "Preserve directory lifetime through shell fixture resource disposal",
+      "source_report": null,
+      "source_paths": [
+        "crates/beryl-app/tests/main_window_shell.rs"
+      ],
+      "source_symbols": [
+        "ShellFixture"
+      ],
+      "disposition": "correctness",
+      "bucket": "correctness",
+      "net_min": 0,
+      "net_max": 0,
+      "original_net_range": null,
+      "estimate_basis": "Zero savings: field-order and explicit close/disposition repair.",
+      "decision": "ShellFixture declares _directory before store, service, process/composer/acquisition/coordinator owners and has no custom Drop. Rust drops fields in declaration order; directory cleanup can precede open database or worker disposal, particularly on Windows. This already-existing hazard is separate from the remaining manual TestHome replacement.",
+      "proposal": "After explicit shutdown/join where required, keep the directory alive through all resource-bearing fields and verify checked cleanup. Do not assume merely changing a directory type fixes shutdown or external Arc ownership.",
+      "retained_contract": "Store and worker disposal completes before directory removal; failures must be observable where asserted.",
+      "verification_plan": [
+        "Run relevant shell fixture close/reopen scenarios on Windows after the repair.",
+        "Confirm no external service/store Arc survives checked directory close."
+      ],
+      "confidence": "high",
+      "authority_gate": "Separate correctness work, zero audit saving; no source change in this audit.",
+      "overlap_group": "app-tempdir-drop-order"
+    },
+    {
+      "id": "APP-SYN-003",
+      "title": "Share forwarding-hub admission while preserving rejected payload custody",
+      "source_report": null,
+      "source_paths": [
+        "crates/beryl-app/src/cas_projection/connection/forwarding_hub.rs",
+        "crates/beryl-app/src/cas_projection/connection/lifecycle.rs"
+      ],
+      "source_symbols": [
+        "impl OrderedTurnStreamSink for ForwardingHubSink",
+        "ForwardingHub::bind_sink",
+        "ProjectionConnection::new"
+      ],
+      "disposition": "accepted",
+      "bucket": "current_contract",
+      "net_min": 25,
+      "net_max": 40,
+      "original_net_range": null,
+      "estimate_basis": "Three approximately 30-line trait bodies repeat lock-poison, inert and absent-endpoint rejection around one sink call. A private payload-preserving gate/dispatch helper of approximately 25–30 lines plus explicit typed closures/adapters replaces the repeated gates; 25–40 net after caller and focused ownership verification allowance. ThreadClosed and abandon paths are retained; no hub/topology deletion.",
+      "decision": "Completes the remaining concrete forwarding-hub part of PRE-013. Directly read the entire trait implementation and live bind_sink reference in ProjectionConnection::new. Each rejection must return its original owned operation/selection/checked message, and successful dispatch remains under the same hub state lock.",
+      "proposal": "Use one private generic gate accepting the owned payload, a typed sink-call closure and a rejection constructor. It acquires and retains the existing lock, handles poison/inert/absence before consuming the payload into the sink, and returns the exact typed rejection on failure. Keep submit's ThreadClosed special routing and abandon's simpler result explicit.",
+      "retained_contract": "No early lock release or endpoint clone, no payload clone/drop on rejection, unchanged cancellation cause and single attachment/inert publication ordering.",
+      "verification_plan": [
+        "Retain forwarding hub and connection retirement tests, including lock-attempt observation and inert attachment barriers.",
+        "Exercise all three typed payload-bearing methods for poison/inert/missing endpoint and successful sink rejection, verifying the original payload remains owned by the returned error.",
+        "Do not adopt the helper if typed closure machinery erases the measured reduction."
+      ],
+      "confidence": "medium",
+      "authority_gate": "No intended contract change; consequential lock/custody extraction requires effective-rigor semantic review during implementation.",
+      "overlap_group": "forwarding-hub-admission"
+    }
+  ],
+  "implementation_packages": [
+    {
+      "id": "fixture-trees",
+      "priority": 1,
+      "ids": [
+        "AX-015",
+        "AI-013"
+      ],
+      "dependencies": [],
+      "outcome": "Deduplicate proven fixture trees and remove only unmounted duplicate modules.",
+      "boundary": "Keep one behavior-named projection fixture implementation, scheduler/runtime extensions and two explicit retirement setup forms; no compatibility layer or scenario deletion.",
+      "bucket": "current_contract",
+      "net_range": [
+        2055,
+        2140
+      ]
+    },
+    {
+      "id": "test-support",
+      "priority": 2,
+      "ids": [
+        "AP-005",
+        "AP-006",
+        "AM-005",
+        "AM-006",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AI-011",
+        "AI-012",
+        "AX-016",
+        "AX-017",
+        "AU-006",
+        "AU-008",
+        "AS-003",
+        "AS-008",
+        "AW-002",
+        "APP-SYN-001"
+      ],
+      "dependencies": [
+        "fixture-trees"
+      ],
+      "outcome": "Share behavior-specific fixture mechanics across the mounted suites.",
+      "boundary": "Separate asset admission, page protocol, durable seed, widget/mount, broker environment, wire handshake and assertion helpers; each common implementation is charged once. No universal fixture object.",
+      "bucket": "current_contract",
+      "net_range": [
+        2287,
+        3583
+      ]
+    },
+    {
+      "id": "behavioral-boundaries",
+      "priority": 3,
+      "ids": [
+        "AS-009"
+      ],
+      "dependencies": [],
+      "outcome": "Replace brittle positive source checks with actual boundary behavior.",
+      "boundary": "Repair AW-005 evidence when touching notice tests. Before deleting positive host/panel/callback needles, supply the missing behavioral coverage and retain negative authority exclusions.",
+      "bucket": "current_contract",
+      "net_range": [
+        220,
+        320
+      ]
+    },
+    {
+      "id": "composer-adapters",
+      "priority": 4,
+      "ids": [
+        "AP-001",
+        "AP-002",
+        "AP-003",
+        "AP-004",
+        "AM-001",
+        "AM-002",
+        "AM-003",
+        "AM-004"
+      ],
+      "dependencies": [],
+      "outcome": "Share composer preparation and view conversion while retaining separate custody owners.",
+      "boundary": "AP-007/AM-007 high-water correction and existing graph-owned seal rework constrain implementation order; no service/mount/widget collapse.",
+      "bucket": "current_contract",
+      "net_range": [
+        390,
+        635
+      ]
+    },
+    {
+      "id": "projection-control",
+      "priority": 5,
+      "ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-006",
+        "AI-001",
+        "AI-002",
+        "AI-003",
+        "AI-004",
+        "AI-005",
+        "AI-006",
+        "AI-007",
+        "AI-008",
+        "AI-009",
+        "AI-010",
+        "AX-001",
+        "AX-002",
+        "AX-003",
+        "AX-004",
+        "AX-005",
+        "AX-007",
+        "AX-008",
+        "AX-009",
+        "AX-010",
+        "AX-011",
+        "AX-012",
+        "AX-013",
+        "AX-014",
+        "APP-SYN-003"
+      ],
+      "dependencies": [],
+      "outcome": "Reduce duplicate settlement, validation and owner representations.",
+      "boundary": "Complete AX-006/AX-019 correctness prerequisites for affected paths. AI-007 canonical error before AI-002 traversal; AC-006 context before final AC-010 fixture recount; AX-007 deleted status loop before AX-008 live settlement recount. Keep normal/terminal shutdown orchestration explicit.",
+      "bucket": "current_contract",
+      "net_range": [
+        1535,
+        2251
+      ]
+    },
+    {
+      "id": "rendering-residency",
+      "priority": 6,
+      "ids": [
+        "AS-001",
+        "AS-002",
+        "AS-005",
+        "AS-006",
+        "AS-007"
+      ],
+      "dependencies": [
+        "behavioral-boundaries"
+      ],
+      "outcome": "Share derived rendering mechanics and lighten resident reads.",
+      "boundary": "Coordinate required immutable-page/target-mount rework and foundation BR-004/MS-003 without claiming their lines. Retain bounded virtual rendering, immutable display/action pairing and independent budgets.",
+      "bucket": "current_contract",
+      "net_range": [
+        455,
+        760
+      ]
+    },
+    {
+      "id": "tool-theme-adapters",
+      "priority": 7,
+      "ids": [
+        "AU-001",
+        "AU-002",
+        "AU-003",
+        "AU-004",
+        "AU-005",
+        "AU-007",
+        "AW-001",
+        "AW-004"
+      ],
+      "dependencies": [],
+      "outcome": "Share small wire, theme, catalog and current-selection mechanics.",
+      "boundary": "Use existing serde, thiserror and std primitives. Explicitly preserve namespace/null/limit policy, event schemas, error source policy, appearance generation and notification behavior.",
+      "bucket": "current_contract",
+      "net_range": [
+        403,
+        597
+      ]
+    },
+    {
+      "id": "copy-detail-alternative",
+      "priority": 8,
+      "ids": [
+        "AW-003"
+      ],
+      "dependencies": [],
+      "outcome": "Offer whole-detail copy under a revised notification contract.",
+      "boundary": "Operator authority change is required; replace AW-004's current-selection helper estimate rather than adding both.",
+      "bucket": "contract_alternative",
+      "net_range": [
+        330,
+        430
+      ]
+    }
+  ],
+  "totals": {
+    "current_contract": [
+      7345,
+      10286
+    ],
+    "copy_detail_alternative_only": [
+      330,
+      430
+    ],
+    "current_contract_with_copy_detail": [
+      7667,
+      10704
+    ],
+    "zero_credit": [
+      "AP-007",
+      "AP-008",
+      "AC-005",
+      "AC-007",
+      "AI-014",
+      "AM-007",
+      "AM-008",
+      "AM-009",
+      "AX-006",
+      "AX-018",
+      "AX-019",
+      "AX-020",
+      "AU-009",
+      "AS-004",
+      "AW-005",
+      "AW-006",
+      "AW-007",
+      "APP-SYN-002"
+    ],
+    "production_test_split": null,
+    "precision_note": "Positive physical Rust-line net estimates after replacement/caller/verification allowance, not measured patches. Mixed source/test allowance is not split into fabricated precision. Contract alternatives are mutually exclusive where stated; do not sum the two scenario totals."
+  },
+  "unresolved_tradeoffs": [
+    "AC-007 neutral observation vocabulary remains cross-subsystem deferred with zero estimate until shared authority and ownership of all edits are selected.",
+    "PRE-015 bounded owned-buffer editor may offer a larger architecture reduction but needs an explicit replacement contract and costed implementation before any savings claim.",
+    "AS-004 Syntect grammar behavior and bounded-state fit remain unproven; no adoption is recommended under current dialect semantics.",
+    "AS-001 must choose the smallest private core that preserves independent policies and worker-retained accounting; reject a helper that merely recreates a general cache framework.",
+    "AP-008 and AX-020 remain required paused rework. Their eventual implementation may obsolete some current call plumbing; every combined patch must recount rather than summing stale estimates.",
+    "Behavior replacement AS-009 and notice evidence AW-005 must precede deleting their current sole assertions; test helper savings cannot excuse lost scenarios.",
+    "Directory/worker lifetimes and AC-006 shared Arc ownership require implementation-time shutdown/drop verification; static reduction estimates are not lifecycle acceptance.",
+    "APP-SYN-003 is deliberately a small payload-preserving helper; keep repeated code if generic closure/error adaptation erases the expected net gain."
+  ],
+  "verification_performed": [
+    "Consumed all 87 input findings and all eight complete per-file evidence TSVs.",
+    "Bounded direct authority and source/caller/diff checks listed above; official cache registry/tag/docs/RustSec evidence read without adoption.",
+    "Programmatic one-entry-per-original-ID, package membership, JSON/TSV round-trip and range arithmetic validation.",
+    "No Cargo/build/tests/GUI/install/download/source/manifests/design/plan edits."
+  ],
+  "handoff": "Root owns final cross-subsystem accounting, Markdown memory/register and whole-codebase judgment. This report is observational audit evidence, not implementation authorization or acceptance."
+}

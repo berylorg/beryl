@@ -1,0 +1,2 @@
+path	status	review_depth	finding_ids	evidence
+crates/beryl/src/main.rs	audited	declarations_only	EN-001	1-3; complete compile_error bootstrap placeholder and existing source comment inspected; package composition authority and paused root plan confirm no executable implementation to simplify.

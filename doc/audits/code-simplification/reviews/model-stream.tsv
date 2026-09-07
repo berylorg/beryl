@@ -1,0 +1,23 @@
+path	status	review_depth	finding_ids	evidence
+crates/beryl-model/src/asset.rs	audited	full_bodies	MS-001,MS-006	1-463; AssetId/label/proof constructors and getters, both summary digests, all error bodies inspected; distinct proof domains retained.
+crates/beryl-model/src/availability.rs	audited	full_bodies	MS-006	1-33; complete Availability/UnavailableReason declarations and derives; bounded observed state retained.
+crates/beryl-model/src/ids.rs	audited	full_bodies	MS-001,MS-006	1-305; stable_identity macro parser/format/serde visitor and every invocation; draft transitions/content digest derivation; typed exact prefixes retained.
+crates/beryl-model/src/lib.rs	audited	full_bodies	MS-006	1-98; complete modules/re-exports and embedded examples inspected; pure shared boundary retained.
+crates/beryl-model/src/placement.rs	audited	full_bodies	MS-001,MS-006	1-190; MonitorId validation/serde, WindowBounds and all placement constructors/getters; nonzero geometry and exact hints retained.
+crates/beryl-model/src/provenance.rs	audited	full_bodies	MS-006	1-118; bounded_external_value macro constructor/serde/format and all invocations plus Provenance variants; exact bounded external values retained.
+crates/beryl-model/src/recovery.rs	audited	full_bodies	MS-001,MS-006	1-222; RecoveryItemSequenceAccumulator new/begin/update/finish_item/finish and role/error bodies; incremental domain-specific digest retained.
+crates/beryl-model/src/revision.rs	audited	full_bodies	MS-001,MS-006	1-118; typed_revision macro full bodies and all invocations; nonzero/overflow and scope separation retained.
+crates/beryl-model/src/runtime.rs	audited	full_bodies	MS-001,MS-006	1-364; bounded_text, Windows/POSIX syntax checks, all path/runtime constructors/serde/getters and binding; pure foreign-runtime validation retained.
+crates/beryl-model/src/syndic.rs	audited	full_bodies	MS-001,MS-006	1-226; fixed_digest/cas_generation full macros, profile/context/native-turn/session values and all methods/errors; domain separation retained.
+crates/beryl-model/tests/asset_identity.rs	audited	full_bodies	MS-005,MS-006	1-227; all seven test bodies, exact vectors, label extremes, count mismatch and asset/order sensitivity; redundant digest setup identified.
+crates/beryl-model/tests/identities.rs	audited	full_bodies	MS-006	1-96; all four test bodies; exact text/serde roundtrip, prefix separation and malformed input rejection retained.
+crates/beryl-model/tests/recovery_sequence.rs	audited	full_bodies	MS-006	1-50; both test bodies; fixed V1 recovery digest and ordinal/unfinished-item rejection retained.
+crates/beryl-model/tests/runtime_values.rs	audited	full_bodies	MS-006	1-87; all five test bodies; exact WSL name, absolute/foreign syntax, binding and serde validation retained.
+crates/beryl-model/tests/shared_values.rs	audited	full_bodies	MS-006	1-88; all five test bodies; revision zero/overflow, placement, availability and bounded provenance retained.
+crates/beryl-model/tests/syndic_values.rs	audited	full_bodies	MS-006	1-92; all seven test bodies; typed IDs/digests/revisions, draft transition, CAS generations/count and profile retained.
+crates/beryl-stream/src/channel.rs	audited	full_bodies	MS-002,MS-007	1-337; all construction, ring send/receive/wait/timeout, both drops, weak clone/observer, diagnostics and error bodies inspected.
+crates/beryl-stream/src/lib.rs	audited	full_bodies	MS-007,MS-008	1-54; complete module/re-export boundary and embedded example; structural timeout/custody contract retained.
+crates/beryl-stream/src/page.rs	audited	full_bodies	MS-003,MS-004	1-250; construction, lease generation/acquisition, diagnostic snapshots, clones, all lease accessors and zero/release Drop inspected.
+crates/beryl-stream/src/stream.rs	audited	full_bodies	MS-008	1-181; all identity/replay/page/cursor methods, source/sink traits and errors; exact sequence validation retained.
+crates/beryl-stream/tests/page_and_channel.rs	audited	full_bodies	MS-002,MS-003,MS-007	1-198; nonzero helper and all ten test bodies; capacity/reuse/FIFO/backpressure/close/deadline/allocation evidence retained.
+crates/beryl-stream/tests/stream_contract.rs	audited	full_bodies	MS-008	1-183; helpers, SliceSource and CollectSink full trait bodies plus all four tests; bounded fixture and contract rejection/release retained.

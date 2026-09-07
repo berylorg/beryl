@@ -1,0 +1,617 @@
+{
+  "status": "complete",
+  "baseline": "e6172f7c49bebef78d51831e621e70c8ac0d6a07",
+  "agent": "/root/complete_audit_app_connection",
+  "context_window": "01a07b16-4b8a-74c2-85d1-e79f389d4065",
+  "scope_count": 105,
+  "completed_count": 105,
+  "pending_count": 0,
+  "complete": true,
+  "read_ranges": [
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection.rs",
+      "read": "1-147",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/attachment.rs",
+      "read": "1-165",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/authority.rs",
+      "read": "1-764",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/driver_outcome.rs",
+      "read": "1-45",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/driver.rs",
+      "read": "1-1408",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/forwarding_hub.rs",
+      "read": "1-350",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/lease.rs",
+      "read": "1-303",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/lease/terminal_disposition.rs",
+      "read": "1-81",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/lifecycle.rs",
+      "read": "1-1335",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/persistent_failure.rs",
+      "read": "1-519",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker.rs",
+      "read": "1-32",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/approval.rs",
+      "read": "1-142",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/channel.rs",
+      "read": "1-376",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/consumer.rs",
+      "read": "1-187",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/consumer/lifecycle.rs",
+      "read": "1-182",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/consumer/staging.rs",
+      "read": "1-319",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester.rs",
+      "read": "1-337",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/activation.rs",
+      "read": "1-173",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/active.rs",
+      "read": "1-46",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/approval.rs",
+      "read": "1-163",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/compaction.rs",
+      "read": "1-260",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/construction.rs",
+      "read": "1-385",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/control.rs",
+      "read": "1-154",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/core.rs",
+      "read": "1-341",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/disposition.rs",
+      "read": "1-54",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/dynamic.rs",
+      "read": "1-181",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/lifecycle.rs",
+      "read": "1-381",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/operations.rs",
+      "read": "1-24",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/operations/publication.rs",
+      "read": "1-266",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/operations/staging.rs",
+      "read": "1-297",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/state.rs",
+      "read": "1-73",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/steering_user.rs",
+      "read": "1-496",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/steering_user/replay.rs",
+      "read": "1-62",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/steering_user/tests.rs",
+      "read": "1-4",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/submitted_user.rs",
+      "read": "1-380",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/ingester/terminal.rs",
+      "read": "1-469",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/loss.rs",
+      "read": "1-512",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/loss/abandonment.rs",
+      "read": "1-197",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/staging.rs",
+      "read": "1-51",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/steering_result.rs",
+      "read": "1-685",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/provider_broker/translation.rs",
+      "read": "1-349",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/recovery_source_broker.rs",
+      "read": "1-406",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/recovery_source_broker/tests.rs",
+      "read": "1-50",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/registry.rs",
+      "read": "1-357",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router.rs",
+      "read": "1-829",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/activation.rs",
+      "read": "1-134",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/active_steering.rs",
+      "read": "1-588",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/approval.rs",
+      "read": "1-392",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/close_reason.rs",
+      "read": "1-40",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/command.rs",
+      "read": "1-134",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/compaction.rs",
+      "read": "1-271",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/consumer.rs",
+      "read": "1-409",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/delayed_steering.rs",
+      "read": "1-337",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/dynamic_tool.rs",
+      "read": "1-379",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/loss.rs",
+      "read": "1-548",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/permit.rs",
+      "read": "1-674",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/persistent_failure.rs",
+      "read": "1-537",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/process.rs",
+      "read": "1-269",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/registration.rs",
+      "read": "1-146",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/snapshot.rs",
+      "read": "1-51",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/state.rs",
+      "read": "1-413",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/stop.rs",
+      "read": "1-515",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/target.rs",
+      "read": "1-152",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests.rs",
+      "read": "1-288",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/active_steering.rs",
+      "read": "1-374",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/compaction.rs",
+      "read": "1-118",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/delayed_steering.rs",
+      "read": "1-411",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/persistent_failure.rs",
+      "read": "1-726",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/provider_publication.rs",
+      "read": "1-341",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/queue_capacity.rs",
+      "read": "1-140",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/retirement.rs",
+      "read": "1-54",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/router/tests/stop_election.rs",
+      "read": "1-221",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/source_broker.rs",
+      "read": "1-170",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/target_command.rs",
+      "read": "1-354",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/src/cas_projection/connection/thread_closed.rs",
+      "read": "1-137",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/live_event_router.rs",
+      "read": "1-122",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/normal_terminal.rs",
+      "read": "1-310",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/normal_terminal/loss.rs",
+      "read": "1-369",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/normal_terminal/server.rs",
+      "read": "1-581",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/normal_terminal/steering_loss.rs",
+      "read": "1-251",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/normal_terminal/verification.rs",
+      "read": "1-286",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency.rs",
+      "read": "1-39",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/failure.rs",
+      "read": "1-163",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/fixture.rs",
+      "read": "1-499",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/generator.rs",
+      "read": "1-247",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/scale.rs",
+      "read": "1-75",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/server.rs",
+      "read": "1-317",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/provider_residency/verification.rs",
+      "read": "1-129",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/connection_driver_command_queue.rs",
+      "read": "1-72",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_channel.rs",
+      "read": "1-197",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user.rs",
+      "read": "1-403",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user/support.rs",
+      "read": "1-495",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user/support/frame.rs",
+      "read": "1-69",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user/support/storage.rs",
+      "read": "1-41",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user/support/terminal.rs",
+      "read": "1-96",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_checked_user/terminal.rs",
+      "read": "1-370",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_compaction_marker_failures.rs",
+      "read": "1-133",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_compaction_marker.rs",
+      "read": "1-507",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_ingester_operations.rs",
+      "read": "1-41",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_ingester.rs",
+      "read": "1-397",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_steering_user.rs",
+      "read": "1-560",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_steering_user/support.rs",
+      "read": "1-818",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/provider_broker_terminal.rs",
+      "read": "1-76",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/source_broker.rs",
+      "read": "1-266",
+      "unread": "none"
+    },
+    {
+      "path": "crates/beryl-app/tests/unit/stable_connection_process_fact.rs",
+      "read": "1-34",
+      "unread": "none"
+    }
+  ],
+  "unread_ranges": [],
+  "partially_read_source_files": [],
+  "authority_read": [
+    "doc/audits/code-simplification/README.md",
+    "crates/beryl-app/doc/design.md",
+    "crates/beryl-app/doc/design-live-projection-and-scheduling.md",
+    "crates/beryl-app/doc/design-live-capture.md",
+    "crates/beryl-app/doc/design-live-control.md",
+    "CAS-live system target reviewed; large initial display truncated in repair section; main connection/capture/stop/compaction/recovery contracts and later selected repair lines read",
+    "doc/systems/backend-runtime/design.md lines 136-195 (recovery and rigor)",
+    "crates/beryl-app/doc/design-shell-lifecycle.md lines 90-109 (same-home replacement)",
+    "doc/rework/beryl-home/REWORK.md lines 296-320 (unfinished recovery target)",
+    "doc/plan.md scope/paused work reviewed; initial complete-output display truncated so do not claim exhaustive plan read"
+  ],
+  "supporting_evidence": [
+    "doc/failures/cas-phase82-inert-adoption-ownership.md reviewed for old split broker/adoption rationale; historical support only and display had small truncation.",
+    "Serena initial instructions loaded, project root C:/Users/user/p/berylorg; relative paths start beryl/.",
+    "rag-rat index status healthy and semantic searches successful; root confirmed pinned executable version. No index writes performed."
+  ],
+  "resume_order": [
+    "No assigned source or test remains unread. Root auditor should integrate this exact 105-row result and synthesize findings against adjacent subsystems."
+  ],
+  "retained_guarantees": [
+    "Exact home/service/runtime/process/connection/session/turn/item identities and generations",
+    "Master-gate ordinary/failure election and typed custody",
+    "Ordered capacity-one broker acknowledgement and immediate Indeterminate/consuming-seal custody installation",
+    "Permission-approval stop obligation before acknowledgement and no repeated non-idempotent requests",
+    "Source page ownership, checked steering sequence, bounded queue/lane fences, physical worker retirement and exact receipts"
+  ],
+  "cross_findings": [
+    "BR-004 exclusively owns constant-false retained_item_result_present metric savings. Driver and both normal-terminal/residency test call sites fully reviewed and linked.",
+    "AC-001–AC-004 and AC-006 are production simplification proposals, 215–350 estimated net lines combined. No implementation or runtime validation performed.",
+    "AC-005 remains deferred with zero accepted savings after full build-test review: dormant unpublished candidates are required; target construction is unfinished and cannot be called dead.",
+    "AC-007 remains deferred with zero accepted savings pending backend/Syndic root synthesis and neutral observation vocabulary authority.",
+    "AC-008–AC-011 are separate test-support proposals, 245–390 estimated net lines combined, preserving every scenario and temporal/ownership assertion.",
+    "AC-006 and AC-010 both affect broker constructor-related code; production and test edits differ, but a joint implementation must recount wrapper/signature changes.",
+    "All assigned router source-local tests reviewed. Distinct publication, checked-steering, stop, compaction and loss permits preserve different callbacks, gates, winner order and custody. No generic permit/actor replacement accepted.",
+    "Existing std channels, beryl-stream bounded rings/pages and sha2 cover actual generic primitives. No new substantial crates.io replacement with demonstrated semantic fit emerged in this assignment; no new crate investigation or dependency recommendation claimed.",
+    "Test raw fragmented wire generation is purposeful bounded residency evidence; a whole-message mock framework would remove the property under test.",
+    "Exact retired/failure observations and live-source/drop ownership remain required even where public target bootstrap is unfinished."
+  ],
+  "resources": {
+    "durable_outputs": [
+      "doc/audits/code-simplification/reviews/app-connection.tsv",
+      "doc/audits/code-simplification/reviews/app-connection-findings.json",
+      "doc/audits/code-simplification/reviews/app-connection-resume.json"
+    ],
+    "temporary_files": [],
+    "background_processes": [],
+    "listeners": [],
+    "software_installed": [],
+    "tests_or_builds_run": false,
+    "source_edits": false,
+    "markdown_edits": false
+  },
+  "validation": {
+    "exact_scope": "105 unique paths; final path set equals original assigned TSV path set.",
+    "main_ledger": "All 105 paths found in baseline-bound root coverage.tsv.",
+    "baseline": "git hash-object --stdin-paths confirms all 105 working tree files match the baseline blobs in root coverage.tsv.",
+    "coverage": "105 audited: 102 full_bodies and 3 declarations_only; no pending/partial/blocked/stale/none entries.",
+    "findings": "11 unique local findings; 9 proposed, 2 deferred. BR-004 is the sole external finding ID and is root-owned.",
+    "whitespace": "git diff --check succeeded for the three owned review artifacts.",
+    "builds_tests": "Not run; review-only authorization.",
+    "source_changes": "No source/test/manifest/Markdown files edited; no installation, process launch, listeners or temporary files."
+  },
+  "summary": {
+    "proposed_net_lines": {
+      "min": 460,
+      "max": 740
+    },
+    "production": {
+      "min": 215,
+      "max": 350
+    },
+    "tests": {
+      "min": 245,
+      "max": 390
+    },
+    "accepted_implementation": false
+  }
+}

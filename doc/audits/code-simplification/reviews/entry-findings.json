@@ -1,0 +1,16 @@
+[
+  {
+    "id": "EN-001",
+    "title": "Retain the explicit incomplete bootstrap boundary during the audit",
+    "paths": ["crates/beryl/src/main.rs", "crates/beryl/Cargo.toml", "crates/beryl/doc/design.md", "doc/plan.md"],
+    "symbols": ["compile_error!"],
+    "evidence": ["The complete three-line entry file contains only an existing source comment and a compile_error declaring that bootstrap is reconstructed in later rework checkpoints.", "The package design assigns real bootstrap and diagnostic composition to this crate; the root implementation plan explicitly leaves that work paused."],
+    "proposal": "No simplification is identified in this placeholder. Do not replace it with a successful empty main or claim that the audited source baseline constitutes a runnable complete application. Review bootstrap implementation when its separate authorized work lands.",
+    "required_contract_changes": [],
+    "estimated_net_lines": 0,
+    "verification": ["Read the complete source, manifest, package design, and paused root plan; no build or test run."],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  }
+]

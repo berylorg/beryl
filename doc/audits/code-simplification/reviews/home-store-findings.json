@@ -1,0 +1,484 @@
+[
+  {
+    "id": "HS-001",
+    "title": "Validate recovered declarations once and share their physical family opening",
+    "paths": [
+      "crates/beryl-home-store/src/recovery.rs",
+      "crates/beryl-home-store/src/store/opening.rs",
+      "crates/beryl-home-store/src/domain.rs",
+      "crates/beryl-home-store/src/domain/registration.rs",
+      "crates/beryl-home-store/src/domain/reopen.rs",
+      "crates/beryl-home-store/tests/health_recovery.rs",
+      "crates/beryl-home-store/tests/domain_registration.rs",
+      "crates/beryl-home-store/tests/runtime_attachments.rs"
+    ],
+    "symbols": [
+      "HomeRecoveryCandidate::recover_same_home_inner",
+      "validate_generation_control",
+      "open_existing_database",
+      "reacquire_registry",
+      "open_existing_families",
+      "reacquire_families",
+      "DomainBlueprint::metadata",
+      "RegisteredDomain::metadata"
+    ],
+    "evidence": [
+      "recovery.rs:305-385 opens an unpublished replacement generation with admissions drained. opening.rs:234-390 already bounds/decodes its header and home revision; recovery.rs:337-338 already checks the original home identity/schema. validate_generation_control at recovery.rs:388-465 repeats those reads, then validates every domain before reacquire_registry repeats domain metadata and family validation.",
+      "domain/reopen.rs:5-36 validates and constructs each registered domain in one loop; construction can invoke attachment factories. Therefore the current all-domain preflight cannot simply be removed without changing callback ordering. Preserve that boundary while handing already validated declarations/family handles to construction.",
+      "domain/registration.rs:294-321 and domain/reopen.rs:58-89 repeat existence/open loops. domain.rs:468-482 and 507-521 independently allocate equivalent owned family metadata, including when callers only compare declarations."
+    ],
+    "proposal": "Use one bounded declaration preflight for the unpublished candidate, preserving all-domain validation before attachment construction. Reuse the opener's validated header/revision, share declaration comparison and family opening, and pass validated results to the construction pass. Compare borrowed declaration fields when no encoded metadata is needed. Keep registration/recovery-specific error projection, exact TypeId ownership, missing-family refusal and attachment retirement.",
+    "required_contract_changes": "No intended guarantee change. Preserve HomeMismatch, storage provenance and preflight-before-callback behavior; if consolidating public error categories, explicitly amend the package recovery contract first.",
+    "estimated_net_lines": {
+      "minimum": 100,
+      "maximum": 180,
+      "basis": "Remove duplicate header/revision reader and repeated family/metadata loops, less shared preflight/result plumbing; does not count eliminating attachment machinery."
+    },
+    "verification": [
+      "Retain health_recovery, domain_registration, domain_type_identity and runtime_attachments cases.",
+      "Add a multi-domain corrupted-later-registration case asserting no earlier attachment factory runs before preflight rejection.",
+      "Verify missing/oversized metadata, wrong home/schema and underlying I/O remain correctly classified without creating missing keyspaces."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-002",
+    "title": "Replace duplicated proof receipt fences with the existing unforgeable sealed command identity",
+    "paths": [
+      "crates/beryl-home-store/src/proof/command.rs",
+      "crates/beryl-home-store/src/proof/receipt.rs",
+      "crates/beryl-home-store/src/proof/execution.rs",
+      "crates/beryl-home-store/tests/proof_command_identity.rs",
+      "crates/beryl-home-store/tests/proof_composition.rs",
+      "crates/beryl-home-store/tests/fixed_digest_home_proof_protocol.rs"
+    ],
+    "symbols": [
+      "HomeProofCommand::seal",
+      "ProofCommandIdentityAllocator::allocate",
+      "ExecutableHomeProofCommand",
+      "ProofReceiptConsumer",
+      "HomeProofReceipt",
+      "ProofRoleFence",
+      "ProofReceiptConsumer::matches_receipt",
+      "HomeStore::consume_proof_receipt"
+    ],
+    "evidence": [
+      "receipt.rs:19-31 and 45-57 duplicate home revision, TypeId, numeric protocol/operation IDs, source fence and a fixed witness fence array. Constructors at 85-149 rebuild these copies; matches_receipt at 151-161 compares all of them in addition to command_id.",
+      "command.rs assigns a non-reused process-local identity at sealing and moves the immutable command into an opaque executable. Neither executable, receipt nor consumer is Clone or publicly constructible. Reference tracing found one receipt mint in proof/execution.rs and one consumer mint in seal; proof_command_identity exercises sticky exhaustion.",
+      "Execution validates the complete source/witness declarations and revision fences before minting. Existing proof_composition cases at 545-671 reject swapped role/revision/correlation receipts and identical-fact commands with different identities. Receipt consumption intentionally permits a later unrelated home revision (834-891).",
+      "External caller trace: syndic-storage/src/draft_piece/admission/readiness_source/attempt.rs:70-121 retains and takes its own consumer and consumes it before exposing the retained page/publication. It never reconstructs receipt fences."
+    ],
+    "proposal": "Keep a private compact seal containing store identity, home generation and unique command identity in each move-only half, together with expected correlation in the consumer and observed correlation in the receipt. Keep generic P, all execution-time TypeId/role/revision checks, live-generation admission and exact correlation comparison. Remove duplicated post-execution role/revision arrays and numeric/type comparisons that cannot differ for the same immutable command. Narrow the receipt constructor to the proof module. Preserve SourceFenceMismatch for a different command identity.",
+    "required_contract_changes": "No reduction in the sealed expectation guarantee is intended. Clarify in the package domain API/storage proof contract that the unforgeable command identity binds immutable role/revision/protocol facts; any promised Debug field presentation needs deliberate retention or revision. Expected-versus-observed source correlation remains independently checked.",
+    "estimated_net_lines": {
+      "minimum": 75,
+      "maximum": 115,
+      "basis": "Two field sets, two fence construction loops, ProofRoleFence and redundant comparisons minus a compact shared seal; no caller redesign assumed."
+    },
+    "verification": [
+      "Run complete proof_composition, proof_command_identity and fixed_digest_home_proof_protocol tests plus the Syndic retained-attempt consumer tests.",
+      "Add same-command valid-shape expected-source correlation differing from observed source while witnesses agree with observed source; consumption must still return CorrelationMismatch.",
+      "Keep compile-time move-only/type boundaries and runtime foreign store, obsolete generation, substituted complete pair, role swap, identical-fact distinct command and identity-exhaustion rejection."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-003",
+    "title": "Replace inaccessible collision fact archives with a compact closed-scope marker",
+    "paths": [
+      "crates/beryl-home-store/src/reconciliation.rs",
+      "crates/beryl-home-store/src/reconciliation/registry.rs",
+      "crates/beryl-home-store/src/successor.rs",
+      "crates/beryl-home-store/src/successor/execution.rs",
+      "crates/beryl-home-store/tests/targeted_reconciliation.rs",
+      "crates/beryl-home-store/tests/successor_reconciliation/support/flight_capacity.rs",
+      "crates/beryl-home-store/tests/successor_reconciliation/support/ordinary_source.rs",
+      "crates/beryl-home-store/tests/successor_reconciliation/support/witness_adversarial.rs"
+    ],
+    "symbols": [
+      "SealedCollision",
+      "SealedDomain",
+      "SealedRecord",
+      "SealedFirstAcceptancePromotion",
+      "seal_collision",
+      "ScopeState::Closed",
+      "dispose_closed_scopes",
+      "FirstAcceptancePromotionPointFact",
+      "point_fact",
+      "correlation_digest"
+    ],
+    "evidence": [
+      "reconciliation.rs:144-167 stores sealed diagnostic structures whose data fields are underscore-prefixed; only charged_bytes is read. seal_collision at 482-537 clones record keys and hashes old/new data into the archive. Registry Closed retains _facts; disposal reads the charge but no API inspects the facts.",
+      "successor.rs:361-461 and successor/execution.rs collect per-point identity/digest diagnostics used by sealing. Typed semantic outcomes and the three exact successor heads have separate control flow and must remain.",
+      "All targeted_reconciliation and successor support bodies were reviewed. Tests inspect terminal collision, memoization, busy home custody, descriptor-to-compact charge replacement and retry flights; none consumes the archived key/digest data. targeted_reconciliation:511-591 proves that a closed handle still owns the home until orderly close; 663-715 proves retained charge replacement matters."
+    ],
+    "proposal": "After an Operator-approved contract change, retain the scope token, compact failure kind, completed shared flight, closed registry slot and home keepalive, but release descriptor payload and remove the inaccessible key/revision/digest archive and its collection/hashing plumbing. Preserve exact typed source/asset admission and the fixed three-head successor checks. Charge the compact retained marker conservatively and keep one terminal result for every joined handle.",
+    "required_contract_changes": "Explicit design change required. doc/systems/beryl-home-storage/design.md:343,528-549 and package design-atomic-commands.md:99-107 require bounded sealed collision facts and their accounting. Replace that diagnostic retention promise with a bounded terminal failure marker. This gives up retained detailed collision evidence; it does not authorize forgetting the closed scope, losing custody, weakening witness admission or reopening a closed result.",
+    "estimated_net_lines": {
+      "minimum": 150,
+      "maximum": 260,
+      "basis": "Archive structs/sealer, diagnostic-only point/digest collection and associated exact archive accounting; excludes closed-slot/flight/lifetime machinery and successor semantic checks."
+    },
+    "verification": [
+      "Keep targeted_reconciliation closed-handle Busy, orderly-close, charge replacement, joined result and retry cases.",
+      "Keep full successor adversarial truth table, source/asset correlation, invalid derived record before current acquisition, malformed current record and I/O classification tests.",
+      "Assert the closed scope retains only its bounded marker/flight and that descriptor allocations release exactly once; no path converts collision into retry or successful promotion."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high for dead diagnostic consumption; medium for value of the contract change",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-004",
+    "title": "Share bounded physical point acquisition and error provenance across readers",
+    "paths": [
+      "crates/beryl-home-store/src/read.rs",
+      "crates/beryl-home-store/src/read/execute.rs",
+      "crates/beryl-home-store/src/reconciliation/reader.rs",
+      "crates/beryl-home-store/src/successor.rs",
+      "crates/beryl-home-store/src/domain/callback.rs",
+      "crates/beryl-home-store/tests/read_health_classification.rs",
+      "crates/beryl-home-store/tests/callback_error_provenance.rs",
+      "crates/beryl-home-store/tests/successor_reconciliation/support/witness_adversarial.rs"
+    ],
+    "symbols": [
+      "ReconciliationReader",
+      "classify_callback_error",
+      "classify_reconciliation_callback_error",
+      "ClassifiedFjallError"
+    ],
+    "evidence": [
+      "read/execute.rs:5-29, reconciliation/reader.rs:143-173 and successor.rs:387-437 repeat metadata-first point lookup, bound checks and acquisition. Ordinary reader paths box ClassifiedFjallError; the reconciliation/successor duplicates directly box fjall::Error.",
+      "domain/callback.rs:72-98 recognizes classified physical provenance, but unknown boxed errors fall back to structural failure. Duplicating adapters makes equivalent dependency failures take different health paths.",
+      "Reconciliation key decoding at reader.rs:121-135 also duplicates ordinary typed decoder mechanics at read/execute.rs:227-250. Successor limits have deliberate semantic-collision precedence and cannot be merged blindly."
+    ],
+    "proposal": "Introduce a narrow private physical acquisition helper returning the shared classified storage error and bounded acquired record. Layer ordinary reader, reconciliation and successor-specific envelope/decoder/limit handling above it. Share exact codec validation only where callback/error ordering is identical. Do not generalize into an exposed cross-domain reader.",
+    "required_contract_changes": "The shared mechanics preserve bounded reads. Correcting raw-error fallback may change observed recovery classification and must be treated as an explicit behavioral fix against the existing typed-provenance contract, with stage-specific expected outcomes reviewed.",
+    "estimated_net_lines": {
+      "minimum": 40,
+      "maximum": 85,
+      "basis": "Three physical adapters and repeated exact decoding minus one shared helper and small context mappings; independent of diagnostic archive deletion except a few call sites."
+    },
+    "verification": [
+      "Exercise the same physical transient/terminal/decode failure through ordinary, reconciliation and successor reads and assert intended health classification.",
+      "Retain oversized-before-acquire, malformed-current, invalid-derived-before-current and budget-versus-corruption precedence cases.",
+      "Run existing callback_error_provenance and read_health_classification tests without reducing assertions."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-005",
+    "title": "Carry one writer-time snapshot through current-command admission",
+    "paths": [
+      "crates/beryl-home-store/src/writer.rs",
+      "crates/beryl-home-store/src/command.rs",
+      "crates/beryl-home-store/src/command/participant.rs",
+      "crates/beryl-home-store/src/writer/batch.rs",
+      "crates/beryl-home-store/src/writer/fault_context.rs",
+      "crates/beryl-home-store/tests/current_domain_commands.rs",
+      "crates/beryl-home-store/tests/validation_participants.rs",
+      "crates/beryl-home-store/tests/writer_concurrency.rs"
+    ],
+    "symbols": [
+      "execute_current_admitted",
+      "execute_admitted",
+      "PreparedMutationParticipant",
+      "PreparedMutation",
+      "AssembledBatch"
+    ],
+    "evidence": [
+      "writer.rs:354-413 captures current home/domain revision and declaration metadata while the writer is held, constructs a temporary HomeCommand, then delegates to execute_admitted, which snapshots again at 449 and validates metadata again around 480.",
+      "The same exclusive writer prevents intervening Beryl mutation or registration between these steps. Current-domain tests require writer-time revision capture and logical validation against that exact admitted state.",
+      "PreparedMutationParticipant at writer.rs:81-101 wraps a slot already used solely inside prepared participants; AssembledBatch is a similarly thin private wrapper. Broader prepare/assemble fusion was investigated and rejected: writer.rs:512-533 prepares all participants before intended_receipt at 540 checks revision exhaustion, and contribution starts only at 545."
+    ],
+    "proposal": "Factor the common admitted execution path to accept its already acquired writer-time snapshot and validated command fences, so current commands avoid rebuilding an ordinary command and repeating control reads. Collapse private one-field wrappers when touched. Keep the existing prepare-all, receipt-capacity-check, contribute-all ordering and current-command cancellation/fault scope.",
+    "required_contract_changes": "None intended. Ordinary caller-supplied expected revisions still require validation; only private handoff of already validated state under the same held writer may skip work.",
+    "estimated_net_lines": {
+      "minimum": 40,
+      "maximum": 85,
+      "basis": "Temporary command/fence construction and repeated snapshot plumbing plus thin wrappers, less a private admitted-state parameter; excludes public mutation/preparation interfaces."
+    },
+    "verification": [
+      "Run current_domain_commands blocked-writer, stale logical validation and scoped-fault tests.",
+      "Retain validation_participants cancellation/type/duplicate role ordering and writer_concurrency coherent snapshot cases.",
+      "Add counters proving one current-command metadata acquisition and no contribution before any later participant preparation or receipt-overflow failure."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium-high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-006",
+    "title": "Consolidate the theme repository's staged-file replacement mechanics",
+    "paths": [
+      "crates/beryl-home-store/src/theme/operations.rs",
+      "crates/beryl-home-store/src/theme/platform.rs",
+      "crates/beryl-home-store/src/theme/types.rs",
+      "crates/beryl-home-store/tests/theme_repository.rs"
+    ],
+    "symbols": [
+      "replace_theme_document",
+      "install_theme_document",
+      "publish_manifest_inner",
+      "classify_document_failure",
+      "classify_manifest",
+      "classify_install",
+      "stage_source",
+      "require_evidence_bounds"
+    ],
+    "evidence": [
+      "theme/operations.rs:134-256,270-387 and611-729 repeat stage validation, expected identity checks, replacement fault seams, directory synchronization, verification and three-way classification. classify_manifest and classify_install at 760-814 repeat the same manifest outcome mapping with different document evidence.",
+      "classify_document_failure at 731-740 accepts unused stage/source values; publish_manifest at 572-609 carries an unused Option<()> argument. These are direct local cleanup candidates.",
+      "theme_repository exercises document replacement, manifest-last install/delete, inert files, exact fresh-generation reconciliation and physical faults. The duplicated mechanics cannot erase these owner-specific publication boundaries."
+    ],
+    "proposal": "Extract a small physical staged-file publication helper with explicit pre-replace, replaced-but-unconfirmed and durable states; let document, manifest and install wrappers construct their exact evidence/outcomes. Stage both install inputs before the document write, keep manifest publication last, and remove unused private parameters. Consider separately replacing fixed evidence shape bookkeeping with fixed-size representations only if explicit operation limits retain their contract.",
+    "required_contract_changes": "No change for narrow helper/unused parameters. Any removal of public ThemeOperationLimits fields requires coordinated package physical-repository and beryl-state theme caller changes; that optional extension is excluded from the estimate.",
+    "estimated_net_lines": {
+      "minimum": 100,
+      "maximum": 180,
+      "basis": "Three repeated physical sequences and two outcome classifiers minus a narrow helper/state return; excludes durable barriers, stream hashing and theme semantics."
+    },
+    "verification": [
+      "Run every theme_repository failure cut and old/intended/collision reconciliation case.",
+      "Assert document-first/manifest-last order, complete source length/digest validation before replacement, inert residue, and committed deletion despite later cleanup failure.",
+      "Retain stale/foreign snapshot refusal and exact NotCommitted/Committed/Indeterminate evidence."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-007",
+    "title": "Delete a literal-only envelope test and consolidate repeated behavioral fixtures",
+    "paths": [
+      "crates/beryl-home-store/src/footprint.rs",
+      "crates/beryl-home-store/tests/domain_family_capacity.rs",
+      "crates/beryl-home-store/tests/proof_composition.rs",
+      "crates/beryl-home-store/tests/support/mod.rs",
+      "crates/beryl-home-store/tests/bounded_reads.rs",
+      "crates/beryl-home-store/tests/current_domain_commands.rs",
+      "crates/beryl-home-store/tests/typed_commands.rs",
+      "crates/beryl-home-store/tests/validation_participants.rs",
+      "crates/beryl-home-store/tests/read_health_classification.rs",
+      "crates/beryl-home-store/tests/writer_physical_faults.rs",
+      "crates/beryl-home-store/tests/crash_cut_points.rs",
+      "crates/beryl-home-store/tests/home_ownership.rs",
+      "crates/beryl-home-store/tests/parent_forced_termination.rs",
+      "crates/beryl-home-store/tests/sidecar_durability.rs"
+    ],
+    "symbols": [
+      "footprint.rs source-local metadata envelope test",
+      "many_families fixture",
+      "agreement proof fixture macro",
+      "simple_domain",
+      "Holder"
+    ],
+    "evidence": [
+      "footprint.rs:273-313 creates a fake empty-family domain and compares a literal actual=26 to a limit; it does not call the metadata encoder. domain_family_capacity already checks actual encoded metadata and rejected capacity boundaries.",
+      "domain_family_capacity.rs:25-159 lists the same 73 codec/family declarations twice. A single macro invocation can emit both. proof_composition.rs:292-357 manually implements AlphaProof immediately beside the equivalent reusable agreement macro.",
+      "Byte put/commit/read helpers repeat across bounded_reads:161-175, current_domain_commands:178-197, typed_commands:478-504, validation_participants:145-171, read_health_classification:33-47 and writer_physical_faults:182-210. tests/support/mod.rs already owns the byte domain and fixture infrastructure.",
+      "Process fixtures repeat spawn-current-test, environment setup, bounded waiting/kill and durable old/new assertions. home_ownership:87-154 already provides a local RAII child pattern suitable for a responsibility-named shared support module; abort and parent termination must remain separate behavioral modes."
+    ],
+    "proposal": "Remove the literal-only source test. Generate codec types and family declarations from one fixture list, use the existing proof agreement macro for Alpha, and place narrowly shared byte-operation and child-process lifecycle helpers under tests/support. Keep every behavioral scenario and each fault seam; avoid a generic fixture framework or assertions tied to implementation-plan/source shape.",
+    "required_contract_changes": "None. This changes fixture representation and deletes a non-test; real encoding, durability and lifecycle assertions stay.",
+    "estimated_net_lines": {
+      "minimum": 230,
+      "maximum": 370,
+      "basis": "About 40 fake-test lines, 70 duplicate declarations, 30 duplicate proof implementation, plus repeated helpers minus shared code; do not add this estimate again to production findings."
+    },
+    "verification": [
+      "Compare the retained test-case inventory and assertion coverage before/after fixture consolidation.",
+      "Run affected integration targets with their existing feature matrix, including real child abort and parent kill.",
+      "Ensure shared child cleanup kills only the child it owns and bounded waits preserve all crash-cut outcomes."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed"
+  },
+  {
+    "id": "HS-008",
+    "title": "Retain typed ownership, two-stage preparation and reconciliation custody while simplifying internals",
+    "paths": [
+      "crates/beryl-home-store/src/domain.rs",
+      "crates/beryl-home-store/src/domain/attachment.rs",
+      "crates/beryl-home-store/src/domain/definition.rs",
+      "crates/beryl-home-store/src/domain/validation.rs",
+      "crates/beryl-home-store/src/command/participant.rs",
+      "crates/beryl-home-store/src/command/result.rs",
+      "crates/beryl-home-store/src/health.rs",
+      "crates/beryl-home-store/src/ownership.rs",
+      "crates/beryl-home-store/src/ownership/windows.rs",
+      "crates/beryl-home-store/src/reconciliation/registry.rs",
+      "crates/beryl-home-store/src/reconciliation.rs",
+      "crates/beryl-home-store/src/store.rs",
+      "crates/beryl-home-store/src/writer.rs",
+      "crates/beryl-home-store/tests/domain_type_identity.rs",
+      "crates/beryl-home-store/tests/runtime_attachments.rs",
+      "crates/beryl-home-store/tests/committed_local_finalization.rs",
+      "crates/beryl-home-store/tests/writer_physical_faults.rs",
+      "crates/beryl-home-store/tests/targeted_reconciliation.rs"
+    ],
+    "symbols": [
+      "DomainOwner",
+      "DomainHandle",
+      "AttachmentSlot",
+      "HealthAdmission",
+      "CommandOutcome",
+      "ReconciliationRegistry",
+      "ReconciliationHandle",
+      "StoreGeneration",
+      "ErasedPreparedMutation"
+    ],
+    "evidence": [
+      "Complete source and test review confirms live TypeId ownership is not replaceable by persisted names; old-generation and alias-type tests reject such substitutions.",
+      "All participants prepare before any contribute callback and before durable batch commit. Fusing preparation/contribution changes observable callback ordering and revision-exhaustion behavior.",
+      "Indeterminate outcomes install custody before exposing the result. Dropped stores/handles cannot release the home lock while verifying or closed scopes own required state; joined flights and explicit close are separately tested.",
+      "StoreGeneration, registry and attachment retirement paths are intentionally idempotent and order-sensitive: early explicit retirement prevents callbacks outliving engine ownership; Drop is still needed on abort paths. Health admission/drain and generation fencing are distinct from engine health."
+    ],
+    "proposal": "Retain these guarantees and their focused tests. Apply only the independently justified internal reductions in HS-001 through HS-005. A one-variant Maintenance enum can be collapsed locally when recovery is touched, but it does not justify a separate architecture change. Do not replace typed adapters with raw Fjall handles or remove outcome/custody states to reduce file count.",
+    "required_contract_changes": "None; weakening these would contradict existing home ownership, atomic command and bounded-resource authority.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Retained boundary; no savings claimed."
+    },
+    "verification": [
+      "Existing complete typed identity, attachment, finalization, concurrency, physical fault and reconciliation custody suites are the required preservation evidence."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  },
+  {
+    "id": "HS-009",
+    "title": "Retain the bounded watcher pending a lifecycle-compatible native backend",
+    "paths": [
+      "crates/beryl-home-store/src/theme/watcher.rs",
+      "crates/beryl-home-store/src/theme/types.rs",
+      "crates/beryl-home-store/tests/theme_watcher.rs"
+    ],
+    "symbols": [
+      "WatchShared",
+      "ThemeWatcherCoordinator",
+      "ThemeWatchSubscription",
+      "observe",
+      "stamp",
+      "emit_changes"
+    ],
+    "evidence": [
+      "watcher.rs:152-216 owns a polling worker and joins it on shutdown; 219-301 scans/hashes bounded file observations and emits neutral hints. Queue logic at 34-136 coalesces and replaces overflow with one bounded hint.",
+      "A mature native watcher could remove routine content hashing, but notify 8.2.0 Windows source discards its spawned JoinHandle and Drop only sends Stop. Its fixed 16 KiB read buffer and direct callback can feed a bounded adapter, yet completion of watcher drop does not prove worker termination. This is a semantic gap with Beryl's current worker retirement, not merely an API naming difference."
+    ],
+    "proposal": "Do not add notify as a claimed drop-in deletion now. If native watching becomes a performance objective, design an explicitly acknowledged worker-retirement boundary and bounded event adapter, and decide how remote/WSL filesystems receive refreshes. Keep neutral hints/coalescing/generation retirement. Never replace this with the unbounded state of a generic recursive PollWatcher without inspecting and bounding it.",
+    "required_contract_changes": "Native replacement requires an explicit lifecycle/platform design decision or an upstream-compatible acknowledged shutdown API. Replacing guaranteed current polling coverage with native-only best effort would weaken supported filesystem behavior. No current authority edit is proposed.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "No safe net deletion claimed. A native backend might remove 150-190 scanner/worker lines but needs roughly 80-150 adapter/lifecycle lines and fallback policy; unresolved fit dominates this estimate."
+    },
+    "verification": [
+      "Before adoption: Windows event bursts and overflow; directory disappearance/recreation; atomic rename; irrelevant files; generation retirement with no surviving callbacks/worker; remote/WSL behavior; existing coalescing/shutdown tests.",
+      "No package installation, dependency resolution or tests were performed during this observational audit."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "notify",
+        "version": "8.2.0 (latest stable checked 2026-09-06); 9.0.0-rc.5 is a prerelease",
+        "assessment": "Mature but rejected as a drop-in simplification for this contract.",
+        "license": "notify CC0-1.0; notify-types MIT OR Apache-2.0",
+        "msrv": "Rust 1.77",
+        "features": "For Windows use default-features=false and no optional channel/serde/debouncer features. Default feature is macos_fsevent; macOS alternatives need deliberate target configuration.",
+        "platforms": "Windows ReadDirectoryChangesW; Linux/Android inotify; macOS FSEvents/kqueue; BSD/iOS kqueue; polling fallback. Native notifications can be absent on network filesystems and WSL Windows-mounted paths.",
+        "maintenance_and_adoption": "Stable 8.2.0 released 2025-08-03; 9.0 prereleases continue through 2026-08-30. Typst's upstream workspace directly declares notify = \"8\". Release history extends back to 2014.",
+        "dependency_cost": "notify-types, libc, log, walkdir, target windows-sys 0.60.1; other targets add native backend dependencies. Optional crossbeam/flume are unnecessary. Existing Beryl bounded coalescing queue still needed.",
+        "advisories": "Upstream GitHub advisory page showed no published advisories on 2026-09-06. Targeted RustSec search found no notify-specific advisory; this is not a resolved transitive-graph security audit.",
+        "source_notes": [
+          {
+            "url": "https://docs.rs/crate/notify/latest",
+            "supports": "Version/release dates, platform summary and notify-types license."
+          },
+          {
+            "url": "https://raw.githubusercontent.com/notify-rs/notify/notify-8.2.0/notify/Cargo.toml",
+            "supports": "CC0 license, features and target dependency declarations."
+          },
+          {
+            "url": "https://raw.githubusercontent.com/notify-rs/notify/notify-8.2.0/Cargo.toml",
+            "supports": "MSRV and dependency versions."
+          },
+          {
+            "url": "https://raw.githubusercontent.com/notify-rs/notify/notify-8.2.0/notify/src/windows.rs",
+            "supports": "Fixed 16384-byte buffer; thread spawn result discarded at lines 95-112; unbounded action/control channels; callback delivery; Drop only enqueues Stop at 550-555."
+          },
+          {
+            "url": "https://docs.rs/notify/latest/notify/",
+            "supports": "Documented network/WSL and editor replacement limitations."
+          },
+          {
+            "url": "https://github.com/typst/typst/blob/main/Cargo.toml",
+            "supports": "Actual upstream adoption."
+          },
+          {
+            "url": "https://github.com/notify-rs/notify/security/advisories",
+            "supports": "No published upstream advisories shown."
+          },
+          {
+            "url": "https://rustsec.org/advisories/",
+            "supports": "Advisory search surface; no dependency graph audit claimed."
+          }
+        ]
+      }
+    ],
+    "confidence": "high on current Windows lifecycle mismatch; medium on future adapter savings",
+    "disposition": "retained"
+  },
+  {
+    "id": "HS-010",
+    "title": "Retain exact storage codecs and durable file publication instead of forcing generic crates",
+    "paths": [
+      "crates/beryl-home-store/src/header.rs",
+      "crates/beryl-home-store/src/metadata.rs",
+      "crates/beryl-home-store/src/read.rs",
+      "crates/beryl-home-store/src/store/opening.rs",
+      "crates/beryl-home-store/src/store/profile.rs",
+      "crates/beryl-home-store/src/sidecar.rs",
+      "crates/beryl-home-store/src/sidecar/io.rs",
+      "crates/beryl-home-store/src/theme/platform.rs",
+      "crates/beryl-home-store/src/theme/operations.rs",
+      "crates/beryl-home-store/tests/domain_family_capacity.rs",
+      "crates/beryl-home-store/tests/sidecar_publication_barriers.rs",
+      "crates/beryl-home-store/tests/sidecar_physical_faults.rs",
+      "crates/beryl-home-store/tests/sidecar_reopen_validation.rs"
+    ],
+    "symbols": [
+      "HomeHeader",
+      "DomainMetadata",
+      "StorageProfile",
+      "stage_source",
+      "AdmittedSidecar"
+    ],
+    "evidence": [
+      "Header/registry codecs encode exact bounded persistent formats and expose metadata before value acquisition. The consumed owned Fjall fork supplies the metadata-first point/cursor and bounded capacity contracts used here; generic public key-value replacement is not equivalent.",
+      "Sidecar publication deliberately preserves inert residue and validates existing immutable targets with identity/content checks plus directory barrier repair. Theme files require complete staged bytes, atomic stable replacement, manifest-last membership and classified uncertain publication.",
+      "The local staged-file helper is about 70 lines; replacing it alone cannot erase outcome/evidence or directory-durability plumbing. Automatic temporary-file deletion would contradict inert-residue ownership in failure/reconciliation paths."
+    ],
+    "proposal": "Keep the small exact codecs and the physical publication contract. Share local mechanics as in HS-006, but do not add a generic serialization or atomic-write dependency for marginal source savings. No substantial storage-engine replacement was justified by this package audit.",
+    "required_contract_changes": "A storage engine replacement or automatic residue cleanup would require separate explicit storage/physical repository redesign; neither is proposed here.",
+    "estimated_net_lines": {
+      "minimum": 0,
+      "maximum": 0,
+      "basis": "Retained mechanics; no new crate recommendation or unverified dependency savings."
+    },
+    "verification": [
+      "Preserve actual encoded family capacity, metadata-before-value bounds, sidecar barriers, physical error provenance and explicit exhaustive reopen validation tests."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "retained"
+  }
+]

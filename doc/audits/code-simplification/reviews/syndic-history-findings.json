@@ -1,0 +1,513 @@
+[
+  {
+    "id": "DH-001",
+    "title": "Use one complete local materializer-state validator",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/materializer/model.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/engine.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/codec.rs",
+      "crates/syndic-storage/tests/draft_composer_materializer.rs"
+    ],
+    "symbols": [
+      "DraftComposerBuildRecordV1::local_shape_error",
+      "validate_build_identity",
+      "decode_build"
+    ],
+    "evidence": [
+      "model.rs:441-697 checks cursor, carry, marker, output-option and lifecycle coherence; engine.rs:1303-1496 calls it and then repeats most of those checks, including planning/writing/draining cases.",
+      "The engine also supplies additional checks that the model validator does not fully establish: summary-derived content identity, encoder/record piece ceilings outside planning, and complete ReadyToSeal/Sealed summary equality. These must be retained in the combined implementation.",
+      "The engine terminal branch clones the build into five open lifecycles solely to call local_shape_error; the model terminal branch already accepts exactly the disjunction of its reachable phases."
+    ],
+    "proposal": "Consolidate the union of local checks in one model-owned validation implementation, with a small keyed engine wrapper. Preserve engine-only conditions in explicit shared helpers or the wrapper where needed to keep existing decode/error behavior. Compute terminal reachability without cloning five carries. Keep storage-dependent manifest, source, output-record and publication validation separate.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -165,
+      "high": -110,
+      "basis": "Approximately 195 engine-validation lines overlap the 257-line model validator. Reserve 35-70 lines for the missing union conditions, keyed/error wrappers and focused equivalence checks; conservative 110-165 net.",
+      "overlap": "Only local validators and terminal reachability. Excludes DH-002 state conversions/build updates, immutable-output validation, codec field deletion and SC content/fold work."
+    },
+    "verification": [
+      "Compare the accepted/rejected set of both old validators with the replacement over each lifecycle, cursor/carry boundary, all output-option combinations and malformed counts.",
+      "Retain every DraftComposerBuildCorruption case, truncated encodings, terminal maximal-shape probes and exact error classification; explicitly cover the engine-only content-id/final-summary conditions.",
+      "Run normal and test-faults focused Cargo checks and materializer tests when implementation is authorized."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-002",
+    "title": "Keep one encoder representation and update only changed build state",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/materializer/model.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/engine.rs"
+    ],
+    "symbols": [
+      "EncoderWork",
+      "DraftComposerEncoderStateV1",
+      "EncoderWork::from_state",
+      "EncoderWork::state",
+      "copy_build",
+      "prepare_drain_step"
+    ],
+    "evidence": [
+      "engine.rs:109-185 declares the same 14 fields as DraftComposerEncoderStateV1 and converts them in both directions; from_state copies the carry buffer.",
+      "copy_build at engine.rs:1228-1250 is a nine-argument forwarding constructor. Writing, draining, sealing and terminal callers repeatedly enumerate unchanged build fields.",
+      "prepare_drain_step repeats the ten-field record frontier constructor to change chunk_start/chunk_ordinal in three branches."
+    ],
+    "proposal": "Implement private encoder operations directly on the existing encoder state, using restricted field visibility or model-owned mutation methods while keeping its public read surface. Replace whole-field build copying with named private updates for encoder progress, record progress, seal and terminal lifecycle. Share the checked next-chunk record-frontier update.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -130,
+      "high": -85,
+      "basis": "Remove about 55 lines of duplicate encoder declaration/conversion, about 25 forwarding-constructor lines and 45-75 repeated unchanged arguments; subtract private update methods, call adaptations and equivalence verification: 85-130 net.",
+      "overlap": "Does not remove public accessors, persisted fields, Planning/Writing/Draining/ReadyToSeal phases, DH-001 validation, or SC synchronous composer fold logic. The terminal-validation clone deletion belongs only to DH-001."
+    },
+    "verification": [
+      "Compare canonical build bytes before/after every phase transition, cancellation/failure/supersession and seal.",
+      "Retain UTF-8 scalar chunk edges, soft carry ceiling, chunk/text-span boundaries, restart phase coverage and all input/read/write/resident bound assertions.",
+      "Keep expected and next states independently owned for exact writer admission; do not move away the source comparison state."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-003",
+    "title": "Share history stack, accounting and ancestry mechanics",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/retention/authentication.rs",
+      "crates/syndic-storage/src/draft_piece/history/retention/authentication/witness.rs"
+    ],
+    "symbols": [
+      "authenticate_draft_edit_history_frontier_v1",
+      "draft_edit_history_frontier_is_authenticated_v1",
+      "transition_is_ancestor_of",
+      "transition_is_ancestor_of_read",
+      "retained_stack_link"
+    ],
+    "evidence": [
+      "authentication.rs:43-169 and 324-461 repeat the frontier head/floor/undo/redo relationships, transition-kind stack checks and exact retained-charge calculation.",
+      "witness.rs:49-99 repeats the same 64-level depth-difference traversal, with only point-read/error adaptation differing.",
+      "Writer authentication additionally reads the immediate journal predecessor and authenticates historical root pins; ordinary read authentication intentionally trusts committed local witness references. Those paths are not semantically interchangeable."
+    ],
+    "proposal": "Extract common pure stack/accounting predicates over the already acquired bounded records, and one ancestry walk parameterized by exact transition acquisition. Keep distinct writer/read acquisition and error adapters, including the writer's predecessor/root checks and the read path's documented post-commit trust boundary.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -145,
+      "high": -90,
+      "basis": "Shared portions of two approximately 125-140-line frontier validators and two approximately 24-line ancestry walkers, less acquisition wrappers, explicit policy differences and regression coverage: 90-145 net.",
+      "overlap": "Excludes root topology extraction, retention floor selection/append algorithms, checkpoint/adoption closure sharing in DH-004, and any removal of required authentication reads."
+    },
+    "verification": [
+      "Retain same-lineage sibling rejection, exact saturation/straddle cutoffs, nonempty session forks, deep 64-slot ancestry and wrong/missing predecessor fixtures.",
+      "Preserve checked canonical key-plus-value charges and floor-filtered undo/redo availability; no recursive witness re-proof or full-history scan.",
+      "Compare writer/read typed failures separately and verify fixed retained state and logarithmic traversal."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-004",
+    "title": "Share the common historical settlement closure checks",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/checkpoint.rs",
+      "crates/syndic-storage/src/draft_piece/checkpoint/reader.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption/mutation.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption/status.rs"
+    ],
+    "symbols": [
+      "historical_is_exact",
+      "CheckpointReader",
+      "settlement_is_exact",
+      "draft_historical_root_adoption_status",
+      "historical_marker_root_is_exact_in_store",
+      "historical_marker_root_is_exact_in_reader"
+    ],
+    "evidence": [
+      "checkpoint.rs:221-260, adoption/mutation.rs:650-691 and adoption/status.rs:44-120 repeat local settlement validity, source-frontier authentication, selected direction/head agreement, exact selected transition and exact target root.",
+      "The existing CheckpointReader already supplies generic point reads and mode-specific frontier authentication; the two marker-order root helpers at mutation.rs:573-619 differ only in acquisition.",
+      "Checkpoint provenance compares its captured successor against the supplied candidate; status/replay require their own successor-record closure. These distinct obligations must remain at the callers."
+    ],
+    "proposal": "Share only the common source/selected-transition/target-root closure and marker-root mechanics through the existing bounded reader abstraction or small read callbacks. Keep request-byte equality, captured-candidate matching, current-session eligibility, protection-head checks and successor closure explicit in their owning callers.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -70,
+      "high": -40,
+      "basis": "Approximately 55-80 repeated common-check lines plus one roughly 22-line marker-root body, less the shared helper/visibility and error adapters and focused tests: 40-70 net.",
+      "overlap": "Reader reuse cost counted here once. Excludes DH-003 frontier internals, DP-003 opening identity, DP-010 mutable-head ordering, DT-001 receipt wrapping and DH-006 prepared ownership."
+    },
+    "verification": [
+      "Preserve opening-at-nonzero-generation, published/newest separation, captured older candidate publication, disposed historical receipt validation and wrong/foreign root rejection.",
+      "Retain all historical adoption replay, conflict, cancellation and missing/corrupt source/transition/frontier tests.",
+      "Keep first/last mutable-anchor observation responsibilities with public wrappers; sharing a predicate does not establish snapshot consistency."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-005",
+    "title": "Rekey and recharge a frontier through one private operation",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/records.rs"
+    ],
+    "symbols": [
+      "DraftEditHistoryFrontierV1::fork_session",
+      "DraftEditHistoryFrontierV1::publication_snapshot"
+    ],
+    "evidence": [
+      "records.rs:87-180 contains two nearly identical bodies: validate source, construct a different key, subtract old canonical head charge, build provisional frontier, add new charge, enforce budget and authenticate the new frontier.",
+      "Only target key construction and the public/private entry-point signatures differ."
+    ],
+    "proposal": "Keep the two meaningfully named entry points, but implement their shared mechanics in one private rekey-and-recharge operation accepting the fully constructed target key. Preserve all links, candidate/frontier generations and exact key-size-dependent accounting.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -55,
+      "high": -40,
+      "basis": "Replace one approximately 45-line duplicated body with a short target-key wrapper; retain the shared validator/charge logic and reserve boundary checks: 40-55 net.",
+      "overlap": "Independent from SA-003 admission accounting, DH-003 authentication and DP-002 staging finalization. No policy or reference field deletion counted."
+    },
+    "verification": [
+      "Compare session/publication encodings and digests, especially 17/33/49-byte key variants and repeated key charges.",
+      "Retain exact-fit/one-byte-under budget cases and nonzero inherited candidate generations; verify old source values remain unchanged."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-006",
+    "title": "Borrow successor effects from the historical settlement",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/adoption/mutation.rs"
+    ],
+    "symbols": [
+      "PreparedAdoptMutation",
+      "AdoptMutation::prepare",
+      "AdoptMutation::contribute"
+    ],
+    "evidence": [
+      "mutation.rs:413-429 clones transition, history and candidate into the settlement while retaining all three again in PreparedAdoptMutation.",
+      "mutation.rs:443-470 writes the duplicate fields; the settlement already exposes borrowed successor_transition/history/candidate accessors.",
+      "PreparedAdoptMutation at 537-542 has no independent responsibility beyond carrying the settlement and those same effects."
+    ],
+    "proposal": "Use Option<DraftHistoricalRootAdoptionV1> as the prepared result and contribute successor records by borrowing the exact values embedded in the settlement, then write the settlement. Preserve reconciliation reservation counts and the four-record atomic closure.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -30,
+      "high": -15,
+      "basis": "Delete the duplicate payload struct and reconstruction fields, eliminate three deep clones and simplify contribution access, less borrow adapters and regression assertions: 15-30 net.",
+      "overlap": "Only duplicated process-local effect ownership. DH-011 separately addresses malformed optional successor shape and has zero savings; no public outcome/proof redesign is counted."
+    },
+    "verification": [
+      "Retain before-commit/after-commit/after-persist/before-verification cuts and exact source/target closure reconciliation.",
+      "Compare canonical settlement and each written successor record byte-for-byte; terminal noncommit must write no successor."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-007",
+    "title": "Reuse the existing history transition-reference codec",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/adoption/codec.rs",
+      "crates/syndic-storage/src/draft_piece/history/codec.rs"
+    ],
+    "symbols": [
+      "enc_transition_reference",
+      "dec_transition_reference"
+    ],
+    "evidence": [
+      "history/codec.rs:187-202 already encodes/decodes transition key, repeated cumulative position, journal depth and digest.",
+      "adoption/codec.rs:164-192 duplicates that exact byte order and manually reimplements transition key decoding."
+    ],
+    "proposal": "Expose the existing private history transition-reference codec at the necessary parent-module visibility and call it from the adoption request codec. Keep the surrounding request, optional successor and terminal tag codecs unchanged.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -30,
+      "high": -20,
+      "basis": "Remove the duplicate approximately 29-line codec pair, subtract visibility/import/call adjustments and independent byte-vector verification: 20-30 net.",
+      "overlap": "Excludes SS-001 scalar tags, SS-007 optional/bool primitives, public format replacement, thiserror work and independent test byte oracles."
+    },
+    "verification": [
+      "Compare exact historical request and settlement bytes, truncated fields, invalid outer tags and trailing-byte rejection.",
+      "Keep repeated cumulative position and full reference identity encoded exactly; no digest-only shortcut."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-008",
+    "title": "Share the ordinary-edit test fixture used by history scenarios",
+    "paths": [
+      "crates/syndic-storage/tests/draft_edit_history/support.rs",
+      "crates/syndic-storage/tests/draft_edit_history/accounting_recovery.rs",
+      "crates/syndic-storage/tests/draft_edit_history/adoption.rs",
+      "crates/syndic-storage/tests/draft_edit_history/session_faults.rs",
+      "crates/syndic-storage/tests/draft_edit_history_retention/common.rs",
+      "crates/syndic-storage/tests/draft_edit_history_retention/authentication.rs",
+      "crates/syndic-storage/tests/draft_edit_history_retention/lineage.rs",
+      "crates/syndic-storage/tests/draft_edit_history_retention/recovery.rs",
+      "crates/syndic-storage/tests/draft_edit_history_retention/saturation.rs",
+      "crates/syndic-storage/tests/historical_root_adoption/support.rs",
+      "crates/syndic-storage/tests/historical_root_adoption/default.rs",
+      "crates/syndic-storage/tests/historical_root_adoption/faults.rs"
+    ],
+    "symbols": [
+      "fixture",
+      "fault_fixture",
+      "current",
+      "open_session",
+      "transaction_with_positions",
+      "build",
+      "settled",
+      "settle",
+      "commit_edit",
+      "committed_edit",
+      "edit"
+    ],
+    "evidence": [
+      "The 370-line draft_edit_history/support.rs and 358-line historical_root_adoption/support.rs repeat transaction payload, thread/current/session setup, fragment construction, build advancement, execution and commit assertions.",
+      "Historical support transaction supplies equal before/after caret-selection pairs; the existing transaction_with_positions can express it without changing scenario inputs.",
+      "default.rs::committed_edit and faults.rs::edit duplicate the same ordinary committed-adoption helper; retention/common.rs already has a narrower commit_edit helper.",
+      "Several scenario files repeat successful seed edit/build/settle/extract plumbing before their actual fault or boundary assertions."
+    ],
+    "proposal": "Provide one behavior-owned ordinary-edit support implementation with explicit positions and budget inputs, and keep small convenience wrappers. Gate fault-only imports/helpers so historical default-feature coverage remains available. Share successful seed construction and measurement plumbing, retaining explicit fault injection and independent expected charges in each scenario.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -300,
+      "high": -200,
+      "basis": "About 200-240 duplicated support lines excluding TestHome, plus 65-110 repeated successful seed/extraction lines, less 50-70 for feature gating, named wrappers and caller adapters: conservative 200-300 net.",
+      "overlap": "Includes shared draft_edit_history/support.rs changes excluded by DP-007 and only callers in this cohort. Excludes DP/DT/SA/SC-owned caller changes, PRE-004 TestHome/TempDir savings, family-count rework drift, fault-case deletion and independent oracle deletion."
+    },
+    "verification": [
+      "Run default historical_root_adoption plus test-faults history/retention/checkpoint targets when implementation is authorized.",
+      "Preserve every fault cut, before/after state assertion, operation/session identity, directed selection, budget measurement and manually expected canonical byte count.",
+      "Keep disposal/submission fixtures and prepared-before-fault stages distinct; no helper may silently skip a failed seed command."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-009",
+    "title": "Reuse the materializer tests' existing local construction helpers",
+    "paths": [
+      "crates/syndic-storage/tests/draft_composer_materializer.rs"
+    ],
+    "symbols": [
+      "fixture_with_faults",
+      "acceptance_from_current",
+      "acceptance_with_head",
+      "acceptance_with_timestamp",
+      "materialize",
+      "materialize_existing",
+      "append_text_atom",
+      "append_marker_atom"
+    ],
+    "evidence": [
+      "fixture_with_faults at 57-88 already provides the same fault-enabled home/thread setup repeated in indeterminate_writer_custody_resumes_from_each_committed_record and advancing_step_has_not_committed_and_indeterminate_custody.",
+      "The first image-acceptance scenario manually repeats current/gate/head acquisition and constructors already represented by acceptance_from_current, acceptance_with_head and acceptance_with_timestamp; queued marker-free setup repeats the same current acceptance construction after gate installation.",
+      "materialize and materialize_existing duplicate the bounded finish loop; only begin and the four bound assertions differ.",
+      "append_text_atom and append_marker_atom at 1809-1819 each have a five-line body, no semantic references and no textual occurrences except their definitions. They supply no current oracle coverage."
+    ],
+    "proposal": "Reuse the existing local fixture and acceptance helpers. Make begin delegate to one bounded completion helper that retains all four bound assertions; leave phase/fault/reopen loops under test explicit. Remove the two unreferenced atom appenders without touching the active independent ComposerV1 byte and chunk expectations.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -170,
+      "high": -120,
+      "basis": "Approximately 55-65 setup lines, 55-80 repeated acceptance-construction lines, 20-25 duplicated finish-loop lines and ten unused body lines, less caller wiring and assertion preservation: 120-170 net.",
+      "overlap": "Entirely file-local. No new shared fixture implementation cost in SC, no DT-006 marker/publication helper count, no root TempDir savings, no mutation setup replacement or fault/oracle deletion."
+    },
+    "verification": [
+      "Retain all initial/advancing indeterminate cuts, normal-feature cases, exact-or-different occupied chunk scenarios and full restart phase bitmap.",
+      "Keep initial/terminal public-unreachability checks and corruption loops separate; completion helper must preserve hard step ceiling and read/input/write/resident assertions.",
+      "Static dead-helper evidence is Serena reference search plus exact text search; no active independent byte oracle is removed."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-010",
+    "title": "Derive the three inspected history/materializer display errors",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/adoption/mutation.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption/status.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/model.rs"
+    ],
+    "symbols": [
+      "DraftHistoricalRootAdoptionPrepareErrorV1",
+      "DraftHistoricalRootAdoptionReconciliationErrorV1",
+      "DraftComposerMaterializationErrorV1"
+    ],
+    "evidence": [
+      "All three enums manually implement Display and an empty Error implementation; each has straightforward literal/interpolated formatting.",
+      "Cargo.lock resolves thiserror 2.0.18; root Cargo.toml:54 and syndic-storage/Cargo.toml:23 already select/consume it. Existing exact-version memory was read.",
+      "The current empty Error implementations return no source, even for wrapped read/reconciliation errors. Existing manual From implementations must remain to preserve that behavior."
+    ],
+    "proposal": "Derive thiserror::Error using exact existing Display strings, without transparent/source/from attributes. Retain manual From implementations and Debug behavior.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": -45,
+      "high": -30,
+      "basis": "About 45-55 manual formatting/empty Error lines less derive and variant attributes plus diagnostic checks: 30-45 net.",
+      "overlap": "Only the three named enums; excludes DP-006, SA-008, SS-006, MS-001 and every other cohort's error savings."
+    },
+    "verification": [
+      "Compare Display for every variant, Error::source()==None and all existing conversions.",
+      "Focused normal/test-faults Cargo checks when implementation is authorized; no package install/update."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "thiserror",
+        "version": "2.0.18",
+        "fit": "Already a direct syndic-storage workspace dependency; derive replaces inspected manual Display/Error only.",
+        "features": "Existing default std feature and matching thiserror-impl; no dependency or feature change.",
+        "license": "MIT OR Apache-2.0",
+        "msrv": "1.68; workspace requires 1.92",
+        "platform": "Procedural derive adds no runtime/platform API.",
+        "maintenance_and_adoption": "Reuses the exact-version audit memory's established 1.x/2.x line and existing workspace adoption.",
+        "limits": "No new advisory scan or build performed. Do not use from/source/transparent attributes that would expose currently hidden causes.",
+        "research_memory": "doc/memory/crates.io/thiserror/2.0.18/manual-error-simplification.md",
+        "sources": [
+          "https://docs.rs/thiserror/2.0.18/thiserror/",
+          "https://docs.rs/crate/thiserror/2.0.18",
+          "https://raw.githubusercontent.com/dtolnay/thiserror/2.0.18/Cargo.toml"
+        ]
+      }
+    ],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-011",
+    "title": "Reject partial successor payloads on noncommitted historical settlements",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/history/adoption/model.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption/codec.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption/status.rs"
+    ],
+    "symbols": [
+      "DraftHistoricalRootAdoptionV1::is_locally_valid",
+      "DraftHistoricalRootAdoptionsFamily::encode_value",
+      "DraftHistoricalRootAdoptionsFamily::decode_value",
+      "draft_historical_root_adoption_status"
+    ],
+    "evidence": [
+      "model.rs:237-256 defines successor_shape as transition.is_some() && history.is_some() && candidate.is_some(), then accepts committed == successor_shape. For a noncommit with exactly one or two Some fields, both sides are false.",
+      "Take otherwise valid source/selected-transition/target authority, a Rejected outcome, successor_candidate=Some(valid candidate), and the other two successor options None. Source predicates remain true and committed_shape_is_exact is skipped, so local validity succeeds.",
+      "Both family encode/decode rely on that predicate; status validates common source authority and skips its successor branch for noncommit, returning a noncommit proof whose successor_candidate accessor can expose the embedded candidate.",
+      "Normal current mutation constructors emit either all three successors or none. This is a demonstrated local malformed-record acceptance path, not a claim that ordinary commands currently construct the partial shape or that an exploit was executed."
+    ],
+    "proposal": "Require exactly all three successor fields for Committed and exactly none for every noncommit. A private closed committed payload may express that invariant, provided decoding rejects partial legacy option combinations before construction and persisted bytes remain unchanged.",
+    "required_contract_changes": "None. The existing V7 schema explicitly disallows a no-change historical adoption naming a successor. This repairs that current contract.",
+    "estimated_net_lines": {
+      "low": 0,
+      "high": 0,
+      "basis": "Correctness finding, not simplification savings. Repair and negative codec/status tests can add lines.",
+      "overlap": "Separate from DH-006 duplicate prepared ownership. Existing SS-010/domain-family drift is unrelated and not counted again."
+    },
+    "verification": [
+      "Add canonical rejection cases for all six partial successor-option combinations under every noncommit outcome and missing fields under Committed.",
+      "Verify normal terminal records and exact current V7 bytes still round-trip; status must never expose a successor for noncommit.",
+      "Evidence is complete-body/static dataflow review only; no test or mutation was executed."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "DH-012",
+    "title": "Retain durable history authority and resumable materialization boundaries",
+    "paths": [
+      "crates/syndic-storage/src/draft_piece/checkpoint.rs",
+      "crates/syndic-storage/src/draft_piece/checkpoint/reader.rs",
+      "crates/syndic-storage/src/draft_piece/checkpoint/saved.rs",
+      "crates/syndic-storage/src/draft_piece/history.rs",
+      "crates/syndic-storage/src/draft_piece/history/adoption.rs",
+      "crates/syndic-storage/src/draft_piece/history/append.rs",
+      "crates/syndic-storage/src/draft_piece/history/codec.rs",
+      "crates/syndic-storage/src/draft_piece/history/codec/tests.rs",
+      "crates/syndic-storage/src/draft_piece/history/records.rs",
+      "crates/syndic-storage/src/draft_piece/history/references.rs",
+      "crates/syndic-storage/src/draft_piece/history/witness.rs",
+      "crates/syndic-storage/src/draft_piece/history/retention.rs",
+      "crates/syndic-storage/src/draft_piece/history/retention/authentication/test_fixtures.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/mod.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/codec.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/engine.rs",
+      "crates/syndic-storage/src/draft_piece/materializer/model.rs",
+      "crates/syndic-storage/tests/composer_v1_fold.rs",
+      "crates/syndic-storage/tests/editor_checkpoint.rs",
+      "crates/syndic-storage/tests/editor_checkpoint/checkpoint.rs",
+      "crates/syndic-storage/tests/editor_checkpoint/disposal.rs",
+      "crates/syndic-storage/tests/editor_checkpoint/publication.rs",
+      "crates/syndic-storage/tests/editor_checkpoint/submission.rs"
+    ],
+    "symbols": [
+      "oldest_retained_at_threshold",
+      "build_ancestor_witness",
+      "saved_checkpoint_is_exact_in_transaction",
+      "draft_editor_candidate_is_saved",
+      "prepare_plan_step",
+      "prepare_write_step",
+      "prepare_drain_step",
+      "prepare_seal_step",
+      "ComposerV1RecordSink"
+    ],
+    "evidence": [
+      "Full review covered every body/type/macro/cfg across 46 physical files and 15,728 baseline lines, including source-local witness/codec tests and fault fixtures.",
+      "Fixed 64-slot ancestry and head-origin lifting implement exact selected-lineage retention without history scans; ordinary/history roots, journal/undo/redo/floor links and directed positions are distinct authority.",
+      "Saved opening correspondence requires immutable opening authority, exact live fork and selector/head observations. Published/newest checkpoints cannot be collapsed merely because roots or generations agree.",
+      "Materializer planning determines digest-derived content identity before writing; writing/draining separately bound chunks and index effects; atomic seal alone publishes the exact-root mapping. Its persisted restart protocol is not replaced by a synchronous whole-value fold.",
+      "Family-count 86 assertions in this cohort agree with current domain registration but differ from target 90-family authority; root confirmed this is already tracked terminal-repair rework/SS-010 drift. No new defect or savings are assigned."
+    ],
+    "proposal": "Retain these mechanisms and all active fault/byte-oracle scenarios. Apply only the bounded local factoring proposals. Do not replace durable tree/history authority with a resident rope/map or collapse publication/reconciliation into digest equality.",
+    "required_contract_changes": "None. Preserve the existing package/system contracts and exact V7 persisted bytes.",
+    "estimated_net_lines": {
+      "low": 0,
+      "high": 0,
+      "basis": "Retained boundaries and reused negative dependency screens; no deletion estimate.",
+      "overlap": "Reuses DT-007 Ropey and SA-009 im screens, PRE-004 remains zero incremental here, SS-010 owns known family rework drift, DP-010 owns the separate candidate-session read ordering defect."
+    },
+    "verification": [
+      "Future refactors must retain canonical V7 bytes, per-command bounds, same-draft/session/operation identity, exact replay, first/last mutable anchors, monotonic marker protection and publication/session custody.",
+      "Use normal and test-faults focused tests plus the package-required adversarial pass for changed consequential persistence boundaries. This observational audit itself ran no build/test."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "ropey",
+        "version": "1.6.1",
+        "disposition": "rejected_for_this_boundary",
+        "research_memory": "doc/memory/crates.io/ropey/1.6.1/durable-piece-tree-screen.md",
+        "fit": "Reused negative screen: resident text tree does not provide durable authenticated external nodes, zero-width marker authorities, exact byte accounting or restart custody. No new screen, dependency, platform test or advisory clearance."
+      },
+      {
+        "crate": "im",
+        "version": "15.1.0",
+        "disposition": "rejected_for_this_boundary",
+        "research_memory": "doc/memory/crates.io/im/15.1.0/durable-admission-index-screen.md",
+        "fit": "Reused negative screen: immutable resident map lacks durable authenticated nodes and exact publication/replay closure; adapter would retain the custom storage machinery. No new screen or advisory clearance."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  }
+]

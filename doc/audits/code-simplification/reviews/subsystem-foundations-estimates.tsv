@@ -1,0 +1,56 @@
+id	disposition	bucket	net_min	net_max	overlap_group	evidence
+MS-001	proposed	current_contract	90	115	errors-model	Exact error text and empty sources; existing thiserror. Attributes/import/member declaration deducted.
+MS-002	proposed	current_contract	20	40	stream-channel	Fallible preallocation plus logical capacity remain; remove only ring bookkeeping and terminal Option moves.
+MS-003	proposed	current_contract	25	35	stream-page-generation	Source API change only; authority does not require generations. Includes app custody-test adaptation; preserve total_leases and exact lease release.
+MS-004	proposed	current_contract	15	20	stream-page-diagnostics	Conservative range around original 18; one snapshot helper and derives, excluding generation fields owned by MS-003.
+MS-005	proposed	current_contract	20	30	model-digest-tests	Conservative range around original 25; test-local fold cost deducted; golden byte vectors stay independent.
+MS-006	retained	retained	0	0	model-domains	Typed IDs, digest domains and validation macros already compact; no universal wrapper.
+MS-007	retained	retained	0	0	stream-custody	Preserve exact rejected message, endpoint wakes, timeout distinction, fixed backing and weak observers.
+MS-008	retained	retained	0	0	stream-range	Documented range/replay source and sink contracts remain required even without current production consumers.
+HS-001	proposed	current_contract	100	180	home-recovery-preflight	Shared validated candidate and family opening; all-domain preflight before any attachment callback retained.
+HS-002	proposed	current_contract	75	115	home-proof-seal	Unique immutable seal binds redundant fences; independent expected/observed correlation, store/generation and execution validation retained. Clarify proof representation before implementation.
+HS-003	proposed	contract_alternative	150	260	home-collision-retention	Explicit authority change removes retained detailed diagnostic archive only; closed scope/flight/home custody and bounded charge remain.
+HS-004	proposed	correctness	0	0	home-physical-provenance	Local 40–85 potential reduction excluded: shared point adapter also corrects physical errors currently misclassified by raw-box fallback.
+HS-005	proposed	current_contract	40	85	home-writer-snapshot	Reuse same held-writer snapshot and admitted facts; prepare-all/receipt-overflow/contribute-all order preserved.
+HS-006	proposed	current_contract	100	180	theme-physical-publication	Narrow staged-file publication helper; semantic state remains in state package; manifest-last and durability barriers retained.
+HS-007	proposed	current_contract	230	370	home-test-fixtures	Only literal fake test and repeated codec/proof/byte/process fixture mechanics; no temporary-home construction or scenario removal.
+HS-008	retained	retained	0	0	home-typed-custody	Retain generation lifetime, TypeId ownership, two-stage preparation, attachment retirement and reconciliation ownership.
+HS-009	retained	retained	0	0	theme-watcher	notify 8.2.0 worker retirement/native filesystem gap defeats drop-in replacement.
+HS-010	retained	retained	0	0	home-codecs-publication	Retain exact small formats, owned Fjall consumed boundary, sidecar residue and physical publication semantics.
+ST-001	proposed	current_contract	180	260	state-domain-inventory	One private fixed typed inventory; explicit modes/order, candidate generation and receipt adapters retained.
+ST-002	proposed	current_contract	600	900	errors-state	Exact Display/source/From topology; excludes error code removed by codec reuse and theme-parser alternative.
+ST-003	proposed	current_contract	130	190	state-codec-primitives	PRE-011 refined: reuse existing encoding.rs with narrow exact error adapters; no stored-byte change.
+ST-004	proposed	current_contract	570	970	state-test-fixtures	Original650–1050 less80 conservative reserve for complete54-line false-concurrency test,22-line digest test and unused-argument lines; corrective portions FND-SYN-002 at zero; excludes temporary homes.
+ST-005	proposed	current_contract	200	260	durable-job-transitions	PRE-010 refined: closed action family with coordinated source API/callsite adaptation; exact Rust struct names are not authority. Lifecycle/wire/footprint preserved; includes adapters, no external archive.rs deletion credited.
+ST-006	proposed	current_contract	100	180	state-exhaustive-scans	Bounded visitor/page-continuation mechanics only; domain-specific carry/invariants remain; no ordinary-read/exhaustive-scrub merger.
+ST-007	proposed	current_contract	35	60	catalog-checked-rows	Consume already checked rows and factor exact claim checks with explicit origin policy; preserve row/index agreement.
+ST-008	retained	retained	0	0	unicode-catalog	ICU composition not proved exact Unicode17 NFKC_CF; generated data is not free deletion.
+ST-009	proposed	current_contract	35	55	session-window-removal	Shared prepared publication after distinct ordinary/abandonment admissions.
+ST-010	proposed	current_contract	70	110	asset-proof-encoding	One canonical association encoding/private checked proof construction and point limits; independent expected digests retained.
+ST-011	proposed	current_contract	70	110	theme-parser-alternatives	Equivalent lexical primitives only; explicit dialect/escaping/CRLF/mode differences retained; mutually exclusive with ST-014.
+ST-012	proposed	current_contract	150	240	theme-semantic-execution	Private context and checked physical decoder sharing; exact snapshot, two passes, late SaveAs/delete guards retained.
+ST-013	proposed	current_contract	80	130	theme-pending-outcome	Complete private pending payload installed once before exposing public handle; no disposable optional payloads or post-effect fallible wrapper construction.
+ST-014	proposed	contract_alternative	350	550	theme-parser-alternatives	Replace ST-011, never add it: capped256KiB whole-document TOML requires residency/grammar/InstalledLoad/concurrency authority decision and prototype; manifest remains streaming.
+BJ-001	proposed	current_contract	300	450	backend-control-grammar	PRE-008 refined; count compact control fixed scalar/probe grammar only; response common/number helpers belong to BJ-003.
+BJ-002	proposed	current_contract	100	170	backend-page-capture	Shared leased output core after typed adapters; provider context/dynamic offsets/abandonment remain; steering excluded.
+BJ-003	proposed	current_contract	1660	2460	backend-response-parser	Original1800–2600 less140 at both bounds to remove all BJ-004 correctness savings; cursor/schema/drain/integration cost already deducted; medium confidence pending focused prototype.
+BJ-004	proposed	correctness	0	0	backend-response-parser	Pinned producer emits reasoning-effort records only; unauthorized string/map tolerance removal is correctness. Historical100–140 lines excluded and deducted from BJ-003.
+BJ-005	retained	retained	0	0	backend-recognizer	Generic JSON/float crates do not preserve arbitrary fragmented scalar/name residency; retain bounded-json and numeric accumulator.
+BR-001	proposed	current_contract	150	220	backend-response-wait	Neutral deadline/read/approval pump once; caller dispatch, exact family, echo timing and retirement stay explicit.
+BR-002	proposed	current_contract	35	55	backend-approval-fifo	VecDeque with explicit admission capacity and exact rejected payload; no generic channel framework.
+BR-003	proposed	current_contract	100	150	backend-outbound	Source-aware writer setup/failure normalization only; actual first-byte dispatch/source-error priority/poison preserved.
+BR-004	proposed	current_contract	73	120	backend-ingress-bookkeeping	Backend65–110 plus app8–10 net field/init/accessor/two tautology removals, counted only here. Connection driver forwards inferred tuple and needs checking, not necessarily editing.
+BR-005	proposed	current_contract	220	330	backend-test-handshake	Successful setup only; initialization refusal, fault timing, sink binding and independent wire expectations remain.
+BR-006	proposed	current_contract	30	50	backend-source-guards	Remove spelling/order scans only; retain no-DOM, no-probe, no-target-touching and no-coarse-cleanup exclusions.
+BR-007	proposed	current_contract	80	110	errors-backend	Existing thiserror/Debug derives only for identical wrapper presentations; redacted leaves and exact rejected ownership retained.
+BR-008	proposed	current_contract	35	55	backend-fixed-wire	Serde1.0.228 derives fixed object/array framing; existing serde_json1.0.149 collect_str source-aware streamed text remains.
+BR-009	retained	retained	0	0	backend-process-transport	Retain kernel job ownership, bounded WSL teardown and fragmented soketto framing; generic replacements have concrete gaps.
+BR-010	deferred	deferred	0	0	backend-response-parser	Capped typed Serde ancillary-input alternative overlaps BJ-003 and has unresolved acceptance/allocation/prefix/drain costs. Candidate1.0.151 differs from resolved1.0.149; no upgrade implied.
+EN-001	retained	existing_rework	0	0	entry-bootstrap	Three-line compile_error placeholder is paused rework, not simplification or runnable-build evidence.
+PRE-004	retained	retained	0	0	temporary-homes	Foundation incremental share zero: no custom TestHome definitions or manual unique temp-path cleanup found; already tempfile. Root combines App/Syndic shares once; old260–350 global lead is not additive.
+PRE-008	superseded	overlap	0	0	backend-control-grammar	Merged into BJ-001; response portion belongs to BJ-003 if touched.
+PRE-010	superseded	overlap	0	0	durable-job-transitions	Merged into ST-005; source API adaptation explicit, lifecycle and stored format unchanged.
+PRE-011	superseded	overlap	0	0	state-codec-primitives	Merged into ST-003; use complete-review130–190 range rather than add preliminary130–160.
+PRE-012	superseded	overlap	0	0	theme-parser-alternatives	Refined into mutually exclusive ST-011 current contract and ST-014 changed residency/grammar contract.
+FND-SYN-001	proposed	correctness	0	0	temporary-home-destruction	Three foundation fixtures declare TempDir before live HomeStore; drop attempts cleanup before store retirement. Reorder or explicit scoped cleanup; no line reduction, runtime failure not reproduced.
+FND-SYN-002	proposed	correctness	0	0	state-test-evidence	ST-004 correction portions: lazy spawn/join is serialized; digest arguments are unused so content-neutrality comparison has identical effective inputs. Preserve independent useful oracles; zero reduction credited.

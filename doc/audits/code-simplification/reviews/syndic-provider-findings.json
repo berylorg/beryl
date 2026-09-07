@@ -1,0 +1,341 @@
+[
+  {
+    "id": "SP-001",
+    "title": "Share the PIV1 frame byte writer between typed and observation encoders",
+    "paths": [
+      "crates/syndic-storage/src/provider_item/codec/encode.rs",
+      "crates/syndic-storage/src/provider_observation/compiler/encode.rs"
+    ],
+    "symbols": [
+      "provider_item::codec::encode::Encoder",
+      "provider_observation::compiler::encode::Encoder",
+      "bytes",
+      "flush",
+      "finish",
+      "position",
+      "text"
+    ],
+    "evidence": [
+      "Both encoder bodies own the same sink, bounded chunk Vec, SHA256, encoded start/count, frame ordinal, logical frontier and text-span count. Typed encode.rs:41-145 and observation encode.rs:92-211 repeat initialization, flushing, fixed-width big-endian values, length accounting and reference construction.",
+      "Typed encode.rs:183-212 and observation encode.rs:279-305 repeat checked logical span construction and sink delivery. Text acquisition differs: the typed path supports inline/reused references; the observation path uses validated replay selectors and full streamed text scans. All child item emitters and both decoding paths were read."
+    ],
+    "proposal": "Extract one private FrameWriter with byte primitives, exact chunking/digest/reference finalization, position and emit_text_span. Keep separate typed-value and replay-selector traversals. Give the observation encoder an explicit conversion from the shared validation/sink error, retaining replay errors. Reuse exact PIV1 constants; remove the unused cas_thread_id_value helper incidentally. Avoid a generic serialization trait hierarchy.",
+    "required_contract_changes": [
+      "None for persisted bytes or public behavior: retain exact PIV1/V7 tags, field order, big-endian widths, chunk flush timing, text source coordinates, digest domains, error variants and checked arithmetic.",
+      "Implementation readiness must record the private writer ownership in the owning design/plan if its existing contract describes duplicated internals; no codec-format replacement is authorized."
+    ],
+    "estimated_net_lines": -130,
+    "estimated_net_line_range": {
+      "minimum_reduction": 100,
+      "maximum_reduction": 170,
+      "basis": "Roughly 170-220 duplicated writer/metadata lines become one implementation; deduct error conversions, forwarding/call-site adjustments and focused independent verification.",
+      "overlap": "Does not count item traversal rewrites or deleting either decoder. SP-003 changes preparation sinks rather than writer internals."
+    },
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Implementation: preserve independent expected PIV1 bytes and bounded decoder oracle in provider_codec/provider_storage_codec, plus observation compiler parity across item families, optional/default fields, inline/reused text, empty text, exact 65536-byte flush boundaries and injected sink failures.",
+      "Keep provider_streaming arbitrary-size, fragmented-read, invalid UTF-8, malformed locator and depth-limit cases; verify source and logical span coordinates and first error identity."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-002",
+    "title": "Use one checked item lifecycle transition for validation and observation preparation",
+    "paths": [
+      "crates/syndic-storage/src/provider_item/frame/lifecycle.rs",
+      "crates/syndic-storage/src/provider_observation/compiler/stage/prepare.rs"
+    ],
+    "symbols": [
+      "ProviderItemStreamValidatorV1::observe_facts",
+      "validated_lifecycle",
+      "next_stream_state"
+    ],
+    "evidence": [
+      "frame/lifecycle.rs:152-204 and :247-284 implement ordinal, completed-state, identity, kind, start/delta/completion and timestamp checks, followed by checked state advancement and monotonic history-support merging.",
+      "compiler/stage/prepare.rs:191-264 repeats those checks and constructs the same ProviderItemStreamStateV1 from a prior sealed reference. Full callers, constructor validation, issue classification and lifecycle test matrices were read."
+    ],
+    "proposal": "Make the existing fact transition available at crate scope or extract it as one private pure transition. Observation preparation supplies the existing prior state and frame facts, then receives the new validated state. Keep issue classification independent because its reason precedence is observable.",
+    "required_contract_changes": [
+      "None: retain ordinal-before-complete-before-identity-before-kind error precedence, completion-only families, missing/duplicate-start rejection, timestamp comparison, first unsupported-history reason, overflow errors and unchanged state on rejection."
+    ],
+    "estimated_net_lines": -65,
+    "estimated_net_line_range": {
+      "minimum_reduction": 55,
+      "maximum_reduction": 80,
+      "basis": "Replace the roughly 74-line duplicated compiler transition with a short adapter to existing logic; allow private API/import changes and focused cross-path transition tests.",
+      "overlap": "Separate from SP-003 narrative work in the same preparation file; count distinct code ranges."
+    },
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Implementation: run provider_streaming lifecycle and provider_observation lifecycle/issue matrices, including resume, completion-only, identity/kind conflicts after completion, reversed timestamps and ordinal exhaustion. Add a focused cross-path rejection-precedence/state-unchanged case if existing assertions do not cover it."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-003",
+    "title": "Derive narrative metadata from the first observation encode",
+    "paths": [
+      "crates/syndic-storage/src/provider_observation/compiler/stage/prepare.rs",
+      "crates/syndic-storage/src/provider_observation/compiler/stage/staging/count.rs",
+      "crates/syndic-storage/src/provider_observation/compiler/encode/item.rs",
+      "crates/syndic-storage/src/provider_observation/compiler/encode/item/message.rs"
+    ],
+    "symbols": [
+      "prepare",
+      "CountingSink",
+      "NarrativeCountingSink",
+      "NarrativeCountingSink::write_text_span",
+      "ProviderItemKind::requires_narrative"
+    ],
+    "evidence": [
+      "prepare.rs:70-128 encodes the entire observation twice: CountingSink derives content and frame digest, then NarrativeCountingSink repeats all replay queries/chunks to derive a narrative dependent on that digest and compares the results.",
+      "count.rs:82-207 duplicates content chunk counting/hashing and span validation solely around narrative derivation. requires_narrative is restricted to AgentMessage and Plan; all corresponding item/delta emitters were read and emit at most one Narrative span, with no span for empty text. Their other metadata has no logical text role.",
+      "The later actual staging path still validates the prepared target and performs pending completion byte comparison; this proposal does not equate frame digests with exact selected-completion equality."
+    ],
+    "proposal": "Let the first CountingSink retain one Option<ProviderFrameTextSpanV1> when the item requires a narrative, while continuing to validate every span. After the frame digest is final, derive the empty/appended narrative reference or pending completion check from that one span. Retain wrong-role and unexpected-multiple-span rejection. Delete NarrativeCountingSink and the second full encode. Do not buffer an unbounded span list or observation.",
+    "required_contract_changes": [
+      "No product/persistence contract change. Preserve seed/generation, exact source/logical coordinates, narrative chain preimage including final frame digest, checked frontiers, zero-text handling and completion-without-append behavior.",
+      "Prepared-versus-staged identity checks, full replay validation, exact completion comparison and commit/reconciliation ownership remain in force. The deterministic redundant pass itself is not counted as an independent decoder oracle."
+    ],
+    "estimated_net_lines": -110,
+    "estimated_net_line_range": {
+      "minimum_reduction": 90,
+      "maximum_reduction": 130,
+      "basis": "Delete the 126-line second sink and second traversal scaffolding; deduct the retained-span field/validation, post-digest derivation helper and focused parity cases.",
+      "overlap": "A similar pattern in mutation/provider_frame/prepare.rs was reported to the root reviewer as context only; its lines are not counted here. Independent of SP-001 byte writer and SP-002 lifecycle transition."
+    },
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Implementation: compare prepared frame/content/narrative records and exact staged bytes with baseline vectors for AgentMessage and Plan start/delta/completion, empty/nonempty text, arbitrary field order and multi-page text.",
+      "Retain provider_staging content-ahead/narrative-ahead crash cuts, retry convergence, pending completion equality and corrupted-frontier tests; exercise nonnarrative items and rejection of an unexpected second/wrong-role span without adding a new payload cap."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-004",
+    "title": "Compute replay text summaries through the existing text-selection traversal",
+    "paths": [
+      "crates/syndic-storage/src/provider_observation/compiler/replay/query/text.rs"
+    ],
+    "symbols": [
+      "ObservationReplayReader::text_summary",
+      "ObservationReplayReader::write_text",
+      "matches_text"
+    ],
+    "evidence": [
+      "text.rs:20-71 and :73-147 repeat selector activation, duplicate detection, matching text fragments, field close, missing-field handling and a complete validated replay scan. The summary path differs only by accumulating a checked byte count and SHA256 instead of calling an output closure.",
+      "Full scan/query caller bodies were read; callers rely on validation reaching EOF even when the selected field ended earlier."
+    ],
+    "proposal": "Implement text_summary by calling write_text with a closure that updates checked byte count and SHA256. Map replay failures directly and the accumulator's overflow to ReplayError::FrontierOverflow. Keep one selector state machine and the same full-scan behavior.",
+    "required_contract_changes": [
+      "None: preserve duplicate/missing selector classification, text chunk order, field-context matching, all validation through canonical EOF and distinction between replay and output failure."
+    ],
+    "estimated_net_lines": -30,
+    "estimated_net_line_range": {
+      "minimum_reduction": 25,
+      "maximum_reduction": 40,
+      "basis": "Replace the roughly 52-line summary traversal with approximately 15-22 accumulator/error-mapping lines, allowing a focused verification adjustment.",
+      "overlap": "Does not count avoiding the two distinct summary/output scans required by length-prefixed text encoding; SP-003 separately removes a whole second frame traversal."
+    },
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Implementation: observation compiler parity and structured/large cases must preserve summary length/digest across fragments; retain missing/duplicate fields, malformed later controls and trailing canonical-state corruption. Exercise accumulator overflow via focused test support if naturally unreachable."
+    ],
+    "dependency_candidates": [],
+    "confidence": "high",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-005",
+    "title": "Share thin successful observation construction and commit-outcome test helpers",
+    "paths": [
+      "crates/syndic-storage/tests/provider_observation.rs",
+      "crates/syndic-storage/tests/provider_observation/depth.rs",
+      "crates/syndic-storage/tests/provider_observation/identity.rs",
+      "crates/syndic-storage/tests/provider_observation/identity_exclusions.rs",
+      "crates/syndic-storage/tests/provider_observation/lifecycle.rs",
+      "crates/syndic-storage/tests/provider_observation/matrix.rs",
+      "crates/syndic-storage/tests/provider_observation/matrix_restart.rs",
+      "crates/syndic-storage/tests/provider_observation/nested.rs",
+      "crates/syndic-storage/tests/provider_observation/schemas.rs",
+      "crates/syndic-storage/tests/provider_observation/validation.rs",
+      "crates/syndic-storage/tests/provider_observation_compiler.rs",
+      "crates/syndic-storage/tests/provider_observation_compiler/structured.rs",
+      "crates/syndic-storage/tests/provider_observation_issue.rs",
+      "crates/syndic-storage/tests/provider_observation_issue/lifecycle_matrix.rs"
+    ],
+    "symbols": [
+      "control",
+      "enum_value",
+      "begin_item",
+      "begin_container",
+      "end_container",
+      "context_text",
+      "clean_stage",
+      "clean_seal",
+      "required_item",
+      "required_except_status"
+    ],
+    "evidence": [
+      "identity_exclusions.rs:3-84 and nested.rs:3-80 repeat control/begin/end/text/enum construction; compiler.rs:159-264 repeats equivalent successful control, enum, text and container plumbing; depth, identity, lifecycle and schema modules contain more local copies.",
+      "provider_observation.rs:47-105, compiler and issue fixtures repeat clean outcome/callback handling. Required-field positive fixtures in schemas.rs:39 onward and lifecycle.rs:70 onward overlap substantially but currently spell independent expected cases.",
+      "All 33 assigned provider test files were read, including invalid control sequences, fragmented text, independent digest preimages, restart and fault timing. These semantic assertions are outside the removable plumbing."
+    ],
+    "proposal": "Add one tests/support/provider_observation module with a thin imperative successful-event builder borrowing the stager/callback, plus explicit clean-stage/seal outcome helpers. Consolidate repeated independently specified positive fixture data. Keep invalid operations fallible and visible at the test call site; share setup primitives rather than generating expectations from production schema tables.",
+    "required_contract_changes": [
+      "None. Preserve every distinct scenario, independent expected schemas and byte/digest vectors, explicit fragmentation and invalid-context calls, exact injected fault ordering, durable before/after checks, close/reopen steps and content/narrative-ahead distinctions.",
+      "Shared outcome helpers must install definitely committed state before surfacing later failure and preserve the reconciliation owner for indeterminate outcomes; never flatten outcomes into a generic unwrap."
+    ],
+    "estimated_net_lines": -430,
+    "estimated_net_line_range": {
+      "minimum_reduction": 350,
+      "maximum_reduction": 550,
+      "basis": "Repeated helper families and matching positive fixture setup across the listed modules contain several hundred repeated lines. Deduct a shared support module, generic callback plumbing, imports and retained fallible variants. Estimate excludes scenario/assertion deletion.",
+      "overlap": "Exclude all TestHome/temporary-directory reductions reserved for the root dependency finding. Coordinate support-module ownership with other fixture proposals; no production encoder/decoder savings counted."
+    },
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Implementation: preserve the exact inventory and assertion purpose of all observation/compiler/issue tests, run relevant test-faults configurations, and compare test cases before and after to ensure malformed sequences remain exercised. Review helper error branches for custody installation and unresolved-commit ownership."
+    ],
+    "dependency_candidates": [],
+    "confidence": "medium",
+    "disposition": "proposed",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-006",
+    "title": "Retain independent streaming validation and typed provider value semantics",
+    "paths": [
+      "crates/syndic-storage/src/provider_item/codec/decode.rs",
+      "crates/syndic-storage/src/provider_item/codec/decode/item.rs",
+      "crates/syndic-storage/src/provider_item/codec/decode/item/activity.rs",
+      "crates/syndic-storage/src/provider_item/codec/decode/item/execution.rs",
+      "crates/syndic-storage/src/provider_item/codec/decode/item/message.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/item.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/item/activity.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/item/execution.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/item/message.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/structured.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/text.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/utf8.rs",
+      "crates/syndic-storage/src/provider_item/structured.rs",
+      "crates/syndic-storage/src/provider_item/value.rs",
+      "crates/syndic-storage/tests/provider_codec.rs",
+      "crates/syndic-storage/tests/provider_streaming.rs",
+      "crates/syndic-storage/tests/provider_streaming/corruption.rs",
+      "crates/syndic-storage/tests/provider_streaming/lifecycle.rs"
+    ],
+    "symbols": [
+      "decode_bounded_provider_item_frame_v1",
+      "validate_streaming_provider_item_frame_v1",
+      "ProviderStructuredValueV1",
+      "ProviderObjectEntryV1",
+      "ProviderNumberV1",
+      "ProviderTextV1"
+    ],
+    "evidence": [
+      "The bounded materializing decoder is explicitly feature-gated test support; the production streaming decoder consumes arbitrary frame lengths with bounded reads and independently regenerates spans, digest and structural facts. provider_streaming proves a frame over two million bytes validates while bounded materialization rejects it.",
+      "Structured values preserve ordered object entries including duplicate keys, separate signed/unsigned/finite-float bits, typed inline image assets and inline/reused text references. A JSON DOM or generic serializer lacks these exact PIV1 semantics without custom adapters.",
+      "Existing serde_json 1.0.151 investigation confirms whole retained-string scratch allocation before visitors; see doc/memory/crates.io/serde_json/1.0.151/bounded-ingress-replacement.md. This audit does not reclassify normalized staged observations as raw JSON.",
+      "Official bincode 3.0.0 package states it is unmaintained and contains a deliberate compile error; it is not an installable replacement implementation. This is a screening rejection, not a completed serializer migration study."
+    ],
+    "proposal": "Retain the independent decoder and normalized value representations. Pursue SP-001 writer sharing instead. Do not claim the decoder tree or field-specific validation removable merely because a serialization crate exists.",
+    "required_contract_changes": [
+      "Any general-format replacement would require an explicit Operator-owned PIV1/V7 persistence-format and allocation-envelope decision, plus wrappers for spans, reused ranges, typed assets, exact tags and error semantics; no compatible net reduction is established."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no tests, builds or advisory scan run. Keep independent malformed-byte, typed image, depth and fragmented-read oracle tests.",
+      "If revisited, demonstrate exact bytes, ordered duplicate keys, float bits, bounded arbitrary-length strings, source-span regeneration and error behavior before estimating savings."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "serde_json",
+        "version": "1.0.151",
+        "disposition": "rejected_under_current_contract",
+        "evidence": "Existing versioned research reused; actual audit baseline resolves 1.0.149. Whole-string scratch and DOM semantics fail the provider bounded/exact-value boundary.",
+        "sources": [
+          "doc/memory/crates.io/serde_json/1.0.151/bounded-ingress-replacement.md",
+          "https://docs.rs/crate/serde_json/1.0.151"
+        ]
+      },
+      {
+        "crate": "bincode",
+        "version": "3.0.0",
+        "disposition": "rejected_at_maintenance_screen",
+        "evidence": "Current official package is an unmaintained compile-error sentinel; no feature, target, MSRV, advisory or adoption clearance claimed for new use. Legacy versions were not proposed as replacements.",
+        "sources": [
+          "https://docs.rs/crate/bincode/3.0.0"
+        ]
+      }
+    ],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  },
+  {
+    "id": "SP-007",
+    "title": "Retain constant-state exact locator validation instead of a whole-string URL object",
+    "paths": [
+      "crates/syndic-storage/src/provider_item/structured/locator.rs",
+      "crates/syndic-storage/src/provider_item/structured/locator/authority.rs",
+      "crates/syndic-storage/src/provider_item/codec/stream/text.rs",
+      "crates/syndic-storage/src/provider_observation/validator/value.rs",
+      "crates/syndic-storage/tests/provider_streaming/corruption.rs",
+      "crates/syndic-storage/tests/provider_observation/validation.rs"
+    ],
+    "symbols": [
+      "ProviderImageLocatorValidatorV1",
+      "UriState",
+      "AuthorityValidator",
+      "ProviderImageLocatorV1"
+    ],
+    "evidence": [
+      "The full locator and authority implementations validate exact arbitrary-length ASCII URI text incrementally, reject data-image locators with a distinct typed error, and retain a small fixed IPv6 buffer parsed by std::net::Ipv6Addr. The same rules are applied to materialized, streamed-frame and staged-observation text.",
+      "Official url 2.5.8 source defines Url with serialization: String (lib.rs:228-250); ParseOptions::parse takes &str and initializes String::with_capacity(input.len()) (:305-315). Public documentation identifies WHATWG URL semantics and normalization, rather than the exact unnormalized locator grammar required here.",
+      "Registry metadata inspected on 2026-09-06 confirms url 2.5.8, MIT OR Apache-2.0, Rust 1.63 and default std; std enables idna/percent-encoding/form_urlencoded std support. No dependency was added and no target build, benchmark, advisory scan or broad adoption clearance was performed because allocation/semantic fit already fails."
+    ],
+    "proposal": "Keep the bounded locator state machine and existing std IPv6 parser reuse. Reject a direct url::Url substitution; an allocated normalized URL object does not remove the current streamed validation responsibility. A different incremental RFC3986 candidate would require a separate source investigation, not an assumed saving.",
+    "required_contract_changes": [
+      "A url-based replacement would require explicit changes to arbitrary-length bounded residency and accepted/normalized locator semantics, plus adapters retaining distinct data-URL rejection and exact source bytes. These changes are not authorized or recommended by this audit."
+    ],
+    "estimated_net_lines": 0,
+    "verification": [
+      "Audit only; no tests or builds run.",
+      "Any future candidate must preserve invalid percent/bracket/port handling, fragments, opaque schemes, data-prefix classification, exact bytes and fragmentation, including extremely long valid locators and a bounded resident high-water mark."
+    ],
+    "dependency_candidates": [
+      {
+        "crate": "url",
+        "version": "2.5.8",
+        "disposition": "rejected_under_current_contract",
+        "features": [
+          "std (default)"
+        ],
+        "license": "MIT OR Apache-2.0",
+        "declared_rust_version": "1.63",
+        "sources": [
+          "https://crates.io/api/v1/crates/url/2.5.8",
+          "https://docs.rs/url/2.5.8/url/",
+          "https://docs.rs/url/latest/src/url/lib.rs.html"
+        ],
+        "limitations": "Owned normalized String and complete &str input conflict with incremental exact locator validation; no safe-target/advisory/adoption clearance claimed.",
+        "memory_required": "Root integration should retain this negative investigation under doc/memory/crates.io/url/2.5.8/."
+      }
+    ],
+    "confidence": "high",
+    "disposition": "retained",
+    "evidence_maturity": "subsystem_review"
+  }
+]
