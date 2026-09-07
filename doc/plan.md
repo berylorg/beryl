@@ -42,27 +42,61 @@ changes; the earlier 113-test marker regression run and locked local Syndic/Home
 The accepted widget evidence, fresh readiness, and admitted target resolver prerequisites remain
 ready for production composition.
 
-# Phase 336: Reconcile Durable Staged Build Outcomes (pending)
+# Phase 337: Preserve Persistent Sequence Split Heights (pending)
 
-Proposed prerequisite after production integration exposed a missing public Syndic boundary.
-The current public build reconciliation requires replay of original fragments from ordinal one;
-the host retains authenticated durable staging authority and has no public bounded reader for
-that replay. A terminal status read omits committed local finalization and writer progress or
-settlement release. Establish the owning Syndic contract for bounded staged-build outcome
-reconciliation before activation. It must authenticate the exact staged build, consume local
-finalization once, preserve typed command and ambiguous-outcome evidence, and perform the existing
-writer progress, settlement, and cleanup transitions without an app-owned full-edit buffer.
-Verify real multi-page fresh and mixed edits, ExactOld/ExactNew, finalization failure, stale or
-substituted authority, and terminal reclamation. Obtain independent semantic and adversarial review.
-Implementation awaits Operator direction under the technical-plan stop rule.
+Proposed prerequisite, awaiting Operator direction and bounded repair readiness. The long-operation
+test exposed an existing recursive split defect: a collapsed child loses its returned height when
+reattached beneath the original parent height. At fragment 129, a leaf is consequently looked up as
+an internal node. The [failure record](failures/syndic-draft-piece-split-height.md) contains the exact
+reproduction and source evidence. No tree-algorithm repair has been applied.
 
-# Phase 329: Connect Production Marker Admission (wip)
+Establish a repair that preserves subtree heights and canonical balance under the existing
+[draft-tree contract](../crates/syndic-storage/doc/design-draft-storage.md#draft-and-root-authority)
+and V7 bounds. Verify recursive splits across the 128-child boundary, exact text and root results,
+bounded construction, and the preserved 257-fragment operation. Obtain the package-required
+independent adversarial review before accepting this prerequisite and resuming outcome verification.
 
-Blocked after partial app implementation: staged build outcome reconciliation cannot be composed
-from the accepted public APIs. The [failure record](failures/composer-marker-admission.md) records
+# Phase 336: Reconcile Durable Staged Build Outcomes (wip)
+
+Blocked after partial implementation by the separately proposed persistent split repair above.
+The initial locked production check passed. The latest focused run excluding the separate long
+reproduction passed 5 tests and failed 3: settlement replay returns `EmptyContribution`, mixed-marker
+advance reports `InvalidGapWitness`, and a fixture expects one window where two are observed.
+Independent static review found no demonstrated blocker in capture, reconciliation, or charged
+reference verification; runtime evidence and final review remain incomplete. The long-operation
+test fails in the existing tree algorithm, and dynamic settlement, cleanup ambiguity, corruption,
+successor/collision and long-prefix bounds still need evidence. No implementation is accepted or
+committed. Preserve the source and tests; do not weaken the long-operation requirement.
+
+The Operator approved this prerequisite and subsequent production integration. Independent
+architecture readiness passed for the owning
+[staged-build outcome contract](../crates/syndic-storage/doc/design-draft-storage.md#staged-build-command-outcomes),
+[referenced-closure bounds](../crates/syndic-storage/doc/design-schema-v7.md#v7-bounds-and-canonical-encoding),
+and shared [Syndic lifecycle](systems/syndic-conversation-history/design.md).
+
+Implement the closed opaque prepared command and package-owned submit/resume boundary for build
+transfer, durable window, construction advance and terminal election. Capture the actual serialized
+result, including exact replay and dynamically selected settlement. Known commits consume local
+finalization once; ambiguous outcomes retain their exact owner and verify the selected referenced
+closure under the shared 128-attempt/8,388,608-byte allowance. Preserve original and later failures,
+historical committed classification, current continuation eligibility and explicit cleanup custody.
+Committed cleanup is a later bounded resume; neither callback fragment replay nor the old looping
+cleanup helper satisfies this boundary.
+
+Verify real staged fresh and mixed edits over multiple windows, source-only progress, and more than
+256 total fragments without operation-length-dependent verification. Exercise known commit and
+noncommit, ExactOld/ExactNew, failed reconciliation retrigger, finalization and cleanup faults,
+stale or substituted authority, byte-equal split publication, and terminal root/history/admission
+reclamation. Assert charged read ceilings and exact retained or released custody. Obtain independent
+semantic and package-required adversarial review before acceptance, then resume the preserved app
+integration through this accepted API.
+
+# Phase 329: Connect Production Marker Admission (pending)
+
+Resume the preserved partial app implementation after the approved staged-build reconciliation
+prerequisite is accepted. The [failure record](failures/composer-marker-admission.md) records
 the exact boundary. Preserve the uncommitted app implementation and tests; do not accept this phase
-or substitute status reads for required finalization. The proposed prerequisite above needs
-Operator direction before work resumes.
+or substitute status reads for required finalization.
 
 Compose accepted widget evidence and Syndic fresh-asset readiness before production storage
 MutationBegin. Preserve generic HomeStore proof composition, exact selection and operation,

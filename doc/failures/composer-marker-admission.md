@@ -75,6 +75,12 @@ custody. Do not substitute status reads, fabricate fragments, buffer the full ed
 global cleanup to compensate. Independent review and root inspection confirmed the public gap;
 implementation stopped under the Operator's technical-plan rule.
 
+The Operator subsequently authorized that API. Its partial implementation captures actual serialized
+outcomes and retains finalization/reconciliation/cleanup custody behind an opaque command flight.
+Independent semantic review found no demonstrated blocker in that boundary, but acceptance is now
+blocked by the [persistent sequence split-height defect](syndic-draft-piece-split-height.md)
+exposed by its required long-operation test. The outcome API and app integration remain unaccepted.
+
 ## Evidence And Status
 
 The typed-refusal prerequisite is accepted in `a50186a`, with 113 prior marker regressions and 41
