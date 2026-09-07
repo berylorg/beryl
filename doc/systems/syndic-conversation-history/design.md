@@ -113,7 +113,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 - Every ordinary marker-changing edit additionally carries one non-cloneable, move-only Syndic
   label-readiness proof bound to the current home generation, destination thread, exact label and
   protection heads, draft, editor session and candidate generation, exact predecessor candidate
-  root, operation, closed reuse or allocation disposition, sealed admission-index root and count,
+  root, operation, closed reuse-only or allocation-permitted disposition, sealed admission-index root and count,
   occurrence commitment, and any reserved range. Readiness owns a durable authenticated source-
   order staging tree and target-id admission tree for that exact `(draft, session, operation)`;
   bounded post-EOF continuation empties the source tree while assigning each target leaf its Syndic-
@@ -395,7 +395,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   protection head, and active editor-candidate head/root through bounded point reads. The protection
   head is already at least the applicable inherited/permanent accepted authority and every prior
   committed draft allocation. After evidence EOF, allocation reserves a package-derived contiguous
-  destination range no larger than the authenticated source-tree occurrence count and strictly
+  destination range no larger than the authenticated allocating-occurrence count and strictly
   above the protection head and every live destination reservation. A missing protection head,
   checked ordinal exhaustion, or retained-resource refusal is an ordinary unavailable result and
   creates no usable proof.
@@ -404,9 +404,12 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   composition. An accepted-only page contains only local or inherited accepted associations and
   uses one typed Syndic source role to validate immutable origin authority plus one typed Beryl-
   state witness role to validate the proof-gated sealed-set label-first entry and exact `AssetId`.
-  One operation may ingest both shapes across different pages in arbitrary order, but no page mixes
-  them. Cross-conversation accepted source associations ignore the source ordinal when deriving the
-  reserved destination labels. Every participating role is fenced to the exact owner,
+  A fresh-only page carries complete ordinary admitted AssetIds without a source ordinal or
+  existing occurrence. Its Syndic source authenticates destination/operation authority and its
+  Asset witness point-validates the exact ordinary committed metadata. Prepared sidecars,
+  unselected repair metadata, and caller AssetIds alone cannot authorize a fresh occurrence.
+  Proof composition performs no sidecar I/O or mutation. One operation may ingest all three shapes
+  across different pages in arbitrary order, but no page mixes them. Every participating role is fenced to the exact owner,
   registration, home generation, and domain revision and returns the same fixed-size correlation
   from its private domain facts on one coherent proof snapshot. No raw cross-domain result or
   comparison reaches the app.
@@ -414,13 +417,14 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   contribution is sealed. The Asset role may coalesce byte-identical proof/label/asset point reads
   within that page, but the shared page correlation still hashes every canonical occurrence
   separately and therefore preserves occurrence multiplicity and digest authority. Candidate/cut-
-  only pages have no Asset witness input.
+  only pages have no Asset witness input. Fresh-only witnesses may coalesce identical ordinary
+  metadata reads within the bounded page but hash each occurrence separately.
 - Draft-marker evidence pages instantiate HomeStore's generic fixed-digest protocol marker with
   exact protocol id `0x53444d5244595631` (ASCII `SDMRDYV1`) and operation id
   `0x5244595041474531` (ASCII `RDYPAGE1`). The agreed correlation is one 32-byte SHA-256 digest of
   the complete package-canonical homogeneous evidence page under
   `syndic/draft-marker-label-readiness-page/v1` after domain-local validation. It commits page
-  ordinal, EOF, count, ordered evidence kind and selector, source label, exact `AssetId`, and, for
+  ordinal, EOF, count, ordered evidence kind and selector, any existing source label, exact `AssetId`, and, for
   each witnessed accepted-origin association, the complete `SealedAssetReferenceSetProof`. A
   different set with the same label and asset therefore cannot agree. These stable process-protocol
   identifiers are neither durable record tags nor permission for either domain to inspect the
@@ -438,37 +442,51 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   candidate/cut-only page is tag `0`, complete candidate/cut root and marker identity, source label,
   and complete asset identity. Every entry in an accepted-only page is tag `1`, then the sealed-set
   id, sequential marker digest/count/maximum, ordered-asset digest/count, entry frontier, asset-
-  chain digest, source label, and complete asset identity. An absent maximum is encoded as zero and
+  chain digest, source label, and complete asset identity. A fresh-only entry is tag `2` and the
+  complete asset identity, exactly 42 bytes, with no source label or sealed-set proof.
+  An absent maximum is encoded as zero and
   an admitted maximum as its nonzero little-endian `u64`; a complete asset identity is its version
   byte, 32-byte digest, and nonzero little-endian `u64` length. The page's 65,536-byte evidence
   ceiling counts only these raw entry bytes, not the domain, page header, or hashing-library
   framing.
 - Syndic, not the app, canonicalizes each complete bounded homogeneous page after resolving its
-  domain-local evidence. Within one page it orders entries by source label and exact page-digest
-  evidence bytes only to derive the complete page's fixed shared correlation. Pages and
+  domain-local evidence. Within a candidate/cut or accepted page it orders entries by source label
+  and exact page-digest evidence bytes; within a fresh page it orders by the complete raw entry
+  bytes. This order derives only the complete page's fixed shared correlation. Pages and
   associations may arrive in any caller/source order; no operation ingestion frontier requires one
   page's proof shape or labels to follow another's. Every validated association is inserted into
   both operation trees, and duplicate target identities reject even when they occur on different
   pages.
+- Syndic derives a closed per-occurrence assignment group while authenticating the selector.
+  Candidate/cut sources in the destination thread and accepted sources addressed through that
+  thread use `PreserveLabel(label)`, including inherited accepted origins. Accepted sources
+  addressed through another thread use `AllocateLabel(source thread, label)`. Fresh sources use
+  `FreshAsset(AssetId)`. Reuse-only operations permit only preservation; allocation-permitted
+  operations permit all three groups while preserving every authenticated destination label.
+  A caller supplies no treatment, group, fresh label, or authority to override this derivation.
+  Foreign accepted sources requesting inherited preservation must be addressed through the
+  destination's existing lineage lookup; no destination-wide origin or asset scan discovers reuse.
 - The package owns dedicated durable admission-head, authenticated-node, and replay-receipt
   families whose natural owner is the exact `(draft, editor session, operation)`. They are distinct
   from the long-lived candidate marker-identity index. One tagged source-order staging tree is keyed
-  by `(source label, target marker id)` and retains every occurrence's complete validated source-
+  by `(assignment group, target marker id)` and retains every occurrence's complete validated source-
   selector/evidence bytes and exact `AssetId`. One target-id
   admission tree is keyed by target marker id and retains that occurrence's admitted page identity,
-  exact validated source-selector/evidence bytes, source label, and `AssetId`; it first stores an
+  exact validated source-selector/evidence bytes, derived assignment group, and `AssetId`; it first stores an
   unassigned disposition, then the Syndic-derived assigned final label. These exact occurrence
   bytes let head-selected byte-exact page replay compare the canonical request rather than trust a
   digest. Both use fanout 128, maximum height 64, checked record counts, disjoint key envelopes, and
   canonical empty roots.
   The current head commits request and proof-custody authority, lifecycle, ingestion frontier,
   occurrence commitment, one head-selected replay receipt while readiness is active, both root identities/heights/digests/counts,
-  unassigned count, assignment continuation, remaining builder count, and exact retained-
+  unassigned and allocating-occurrence counts, assignment continuation, remaining builder count, and exact retained-
   association and encoded-byte charges.
 - After exact evidence EOF, Syndic repeatedly authenticates and removes the least source-order leaf,
-  carrying only the prior source label/asset and allocation cursor. Reuse assigns the validated
-  source label. Allocation assigns the next reserved destination label on the first occurrence of a
-  distinct source label and reuses it for agreeing repetitions. Equal-label `AssetId` disagreement,
+  carrying only the prior assigning group/asset/final label and allocation cursor. Preserve groups
+  assign the authenticated destination label without advancing the cursor. Allocating groups assign
+  the next reserved destination label on their first occurrence and reuse it for agreeing
+  repetitions. Fresh grouping is by complete AssetId within this operation, without a global
+  asset-to-label lookup or reuse between fresh operations. Equal-group `AssetId` disagreement,
   reservation/root disagreement, or ordinal exhaustion terminalizes the operation. Each bounded step
   path-copy deletes that source leaf and updates the exact target-id leaf; only canonical-empty
   source root and zero unassigned count permit sealing the assigned target root/count.
@@ -620,6 +638,30 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   complete binding against the active candidate-session head and moves its single custody slot from
   absent to `Staging` before any page can be accepted. It creates no draft-piece build, candidate
   root, history transition, current-draft publication, or materialization.
+- Widget edit evidence is available before durable `MutationBegin` through one bounded pass over
+  an immutable replayable producer. Beryl preserves the exact operation, predecessor positions,
+  envelope, and producer across evidence and staging. Syndic authenticates insertion-bearing
+  sources through its readiness lifecycle before storage admission; app-neutral widget equality
+  checks are not source or label authority. Explicit evidence EOF closes both lanes and fixes
+  totals and intended successor positions. After admission, the same producer restarts under a
+  distinct transport pass identity, and staging must match that complete closure before commit.
+  Each pass releases accepted payload pages and retains only fixed state and immutable source
+  handles. One-shot unreplayable input is unavailable before admission, never spooled or assembled
+  into a complete edit. Pre-begin cancellation releases readiness; uncertain durable admission
+  preserves exact operation custody and cannot be reported as noncommit.
+- After `MutationBegin` transfers readiness into staging custody, Syndic resolves one assigned
+  destination target at a time for proposal translation. The read validates the current home and
+  domain generation, exact draft/session/operation, active session Staging custody, staging begin
+  and readiness binding, transferred admission-head ownership, captured predecessor root and
+  candidate generation, and the authenticated target leaf under its current assigned root. The
+  requested marker identity and AssetId must agree, and its assigned label must satisfy its group.
+  Given the requested same-anchor order key, Syndic returns the exact typed marker with its final
+  label; the app transports it unchanged and cannot choose that label. Widget payload remains
+  label-free for fresh sources and unchanged between passes. Resolution is bounded to one target
+  path and fixed output, is available only before staging finish, and changes no target or counter.
+  Repeated reads yield facts rather than proof or consumption authority. The builder subsequently
+  revalidates and consumes each assigned target exactly once; a missing, stale, substituted, or
+  already-consumed entry cannot authorize an effect or adoption.
 - Before translating or admitting a widget mutation page, `beryl-app` validates the complete
   app-neutral widget frontier: binding and operation, lane, exact cursor, ordinal, prior cumulative
   identity, canonical page and cumulative identities, checked totals, nonempty item set, at most

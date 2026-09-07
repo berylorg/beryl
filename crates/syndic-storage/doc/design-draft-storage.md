@@ -96,6 +96,39 @@ captured operation completed.
 
 ## Durable Mutation Staging
 
+### Marker Readiness Inputs
+
+Syndic accepts candidate, cut, accepted-origin, and fresh ordinary AssetId selectors through its
+bounded opaque label-readiness lifecycle. Fresh selectors contain no label. Candidate/cut pages
+use source-only proof composition; accepted and fresh pages each use their own homogeneous Asset
+witness factory shape through the generic HomeStore boundary. Fresh witnesses receive only bounded
+AssetIds; accepted witnesses retain their sealed-proof/label/AssetId inputs. The package has no
+production dependency on Beryl-state and publishes no dependency-private proof facts to the app.
+
+Syndic derives preservation versus allocation per authenticated occurrence under the
+[Syndic system contract](../../../doc/systems/syndic-conversation-history/design.md). Reuse-only
+disposition rejects allocating sources; allocation-permitted disposition supports mixed edits
+without relabeling destination occurrences. Dedicated bounded source-order and target-id trees
+retain exact derived groups, evidence, targets, and assignment progress. Fresh occurrences group
+only by complete AssetId within that operation; all final labels are allocated inside Syndic.
+The [V7 byte contract](design-schema-v7.md#draft-marker-label-readiness-byte-contract) owns page
+correlation bytes; its admission-family contract owns durable group encoding and replay closure.
+
+Exact evidence EOF precedes bounded assignment and final proof issuance. The final move-only proof
+enters storage MutationBegin custody; no public label, digest, group, or binding substitutes for it.
+The builder point-consumes assigned targets and verifies complete effect closure before adoption.
+While the exact candidate session still owns Staging custody, a bounded target resolver validates
+the transferred admission head, staging/readiness binding, captured predecessor and generation,
+current target root, and assigned leaf for one marker identity and AssetId. It returns one typed
+`DraftPieceMarkerV1` carrying the Syndic-assigned label and requested order key for unchanged
+transport into proposal staging. It never consumes the entry, changes a counter, returns a proof,
+or scans the target tree. Once finish transfers custody to Building, resolution is unavailable;
+the builder remains the sole consumer and validates all exact marker facts at consumption.
+Missing metadata, substituted evidence, stale generation, exhaustion, cancellation, and capacity
+refusal preserve prior candidate/history and exact typed cleanup or reconciliation custody.
+
+### Staging Session
+
 `DraftMutationOperationIdV1` is one opaque caller-owned identity reused for one transaction's begin,
 pages, finish, build, settlement, and reconciliation. Source and proposal lanes advance through
 immutable bounded pages and receipts selected by one mutable staging head.

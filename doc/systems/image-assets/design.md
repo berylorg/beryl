@@ -160,7 +160,7 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   final proof is non-cloneable, move-only, and bound to the current home generation, destination
   thread and exact label-authority and draft-label-protection heads, destination draft, editor-
   candidate session and generation, exact predecessor candidate root, operation, closed same-
-  conversation reuse or cross-conversation allocation disposition, frozen occurrence commitment,
+  conversation reuse-only or allocation-permitted disposition, frozen occurrence commitment,
   sealed assigned target-id root, and any exact contiguous allocation range. Syndic derives the
   fixed-size durable readiness binding only while moving that proof into mutation custody; no
   public input can construct, inject, replace, or use the binding as independent authority.
@@ -174,8 +174,13 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   plus one typed Beryl-state witness contribution to validate the sealed-set proof, exact sealed
   manifest/completion evidence, label-first entry, and complete `AssetId`. `beryl-home-store` runs
   the two accepted-only roles on one coherent read snapshot independent of writer serialization and
-  accepts only their equal fixed-size complete-page correlation. Candidate/cut-only pages have no
-  Asset witness. One operation may ingest both page shapes in arbitrary order but never mixes them
+  accepts only their equal fixed-size complete-page correlation. A fresh-only page instead names
+  complete ordinary admitted `AssetId`s without an existing label, marker occurrence, origin span,
+  or sealed reference set. Syndic validates the exact destination and operation authority while
+  one Asset witness point-validates each exact ordinary committed metadata record on that same
+  snapshot. A bare AssetId, a prepared sidecar, or unselected repair metadata is not admission proof.
+  No sidecar read or mutation occurs during proof composition. Candidate/cut-only pages have no
+  Asset witness. One operation may ingest all three page shapes in arbitrary order but never mixes them
   within one page. Neither domain reads the other's records, and the app never receives or compares
   the private facts. Missing provenance, stale candidate binding, an absent origin or label-first
   entry, or correlation disagreement makes readiness unavailable and cannot authorize insertion.
@@ -187,15 +192,24 @@ Allow many drafts and turns to share exact bytes without making a thread directo
   evidence agrees, Syndic inserts every occurrence into operation-owned authenticated source-order
   and target-id indexes and rejects duplicate target marker ids. No caller cumulative digest,
   resident label map, or page prefix is readiness authority.
-- Exact evidence EOF freezes the authenticated source-order root and count as the occurrence
-  commitment, then starts bounded durable post-EOF assignment. For cross-conversation allocation,
-  Syndic reserves a contiguous range derived from the authenticated occurrence count and strictly
-  above the draft-label-protection head and every live destination reservation. Assignment consumes
-  source-order leaves, reuses one label only for agreeing repeated source-label/`AssetId` pairs, and
-  writes each final label into the matching target-id leaf. Same-conversation reuse writes the
-  already authenticated label. Checked exhaustion or disagreement terminalizes without candidate
-  mutation. Only a canonical-empty source root and zero unassigned targets permit final proof
-  issuance.
+- Syndic derives each occurrence's treatment from its authenticated selector. Destination-thread
+  candidate/cut sources and accepted sources addressed through the destination thread preserve
+  their existing labels, including accepted inherited labels. Accepted sources addressed through
+  another thread allocate by that source thread and label; fresh sources allocate by complete
+  AssetId. Reuse-only operations reject allocating sources. Allocation-permitted operations may
+  contain both treatments and never relabel a preserved occurrence. No app-selected treatment,
+  fabricated ordinal, or caller label supplies this decision.
+- Exact evidence EOF freezes the authenticated source-order root and counts as the occurrence
+  commitment, then starts bounded durable post-EOF assignment. When allocating occurrences exist,
+  Syndic reserves a contiguous range bounded by their authenticated count and strictly above the
+  draft-label-protection head and every live destination reservation. Source-order assignment
+  preserves authenticated labels or assigns one new label per distinct allocating source group:
+  source thread/label for foreign accepted evidence, full AssetId for fresh evidence. Repetitions
+  within a group must agree on exact AssetId and reuse that group's assignment. Distinct fresh
+  operations do not perform a global asset-to-label lookup or reuse earlier allocations. Each
+  final label enters the matching target-id leaf. Checked exhaustion or disagreement terminalizes
+  without candidate mutation. Only a canonical-empty source root and zero unassigned targets
+  permit final proof issuance.
 - Durable readiness heads and indexes own operation progress. Syndic's home-generation runtime
   attachment owns only the configured bounded live reservations, compact destination reservation
   frontiers, and active attempt identities; it owns no page, cumulative stream state, replay

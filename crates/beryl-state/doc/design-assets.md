@@ -59,7 +59,7 @@ and repair-media participants.
   restored, retained, missing, or conflicting state is `Collision`; stored access failures retain
   typed provenance. Marker-free first acceptance has no mutable Asset reconciliation descriptor
   or synthetic mutation and admits the source-only shape explicitly.
-- The private draft-marker readiness witness accepts only a complete bounded accepted-evidence page,
+- The private accepted-origin draft-marker readiness witness accepts only a complete bounded accepted-evidence page,
   revalidates selected sealed proofs, manifest, completion evidence, label-first entry, and asset
   metadata on the snapshot, and returns no Asset facts to callers. It neither reads Syndic records
   nor mutates Asset state. It uses protocol `0x53444d5244595631`, operation
@@ -74,6 +74,21 @@ and repair-media participants.
   little-endian `u64`, then entries without framing; evidence counts entry bytes and is at most
   65,536 bytes. Repeated identical durable lookups may share reads but every occurrence stays
   separately ordered and hashed.
+- The separate private fresh-asset readiness witness accepts one homogeneous page of at most 256
+  complete AssetIds and 65,536 raw evidence bytes. It point-validates each exact ordinary metadata
+  record, including committed sidecar state, against the coherent proof snapshot. Absent metadata,
+  wrong digest or length, malformed records, and unavailable generation reject proof composition.
+  A prepared sidecar or unselected repair page does not qualify. Metadata admission already proves
+  durable bytes under the trusted-home contract; this read-only witness performs no sidecar I/O,
+  reference mutation, label lookup, or Syndic read.
+- The fresh witness factory receives only bounded AssetIds and returns the existing opaque
+  HomeStore witness contribution. It uses the same protocol, operation, page header, and correlation
+  domain as accepted readiness. Each fresh raw entry is exactly 42 bytes: tag `2`, asset version
+  byte, 32-byte digest, and nonzero length as little-endian `u64`. It orders complete raw entries
+  lexicographically and hashes every occurrence; identical metadata reads may coalesce only within
+  the page. It carries no caller label, target marker id, source treatment, or assignment group.
+  The accepted witness factory retains its separate sealed-proof/label/AssetId shape. Neither
+  factory requires a Syndic dependency or a shared cross-domain readiness value type.
 
 ## Repair participants and validation
 

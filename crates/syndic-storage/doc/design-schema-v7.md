@@ -553,18 +553,34 @@ canonical byte comparison of the point-read target closure.
   operation identity. Values repeat that owner and commit package-owned request/proof-custody
   authority, lifecycle, ingestion frontier, optional head-selected replay-receipt reference while
   readiness is active, source-order and
-  target-id root identities/heights/digests/counts, occurrence commitment, unassigned count,
+  target-id root identities/heights/digests/counts, occurrence commitment, unassigned and
+  allocating-occurrence counts,
   assignment continuation, remaining builder count, exact retained-association and encoded-byte
   charges and limits, terminal cleanup cursor, and their digest. Each canonical empty root contains
   no node and has count zero.
 - `draft-marker-label-admission-nodes` keys add a closed internal-or-leaf tag and operation-local
-  opaque record identity to that complete owner. Source-order leaves are keyed by `(source label,
-  target marker id)` and retain complete validated source-selector/evidence bytes and exact
+  opaque record identity to that complete owner. Source-order leaves are keyed by `(assignment
+  group, target marker id)` and retain complete validated source-selector/evidence bytes and exact
   `AssetId`; target-id leaves are keyed by target marker id and
-  retain admitted page identity, complete validated source-selector/evidence bytes, source label,
+  retain admitted page identity, complete validated source-selector/evidence bytes, assignment group,
   and exact `AssetId`, plus either an unassigned disposition or the assigned final label. Those
   occurrence bytes are point-compared for head-selected byte-exact page replay and remain until
   builder consumption.
+  Assignment groups are a closed tag followed by its exact payload: `PreserveLabel = 0` and
+  nonzero label as unsigned big-endian `u64`; `AllocateLabel = 1`, exact 16-byte source thread id,
+  and nonzero label as unsigned big-endian `u64`; `FreshAsset = 2`, asset version byte, 32-byte
+  digest, and nonzero length as unsigned big-endian `u64`. Source keys append the 16-byte target
+  marker id and order lexicographically by these bytes. A fresh selector encodes only the complete
+  AssetId and has no label sentinel. Source/target evidence and the private replay closure bind
+  the derived group. Assignment continuation retains the optional prior complete group, AssetId,
+  assigned final label, and checked allocation cursor. The head's allocating-occurrence count
+  increases only for AllocateLabel and FreshAsset insertions, is fixed at evidence EOF, and bounds
+  the reserved range; zero allocating occurrences require no range. After EOF this historical count
+  is bounded by the frozen occurrence count, not by the shrinking source or remaining-target count.
+  Durable fresh evidence is the exact 42-byte tag-2 little-endian correlation entry below; the
+  FreshAsset group's length remains big-endian. Process-only selector discriminants are not V7 tags.
+  Decode rejects unknown groups,
+  selector/group disagreement, impossible counts, and an assignment incompatible with its group.
   Internal nodes store bounded ordered child identities, digests, checked counts, and disjoint
   tree-specific key envelopes. Both trees have fanout 128 and maximum height 64. Values repeat owner,
   tree/tag, and record identity; unknown tags, wrong owners, malformed envelopes, inconsistent
@@ -979,6 +995,10 @@ page's one homogeneous proof shape:
   and complete asset identity.
 - Accepted-only entries are tag `1`, sealed-set id, sequential digest/count/maximum, ordered-asset
   digest/count, entry frontier, asset-chain digest, label, and complete asset identity.
+- Fresh-only entries are tag `2`, asset version byte, 32-byte digest, and nonzero length as
+  little-endian `u64`, exactly 42 raw entry bytes. They carry no source label, sealed-set proof,
+  destination marker identity, or assignment group. Canonical fresh page order is lexicographic
+  over complete raw entries, retaining every repeated occurrence in the count and digest.
 
 Optional maximum is zero for absent and its nonzero `u64` otherwise. Asset identity is its version
 byte, digest, and nonzero length. Every integer in this correlation preimage is little-endian.

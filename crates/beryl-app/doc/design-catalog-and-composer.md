@@ -52,10 +52,28 @@ governed by [design.md](design.md). It does not independently declare engineerin
   cumulative identity, and checked totals before translation or durable admission.
 - Accepted payload pages release at their typed frontier. Large operations retain only bounded
   current-page, cursor, digest, endpoint, intent, and custody state.
+- Before durable mutation admission, the host consumes the widget's bounded evidence pass from
+  the captured immutable producer. It preserves the exact operation and predecessor selection,
+  transports insertion-bearing evidence through Syndic readiness, and retains only bounded pages,
+  fixed lane closures, source handles, and opaque custody. Exact evidence EOF precedes proof
+  consumption by storage `MutationBegin`. After admission the same producer restarts for staging;
+  both complete lane closures and intended successor positions must match before finish/commit.
+  Late evidence responses never enter staging. Cancellation before durable begin releases evidence
+  and readiness through their typed owners; ambiguous admission retains ordinary reconciliation
+  custody. Neither an insertion-only special case nor a complete edit buffer supplies this boundary.
 - Marker-changing edits use one opaque Syndic label-readiness operation bound to exact home,
   thread, draft, session, candidate, predecessor, and destination authority. The app transports
   bounded pages and opaque commands or receipts; it never chooses labels, builds a registry,
   compares dependency-private proof facts, scans the draft, or substitutes another operation.
+- Fresh image effects supply the ordinary admitted AssetId selector and the separate opaque Asset
+  witness factory to Syndic. Existing candidate, cut, and accepted references retain their typed
+  source selectors. Syndic derives preservation or allocation, including mixed edits; the app
+  supplies no caller-selected label, assignment group, source treatment, or fabricated historical origin.
+- After marker-aware begin, insertion-bearing staging translation obtains each final marker from
+  Syndic's exact admitted-target point resolver and transports it unchanged into the proposal.
+  The lookup is bound to active staging custody and the original predecessor and generation. It
+  neither consumes targets nor retains a marker map. Fresh widget payloads remain AssetId-only
+  through both passes; the assigned label enters only the storage proposal via Syndic resolution.
 - The host preserves Syndic's fixed-profile `OperationTooLarge`, temporary `CapacityUnavailable`,
   and storage-failure distinctions through the composer result. It does not infer a public marker
   count from internal association or byte ceilings, raise the profile, automatically split one
