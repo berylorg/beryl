@@ -104,3 +104,41 @@ The temporary configuration was removed and named fixture/process scans were cle
 [policy-blocked directory](../audits/code-simplification/implementation.md) was untouched.
 This accepts the shared release decision, not the remaining integrated resident-close or ordinary
 OS-window close boundaries.
+
+## Accepted Resident-Preserving Close Lifecycle
+
+Phase 302 was accepted on 2026-09-07. Fresh independent review traced host flush/close, mount
+admission and settlement, service/slot fencing, worker/drop cleanup and actual final widget release.
+WindowClose retains its exact barrier and close ticket after authenticated readiness. Already
+admitted work settles first, read-only interaction remains coherent, and final disposal requires
+explicit authorization and the exact widget-release fence. Failure releases only its own attempt;
+stale settlement cannot dispose or re-enable a replacement editor.
+
+Integrated run `e6889489-289a-48f7-8a64-9a345db9a3ac` passed 62 selected cases in 71.216 seconds:
+ten resident-close, seven saved-opening, 28 lifecycle, 13 mounted-submission and four native-lineage
+cases. Nine other mounted cases were intentionally outside this acceptance boundary. The run
+combined the [opening integration selection](pristine-editor-publication.md) with every
+`resident_close_flush` case using locked Cargo, `test-faults`, two test threads, a process-scoped
+32 MiB stack and a temporary 30-second per-test timeout.
+
+Direct assertions cover exact editor/candidate/history retention, caret/selection/scroll snapshots,
+selection/copy/wheel interaction while mutations and submission are blocked, already-running save
+and same-update admitted edits, repeated/stale attempts, failure restoration with independent
+disable preserved, exact authorized final disposal, cancellation and subsequent explicit retry.
+Ambiguous close publication remains unready and retains custody through release/reconciliation.
+Busy-slot worker release and real mount-drop cleanup retain their distinct ownership boundaries.
+
+Terminal-unavailability and proven-noncommit coverage additionally relies on shared-path tests and
+source proof rather than dedicated WindowClose fault duplicates. Publication execution clears only
+the proven-noncommit lane and leaves adopted binding/dirty state intact. Failure settlement retains
+the WindowClose ticket until explicit gate release. Terminal publication retains its prepared
+evidence and marks the active session unavailable; close release cannot rearm publication, and
+`begin_flush` rejects unavailable sessions. Independent review found this evidence sufficient and
+root confirmed the unavailable admission guard.
+
+No source or test edit was needed for this final integration phase. Current `test-faults` test
+compilation and diff checks passed; the Phase 306 locked library and formatting checks cover the
+unchanged source at `daa1f3e`. Temporary `resident-close-integration-nextest.toml` was removed,
+named fixture scans were empty and no selected test processes remained. The earlier policy-blocked
+directory was untouched. This acceptance excludes OS close integration, backend active-work
+coordination, durable window-session removal and application Exit.

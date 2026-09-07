@@ -4,8 +4,8 @@ The earlier code simplification and behavior-based naming batch is complete. The
 accepted using the [complete simplification audit](audits/code-simplification/report.md) selectively
 within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
 has resumed implementation; host request sequencing, submission quiescence and already-durable
-composer integration and exact close-gate release are accepted. Resident-preserving close-flush
-acceptance is the next bounded phase.
+composer integration, exact close-gate release and resident-preserving close flush are accepted.
+Ordinary-close mounting is next, subject to its active-work and continuation-cancellation readiness check.
 The Operator authorizes continuous implementation until a blocker requires attention, with a
 commit after each accepted phase. Temporary and obsolete directory cleanup is authorized for
 the remainder of this thread; preserve unrelated work and verify exact cleanup targets.
@@ -18,7 +18,7 @@ targets, and completing every proposal is not a rework completion gate. Before a
 rework slice, inspect the relevant findings against current source and owning target docs; the audit
 describes a frozen baseline and does not establish that a finding still applies after later work.
 
-Complete resident-preserving close-flush acceptance and ordinary-close mounting in the phases below.
+Complete ordinary-close readiness and mounting in the phase below.
 Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
 Include a simplification within an existing phase only when it serves that phase's same acceptance
 boundary and cannot be independently implemented, verified, reviewed, or resumed. Otherwise derive
@@ -68,47 +68,13 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 306: Consolidate Exact Close-Gate Release (finished)
+# Phase 302: Preserve The Resident Editor Through Close Flush (finished)
 
-Foreground, worker and unmounted cleanup now share exact slot release and matching service-ticket
-retirement, preserving their scheduling, independent gates and widget-release proof. All ten close
-tests, the locked app check, formatting and independent semantic review passed.
-[Close-release evidence](failures/main-window-close-readiness.md) records caller coverage and
-fixture repairs; audit AM-009's distinct custody boundaries remain retained without reduction credit.
-
-# Phase 302: Preserve The Resident Editor Through Close Flush (pending)
-
-Establish and verify a close flush that freezes mutations while preserving the resident editor and
-read-only interaction until later close obligations settle, under
-[composer behavior](features/composer/design.md) and
-[ordinary close](features/main-windows/design.md). The original WindowClose flush disposed the
-editor before a subsequent session failure could be known; the
-[readiness finding](failures/main-window-close-readiness.md) records that corrected prerequisite.
-
-- Keep WindowClose publication separate from final editor disposal. Retain the exact mounted
-  editor, candidate and history authority, caret, selection, and scroll state while later close
-  obligations remain unsettled; suppress new draft mutations and submission while permitting
-  coherent read-only interaction.
-- Provide exact close-attempt settlement: later failure releases only the close gate and preserves
-  independent unavailability, while final success may dispose the saved editor. Duplicate or stale
-  requests must not repeat publication, release another attempt, or dispose a replacement editor.
-- Reuse the existing captured-save, supersession, and reconciliation paths. A pending or ambiguous
-  save cannot satisfy the barrier; proven noncommit preserves the dirty editor, and terminal
-  unavailability preserves evidence without authorizing a retry.
-- Verify clean and dirty drafts, an already-running save and admitted edit, repeated activation,
-  failed later obligation, final disposal, stale settlement, independent gates, and mounted
-  selection/copy/scroll with mutation rejection. Run focused locked nextest regression targets,
-  the affected library check, formatting, and independent semantic lifecycle review.
-
-Ordinary OS-window close, active-work coordination, session removal, and application Exit remain
-outside this prerequisite and in their owning later slices.
-
-Storage correspondence, host integration, request sequencing, submission quiescence and exact
-gate release are accepted. The eight retained close cases and two new release regressions all pass.
-Complete the integrated saved-opening, lifecycle, mounted-submission and selected native-lineage
-regressions against the shared release implementation, then independent whole-close lifecycle
-review before accepting this phase. The [close finding](failures/main-window-close-readiness.md)
-retains the prior defects and verification limits; the locked app check and formatting are current.
+Resident close now retains the coherent read-only editor through authenticated draft readiness,
+releases only the failed attempt's gate and requires exact final authorization before disposal.
+All 62 selected integration tests and independent lifecycle review passed; current locked checks
+and formatting cover the unchanged source. [Resident-close evidence](failures/main-window-close-readiness.md)
+records direct versus shared-path coverage. OS close and its active-work/session obligations remain separate.
 
 # Phase 298: Mount Ordinary Main-Window Close (pending)
 
