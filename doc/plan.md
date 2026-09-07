@@ -41,7 +41,22 @@ staging tests plus the locked local package check passed, including Finished/Bui
 corrupt custody, retired ownership, and real fresh/preserved-marker settlement. The accepted fresh
 readiness and widget evidence prerequisites remain ready for production app composition below.
 
-# Phase 329: Connect Production Marker Admission (pending)
+# Phase 335: Preserve Typed Marker Admission Refusals (pending)
+
+Proposed prerequisite for the blocked app composition below. Preserve the existing
+`OperationTooLarge`, `CapacityUnavailable`, and storage-failure distinctions through Syndic
+readiness preparation, page submission, assignment, and exact reconciliation. Authority already
+requires these outcomes in the [Syndic system](systems/syndic-conversation-history/design.md) and
+[app contract](../crates/beryl-app/doc/design-catalog-and-composer.md). Verify isolated operation
+limits versus aggregate saturation, unchanged prior authority, and exact cleanup/custody across
+each refusal boundary. Obtain independent semantic and package-required adversarial review.
+This phase is not started; Operator direction is required under the technical-plan stop rule.
+
+# Phase 329: Connect Production Marker Admission (wip)
+
+Blocked before app edits: current public readiness and assignment APIs erase the required typed
+refusal causes. The app cannot preserve distinctions that Syndic does not expose. The proposed
+prerequisite above and [failure record](failures/composer-marker-admission.md) capture the next step.
 
 Compose accepted widget evidence and Syndic fresh-asset readiness before production storage
 MutationBegin. Preserve generic HomeStore proof composition, exact selection and operation,
