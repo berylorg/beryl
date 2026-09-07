@@ -6,7 +6,7 @@ pub(super) struct MainWindowConversationComposerPendingPresentation {
     pub(super) receipt: MainWindowComposerActivationReceipt,
     pub(super) contribution: Entity<MainWindowConversationComposer>,
     pub(super) residency_bound: MainWindowComposerResidencyBound,
-    _realizer_token: MainWindowConversationComposerPendingRealizerToken,
+    _realizer_token: Option<MainWindowConversationComposerPendingRealizerToken>,
 }
 
 impl MainWindowConversationComposerMount {
@@ -30,15 +30,16 @@ impl MainWindowConversationComposerMount {
             };
             let target_residency_bound = config.residency_bound()?;
             let service = self.service.clone();
-            let selected_residency_bound = self
-                .contribution
-                .as_ref()
-                .ok_or_else(|| "selected composer contribution is missing".to_owned())?
-                .read(cx)
-                .residency_bound();
-            let residency_bound = selected_residency_bound
-                .checked_add(target_residency_bound)
-                .ok_or_else(|| "combined composer residency bound overflowed".to_owned())?;
+            let residency_bound = if let Some(selected) = self.contribution.as_ref() {
+                selected
+                    .read(cx)
+                    .residency_bound()
+                    .checked_add(target_residency_bound)
+                    .ok_or_else(|| "combined composer residency bound overflowed".to_owned())?
+            } else {
+                self.suspended_native_lineage_release(receipt.expected_prior())?;
+                target_residency_bound
+            };
             let (prepared_selection, activation_seeds) =
                 match MainWindowConversationComposer::prepare_pending_activation(&service, receipt)
                 {
@@ -98,19 +99,21 @@ impl MainWindowConversationComposerMount {
         if self.pending_presentation.is_some() {
             return Err("pending composer presentation is already attached".to_owned());
         }
-        let selected = self
-            .contribution
-            .as_ref()
-            .ok_or_else(|| "selected composer contribution is missing".to_owned())?;
-        let realizer_token = selected.update(cx, |composer, composer_cx| {
-            composer.attach_pending_realizer(receipt, &pending, composer_cx)
-        })?;
+        let realizer_token = if let Some(selected) = self.contribution.as_ref() {
+            Some(selected.update(cx, |composer, composer_cx| {
+                composer.attach_pending_realizer(receipt, &pending, composer_cx)
+            })?)
+        } else {
+            self.suspended_native_lineage_release(receipt.expected_prior())?;
+            None
+        };
         self.pending_presentation = Some(MainWindowConversationComposerPendingPresentation {
             receipt,
             contribution: pending,
             residency_bound,
             _realizer_token: realizer_token,
         });
+        cx.notify();
         Ok(())
     }
 
@@ -126,13 +129,12 @@ impl MainWindowConversationComposerMount {
         {
             return Ok(None);
         }
-        let selected = self
-            .contribution
-            .as_ref()
-            .ok_or_else(|| "selected composer contribution is missing".to_owned())?;
-        selected.update(cx, |composer, composer_cx| {
-            composer.detach_pending_realizer(receipt, composer_cx)
-        })?;
+        if let Some(selected) = self.contribution.as_ref() {
+            selected.update(cx, |composer, composer_cx| {
+                composer.detach_pending_realizer(receipt, composer_cx)
+            })?;
+        }
+        cx.notify();
         Ok(self
             .pending_presentation
             .take()
@@ -160,16 +162,21 @@ impl MainWindowConversationComposerMount {
         let Some(presentation) = self.pending_presentation.as_ref() else {
             return Ok(None);
         };
-        let selected = self
-            .contribution
-            .as_ref()
-            .ok_or_else(|| "selected composer contribution is missing".to_owned())?
-            .read(cx)
-            .residency_usage(cx)?;
         let pending = presentation.contribution.read(cx).residency_usage(cx)?;
-        Ok(selected
-            .checked_add(pending)
-            .and_then(|usage| usage.admit(presentation.residency_bound)))
+        if let Some(selected) = self.contribution.as_ref() {
+            Ok(selected
+                .read(cx)
+                .residency_usage(cx)?
+                .checked_add(pending)
+                .and_then(|usage| usage.admit(presentation.residency_bound)))
+        } else {
+            let selection = self
+                .service
+                .selected_identity()
+                .ok_or_else(|| "selected composer identity is missing".to_owned())?;
+            self.suspended_native_lineage_release(selection)?;
+            Ok(pending.admit(presentation.residency_bound))
+        }
     }
 
     pub(super) fn retire_failed_pending(

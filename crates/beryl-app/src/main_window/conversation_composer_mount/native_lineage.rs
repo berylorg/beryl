@@ -96,6 +96,9 @@ impl MainWindowConversationComposerMount {
         if self.window_close.is_some() {
             return Ok(false);
         }
+        if self.service.pending_receipt().is_some() {
+            return Ok(self.native_lineage_snapshot.is_some());
+        }
         if let Err(error) = self.finish_native_lineage_host_result(window, cx) {
             return self
                 .fail_native_lineage_realization(
@@ -498,18 +501,12 @@ impl MainWindowConversationComposerMount {
         Ok(())
     }
 
-    pub(super) fn cancel_native_lineage_for_lifecycle(
+    pub(super) fn detach_native_lineage_for_lifecycle(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let preserve_prompt = self.native_lineage_prompt_published;
-        if let (Some(control), Some(snapshot)) = (
-            self.native_lineage_recovery.as_ref(),
-            self.native_lineage_snapshot,
-        ) {
-            let _ = control.cancel(snapshot.key());
-        }
         self.cancel_native_lineage_realization();
         if let Some(selection) = self.native_lineage_selection {
             self.service.cancel_native_lineage_suspension(selection)?;
@@ -545,12 +542,6 @@ impl MainWindowConversationComposerMount {
 
     pub(super) fn cancel_native_lineage_on_drop(&mut self) {
         let disposal_cleanup_pending = self.cancel_native_lineage_disposal_on_drop();
-        if let (Some(control), Some(snapshot)) = (
-            self.native_lineage_recovery.as_ref(),
-            self.native_lineage_snapshot,
-        ) {
-            let _ = control.cancel(snapshot.key());
-        }
         self.cancel_native_lineage_realization();
         if !disposal_cleanup_pending && let Some(selection) = self.native_lineage_selection {
             let _ = self.service.cancel_native_lineage_suspension(selection);
@@ -589,6 +580,53 @@ impl MainWindowConversationComposerMount {
         self.native_lineage_capacity_blocked_epoch = None;
         self.native_lineage_disposal_active = false;
     }
+
+    pub(super) fn suspended_native_lineage_release(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<Option<MainWindowComposerWidgetRelease>, String> {
+        if self.contribution.is_some() {
+            return Ok(None);
+        }
+        self.native_lineage_widget_release
+            .filter(|release| {
+                self.native_lineage_prompt_published
+                    && self.native_lineage_snapshot.is_some()
+                    && self.native_lineage_selection == Some(release.selection())
+                    && self.service.selected_identity() == Some(selection)
+                    && Self::native_lineage_successor_is_exact(release.selection(), selection)
+            })
+            .ok_or_else(|| {
+                "suspended composer release does not match the selected host".to_owned()
+            })?;
+        Ok(Some(MainWindowComposerWidgetRelease::new(selection)))
+    }
+
+    pub(super) fn synchronize_suspended_selection(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
+        let Some(release) = self.suspended_native_lineage_release(selection)? else {
+            return Ok(());
+        };
+        if self.native_lineage_selection == Some(selection) {
+            return Ok(());
+        }
+        let seed = self
+            .native_lineage_seed
+            .ok_or_else(|| "suspended composer seed is missing".to_owned())?;
+        if seed.binding != selection.binding().range_binding()
+            || seed.history != Some(selection.binding().range_history_frontier())
+        {
+            return Err("suspended composer flush changed its restoration identity".to_owned());
+        }
+        self.cancel_native_lineage_realization();
+        self.native_lineage_selection = Some(selection);
+        self.native_lineage_widget_release = Some(release);
+        self.native_lineage_validation = None;
+        self.native_lineage_validation_task = None;
+        Ok(())
+    }
 }
 
 impl Render for MainWindowConversationComposerMount {
@@ -598,11 +636,25 @@ impl Render for MainWindowConversationComposerMount {
         div()
             .id(("main-window-user-input-contribution", cx.entity_id()))
             .w_full()
+            .relative()
             .when(!self.native_lineage_prompt_published, |root| {
                 root.children(self.contribution.clone())
             })
             .when(self.native_lineage_prompt_published, |root| {
-                root.child(self.render_native_lineage_prompt(cx))
+                root.child(self.render_native_lineage_prompt(cx)).children(
+                    self.pending_presentation.as_ref().map(|pending| {
+                        div().absolute().size_full().overflow_hidden().child(
+                            div()
+                                .debug_selector(|| {
+                                    "conversation-composer-pending-realization".to_owned()
+                                })
+                                .absolute()
+                                .size_full()
+                                .opacity(0.)
+                                .child(pending.contribution.clone()),
+                        )
+                    }),
+                )
             })
     }
 }

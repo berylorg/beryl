@@ -447,8 +447,8 @@ impl MainWindowConversationComposerMount {
         if self.window_close.is_some() {
             return Err("conversation composer is waiting for window close".to_owned());
         }
-        if self.native_lineage_snapshot.is_some() {
-            return Err("native lineage recovery owns the selected composer".to_owned());
+        if self.native_lineage_snapshot.is_some() && !self.native_lineage_prompt_published {
+            return Err("native lineage recovery presentation is still preparing".to_owned());
         }
         if let Some(receipt) = self.service.pending_receipt() {
             match self.retire_pending(receipt, cx)? {
@@ -484,9 +484,6 @@ impl MainWindowConversationComposerMount {
         if self.window_close.is_some() {
             return Err("conversation composer is waiting for window close".to_owned());
         }
-        if self.native_lineage_snapshot.is_some() {
-            return Err("native lineage recovery owns the selected composer".to_owned());
-        }
         if !self.ensure_pending_composer(receipt, window, cx)? {
             return Ok(MainWindowConversationComposerMountFlushStart::TargetPriming(receipt));
         }
@@ -498,7 +495,9 @@ impl MainWindowConversationComposerMount {
             }
         };
         self.suspend_autosave()?;
-        if !self.fence_contribution(expected, window, cx)? {
+        if self.suspended_native_lineage_release(expected)?.is_none()
+            && !self.fence_contribution(expected, window, cx)?
+        {
             return Ok(MainWindowConversationComposerMountFlushStart::WidgetFencePending(expected));
         }
         match self.service.begin_publish(receipt) {
@@ -573,31 +572,42 @@ impl MainWindowConversationComposerMount {
                 MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(receipt),
             );
         }
-        let contribution = self
-            .contribution
-            .as_ref()
-            .filter(|contribution| contribution.read(cx).selection_identity() == expected)
-            .cloned()
-            .ok_or_else(|| {
-                "composer mount contribution does not match release request".to_owned()
+        let suspended_release = self.suspended_native_lineage_release(expected)?;
+        let contribution = if suspended_release.is_none() {
+            let contribution = self
+                .contribution
+                .as_ref()
+                .filter(|contribution| contribution.read(cx).selection_identity() == expected)
+                .cloned()
+                .ok_or_else(|| {
+                    "composer mount contribution does not match release request".to_owned()
+                })?;
+            let ready = contribution.update(cx, |composer, composer_cx| {
+                composer.begin_widget_release_fence(window, composer_cx)
             })?;
-        let ready = contribution.update(cx, |composer, composer_cx| {
-            composer.begin_widget_release_fence(window, composer_cx)
-        })?;
-        if !ready {
-            return Ok(
-                MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(expected),
-            );
-        }
+            if !ready {
+                return Ok(
+                    MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(
+                        expected,
+                    ),
+                );
+            }
+            Some(contribution)
+        } else {
+            None
+        };
         if let Err(error) = self.service.begin_final_publish(receipt, expected) {
             self.resume_contribution(window, cx)?;
             self.refresh_autosave(window, cx)?;
             self.retire_failed_pending(receipt, cx)?;
             return Err(error);
         }
-        let release = contribution.update(cx, |composer, composer_cx| {
-            composer.release_widget(window, composer_cx)
-        })?;
+        let release = match suspended_release {
+            Some(release) => release,
+            None => contribution.unwrap().update(cx, |composer, composer_cx| {
+                composer.release_widget(window, composer_cx)
+            })?,
+        };
         let published = self
             .service
             .complete_publish_after_widget_release(receipt, &release)?;
@@ -609,6 +619,10 @@ impl MainWindowConversationComposerMount {
         let successor = self
             .detach_pending_presentation(receipt, cx)?
             .ok_or_else(|| "published composer target is missing".to_owned())?;
+        if suspended_release.is_some() {
+            self.clear_native_lineage_mount_state();
+            self.native_lineage_widget_release = None;
+        }
         successor.update(cx, |composer, composer_cx| {
             composer.promote_pending(receipt, selection, window, composer_cx)
         })?;
@@ -670,7 +684,7 @@ impl MainWindowConversationComposerMount {
         }
         self.clear_pending_presentation(cx)?;
         if !self.native_lineage_disposal_active {
-            self.cancel_native_lineage_for_lifecycle(window, cx)?;
+            self.detach_native_lineage_for_lifecycle(window, cx)?;
         }
         let expected = match self.service.disposal_preflight() {
             Ok(expected) => expected,
@@ -888,6 +902,12 @@ impl MainWindowConversationComposerMount {
     }
 
     fn resume_contribution(&self, window: &Window, cx: &mut Context<Self>) -> Result<(), String> {
+        if self.contribution.is_none()
+            && let Some(selection) = self.service.selected_identity()
+            && self.suspended_native_lineage_release(selection)?.is_some()
+        {
+            return Ok(());
+        }
         let contribution = self
             .contribution
             .as_ref()
@@ -898,11 +918,14 @@ impl MainWindowConversationComposerMount {
         })
     }
 
-    fn synchronize_contribution_selection(&self, cx: &mut Context<Self>) -> Result<(), String> {
+    fn synchronize_contribution_selection(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         let successor = self
             .service
             .selected_identity()
             .ok_or_else(|| "composer service has no selected lifecycle identity".to_owned())?;
+        if self.suspended_native_lineage_release(successor)?.is_some() {
+            return self.synchronize_suspended_selection(successor);
+        }
         let contribution = self
             .contribution
             .as_ref()

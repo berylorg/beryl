@@ -485,7 +485,13 @@ impl MainWindowComposerSlot {
         if !self.pending_source_is_current(store, receipt)? {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
         }
-        match self.advance_slot_flush(store, ticket)? {
+        let advance = self.advance_slot_flush(store, ticket)?;
+        if let Some(suspended) = self.native_lineage_suspension
+            && same_selected_host(self.selected_identity(), suspended)
+        {
+            self.native_lineage_suspension = self.selected_identity();
+        }
+        match advance {
             ComposerHostFlushAdvance::Progress(state) => {
                 Ok(MainWindowComposerPublishAdvance::Progress(state))
             }
@@ -552,6 +558,7 @@ impl MainWindowComposerSlot {
             crate::composer_host::ComposerHostServiceDisposalCompletion::Disposed => {}
         }
         let pending = self.pending.take().unwrap();
+        self.native_lineage_suspension = None;
         self.selected = Some(SelectedComposer {
             identity: target_identity,
             dispatcher: pending.dispatcher,

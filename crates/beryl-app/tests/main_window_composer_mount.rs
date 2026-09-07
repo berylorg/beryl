@@ -4,6 +4,8 @@
 mod composer_support;
 #[path = "native_lineage_gui/support.rs"]
 mod native_lineage_support;
+#[path = "main_window_composer_mount/recovery_switch.rs"]
+mod recovery_switch;
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
@@ -549,15 +551,17 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
     for _ in 0..64 {
         cx.executor().advance_clock(Duration::from_millis(100));
         drive(cx, 2);
-        if control.snapshot_for_thread(thread).is_none()
-            && mount
-                .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
-                .is_none()
+        if mount
+            .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
+            .is_none()
         {
             break;
         }
     }
-    assert_eq!(control.snapshot_for_thread(thread), None);
+    assert_eq!(
+        control.snapshot_for_thread(thread).unwrap().key(),
+        validation_stale_key
+    );
     assert!(
         mount
             .read_with(cx, |mount, _| mount.native_lineage_recovery_snapshot())
@@ -567,7 +571,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
         mount.read_with(cx, |mount, _| mount.contribution()),
         Some(after_cancel.clone())
     );
-    assert!(!control.set_status_for_test(
+    assert!(control.set_status_for_test(
         validation_stale_key,
         NativeLineageRecoveryStatus::Leaving {
             pending_turn_continues: false,
@@ -579,6 +583,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
         })
         .unwrap();
     assert_eq!(service.pending_receipt(), None);
+    control.cancel(validation_stale_key).unwrap();
 
     let unrelated_key = control
         .install_route_for_test(
@@ -650,8 +655,11 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
         disposal_start,
         MainWindowConversationComposerMountFlushStart::Started(_)
     ));
-    assert_eq!(disposal_control.snapshot_for_thread(thread), None);
-    assert!(!disposal_control.set_status_for_test(
+    assert_eq!(
+        disposal_control.snapshot_for_thread(thread).unwrap().key(),
+        disposal_key
+    );
+    assert!(disposal_control.set_status_for_test(
         disposal_key,
         NativeLineageRecoveryStatus::Leaving {
             pending_turn_continues: false,
@@ -698,6 +706,11 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
     );
     disposal_gate.release();
     wait_for_native_lineage_cleanup_drain(cx, &service);
+    assert_eq!(
+        disposal_control.snapshot_for_thread(thread).unwrap().key(),
+        disposal_key
+    );
+    disposal_control.cancel(disposal_key).unwrap();
 }
 
 #[gpui::test]
@@ -1234,6 +1247,8 @@ fn native_lineage_late_settlement_drains_after_actual_mount_and_service_drop(
     );
     assert!(!drained.driver_alive, "{drained:?}");
     assert!(weak_service.upgrade().is_none());
+    assert_eq!(control.snapshot_for_thread(thread).unwrap().key(), key);
+    control.cancel(key).unwrap();
 }
 
 #[gpui::test]

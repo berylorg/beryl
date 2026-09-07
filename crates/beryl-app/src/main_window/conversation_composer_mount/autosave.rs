@@ -109,7 +109,9 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         self.autosave.suspend()?;
-        if self.window_close.is_some() {
+        if self.window_close.is_some()
+            || (self.native_lineage_prompt_published && self.contribution.is_none())
+        {
             return Ok(());
         }
         self.autosave.fenced = false;

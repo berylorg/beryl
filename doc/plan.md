@@ -1,12 +1,12 @@
 # Scope
 
-Implement the Operator-approved background-thread behavior under the revised
-[conversation-thread](features/conversation-threads/design.md),
-[main-window](features/main-windows/design.md),
-[CAS-live](systems/cas-live-syndic-transcript/design.md), and
-[app package](../crates/beryl-app/doc/design.md) authority. The process owns execution; switching
-views and closing nonfinal windows preserve it. Final-main-window close and explicit Exit use
-confirmed process-wide graceful shutdown, with their distinct restore-set outcomes.
+The Operator's immediate direction is to keep GUI thread switching clean without overengineering.
+Preserve existing execution ownership and behavior. Identify demonstrated non-GUI execution flaws
+and suggest architecturally clean corrections separately; do not use them to expand this GUI change.
+The controlling contracts are [conversation threads](features/conversation-threads/design.md),
+[backend recovery](features/backend-runtime-recovery/design.md), and the
+[app package](../crates/beryl-app/doc/design.md). Complete process composition, Running threads,
+final-window shutdown and other broader background-work requirements remain separate rework work.
 
 The Operator authorizes continuous implementation until a blocker requires attention, with a
 commit after each accepted phase. Temporary-directory deletion and obsolete-directory cleanup
@@ -29,37 +29,41 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 324: Own Scheduled Execution Sessions In The Process (wip)
+# Phase 327: Preserve Recovery Work Across GUI Thread Switching (finished)
 
-Implement the concrete process-owned `ScheduledOrdinaryExecutionProvider` for already-admitted
-sessions under the app live-projection and CAS-live ownership contracts. Process composition
-supplies typed request policy, assets and dynamic-tool authority; this phase does not launch
-runtimes or mount windows. Reuse the existing non-cloneable execution lease and scheduler flight,
-worker, connection and generation validation rather than duplicate them in another run object.
+Accepted the GUI-only recovery-prompt switching correction: exact draft flush and failed-switch
+retention, process-route preservation, current-route rediscovery, and autosave suspension/restoration.
+Ten recovery tests, both app checks and independent semantic review passed. The seven ordinary
+GUI failures reproduce without these GUI changes and remain the next verification boundary.
+See [evidence and limits](failures/native-lineage-view-lifetime.md).
 
-Reserve a bounded slot keyed to exact healthy home/service generation, thread and full execution
-binding. Derive retained-slot capacity from configured worker capacity and per-connection worker
-permits; count available, checked-out and retiring slots until definitive release. Decline missing,
-busy, stale or full authority without consuming durable backlog or retaining an unbounded waiter.
-Transfer each session once into the existing execution lease and return it only to its still-current
-owner. Shutdown, retirement and generation loss fence issuance and return; release must not revive
-a closed slot. Availability wakes the existing scheduler through a typed bounded notification.
-The owner and checkout retain no GUI state or view-lifetime dependency; actual view detachment
-and reattachment verification belongs to the following composition boundary.
+# Phase 328: Verify Ordinary Composer Switching (wip)
 
-Verify the production provider through the existing real scheduler: independent exact thread and
-binding slots, durable promotion and terminal capture without a view, busy decline, return/wake
-without duplicate dispatch, generation and asset rejection, service shutdown joining checked-out
-work, late return after the provider-owner fence, saturation and repeated release with bounded
-retained counts. Preserve
-existing authority tests where they already prove the shared mechanism. Run focused nextest and
-locked app checks, formatting and whitespace validation, then obtain independent semantic review
-of authority transfer, return races, resource release and evidence before acceptance.
+Classify the seven ordinary GUI failures reproduced with and without the preceding GUI change.
+Compare their flush, capture, marker and disposal drivers with the current typed contracts and
+passing mounted-switch tests. Correct only demonstrated stale test-driving mechanics within this
+verification boundary; retain their actual behavior assertions. Do not weaken expectations, add
+arbitrary waits, or infer a production defect from an undriven test operation.
 
-Current milestone: revised target authority is integrated; source readiness and lease boundaries
-are reviewed. Implement the production checkout provider next.
-The production provider seam and existing scheduler tests are identified; no implementation from
-the superseded noninterruptible window-close phase is retained as pending work.
+If diagnosis proves another GUI production defect, report its exact cause and establish the narrow
+implementation boundary before changing production. Non-GUI execution flaws remain findings and
+clean solution proposals, as the Operator requested. Verify corrected tests with focused nextest
+using documented serial GUI settings and then the three affected GUI targets; independently review
+any changed drivers against their retained assertions. Preserve all deferred provider changes.
+
+Current milestone: read-only diagnosis is starting. The broader run had 27 passes and seven failures;
+the seven failures reproduced with the five GUI production files at HEAD, after which exact current
+bytes were restored and verified. Full shell claim/session/transcript activation remains an existing
+rework integration limit, not authority to expand this phase into bootstrap or whole-shell work.
+
+# Phase 324: Own Scheduled Execution Sessions In The Process (pending)
+
+Deferred independent scheduler composition work. The uncommitted provider has no production GUI
+switching caller and is not a prerequisite for Phase 327. Preserve its unaccepted source separately;
+do not include it in the GUI phase's commit or infer it is required merely to detach a view.
+Its concurrency test exposed [existing healthy-conflict fatalization](failures/cas-phase13-global-revision-publication.md).
+Report the narrow existing-scheduler correction for that flaw; no execution repair or storage
+redesign is authorized by the current GUI slice. Re-establish readiness before resuming this phase.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
