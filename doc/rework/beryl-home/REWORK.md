@@ -290,6 +290,7 @@
 - [x] Restored and independently accepted compaction response reconciliation with original-driver authority through router handoff and [ordering evidence](../../failures/cas-phase72-compaction-terminal-ordering.md).
 - [x] Established and independently accepted bounded same-thread window-close continuation cancellation while preserving accepted input and already-admitted work.
 - [x] Restored and independently accepted the existing [submission disposal receipt contract](../../failures/submission-editor-disposal-receipt.md), including atomic receipt publication and historical validation after draft replacement.
+- [ ] Resolve ordinary-close successor-work admission and waiting semantics in the main-windows feature and CAS-live authority before implementing the exact-work close barrier.
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

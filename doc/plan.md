@@ -88,8 +88,13 @@ pending, steering, compaction and finalization transitions, duplicate joins, fai
 authority; preserve the thread claim and already-admitted work. Independently review exact
 identity, interruption and terminal evidence before OS-close integration.
 
-Current milestone: cancellation prerequisite accepted; complete focused source readiness and derive
-its exact retained-work implementation before mounting ordinary close.
+Current milestone: source readiness identifies the existing stabilized stop-admission read and
+exact-stop barrier as usable primitives, but implementation is blocked on owning design authority.
+The ordinary-close contract does not decide what happens when queued accepted work can become a
+successor turn while the captured turn settles: freeze new-turn admission and preserve the queue,
+or continue processing and extend the close wait. This changes scheduling, interruption ownership
+and completion evidence. Resolve the behavior in main-windows feature and CAS-live/app authority
+before implementing the retained-work barrier. No Phase 320 source changes have been applied.
 
 # Phase 298: Mount Ordinary Main-Window Close (pending)
 
