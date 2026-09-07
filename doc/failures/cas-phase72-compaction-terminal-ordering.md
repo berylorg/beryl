@@ -63,8 +63,8 @@ response reconciliation. The real router tests hold publication at `Quiet`/`Targ
 then prove terminal handoff and command release, and reject original-epoch loss while waiting.
 These tests compose with inspection of the production wait loop; they are not a complete provider
 transport simulation. Independent semantic review found no remaining production defect; root
-verified the corrected fixture lifetime and final test results. Close cancellation, exact waiting
-and OS-close mounting retain separate acceptance boundaries.
+verified the corrected fixture lifetime and final test results. The eight direct close-cancellation cases and focused stop cases also supplied the separately
+reviewed Phase 319 acceptance evidence. Exact waiting and OS-close mounting remain unaccepted.
 
 ## Controlling Authority
 

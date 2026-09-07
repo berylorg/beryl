@@ -84,6 +84,25 @@ pub enum ContextCompactionTerminalResponseTestOutcome {
 }
 
 impl ContextCompactionLifecycleTestHarness {
+    pub fn cancel_window_close_continuation_with_capacity(
+        &self,
+        thread_id: SyndicThreadId,
+        capacity: usize,
+    ) -> Result<(), crate::cas_projection::stop::StopCoordinationError> {
+        let coordinator = self
+            .coordinator()
+            .map_err(|_| crate::cas_projection::stop::StopCoordinationError::HomeAuthorityLost)?;
+        let _fence = coordinator.settlement_fence.lock().map_err(|_| {
+            crate::cas_projection::stop::StopCoordinationError::LocalAuthorityMismatch
+        })?;
+        coordinator
+            .ensure_current()
+            .map_err(|_| crate::cas_projection::stop::StopCoordinationError::HomeAuthorityLost)?;
+        coordinator
+            .stop
+            .cancel_window_close_continuation_with_capacity(thread_id, capacity)
+    }
+
     pub(in crate::cas_projection) fn new(coordinator: &Arc<ContextCompactionCoordinator>) -> Self {
         Self {
             coordinator: Arc::downgrade(coordinator),

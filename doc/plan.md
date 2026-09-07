@@ -70,49 +70,15 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 323: Reconcile Compaction Responses After Terminal Settlement (finished)
+# Phase 319: Cancel Same-Thread Continuation At Window Close (finished)
 
-Compaction reconciles typed terminal proof before live mutation and retains the original driver
-permit through response reconciliation and router handoff. Same-local tests and real router
-publication/epoch checks passed with all 40 selected compaction/content cases, 13 focused stop
-cases, locked checks, formatting and independent semantic review.
-[Accepted evidence](failures/cas-phase72-compaction-terminal-ordering.md) records proof boundaries.
+Ordinary-close cancellation now fences same-thread intent registration and durable continuation
+admission, preserves accepted input and already-admitted work, and bounds/reclaims cancelled-turn
+records. All eight direct cancellation and 13 focused stop cases, locked checks and formatting
+passed with independent semantic review. Tests exercise the actual durable admission cut;
+lifecycle launch fence coverage is static. Exact waiting and OS-close mounting remain separate.
 
-# Phase 319: Cancel Same-Thread Continuation At Window Close (wip)
-
-Implement the window-close continuation cut required by the
-[CAS-live system](systems/cas-live-syndic-transcript/design.md#automatic-lifecycle-continuation),
-[app live control](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation), and
-[lifecycle yield](features/lifecycle-yield/design.md), together with
-[ordinary close](features/main-windows/design.md#ordinary-window-close). Readiness review found
-that existing exact-stop admission cancels only eligible targets, while compaction settlement
-consumes the original yielding-turn intent under its own settlement fence. The process-wide
-shutdown path cannot supply a single-window cut.
-
-Provide a bounded same-thread cancellation operation ordered against intent registration and
-automatic continuation admission, including noninterruptible active work. Preserve accepted
-input, other threads, and any continuation already durably admitted before cancellation. Keep
-exact generations, authority loss, capability ownership and failure outcomes explicit; no
-process-wide shutdown or new interruption may substitute for cancellation. This phase supplies
-the cancellation prerequisite only; exact work waiting and OS-close mounting remain separate.
-
-Verify cancellation before registration or settlement can revive intent, racing successful
-compaction settlement, already-admitted continuation preservation, accepted-input preservation,
-other-thread independence, repeated cancellation, and stale authority. Exercise the actual
-same-thread admission boundary, with focused locked Cargo checks and behavior tests. Independent
-semantic review must cover cancellation ordering, durable admission and exact authority/custody
-before acceptance.
-
-The atomic storage publication and app-adoption prerequisites are now accepted.
-[Staging evidence](failures/lifecycle-continuation-staging.md) retains the diagnosis and proof.
-
-The retained cancellation implementation is ready for final acceptance. All eight direct
-cancellation cases and all 13 focused stop cases pass after the accepted response/custody and
-fixture repairs; the independent review found no blocking cancellation defect. Direct tests use
-the actual durable continuation admission cut; lifecycle launch fence coverage is static.
-Current milestone: complete root acceptance and the cancellation commit before exact waiting.
-
-# Phase 320: Wait For Exact Noninterruptible Work At Window Close (pending)
+# Phase 320: Wait For Exact Noninterruptible Work At Window Close (wip)
 
 Implement the ordinary-close active-work barrier under the same CAS-live and app contracts.
 Distinguish proven idle from initially noninterruptible exact work, retain its identity through
@@ -121,6 +87,9 @@ eligible. Acknowledgement, coarse activity or stop ineligibility cannot prove co
 pending, steering, compaction and finalization transitions, duplicate joins, failures and stale
 authority; preserve the thread claim and already-admitted work. Independently review exact
 identity, interruption and terminal evidence before OS-close integration.
+
+Current milestone: cancellation prerequisite accepted; complete focused source readiness and derive
+its exact retained-work implementation before mounting ordinary close.
 
 # Phase 298: Mount Ordinary Main-Window Close (pending)
 

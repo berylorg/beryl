@@ -118,6 +118,7 @@ impl ProjectionConnectionService {
         &self,
         thread_id: SyndicThreadId,
     ) -> Result<WindowCloseStopOutcome, StopCoordinationError> {
+        self.cancel_selected_continuation_for_window_close(thread_id)?;
         let (outcome, target) =
             self.coordinate_stop(thread_id, StopCause::HealthyHomeWindowClose)?;
         Ok(match outcome {
@@ -151,6 +152,16 @@ impl ProjectionConnectionService {
                 WindowCloseStopOutcome::Ineligible(reason)
             }
         })
+    }
+
+    pub fn cancel_selected_continuation_for_window_close(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<(), StopCoordinationError> {
+        self.context_compaction
+            .as_ref()
+            .ok_or(StopCoordinationError::HomeAuthorityLost)?
+            .cancel_window_close_continuation(thread_id)
     }
 
     fn coordinate_stop(

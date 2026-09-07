@@ -27,6 +27,7 @@ use super::connection::{
     StopTargetProof,
 };
 
+mod close_continuation;
 mod persistent_failure;
 
 const STOP_POINT_READ_BYTES: usize = 1_000_000;
@@ -63,6 +64,7 @@ struct LifecycleYieldKey {
 struct StopCoordinatorState {
     stops: HashMap<SyndicThreadId, LocalStop>,
     lifecycle_yields: HashMap<LifecycleYieldKey, crate::LifecycleYieldOutcome>,
+    cancelled_continuations: HashMap<SyndicThreadId, SyndicTurnId>,
     persistent_failure: Option<super::persistent_failure::PersistentFailureCutIdentity>,
 }
 
@@ -254,6 +256,8 @@ pub enum StopCoordinationError {
     ConnectionUnavailable,
     #[error("the process-local stop operation disagrees with durable authority")]
     LocalAuthorityMismatch,
+    #[error("the bounded window-close continuation cancellation capacity is exhausted")]
+    ContinuationCancellationCapacity,
     #[error("the OS cryptographic random source is unavailable")]
     RandomUnavailable,
     #[error("the exact durable stop transition did not commit")]
@@ -760,7 +764,15 @@ impl StopCoordinator {
             .lock()
             .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
         let key = LifecycleYieldKey { thread_id, turn_id };
+        if self.lifecycle_registration_turn(&*self.current_home()?, thread_id)? != Some(turn_id) {
+            return Ok(false);
+        }
         if state.lifecycle_yields.contains_key(&key) {
+            return Ok(false);
+        }
+        if outcome == crate::LifecycleYieldOutcome::PhaseContinue
+            && state.cancelled_continuations.get(&thread_id) == Some(&turn_id)
+        {
             return Ok(false);
         }
         if outcome == crate::LifecycleYieldOutcome::PhaseContinue

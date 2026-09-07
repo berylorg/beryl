@@ -282,6 +282,10 @@ impl ContextCompactionCoordinator {
         yielding_turn_id: SyndicTurnId,
         completion_timeout: Duration,
     ) -> Result<LifecycleCompactionAdmission, ContextCompactionError> {
+        let _fence = self
+            .settlement_fence
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
         let command = self
             .commands
             .authorize()
@@ -378,6 +382,18 @@ impl ContextCompactionCoordinator {
                 self.cancel_lifecycle_intent(&local);
             }
         }
+    }
+
+    pub(in crate::cas_projection) fn cancel_window_close_continuation(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<(), crate::cas_projection::stop::StopCoordinationError> {
+        let _fence = self.settlement_fence.lock().map_err(|_| {
+            crate::cas_projection::stop::StopCoordinationError::LocalAuthorityMismatch
+        })?;
+        self.ensure_current()
+            .map_err(|_| crate::cas_projection::stop::StopCoordinationError::HomeAuthorityLost)?;
+        self.stop.cancel_window_close_continuation(thread_id)
     }
 
     pub(in crate::cas_projection) fn diagnostics(&self) -> ContextCompactionDiagnostics {
