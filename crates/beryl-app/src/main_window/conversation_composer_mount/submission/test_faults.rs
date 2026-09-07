@@ -31,6 +31,7 @@ pub struct MainWindowConversationComposerSubmissionTestDiagnostics {
     status: MainWindowConversationComposerSubmissionStatus,
     active_ticket: bool,
     active_task: bool,
+    prepared_request: bool,
     successor: bool,
 }
 
@@ -69,6 +70,10 @@ impl MainWindowConversationComposerSubmissionTestDiagnostics {
         self.active_task
     }
 
+    pub const fn prepared_request(self) -> bool {
+        self.prepared_request
+    }
+
     pub const fn successor(self) -> bool {
         self.successor
     }
@@ -90,6 +95,36 @@ impl Future for SubmissionAdvanceTestGate {
 }
 
 impl MainWindowConversationComposerMount {
+    pub fn test_begin_submission_start(
+        &mut self,
+        selection: MainWindowComposerSelectionIdentity,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if let Err(error) = self.begin_mounted_submission(selection, window, cx) {
+            self.finish_submission_failure(window, cx);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn test_submission_start_generation(&self) -> u64 {
+        self.submission.generation
+    }
+
+    pub fn test_cancel_submission_start(&mut self) -> bool {
+        self.cancel_mounted_submission()
+    }
+
+    pub fn test_apply_late_submission_start(
+        &mut self,
+        generation: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.continue_submission_start(generation, window, cx)
+    }
+
     pub fn test_fail_submission_successor_after_readiness_once(&mut self) {
         assert!(!self.submission.test_fail_successor_after_readiness);
         self.submission.test_fail_successor_after_readiness = true;
@@ -130,6 +165,11 @@ impl MainWindowConversationComposerMount {
                 .as_ref()
                 .is_some_and(|active| active.ticket.is_some()),
             active_task: self.submission.task.is_some(),
+            prepared_request: self
+                .submission
+                .active
+                .as_ref()
+                .is_some_and(|active| active.prepared.is_some()),
             successor: self
                 .submission
                 .active

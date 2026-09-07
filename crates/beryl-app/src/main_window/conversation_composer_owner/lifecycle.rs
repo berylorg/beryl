@@ -81,6 +81,13 @@ impl MainWindowConversationComposer {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn test_set_terminal_error(&mut self, error: String, cx: &mut Context<Self>) {
+        self.last_error = Some(error);
+        self.input
+            .update(cx, |input, cx| input.set_enabled(false, cx));
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_pending_seed_count(&self) -> usize {
         self.activation_seeds.len()
     }

@@ -209,6 +209,10 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_pending_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
+    test_selected_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
+    test_selected_page_dispatch_gate: Mutex<Option<PendingCompletionTestGate>>,
+    #[cfg(feature = "test-faults")]
     test_native_lineage_seed_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
     #[cfg(feature = "test-faults")]
     test_native_lineage_validation_gate: Mutex<Option<PendingCompletionTestGate>>,
@@ -322,6 +326,10 @@ impl MainWindowConversationComposerService {
             test_pending_completion_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_dispatch_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_selected_dispatch_gate: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_selected_page_dispatch_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_native_lineage_seed_validation_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
@@ -846,6 +854,36 @@ impl MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     pub(super) fn take_test_pending_dispatch_gate(&self) -> Option<PendingCompletionTestGate> {
         self.test_pending_dispatch_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_selected_dispatch(
+        &self,
+    ) -> MainWindowComposerPendingDispatchTestRelease {
+        let release = install_pending_test_gate(&self.test_selected_dispatch_gate)
+            .expect("selected dispatch gate is already installed");
+        MainWindowComposerPendingDispatchTestRelease(release.0)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_selected_dispatch_gate(&self) -> Option<PendingCompletionTestGate> {
+        self.test_selected_dispatch_gate.lock().ok()?.take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_block_next_selected_page_dispatch(
+        &self,
+    ) -> MainWindowComposerPendingDispatchTestRelease {
+        let release = install_pending_test_gate(&self.test_selected_page_dispatch_gate)
+            .expect("selected page dispatch gate is already installed");
+        MainWindowComposerPendingDispatchTestRelease(release.0)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_selected_page_dispatch_gate(
+        &self,
+    ) -> Option<PendingCompletionTestGate> {
+        self.test_selected_page_dispatch_gate.lock().ok()?.take()
     }
 
     #[cfg(feature = "test-faults")]

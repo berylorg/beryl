@@ -3,6 +3,9 @@
 #[path = "main_window_composer_slot/support.rs"]
 mod support;
 
+#[path = "mounted_composer_submission/start.rs"]
+mod start;
+
 use std::{sync::Arc, time::Duration};
 
 use beryl_app::{
@@ -345,9 +348,11 @@ fn mounted_empty_submission_preserves_the_coherent_editor_without_retaining_work
         .is_ok()
     );
     let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+        MainWindowComposerSlot::new(window_id, claim, host, storage.clone(), marker_authority)
+            .unwrap();
+    let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.clone(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -373,14 +378,39 @@ fn mounted_empty_submission_preserves_the_coherent_editor_without_retaining_work
         .unwrap();
     let contribution_id = contribution.entity_id();
     let retained = service.selected_identity().unwrap();
+    let durable = storage
+        .current_draft(&store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.binding().logical_extent().logical_utf8_bytes(), 0);
+    assert_eq!(retained.binding().root().summary().marker_count(), 0);
     let input = contribution.read_with(cx, |composer, _| composer.gpui_input());
     cx.update(|window, app| input.update(app, |input, _| input.focus(window)));
 
     cx.simulate_keystrokes("enter");
     drive_until(cx, 512, "empty mounted submission", |cx| {
         mount.read_with(cx, |mount, _| mount.submission_status())
-            == MainWindowConversationComposerSubmissionStatus::NotCommitted
+            == MainWindowConversationComposerSubmissionStatus::Failed
     });
+    let diagnostics = mount.read_with(cx, |mount, _| mount.test_submission_diagnostics());
+    assert!(!diagnostics.active_task());
+    assert!(!diagnostics.active_ticket());
+    assert!(!diagnostics.prepared_request());
+    assert!(!diagnostics.successor());
+    let diagnostics = service.test_submission_diagnostics().unwrap();
+    let submission = diagnostics.selected_submission().unwrap();
+    assert!(!submission.pending());
+    assert_eq!(submission.retained_roots(), 0);
+    assert_eq!(submission.retained_materializations(), 0);
+    assert!(!diagnostics.submission_successor_reserved());
+    assert!(!diagnostics.pending_activation_reserved());
+    assert_eq!(
+        storage
+            .current_draft(&store, thread, SyndicPointReadLimit::new(65_536).unwrap())
+            .unwrap()
+            .unwrap(),
+        durable
+    );
     assert_eq!(service.selected_identity(), Some(retained));
     assert_eq!(
         mount
@@ -938,6 +968,7 @@ fn widget_config(
 
 fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {
     for _ in 0..rounds {
+        cx.executor().advance_clock(Duration::from_millis(1));
         cx.run_until_parked();
         cx.update(|window, app| window.draw(app).clear());
     }

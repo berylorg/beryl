@@ -152,6 +152,22 @@ impl MainWindowConversationComposer {
             {
                 gate.await;
             }
+            #[cfg(feature = "test-faults")]
+            if matches!(route, MainWindowConversationComposerRoute::Selected)
+                && let Some(gate) = service.take_test_selected_dispatch_gate()
+            {
+                gate.await;
+            }
+            #[cfg(feature = "test-faults")]
+            if matches!(route, MainWindowConversationComposerRoute::Selected)
+                && matches!(
+                    request,
+                    RangeTextInputRequest::Page(_) | RangeTextInputRequest::ObjectPage(_)
+                )
+                && let Some(gate) = service.take_test_selected_page_dispatch_gate()
+            {
+                gate.await;
+            }
             let (outcome, proof, settled_selection) = {
                 let mut slot = service.slot.lock().map_err(|_| {
                     MainWindowConversationComposerTaskError::exact(

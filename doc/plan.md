@@ -3,8 +3,8 @@
 The earlier code simplification and behavior-based naming batch is complete. The Operator has
 accepted using the [complete simplification audit](audits/code-simplification/report.md) selectively
 within the Beryl-home architectural rework tracked by `doc/rework/beryl-home/REWORK.md`. The Operator
-has resumed implementation; the host request-sequence prerequisite is now accepted. Submission
-quiescence progress is the next bounded phase before composer integration acceptance resumes.
+has resumed implementation; host request sequencing and submission quiescence progress are now
+accepted. Already-durable composer integration acceptance is the next bounded phase.
 The Operator authorizes continuous implementation until a blocker requires attention, with a
 commit after each accepted phase. Temporary and obsolete directory cleanup is authorized for
 the remainder of this thread; preserve unrelated work and verify exact cleanup targets.
@@ -17,8 +17,7 @@ targets, and completing every proposal is not a rework completion gate. Before a
 rework slice, inspect the relevant findings against current source and owning target docs; the audit
 describes a frozen baseline and does not establish that a finding still applies after later work.
 
-Complete mounted submission quiescence progress before returning to
-the retained composer integration acceptance gaps, then exact close-gate release and
+Complete the retained composer integration acceptance gaps, then exact close-gate release and
 resident-preserving close-flush acceptance in the phases below.
 Resolve relevant correctness and test-evidence findings in their owning acceptance boundaries.
 Include a simplification within an existing phase only when it serves that phase's same acceptance
@@ -57,11 +56,11 @@ Marker-operation admission and visible refusal, diagnostic activation, and compa
 implementation and acceptance remain in their owning
 rework checkpoints; updating target authority does not mark those behaviors implemented.
 
-The earlier cleanup batch closure and Phase 305 request sequencing are accepted. Preserve the compiled, unaccepted
+The earlier cleanup batch closure and composer request/wait prerequisites are accepted. Preserve the compiled, unaccepted
 composer implementation and its explicit verification gaps below. Use the smallest implementation
 that fulfills the high-level feature contracts; ordinary close mounting, bootstrap and other later
-boundaries retain their own acceptance gates. Phase 318 still requires its own completion review
-before Phase 307 acceptance.
+boundaries retain their own acceptance gates. Phase 307 still requires final integration verification
+and its own completion review.
 
 The naming policy is in `AGENTS.md`. Historical rework snapshots and immutable investigation
 artifacts remain historical material. Update live source references without rewriting historical
@@ -70,28 +69,13 @@ state theme-service contracts. Bootstrap-dependent ownership and unstable editor
 consolidation remain explicit later rework work; resolve their target decisions before activating
 their owning slices.
 
-# Phase 305: Preserve The Host Request Sequence (finished)
+# Phase 318: Yield While Mounted Submission Awaits Editor Quiescence (finished)
 
-The live host now owns checked request allocation across editing, history, publication and mounted
-rebinding; only fresh-generation activation restarts it. Seven focused direct and mounted cases,
-the locked app library check, targeted formatting and independent semantic review passed.
-[AP-007/AM-007 implementation evidence](audits/code-simplification/implementation.md) records
-the accepted correction, broader test limitations and one policy-blocked temporary-directory cleanup.
-
-# Phase 318: Yield While Mounted Submission Awaits Editor Quiescence (pending)
-
-Under [composer behavior](features/composer/design.md) and
-[the app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md), replace the
-submission-start self-defer loop with progress that permits asynchronous editor completion and
-settles existing terminal editor errors through the ordinary failure path. Preserve exact pending
-generation/selection, bounded retained work, cancellation, stale completion rejection and single
-submission admission. No dependency scheduler change or new public lifecycle owner is required.
-
-The [quiescence finding](failures/mounted-submission-quiescence.md) records why GPUI deferred
-effects do not yield execution. Verify pending-flight progress, terminal editor failure, stale or
-cancelled starts and ordinary saved/dirty submission without an unbounded effect drain; run the
-focused mounted-submission regressions, locked app check and independent semantic review before
-returning to Phase 307 acceptance.
+Submission now yields through one retained timer, prepares the newest settled same-editor state,
+and fences cancellation, stale callbacks, replacement and terminal editor errors. All 13 mounted
+submission cases, both locked app library configurations, formatting and independent semantic
+review passed. [Quiescence evidence](failures/mounted-submission-quiescence.md) records exact
+verification and the corrected empty-rejection assertion. No newly owned temporary resources remain.
 
 # Phase 307: Integrate Already-Durable Composer Openings (pending)
 
@@ -138,17 +122,17 @@ targeted formatting, and source diff check passed. This phase remains unaccepted
   disposal custody. The 32-step cleanup bounds advancement attempts rather than promising terminal
   completion; installed ambiguous commands remain independently owned by HomeStore. Final review
   of stable test changes and complete regression evidence remains pending.
-- `mounted_composer_submission` (the renamed mounted-submission target) remains unresolved as a
-  complete suite. Its earlier bounded eight-case run passed dirty direct Enter, failed empty
-  submission settlement and timed out six pre-autosaved cases. After Phase 305, the focused
-  pre-autosaved collision case passes. Phase 318 must correct the independent deferred-progress
-  mechanism before the complete suite and empty-submission outcome are reassessed; do not skip cases.
+- All 13 `mounted_composer_submission` cases pass after the accepted request-sequence and
+  quiescence prerequisites, including the eight existing scenarios and five new waiting/cancellation
+  regressions. Empty rejection follows the typed pre-acceptance `Empty` error through the ordinary
+  `Failed` path; corrected assertions prove unchanged durable/editor state and released custody.
 
 The locked app library check and targeted formatting pass. All 39 saved-opening, lifecycle and
 selected native-lineage cases passed together in the final rerun. Bounded timed-out test processes,
 exact residual fixture homes and temporary diagnostics from that verification were reclaimed.
-AP-007/AM-007 request sequencing is accepted in Phase 305; Phase 318 separately owns the confirmed
-submission-start starvation mechanism. Optional fixture consolidation and other audit reductions
+AP-007/AM-007 request sequencing and submission-start quiescence are accepted. Run the integrated
+regression selection against those prerequisites and complete independent review of the retained
+source and test changes before accepting this phase. Optional fixture consolidation and other audit reductions
 remain unselected.
 
 # Phase 306: Consolidate Exact Close-Gate Release (pending)

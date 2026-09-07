@@ -28,5 +28,52 @@ These implementation corrections do not require weakening the fixture or changin
 The earlier saved-opening/lifecycle/native-disposal selection passed 39 tests, and the locked app
 library check and targeted formatting passed. Those results do not establish mounted submission
 acceptance. All stopped test processes, nine exact residual fixture homes, temporary diagnostics
-and the timeout configuration were reclaimed. The empty-submission outcome remains to be assessed
-after the prerequisite corrections; no mounted-submission scenario was removed.
+and the timeout configuration were reclaimed. At that checkpoint the empty-submission outcome
+remained to be assessed after the prerequisite corrections; no scenario was removed.
+
+## Accepted Yielding Submission Start
+
+Phase 318 was accepted on 2026-09-07 after the request-sequence correction. The mounted submission
+uses one retained 16 ms timer task while Preparing, allowing GPUI to process asynchronous editor
+completion. Every retry checks the attempt generation, state, absent host ticket, cancellation,
+exact contribution entity and stable editor identity. Same-editor candidate adoption may finish;
+replacement editors cannot inherit the attempt. Preparation, including marker authority, captures
+the newest settled state only after quiescence and exact agreement with the service selection.
+
+Cancellation or terminal editor failure settles through the existing path without admitting a
+new host ticket. Failure resumes only the same error-free contribution. Dropping a pre-ticket
+wait cancels the timer; already-admitted work preserves the existing detached custody path.
+No dependency scheduler or public lifecycle owner changed.
+
+The final bounded `mounted_composer_submission` run
+`22415ac9-be2c-46cb-b64d-0171aab20700` passed all 13 tests, none skipped, in 10.854 seconds.
+It includes all eight existing scenarios and five deterministic cases holding real mutation/page
+dispatch to verify progress, newest candidate capture, duplicate suppression, cancellation/stale
+callbacks, terminal editor error and pre-ticket mount drop.
+
+```powershell
+cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults --locked --config-file .cargo/local/submission-start-nextest.toml --test mounted_composer_submission --test-threads 2 --no-fail-fast
+cargo +stable --config .cargo/local.toml check -p beryl-app --lib --features test-faults --locked
+cargo +stable --config .cargo/local.toml check -p beryl-app --lib --locked
+```
+
+The test run used process-scoped `RUST_MIN_STACK=33554432`, restored afterward, and a temporary
+configuration with `slow-timeout = { period = "30s", terminate-after = 1 }`. Both library checks,
+targeted rustfmt, scoped diff checking and root's whole-worktree diff check passed. Independent
+semantic review inspected waiting, identity, failure and cancellation, task/drop custody, test
+hooks and final assertions without a blocker. Marker-authority freshness and replacement identity
+also rely on source tracing rather than separate marker/replacement fixtures.
+
+The first full run `39959595-561b-4d5e-bf79-ebe442d8684f` passed 12 of 13 cases. Focused diagnostic
+`924c1b5d-218a-4c27-a886-4c734b1fb46d` confirmed that empty submission reports `Failed` through
+the existing typed pre-acceptance `Empty` error and ticket cancellation/drain, rather than the
+fixture's expected `NotCommitted`. The feature requires rejection with the draft intact, not that
+particular status. The corrected test additionally proves unchanged durable draft, editor identity
+and interaction, with no retained task, prepared request, ticket or storage custody. No production
+change was needed for this classification.
+
+The timeout configuration was removed, the named fixture-home scan was empty and all Cargo/test
+processes completed. No newly owned residual resources remain. The separately recorded
+[policy-blocked request-sequence test directory](../audits/code-simplification/implementation.md)
+was untouched. This phase accepts submission waiting; the retained already-durable composer
+integration still has its own verification and completion review.

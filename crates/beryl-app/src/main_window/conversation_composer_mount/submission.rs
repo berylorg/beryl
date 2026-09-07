@@ -1,12 +1,12 @@
 use std::{
     num::NonZeroU64,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use beryl_home_store::{CommandCancellation, FreeSpaceOutcome, TurnStartAdmissionRequirement};
 use beryl_model::{AssetReferenceSetId, SyndicDraftId, SyndicItemId};
 use beryl_state::AssetReferenceSetStagingAuthority;
-use gpui::{BackgroundExecutor, Context, Task, Window};
+use gpui::{BackgroundExecutor, Context, Entity, EntityId, Task, Window};
 use syndic_storage::{
     DraftComposerMaterializationOperationIdV1, DraftEditorCandidateSessionIdV1,
     DraftMarkerSealOperationIdV1, DraftPieceOperationIdV1, SyndicTimestamp,
@@ -20,6 +20,7 @@ use crate::composer_host::{
 use crate::main_window::{
     MainWindowComposerActivationReceipt, MainWindowComposerAutosaveCaptureRequirement,
     MainWindowComposerSelectionIdentity, MainWindowComposerSubmissionAdvance,
+    MainWindowConversationComposer,
 };
 
 #[cfg(feature = "test-faults")]
@@ -137,7 +138,8 @@ struct PreparedMountedSubmission {
 
 struct ActiveMountedSubmission {
     selection: MainWindowComposerSelectionIdentity,
-    prepared: PreparedMountedSubmission,
+    editor: EntityId,
+    prepared: Option<PreparedMountedSubmission>,
     ticket: Option<ComposerHostSubmissionTicket>,
     cancellation: CommandCancellation,
     terminal_after_cancel: Option<MainWindowConversationComposerSubmissionStatus>,
@@ -226,16 +228,18 @@ impl MainWindowConversationComposerMount {
             self.submission.generation.checked_add(1).ok_or_else(|| {
                 "conversation composer submission generation exhausted".to_owned()
             })?;
-        let capture_requirement = self.service.autosave_capture_requirement(selection)?;
-        let prepared = self
-            .submission
-            .request_source
-            .prepare(selection, capture_requirement)?;
+        let editor = self
+            .contribution
+            .as_ref()
+            .filter(|contribution| contribution.read(cx).selection_identity() == selection)
+            .ok_or_else(|| "conversation composer submission editor is stale".to_owned())?
+            .entity_id();
         self.submission.generation = generation;
         self.submission.status = MainWindowConversationComposerSubmissionStatus::Preparing;
         self.submission.active = Some(Box::new(ActiveMountedSubmission {
             selection,
-            prepared,
+            editor,
+            prepared: None,
             ticket: None,
             cancellation: CommandCancellation::new(),
             terminal_after_cancel: None,
@@ -251,27 +255,62 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if self.submission.generation != generation {
+        if self.submission.generation != generation
+            || self.submission.status != MainWindowConversationComposerSubmissionStatus::Preparing
+            || self
+                .submission
+                .active
+                .as_ref()
+                .is_none_or(|active| active.ticket.is_some())
+        {
             return Ok(());
         }
-        let selection = self
+        if self
             .submission
             .active
             .as_ref()
-            .ok_or_else(|| "conversation composer submission disappeared".to_owned())?
-            .selection;
-        if !self.fence_contribution(selection, window, cx)? {
-            cx.defer_in(window, move |this, window, cx| {
-                if this
-                    .continue_submission_start(generation, window, cx)
-                    .is_err()
-                {
-                    this.finish_submission_failure(window, cx);
-                }
-            });
+            .unwrap()
+            .cancellation
+            .is_cancelled()
+        {
+            self.resume_submission_contribution(window, cx);
+            self.submission
+                .clear_active(MainWindowConversationComposerSubmissionStatus::Cancelled);
+            self.refresh_autosave(window, cx)?;
             return Ok(());
         }
-        let request = self.submission.active.as_ref().unwrap().prepared.request;
+        let contribution = self.submission_contribution(cx)?;
+        if let Some(error) = contribution.read(cx).last_error() {
+            return Err(error.to_owned());
+        }
+        let selection = contribution.read(cx).selection_identity();
+        if !self.fence_contribution(selection, window, cx)? {
+            let timer = cx.background_executor().timer(Duration::from_millis(16));
+            self.submission.task = Some(cx.spawn_in(window, async move |this, cx| {
+                timer.await;
+                let _ = this.update_in(cx, |this, window, cx| {
+                    if this
+                        .continue_submission_start(generation, window, cx)
+                        .is_err()
+                    {
+                        this.finish_submission_failure(window, cx);
+                    }
+                });
+            }));
+            return Ok(());
+        }
+        if self.service.selected_identity() != Some(selection) {
+            return Err("conversation composer submission selection is stale".to_owned());
+        }
+        let capture_requirement = self.service.autosave_capture_requirement(selection)?;
+        let prepared = self
+            .submission
+            .request_source
+            .prepare(selection, capture_requirement)?;
+        let request = prepared.request;
+        let active = self.submission.active.as_mut().unwrap();
+        active.selection = selection;
+        active.prepared = Some(prepared);
         match self.service.begin_submission(selection, request) {
             Ok(ticket) => {
                 self.submission.active.as_mut().unwrap().ticket = Some(ticket);
@@ -301,7 +340,9 @@ impl MainWindowConversationComposerMount {
             .filter(|active| active.ticket == Some(ticket))
             .ok_or_else(|| "conversation composer submission ticket is stale".to_owned())?;
         let selection = active.selection;
-        let prepared = active.prepared.clone();
+        let prepared = active.prepared.clone().ok_or_else(|| {
+            "conversation composer submission ticket has no prepared request".to_owned()
+        })?;
         let cancellation = active.cancellation.clone();
         let service = self.service.clone();
         let assets = self.submission_assets();
@@ -532,10 +573,42 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let _ = self.resume_contribution(window, cx);
+        self.resume_submission_contribution(window, cx);
         self.submission
             .clear_active(MainWindowConversationComposerSubmissionStatus::Failed);
         let _ = self.refresh_autosave(window, cx);
+    }
+
+    fn submission_contribution(
+        &self,
+        cx: &Context<Self>,
+    ) -> Result<Entity<MainWindowConversationComposer>, String> {
+        let active = self
+            .submission
+            .active
+            .as_ref()
+            .ok_or_else(|| "conversation composer submission disappeared".to_owned())?;
+        self.contribution
+            .as_ref()
+            .filter(|contribution| {
+                contribution.entity_id() == active.editor
+                    && same_submission_editor(
+                        active.selection,
+                        contribution.read(cx).selection_identity(),
+                    )
+            })
+            .cloned()
+            .ok_or_else(|| "conversation composer submission editor is stale".to_owned())
+    }
+
+    fn resume_submission_contribution(&self, window: &Window, cx: &mut Context<Self>) {
+        if let Ok(contribution) = self.submission_contribution(cx)
+            && contribution.read(cx).last_error().is_none()
+        {
+            let _ = contribution.update(cx, |composer, composer_cx| {
+                composer.resume_after_widget_release_fence(window, composer_cx)
+            });
+        }
     }
 
     fn finish_submission_successor(
@@ -607,7 +680,13 @@ impl Drop for MainWindowConversationComposerMount {
     fn drop(&mut self) {
         self.release_window_close_on_drop();
         self.cancel_native_lineage_on_drop();
-        if let Some(task) = self.submission.task.take() {
+        if let Some(task) = self.submission.task.take()
+            && self
+                .submission
+                .active
+                .as_ref()
+                .is_some_and(|active| active.ticket.is_some())
+        {
             task.detach();
         }
         let Some(active) = self.submission.active.take() else {
@@ -641,6 +720,9 @@ async fn drain_unmounted_submission(
     let Some(ticket) = active.ticket else {
         return;
     };
+    let prepared = active
+        .prepared
+        .expect("admitted submission retains its prepared request");
     let mut selection = active.selection;
     let mut delay = std::time::Duration::from_millis(1);
     let mut errors = 0_u8;
@@ -660,12 +742,12 @@ async fn drain_unmounted_submission(
             ticket,
             assets.clone(),
             &marker_seals,
-            active.prepared.publication_operation_id,
-            active.prepared.marker_authority,
-            active.prepared.published_at,
-            &active.prepared.successor_request,
-            active.prepared.successor_retirement_operation_id,
-            active.prepared.next_draft_id,
+            prepared.publication_operation_id,
+            prepared.marker_authority,
+            prepared.published_at,
+            &prepared.successor_request,
+            prepared.successor_retirement_operation_id,
+            prepared.next_draft_id,
             &active.cancellation,
         );
         match advance {
@@ -719,6 +801,21 @@ async fn retire_unmounted_successor(
             .saturating_mul(2)
             .min(std::time::Duration::from_millis(100));
     }
+}
+
+fn same_submission_editor(
+    previous: MainWindowComposerSelectionIdentity,
+    current: MainWindowComposerSelectionIdentity,
+) -> bool {
+    previous.window_id() == current.window_id()
+        && previous.claim() == current.claim()
+        && previous.binding().home_id() == current.binding().home_id()
+        && previous.binding().home_generation() == current.binding().home_generation()
+        && previous.binding().host_generation() == current.binding().host_generation()
+        && previous.binding().presentation_generation()
+            == current.binding().presentation_generation()
+        && previous.binding().candidate().draft_id() == current.binding().candidate().draft_id()
+        && previous.binding().candidate().session_id() == current.binding().candidate().session_id()
 }
 
 fn fresh_bytes<const N: usize>() -> Result<[u8; N], String> {
