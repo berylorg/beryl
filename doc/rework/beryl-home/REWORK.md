@@ -299,6 +299,10 @@
   [focused evidence](../../failures/native-lineage-view-lifetime.md) passed independent review.
   Corrected stale capture drivers; the final GUI aggregate passed 32/35. Full shell activation
   integration and [marker admission](../../failures/composer-marker-admission.md) remain open.
+- [x] Corrected accepted-next promotion after proven, uncommitted revision conflicts through
+  existing fresh scheduling, preserving shutdown and failure precedence; independently reviewed
+  [evidence](../../failures/cas-phase13-global-revision-publication.md) covers repeated conflicts,
+  single dispatch/capture and durable accepted input through joined shutdown.
 - [ ] Implement the bounded production session checkout provider and process work ownership across
   direct submission, accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

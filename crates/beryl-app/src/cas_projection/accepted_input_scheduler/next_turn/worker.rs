@@ -1,4 +1,4 @@
-use beryl_home_store::CommandOutcome;
+use beryl_home_store::{CommandError, CommandOutcome};
 use syndic_storage::{AcceptedInputPromotionStatus, AcceptedNextCandidate, PromoteAcceptedInput};
 
 use super::{
@@ -178,6 +178,9 @@ fn execute_candidate(
         promotion.thread_id(),
     );
     let command_failure = match dispatch {
+        CommandOutcome::NotCommitted {
+            evidence: CommandError::Conflict { .. },
+        } => Some(WorkerDisposition::NextContinue),
         CommandOutcome::NotCommitted { evidence } => {
             Some(WorkerDisposition::CommandNotCommitted(evidence))
         }

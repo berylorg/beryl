@@ -1,8 +1,9 @@
 # Scope
 
-The Operator's immediate direction is to keep GUI thread switching clean without overengineering.
-Preserve existing execution ownership and behavior. Identify demonstrated non-GUI execution flaws
-and suggest architecturally clean corrections separately; do not use them to expand this GUI change.
+Keep GUI thread switching clean without overengineering. The Operator now authorizes the two
+reported non-GUI corrections: marker admission and healthy scheduler-conflict handling. Keep each
+in its own acceptance boundary and reuse existing mechanisms. Broader process-provider composition
+and other deferred work remain outside this authorization.
 The controlling contracts are [conversation threads](features/conversation-threads/design.md),
 [backend recovery](features/backend-runtime-recovery/design.md), and the
 [app package](../crates/beryl-app/doc/design.md). Complete process composition, Running threads,
@@ -29,14 +30,28 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 328: Verify Ordinary Composer Switching (finished)
+# Phase 330: Preserve Scheduling After Proven Revision Conflict (finished)
 
-Accepted four test-driver corrections that honor every explicit capture request before disposal,
-with their original assertions preserved. Independent review passed; the final three-target run
-passed 32 of 35 tests. The remaining three expose the separately reported
-[marker-admission integration gap](failures/composer-marker-admission.md); no production repair was
-attempted. [Recovery-switch evidence](failures/native-lineage-view-lifetime.md) remains accepted.
-Full shell claim/session/transcript integration remains outside this tested mount boundary.
+Accepted typed, definitely uncommitted revision conflicts through existing fresh-scan continuation,
+preserving reservation-release precedence and all other command-outcome handling. Independent
+semantic and test review passed; all nine scheduler tests and both locked app checks passed.
+[Correction evidence](failures/cas-phase13-global-revision-publication.md) records repeated-conflict
+progress, single dispatch/capture and joined shutdown with durable accepted input preserved.
+Deferred process-provider work remains unaccepted.
+
+# Phase 329: Connect Production Marker Admission (pending)
+
+Authorized, but blocked at architecture readiness. The previously proposed app-only wiring is
+insufficient: current readiness authenticates existing Candidate, Cut or Accepted origins and has
+no fresh-image source; current widget mutation pages become available only after preflight that
+the app acknowledges after storage admission, while readiness is required before MutationBegin.
+See [the concrete gaps](failures/composer-marker-admission.md).
+
+Do not implement an insertion-only exception, fabricate a source origin or label, buffer a whole
+edit, or bypass storage validation. Stop marker implementation until fresh-image authority and
+pre-admission edit evidence have coherent owning contracts and a concrete reviewed boundary.
+The existing generic HomeStore proof-composition mechanism remains suitable. The independent
+scheduler correction is accepted; marker implementation remains stopped for Operator direction.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 
@@ -44,8 +59,8 @@ Deferred independent scheduler composition work. The uncommitted provider has no
 switching caller and is not a prerequisite for Phase 327. Preserve its unaccepted source separately;
 do not include it in the GUI phase's commit or infer it is required merely to detach a view.
 Its concurrency test exposed [existing healthy-conflict fatalization](failures/cas-phase13-global-revision-publication.md).
-Report the narrow existing-scheduler correction for that flaw; no execution repair or storage
-redesign is authorized by the current GUI slice. Re-establish readiness before resuming this phase.
+The narrow scheduler correction is authorized separately in Phase 330; that authorization does not
+activate this provider work. Re-establish readiness before resuming this phase.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

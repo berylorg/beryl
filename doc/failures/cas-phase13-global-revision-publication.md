@@ -43,10 +43,10 @@ terminal delivery while admitting another exact thread. Its first thread can cap
 between construction and execution of the second thread's accepted-promotion command. The observed
 result was `NotCommitted` with a Syndic domain revision conflict: expected 245, current 248.
 
-`crates/beryl-app/src/cas_projection/accepted_input_scheduler/next_turn/worker.rs` returns
+`crates/beryl-app/src/cas_projection/accepted_input_scheduler/next_turn/worker.rs` previously returned
 `WorkerDisposition::CommandNotCommitted` before promotion reconciliation.
-`accepted_input_scheduler/workers.rs` groups that disposition with committed and indeterminate
-command failures and calls `fail_closed(PersistentHomeFailure)`. The observed scheduler became
+`accepted_input_scheduler/workers.rs` grouped that disposition with committed and indeterminate
+command failures and called `fail_closed(PersistentHomeFailure)`. The observed scheduler became
 fatal and the process provider closed while the persistent failure cut remained armed. This is
 ordinary unrelated-thread contention, not lost session authority or unhealthy storage.
 
@@ -63,21 +63,49 @@ that particular remedy; it does not establish that a compound writer-time bounda
 
 Home-store conflict classification explicitly treats `CommandError::Conflict` as no health
 failure. The scheduler already permits fresh next-lane scans through typed continuation after
-ordinary candidate drift. A narrow correction may handle a healthy, definitely uncommitted
-physical conflict through that existing exact revalidation path. Its cursor, wake, generation,
-resource-release and continued-progress behavior still needs verification; a blind retry loop is
-not an accepted correction.
+ordinary candidate drift. A narrow correction can handle a definitely uncommitted physical conflict
+through that existing exact revalidation path. Its accepted verification is recorded below; a
+blind retry loop is not an accepted correction.
 
 Phase 324 remains unaccepted. The earlier conclusion that this result required new cross-domain
-storage architecture was premature and is withdrawn. Determine the narrow correction from the
-existing concurrency and command-outcome contracts before proposing an architectural change.
+storage architecture was premature and is withdrawn. Derive corrections from the existing
+concurrency and command-outcome contracts before proposing an architectural change.
 Preserve exact logical-record validation, atomic ownership transfer, typed failure provenance,
 generation and cancellation cuts, and bounded progress. Neither blind retries nor test timing
 that avoids the conflict establishes these guarantees. The provider work and failing integration
-test remain uncommitted; this record does not claim a completed correction for promotion.
+test remain uncommitted and are not prerequisites for the accepted correction below.
+
+# Accepted Scheduler Correction
+
+Phase 330 handles only `CommandOutcome::NotCommitted` carrying typed `CommandError::Conflict`
+through the existing `NextContinue` disposition. HomeStore produces that conflict before contributor
+preparation or mutation, so the result proves that no command part committed. Reservation release
+still takes precedence: persistent failure fails closed, closed authority parks, and release errors
+remain fatal. All other command outcomes retain their existing handling.
+
+The returning worker drops its execution lease, and the scheduler joins it before applying the
+continuation. The next bounded eligibility pass reads current revisions and rechecks generation,
+execution binding, cancellation, storage health, capacity and exact thread flight. It does not
+replay the rejected command, sample later health to classify the prior result, introduce a new
+queue or timer, or open steering retry eligibility.
+
+Two deterministic tests use the existing checkout fixture and reservation/reconciliation barriers.
+One forces two unrelated-thread commits after successive promotion commands have been built,
+verifies that neither rejected attempt changes the accepted route or committed tail, and observes
+automatic fresh scheduling without another readiness wake. The server accepts one turn start,
+rejects extra traffic after terminal, and capture reaches one complete successor. The other starts
+service shutdown while a rejected attempt remains at reconciliation; close waits, returns Closed,
+reclaims the session, and leaves accepted input unpromoted after reopening the home.
+
+Independent source and test review passed, including confirmation that every helper used by these
+tests already exists in the accepted baseline. The full `accepted_next_scheduler` nextest target
+passed all nine tests with `test-faults`; locked `beryl-app` checks passed with default features and
+with `test-faults`. Scoped formatting and whitespace validation passed. Test processes, fixtures and
+run logs were reclaimed. No production-provider composition or storage architecture changed.
 
 # Affected authority
 
 `doc/plan.md`, `doc/systems/cas-live-syndic-transcript/design.md`,
 `doc/systems/beryl-home-storage/design.md`, and the owning home-store, Syndic, Asset and app package
-documents control the corrected boundary. The deferred scheduler issue is recorded in Phase 324.
+documents control the corrected boundary. Phase 330 accepted the narrow scheduler correction;
+Phase 324 still owns deferred production-provider composition.

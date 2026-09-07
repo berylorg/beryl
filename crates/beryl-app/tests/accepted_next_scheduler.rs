@@ -5,6 +5,8 @@ pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 #[path = "projection/syndic.rs"]
 mod syndic;
 
+#[path = "accepted_next_scheduler/conflicts.rs"]
+mod conflicts;
 #[path = "accepted_next_scheduler/shutdown.rs"]
 mod shutdown;
 #[path = "accepted_next_scheduler/support.rs"]

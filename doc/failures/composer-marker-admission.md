@@ -25,8 +25,28 @@ operation identity, bounded preparation, cancellation, failure and move-only cus
 [app contract](../../crates/beryl-app/doc/design-catalog-and-composer.md) already define the required
 mechanism. Do not bypass storage validation, fabricate readiness in the app, or add a new policy.
 
-This is a proposal, not an implemented correction. The Operator requested that non-GUI flaws be
-identified and clean solutions suggested separately from the GUI switching work.
+The Operator subsequently authorized implementation. Readiness review then established that
+app-only wiring is insufficient; marker implementation is paused at the following boundary.
+
+## Missing Admission Boundaries
+
+The readiness source-selector model supports only existing Candidate, Cut and Accepted origins.
+The three GUI cases introduce a freshly published AssetId, without an existing marker occurrence
+or accepted origin. Allocation still requires authenticated source occurrences; a caller-selected
+label cannot provide fresh-image authority. The existing Asset witness validates accepted sealed
+sets and is not a fresh-image admission proof.
+
+The widget also emits MutationBegin before exposing its proposal pages. Its preflight acknowledgement
+releases the retained page and finish request, but the app currently acknowledges only after host
+MutationBegin has admitted storage staging. A general streamed edit has no public replayable
+pre-admission evidence producer. Retaining one local page would special-case a fixture rather than
+satisfy the ordinary edit contract.
+
+The owning marker and widget/app contracts must therefore define fresh-image evidence and how
+bounded edit evidence becomes available before mutation admission. Keep the existing generic
+HomeStore proof composition and Syndic readiness/custody mechanisms. Do not invent origins, pass
+caller labels as authority, assemble the whole edit, or bypass the missing proof. No production
+change has been made to work around either gap.
 
 ## Evidence
 

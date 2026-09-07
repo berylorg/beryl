@@ -37,18 +37,10 @@ clearing that flag.
 Acceptance is limited to the tested composer mount boundary. Complete shell claim, session and
 transcript switching is not yet composed above it and has no end-to-end verification here.
 
-## Retained Test Resources
+## Test Resource Cleanup
 
-Automatic approval review rejected cleanup with `blocked by policy`, including separately resolved
-absolute targets. Six stack-aborted fixtures remain under the ignored
-`localtest/background-execution-work` directory, totaling 458,490,566 bytes:
-
-- `pending-predispatch-WuGHWs`
-- `pending-promote-ZgcGgU`
-- `pending-terminal-r4bJ3E`
-- `predecessor-index-release-Qn1pgj`
-- `predecessor-index-release-TSJAPE`
-- `single-pending-authority-ogkKyS`
-
-No test process remains from these runs. Do not repeat the rejected cleanup without resolving the
-policy block; these fixtures are not required source or evidence for the correction.
+Automatic approval review initially rejected direct cleanup. At the Operator's explicit request,
+a BAT file containing only the six fixed, verified task-directory targets removed all six aborted
+fixtures (458,490,566 bytes). Its per-target checks confirmed their absence. No test process or
+aborted fixture remains from these runs; the small requested BAT file is retained in the ignored
+task directory.
