@@ -4,6 +4,7 @@ pub(crate) mod index;
 mod model;
 mod publication;
 mod readiness_source;
+mod refusal;
 mod submission;
 mod terminal;
 mod tree;
@@ -12,6 +13,9 @@ mod writer;
 pub use assignment::*;
 pub use model::*;
 pub use readiness_source::*;
+pub use refusal::{
+    DraftMarkerAdmissionCommittedUnavailableReasonV1, DraftMarkerAdmissionStorageErrorV1,
+};
 pub use submission::*;
 pub use terminal::*;
 pub use tree::*;

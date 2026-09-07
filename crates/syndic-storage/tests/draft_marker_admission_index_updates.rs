@@ -344,9 +344,7 @@ fn exact_association_height_and_command_limits_refuse_before_state_change() {
     );
     assert!(matches!(
         association_limit.prepare(&proven, 1),
-        Err(DraftMarkerAdmissionIndexTestErrorV1::Schema(
-            DraftMarkerAdmissionSchemaErrorV1::CapacityExceeded
-        ))
+        Err(DraftMarkerAdmissionIndexTestErrorV1::PathAuthentication)
     ));
     assert_eq!(storage.revision(&store).unwrap(), durable_revision);
 }

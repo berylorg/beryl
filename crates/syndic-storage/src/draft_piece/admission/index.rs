@@ -33,6 +33,7 @@ pub(crate) enum DraftMarkerAdmissionIndexPreparationErrorV1 {
     Read(ReadError),
     StoreRead(SyndicReadError),
     Schema(DraftMarkerAdmissionSchemaErrorV1),
+    OperationTooLarge,
     AssociationOutOfRange,
     DuplicateSource,
     DuplicateTarget,
@@ -58,6 +59,9 @@ impl From<DraftMarkerAdmissionSchemaErrorV1> for DraftMarkerAdmissionIndexPrepar
 impl std::fmt::Display for DraftMarkerAdmissionIndexPreparationErrorV1 {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::OperationTooLarge => {
+                formatter.write_str("draft-marker admission operation is too large")
+            }
             Self::Read(error) => write!(
                 formatter,
                 "draft-marker admission index read failed: {error}"
@@ -747,9 +751,6 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
     {
         return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidRoot.into());
     }
-    if source_root.count() >= DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS {
-        return Err(DraftMarkerAdmissionSchemaErrorV1::CapacityExceeded.into());
-    }
     source_root.validate_shape()?;
     target_root.validate_shape()?;
 
@@ -773,6 +774,10 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
         proven_page,
         association_index,
     )?;
+
+    if source_root.count() == DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS {
+        return Err(DraftMarkerAdmissionIndexPreparationErrorV1::OperationTooLarge);
+    }
 
     let target = edit_tree(
         &mut ledger,

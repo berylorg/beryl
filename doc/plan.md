@@ -30,33 +30,22 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 334: Resolve Admitted Marker Targets For Staging (finished)
+# Phase 335: Preserve Typed Marker Admission Refusals (finished)
 
-Accepted the bounded Syndic target resolver under the
-[draft-storage contract](../crates/syndic-storage/doc/design-draft-storage.md). Exact current staging,
-transferred readiness, predecessor, generation, target and AssetId authenticate one returned marker;
-repeated reads leave durable state unchanged, and the builder remains the sole consumer.
-Independent semantic and adversarial review passed. Fifty focused readiness, writer, index and
-staging tests plus the locked local package check passed, including Finished/Building rejection,
-corrupt custody, retired ownership, and real fresh/preserved-marker settlement. The accepted fresh
-readiness and widget evidence prerequisites remain ready for production app composition below.
+Accepted typed operation-limit, shared-capacity, storage-failure, and committed-unavailable results
+through readiness, assignment and reconciliation under the
+[draft-storage contract](../crates/syndic-storage/doc/design-draft-storage.md). Postcommit readiness
+retry retains its exclusive exact attempt; known durable outcomes survive local cleanup failures.
+Independent semantic and adversarial review passed after correcting retry capability duplication
+and failure-provenance loss. The final 41 submission, assignment and cleanup tests passed after all
+changes; the earlier 113-test marker regression run and locked local Syndic/HomeStore checks passed.
+The accepted widget evidence, fresh readiness, and admitted target resolver prerequisites remain
+ready for production composition.
 
-# Phase 335: Preserve Typed Marker Admission Refusals (pending)
+# Phase 329: Connect Production Marker Admission (pending)
 
-Proposed prerequisite for the blocked app composition below. Preserve the existing
-`OperationTooLarge`, `CapacityUnavailable`, and storage-failure distinctions through Syndic
-readiness preparation, page submission, assignment, and exact reconciliation. Authority already
-requires these outcomes in the [Syndic system](systems/syndic-conversation-history/design.md) and
-[app contract](../crates/beryl-app/doc/design-catalog-and-composer.md). Verify isolated operation
-limits versus aggregate saturation, unchanged prior authority, and exact cleanup/custody across
-each refusal boundary. Obtain independent semantic and package-required adversarial review.
-This phase is not started; Operator direction is required under the technical-plan stop rule.
-
-# Phase 329: Connect Production Marker Admission (wip)
-
-Blocked before app edits: current public readiness and assignment APIs erase the required typed
-refusal causes. The app cannot preserve distinctions that Syndic does not expose. The proposed
-prerequisite above and [failure record](failures/composer-marker-admission.md) capture the next step.
+All prerequisite boundaries are accepted. The
+[failure record](failures/composer-marker-admission.md) records why app-only wiring was insufficient.
 
 Compose accepted widget evidence and Syndic fresh-asset readiness before production storage
 MutationBegin. Preserve generic HomeStore proof composition, exact selection and operation,

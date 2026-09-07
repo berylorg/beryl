@@ -68,6 +68,21 @@ impl DraftMarkerAdmissionPublicationFixtureV1 {
         enforce_limits(operation, aggregate).is_ok()
     }
 
+    pub fn limits_refusal_for_test(
+        operation: DraftMarkerAdmissionRetainedChargeV1,
+        aggregate: DraftMarkerAdmissionRetainedChargeV1,
+    ) -> Result<(), super::super::DraftMarkerLabelReadinessPageSubmissionRefusalV1> {
+        use super::super::{
+            DraftMarkerLabelReadinessPageSubmissionRefusalV1 as Refusal,
+            refusal::AdmissionLimitError,
+        };
+        enforce_limits(operation, aggregate).map_err(|error| match error {
+            AdmissionLimitError::OperationTooLarge => Refusal::OperationTooLarge,
+            AdmissionLimitError::CapacityUnavailable => Refusal::CapacityUnavailable,
+            AdmissionLimitError::InvalidCharge => Refusal::Rejected,
+        })
+    }
+
     pub fn current_command(
         self,
         storage: &SyndicStorage,

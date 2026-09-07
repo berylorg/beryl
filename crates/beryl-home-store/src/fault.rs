@@ -49,6 +49,19 @@ pub enum FaultPoint {
     BeforeThemeDirectorySync,
 }
 
+#[cfg(feature = "test-faults")]
+pub struct JournalWriteFault {
+    _guard: fjall::test_faults::JournalWriteFault,
+}
+
+#[cfg(feature = "test-faults")]
+#[must_use]
+pub fn fail_next_journal_write() -> JournalWriteFault {
+    JournalWriteFault {
+        _guard: fjall::test_faults::fail_next_journal_write(),
+    }
+}
+
 /// Exact transient typed-command scope for deterministic fault tests.
 #[cfg(feature = "test-faults")]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

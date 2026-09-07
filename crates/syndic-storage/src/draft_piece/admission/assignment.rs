@@ -60,6 +60,8 @@ pub use test_fixture::DraftMarkerAssignedAssociationV1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftMarkerLabelAssignmentRefusalV1 {
+    OperationTooLarge,
+    CapacityUnavailable,
     Unavailable,
     Obsolete,
     Rejected,
@@ -67,6 +69,8 @@ pub enum DraftMarkerLabelAssignmentRefusalV1 {
 
 #[derive(Debug)]
 pub enum DraftMarkerLabelAssignmentErrorV1 {
+    OperationTooLarge,
+    CapacityUnavailable,
     Read(SyndicReadError),
     Unavailable,
     Rejected,
@@ -75,6 +79,12 @@ pub enum DraftMarkerLabelAssignmentErrorV1 {
 impl fmt::Display for DraftMarkerLabelAssignmentErrorV1 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OperationTooLarge => {
+                formatter.write_str("draft-marker assignment operation is too large")
+            }
+            Self::CapacityUnavailable => {
+                formatter.write_str("draft-marker assignment capacity is unavailable")
+            }
             Self::Read(error) => write!(formatter, "draft-marker assignment read failed: {error}"),
             Self::Unavailable => formatter.write_str("draft-marker assignment is unavailable"),
             Self::Rejected => formatter.write_str("draft-marker assignment was rejected"),
@@ -95,8 +105,45 @@ pub struct DraftMarkerLabelAssignmentFlightV1 {
     state: AssignmentFlightState,
 }
 
+impl DraftMarkerLabelAssignmentFlightV1 {
+    #[cfg(feature = "test-faults")]
+    pub fn defer_committed_readiness_once_for_test(mut self) -> Self {
+        if let AssignmentFlightState::Ready {
+            defer_readiness, ..
+        } = &mut self.state
+        {
+            *defer_readiness = true;
+        }
+        self
+    }
+
+    pub fn owner(&self) -> DraftMarkerAdmissionOwnerV1 {
+        match &self.state {
+            AssignmentFlightState::Ready { owner, .. }
+            | AssignmentFlightState::Reconciling { owner, .. }
+            | AssignmentFlightState::Readiness { owner, .. } => *owner,
+        }
+    }
+
+    pub fn committed_receipt(&self) -> Option<&CommitReceipt> {
+        match &self.state {
+            AssignmentFlightState::Readiness { receipt, .. } => Some(receipt),
+            _ => None,
+        }
+    }
+}
+
 enum AssignmentFlightState {
+    Readiness {
+        owner: DraftMarkerAdmissionOwnerV1,
+        reservation: DraftMarkerAdmissionPreparedAttempt,
+        authority: DraftMarkerAdmissionLiveAuthorityV1,
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+    },
     Ready {
+        #[cfg(feature = "test-faults")]
+        defer_readiness: bool,
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
         reservation: DraftMarkerAdmissionPreparedAttempt,
@@ -106,7 +153,9 @@ enum AssignmentFlightState {
     },
     Reconciling {
         owner: DraftMarkerAdmissionOwnerV1,
+        reservation: DraftMarkerAdmissionPreparedAttempt,
         handle: ReconciliationHandle,
+        failure: CommandError,
         retry_failed: bool,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
     },
@@ -120,6 +169,16 @@ enum AssignmentCommandLimit {
 }
 
 pub enum DraftMarkerLabelAssignmentOutcomeV1 {
+    CommittedUnavailable {
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+        reason: super::DraftMarkerAdmissionCommittedUnavailableReasonV1,
+    },
+    CommittedReadinessPending {
+        flight: DraftMarkerLabelAssignmentFlightV1,
+        error: DraftMarkerLabelAssignmentErrorV1,
+    },
+    StorageError(super::DraftMarkerAdmissionStorageErrorV1),
     Advanced {
         receipt: CommitReceipt,
         later_failure: Option<CommandError>,
@@ -254,7 +313,10 @@ impl SyndicStorage {
                 attachment.prepare_assignment_attempt(owner, command)
             })
             .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Unavailable)?
-            .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
+            .map_err(|error| match error {
+                crate::admission_attachment::DraftMarkerAdmissionAttemptError::Rejected => DraftMarkerLabelAssignmentErrorV1::Rejected,
+                crate::admission_attachment::DraftMarkerAdmissionAttemptError::CapacityUnavailable => DraftMarkerLabelAssignmentErrorV1::CapacityUnavailable,
+            })?;
         if authority.authority.home_generation != head.home_generation()
             || authority.authority.request_commitment() != head.request_commitment()
             || authority.authority.custody_commitment() != head.custody_commitment()
@@ -267,6 +329,8 @@ impl SyndicStorage {
         }
         Ok(DraftMarkerLabelAssignmentFlightV1 {
             state: AssignmentFlightState::Ready {
+                #[cfg(feature = "test-faults")]
+                defer_readiness: false,
                 owner,
                 command,
                 reservation,
@@ -285,7 +349,23 @@ impl SyndicStorage {
         flight: DraftMarkerLabelAssignmentFlightV1,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
         match flight.state {
+            AssignmentFlightState::Readiness {
+                owner,
+                reservation,
+                authority,
+                receipt,
+                later_failure,
+            } => self.assignment_advanced_or_ready(
+                store,
+                owner,
+                reservation,
+                authority,
+                receipt,
+                later_failure,
+            ),
             AssignmentFlightState::Ready {
+                #[cfg(feature = "test-faults")]
+                defer_readiness,
                 owner,
                 command,
                 reservation,
@@ -300,15 +380,25 @@ impl SyndicStorage {
                 authority,
                 retained_limits,
                 command_limit,
+                #[cfg(feature = "test-faults")]
+                defer_readiness,
             ),
             AssignmentFlightState::Reconciling {
                 owner,
+                reservation,
                 handle,
+                failure,
                 retry_failed,
                 authority,
-            } => {
-                self.finish_assignment_reconciliation(store, owner, handle, retry_failed, authority)
-            }
+            } => self.finish_assignment_reconciliation(
+                store,
+                owner,
+                reservation,
+                handle,
+                failure,
+                retry_failed,
+                authority,
+            ),
         }
     }
 
@@ -317,19 +407,17 @@ impl SyndicStorage {
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
-        reservation: DraftMarkerAdmissionPreparedAttempt,
+        mut reservation: DraftMarkerAdmissionPreparedAttempt,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
         retained_limits: super::DraftMarkerAdmissionLimitsV1,
         command_limit: AssignmentCommandLimit,
+        #[cfg(feature = "test-faults")] defer_readiness: bool,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
-        let _reservation = match reservation.disarm() {
-            Ok(reservation) => reservation,
-            Err(()) => {
-                return DraftMarkerLabelAssignmentOutcomeV1::Refused(
-                    DraftMarkerLabelAssignmentRefusalV1::Rejected,
-                );
-            }
-        };
+        if reservation.dispatch().is_err() {
+            return DraftMarkerLabelAssignmentOutcomeV1::Refused(
+                DraftMarkerLabelAssignmentRefusalV1::Rejected,
+            );
+        }
         match store.execute_current(self.handle.current_command(AssignmentMutation {
             owner,
             command,
@@ -343,7 +431,9 @@ impl SyndicStorage {
                     classification,
                     AssignmentFailureClass::Collision | AssignmentFailureClass::Rejected
                 );
-                if !self.finish_assignment_attempt(store, owner, command, true, terminal) {
+                if !self.finish_assignment_attempt(store, owner, command, true, terminal)
+                    && !matches!(classification, AssignmentFailureClass::StorageError)
+                {
                     return refused_unavailable();
                 }
                 match classification {
@@ -356,6 +446,19 @@ impl SyndicStorage {
                         )
                     }
                     AssignmentFailureClass::Unavailable => refused_unavailable(),
+                    AssignmentFailureClass::OperationTooLarge => {
+                        DraftMarkerLabelAssignmentOutcomeV1::Refused(
+                            DraftMarkerLabelAssignmentRefusalV1::OperationTooLarge,
+                        )
+                    }
+                    AssignmentFailureClass::CapacityUnavailable => {
+                        DraftMarkerLabelAssignmentOutcomeV1::Refused(
+                            DraftMarkerLabelAssignmentRefusalV1::CapacityUnavailable,
+                        )
+                    }
+                    AssignmentFailureClass::StorageError => {
+                        DraftMarkerLabelAssignmentOutcomeV1::StorageError(evidence.into())
+                    }
                     AssignmentFailureClass::Retryable => {
                         DraftMarkerLabelAssignmentOutcomeV1::Retryable
                     }
@@ -367,33 +470,58 @@ impl SyndicStorage {
                 local_finalization,
             } => {
                 if let Some(local_finalization) = local_finalization {
-                    if !matches!(
-                        store.with_committed_local_finalization(
-                            local_finalization,
-                            &receipt,
-                            &self.handle,
-                            |attachment| {
-                                attachment.finish_submission(owner, command, true, false, 0)
+                    let finalized = store.with_committed_local_finalization(
+                        local_finalization,
+                        &receipt,
+                        &self.handle,
+                        |attachment| attachment.finish_submission(owner, command, true, false, 0),
+                    );
+                    return DraftMarkerLabelAssignmentOutcomeV1::CommittedUnavailable {
+                        receipt,
+                        later_failure,
+                        reason: super::refusal::committed_finalization_reason(finalized),
+                    };
+                }
+                #[cfg(feature = "test-faults")]
+                if defer_readiness {
+                    return DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
+                        flight: DraftMarkerLabelAssignmentFlightV1 {
+                            state: AssignmentFlightState::Readiness {
+                                owner,
+                                reservation,
+                                authority,
+                                receipt,
+                                later_failure,
+                            },
+                        },
+                        error: DraftMarkerLabelAssignmentErrorV1::Read(
+                            SyndicReadError::ConcurrentChange {
+                                operation: "draft-marker committed readiness",
                             },
                         ),
-                        Ok(Ok(()))
-                    ) {
-                        return refused_unavailable();
-                    }
-                    return refused_unavailable();
+                    };
                 }
-                if !self.finish_assignment_attempt(store, owner, command, true, false) {
-                    return refused_unavailable();
-                }
-                self.assignment_advanced_or_ready(store, owner, authority, receipt, later_failure)
+                self.assignment_advanced_or_ready(
+                    store,
+                    owner,
+                    reservation,
+                    authority,
+                    receipt,
+                    later_failure,
+                )
             }
-            CommandOutcome::Indeterminate { reconciliation, .. } => {
+            CommandOutcome::Indeterminate {
+                reconciliation,
+                failure,
+            } => {
                 let _ = self.finish_assignment_attempt(store, owner, command, true, true);
                 DraftMarkerLabelAssignmentOutcomeV1::ReconciliationPending(
                     DraftMarkerLabelAssignmentFlightV1 {
                         state: AssignmentFlightState::Reconciling {
                             owner,
+                            reservation,
                             handle: reconciliation.install_and_handle(),
+                            failure,
                             retry_failed: false,
                             authority,
                         },
@@ -407,7 +535,9 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
+        mut reservation: DraftMarkerAdmissionPreparedAttempt,
         handle: ReconciliationHandle,
+        failure: CommandError,
         retry_failed: bool,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
@@ -418,17 +548,21 @@ impl SyndicStorage {
         };
         match resolution {
             Ok(ReconciliationResolution::ExactOld) => {
-                if self.resolve_assignment_attempt(store, owner, true, false) {
-                    DraftMarkerLabelAssignmentOutcomeV1::Retryable
-                } else {
-                    refused_unavailable()
-                }
+                let _ = self.resolve_assignment_attempt(store, owner, true, false);
+                DraftMarkerLabelAssignmentOutcomeV1::StorageError(failure.into())
             }
             Ok(ReconciliationResolution::ExactNew { receipt }) => {
-                if !self.resolve_assignment_attempt(store, owner, true, false) {
-                    return refused_unavailable();
+                if reservation.resume_readiness_after_reconciliation().is_err() {
+                    return DraftMarkerLabelAssignmentOutcomeV1::CommittedUnavailable { receipt, later_failure: None, reason: super::DraftMarkerAdmissionCommittedUnavailableReasonV1::LocalCustodyUnavailable };
                 }
-                self.assignment_advanced_or_ready(store, owner, authority, receipt, None)
+                self.assignment_advanced_or_ready(
+                    store,
+                    owner,
+                    reservation,
+                    authority,
+                    receipt,
+                    None,
+                )
             }
             Ok(ReconciliationResolution::Collision)
             | Ok(ReconciliationResolution::ExactSuccessor { .. }) => {
@@ -439,7 +573,9 @@ impl SyndicStorage {
                 DraftMarkerLabelAssignmentFlightV1 {
                     state: AssignmentFlightState::Reconciling {
                         owner,
+                        reservation,
                         handle,
+                        failure,
                         retry_failed: true,
                         authority,
                     },
@@ -452,11 +588,34 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
+        reservation: DraftMarkerAdmissionPreparedAttempt,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
         receipt: CommitReceipt,
         later_failure: Option<CommandError>,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
-        match self.issue_draft_marker_label_readiness_proof(store, owner, authority) {
+        let outcome = self.issue_draft_marker_label_readiness_proof(
+            store,
+            owner,
+            reservation.command_id(),
+            authority.clone(),
+        );
+        if outcome.is_ok()
+            && !self.finish_assignment_attempt(store, owner, reservation.command_id(), true, false)
+        {
+            return DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
+                flight: DraftMarkerLabelAssignmentFlightV1 {
+                    state: AssignmentFlightState::Readiness {
+                        owner,
+                        reservation,
+                        authority,
+                        receipt,
+                        later_failure,
+                    },
+                },
+                error: DraftMarkerLabelAssignmentErrorV1::Unavailable,
+            };
+        }
+        match outcome {
             Ok(Some(proof)) => DraftMarkerLabelAssignmentOutcomeV1::Ready {
                 proof,
                 receipt,
@@ -466,7 +625,18 @@ impl SyndicStorage {
                 receipt,
                 later_failure,
             },
-            Err(_) => refused_unavailable(),
+            Err(error) => DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
+                flight: DraftMarkerLabelAssignmentFlightV1 {
+                    state: AssignmentFlightState::Readiness {
+                        owner,
+                        reservation,
+                        authority,
+                        receipt,
+                        later_failure,
+                    },
+                },
+                error,
+            },
         }
     }
 
@@ -474,6 +644,7 @@ impl SyndicStorage {
         &self,
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
+        command: DraftMarkerAdmissionCommandIdV1,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
     ) -> Result<Option<DraftMarkerLabelReadinessProofV1>, DraftMarkerLabelAssignmentErrorV1> {
         let retained = store
@@ -502,6 +673,9 @@ impl SyndicStorage {
             )
             .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?
             .ok_or(DraftMarkerLabelAssignmentErrorV1::Rejected)?;
+        if head.selected_receipt() != Some(command) {
+            return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
+        }
         if head.lifecycle() == DraftMarkerAdmissionLifecycleV1::Assigning {
             return Ok(None);
         }

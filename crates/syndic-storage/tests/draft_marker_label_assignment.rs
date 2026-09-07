@@ -4,6 +4,9 @@ include!("durable_builder/support.rs");
 
 use std::num::NonZeroU64;
 
+#[path = "draft_marker_label_assignment/refusal.rs"]
+mod refusal;
+
 use sha2::{Digest, Sha256};
 use syndic_storage::{
     DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionLimitsV1,
@@ -437,10 +440,12 @@ fn retired_generation_pending_assignment_cannot_mint_readiness() {
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
     let store = recovery.publish();
     match storage.submit_draft_marker_label_assignment(&store, pending) {
-        DraftMarkerLabelAssignmentOutcomeV1::Ready { .. } => {
-            panic!("retired-generation flight minted readiness")
-        }
-        _ => {}
+        DraftMarkerLabelAssignmentOutcomeV1::CommittedUnavailable {
+            receipt,
+            later_failure: None,
+            reason: syndic_storage::DraftMarkerAdmissionCommittedUnavailableReasonV1::LocalCustodyUnavailable,
+        } => assert_eq!(receipt.home_revision(), store.home_revision().unwrap()),
+        _ => panic!("retired-generation flight lost its committed outcome or minted readiness"),
     }
 }
 

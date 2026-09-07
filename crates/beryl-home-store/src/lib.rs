@@ -345,7 +345,8 @@ pub mod test_faults {
     pub use crate::domain::capability_with_test_attachment_type;
     pub use crate::fault::{
         FaultBlock, FaultController, FaultPoint, FaultScope, FreeSpaceTestObservation,
-        PersistedCorruptionError, PersistedCorruptionStage,
+        JournalWriteFault, PersistedCorruptionError, PersistedCorruptionStage,
+        fail_next_journal_write,
     };
     pub use crate::metadata::{decode_test_domain_metadata, encode_test_domain_metadata};
     pub use crate::proof::ProofCommandIdentityTestHarness;

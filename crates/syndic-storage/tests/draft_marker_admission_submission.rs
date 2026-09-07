@@ -4,6 +4,9 @@ include!("durable_builder/support.rs");
 
 use std::num::NonZeroU64;
 
+#[path = "draft_marker_admission_submission/refusal.rs"]
+mod refusal;
+
 use syndic_storage::{
     DRAFT_MARKER_ADMISSION_MAX_HEADS, DraftMarkerAdmissionCommandIdV1,
     DraftMarkerAdmissionOperationIdV1, DraftMarkerAdmissionOwnerV1,
@@ -60,7 +63,7 @@ fn prepared_and_ready_flight_drops_release_the_bounded_runtime_slot() {
     };
     assert!(matches!(
         storage.prepare_draft_marker_label_readiness_page(&store, overflow()),
-        Err(syndic_storage::DraftMarkerReadinessSourceErrorV1::Rejected)
+        Err(syndic_storage::DraftMarkerReadinessSourceErrorV1::CapacityUnavailable)
     ));
     drop(ready);
     assert!(
@@ -176,7 +179,7 @@ fn exact_pairing_one_shot_and_final_eof_initialization() {
 }
 
 #[test]
-fn after_persist_finalizes_local_flight_without_publishing_success() {
+fn after_persist_preserves_the_committed_receipt_and_later_storage_failure() {
     let faults = FaultController::new();
     let (_home, store, storage, thread) = fixture_with_faults("after-persist", 50, faults.clone());
     let (session, marker) = marked_session(&storage, &store, thread, 51);
@@ -192,13 +195,49 @@ fn after_persist_finalizes_local_flight_without_publishing_success() {
         &session,
         marker.marker_id(),
     );
+    let revision = store.home_revision().unwrap();
     faults.fail_next(FaultPoint::AfterPersist);
-    assert!(matches!(
-        storage.submit_draft_marker_label_readiness_page(&store, flight),
-        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-            DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable
-        )
-    ));
+    match storage.submit_draft_marker_label_readiness_page(&store, flight) {
+        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::CommittedUnavailable {
+            receipt,
+            later_failure: Some(CommandError::Persistence { .. }),
+            reason: syndic_storage::DraftMarkerAdmissionCommittedUnavailableReasonV1::LaterFailure,
+        } => assert_eq!(receipt.home_revision().get(), revision.get() + 1),
+        _ => panic!("durable publication lost its selected receipt or later storage failure"),
+    }
+    let recovery = store.recover_same_home().unwrap();
+    let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
+    let store = recovery.publish();
+    let head = snapshot(&storage, &store, owner);
+    assert_eq!(head.head().unwrap().target_root().count(), 1);
+    assert_eq!(
+        head.head().unwrap().selected_receipt(),
+        Some(DraftMarkerAdmissionCommandIdV1::from_bytes([53; 16]))
+    );
+    let mut closed = false;
+    for command in 200..215 {
+        match storage.advance_draft_marker_admission_cleanup(
+            &store,
+            owner,
+            DraftMarkerAdmissionCommandIdV1::from_bytes([command; 16]),
+        ) {
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::Advanced { .. } => {}
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::RetainedClosure => {
+                closed = true;
+                break;
+            }
+            _ => panic!("committed publication lost recovery cleanup custody"),
+        }
+    }
+    assert!(closed);
+    assert_eq!(
+        snapshot(&storage, &store, owner)
+            .head()
+            .unwrap()
+            .charge()
+            .associations(),
+        0
+    );
 }
 
 #[test]
@@ -675,6 +714,13 @@ fn assert_advanced(
     later_failure: bool,
 ) {
     match outcome {
+        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::CommittedUnavailable {
+            reason, ..
+        } => panic!("{stage}: committed but unavailable: {reason}"),
+        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Replayed => panic!("{stage}: replayed"),
+        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::StorageError(error) => {
+            panic!("{stage}: storage error {error}")
+        }
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Advanced {
             receipt,
             later_failure: actual,
@@ -686,6 +732,12 @@ fn assert_advanced(
             panic!("{stage}: retryable")
         }
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(refusal) => match refusal {
+            DraftMarkerLabelReadinessPageSubmissionRefusalV1::OperationTooLarge => {
+                panic!("{stage}: operation too large")
+            }
+            DraftMarkerLabelReadinessPageSubmissionRefusalV1::CapacityUnavailable => {
+                panic!("{stage}: capacity unavailable")
+            }
             DraftMarkerLabelReadinessPageSubmissionRefusalV1::Obsolete => {
                 panic!("{stage}: obsolete")
             }

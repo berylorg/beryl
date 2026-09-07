@@ -42,6 +42,8 @@ use progression::{
 
 #[derive(Clone)]
 pub(crate) struct DraftMarkerAdmissionPublicationSeedV1 {
+    #[cfg(feature = "test-faults")]
+    pub(super) retained_limits: super::DraftMarkerAdmissionLimitsV1,
     owner: DraftMarkerAdmissionOwnerV1,
     home_generation: NonZeroU64,
     request_commitment: DraftMarkerAdmissionDigestV1,
@@ -68,6 +70,8 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
     ) -> Self {
         let (source_head_bytes, target_head_bytes) = page_closure_bytes(page);
         Self {
+            #[cfg(feature = "test-faults")]
+            retained_limits: super::DraftMarkerAdmissionLimitsV1::PRODUCTION,
             owner: page.owner,
             home_generation: page.authority.home_generation,
             request_commitment: page.authority.request_commitment(),
@@ -92,6 +96,7 @@ impl DraftMarkerAdmissionPublicationSeedV1 {
         target_head_bytes: impl Into<Box<[u8]>>,
     ) -> Self {
         Self {
+            retained_limits: super::DraftMarkerAdmissionLimitsV1::PRODUCTION,
             owner,
             home_generation,
             request_commitment,
@@ -120,10 +125,19 @@ pub(super) enum PublicationFailureClass {
     Obsolete,
     Collision,
     Refused,
+    OperationTooLarge,
+    CapacityUnavailable,
+    StorageError,
     Retryable,
 }
 
 pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailureClass {
+    if super::refusal::is_storage_command_error(error) {
+        return PublicationFailureClass::StorageError;
+    }
+    if matches!(error, CommandError::ReconciliationCapacity) {
+        return PublicationFailureClass::CapacityUnavailable;
+    }
     let source = match error {
         CommandError::ContributorValidation { source, .. }
         | CommandError::ContributorReservation { source, .. }
@@ -132,6 +146,12 @@ pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailure
     };
     match source.and_then(|source| source.downcast_ref::<DraftMarkerAdmissionPublicationErrorV1>())
     {
+        Some(DraftMarkerAdmissionPublicationErrorV1::Limit(
+            super::refusal::AdmissionLimitError::OperationTooLarge,
+        )) => PublicationFailureClass::OperationTooLarge,
+        Some(DraftMarkerAdmissionPublicationErrorV1::Limit(
+            super::refusal::AdmissionLimitError::CapacityUnavailable,
+        )) => PublicationFailureClass::CapacityUnavailable,
         Some(DraftMarkerAdmissionPublicationErrorV1::ExactReplay) => {
             PublicationFailureClass::Replayed
         }
@@ -146,13 +166,15 @@ pub(super) fn classify_not_committed(error: &CommandError) -> PublicationFailure
             | DraftMarkerAdmissionPublicationErrorV1::RequestAuthority
             | DraftMarkerAdmissionPublicationErrorV1::PageIncomplete,
         ) => PublicationFailureClass::Refused,
-        Some(_) => PublicationFailureClass::Retryable,
+        Some(_) => PublicationFailureClass::Refused,
         None => PublicationFailureClass::Retryable,
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 enum DraftMarkerAdmissionPublicationErrorV1 {
+    #[error(transparent)]
+    Limit(#[from] super::refusal::AdmissionLimitError),
     #[error("draft-marker admission selected EOF page is byte-exact replay")]
     ExactReplay,
     #[error(transparent)]
@@ -182,6 +204,9 @@ enum DraftMarkerAdmissionPublicationErrorV1 {
 impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for DraftMarkerAdmissionPublicationErrorV1 {
     fn from(value: DraftMarkerAdmissionIndexPreparationErrorV1) -> Self {
         match value {
+            DraftMarkerAdmissionIndexPreparationErrorV1::OperationTooLarge => {
+                Self::Limit(super::refusal::AdmissionLimitError::OperationTooLarge)
+            }
             DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => Self::Read(error),
             DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateSource
             | DraftMarkerAdmissionIndexPreparationErrorV1::DuplicateTarget => Self::Collision,
@@ -306,6 +331,12 @@ fn prepare_publication(
     page: DraftMarkerLabelReadinessProvenPageV1,
     command_limit: u64,
 ) -> Result<PreparedPublicationMutation, DraftMarkerAdmissionPublicationErrorV1> {
+    let retained_limits = super::DraftMarkerAdmissionLimitsV1::PRODUCTION;
+    #[cfg(feature = "test-faults")]
+    let retained_limits = {
+        let _ = retained_limits;
+        seed.retained_limits
+    };
     match &seed.authority {
         PublicationAuthority::Runtime(authority) => {
             if !request_authority_is_exact(reader, authority)? {
@@ -417,6 +448,7 @@ fn prepare_publication(
             ))
         })
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
+    super::refusal::check_operation_charge(successor_charge, retained_limits)?;
     let head = build_head(
         &seed,
         &page,
@@ -434,7 +466,7 @@ fn prepare_publication(
         .checked_sub(prior_charge)
         .and_then(|charge| charge.checked_add(successor_charge))
         .ok_or(DraftMarkerAdmissionPublicationErrorV1::Charge)?;
-    enforce_limits(successor_charge, aggregate_charge)?;
+    super::refusal::check_aggregate_charge(aggregate_charge, retained_limits)?;
     let capacity = DraftMarkerAdmissionCapacityV1::new(capacity_revision, aggregate_charge)?;
     let receipt_deletion =
         (prior.receipt.is_some() && prior.receipt_key != receipt_key).then_some(prior.receipt_key);
@@ -661,17 +693,19 @@ fn preflight_command(
     Ok(())
 }
 
+#[cfg(feature = "test-faults")]
 fn enforce_limits(
     operation: DraftMarkerAdmissionRetainedChargeV1,
     aggregate: DraftMarkerAdmissionRetainedChargeV1,
-) -> Result<(), DraftMarkerAdmissionSchemaErrorV1> {
-    if operation.heads() != 1
-        || !operation.fits(super::DraftMarkerAdmissionLimitsV1::PRODUCTION)
-        || !aggregate.fits(super::DraftMarkerAdmissionLimitsV1::PRODUCTION)
-    {
-        return Err(DraftMarkerAdmissionSchemaErrorV1::CapacityExceeded);
-    }
-    Ok(())
+) -> Result<(), super::refusal::AdmissionLimitError> {
+    super::refusal::check_operation_charge(
+        operation,
+        super::DraftMarkerAdmissionLimitsV1::PRODUCTION,
+    )?;
+    super::refusal::check_aggregate_charge(
+        aggregate,
+        super::DraftMarkerAdmissionLimitsV1::PRODUCTION,
+    )
 }
 
 fn checked_increment(

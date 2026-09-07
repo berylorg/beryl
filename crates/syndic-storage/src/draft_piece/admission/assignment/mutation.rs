@@ -20,6 +20,8 @@ pub(super) struct PreparedAssignmentMutation {
 #[derive(Debug, thiserror::Error)]
 pub(super) enum AssignmentMutationError {
     #[error(transparent)]
+    Limit(#[from] super::super::refusal::AdmissionLimitError),
+    #[error(transparent)]
     Read(#[from] ReadError),
     #[error(transparent)]
     Build(#[from] MutationBuildError),
@@ -37,7 +39,13 @@ pub(super) enum AssignmentMutationError {
 
 impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for AssignmentMutationError {
     fn from(value: DraftMarkerAdmissionIndexPreparationErrorV1) -> Self {
-        Self::Index(value)
+        match value {
+            DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => Self::Read(error),
+            DraftMarkerAdmissionIndexPreparationErrorV1::OperationTooLarge => {
+                Self::Limit(super::super::refusal::AdmissionLimitError::OperationTooLarge)
+            }
+            other => Self::Index(other),
+        }
     }
 }
 
@@ -323,6 +331,7 @@ fn finish_assignment_transition(
             ))
         })
         .ok_or(AssignmentMutationError::Charge)?;
+    super::super::refusal::check_operation_charge(successor_charge, retained_limits)?;
     let head = assignment_head(
         &prior_head,
         next_revision,
@@ -337,9 +346,7 @@ fn finish_assignment_transition(
         .checked_sub(prior_head.charge())
         .and_then(|charge| charge.checked_add(successor_charge))
         .ok_or(AssignmentMutationError::Charge)?;
-    if !successor_charge.fits(retained_limits) || !aggregate.fits(retained_limits) {
-        return Err(DraftMarkerAdmissionSchemaErrorV1::CapacityExceeded.into());
-    }
+    super::super::refusal::check_aggregate_charge(aggregate, retained_limits)?;
     let capacity = DraftMarkerAdmissionCapacityV1::new(
         NonZeroU64::new(
             capacity
@@ -491,10 +498,19 @@ pub(super) enum AssignmentFailureClass {
     Collision,
     Rejected,
     Unavailable,
+    OperationTooLarge,
+    CapacityUnavailable,
+    StorageError,
     Retryable,
 }
 
 pub(super) fn classify_assignment_failure(error: &CommandError) -> AssignmentFailureClass {
+    if super::super::refusal::is_storage_command_error(error) {
+        return AssignmentFailureClass::StorageError;
+    }
+    if matches!(error, CommandError::ReconciliationCapacity) {
+        return AssignmentFailureClass::CapacityUnavailable;
+    }
     let source = match error {
         CommandError::ContributorValidation { source, .. }
         | CommandError::ContributorReservation { source, .. }
@@ -502,6 +518,12 @@ pub(super) fn classify_assignment_failure(error: &CommandError) -> AssignmentFai
         _ => None,
     };
     match source.and_then(|source| source.downcast_ref::<AssignmentMutationError>()) {
+        Some(AssignmentMutationError::Limit(
+            super::super::refusal::AdmissionLimitError::OperationTooLarge,
+        )) => AssignmentFailureClass::OperationTooLarge,
+        Some(AssignmentMutationError::Limit(
+            super::super::refusal::AdmissionLimitError::CapacityUnavailable,
+        )) => AssignmentFailureClass::CapacityUnavailable,
         Some(AssignmentMutationError::Collision) => AssignmentFailureClass::Collision,
         Some(
             AssignmentMutationError::Authority
@@ -511,9 +533,9 @@ pub(super) fn classify_assignment_failure(error: &CommandError) -> AssignmentFai
             | AssignmentMutationError::Schema(DraftMarkerAdmissionSchemaErrorV1::InvalidHead),
         ) => AssignmentFailureClass::Rejected,
         Some(AssignmentMutationError::Schema(
-            DraftMarkerAdmissionSchemaErrorV1::CapacityExceeded
-            | DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge,
+            DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge,
         )) => AssignmentFailureClass::Unavailable,
+        Some(_) => AssignmentFailureClass::Rejected,
         _ => AssignmentFailureClass::Retryable,
     }
 }

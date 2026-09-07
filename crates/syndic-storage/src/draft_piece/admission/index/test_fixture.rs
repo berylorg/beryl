@@ -3,6 +3,7 @@ use super::*;
 #[cfg(feature = "test-faults")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftMarkerAdmissionIndexTestErrorV1 {
+    OperationTooLarge,
     AssociationOutOfRange,
     DuplicateSource,
     DuplicateTarget,
@@ -18,6 +19,9 @@ pub enum DraftMarkerAdmissionIndexTestErrorV1 {
 impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for DraftMarkerAdmissionIndexTestErrorV1 {
     fn from(value: DraftMarkerAdmissionIndexPreparationErrorV1) -> Self {
         match value {
+            DraftMarkerAdmissionIndexPreparationErrorV1::OperationTooLarge => {
+                Self::OperationTooLarge
+            }
             DraftMarkerAdmissionIndexPreparationErrorV1::Read(_)
             | DraftMarkerAdmissionIndexPreparationErrorV1::StoreRead(_) => Self::PathAuthentication,
             DraftMarkerAdmissionIndexPreparationErrorV1::Schema(error) => Self::Schema(error),

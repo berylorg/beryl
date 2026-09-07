@@ -132,6 +132,20 @@ the builder remains the sole consumer and validates all exact marker facts at co
 Missing metadata, substituted evidence, stale generation, exhaustion, cancellation, and capacity
 refusal preserve prior candidate/history and exact typed cleanup or reconciliation custody.
 
+Readiness and assignment distinguish isolated `OperationTooLarge`, aggregate or runtime
+`CapacityUnavailable`, and actual storage errors at their public boundaries. Proven noncommit and
+`ExactOld` retain the original storage failure even when local cleanup is unavailable; reporting
+the failure does not establish cleanup success. A committed result whose local authority is
+unavailable retains its exact receipt, later storage failure, and typed unavailability reason. It
+does not authorize a readiness proof or reclassify the durable target as refused.
+
+If assignment commits but the readiness read fails, its move-only retry flight retains the receipt
+and exclusive exact assignment attempt. Retrying reads without another mutation and may issue a
+proof only for that attempt's selected command. For an Assigning head, competing assignment
+preparation remains unavailable for capacity until the flight resolves or releases its exact
+attempt; releasing the flight does not delete durable custody and permits owner-qualified
+cancellation or recovery cleanup.
+
 ### Staging Session
 
 `DraftMutationOperationIdV1` is one opaque caller-owned identity reused for one transaction's begin,

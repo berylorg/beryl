@@ -31,23 +31,31 @@ resolution are now implemented and independently reviewed in the local checkouts
 the earlier assumption that app-only wiring could authenticate fresh images and inspect complete
 edit evidence before storage begin.
 
-## Remaining Public Refusal Boundary
+## Typed Refusal And Custody Boundary
 
 App integration review exposed another reason app-only wiring cannot satisfy the existing
-contract: public Syndic readiness and assignment APIs erase the required distinction between an
+contract: public Syndic readiness and assignment APIs erased the required distinction between an
 isolated operation exceeding its profile, aggregate temporary capacity saturation, and storage
-failure. `DraftMarkerReadinessSourceErrorV1`,
-`DraftMarkerLabelReadinessPageSubmissionRefusalV1`, and
-`DraftMarkerLabelAssignmentRefusalV1` expose no `OperationTooLarge` or `CapacityUnavailable` result.
-`admission/submission.rs::finish_not_committed` maps every refused publication to `Rejected`.
+failure. The source, page-submission and assignment APIs exposed no `OperationTooLarge` or
+`CapacityUnavailable` result, and publication submission reduced all refusal causes to `Rejected`.
 
 The app contract requires preserving those typed outcomes; the app cannot reconstruct them from
 generic rejection without inspecting private state or inventing policy. Implementation stopped
-before app edits under the Operator's technical-plan rule. The proposed correction is to preserve
-typed refusal causes through Syndic preparation, submission, assignment and reconciliation before
-resuming production composition. Verify isolated versus aggregate limits and unchanged prior
-authority with exact cleanup and ambiguous custody. Do not weaken app outcomes or replace the
-missing source classification with app-side guesses.
+before app edits under the Operator's technical-plan rule. The authorized correction now preserves
+typed refusal causes through Syndic preparation, submission, assignment and reconciliation.
+Public-boundary tests verify isolated versus aggregate limits, unchanged prior authority, and exact
+cleanup and ambiguous custody. Do not weaken app outcomes or replace source classification with
+app-side guesses.
+
+The correction must preserve custody as well as error variants. Actual storage-fault tests showed
+that a failed HomeStore health check during local cleanup could overwrite the original failure,
+and that a committed command could lose its receipt and later failure through an unavailable
+local-finalization result. Preserve those facts without claiming cleanup success or recreating a
+retired capability. Independent review also found that retaining a postcommit readiness retry
+while releasing its assignment attempt allowed the retry to observe a later assignment and issue
+a second proof. Keep the retry's exact attempt exclusive and bind proof issuance to its selected
+command. Verify no-mutation retry, competing-attempt rejection, drop-to-cleanup, and real journal
+failure reconciliation through the public API.
 
 ## Evidence
 

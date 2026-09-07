@@ -377,7 +377,7 @@ impl SyndicStorage {
                 attachment.prepare_attempt(owner, page, ordinal.get(), &authority, allocation_count)
             })
             .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?
-            .map_err(|_| DraftMarkerReadinessSourceErrorV1::Rejected)?;
+            .map_err(DraftMarkerReadinessSourceErrorV1::from)?;
         let page = Arc::new(SealedDraftMarkerReadinessSourcePageV1 {
             owner,
             page,

@@ -1,5 +1,17 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+pub(crate) enum DraftMarkerAdmissionAttemptError {
+    Rejected,
+    CapacityUnavailable,
+}
+
+impl From<()> for DraftMarkerAdmissionAttemptError {
+    fn from(_: ()) -> Self {
+        Self::Rejected
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct DraftMarkerAdmissionLiveAuthorityV1 {
     pub(crate) authority: DraftMarkerLabelReadinessRequestAuthorityV1,
@@ -53,8 +65,7 @@ impl DraftMarkerAdmissionPreparedAttempt {
         })
     }
 
-    #[cfg(feature = "test-faults")]
-    pub(crate) fn dispatch_for_test(&mut self) -> Result<(), ()> {
+    pub(crate) fn dispatch(&mut self) -> Result<(), ()> {
         if self.dispatched {
             return Ok(());
         }
@@ -69,6 +80,38 @@ impl DraftMarkerAdmissionPreparedAttempt {
             return Err(());
         }
         operation.attempt = OperationAttempt::Dispatched(self.attempt);
+        self.dispatched = true;
+        Ok(())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn dispatch_for_test(&mut self) -> Result<(), ()> {
+        self.dispatch()
+    }
+
+    pub(crate) fn command_id(&self) -> DraftMarkerAdmissionCommandIdV1 {
+        self.attempt
+    }
+
+    pub(crate) fn resume_readiness_after_reconciliation(&mut self) -> Result<(), ()> {
+        let state = self.state.as_ref().ok_or(())?;
+        let mut state = state.lock().map_err(|_| ())?;
+        if state.retired {
+            return Err(());
+        }
+        let operation = state
+            .operations
+            .iter_mut()
+            .find(|operation| operation.owner == self.owner)
+            .ok_or(())?;
+        if operation.attempt != OperationAttempt::Idle
+            || operation.disposition != OperationDisposition::UncertainClosed
+        {
+            return Err(());
+        }
+        operation.attempt = OperationAttempt::Dispatched(self.attempt);
+        operation.disposition = OperationDisposition::Open;
+        operation.durable_or_indeterminate = true;
         self.dispatched = true;
         Ok(())
     }
@@ -113,10 +156,10 @@ impl DraftMarkerAdmissionAttachment {
         frontier: u64,
         authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
         allocation_count: Option<u64>,
-    ) -> Result<DraftMarkerAdmissionPreparedAttempt, ()> {
+    ) -> Result<DraftMarkerAdmissionPreparedAttempt, DraftMarkerAdmissionAttemptError> {
         let mut state = self.state.lock().map_err(|_| ())?;
         if state.retired {
-            return Err(());
+            return Err(DraftMarkerAdmissionAttemptError::Rejected);
         }
         if let Some(index) = state
             .operations
@@ -125,16 +168,18 @@ impl DraftMarkerAdmissionAttachment {
         {
             let operation = &state.operations[index];
             if operation.disposition != OperationDisposition::Open
-                || operation.attempt != OperationAttempt::Idle
                 || operation.destination != authority.session.thread_id()
                 || operation.authority != *authority
             {
-                return Err(());
+                return Err(DraftMarkerAdmissionAttemptError::Rejected);
+            }
+            if operation.attempt != OperationAttempt::Idle {
+                return Err(DraftMarkerAdmissionAttemptError::CapacityUnavailable);
             }
             if reserve_allocation_if_needed(&mut state, owner, authority, allocation_count).is_err()
             {
                 state.operations[index].disposition = OperationDisposition::UncertainClosed;
-                return Err(());
+                return Err(DraftMarkerAdmissionAttemptError::Rejected);
             }
             state.operations[index].attempt = OperationAttempt::Prepared(attempt);
             return Ok(DraftMarkerAdmissionPreparedAttempt {
@@ -147,7 +192,7 @@ impl DraftMarkerAdmissionAttachment {
             });
         }
         if state.operations.len() >= DRAFT_MARKER_ADMISSION_MAX_HEADS as usize {
-            return Err(());
+            return Err(DraftMarkerAdmissionAttemptError::CapacityUnavailable);
         }
         let allocation_range = allocation_range(&state, authority, allocation_count)?;
         state.operations.push(OperationReservation {
@@ -249,21 +294,22 @@ impl DraftMarkerAdmissionAttachment {
             DraftMarkerAdmissionPreparedAttempt,
             DraftMarkerAdmissionLiveAuthorityV1,
         ),
-        (),
+        DraftMarkerAdmissionAttemptError,
     > {
         let mut state = self.state.lock().map_err(|_| ())?;
         if state.retired {
-            return Err(());
+            return Err(DraftMarkerAdmissionAttemptError::Rejected);
         }
         let operation = state
             .operations
             .iter_mut()
             .find(|entry| entry.owner == owner)
             .ok_or(())?;
-        if operation.disposition != OperationDisposition::Open
-            || operation.attempt != OperationAttempt::Idle
-        {
-            return Err(());
+        if operation.disposition != OperationDisposition::Open {
+            return Err(DraftMarkerAdmissionAttemptError::Rejected);
+        }
+        if operation.attempt != OperationAttempt::Idle {
+            return Err(DraftMarkerAdmissionAttemptError::CapacityUnavailable);
         }
         operation.attempt = OperationAttempt::Prepared(attempt);
         Ok((

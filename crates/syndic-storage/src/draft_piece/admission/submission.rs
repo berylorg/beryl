@@ -20,13 +20,22 @@ use super::publication::{
 };
 use super::readiness_source::PageProtocol;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DraftMarkerLabelReadinessPageSubmissionRefusalV1 {
+    OperationTooLarge,
+    CapacityUnavailable,
     Obsolete,
     Unavailable,
     Rejected,
 }
 
 pub enum DraftMarkerLabelReadinessPageSubmissionOutcomeV1 {
+    CommittedUnavailable {
+        receipt: CommitReceipt,
+        later_failure: Option<CommandError>,
+        reason: super::DraftMarkerAdmissionCommittedUnavailableReasonV1,
+    },
+    StorageError(super::DraftMarkerAdmissionStorageErrorV1),
     Replayed,
     Advanced {
         receipt: CommitReceipt,
@@ -44,6 +53,16 @@ pub struct DraftMarkerLabelReadinessPageSubmissionFlightV1 {
 
 #[cfg(feature = "test-faults")]
 impl DraftMarkerLabelReadinessPageSubmissionFlightV1 {
+    pub fn with_retained_limits_for_test(
+        mut self,
+        limits: super::DraftMarkerAdmissionLimitsV1,
+    ) -> Self {
+        if let SubmissionState::Ready { seed, .. } = &mut self.state {
+            seed.retained_limits = limits;
+        }
+        self
+    }
+
     pub fn dispatch_attachment_reservation_for_test(&mut self) -> bool {
         match &mut self.state {
             SubmissionState::Ready { reservation, .. } => reservation.dispatch_for_test().is_ok(),
@@ -61,6 +80,7 @@ enum SubmissionState {
     Reconciling {
         owner: DraftMarkerAdmissionOwnerV1,
         handle: ReconciliationHandle,
+        failure: CommandError,
         retry_failed: bool,
         retain_on_exact_old: bool,
         frontier: u64,
@@ -122,6 +142,7 @@ impl SyndicStorage {
             SubmissionState::Reconciling {
                 owner,
                 handle,
+                failure,
                 retry_failed,
                 retain_on_exact_old,
                 frontier,
@@ -129,6 +150,7 @@ impl SyndicStorage {
                 store,
                 owner,
                 handle,
+                failure,
                 retry_failed,
                 retain_on_exact_old,
                 frontier,
@@ -161,9 +183,9 @@ impl SyndicStorage {
             crate::draft_piece::point_limit(),
         ) {
             Ok(head) => head.is_some(),
-            Err(_) => {
-                return DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
+            Err(error) => {
+                return DraftMarkerLabelReadinessPageSubmissionOutcomeV1::StorageError(
+                    error.into(),
                 );
             }
         };
@@ -186,7 +208,7 @@ impl SyndicStorage {
                 frontier,
                 had_durable_before,
                 reservation,
-                classify_not_committed(&evidence),
+                evidence,
             ),
             CommandOutcome::Committed {
                 receipt,
@@ -194,42 +216,46 @@ impl SyndicStorage {
                 local_finalization,
             } => match local_finalization {
                 Some(local_finalization) => {
-                    if !matches!(
-                        store.with_committed_local_finalization(
-                            local_finalization,
-                            &receipt,
-                            &self.handle,
-                            |attachment| attachment
-                                .finish_submission(owner, attempt, true, false, frontier),
-                        ),
-                        Ok(Ok(()))
-                    ) {
-                        return DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                            DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
-                        );
+                    let finalized = store.with_committed_local_finalization(
+                        local_finalization,
+                        &receipt,
+                        &self.handle,
+                        |attachment| {
+                            attachment.finish_submission(owner, attempt, true, false, frontier)
+                        },
+                    );
+                    DraftMarkerLabelReadinessPageSubmissionOutcomeV1::CommittedUnavailable {
+                        receipt,
+                        later_failure,
+                        reason: super::refusal::committed_finalization_reason(finalized),
                     }
-                    DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                        DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
-                    )
                 }
                 None => {
-                    let receipt_is_current =
-                        matches!(self.committed_revision(store, &receipt), Ok(Some(_)));
+                    let current_revision = self.committed_revision(store, &receipt);
                     let released =
                         self.finish_local_attempt(store, owner, attempt, true, false, frontier);
-                    if receipt_is_current && released {
+                    if matches!(current_revision, Ok(Some(_))) && released {
                         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Advanced {
                             receipt,
                             later_failure,
                         }
                     } else {
-                        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                            DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
-                        )
+                        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::CommittedUnavailable {
+                            receipt,
+                            later_failure,
+                            reason: match current_revision {
+                                Err(error) => super::DraftMarkerAdmissionCommittedUnavailableReasonV1::Receipt(error),
+                                Ok(None) => super::DraftMarkerAdmissionCommittedUnavailableReasonV1::ReceiptNotCurrent,
+                                Ok(Some(_)) => super::DraftMarkerAdmissionCommittedUnavailableReasonV1::LocalCustodyUnavailable,
+                            },
+                        }
                     }
                 }
             },
-            CommandOutcome::Indeterminate { reconciliation, .. } => {
+            CommandOutcome::Indeterminate {
+                reconciliation,
+                failure,
+            } => {
                 let handle = reconciliation.install_and_handle();
                 let _ = self.finish_local_attempt(store, owner, attempt, true, true, frontier);
                 DraftMarkerLabelReadinessPageSubmissionOutcomeV1::ReconciliationPending(
@@ -237,6 +263,7 @@ impl SyndicStorage {
                         state: SubmissionState::Reconciling {
                             owner,
                             handle,
+                            failure,
                             retry_failed: false,
                             retain_on_exact_old,
                             frontier,
@@ -256,15 +283,31 @@ impl SyndicStorage {
         frontier: u64,
         had_durable_before: bool,
         reservation: DraftMarkerAdmissionAttemptReservation,
-        classification: PublicationFailureClass,
+        evidence: CommandError,
     ) -> DraftMarkerLabelReadinessPageSubmissionOutcomeV1 {
         let retain_operation = had_durable_before || reservation.was_present;
-        if !self.finish_local_attempt(store, owner, attempt, retain_operation, false, frontier) {
+        let classification = classify_not_committed(&evidence);
+        if !self.finish_local_attempt(store, owner, attempt, retain_operation, false, frontier)
+            && classification != PublicationFailureClass::StorageError
+        {
             return DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
                 DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
             );
         }
         match classification {
+            PublicationFailureClass::OperationTooLarge => {
+                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
+                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::OperationTooLarge,
+                )
+            }
+            PublicationFailureClass::CapacityUnavailable => {
+                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
+                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::CapacityUnavailable,
+                )
+            }
+            PublicationFailureClass::StorageError => {
+                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::StorageError(evidence.into())
+            }
             PublicationFailureClass::Replayed => {
                 DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Replayed
             }
@@ -292,6 +335,7 @@ impl SyndicStorage {
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
         handle: ReconciliationHandle,
+        failure: CommandError,
         retry_failed: bool,
         retain_on_exact_old: bool,
         frontier: u64,
@@ -302,16 +346,15 @@ impl SyndicStorage {
             store.reconcile(&handle)
         };
         match resolution {
-            Ok(ReconciliationResolution::ExactOld)
-                if self.resolve_local_reconciliation(
+            Ok(ReconciliationResolution::ExactOld) => {
+                let _ = self.resolve_local_reconciliation(
                     store,
                     owner,
                     retain_on_exact_old,
                     false,
                     frontier,
-                ) =>
-            {
-                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Retryable
+                );
+                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::StorageError(failure.into())
             }
             Ok(ReconciliationResolution::ExactNew { receipt }) => {
                 if self.resolve_local_reconciliation(store, owner, true, false, frontier) {
@@ -320,9 +363,11 @@ impl SyndicStorage {
                         later_failure: None,
                     }
                 } else {
-                    DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                        DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
-                    )
+                    DraftMarkerLabelReadinessPageSubmissionOutcomeV1::CommittedUnavailable {
+                        receipt,
+                        later_failure: None,
+                        reason: super::DraftMarkerAdmissionCommittedUnavailableReasonV1::LocalCustodyUnavailable,
+                    }
                 }
             }
             Ok(ReconciliationResolution::Collision) => {
@@ -344,16 +389,12 @@ impl SyndicStorage {
                     DraftMarkerLabelReadinessPageSubmissionRefusalV1::Rejected,
                 )
             }
-            Ok(ReconciliationResolution::ExactOld) => {
-                DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
-                    DraftMarkerLabelReadinessPageSubmissionRefusalV1::Unavailable,
-                )
-            }
             Err(_) => DraftMarkerLabelReadinessPageSubmissionOutcomeV1::ReconciliationPending(
                 DraftMarkerLabelReadinessPageSubmissionFlightV1 {
                     state: SubmissionState::Reconciling {
                         owner,
                         handle,
+                        failure,
                         retry_failed: true,
                         retain_on_exact_old,
                         frontier,

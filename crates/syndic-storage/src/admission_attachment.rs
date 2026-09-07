@@ -30,8 +30,8 @@ mod attempt;
 mod terminal;
 
 pub(crate) use attempt::{
-    DraftMarkerAdmissionAttemptReservation, DraftMarkerAdmissionLiveAuthorityV1,
-    DraftMarkerAdmissionPreparedAttempt,
+    DraftMarkerAdmissionAttemptError, DraftMarkerAdmissionAttemptReservation,
+    DraftMarkerAdmissionLiveAuthorityV1, DraftMarkerAdmissionPreparedAttempt,
 };
 pub(crate) use terminal::CancelTransient;
 

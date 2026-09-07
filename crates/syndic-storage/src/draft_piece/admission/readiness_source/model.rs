@@ -276,6 +276,8 @@ pub enum DraftMarkerReadinessSourceErrorV1 {
     Read(ReadError),
     PreflightRead(crate::SyndicReadError),
     Rejected,
+    OperationTooLarge,
+    CapacityUnavailable,
     Build,
     Seal,
     Compose(ProofCompositionError),
@@ -294,6 +296,12 @@ impl fmt::Display for DraftMarkerReadinessSourceErrorV1 {
                 "draft-marker readiness preflight read failed: {error}"
             ),
             Self::Rejected => formatter.write_str("draft-marker readiness source was rejected"),
+            Self::OperationTooLarge => {
+                formatter.write_str("draft-marker readiness operation is too large")
+            }
+            Self::CapacityUnavailable => {
+                formatter.write_str("draft-marker readiness capacity is unavailable")
+            }
             Self::Build => {
                 formatter.write_str("draft-marker readiness proof command could not be built")
             }
@@ -312,7 +320,32 @@ impl fmt::Display for DraftMarkerReadinessSourceErrorV1 {
     }
 }
 
-impl Error for DraftMarkerReadinessSourceErrorV1 {}
+impl Error for DraftMarkerReadinessSourceErrorV1 {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(error) => Some(error),
+            Self::PreflightRead(error) => Some(error),
+            Self::Compose(error) => Some(error),
+            Self::Receipt(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<crate::admission_attachment::DraftMarkerAdmissionAttemptError>
+    for DraftMarkerReadinessSourceErrorV1
+{
+    fn from(error: crate::admission_attachment::DraftMarkerAdmissionAttemptError) -> Self {
+        match error {
+            crate::admission_attachment::DraftMarkerAdmissionAttemptError::Rejected => {
+                Self::Rejected
+            }
+            crate::admission_attachment::DraftMarkerAdmissionAttemptError::CapacityUnavailable => {
+                Self::CapacityUnavailable
+            }
+        }
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct CanonicalEntry {
