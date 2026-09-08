@@ -39,23 +39,18 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 345: Configure Bounded Development Builds (finished)
+# Phase 346: Assess Semantic Tool Memory Retention (finished)
 
-Accepted bundled LLVM linking on Windows MSVC, one default Cargo job, development/test debug
-information disabled across the compiled dependency graph and an opt-in full-symbol `debugging`
-profile. Locked canonical/local metadata and the focused local app check pass; LLVM-built mounted
-composer/history tests pass 26/26, with 3.44 GiB peak guarded build commitment. The explicit strip
-settings preserve this result. Windows PDB output can remain from linked input CodeView data;
-profile-only stripping does not suppress it. Canonical lockfiles are unchanged. Semantic use
-remains paused until the full Serena restart described in the next boundary.
+The [retention investigation](memory/topic/semantic-tool-memory/serena-cache-controls.md) found no
+Serena cache-capacity or TTL setting; analyzer LRU capacity already equals 32 and bounds syntax
+trees only. Saved one-job and no-dev-debug Cargo environment settings in the parent Serena
+project while preserving all eight workspaces and existing navigation controls. Full service
+relaunch remains required for adoption; language-server-only restart does not reload project
+configuration. This is an accepted configuration investigation, not a measured live memory
+reduction. [ENV.md](../ENV.md#windows-build-and-semantic-tool-memory) records activation status;
+semantic use of the changed Cargo model remains paused until that full relaunch.
 
-# Phase 346: Assess Semantic Tool Memory Retention (wip)
-
-Inspect the installed Serena and rust-analyzer configuration and supported retention controls,
-then apply only verified project-scoped settings that preserve required semantic navigation.
-Record memory measurements and distinguish eviction from hard memory limits or process restarts.
-
-# Phase 347: Record Build Concurrency Failure Evidence (pending)
+# Phase 347: Record Build Concurrency Failure Evidence (wip)
 
 Reconstruct the OOM invocation and nearby build activity from available evidence. Record proven
 concurrency settings, overlap and uncertainty, together with the guarded build/linker comparison.
