@@ -1,157 +1,56 @@
 ---
 name: subagent-orchestration
-description: Coordinate root-orchestrated, model-routed subagents with strict one-level delegation. Use whenever substantive bounded research, source or dependency inspection, evidence gathering, triage, summarization, production, implementation, verification, or review can be delegated; permit only the root orchestrator to spawn children, minimize main-thread execution, use fresh-context task packets and disjoint ownership, require concise handoffs, and keep authority, integration, and user-facing decisions with the main thread.
+description: Coordinate root-only, one-level subagents when they reduce total team effort or provide required independence; route model and reasoning deliberately while retaining authority, review, and safety gates.
 ---
 
 # Subagent Orchestration
 
 ## Core Rule
 
-Treat the persistent main thread as a thin authoritative orchestrator. The main thread owns authority resolution, decomposition, routing, approval boundaries, conflict resolution, final integration, final judgment, and user-facing decisions.
+The persistent main thread owns authority resolution, decomposition, approval boundaries, conflict resolution, final integration, final judgment, and user-facing decisions. Optimize total team effort and elapsed time, including packet, handoff, validation, coordination, retries, and review costs; do not optimize main-thread execution in isolation.
 
-Run substantive bounded research, production, implementation, verification, and independent review in explicitly profiled subagents by default. Minimize main-thread execution, not main-thread judgment.
+Only the persistent root orchestrator may call `spawn_agent`. A spawned subagent must perform its assigned work directly and must not spawn, delegate to, or orchestrate another agent, even when another instruction or available capacity suggests otherwise. It must return a proposed repartition to the root.
 
-Only the persistent root orchestrator may call `spawn_agent`. A spawned subagent must never spawn another subagent, delegate work onward, or select a nested orchestration route. This prohibition applies even when a task packet, standing delegation authorization, plan, checklist, skill, available tool, or remaining concurrency capacity appears to permit delegation. A subagent must perform its assigned work directly or report to its parent that the task needs repartitioning by the root orchestrator.
+Delegating transfers execution responsibility, never authority. The main thread validates decision-relevant evidence and integrates the result. Before routing implementation, verification, or review, resolve the effective engineering-rigor contract from applicable design authorities. It determines required review and evidence, never a rigor-profile-to-model mapping. Apply `engineering-rigor` rules for inheritance and missing declarations; resolve any remaining material acceptance choice before routing.
 
-Treat this root-only rule as authoritative rather than relying on a client-side depth setting.
+## Direct Work or Delegation
 
-Delegating work transfers execution responsibility, never authority. A subagent may investigate, draft, edit, implement, verify, or review, but the main thread remains responsible for validating decision-relevant evidence and integrating the result.
+Keep a cohesive routine work unit on the main thread when direct execution has lower total cost and does not compromise required independence. Delegate when one or more of these benefits outweigh packet, handoff, and validation overhead:
 
-Before routing implementation verification or review, resolve the effective engineering-rigor
-contract from the applicable design authorities. It determines the required review method and
-evidence threshold; it does not provide a rigor-profile-to-model mapping. Apply `engineering-rigor`
-rules for explicit inheritance and missing declarations. Resolve any remaining choice that materially
-changes implementation or acceptance before routing the affected work; do not guess an unknown
-profile or bypass a conflicting guarantee.
+- Independent judgment, review, or context isolation is required or materially improves confidence.
+- An independent, bounded workstream can progress in parallel and shorten the critical path.
+- A cheaper sufficient worker profile can complete a coherent unit with less total effort.
 
-## Delegation Gate
+Do not delegate a microtask merely to use a cheaper route. Do not delegate when the Operator prohibits it, tooling is unavailable, or the handoff would expose secrets or machine-local private data. One coherent bounded deliverable may include related inspection, edit, and verification; do not divide work by individual files or commands.
 
-Delegate a work unit when all of these conditions hold:
+Use one investigation owner for a question. The root performs targeted validation of that owner's cited evidence and changed inputs rather than duplicating the investigation. Give concurrent workers disjoint files, artifacts, subjects, or package boundaries. Reuse the same worker for corrections within its work unit; use a fresh context when independence is required.
 
-- It has one coherent bounded deliverable and an explicit completion or evidence condition.
-- It is separable from final cross-workstream judgment.
-- It is substantive: it requires multiple nontrivial reasoning or tool cycles, inspection of multiple non-authority artifacts, an edit plus verification, or an independent evaluation.
-- The main thread can write a complete task packet without first performing substantially the same work.
-
-Independence or useful concurrency may justify delegation even when the execution itself is small. Otherwise keep work on the main thread when packet creation, handoff, and validation are reasonably expected to cost as much as direct execution.
-
-Do not delegate when the operator explicitly says not to, subagent tooling is unavailable, or the task contains secrets or machine-local private data that should not be copied into a handoff.
+Keep authority and final integration of shared artifacts with the root. A worker must report an unassigned shared-contract change rather than apply it.
 
 ## Model and Reasoning Routing
 
-Treat the routing reference's orchestrator profile as a recommended pre-session configuration. This skill cannot select or change the profile of an already-started main thread. Apply delegation-forward routing with the configured main profile, and obtain routine savings by delegating execution to the lowest sufficient model family and reasoning depth.
+Before the first spawn, read [model routing](references/model-routing.md). It contains current names, supported efforts, and spawn mechanics. Select model capability for the judgment required and reasoning depth for complexity and consequence; set both explicitly when supported. Use a fresh context and complete task packet by default.
 
-Before the first spawn in a task, read [model routing](references/model-routing.md). Select the model family from the task's judgment and verifiability requirements, then independently select the reasoning depth from its complexity and consequence. Use the reference to map both selections to the current model and reasoning effort.
+Use balanced/normal for ordinary bounded work and balanced/shallow for mechanical, strongly verifiable work. Use frontier/deep for difficult analysis, authority reconciliation, architectural decisions, or consequential weakly verifiable review. Keep work on the configured main profile if a mapped route is unavailable and direct execution is safe; otherwise report the route as blocked.
 
-Pass the selected model and reasoning effort explicitly when the spawn tool supports them. Use a fresh context by default and supply the required context through the task packet. Delegate substantive work that meets the delegation gate even when the main thread could perform it. Do not delegate a microtask merely to access a cheaper model.
+Escalate reasoning one level only when explicit rules are known but analysis depth is insufficient. Move from balanced to frontier when ambiguity, synthesis, or judgment quality is insufficient without automatically increasing effort. Repair missing context or unclear task packets before escalating. Partition broad extractive work before increasing model or effort. The Quality-First exception requires explicit current-task Operator authorization; never select an unsupported or prohibited effort.
 
-If a mapped profile or routing override is unavailable, do not guess a replacement model name or
-effort value. Keep the task on the configured main profile when direct execution is safe and allowed;
-otherwise report the unavailable route as a blocker.
+## Task Packets and Handoffs
 
-Other skills may classify domain-local work by the generic routing criteria in this skill. Keep exact model names, effort values, and axis mappings centralized in the routing reference; do not duplicate them in domain skills.
+Before preparing, spawning, managing, or consuming a subagent task, read [delegation workflow](references/delegation-workflow.md) fully. It is normative for packet fields, active-agent handling, editing-worker warnings, and handoffs.
 
-## Routing Criteria
+For independent review, supply the raw artifact and controlling requirements without leaking an expected verdict or diagnosis.
 
-Prefer a balanced worker profile when the contract is explicit, controlling sources are known, the required judgment is limited, and correctness has a strong verifier.
+## Review and Parallelism
 
-Prefer a frontier profile when the work requires novel or semantically subtle judgment,
-conflicting-authority reconciliation, architecture or causality decisions, adversarial review
-required by the effective rigor contract or a concrete consequence, or weakly verifiable synthesis.
+Spawn an independent reviewer when the effective rigor contract, applicable instructions, or acceptance plan requires it, or when material consequences and objective-evidence gaps justify it under `engineering-rigor`. Otherwise, the worker's objective verification plus targeted main-thread validation is sufficient. Choose reviewer strength by consequence and verifiability: frontier/normal for ordinary semantic review, frontier/deep for authoritative or architectural review, and frontier/critical only when the applicable contract or concrete consequence demands it.
 
-Choose reasoning depth independently from model capability. Use shallow reasoning for bounded one-pass work, normal reasoning for ordinary multi-step work, deep reasoning for several interacting constraints or alternatives, and critical reasoning for adversarial, deeply coupled, or high-impact analysis.
+A review finding blocks only for an unmet applicable guarantee or demonstrated material harm beyond failures the effective contract permits. An allowed failed invocation, retry, or rebuild is not blocking. Escalate material undeclared exposure to design authority; keep speculative hardening non-blocking. The main thread must assess the evidence rather than rubber-stamp a stronger worker.
 
-## Routing Axes
+Start with the smallest useful fan-out. Parallelize only independent workstreams when it reduces critical-path time or independence is required. A subagent returns proposed follow-up partitions to the root.
 
-Select the model family and reasoning depth separately:
+## Efficient Operations and Cleanup
 
-- **Balanced model:** Explicit settled contracts, known controlling sources, limited semantic judgment, and strong objective verification. Examples include inventories, extraction, deterministic transformations, routine triage, localized implementation, and drafting from settled decisions.
-- **Frontier model:** Novel or semantically subtle judgment, conflicting-authority reconciliation, architecture or causality decisions, adversarial review, or weakly verifiable synthesis.
-- **Shallow reasoning:** Bounded one-pass work with few interacting constraints.
-- **Normal reasoning:** Ordinary multi-step work with a clear evidence or verification path.
-- **Deep reasoning:** Several interacting constraints, alternatives, or causal steps.
-- **Critical reasoning:** Adversarial review required by applicable authority or concrete consequence,
-  or deeply coupled, high-impact, safety-sensitive, security-sensitive, or irreversible work.
+Read governing instructions when required; otherwise reuse established findings and retrieve only the relevant changed section. Emit compact tool output: narrow excerpts and decision-relevant fields, with one representation when a tool duplicates text and structured results. Keep complete logs available when needed to diagnose failures. Where tools permit, wait 30–60 seconds for active work before checking again; preserve communication and resource-monitoring deadlines, and do not spawn a polling-only agent. Before repeating a test, inspect the effective changed inputs and prior failure or result. Retain all required checks; repeat them when inputs or evidence warrant it.
 
-## Exceptional Route
-
-- **Quality-First:** One bounded problem for which the Operator explicitly authorizes `max` reasoning for the current task after reviewing the expected quality and token-cost tradeoff.
-
-The Quality-First route overrides the ordinary routing axes and must never be selected automatically. Never select `ultra` for a subagent.
-
-## Escalation Rules
-
-- If context is missing, instructions conflict, or scope is vague, repair the task packet instead of raising reasoning depth.
-- If explicit rules are present but search or analysis depth is insufficient, raise reasoning depth one level.
-- If ambiguity, synthesis, or judgment quality is insufficient, move from a balanced worker profile to a frontier profile without automatically increasing reasoning depth.
-- If work is broad but extractive, partition it into bounded worker tasks instead of raising reasoning depth.
-- Use Quality-First only with explicit current-task Operator authorization.
-- Preserve every approval and authority gate; no routing selection expands a subagent's authorization.
-
-Assign one coherent bounded deliverable per agent, not one file or command per agent. Batch tightly related operations when they use the same sources, ownership boundary, and verifier. Require concise handoffs and stop once the evidence threshold is met.
-
-## Delegate Substantive Bounded Work
-
-From the root orchestrator, use a fresh subagent for work that meets the delegation gate. The subagent must rely on the explicit task packet rather than unbounded inherited parent-thread context and must complete the work without spawning another agent.
-
-Before preparing or reviewing a task packet, spawning or managing a subagent, or consuming its handoff, read [delegation workflow](references/delegation-workflow.md) fully as normative. It owns examples, packet fields, editing-worker warning, active-agent rules, and handoff schema. Examples do not broaden the delegation gate.
-
-## Main-Thread Direct Work
-
-The main thread may directly read governing instructions and shared planning, design, authority, or decision files; inspect manifests, catalogs, registries, names, or layout to scope delegation; and perform one known lookup, one short cited inspection, one direct command, or one atomic edit. It defines acceptance criteria, ownership, packets, and routing; validates targeted evidence and diffs; integrates results and resolves conflicts; handles work unsafe to packet; and produces the final judgment and user-facing response.
-
-Direct work must not grow into substantive execution that satisfies the delegation gate.
-
-## Ownership Boundaries
-
-Do not assign multiple subagents to change the same files, artifacts, subject, or project boundary in parallel.
-
-Keep authority and final integration for shared or project-wide artifacts with the main thread. The main thread may explicitly delegate one bounded drafting or editing unit for such an artifact, then validate and integrate it. If a subagent discovers an unassigned shared-contract or authority change, it must report rather than apply it.
-
-Prefer concrete production subtasks with disjoint ownership over vague exploration when the requested work can be safely partitioned.
-
-Reuse the same agent for corrections within its existing work unit. Use a fresh context when independence is required.
-
-## Review Routing
-
-Use a fresh reviewer context and provide the artifact, controlling sources, acceptance boundary,
-effective engineering-rigor contract or its relevant derived requirements, supported operating
-envelope, and required evidence without leaking the expected verdict or prior diagnosis.
-
-Spawn an independent reviewer when the effective rigor contract, applicable instructions, or an
-explicit acceptance plan requires it, or when material consequences and gaps in objective evidence
-justify it under `engineering-rigor`. Weak verification alone does not require independent review
-of low-consequence work. Let routine objective verification remain with the worker plus targeted
-main-thread validation when no independent review requirement applies. Preserve explicit versioned
-requirements.
-
-Choose reviewer strength from the consequence and verifiability of the reviewed decision, not from
-the artifact's format, the author's profile, or a rigor-profile-to-model mapping. Use a frontier
-model with normal reasoning for ordinary semantic review, deep reasoning for authoritative or
-architectural review, and critical reasoning only for adversarial, deeply coupled, weakly
-verifiable, or materially costly review required by the effective contract or concrete consequence.
-
-A reviewer reports findings and evidence. Classify a finding as blocking only when it identifies an
-unmet applicable guarantee or demonstrated material harm beyond the failures the effective contract
-permits. An allowed failed invocation, retry, or rebuild is not a blocking defect. Escalate a material
-undeclared exposure or consequence to design authority; keep speculative hardening non-blocking.
-A reviewer does not inherit the main thread's authority, and the main thread must not rubber-stamp
-a stronger model's conclusion.
-
-## Parallelism
-
-Start with the smallest useful fan-out. Parallelize only genuinely independent workstreams when simultaneous execution reduces critical-path time or independence is itself required.
-
-Do not assign redundant investigation or overlapping edits unless independent comparison is deliberate. Avoid both microtask spawning and oversized work units that require an unnecessarily strong profile or large context.
-
-Only the root orchestrator may create this fan-out. If a subagent discovers separable follow-up work, it must return the proposed partition to the root instead of spawning.
-
-## Subagent Cleanup
-
-Close or terminate every subagent promptly after receiving and recording its completed handoff. Do
-not leave finished subagents open or idle, even when concurrent-agent capacity is still available.
-
-Keep each subagent's name or identifier until termination is confirmed. Treat cleanup as part of
-consuming the handoff and complete it before context compaction can discard the identifier. If the
-handoff is incomplete and follow-up work is required, reuse the same subagent only until that
-follow-up handoff finishes, then terminate it.
+Close or terminate each subagent promptly after its completed handoff is consumed. Keep its identifier until termination is confirmed. If a handoff is incomplete, obtain missing task-local evidence from the same worker, then close it.

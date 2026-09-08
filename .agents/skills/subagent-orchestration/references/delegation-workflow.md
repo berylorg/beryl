@@ -46,7 +46,7 @@ Use the packet as the subagent's complete context when spawning with a fresh con
 
 While agents run, perform only necessary nonduplicative orchestration or integration work. Do not manufacture main-thread work merely to avoid waiting.
 
-When a handoff arrives, inspect the cited files, diffs, or commands needed for integration. Do not redo delegated exploration unless the handoff is incomplete or untrustworthy.
+When a handoff arrives, inspect its cited files, diffs, commands, and changed inputs needed for targeted integration validation; do not redo the investigation unless the handoff is incomplete or untrustworthy. Apply the parent skill's efficient-operation rules to tool output, waiting, and repeated verification.
 
 ## Handoff Requirements
 

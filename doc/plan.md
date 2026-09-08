@@ -1,5 +1,11 @@
 # Scope
 
+The Operator authorizes the reviewed orchestration-efficiency changes: Astra/medium as the main
+default, Terra workers, conditional delegation and bounded evidence/verification overhead, without
+introducing Sol. Also disable Cargo incremental compilation for Beryl and local dependencies under
+the root [technology decisions](design.md#implementation-technology). Preserve all required
+acceptance checks and independent-review boundaries. Product development remains paused.
+
 The Operator prioritizes permanent LLVM linking and disabling normal-build debug information across Beryl's
 resolved local dependency graph, with opt-in debugging, under the root
 [technology decisions](design.md#implementation-technology). Investigate Serena cache controls
@@ -39,21 +45,23 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 347: Record Build Concurrency Failure Evidence (finished)
+# Phase 348: Reduce Agent Orchestration Overhead (finished)
 
-The [memory-exhaustion record](failures/windows-cargo-memory-commit.md) preserves the audited
-timeline, internal Cargo parallelism and bounded verification/linker measurements. No known
-Cargo commands overlapped at the event; the uncapped final build began after Windows first
-detected exhaustion. The initiating allocation remains unknown. Permanent LLVM/no-dev-debug/
-one-job settings passed focused checks and 26 integration cases; the earlier bounded full set
-passed 145 cases. All measurement jobs finished and were reaped. The Operator can return the
-pagefile to zero without disturbing this evidence; future builds must inspect current headroom.
+Accepted conditional delegation by total team effort, compact evidence, targeted verification
+and Astra/medium as the persisted main default, with Terra workers and explicit frontier review.
+Canonical AIPM instructions, references and display metadata match Beryl's installed copies;
+both bundled skill validations, scoped whitespace checks and configuration parsing pass.
+Required review, ownership and root-only delegation remain intact. Explicit session selections
+may override the default. No Sol route was introduced.
 
-The [Serena investigation](memory/topic/semantic-tool-memory/serena-cache-controls.md) found no
-configurable symbol-cache eviction. Its saved Cargo settings await a full service relaunch;
-[ENV.md](../ENV.md#windows-build-and-semantic-tool-memory) records that pending activation.
-Semantic use of the changed Cargo model remains paused until that relaunch. Marker acceptance
-remains pending below and was not resumed by this tooling investigation.
+# Phase 349: Disable Cargo Incremental Compilation (wip)
+
+Disable incremental compilation in Beryl's tracked Cargo configuration and the shared local parent
+configuration used by sibling checkouts. Preserve linker, symbols, dependency selection and
+lockfiles. Inspect inherited configuration and environment overrides, validate locked metadata,
+then run one serialized, memory-guarded focused app check and inspect compiler invocations for
+incremental flags. Document the setting's scope and rebuild/write tradeoff. Do not clean shared
+artifacts or rerun integration suites for unchanged product behavior.
 
 # Phase 329: Connect Production Marker Admission (pending)
 
