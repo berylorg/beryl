@@ -1,1 +1,8 @@
 include = [{ path = "local.toml", optional = true }]
+
+[build]
+jobs = 1
+
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+linker = "rust-lld.exe"
+rustflags = ["-C", "linker-flavor=lld-link"]

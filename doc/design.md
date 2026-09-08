@@ -64,6 +64,13 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 ## Implementation Technology
 
 - Beryl-owned code is Rust only.
+- Windows MSVC-target builds use LLVM's linker bundled with the selected Rust toolchain.
+- Normal development and test builds disable debug information across the entire compiled
+  dependency graph, including local forks. An explicit `debugging` Cargo profile restores full
+  debug information when diagnosis requires it; release optimization policy is unchanged.
+  Precompiled toolchain and native inputs may still contribute data to Windows PDB files.
+- Large verification runs use one active Cargo invocation and one compiler job by default to
+  protect Windows memory commitment headroom. Test execution concurrency is controlled separately.
 - The desktop client uses `gpui` and does not depend on browser technologies, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native application libraries.
 - Beryl may use the official `gpui` package or a Beryl-maintained fork anchored to upstream Zed `gpui` when targeted patches are required.
 - GPUI-owned transitive native build dependencies remain allowed.

@@ -11,6 +11,19 @@ members = [
 ]
 resolver = "3"
 
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+
+[profile.test]
+debug = 0
+strip = "debuginfo"
+
+[profile.debugging]
+inherits = "dev"
+debug = 2
+strip = "none"
+
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"

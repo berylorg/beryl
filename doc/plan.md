@@ -1,5 +1,11 @@
 # Scope
 
+The Operator prioritizes permanent LLVM linking and disabling normal-build debug information across Beryl's
+resolved local dependency graph, with opt-in debugging, under the root
+[technology decisions](design.md#implementation-technology). Investigate Serena cache controls
+and audit the previous memory exhaustion separately. Marker acceptance remains paused during
+this tooling work; its successful 145-case diagnostic run is retained evidence.
+
 Keep GUI thread switching clean without overengineering. The Operator now authorizes the two
 reported non-GUI corrections: marker admission and healthy scheduler-conflict handling. Keep each
 in its own acceptance boundary and reuse existing mechanisms. Broader process-provider composition
@@ -33,16 +39,28 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 343: Correct Bounded Settlement Stack Layout (finished)
+# Phase 345: Configure Bounded Development Builds (finished)
 
-Accepted borrowed settlement preparation and one bounded boxed contribution while preserving exact
-generation checks, ordered reads, replay and command custody. All ten pending activation cases,
-72 focused storage cases and two optimized-release storage witnesses pass. Isolated locked
-production Syndic/app checks in documented local mode and independent semantic/adversarial review
-passed. The [failure record](failures/syndic-composer-mutation-stack-layout.md#accepted-settlement-layout-correction)
-preserves the measured stack reduction, allocation costs and evidence limits.
+Accepted bundled LLVM linking on Windows MSVC, one default Cargo job, development/test debug
+information disabled across the compiled dependency graph and an opt-in full-symbol `debugging`
+profile. Locked canonical/local metadata and the focused local app check pass; LLVM-built mounted
+composer/history tests pass 26/26, with 3.44 GiB peak guarded build commitment. The explicit strip
+settings preserve this result. Windows PDB output can remain from linked input CodeView data;
+profile-only stripping does not suppress it. Canonical lockfiles are unchanged. Semantic use
+remains paused until the full Serena restart described in the next boundary.
 
-# Phase 329: Connect Production Marker Admission (wip)
+# Phase 346: Assess Semantic Tool Memory Retention (wip)
+
+Inspect the installed Serena and rust-analyzer configuration and supported retention controls,
+then apply only verified project-scoped settings that preserve required semantic navigation.
+Record memory measurements and distinguish eviction from hard memory limits or process restarts.
+
+# Phase 347: Record Build Concurrency Failure Evidence (pending)
+
+Reconstruct the OOM invocation and nearby build activity from available evidence. Record proven
+concurrency settings, overlap and uncertainty, together with the guarded build/linker comparison.
+
+# Phase 329: Connect Production Marker Admission (pending)
 
 All production marker-admission prerequisites are accepted, including mapped build frontiers,
 authenticated terminal cleanup and the bounded settlement-stack correction. The reviewed app

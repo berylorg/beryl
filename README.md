@@ -16,4 +16,22 @@ Should be cross-platform, but I don't have Macos to test that.
 
 # AI harness
 
+## Building
+
+Normal development and test builds disable debug information for Beryl and its compiled dependency
+graph, including local forks. Windows MSVC targets use the LLVM linker bundled with Rust. Cargo defaults
+to one compiler job to limit peak memory usage; test execution threads are a separate setting.
+
+Use `cargo build --profile debugging` when full debug symbols are needed, or
+`cargo nextest run --cargo-profile debugging` for a test run with symbols. For local dependency
+development, retain the explicit `cargo +stable --config .cargo/local.toml` prefix described in
+`ENV.md`. The root profile applies to dependencies built by Beryl; invoking a sibling project
+independently uses that project's own configuration.
+
+Windows PDB files can still contain CodeView data from linked inputs, including precompiled
+toolchain or native libraries. Disabling Cargo debug information does not guarantee that no PDB
+is written; see the [Rust stripping behavior](https://doc.rust-lang.org/stable/rustc/codegen-options/index.html#strip).
+
+## Agent setup
+
 To work with Beryl's codebase, install skills from <https://github.com/berylorg/aipm>.
