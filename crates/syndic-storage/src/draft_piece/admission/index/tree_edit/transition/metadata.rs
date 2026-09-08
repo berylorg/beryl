@@ -10,6 +10,7 @@ pub(super) struct IngestionEntry {
 
 pub(super) fn ingestion(
     receipt: &DraftMarkerAdmissionReplayReceiptV1,
+    selected_head: Option<&DraftMarkerAdmissionHeadV1>,
 ) -> Result<Option<IngestionEntry>, TransitionError> {
     let mut source = Bytes(receipt.source_head_bytes());
     let mut target = Bytes(receipt.target_head_bytes());
@@ -34,15 +35,40 @@ pub(super) fn ingestion(
         || &header.fixed::<16>()? != receipt.owner().operation_id().as_bytes()
         || &header.fixed::<16>()? != receipt.command_id().as_bytes()
         || header.u64_le()? != receipt.page_ordinal().get()
-        || header.fixed::<1>()? != [1]
     {
         return Err(invalid());
     }
+    let eof = match header.fixed::<1>()? {
+        [0] => false,
+        [1] => true,
+        _ => return Err(invalid()),
+    };
     let count = header.u64_le()?;
-    if count > 256 {
+    if count > 256 || (count == 0 && !eof) {
         return Err(invalid());
     }
-    let mut last = None;
+    let selected_index = match selected_head {
+        Some(head) if head.ingestion_association_cursor() != 0 => {
+            if head.ingestion_association_cursor() >= count
+                || head.next_page_ordinal() != receipt.page_ordinal()
+                || head.evidence_eof()
+            {
+                return Err(invalid());
+            }
+            head.ingestion_association_cursor().checked_sub(1)
+        }
+        Some(head) => {
+            if receipt.page_ordinal().get().checked_add(1) != Some(head.next_page_ordinal().get())
+                || head.evidence_eof() != eof
+            {
+                return Err(invalid());
+            }
+            count.checked_sub(1)
+        }
+        None if eof => count.checked_sub(1),
+        None => return Err(invalid()),
+    };
+    let mut selected = None;
     let mut markers = BTreeSet::new();
     for association_index in 0..count {
         let group = target.group()?;
@@ -73,17 +99,19 @@ pub(super) fn ingestion(
         let asset = AssetId::sha256_v1(asset_digest, asset_length);
         let evidence = DraftMarkerAdmissionEvidenceV1::new(evidence)?;
         evidence.validate_group(group, asset)?;
-        last = Some(IngestionEntry {
-            association_index,
-            source_key: DraftMarkerAdmissionSourceKeyV1::new(group, marker),
-            evidence,
-            asset,
-        });
+        if Some(association_index) == selected_index {
+            selected = Some(IngestionEntry {
+                association_index,
+                source_key: DraftMarkerAdmissionSourceKeyV1::new(group, marker),
+                evidence,
+                asset,
+            });
+        }
     }
     if !source.0.is_empty() || !target.0.is_empty() {
         return Err(invalid());
     }
-    Ok(last)
+    Ok(selected)
 }
 
 pub(super) fn assignment_label(

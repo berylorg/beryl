@@ -16,11 +16,11 @@ use super::{
     DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES, DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS,
     DRAFT_MARKER_ADMISSION_TREE_FANOUT, DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT,
     DraftMarkerAdmissionChildV1, DraftMarkerAdmissionEnvelopeV1, DraftMarkerAdmissionEvidenceV1,
-    DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1,
-    DraftMarkerAdmissionNodePayloadV1, DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionNodesCodec,
-    DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPageIdentityV1,
-    DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
-    DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
+    DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1,
+    DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodePayloadV1, DraftMarkerAdmissionNodeV1,
+    DraftMarkerAdmissionNodesCodec, DraftMarkerAdmissionOwnerV1,
+    DraftMarkerAdmissionPageIdentityV1, DraftMarkerAdmissionRetainedChargeV1,
+    DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
     DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
     DraftMarkerLabelReadinessProvenPageV1, checked_draft_marker_admission_command_charge_v1,
     encoded_node_key_charge, encoded_node_record_charge, source_key_less,
@@ -291,8 +291,10 @@ impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
 }
 
 mod builder_work;
+mod replay_cleanup;
 mod tree_edit;
 pub(crate) use builder_work::prepare_acquired_marker_consumption;
+pub(crate) use replay_cleanup::prepare_draft_marker_admission_replay_target_cleanup_v1;
 
 use tree_edit::{
     NodeIdFactory, SearchKey, authenticate_fresh_put_keys, authenticate_replay_deletions,
@@ -358,7 +360,7 @@ fn prepare_assignment_with_reader<R: AdmissionNodeReader>(
         if receipt.source_after() != source_root || receipt.target_after() != target_root {
             return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
         }
-        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt)?;
+        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt, None)?;
     }
     let source_leaf = least_leaf(&mut ledger, owner, source_root)?;
     let DraftMarkerAdmissionNodePayloadV1::SourceLeaf {
@@ -628,7 +630,7 @@ fn prepare_empty_with_reader<R: AdmissionNodeReader>(
             return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
         }
         authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
-        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt)?;
+        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt, None)?;
     }
     let mut protected = BTreeSet::new();
     for root in [source_root, target_root] {
@@ -680,55 +682,6 @@ fn prepare_empty_with_reader<R: AdmissionNodeReader>(
     })
 }
 
-pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
-    reader: &DomainReader<'_, SyndicDomain>,
-    owner: DraftMarkerAdmissionOwnerV1,
-    target_root: DraftMarkerAdmissionRootV1,
-    prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
-) -> Result<
-    (Box<[DraftMarkerAdmissionNodeKeyV1]>, u64, u64),
-    DraftMarkerAdmissionIndexPreparationErrorV1,
-> {
-    if prior_replay_nodes.len() > usize::from(super::DRAFT_MARKER_ADMISSION_TREE_MAX_HEIGHT) * 2 + 2
-    {
-        return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount.into());
-    }
-    let node_reader = DomainAdmissionNodeReader { reader };
-    let mut ledger = ReadLedger {
-        reader: &node_reader,
-        read_bytes: 0,
-        work: AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES).into(),
-        cache: BTreeMap::new(),
-    };
-    let mut retired_targets = Vec::new();
-    let mut protected = BTreeSet::new();
-    for node in prior_replay_nodes {
-        if let super::DraftMarkerAdmissionEnvelopeV1::TargetId { first, last } = node.envelope() {
-            if node.key().kind() == super::DraftMarkerAdmissionNodeKindV1::Leaf {
-                if first != last || node.count() != 1 {
-                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidTree.into());
-                }
-                let live =
-                    tree_edit::exact_target_leaf_key(&mut ledger, owner, target_root, first)?
-                        .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication)?;
-                protected.insert(live);
-                retired_targets.push(*node);
-            }
-        }
-    }
-    let deletions =
-        authenticate_replay_deletions(&mut ledger, owner, &retired_targets, &protected)?;
-    let delete_bytes = sum_node_charges(&deletions)?;
-    checked_draft_marker_admission_command_charge_v1([ledger.read_bytes, delete_bytes])?;
-    Ok((
-        deletions
-            .iter()
-            .map(DraftMarkerAdmissionNodeV1::key)
-            .collect(),
-        ledger.read_bytes,
-        delete_bytes,
-    ))
-}
 pub(crate) fn prepare_draft_marker_admission_consumption_v1(
     reader: &DomainReader<'_, SyndicDomain>,
     owner: DraftMarkerAdmissionOwnerV1,

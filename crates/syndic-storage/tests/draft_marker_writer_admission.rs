@@ -16,6 +16,8 @@ use syndic_storage::{
     DraftPieceTransactionOutcomeV1,
 };
 
+#[path = "draft_marker_writer_admission/consumption_replay.rs"]
+mod consumption_replay;
 #[path = "draft_marker_readiness_source_proof/support.rs"]
 mod readiness_support;
 #[path = "draft_marker_writer_admission/support.rs"]
@@ -62,6 +64,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
     );
     let mut staged_counts = Vec::new();
     let mut surgery_counts = Vec::new();
+    let mut mapping_counts = Vec::new();
     let mut publishing_count = None;
     let mut reached_complete = false;
     for _ in 0..64 {
@@ -79,6 +82,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
             other => panic!("unexpected diagnostic build status: {other:?}"),
         };
         let program = syndic_storage::test_faults::draft_marker_program_snapshot_for_test(&build);
+        let mapping = syndic_storage::test_faults::draft_build_mapping_snapshot(&build).unwrap();
         let Some(advance) = storage
             .prepare_draft_piece_build_advance(
                 &store,
@@ -93,12 +97,20 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         let count = advance.staged_record_count();
         staged_counts.push(count);
         if let Some(program) = program {
-            if (5..=7).contains(&program.pending) {
+            if mapping.stage_tag == 19 {
+                assert_eq!((program.phase, program.pending), (2, 0));
+                assert_eq!(count, 2);
+                mapping_counts.push((mapping.stage_tag, count));
+            } else if (5..=7).contains(&program.pending) {
                 surgery_counts.push((program.pending, count));
             } else {
-                assert_eq!(count, 1);
+                assert_eq!(
+                    count, 1,
+                    "marker program phase {} pending {}",
+                    program.phase, program.pending
+                );
             }
-            if program.phase == 3 {
+            if program.phase == 3 && mapping.stage_tag == 24 {
                 assert!(publishing_count.replace(count).is_none());
             }
         } else {
@@ -107,6 +119,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     assert_eq!(surgery_counts, [(5, 3), (6, 3), (7, 3)]);
+    assert_eq!(mapping_counts, [(19, 2)]);
     assert_eq!(publishing_count, Some(1));
     assert_eq!(staged_counts.iter().filter(|&&count| count == 3).count(), 3);
     assert!(reached_complete);
@@ -313,16 +326,29 @@ fn history_capacity_refusal_terminalizes_writer_without_publishing_candidate_his
             .unwrap(),
         DraftPieceReconciledCommandV1::Terminal(DraftPieceTransactionOutcomeV1::Error(_))
     ));
-    let cleanup = storage.advance_draft_marker_admission_cleanup(
-        &store,
-        admission,
-        syndic_storage::DraftMarkerAdmissionCommandIdV1::from_bytes([17; 16]),
-    );
+    let mut retained_closure = false;
+    for command in 17..25 {
+        match storage.advance_draft_marker_admission_cleanup(
+            &store,
+            admission,
+            syndic_storage::DraftMarkerAdmissionCommandIdV1::from_bytes([command; 16]),
+        ) {
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::Advanced { .. } => {}
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::RetainedClosure => {
+                retained_closure = true;
+                break;
+            }
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::Refused(reason) => {
+                panic!("history-capacity cleanup command {command} refused: {reason:?}");
+            }
+            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::Collision => {
+                panic!("history-capacity cleanup command {command} collided");
+            }
+            _ => panic!("history-capacity cleanup command {command} did not advance"),
+        }
+    }
     assert!(
-        matches!(
-            cleanup,
-            syndic_storage::DraftMarkerAdmissionTerminalOutcomeV1::RetainedClosure
-        ),
+        retained_closure,
         "history-capacity compact cleanup did not retain its exact closure"
     );
     let compact = snapshot(&storage, &store, admission);
@@ -428,38 +454,7 @@ fn stale_cloned_advance_is_refused_without_consuming_the_target_twice() {
         proof,
         insert_target(target),
     );
-
-    loop {
-        let advance = storage
-            .prepare_draft_piece_build_advance(
-                &store,
-                identity.draft_id(),
-                identity.session_id(),
-                identity.operation_id().as_piece_operation(),
-            )
-            .unwrap()
-            .expect("unfinished admitted build produces a quantum");
-        let replay = advance.clone();
-        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
-        let once = snapshot(&storage, &store, admission);
-        let once_head = once.head().unwrap();
-        let consumed = once_head.target_root().count() == 0;
-        let digest = once_head.digest();
-        let capacity = once.capacity().unwrap().digest();
-        let replay_outcome = execute(&store, storage.advance_draft_piece_edit(replay));
-        assert!(matches!(
-            replay_outcome,
-            CommandOutcome::NotCommitted {
-                evidence: CommandError::Conflict { .. }
-            }
-        ));
-        let replayed = snapshot(&storage, &store, admission);
-        assert_eq!(replayed.head().unwrap().digest(), digest);
-        assert_eq!(replayed.capacity().unwrap().digest(), capacity);
-        if consumed {
-            break;
-        }
-    }
+    consumption_replay::consume_target_with_stale_advances(&storage, &store, admission, identity);
     while let Some(advance) = storage
         .prepare_draft_piece_build_advance(
             &store,

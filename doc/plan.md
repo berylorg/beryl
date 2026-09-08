@@ -17,6 +17,9 @@ The former window-owned stop/wait plan is superseded. Previously accepted exact-
 continuation-cancellation, draft-flush and session primitives are reusable evidence, not authority
 for stopping a background thread when a nonfinal view closes.
 
+At every phase boundary, explain any blocker directly to the Operator and suggest concrete next
+steps. Evidence links supplement that explanation rather than replacing it.
+
 Apply the [simplification audit](audits/code-simplification/report.md) selectively within each
 owning acceptance boundary. It is evidence, not authority or a second plan; preserve its baseline
 estimates and record actual dispositions only for accepted selected findings. Separate an
@@ -30,15 +33,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 340: Preserve Canonical Marker Build Frontiers (finished)
+# Phase 342: Correct Terminal Marker Admission Cleanup (finished)
 
-Accepted the [closed V6 mapping continuation](../crates/syndic-storage/doc/design-schema-v7.md#marker-continuation-encoding-and-program),
-canonical publication guard and mapping-root custody. All 90 focused cases passed across the
-main run and targeted corrections; canonical V6 vectors, isolated production Syndic/app checks
-and independent semantic/adversarial review passed. The
-[failure record](failures/syndic-marker-build-frontier.md#accepted-v6-continuation)
-preserves mixed-edit, partial-surgery, bounded-work and recovery evidence. Application marker
-admission remains its separate acceptance boundary.
+Accepted authenticated replay-target reclamation at writer handoff and ordinary terminalization,
+with exact logical/physical accounting, shared bounded work and deletion reconciliation. All 49
+focused storage cases and ten public app witnesses passed across the recorded runs. Isolated
+locked production Syndic/app checks and independent semantic/adversarial review passed. The
+[failure record](failures/draft-marker-replay-cleanup-accounting.md#accepted-writer-handoff-correction)
+preserves the cause, correction and evidence. App presentation and mounted acceptance remain next.
 
 # Phase 329: Connect Production Marker Admission (wip)
 
@@ -48,10 +50,13 @@ no missing public API or architectural prerequisite under the
 and [feature reconciliation rules](features/composer/design.md#durable-mutation-reconciliation).
 The [failure record](failures/composer-marker-admission.md) preserves earlier app failures.
 The [Syndic mapping prerequisite](failures/syndic-marker-build-frontier.md#accepted-v6-continuation)
-is now accepted. Resume the preserved app composition and its seven public-evidence cases against
-that implementation. Register and verify the three additional outcome-flight cases, then complete
-the mounted cases, production app check and final independent review. The existing app work retains
-opaque outcome flights and cleanup custody; its runtime acceptance remains outstanding.
+is now accepted, as is the
+[terminal cleanup correction](failures/draft-marker-replay-cleanup-accounting.md#accepted-writer-handoff-correction).
+All ten public app evidence cases pass, including exact build cancellation, disposal and mismatched
+replay cleanup. Preserve that verified composition while finishing the unaccepted app work.
+Review found that typed admission refusals have no visible consumer; connect their distinct
+messages to the existing bounded GUI presentation. Then complete the mounted cases, focused
+regressions, production app check and final independent review. App acceptance remains outstanding.
 
 Replace post-finish raw submission and terminal-status polling with opaque Syndic prepared commands
 and retained outcome flights. Resume existing work before preparing another command, within the

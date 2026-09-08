@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use beryl_home_store::{
     CommandError, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
     DomainCallbackSource, DomainMutation, DomainReader, MutationBuildError, MutationBuilder,
-    ReadError, ReconciliationReservation,
+    PointReadLimit, ReadError, ReconciliationReservation,
 };
 
 use crate::{
@@ -26,7 +26,10 @@ use crate::{
     },
 };
 
-use super::super::DraftMarkerAdmissionCleanupCursorV1;
+use super::super::{
+    AdmissionWorkLedger, DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+    DraftMarkerAdmissionCleanupCursorV1,
+};
 use super::closure::{
     TERMINAL_READ_BYTES, TerminalClosureError, node_first, node_last, read_terminal_closure,
     terminal_receipt_is_exact, terminal_source_closure, terminal_target_closure,
@@ -89,23 +92,46 @@ impl DomainMutation<SyndicDomain> for TerminalMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let capacity = reader
-            .point::<DraftMarkerAdmissionCapacityCodec>(
+        let work = AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES);
+        let capacity = work
+            .point::<DraftMarkerAdmissionCapacityFamily, TerminalMutationError>(
                 &DraftMarkerAdmissionCapacityKeyV1,
-                family_point_limit::<DraftMarkerAdmissionCapacityFamily>(),
+                AdmissionWorkLedger::family_maximum::<DraftMarkerAdmissionCapacityFamily>(),
+                || {
+                    reader
+                        .point::<DraftMarkerAdmissionCapacityCodec>(
+                            &DraftMarkerAdmissionCapacityKeyV1,
+                            PointReadLimit::new(AdmissionWorkLedger::family_value_limit::<
+                                DraftMarkerAdmissionCapacityFamily,
+                            >())
+                            .map_err(|_| TerminalMutationError::Charge)?,
+                        )
+                        .map_err(Into::into)
+                },
             )?
             .ok_or(TerminalMutationError::Authority)?;
-        let head = reader
-            .point::<DraftMarkerAdmissionHeadsCodec>(
+        let head = work
+            .point::<DraftMarkerAdmissionHeadsFamily, TerminalMutationError>(
                 &self.owner,
-                family_point_limit::<DraftMarkerAdmissionHeadsFamily>(),
+                AdmissionWorkLedger::family_maximum::<DraftMarkerAdmissionHeadsFamily>(),
+                || {
+                    reader
+                        .point::<DraftMarkerAdmissionHeadsCodec>(
+                            &self.owner,
+                            PointReadLimit::new(AdmissionWorkLedger::family_value_limit::<
+                                DraftMarkerAdmissionHeadsFamily,
+                            >())
+                            .map_err(|_| TerminalMutationError::Charge)?,
+                        )
+                        .map_err(Into::into)
+                },
             )?
             .ok_or(TerminalMutationError::Authority)?;
         match head.lifecycle() {
             DraftMarkerAdmissionLifecycleV1::Ingesting
             | DraftMarkerAdmissionLifecycleV1::Assigning
             | DraftMarkerAdmissionLifecycleV1::Ready => {
-                prepare_terminalization(reader, capacity, head, self)
+                prepare_terminalization(reader, capacity, head, self, &work)
             }
             DraftMarkerAdmissionLifecycleV1::TerminalCleanup => {
                 if !matches!(self.mode, TerminalMutationMode::Cleanup(_)) {
@@ -163,6 +189,7 @@ fn prepare_terminalization(
     capacity: DraftMarkerAdmissionCapacityV1,
     prior_head: DraftMarkerAdmissionHeadV1,
     mutation: TerminalMutation,
+    work: &AdmissionWorkLedger,
 ) -> Result<PreparedTerminalMutation, TerminalMutationError> {
     let current_generation = match mutation.mode {
         TerminalMutationMode::CancelCurrent(generation) => {
@@ -188,10 +215,18 @@ fn prepare_terminalization(
         return Err(TerminalMutationError::Collision);
     }
     let prior_receipt_key = DraftMarkerAdmissionReceiptKeyV1::new(mutation.owner, prior_command);
-    let prior_receipt = reader
-        .point::<DraftMarkerAdmissionReceiptsCodec>(
+    let prior_receipt = work
+        .point::<DraftMarkerAdmissionReceiptsFamily, TerminalMutationError>(
             &prior_receipt_key,
-            family_point_limit::<DraftMarkerAdmissionReceiptsFamily>(),
+            AdmissionWorkLedger::family_maximum::<DraftMarkerAdmissionReceiptsFamily>(),
+            || {
+                reader
+                    .point::<DraftMarkerAdmissionReceiptsCodec>(
+                        &prior_receipt_key,
+                        family_point_limit::<DraftMarkerAdmissionReceiptsFamily>(),
+                    )
+                    .map_err(Into::into)
+            },
         )?
         .ok_or(TerminalMutationError::Authority)?;
     if prior_receipt.owner() != mutation.owner
@@ -206,9 +241,9 @@ fn prepare_terminalization(
     let (replay_targets, replay_read_bytes, replay_delete_bytes) =
         super::super::index::prepare_draft_marker_admission_replay_target_cleanup_v1(
             reader,
-            mutation.owner,
-            prior_head.target_root(),
-            prior_receipt.retained_predecessor_nodes(),
+            &prior_head,
+            &prior_receipt,
+            work,
         )
         .map_err(|error| match error {
             super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => {
@@ -278,6 +313,19 @@ fn prepare_terminalization(
         DraftMarkerAdmissionCleanupCursorV1::new(DraftMarkerAdmissionTreeV1::SourceOrder, None),
     )?;
     let capacity = exchange_capacity(capacity, prior_head.charge(), successor_charge)?;
+    work.charge_emit(
+        encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)?,
+        false,
+    )?;
+    work.charge_emit(encoded_head_record_charge(&mutation.owner, &head)?, false)?;
+    work.charge_emit(
+        encoded_receipt_record_charge(&receipt_key, &receipt)?,
+        false,
+    )?;
+    work.charge_delete(encoded_receipt_record_charge(
+        &prior_receipt_key,
+        &prior_receipt,
+    )?)?;
     checked_draft_marker_admission_command_charge_v1([
         encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)?
             .checked_add(old_metadata)

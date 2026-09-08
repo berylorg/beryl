@@ -9,31 +9,47 @@ use crate::mutation::{point, required};
 
 use super::super::*;
 use super::model::*;
+use super::work::*;
 pub(crate) struct PreparedDraftMarkerWriterBeginV1 {
     capacity: DraftMarkerAdmissionCapacityV1,
     head: DraftMarkerAdmissionHeadV1,
     readiness_receipt: DraftMarkerAdmissionReceiptKeyV1,
+    node_deletions: Box<[DraftMarkerAdmissionNodeKeyV1]>,
 }
 
 pub(crate) fn prepare_draft_marker_writer_begin_v1(
     reader: &DomainReader<'_, SyndicDomain>,
     admission: DraftMarkerWriterAdmissionV1,
+    work: &AdmissionWorkLedger,
 ) -> Result<PreparedDraftMarkerWriterBeginV1, SyndicMutationError> {
     let binding = admission.binding();
     let owner = binding.owner();
-    let head = required::<DraftMarkerAdmissionHeadsFamily>(reader, &owner)?;
-    let capacity =
-        required::<DraftMarkerAdmissionCapacityFamily>(reader, &DraftMarkerAdmissionCapacityKeyV1)?;
+    let head =
+        draft_marker_writer_required::<DraftMarkerAdmissionHeadsFamily>(reader, &owner, work)?;
+    let capacity = draft_marker_writer_required::<DraftMarkerAdmissionCapacityFamily>(
+        reader,
+        &DraftMarkerAdmissionCapacityKeyV1,
+        work,
+    )?;
+    let prior_charge = head.charge();
     let selected = head
         .selected_receipt()
         .ok_or(SyndicMutationError::IdentityCollision)?;
     let readiness_receipt = DraftMarkerAdmissionReceiptKeyV1::new(owner, selected);
-    let receipt = required::<DraftMarkerAdmissionReceiptsFamily>(reader, &readiness_receipt)?;
-    let authority =
-        required::<ImageLabelAuthorityHeadsFamily>(reader, &binding.label_authority().thread_id())?;
-    let protection = required::<DraftImageLabelProtectionHeadsFamily>(
+    let receipt = draft_marker_writer_required::<DraftMarkerAdmissionReceiptsFamily>(
+        reader,
+        &readiness_receipt,
+        work,
+    )?;
+    let authority = draft_marker_writer_required::<ImageLabelAuthorityHeadsFamily>(
+        reader,
+        &binding.label_authority().thread_id(),
+        work,
+    )?;
+    let protection = draft_marker_writer_required::<DraftImageLabelProtectionHeadsFamily>(
         reader,
         &binding.protection().thread_id(),
+        work,
     )?;
     if head.lifecycle() != DraftMarkerAdmissionLifecycleV1::Ready
         || head.home_generation() != binding.home_generation()
@@ -53,6 +69,16 @@ pub(crate) fn prepare_draft_marker_writer_begin_v1(
     {
         return Err(SyndicMutationError::IdentityCollision);
     }
+    let (node_deletions, _, replay_delete_bytes) =
+        index::prepare_draft_marker_admission_replay_target_cleanup_v1(
+            reader, &head, &receipt, work,
+        )
+        .map_err(|error| match error {
+            index::DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => {
+                SyndicMutationError::Read(error)
+            }
+            _ => SyndicMutationError::IdentityCollision,
+        })?;
     let next_revision = NonZeroU64::new(
         head.revision()
             .get()
@@ -97,7 +123,9 @@ pub(crate) fn prepare_draft_marker_writer_begin_v1(
         .checked_sub(DraftMarkerAdmissionRetainedChargeV1::new(
             0,
             0,
-            prior_metadata,
+            prior_metadata
+                .checked_add(replay_delete_bytes)
+                .ok_or(SyndicMutationError::IdentityCollision)?,
         ))
         .and_then(|charge| {
             charge.checked_add(DraftMarkerAdmissionRetainedChargeV1::new(
@@ -132,7 +160,7 @@ pub(crate) fn prepare_draft_marker_writer_begin_v1(
     .map_err(|_| SyndicMutationError::IdentityCollision)?;
     let aggregate = capacity
         .charge()
-        .checked_sub(required::<DraftMarkerAdmissionHeadsFamily>(reader, &owner)?.charge())
+        .checked_sub(prior_charge)
         .and_then(|charge| charge.checked_add(successor_charge))
         .ok_or(SyndicMutationError::IdentityCollision)?;
     let capacity = DraftMarkerAdmissionCapacityV1::new(
@@ -147,10 +175,22 @@ pub(crate) fn prepare_draft_marker_writer_begin_v1(
         aggregate,
     )
     .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    charge_draft_marker_writer_emit::<DraftMarkerAdmissionCapacityFamily>(
+        work,
+        &DraftMarkerAdmissionCapacityKeyV1,
+        &capacity,
+    )?;
+    charge_draft_marker_writer_emit::<DraftMarkerAdmissionHeadsFamily>(work, &owner, &head)?;
+    work.charge_delete(
+        encoded_receipt_record_charge(&readiness_receipt, &receipt)
+            .map_err(|_| SyndicMutationError::IdentityCollision)?,
+    )
+    .map_err(|_| SyndicMutationError::IdentityCollision)?;
     Ok(PreparedDraftMarkerWriterBeginV1 {
         capacity,
         head,
         readiness_receipt,
+        node_deletions,
     })
 }
 
@@ -164,6 +204,9 @@ pub(crate) fn contribute_draft_marker_writer_begin_v1(
     )?;
     mutations.put::<DraftMarkerAdmissionHeadsCodec>(&prepared.head.owner(), &prepared.head)?;
     mutations.delete::<DraftMarkerAdmissionReceiptsCodec>(&prepared.readiness_receipt)?;
+    for key in prepared.node_deletions {
+        mutations.delete::<DraftMarkerAdmissionNodesCodec>(&key)?;
+    }
     Ok(())
 }
 

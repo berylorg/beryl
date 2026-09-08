@@ -52,6 +52,8 @@ mod fresh_support;
 mod lifecycle;
 #[path = "draft_marker_fresh_readiness/resolution.rs"]
 mod resolution;
+#[path = "draft_marker_fresh_readiness/writer_cleanup.rs"]
+mod writer_cleanup;
 
 use fresh_support::*;
 #[test]

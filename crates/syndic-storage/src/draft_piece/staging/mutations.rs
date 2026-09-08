@@ -15,21 +15,34 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             return Err(SyndicMutationError::IdentityCollision);
         }
         let p = &self.prepared;
-        let stored_head =
-            point::<DraftMutationStagingHeadsFamily>(reader, &p.target_head.identity())?;
-        let stored_receipt = point::<DraftMutationStagingProgressFamily>(reader, &p.receipt.key())?;
+        let begin_work = (p.source_head.is_none()
+            && p.target_head.begin().writer_admission().is_some())
+        .then(|| AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES));
+        let stored_head = draft_marker_writer_point::<DraftMutationStagingHeadsFamily>(
+            reader,
+            &p.target_head.identity(),
+            begin_work.as_ref(),
+        )?;
+        let stored_receipt = draft_marker_writer_point::<DraftMutationStagingProgressFamily>(
+            reader,
+            &p.receipt.key(),
+            begin_work.as_ref(),
+        )?;
         let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
             p.source_session.draft_id(),
             p.source_session.session_id(),
         );
-        let stored_session =
-            match point::<DraftEditorCandidateSessionsFamily>(reader, &session_key)? {
-                Some(DraftEditorCandidateSessionRecordV1::Head(head)) => Some(head),
-                Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(_)) => {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-                None => None,
-            };
+        let stored_session = match draft_marker_writer_point::<DraftEditorCandidateSessionsFamily>(
+            reader,
+            &session_key,
+            begin_work.as_ref(),
+        )? {
+            Some(DraftEditorCandidateSessionRecordV1::Head(head)) => Some(head),
+            Some(DraftEditorCandidateSessionRecordV1::OpenReceipt(_)) => {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
+            None => None,
+        };
         if stored_head.as_ref() == p.source_head.as_ref() {
             if stored_receipt.is_some() {
                 return Err(SyndicMutationError::IdentityCollision);
@@ -59,11 +72,36 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
                     1,
                 )
                 .ok_or(SyndicMutationError::IdentityCollision)?;
-                if point::<DraftPieceBuildsFamily>(reader, &build_key)?.is_some()
-                    || point::<DraftPieceSettlementsFamily>(reader, &build_key)?.is_some()
-                    || point::<DraftPieceRootsFamily>(reader, &root_key)?.is_some()
-                    || point::<DraftMutationStagingPagesFamily>(reader, &source_page)?.is_some()
-                    || point::<DraftMutationStagingPagesFamily>(reader, &proposal_page)?.is_some()
+                if draft_marker_writer_point::<DraftPieceBuildsFamily>(
+                    reader,
+                    &build_key,
+                    begin_work.as_ref(),
+                )?
+                .is_some()
+                    || draft_marker_writer_point::<DraftPieceSettlementsFamily>(
+                        reader,
+                        &build_key,
+                        begin_work.as_ref(),
+                    )?
+                    .is_some()
+                    || draft_marker_writer_point::<DraftPieceRootsFamily>(
+                        reader,
+                        &root_key,
+                        begin_work.as_ref(),
+                    )?
+                    .is_some()
+                    || draft_marker_writer_point::<DraftMutationStagingPagesFamily>(
+                        reader,
+                        &source_page,
+                        begin_work.as_ref(),
+                    )?
+                    .is_some()
+                    || draft_marker_writer_point::<DraftMutationStagingPagesFamily>(
+                        reader,
+                        &proposal_page,
+                        begin_work.as_ref(),
+                    )?
+                    .is_some()
                 {
                     return Err(SyndicMutationError::IdentityCollision);
                 }
@@ -78,11 +116,38 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             if stored_session.as_ref() != Some(&p.source_session) {
                 return Err(SyndicMutationError::CurrentDraftConflict);
             }
+            if let Some(work) = begin_work.as_ref() {
+                charge_draft_marker_writer_emit::<DraftMutationStagingHeadsFamily>(
+                    work,
+                    &p.target_head.identity(),
+                    &p.target_head,
+                )?;
+                charge_draft_marker_writer_emit::<DraftMutationStagingProgressFamily>(
+                    work,
+                    &p.receipt.key(),
+                    &p.receipt,
+                )?;
+                if let Some(session) = p.target_session.as_ref() {
+                    charge_draft_marker_writer_emit::<DraftEditorCandidateSessionsFamily>(
+                        work,
+                        &session_key,
+                        &DraftEditorCandidateSessionRecordV1::Head(session.clone()),
+                    )?;
+                }
+            }
             let writer = if p.source_head.is_none() {
                 p.target_head
                     .begin()
                     .writer_admission()
-                    .map(|admission| prepare_draft_marker_writer_begin_v1(reader, admission))
+                    .map(|admission| {
+                        prepare_draft_marker_writer_begin_v1(
+                            reader,
+                            admission,
+                            begin_work
+                                .as_ref()
+                                .ok_or(SyndicMutationError::IdentityCollision)?,
+                        )
+                    })
                     .transpose()?
             } else {
                 None
@@ -180,6 +245,7 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
             reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
             reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(1)?;
         }
         if self.prepared.source_head.is_some()
             && self

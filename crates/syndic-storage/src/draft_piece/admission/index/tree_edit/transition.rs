@@ -16,6 +16,7 @@ pub(in super::super) fn authenticate_receipt_transition<R: AdmissionNodeReader>(
     ledger: &mut ReadLedger<'_, R>,
     owner: DraftMarkerAdmissionOwnerV1,
     receipt: &DraftMarkerAdmissionReplayReceiptV1,
+    selected_head: Option<&DraftMarkerAdmissionHeadV1>,
 ) -> Result<(), TransitionError> {
     if receipt.owner() != owner {
         return Err(invalid());
@@ -28,7 +29,7 @@ pub(in super::super) fn authenticate_receipt_transition<R: AdmissionNodeReader>(
             {
                 return Err(invalid());
             }
-            let Some(entry) = metadata::ingestion(receipt)? else {
+            let Some(entry) = metadata::ingestion(receipt, selected_head)? else {
                 return unchanged(receipt);
             };
             if receipt.source_before().count() != receipt.target_before().count()

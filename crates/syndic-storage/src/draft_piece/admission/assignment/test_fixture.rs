@@ -41,17 +41,21 @@ use super::{
     DraftMarkerLabelReadinessProofV1,
 };
 
+mod ready_targets;
+
+use ready_targets::ready_target_fixture_records;
+
 #[derive(Clone)]
 struct ReadyTargetFixtureMutation {
     session: DraftEditorCandidateSessionV1,
     authority: DraftMarkerLabelReadinessRequestAuthorityV1,
-    node: DraftMarkerAdmissionNodeV1,
+    nodes: Vec<DraftMarkerAdmissionNodeV1>,
     head: DraftMarkerAdmissionHeadV1,
     receipt: DraftMarkerAdmissionReplayReceiptV1,
 }
 
 struct PreparedReadyTargetFixtureMutation {
-    node: DraftMarkerAdmissionNodeV1,
+    nodes: Vec<DraftMarkerAdmissionNodeV1>,
     head: DraftMarkerAdmissionHeadV1,
     receipt: DraftMarkerAdmissionReplayReceiptV1,
     capacity: DraftMarkerAdmissionCapacityV1,
@@ -86,6 +90,26 @@ impl SyndicStorage {
         owner: DraftMarkerAdmissionOwnerV1,
         marker: DraftPieceMarkerV1,
     ) -> Result<DraftMarkerLabelReadinessProofV1, DraftMarkerLabelAssignmentErrorV1> {
+        self.seed_draft_marker_writer_ready_targets_for_test(
+            store,
+            session,
+            owner,
+            std::slice::from_ref(&marker),
+        )
+    }
+
+    pub fn seed_draft_marker_writer_ready_targets_for_test(
+        &self,
+        store: &HomeStore,
+        session: &DraftEditorCandidateSessionV1,
+        owner: DraftMarkerAdmissionOwnerV1,
+        markers: &[DraftPieceMarkerV1],
+    ) -> Result<DraftMarkerLabelReadinessProofV1, DraftMarkerLabelAssignmentErrorV1> {
+        if markers.is_empty()
+            || markers.len() > crate::DRAFT_MARKER_ADMISSION_PAGE_MAX_ASSOCIATIONS as usize
+        {
+            return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
+        }
         if owner.draft_id() != session.draft_id() || owner.session_id() != session.session_id() {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
         }
@@ -128,14 +152,14 @@ impl SyndicStorage {
         if prepared_attempt.was_present() {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
         }
-        let (node, head, receipt) =
-            ready_target_fixture_records(owner, marker, &authority, command)?;
+        let (nodes, head, receipt) =
+            ready_target_fixture_records(owner, markers, &authority, command)?;
         let assigned_target_root = head.target_root();
         let outcome =
             store.execute_current(self.handle.current_command(ReadyTargetFixtureMutation {
                 session: session.clone(),
                 authority: authority.clone(),
-                node,
+                nodes,
                 head,
                 receipt,
             }));
@@ -290,118 +314,6 @@ impl SyndicStorage {
     }
 }
 
-fn ready_target_fixture_records(
-    owner: DraftMarkerAdmissionOwnerV1,
-    marker: DraftPieceMarkerV1,
-    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
-    command: DraftMarkerAdmissionCommandIdV1,
-) -> Result<
-    (
-        DraftMarkerAdmissionNodeV1,
-        DraftMarkerAdmissionHeadV1,
-        DraftMarkerAdmissionReplayReceiptV1,
-    ),
-    DraftMarkerLabelAssignmentErrorV1,
-> {
-    let empty_source =
-        canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::SourceOrder);
-    let empty_target =
-        canonical_empty_draft_marker_admission_root_v1(DraftMarkerAdmissionTreeV1::TargetId);
-    let node_key = DraftMarkerAdmissionNodeKeyV1::new(
-        owner,
-        DraftMarkerAdmissionNodeKindV1::Leaf,
-        DraftMarkerAdmissionNodeIdV1::from_bytes(*marker.marker_id().as_bytes()),
-    );
-    let page = DraftMarkerAdmissionPageIdentityV1::new(command, NonZeroU64::MIN);
-    let mut evidence_bytes = vec![0; 145];
-    evidence_bytes[0] = 1;
-    evidence_bytes.extend_from_slice(&marker.label().get().to_le_bytes());
-    evidence_bytes.push(marker.asset_id().version() as u8);
-    evidence_bytes.extend_from_slice(&marker.asset_id().digest());
-    evidence_bytes.extend_from_slice(&marker.asset_id().length().get().to_le_bytes());
-    let evidence = DraftMarkerAdmissionEvidenceV1::new(evidence_bytes)
-        .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let node = DraftMarkerAdmissionNodeV1::target_leaf(
-        node_key,
-        marker.marker_id(),
-        page,
-        evidence,
-        marker.label(),
-        marker.asset_id(),
-        DraftMarkerAdmissionTargetDispositionV1::Assigned(marker.label()),
-    )
-    .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let target_root = DraftMarkerAdmissionRootV1::new(
-        DraftMarkerAdmissionTreeV1::TargetId,
-        node_key,
-        1,
-        node.digest(),
-        1,
-    )
-    .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let receipt = DraftMarkerAdmissionReplayReceiptV1::new(
-        owner,
-        command,
-        NonZeroU64::MIN,
-        authority.request_commitment(),
-        b"ready-source".as_slice(),
-        b"ready-target".as_slice(),
-        empty_source,
-        empty_source,
-        empty_target,
-        target_root,
-        Box::default(),
-        DraftMarkerAdmissionReceiptTransitionV1::Assignment,
-    )
-    .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let make_head = |charge| {
-        DraftMarkerAdmissionHeadV1::new(
-            owner,
-            NonZeroU64::MIN,
-            authority.home_generation,
-            DraftMarkerAdmissionLifecycleV1::Ready,
-            authority.request_commitment(),
-            authority.custody_commitment(),
-            NonZeroU64::MIN,
-            0,
-            true,
-            Some(command),
-            empty_source,
-            target_root,
-            authority.occurrence_commitment(),
-            0,
-            1,
-            0,
-            None,
-            1,
-            charge,
-            None,
-        )
-    };
-    let provisional = make_head(DraftMarkerAdmissionRetainedChargeV1::new(1, 1, 0))
-        .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let receipt_key = DraftMarkerAdmissionReceiptKeyV1::new(owner, command);
-    let retained_bytes = encoded_node_record_charge(&node_key, &node)
-        .and_then(|bytes| {
-            bytes
-                .checked_add(encoded_head_record_charge(&owner, &provisional)?)
-                .ok_or(super::DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
-        })
-        .and_then(|bytes| {
-            bytes
-                .checked_add(encoded_receipt_record_charge(&receipt_key, &receipt)?)
-                .ok_or(super::DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
-        })
-        .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    let head = make_head(DraftMarkerAdmissionRetainedChargeV1::new(
-        1,
-        1,
-        retained_bytes,
-    ))
-    .map_err(|_| DraftMarkerLabelAssignmentErrorV1::Rejected)?;
-    Ok((node, head, receipt))
-}
-
 impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
     type Error = SyndicMutationError;
     type Prepared = PreparedReadyTargetFixtureMutation;
@@ -425,7 +337,6 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
                 &self.authority.protection.thread_id(),
             )? != self.authority.protection
             || point::<DraftMarkerAdmissionHeadsFamily>(reader, &self.head.owner())?.is_some()
-            || point::<DraftMarkerAdmissionNodesFamily>(reader, &self.node.key())?.is_some()
             || point::<DraftMarkerAdmissionReceiptsFamily>(
                 reader,
                 &DraftMarkerAdmissionReceiptKeyV1::new(
@@ -436,6 +347,11 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
             .is_some()
         {
             return Err(SyndicMutationError::IdentityCollision);
+        }
+        for node in &self.nodes {
+            if point::<DraftMarkerAdmissionNodesFamily>(reader, &node.key())?.is_some() {
+                return Err(SyndicMutationError::IdentityCollision);
+            }
         }
         let prior_capacity = point::<DraftMarkerAdmissionCapacityFamily>(
             reader,
@@ -465,7 +381,14 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
         };
         let capacity = DraftMarkerAdmissionCapacityV1::new(capacity_revision, aggregate_charge)
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
-        let write_bytes = encoded_node_record_charge(&self.node.key(), &self.node)
+        let write_bytes = self
+            .nodes
+            .iter()
+            .try_fold(0_u64, |bytes, node| {
+                bytes
+                    .checked_add(encoded_node_record_charge(&node.key(), node)?)
+                    .ok_or(super::DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)
+            })
             .and_then(|bytes| {
                 bytes
                     .checked_add(encoded_head_record_charge(&self.head.owner(), &self.head)?)
@@ -494,7 +417,7 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
         checked_draft_marker_admission_command_charge_v1([capacity_source_bytes, write_bytes, 0])
             .map_err(|_| SyndicMutationError::IdentityCollision)?;
         Ok(PreparedReadyTargetFixtureMutation {
-            node: self.node,
+            nodes: self.nodes,
             head: self.head,
             receipt: self.receipt,
             capacity,
@@ -505,7 +428,7 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
         &self,
         reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(1)?;
+        reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(self.nodes.len())?;
         reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
         reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
         reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
@@ -516,7 +439,9 @@ impl DomainMutation<SyndicDomain> for ReadyTargetFixtureMutation {
         prepared: Self::Prepared,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<DraftMarkerAdmissionNodesCodec>(&prepared.node.key(), &prepared.node)?;
+        for node in &prepared.nodes {
+            mutations.put::<DraftMarkerAdmissionNodesCodec>(&node.key(), node)?;
+        }
         mutations.put::<DraftMarkerAdmissionHeadsCodec>(&prepared.head.owner(), &prepared.head)?;
         mutations.put::<DraftMarkerAdmissionReceiptsCodec>(
             &DraftMarkerAdmissionReceiptKeyV1::new(

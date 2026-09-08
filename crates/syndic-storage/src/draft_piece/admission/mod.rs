@@ -11,6 +11,8 @@ mod terminal;
 mod tree;
 mod writer;
 
+pub(crate) use ledger::AdmissionWorkLedger;
+
 pub use assignment::*;
 pub use model::*;
 pub use readiness_source::*;
