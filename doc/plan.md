@@ -39,21 +39,21 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 346: Assess Semantic Tool Memory Retention (finished)
+# Phase 347: Record Build Concurrency Failure Evidence (finished)
 
-The [retention investigation](memory/topic/semantic-tool-memory/serena-cache-controls.md) found no
-Serena cache-capacity or TTL setting; analyzer LRU capacity already equals 32 and bounds syntax
-trees only. Saved one-job and no-dev-debug Cargo environment settings in the parent Serena
-project while preserving all eight workspaces and existing navigation controls. Full service
-relaunch remains required for adoption; language-server-only restart does not reload project
-configuration. This is an accepted configuration investigation, not a measured live memory
-reduction. [ENV.md](../ENV.md#windows-build-and-semantic-tool-memory) records activation status;
-semantic use of the changed Cargo model remains paused until that full relaunch.
+The [memory-exhaustion record](failures/windows-cargo-memory-commit.md) preserves the audited
+timeline, internal Cargo parallelism and bounded verification/linker measurements. No known
+Cargo commands overlapped at the event; the uncapped final build began after Windows first
+detected exhaustion. The initiating allocation remains unknown. Permanent LLVM/no-dev-debug/
+one-job settings passed focused checks and 26 integration cases; the earlier bounded full set
+passed 145 cases. All measurement jobs finished and were reaped. The Operator can return the
+pagefile to zero without disturbing this evidence; future builds must inspect current headroom.
 
-# Phase 347: Record Build Concurrency Failure Evidence (wip)
-
-Reconstruct the OOM invocation and nearby build activity from available evidence. Record proven
-concurrency settings, overlap and uncertainty, together with the guarded build/linker comparison.
+The [Serena investigation](memory/topic/semantic-tool-memory/serena-cache-controls.md) found no
+configurable symbol-cache eviction. Its saved Cargo settings await a full service relaunch;
+[ENV.md](../ENV.md#windows-build-and-semantic-tool-memory) records that pending activation.
+Semantic use of the changed Cargo model remains paused until that relaunch. Marker acceptance
+remains pending below and was not resumed by this tooling investigation.
 
 # Phase 329: Connect Production Marker Admission (pending)
 
