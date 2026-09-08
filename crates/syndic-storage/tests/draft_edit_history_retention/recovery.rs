@@ -65,6 +65,41 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         );
+        let outcome = match outcome {
+            outcome @ CommandOutcome::Committed {
+                local_finalization: Some(_),
+                ..
+            } => {
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                let result = storage.reconcile_draft_piece_command_outcome(
+                    &store,
+                    &edit.prepared,
+                    outcome,
+                    |start| {
+                        edit.fragments
+                            .iter()
+                            .skip((start - 1) as usize)
+                            .cloned()
+                            .collect()
+                    },
+                );
+                assert!(
+                    matches!(
+                        result,
+                        Err(
+                            syndic_storage::DraftPieceCommandReconciliationErrorV1::Read(
+                                syndic_storage::SyndicReadError::Read(
+                                    beryl_home_store::ReadError::HealthGate(_)
+                                )
+                            )
+                        )
+                    ),
+                    "local finalization must finish before the failed-health read: {result:?}"
+                );
+                None
+            }
+            outcome => Some(outcome),
+        };
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
@@ -73,21 +108,28 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
             (store, storage)
         };
         let fragments = edit.fragments.clone();
-        let reconciled = storage
-            .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
-                fragments
-                    .iter()
-                    .skip((start - 1) as usize)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap();
+        let reconciled = outcome.map(|outcome| {
+            storage
+                .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
+                    fragments
+                        .iter()
+                        .skip((start - 1) as usize)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap()
+        });
         if committed_at_cut {
-            let DraftPieceReconciledCommandV1::Terminal(DraftPieceTransactionOutcomeV1::Committed(
-                DraftPieceSettlementProofV1::Settlement(settlement),
-            )) = reconciled
-            else {
-                panic!("eviction crash cut did not recover the committed successor")
+            let settlement = match reconciled {
+                Some(DraftPieceReconciledCommandV1::Terminal(
+                    DraftPieceTransactionOutcomeV1::Committed(
+                        DraftPieceSettlementProofV1::Settlement(settlement),
+                    ),
+                )) => settlement,
+                None => settled(&storage, &store, &edit),
+                other => {
+                    panic!("eviction crash cut did not recover the committed successor: {other:?}")
+                }
             };
             let DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure() else {
                 panic!("eviction crash cut returned a noncommit closure")
@@ -100,7 +142,7 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
         } else {
             assert!(matches!(
                 reconciled,
-                DraftPieceReconciledCommandV1::Pending(_)
+                Some(DraftPieceReconciledCommandV1::Pending(_))
             ));
             let DraftEditorCandidateSessionReadOutcomeV1::Active(value) = storage
                 .draft_editor_candidate_session(
@@ -173,6 +215,41 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         );
+        let outcome = match outcome {
+            outcome @ CommandOutcome::Committed {
+                local_finalization: Some(_),
+                ..
+            } => {
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                let result = storage.reconcile_draft_piece_command_outcome(
+                    &store,
+                    &edit.prepared,
+                    outcome,
+                    |start| {
+                        edit.fragments
+                            .iter()
+                            .skip((start - 1) as usize)
+                            .cloned()
+                            .collect()
+                    },
+                );
+                assert!(
+                    matches!(
+                        result,
+                        Err(
+                            syndic_storage::DraftPieceCommandReconciliationErrorV1::Read(
+                                syndic_storage::SyndicReadError::Read(
+                                    beryl_home_store::ReadError::HealthGate(_)
+                                )
+                            )
+                        )
+                    ),
+                    "local finalization must finish before the failed-health read: {result:?}"
+                );
+                None
+            }
+            outcome => Some(outcome),
+        };
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
@@ -181,23 +258,30 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
             (store, storage)
         };
         let fragments = edit.fragments.clone();
-        let reconciled = storage
-            .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
-                fragments
-                    .iter()
-                    .skip((start - 1) as usize)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap();
+        let reconciled = outcome.map(|outcome| {
+            storage
+                .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
+                    fragments
+                        .iter()
+                        .skip((start - 1) as usize)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap()
+        });
         let settlement = match reconciled {
-            DraftPieceReconciledCommandV1::Terminal(DraftPieceTransactionOutcomeV1::Committed(
-                DraftPieceSettlementProofV1::Settlement(settlement),
+            Some(DraftPieceReconciledCommandV1::Terminal(
+                DraftPieceTransactionOutcomeV1::Committed(DraftPieceSettlementProofV1::Settlement(
+                    settlement,
+                )),
             )) => settlement,
-            DraftPieceReconciledCommandV1::Terminal(DraftPieceTransactionOutcomeV1::Error(
-                DraftPieceSettlementProofV1::Settlement(settlement),
+            Some(DraftPieceReconciledCommandV1::Terminal(
+                DraftPieceTransactionOutcomeV1::Error(DraftPieceSettlementProofV1::Settlement(
+                    settlement,
+                )),
             )) => settlement,
-            DraftPieceReconciledCommandV1::Pending(_) => {
+            None => settled(&storage, &store, &edit),
+            Some(DraftPieceReconciledCommandV1::Pending(_)) => {
                 committed(execute(
                     &store,
                     storage.settle_draft_piece_edit(

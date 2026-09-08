@@ -1,5 +1,6 @@
 mod adoption;
 mod append;
+pub(crate) use append::{stored_frontier_charge, stored_transition_charge};
 mod codec;
 mod records;
 mod references;

@@ -20,6 +20,7 @@ mod sequence_advance;
 mod session_authentication;
 mod settlement;
 pub use advance_budget::DraftPieceBuildWorkV1;
+pub(super) mod staged_command;
 
 #[derive(Clone)]
 pub struct PreparedDraftPieceEditV1 {
@@ -1694,6 +1695,11 @@ fn expected_active_session(
     let transition_ordinal = build.progress_receipt().key().transition_ordinal();
     let target = custody_for(build);
     match source.active_operation() {
+        Some(active)
+            if active == &target && active_session_generation_matches_build(source, build) =>
+        {
+            Ok(source.clone())
+        }
         None => source
             .with_active_operation_at_transition(transition_ordinal, target)
             .ok_or(SyndicMutationError::IdentityCollision),

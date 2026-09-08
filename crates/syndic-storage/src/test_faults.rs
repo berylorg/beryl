@@ -12,6 +12,7 @@ mod draft_edit_history;
 mod draft_marker_admission;
 mod draft_marker_continuation;
 mod draft_marker_continuation_bounds;
+mod draft_staged_outcomes;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
@@ -68,6 +69,7 @@ pub use draft_marker_admission::{
 };
 pub use draft_marker_continuation::*;
 pub use draft_marker_continuation_bounds::*;
+pub use draft_staged_outcomes::*;
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;
 pub use draft_piece_corruption::{

@@ -88,14 +88,14 @@ pub struct PreparedDraftMutationStagingBatchV1 {
 
 #[derive(Clone)]
 pub struct PreparedDraftMutationTransferV1 {
-    source_head: DraftMutationStagingHeadV1,
-    target_head: DraftMutationStagingHeadV1,
-    receipt: DraftMutationStagingProgressReceiptV1,
-    source_session: DraftEditorCandidateSessionV1,
-    target_session: DraftEditorCandidateSessionV1,
-    prepared_edit: PreparedDraftPieceEditV1,
-    build: DraftPieceBuildRecordV1,
-    build_receipt: DraftPieceBuildProgressReceiptV1,
+    pub(in crate::draft_piece) source_head: DraftMutationStagingHeadV1,
+    pub(in crate::draft_piece) target_head: DraftMutationStagingHeadV1,
+    pub(in crate::draft_piece) receipt: DraftMutationStagingProgressReceiptV1,
+    pub(in crate::draft_piece) source_session: DraftEditorCandidateSessionV1,
+    pub(in crate::draft_piece) target_session: DraftEditorCandidateSessionV1,
+    pub(in crate::draft_piece) prepared_edit: PreparedDraftPieceEditV1,
+    pub(in crate::draft_piece) build: DraftPieceBuildRecordV1,
+    pub(in crate::draft_piece) build_receipt: DraftPieceBuildProgressReceiptV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,13 +150,13 @@ impl DraftPieceDurableBuildWindowLimitsV1 {
 
 #[derive(Clone)]
 pub struct PreparedDraftPieceStagingWindowV1 {
-    staging_head: DraftMutationStagingHeadV1,
+    pub(in crate::draft_piece) staging_head: DraftMutationStagingHeadV1,
     staging_pages: Box<[DraftMutationStagingPageV1]>,
-    expected_build: DraftPieceBuildRecordV1,
-    expected_session: DraftEditorCandidateSessionV1,
-    target_build: DraftPieceBuildRecordV1,
-    target_receipt: DraftPieceBuildProgressReceiptV1,
-    target_session: DraftEditorCandidateSessionV1,
+    pub(in crate::draft_piece) expected_build: DraftPieceBuildRecordV1,
+    pub(in crate::draft_piece) expected_session: DraftEditorCandidateSessionV1,
+    pub(in crate::draft_piece) target_build: DraftPieceBuildRecordV1,
+    pub(in crate::draft_piece) target_receipt: DraftPieceBuildProgressReceiptV1,
+    pub(in crate::draft_piece) target_session: DraftEditorCandidateSessionV1,
     fragments: Box<[DraftPieceBuildFragmentV1]>,
     inserted_utf8_bytes: usize,
     acquisition_read_count: usize,
@@ -277,15 +277,15 @@ struct StagingBatchMutation {
 }
 
 #[derive(Clone)]
-struct TransferMutation {
-    prepared: PreparedDraftMutationTransferV1,
-    writer_progress_allowed: bool,
+pub(in crate::draft_piece) struct TransferMutation {
+    pub(in crate::draft_piece) prepared: PreparedDraftMutationTransferV1,
+    pub(in crate::draft_piece) writer_progress_allowed: bool,
 }
 
 #[derive(Clone)]
-struct StageDurableWindowMutation {
-    prepared: PreparedDraftPieceStagingWindowV1,
-    writer_progress_allowed: bool,
+pub(in crate::draft_piece) struct StageDurableWindowMutation {
+    pub(in crate::draft_piece) prepared: PreparedDraftPieceStagingWindowV1,
+    pub(in crate::draft_piece) writer_progress_allowed: bool,
 }
 
 mod acquisition;

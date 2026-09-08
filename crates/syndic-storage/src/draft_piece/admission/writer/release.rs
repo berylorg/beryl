@@ -22,11 +22,11 @@ use super::settlement::staging_terminal_command;
 use crate::draft_piece::admission::terminal::closure::terminal_receipt_is_exact;
 
 #[derive(Clone)]
-struct ReleaseSettledWriterMutation {
-    settlement: DraftPieceSettlementV1,
+pub(crate) struct ReleaseSettledWriterMutation {
+    pub(crate) settlement: DraftPieceSettlementV1,
 }
 
-struct PreparedSettledWriterRelease {
+pub(crate) struct PreparedSettledWriterRelease {
     owner: DraftMarkerAdmissionOwnerV1,
     capacity: DraftMarkerAdmissionCapacityV1,
 }

@@ -190,6 +190,41 @@ fn adoption_crash_cuts_reconcile_to_old_or_exact_complete_pair() {
             storage
                 .settle_draft_piece_edit(storage.revision(&store).unwrap(), edit.prepared.clone()),
         );
+        let outcome = match outcome {
+            outcome @ CommandOutcome::Committed {
+                local_finalization: Some(_),
+                ..
+            } => {
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                let result = storage.reconcile_draft_piece_command_outcome(
+                    &store,
+                    &edit.prepared,
+                    outcome,
+                    |start| {
+                        edit.fragments
+                            .iter()
+                            .skip((start - 1) as usize)
+                            .cloned()
+                            .collect()
+                    },
+                );
+                assert!(
+                    matches!(
+                        result,
+                        Err(
+                            syndic_storage::DraftPieceCommandReconciliationErrorV1::Read(
+                                syndic_storage::SyndicReadError::Read(
+                                    beryl_home_store::ReadError::HealthGate(_)
+                                )
+                            )
+                        )
+                    ),
+                    "local finalization must finish before the failed-health read: {result:?}"
+                );
+                None
+            }
+            outcome => Some(outcome),
+        };
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
@@ -198,21 +233,28 @@ fn adoption_crash_cuts_reconcile_to_old_or_exact_complete_pair() {
             (store, storage)
         };
         let fragments = edit.fragments.clone();
-        let reconciled = storage
-            .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
-                fragments
-                    .iter()
-                    .skip((start - 1) as usize)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap();
+        let reconciled = outcome.map(|outcome| {
+            storage
+                .reconcile_draft_piece_command_outcome(&store, &edit.prepared, outcome, |start| {
+                    fragments
+                        .iter()
+                        .skip((start - 1) as usize)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap()
+        });
         if expected_at_cut {
-            let DraftPieceReconciledCommandV1::Terminal(DraftPieceTransactionOutcomeV1::Committed(
-                DraftPieceSettlementProofV1::Settlement(committed),
-            )) = reconciled
-            else {
-                panic!("committed crash cut did not reconcile to the exact terminal pair")
+            let committed = match reconciled {
+                Some(DraftPieceReconciledCommandV1::Terminal(
+                    DraftPieceTransactionOutcomeV1::Committed(
+                        DraftPieceSettlementProofV1::Settlement(committed),
+                    ),
+                )) => committed,
+                None => settled(&storage, &store, &edit),
+                other => panic!(
+                    "committed crash cut did not reconcile to the exact terminal pair: {other:?}"
+                ),
             };
             let DraftPieceSettlementOutcomeV1::Committed {
                 successor, history, ..
@@ -224,7 +266,7 @@ fn adoption_crash_cuts_reconcile_to_old_or_exact_complete_pair() {
         } else {
             assert!(matches!(
                 reconciled,
-                DraftPieceReconciledCommandV1::Pending(_)
+                Some(DraftPieceReconciledCommandV1::Pending(_))
             ));
             let retry = execute(
                 &store,

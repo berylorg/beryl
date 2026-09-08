@@ -4,16 +4,25 @@ pub(super) struct PreparedSettlementContribution {
     root: Option<DraftPieceRootRecordV1>,
     transition: Option<DraftEditHistoryTransitionV1>,
     history: Option<DraftEditHistoryFrontierV1>,
-    target_session: DraftEditorCandidateSessionV1,
-    settlement: DraftPieceSettlementV1,
-    terminal: DraftPieceBuildRecordV1,
-    receipt: DraftPieceBuildProgressReceiptV1,
+    pub(super) target_session: DraftEditorCandidateSessionV1,
+    pub(super) settlement: DraftPieceSettlementV1,
+    pub(super) terminal: DraftPieceBuildRecordV1,
+    pub(super) receipt: DraftPieceBuildProgressReceiptV1,
     writer: Option<PreparedWriterClosure>,
 }
 
 enum PreparedWriterClosure {
     Settled(PreparedDraftMarkerWriterSettlementV1),
     Terminal(PreparedDraftMarkerWriterTerminalV1),
+}
+
+impl PreparedSettlementContribution {
+    pub(super) fn terminal_writer_evidence(&self) -> Option<(DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionReplayReceiptV1)> {
+        match &self.writer {
+            Some(PreparedWriterClosure::Terminal(writer)) => Some(writer.outcome_evidence()),
+            _ => None,
+        }
+    }
 }
 
 pub(super) fn prepare(

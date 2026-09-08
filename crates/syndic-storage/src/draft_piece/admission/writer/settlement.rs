@@ -189,6 +189,12 @@ pub(crate) struct PreparedDraftMarkerWriterTerminalV1 {
     receipt: DraftMarkerAdmissionReplayReceiptV1,
 }
 
+impl PreparedDraftMarkerWriterTerminalV1 {
+    pub(crate) fn outcome_evidence(&self) -> (DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionReplayReceiptV1) {
+        (self.head.clone(), self.receipt.clone())
+    }
+}
+
 pub(crate) fn prepare_draft_marker_writer_terminal_v1(
     reader: &DomainReader<'_, SyndicDomain>,
     admission: DraftMarkerWriterAdmissionV1,
@@ -394,7 +400,7 @@ pub(crate) fn draft_marker_writer_settlement_is_exact_v1(
     Ok(true)
 }
 
-pub(super) fn staging_terminal_command(
+pub(in crate::draft_piece) fn staging_terminal_command(
     owner: DraftMarkerAdmissionOwnerV1,
     staging_terminal_digest: DraftPieceDigestV1,
 ) -> DraftMarkerAdmissionCommandIdV1 {

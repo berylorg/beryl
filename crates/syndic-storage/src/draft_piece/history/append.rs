@@ -207,7 +207,7 @@ fn checked_encoded_size(encoded_size: u128) -> Result<u64, DraftEditHistoryAppen
     u64::try_from(encoded_size).map_err(|_| DraftEditHistoryAppendErrorV1::EncodedSizeOverflow)
 }
 
-pub(super) fn stored_frontier_charge(
+pub(crate) fn stored_frontier_charge(
     frontier: &DraftEditHistoryFrontierV1,
 ) -> Result<u64, DraftEditHistoryAppendErrorV1> {
     let mut key = Encoder::new();
@@ -218,7 +218,7 @@ pub(super) fn stored_frontier_charge(
     )
 }
 
-pub(super) fn stored_transition_charge(
+pub(crate) fn stored_transition_charge(
     transition: &DraftEditHistoryTransitionV1,
 ) -> Result<u64, DraftEditHistoryAppendErrorV1> {
     let mut key = Encoder::new();

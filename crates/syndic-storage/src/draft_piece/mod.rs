@@ -28,6 +28,7 @@ pub use marker_seal::*;
 pub use materializer::*;
 pub use model::*;
 pub use mutation::{DraftPieceBuildWorkV1, PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
+pub use mutation::staged_command::*;
 pub use publication::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,

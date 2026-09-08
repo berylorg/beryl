@@ -75,11 +75,28 @@ custody. Do not substitute status reads, fabricate fragments, buffer the full ed
 global cleanup to compensate. Independent review and root inspection confirmed the public gap;
 implementation stopped under the Operator's technical-plan rule.
 
-The Operator subsequently authorized that API. Its partial implementation captures actual serialized
-outcomes and retains finalization/reconciliation/cleanup custody behind an opaque command flight.
-Independent semantic review found no demonstrated blocker in that boundary, but acceptance is now
-blocked by the [persistent sequence split-height defect](syndic-draft-piece-split-height.md)
-exposed by its required long-operation test. The outcome API and app integration remain unaccepted.
+The Operator subsequently authorized that API. The required long-operation test exposed the
+[persistent sequence split-height defect](syndic-draft-piece-split-height.md), which was corrected
+before outcome acceptance. The accepted outcome boundary now captures actual serialized results,
+including dynamically selected history-capacity refusal and exact settlement replay, and retains
+finalization, reconciliation and cleanup custody behind one opaque flight. It authenticates selected
+V5 pending descriptors and current active fragments, the scanned endpoint and immediate predecessor
+chain using one charged reader. A scanner's prior fragment cannot authenticate an active marker
+transition. Cleanup remains separate from the committed transaction and each resume is bounded.
+
+Independent semantic/adversarial review and isolated locked production Syndic/app checks passed.
+Run `ce0a333c-13e1-45b7-a104-73b22e08d0f9` passed all 18 new outcome cases, all 15 writer-admission
+cases and 23 of 26 history cases. The outcome cases include ambiguous reconciliation beyond 256
+fragments with physical read accounting, dynamic settlement, pending-reference corruption,
+byte-equal split publication, replay, local finalization and cleanup ambiguity. The remaining three
+history fixtures also failed on pristine `8ff7bd6` in run
+`8e79502d-aa93-4758-80e2-50721b536e4c`: they recovered HomeStore before consuming the original
+generation-bound finalization capability. They now consume the complete original outcome through
+the package helper before recovery and authenticate the persisted settlement afterward, preserving
+all root/history, retention-floor, byte-budget and absent-successor assertions. The corrected three
+passed in run `51fac404-11a4-496d-be8c-1f17952b4b83`. Do not move an unconsumed capability across
+recovery or manufacture a replacement outcome to make a fixture pass. App integration remains
+unaccepted and must use the accepted outcome boundary.
 
 ## Evidence And Status
 
