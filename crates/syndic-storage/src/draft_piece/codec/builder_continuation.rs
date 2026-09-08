@@ -1,5 +1,9 @@
 use super::*;
 
+mod marker_program;
+pub(crate) use marker_program::canonical_marker_program_bytes;
+use marker_program::{dec_program, enc_program};
+
 fn enc_lane(e: &mut Encoder, lane: DraftMutationStagingLaneFrontierV1) {
     e.u64(lane.next_cursor());
     e.u64(lane.next_ordinal());
@@ -168,6 +172,14 @@ fn enc_active(e: &mut Encoder, active: DraftPieceActiveMarkerEffectV1) {
         DraftPieceActiveMarkerPhaseV1::Inserting => 2,
         DraftPieceActiveMarkerPhaseV1::Publishing => 3,
     });
+    enc_program(e, active);
+}
+
+#[cfg(feature = "test-faults")]
+pub(crate) fn canonical_active_marker_bytes(active: DraftPieceActiveMarkerEffectV1) -> Vec<u8> {
+    let mut encoder = Encoder::new();
+    enc_active(&mut encoder, active);
+    encoder.finish()
 }
 
 fn dec_active(d: &mut Decoder<'_>) -> Result<DraftPieceActiveMarkerEffectV1, CodecError> {
@@ -190,6 +202,7 @@ fn dec_active(d: &mut Decoder<'_>) -> Result<DraftPieceActiveMarkerEffectV1, Cod
             });
         }
     };
+    let (removal_site, planning, insertion_site, pending) = dec_program(d)?;
     Ok(DraftPieceActiveMarkerEffectV1::new(
         fragment_key,
         fragment_digest,
@@ -199,7 +212,8 @@ fn dec_active(d: &mut Decoder<'_>) -> Result<DraftPieceActiveMarkerEffectV1, Cod
         source_frontier,
         successor_frontier,
         phase,
-    ))
+    )
+    .with_program(removal_site, planning, insertion_site, pending))
 }
 
 pub(super) fn durable_continuation_is_exact(

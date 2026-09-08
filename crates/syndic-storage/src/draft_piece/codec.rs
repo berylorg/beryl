@@ -15,6 +15,9 @@ use super::*;
 
 mod builder_continuation;
 
+#[cfg(feature = "test-faults")]
+pub(crate) use builder_continuation::canonical_active_marker_bytes;
+pub(crate) use builder_continuation::canonical_marker_program_bytes;
 use builder_continuation::*;
 
 mod staging_head;
@@ -2188,7 +2191,7 @@ fn dec_occupied_identity_proof(
 fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecError> {
     let payload = encode_settlement_payload(value)?;
     let mut encoded = payload.clone();
-    encoded.extend_from_slice(settlement_digest_v4(&payload).as_bytes());
+    encoded.extend_from_slice(settlement_digest_v5(&payload).as_bytes());
     Ok(encoded)
 }
 
@@ -2372,7 +2375,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
     );
     d.finish()?;
     let payload = encode_settlement_payload(&value)?;
-    if stored_digest != settlement_digest_v4(&payload) {
+    if stored_digest != settlement_digest_v5(&payload) {
         return Err(CodecError::InvalidLength("draft-piece settlement digest"));
     }
     if !settlement_closure_is_exact(&value) {
@@ -2381,8 +2384,8 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
     Ok(value)
 }
 
-fn settlement_digest_v4(payload: &[u8]) -> DraftPieceDigestV1 {
-    let domain = b"syndic/draft-piece-settlement/v4";
+fn settlement_digest_v5(payload: &[u8]) -> DraftPieceDigestV1 {
+    let domain = b"syndic/draft-piece-settlement/v5";
     let mut digest = Sha256::new();
     digest.update((domain.len() as u64).to_be_bytes());
     digest.update(domain);
@@ -2927,7 +2930,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceBuildRecordV1,
     "draft-piece-builds",
-    4,
+    5,
     48,
     8_192,
     encode_settlement_family_key,
@@ -2953,7 +2956,7 @@ family!(
     DraftPieceBuildProgressReceiptKeyV1,
     DraftPieceBuildProgressReceiptV1,
     "draft-piece-build-progress",
-    4,
+    5,
     56,
     8_192,
     encode_progress_family_key,
@@ -2966,7 +2969,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceSettlementV1,
     "draft-piece-settlements",
-    4,
+    5,
     48,
     65_536,
     encode_settlement_family_key,

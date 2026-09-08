@@ -204,6 +204,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         DraftLogicalExtentV1::new(3, 1),
     );
     let source_roots = open_build(&storage, &store, &prepared, &fragment).working_roots();
+    let mut observed_activation = false;
     loop {
         let advance = storage
             .prepare_draft_piece_build_advance(
@@ -214,18 +215,25 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         let build = open_build(&storage, &store, &prepared, &fragment);
         if let Some(pending) = build.marker_effect_continuation().active() {
             assert_eq!(build.working_roots(), source_roots);
             assert_eq!(pending.source_roots(), source_roots);
-            assert_ne!(pending.working_roots(), source_roots);
-            break;
+            if !observed_activation {
+                assert_eq!(pending.working_roots(), source_roots);
+                observed_activation = true;
+            }
+            if pending.working_roots() != source_roots {
+                assert_eq!(
+                    pending.working_roots().sequence_summary().marker_count(),
+                    source_roots.sequence_summary().marker_count() - 1
+                );
+                break;
+            }
         }
     }
+    assert!(observed_activation);
     drop(store);
     let mut store =
         HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
@@ -243,10 +251,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,

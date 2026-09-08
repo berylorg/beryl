@@ -10,6 +10,9 @@ use crate::{SyndicReadError, SyndicStorage};
 
 use super::*;
 
+mod marker_receipts;
+pub(super) use marker_receipts::progress_receipt_closure_is_exact;
+
 #[derive(Debug)]
 pub enum DraftPieceCommandReconciliationErrorV1 {
     Read(SyndicReadError),
@@ -622,7 +625,7 @@ impl SyndicStorage {
                     "draft-piece progress receipt disagrees with build",
                 ));
             }
-            if let Some(previous) = receipt.previous() {
+            let previous = if let Some(previous) = receipt.previous() {
                 let stored = self
                     .point::<DraftPieceBuildProgressFamily>(store, previous.key(), limit)?
                     .ok_or(SyndicReadError::Invariant(
@@ -633,18 +636,12 @@ impl SyndicStorage {
                         "draft-piece predecessor progress receipt disagrees",
                     ));
                 }
-                if !progress_receipt_effects_are_exact(self, store, &stored, limit)? {
-                    return Err(SyndicReadError::Invariant(
-                        "draft-piece predecessor progress effects disagree",
-                    ));
-                }
-                if !progress_receipt_transition_is_exact(self, store, &stored, &receipt, limit)? {
-                    return Err(SyndicReadError::Invariant(
-                        "draft-piece progress effect transition disagrees",
-                    ));
-                }
-            }
-            if !progress_receipt_effects_are_exact(self, store, &receipt, limit)? {
+                Some(stored)
+            } else {
+                None
+            };
+            if !progress_receipt_closure_is_exact(self, store, &receipt, previous.as_ref(), limit)?
+            {
                 return Err(SyndicReadError::Invariant(
                     "draft-piece progress effects disagree",
                 ));
@@ -993,133 +990,6 @@ fn operation_terminal_session_is_authenticated(
         && current.newest_candidate_generation() >= expected.newest_candidate_generation()
         && current.published_candidate_generation() >= expected.published_candidate_generation()
         && current.dirty_generation() >= expected.dirty_generation())
-}
-
-pub(super) fn progress_receipt_effects_are_exact(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    receipt: &DraftPieceBuildProgressReceiptV1,
-    limit: crate::SyndicPointReadLimit,
-) -> Result<bool, SyndicReadError> {
-    if let Some(endpoint) = receipt.fragment_endpoint() {
-        let fragment =
-            storage.point::<DraftPieceBuildFragmentsFamily>(store, endpoint.key(), limit)?;
-        if fragment
-            .as_ref()
-            .is_none_or(|fragment| canonical_fragment_endpoint(fragment) != endpoint)
-        {
-            return Ok(false);
-        }
-    }
-    if !build_roots_are_exact(
-        storage,
-        store,
-        receipt.key().draft_id(),
-        receipt.working_roots(),
-        limit,
-    )? {
-        return Ok(false);
-    }
-    if let Some(active) = receipt.marker_effect_continuation().active() {
-        let fragment =
-            storage.point::<DraftPieceBuildFragmentsFamily>(store, active.fragment_key(), limit)?;
-        if fragment.as_ref().is_none_or(|fragment| {
-            canonical_fragment_endpoint(fragment).digest() != active.fragment_digest()
-                || fragment.replacement().marker_effect() != Some(active.effect())
-        }) || active.source_roots() != receipt.working_roots()
-            || !build_roots_are_exact(
-                storage,
-                store,
-                receipt.key().draft_id(),
-                active.working_roots(),
-                limit,
-            )?
-        {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-pub(super) fn progress_receipt_transition_is_exact(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    previous: &DraftPieceBuildProgressReceiptV1,
-    current: &DraftPieceBuildProgressReceiptV1,
-    limit: crate::SyndicPointReadLimit,
-) -> Result<bool, SyndicReadError> {
-    let endpoint = current
-        .marker_effect_continuation()
-        .scan()
-        .scanned_endpoint();
-    let fragment = match endpoint {
-        Some(endpoint) => {
-            storage.point::<DraftPieceBuildFragmentsFamily>(store, endpoint.key(), limit)?
-        }
-        None => None,
-    };
-    Ok(marker_effect_progress_transition_is_exact(
-        previous,
-        current,
-        fragment.as_ref(),
-    ))
-}
-
-fn build_roots_are_exact(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    draft_id: SyndicDraftId,
-    roots: DraftPieceBuildRootsV1,
-    limit: crate::SyndicPointReadLimit,
-) -> Result<bool, SyndicReadError> {
-    if !draft_piece_build_roots_are_locally_exact_v1(roots) {
-        return Ok(false);
-    }
-    if let Some(id) = roots.sequence_root() {
-        let node = storage.point::<DraftPieceNodesFamily>(
-            store,
-            DraftPieceRecordKeyV1::new(draft_id, id),
-            limit,
-        )?;
-        if node
-            .is_none_or(|node| validate_sequence_root_node(node, roots.sequence_summary()).is_err())
-        {
-            return Ok(false);
-        }
-    } else if roots.sequence_summary().piece_count() != 0 {
-        return Ok(false);
-    }
-    if let Some(id) = roots.marker_index_root() {
-        let record = storage.point::<DraftMarkerIdentityIndexFamily>(
-            store,
-            DraftMarkerIdentityRecordKeyV1::new(
-                draft_id,
-                DraftMarkerIdentityRecordKindV1::Internal,
-                id,
-            ),
-            limit,
-        )?;
-        if record.is_none_or(|record| {
-            validate_index_root_record(record, roots.marker_index_summary()).is_err()
-        }) {
-            return Ok(false);
-        }
-    } else if roots.marker_index_summary().record_count() != 0 {
-        return Ok(false);
-    }
-    if let Some(id) = roots.marker_order_root() {
-        let record = storage.point::<DraftMarkerOrderCommitmentsFamily>(
-            store,
-            DraftMarkerOrderRecordKeyV1::new(draft_id, DraftMarkerOrderRecordKindV1::Internal, id),
-            limit,
-        )?;
-        if record.is_none_or(|record| validate_marker_order_root_record(record, roots).is_err()) {
-            return Ok(false);
-        }
-    } else if roots.marker_commitment().marker_count() != 0 {
-        return Ok(false);
-    }
-    Ok(true)
 }
 
 fn reconciled_status(status: DraftPieceOperationStatusV1) -> DraftPieceReconciledCommandV1 {

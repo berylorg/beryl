@@ -51,10 +51,19 @@ fn is_structure<F: Family>() -> bool {
             | "draft-piece-leaves"
             | "draft-marker-identity-index"
             | "draft-marker-order-commitments"
+            | "draft-marker-label-admission-nodes"
     )
 }
 
 impl BuildBudget {
+    pub(in super::super) fn encoded_effect(
+        &self,
+        bytes: u64,
+        structure: bool,
+    ) -> Result<(), DraftPiecePrepareErrorV1> {
+        self.reserve(0, u64::from(structure), bytes)
+    }
+
     pub(in super::super) fn work(&self) -> DraftPieceBuildWorkV1 {
         self.0
             .lock()

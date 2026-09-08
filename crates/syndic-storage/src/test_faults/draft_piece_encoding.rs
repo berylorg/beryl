@@ -69,11 +69,12 @@ fn roundtrip<F: Family>(value: &F::Value) -> (Vec<u8>, Vec<u8>) {
     (encoded, F::encode_value(&decoded).unwrap())
 }
 
-pub fn inject_draft_piece_build_v3_for_test(
+pub fn inject_draft_piece_build_older_version_for_test(
     store: &HomeStore,
     storage: &SyndicStorage,
     key: DraftPieceSettlementKeyV1,
     family: usize,
+    version: u32,
 ) {
     let build = storage
         .point::<DraftPieceBuildsFamily>(
@@ -84,7 +85,8 @@ pub fn inject_draft_piece_build_v3_for_test(
         .unwrap()
         .unwrap();
     let encodings = draft_piece_build_encoding_for_test(store, storage, key);
-    let mut stored = 3_u32.to_be_bytes().to_vec();
+    assert!(matches!(version, 3 | 4));
+    let mut stored = version.to_be_bytes().to_vec();
     stored.extend_from_slice(&encodings.encoded[family]);
     match family {
         0 => inject::<DraftPieceBuildsFamily>(store, storage, &key, &stored),

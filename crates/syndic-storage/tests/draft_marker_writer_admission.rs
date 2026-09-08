@@ -45,7 +45,7 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
     let proof = storage
         .seed_draft_marker_writer_ready_target_for_test(&store, &session, admission, marker)
         .unwrap();
-    let (_, identity, _) = stage_admitted_marker_edit(
+    let (prepared, identity, fragments) = stage_admitted_marker_edit(
         &storage,
         &store,
         &session,
@@ -61,7 +61,24 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
             )),
     );
     let mut staged_counts = Vec::new();
-    for _ in 0..8 {
+    let mut surgery_counts = Vec::new();
+    let mut publishing_count = None;
+    let mut reached_complete = false;
+    for _ in 0..64 {
+        let build = match storage
+            .draft_piece_operation_status_page(&store, &prepared, 1, &fragments)
+            .unwrap()
+        {
+            DraftPieceOperationVerificationV1::Status(DraftPieceOperationStatusV1::Open(build)) => {
+                build
+            }
+            DraftPieceOperationVerificationV1::Status(DraftPieceOperationStatusV1::Complete(_)) => {
+                reached_complete = true;
+                break;
+            }
+            other => panic!("unexpected diagnostic build status: {other:?}"),
+        };
+        let program = syndic_storage::test_faults::draft_marker_program_snapshot_for_test(&build);
         let Some(advance) = storage
             .prepare_draft_piece_build_advance(
                 &store,
@@ -73,10 +90,26 @@ fn staged_record_diagnostic_includes_marker_order_record_and_root() {
         else {
             break;
         };
-        staged_counts.push(advance.staged_record_count());
+        let count = advance.staged_record_count();
+        staged_counts.push(count);
+        if let Some(program) = program {
+            if (5..=7).contains(&program.pending) {
+                surgery_counts.push((program.pending, count));
+            } else {
+                assert_eq!(count, 1);
+            }
+            if program.phase == 3 {
+                assert!(publishing_count.replace(count).is_none());
+            }
+        } else {
+            assert_eq!(count, 1);
+        }
         committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
-    assert_eq!(staged_counts, [1, 1, 1, 7, 1]);
+    assert_eq!(surgery_counts, [(5, 3), (6, 3), (7, 3)]);
+    assert_eq!(publishing_count, Some(1));
+    assert_eq!(staged_counts.iter().filter(|&&count| count == 3).count(), 3);
+    assert!(reached_complete);
 }
 
 #[test]

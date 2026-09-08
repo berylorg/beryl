@@ -113,7 +113,6 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
             )
             .unwrap()
             .unwrap();
-        let retry = advance.clone();
         faults.fail_next(fault_point);
         let outcome = execute(
             &store,
@@ -167,8 +166,17 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
             "writer cut {fault_point:?}"
         );
         if let Some(pending) = pending {
-            assert_ne!(pending.working_roots(), source_roots);
+            assert_eq!(pending.working_roots(), source_roots);
         } else {
+            let retry = storage
+                .prepare_draft_piece_build_advance(
+                    &store,
+                    identity.draft_id(),
+                    identity.session_id(),
+                    identity.operation_id().as_piece_operation(),
+                )
+                .unwrap()
+                .unwrap();
             committed(execute(
                 &store,
                 storage.advance_draft_piece_edit(retry),
@@ -201,7 +209,7 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
                     storage.advance_draft_piece_edit(replay),
                 ),
                 CommandOutcome::NotCommitted {
-                    evidence: CommandError::EmptyContribution { .. }
+                    evidence: CommandError::Conflict { .. }
                 }
             ));
         }

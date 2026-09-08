@@ -354,6 +354,112 @@ revision. A stale prepared command remains a known noncommit; retry requires fre
 Selected source and progress roots remain protected by existing operation custody. Cancellation
 retains that exact custody through its terminal command and subsequent bounded cleanup.
 
+### Bounded Marker Effect Continuation
+
+A marker effect is one self-contained, non-continuation fragment whose source start and end are
+the same canonical composite position. Insert, Move and SameIdReplacement contain exactly their
+one matching marker; Remove contains no inserted piece. No marker-effect fragment contains text.
+Ordinary text edits may precede or follow these fragments. The continuation does not widen that
+input contract or retain fields for unreachable mixed text/marker fragments.
+
+Activation retains the exact effect and fragment identity, the coherent pre-effect working roots,
+and the completed logical frontiers. It changes no tree. The build's published working roots remain
+those pre-effect roots until Publishing completes the effect. The active effect separately retains
+its coherent working triple and, during tree surgery, individual pending sequence and identity
+descriptors. An intermediate descriptor is never a combined root, candidate, completed effect, or
+adoption proof. Each successful command advances exactly one closed proof, structure mutation or
+publication step and publishes its build, immutable receipt and session endpoint atomically.
+
+Planning authenticates source positions against the operation's original predecessor combined
+root. The active effect's pre-effect roots are the working basis after earlier fragments, not the
+source-position basis. SourceBounds proves the shared empty source boundary. Removal effects then
+prove their removal gap, exact source occurrence and source identity-index association, including
+stable identity, order key, label, Asset, sequence leaf identity/digest and effect charge. Remove and
+SameIdReplacement require the source boundary, removal gap and occurrence piece boundary to agree;
+their effective source end is the next piece boundary. Move retains the shared source boundary as
+its effective end. Checked arithmetic rejects an unrepresentable successor.
+
+Pure Insert additionally proves its stable identity absent from the original predecessor identity
+tree in a separate source-proof command. Working-tree absence alone would allow a preceding Remove
+to hide a second effect for that identity. Move and SameIdReplacement instead authenticate their
+original occurrence and later prove working absence after their own removal. An identity inserted
+earlier in the operation remains present in the working tree and cannot be inserted again.
+
+When a nonfirst empty fragment begins at the completed source frontier, Planning also authenticates
+the previous fragment's start and end against that same original root. A repeated empty range is
+valid only when both fragments have distinct closed marker effects. The program then proves any
+removed occurrence and its identity association in the current coherent working roots. The
+occurrence descent derives both piece rank and marker ordinal; it checks the mapped anchor against
+the completed source/successor frontiers. It does not discover position through an ID-only lookup.
+
+Each proof command performs at most one authenticated tree-path lookup. A composite AfterAll or
+Between gap uses separate primary and secondary commands against unchanged roots. The primary
+checks its exact marker witness and retains only its rank; the secondary proves respectively a
+strictly later after-markers boundary or the exact adjacent right marker. No arbitrary passed flag,
+caller-selected proof jump, saved path, payload or operation-sized collection can replace these
+closed transitions. The schema owns all cursor tags and field-presence rules.
+
+Removal changes sequence, identity index and marker order in that order, one structure per command.
+The pending sequence descriptor is retained after the first command and the pending identity
+descriptor after the second. The third command validates their exact removed association and
+count/digest relationships and installs the coherent post-removal triple together. Removal changes
+no UTF-8 byte count and decreases sequence piece count and each marker/index/order count by one.
+Every structure normalizes underflow before emission: canonical nonroot occupancy and uniform leaf
+depth remain true, singleton internal roots collapse, and a lone leaf retains its selected root
+wrapper. Untouched authenticated subtrees remain shared.
+
+A separate no-lookup planning completion maps the one empty source boundary through completed
+frontiers and the removed piece rank, places that same mapped boundary in both existing outer
+successor slots, derives the effective source end, and clears all planning/removal facts. The
+ordinary Removing and Applying cursor transitions then reach Inserting. The active effect's
+Applying interval is empty under this fragment contract; it needs no marker-free range proof or
+nonempty text-removal branch.
+
+Insertion first proves identity absence in the coherent working identity tree. Separate bounded
+sequence proofs determine the exact insertion gap, marker ordinal, UTF-8 boundary and any required
+same-anchor order or after-markers boundary. They reject an equal order key only at that same
+anchor; a later-anchor marker continues the after-markers lookup. The resulting site
+binds the pre-insertion boundary and the mapped successor boundary. Sequence, identity and order
+insertions then run in that order, one structure per command. The sequence step retains the exact
+new marker-leaf identity and digest; the identity step binds that same leaf; the order step checks
+the complete association and installs the coherent triple. It clears the pending site and advances
+the inserted-piece cursor exactly once. UTF-8 bytes are unchanged, all marker/index/order counts
+increase by one, and sequence piece count increases by one at a boundary or two when splitting text.
+
+The mapped successor boundary is derived from the outer pre-insertion successor end `F=(f,j)`
+and insertion boundary `I=(r,i)`, with `I <= F`. If `r < f`, the result is
+`(f+1+[i != 0],j)`; if `r == f` and `i == 0`, it is `(f+1,j)`; if
+`r == f` and `0 < i == j`, it is `(f+2,0)`; otherwise `r == f` and
+`0 < i < j` yields `(f+2,j-i)`. The original outer insertion cursor remains frozen until
+the order step publishes this checked mapping.
+
+Exhausted insertion enters active Publishing while retaining the exhausted outer Inserting cursor.
+The zero-piece Remove follows the same rule. Publishing is its own command, with no tree surgery,
+planning facts, pending descriptors or insertion/removal sites. It publishes the coherent roots,
+advances the fragment and completed logical frontiers, increments the completed effect count and
+chain and scan frontier once, clears the active effect, and enters the next Planning or
+CrossValidating state. Completing a removal triple within Move or SameIdReplacement does not
+complete the effect.
+
+Where the effect consumes marker admission, Publishing composes the canonical prepared deletion
+result under the same captured Syndic revision and complete builder ledger. Preparation captures
+the target path, exact node puts/deletes, retained closure, writer head and capacity and seals the
+result with the other revision-bound facts. Serialized submission checks the exact mutable writer
+head and capacity and reuses that result; it must not reconstruct the target path under a fresh
+helper budget. Admission node edits, head and capacity changes and build/receipt/session effects
+publish atomically. The command result retains the actual serialized writer successor.
+
+Reopen validates the selected and immediate predecessor receipts, exact fragment and operation,
+closed proof or mutation transition, required coherent and individual pending root records, and
+summary deltas. It neither repeats completed descents or surgery nor walks older receipts. The
+same immutable-publication trust boundary and captured-revision rules as bounded sequence
+continuation apply. Target occupancy while the source remains selected is corruption even with
+equal bytes. Known package-owned commits use their captured result; ambiguous outcomes use the
+separately custodied staged-build classification boundary. Cancellation at any substep retains
+the exact pending closure under existing operation/terminal cleanup custody and proves nonadoption.
+Cancellation before Publishing leaves its admission unconsumed; cancellation after Publishing
+uses the already advanced writer state. Cleanup cannot release any referenced pending root early.
+
 ### Staged Build Command Outcomes
 
 Production post-finish submission uses one opaque move-only prepared command with a closed kind:

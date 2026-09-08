@@ -30,51 +30,19 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 339: Preserve Canonical Marker Admission Deletion (finished)
+# Phase 338: Continue Bounded Marker Tree Effects (finished)
 
-Accepted [canonical admission deletion](../crates/syndic-storage/doc/design-draft-storage.md#canonical-admission-deletion)
-and its [complete bounds](../crates/syndic-storage/doc/design-schema-v7.md#canonical-admission-deletion-bounds).
-Both tree kinds normalize underflow, preserve untouched subtrees and return exact deletion results.
-Assignment authenticates the complete prior receipt transition before cleanup and shares one
-pre-reserved ledger through public preparation, serialized work and first postcommit readiness.
-The existing durable formats and captured reconciliation custody remain intact.
-
-Independent readiness and implementation review passed. Isolated locked Syndic/app checks passed;
-17 deletion and 15 writer tests passed, together with the other 124 selected admission/readiness
-cases in the broader run. Evidence covers height 18, consecutive tall-tree cleanup, full fanout,
-65,410 associations reaching 1,155 path references, real retained-receipt corruption, exact work
-counters, cancellation and captured reconciliation. A stale cloned-advance expectation was
-corrected to the documented revision conflict after an identical baseline failure was confirmed.
-
-The [failure record](failures/syndic-marker-admission-deletion.md) retains the invalidated assumptions.
-This accepts the deletion result and complete assignment boundary. The builder's duplicate
-preparation still requires Phase 338's sealed-result reuse and one complete quantum ledger.
-
-# Phase 338: Continue Bounded Marker Tree Effects (pending)
-
-The approved resumable repair separates marker effects from ordinary range removal because they
-have distinct continuation and acceptance rules. Existing marker removal changes sequence,
-identity and order trees in one quantum; valid height-45 binary trees require 270 stored reads
-across those three deletions before authentication or emissions. Ordinary range continuation alone
-does not satisfy that boundary.
-
-Establish owning authority for exact pending per-structure roots and closed effect substeps under
-the existing operation's active-effect custody. Keep the coherent source roots selected until all
-three changes finish; incomplete pending roots are not ordinary build roots. Preserve marker
-identity/Asset/label facts, complete effect-chain advancement once, and authenticate each bounded
-partial transition, replay and terminal cleanup. Verify forced continuation, restart, corruption,
-and aggregate quantum charges before acceptance and staged-outcome completion. This phase is
-pending design readiness and does not authorize implementation against unspecified cursor bytes.
-Compose the canonical admission-deletion result in the separate Publishing command under the
-captured Syndic revision and exact mutable head/capacity fences. Replace the current second
-target-path preparation with sealed-result reuse and charge the complete builder invocation to
-one ledger; the accepted standalone deletion and assignment proof cannot substitute for this work.
-
-The [admission-deletion prerequisite](failures/syndic-marker-admission-deletion.md) is accepted.
-Renew marker readiness against its canonical result and complete charged proof. The earlier
-Publishing and insertion estimates remain provisional; owning V5 draft edits were restored and
-no marker-continuation implementation began. The Operator approved subsequent continuation;
-implementation still requires the closed cursor/program authority and independent readiness.
+Accepted the [marker contract](../crates/syndic-storage/doc/design-draft-storage.md#bounded-marker-effect-continuation)
+and [V5 program and complete bounds](../crates/syndic-storage/doc/design-schema-v7.md#marker-continuation-encoding-and-program).
+All three families use V5; the closed proof and surgery program survives restart and preserves
+coherent roots. Publishing reuses sealed admission deletion under one complete builder ledger.
+Independent readiness and adversarial implementation review passed. Isolated locked Syndic/app
+checks passed; 73 tests passed on default stacks, including all 17 new cases and exact V5 vectors.
+Two fixtures that also overflow on the accepted baseline passed separate 4 MiB semantic checks;
+the [stack record](failures/syndic-composer-mutation-stack-layout.md) preserves that limitation.
+Evidence covers every proof component and surgery boundary, sparse authenticated heights 45/63/64,
+complete smaller-tree normalization, resource counters, rejected substitutions, cancellation,
+UTF-8/moves/same-ID replacement and operations beyond 256 fragments. Staged outcomes remain separate.
 
 # Phase 336: Reconcile Durable Staged Build Outcomes (pending)
 

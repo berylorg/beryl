@@ -9,18 +9,31 @@ enum EditedSequence {
     },
 }
 
-fn edit_text_leaf(
+fn edit_leaf(
     context: &mut BuildContext<'_>,
     tree: SequenceRef,
     rank: u64,
     start: usize,
     end: Option<usize>,
+    marker: Option<DraftMarkerIdentityOccurrenceV1>,
 ) -> Result<EditedSequence, DraftPiecePrepareErrorV1> {
     if tree.height == 0 {
         if rank != 0 {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         let leaf = context.load_sequence_leaf(tree.link)?;
+        if let Some(expected) = marker {
+            return if matches!(leaf.value(), DraftPieceLeafValueV1::Marker(value)
+                if value.marker_id() == expected.marker_id() && value.label() == expected.label()
+                    && value.asset_id() == expected.asset_id() && value.order_key() == expected.order_key())
+                && leaf.key().id() == expected.sequence_leaf_id()
+                && leaf.digest() == expected.sequence_leaf_digest()
+            {
+                Ok(EditedSequence::Empty)
+            } else {
+                Err(DraftPiecePrepareErrorV1::InvalidRoot)
+            };
+        }
         let DraftPieceLeafValueV1::Text(text) = leaf.value() else {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         };
@@ -64,7 +77,7 @@ fn edit_text_leaf(
         height: tree.height - 1,
         selected_root: false,
     };
-    match edit_text_leaf(context, child, remaining, start, end)? {
+    match edit_leaf(context, child, remaining, start, end, marker)? {
         EditedSequence::Empty => {
             children.remove(index);
         }
@@ -173,7 +186,12 @@ pub(super) fn remove_text_slice(
             (rank, 0, None, start, Boundary { rank, inner: 0 })
         }
     };
-    let sequence = match edit_text_leaf(context, tree, rank, first, last)? {
+    let sequence = finish_edit(edit_leaf(context, tree, rank, first, last, None)?)?;
+    Ok((sequence, next_start, next_end))
+}
+
+fn finish_edit(edit: EditedSequence) -> Result<Option<SequenceRef>, DraftPiecePrepareErrorV1> {
+    Ok(match edit {
         EditedSequence::Empty => None,
         EditedSequence::Tree(tree) => Some(tree),
         EditedSequence::Underfull { height, children } => {
@@ -186,6 +204,14 @@ pub(super) fn remove_text_slice(
                 selected_root: true,
             })
         }
-    };
-    Ok((sequence, next_start, next_end))
+    })
+}
+
+pub(super) fn remove_marker(
+    context: &mut BuildContext<'_>,
+    tree: SequenceRef,
+    rank: u64,
+    expected: DraftMarkerIdentityOccurrenceV1,
+) -> Result<Option<SequenceRef>, DraftPiecePrepareErrorV1> {
+    finish_edit(edit_leaf(context, tree, rank, 0, None, Some(expected))?)
 }

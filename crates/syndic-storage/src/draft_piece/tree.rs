@@ -5,6 +5,7 @@ use crate::{SyndicPointReadLimit, SyndicReadError};
 
 use super::*;
 
+mod marker_progress;
 mod sequence_progress;
 
 const EMPTY_MARKERS: &[u8] = b"syndic/draft-ordered-marker-fold/v1/empty";
@@ -179,6 +180,10 @@ pub(crate) fn draft_piece_build_roots_are_locally_exact_v1(roots: DraftPieceBuil
         canonical_empty_marker_identity_index_digest_v1(),
     );
     sequence.text_summary().is_canonical()
+        && sequence.height() <= DRAFT_PIECE_MAX_HEIGHT
+        && index.height() <= DRAFT_PIECE_MAX_HEIGHT
+        && roots.marker_order_height() <= DRAFT_PIECE_MAX_HEIGHT
+        && sequence.marker_count() <= sequence.piece_count()
         && sequence.marker_count() == index.record_count()
         && sequence.marker_count() == commitment.marker_count()
         && (sequence.piece_count() == 0) == roots.sequence_root().is_none()
@@ -1151,6 +1156,13 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
     {
         return false;
     }
+    if !marker_progress::endpoint_is_exact(
+        build.marker_effect_continuation().active(),
+        build.frontier(),
+        build.working_roots(),
+    ) {
+        return false;
+    }
     let complete_shape = build.frontier() == DraftPieceBuildFrontierV1::Complete;
     let marker = build.marker_effect_continuation();
     let scan = marker.scan();
@@ -1217,8 +1229,6 @@ pub(crate) fn build_record_is_exact(build: &DraftPieceBuildRecordV1) -> bool {
             fragment_ordinal, ..
         } => {
             if fragment_ordinal != scan.next_fragment_ordinal()
-                || matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { .. })
-                    && marker.active().is_some()
                 || build.staged_fragment_count() != build.fragment_count()
                 || build.staged_fragment_chain() != build.fragment_chain()
                 || fragment_ordinal == 0
@@ -1315,7 +1325,7 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
     key: DraftPieceBuildProgressReceiptKeyV1,
 ) -> DraftPieceDigestV1 {
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v4");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v5");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1427,10 +1437,23 @@ pub(crate) fn progress_receipt_is_exact(receipt: &DraftPieceBuildProgressReceipt
                 key.operation_id(),
             ))
         || receipt.successor().is_some() != receipt.build_digest().is_some()
+        || (receipt.marker_effect_continuation().active().is_some()
+            && (receipt.previous().is_none()
+                || !matches!(
+                    receipt.lifecycle(),
+                    DraftPieceBuildLifecycleV1::Open
+                        | DraftPieceBuildLifecycleV1::Rejected
+                        | DraftPieceBuildLifecycleV1::Cancelled
+                        | DraftPieceBuildLifecycleV1::Error
+                )))
     {
         return false;
     }
-    receipt.reference().digest() == progress_receipt_digest_from_value(receipt)
+    marker_progress::endpoint_is_exact(
+        receipt.marker_effect_continuation().active(),
+        receipt.frontier(),
+        receipt.working_roots(),
+    ) && receipt.reference().digest() == progress_receipt_digest_from_value(receipt)
 }
 
 fn progress_receipt_digest_from_value(
@@ -1438,7 +1461,7 @@ fn progress_receipt_digest_from_value(
 ) -> DraftPieceDigestV1 {
     let key = receipt.key();
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v4");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v5");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1574,7 +1597,9 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
     current: &DraftPieceBuildProgressReceiptV1,
     scanned_fragment: Option<&DraftPieceBuildFragmentV1>,
 ) -> bool {
-    if !sequence_progress::transition_is_exact(previous, current) {
+    if current.previous() != Some(previous.reference())
+        || !sequence_progress::transition_is_exact(previous, current)
+    {
         return false;
     }
     let previous_continuation = previous.marker_effect_continuation();
@@ -1585,7 +1610,8 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
         return current_continuation.source_logical_frontier()
             == previous_continuation.source_logical_frontier()
             && current_continuation.successor_logical_frontier()
-                == previous_continuation.successor_logical_frontier();
+                == previous_continuation.successor_logical_frontier()
+            && marker_progress::transition_is_exact(previous, current, scanned_fragment);
     }
     let Some(fragment) = scanned_fragment else {
         return false;
@@ -1646,6 +1672,7 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
                 return false;
             };
             fragment.replacement().marker_effect() == Some(active.effect())
+                && marker_progress::publication_is_exact(previous, current, fragment)
                 && active.fragment_key() == fragment.key()
                 && active.fragment_digest() == endpoint.digest()
                 && active.source_roots() == previous.working_roots()
@@ -1956,6 +1983,7 @@ fn hash_marker_effect_continuation(
                 DraftPieceActiveMarkerPhaseV1::Inserting => 2,
                 DraftPieceActiveMarkerPhaseV1::Publishing => 3,
             }]);
+            digest.update(canonical_marker_program_bytes(active));
         }
         None => digest.update([0]),
     }
@@ -1976,7 +2004,7 @@ pub(crate) fn draft_piece_build_digest_v1(
     proposal_digest: DraftPieceDigestV1,
     successor: DraftPieceRootReferenceV1,
 ) -> DraftPieceDigestV1 {
-    let domain = b"syndic/draft-piece-build/v4";
+    let domain = b"syndic/draft-piece-build/v5";
     let mut digest = Sha256::new();
     digest.update((domain.len() as u64).to_be_bytes());
     digest.update(domain);

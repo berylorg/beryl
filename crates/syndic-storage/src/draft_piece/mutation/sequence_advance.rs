@@ -10,9 +10,10 @@ pub(super) struct SourceFences {
     pub(super) receipt: DraftPieceBuildProgressReceiptV1,
     pub(super) staging: Option<DraftMutationStagingHeadV1>,
     writer: Option<DraftMarkerAdmissionHeadV1>,
+    writer_consumption: Option<PreparedDraftMarkerWriterConsumptionV1>,
 }
 
-fn required<F: crate::codec::Family>(
+pub(super) fn required<F: crate::codec::Family>(
     acquisition: &BuildAcquisition<'_>,
     key: F::Key,
 ) -> Result<F::Value, DraftPiecePrepareErrorV1> {
@@ -100,6 +101,7 @@ fn receipt_effects(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         validate_acquired_build_roots(acquisition, key, active.working_roots())?;
+        super::marker_advance::validate_pending_roots(acquisition, key.draft_id(), active)?;
     }
     Ok(())
 }
@@ -189,15 +191,25 @@ pub(super) fn prepare(
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     receipt_effects(&acquisition, &previous)?;
-    let scanned = receipt
+    let transition_fragment_key = receipt
         .marker_effect_continuation()
-        .scan()
-        .scanned_endpoint()
-        .map(|endpoint| required::<DraftPieceBuildFragmentsFamily>(&acquisition, endpoint.key()))
+        .active()
+        .or(previous.marker_effect_continuation().active())
+        .map(|active| active.fragment_key())
+        .or_else(|| {
+            receipt
+                .marker_effect_continuation()
+                .scan()
+                .scanned_endpoint()
+                .map(|endpoint| endpoint.key())
+        });
+    let scanned = transition_fragment_key
+        .map(|key| required::<DraftPieceBuildFragmentsFamily>(&acquisition, key))
         .transpose()?;
     if !marker_effect_progress_transition_is_exact(&previous, &receipt, scanned.as_ref()) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
+    validate_previous_proof(&acquisition, &previous, &receipt)?;
     let session_key =
         DraftEditorCandidateSessionRecordKeyV1::head(build.draft_id(), build.session_id());
     let DraftEditorCandidateSessionRecordV1::Head(session) =
@@ -245,21 +257,42 @@ pub(super) fn prepare(
             Ok(head)
         })
         .transpose()?;
-    let DraftPieceBuildFrontierV1::Applying {
-        fragment_ordinal, ..
-    } = build.frontier()
-    else {
-        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    let fragment_ordinal = match build.frontier() {
+        DraftPieceBuildFrontierV1::Applying {
+            fragment_ordinal, ..
+        }
+        | DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
+        | DraftPieceBuildFrontierV1::Removing {
+            fragment_ordinal, ..
+        }
+        | DraftPieceBuildFrontierV1::Inserting {
+            fragment_ordinal, ..
+        } => fragment_ordinal,
+        _ => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
     };
     let selected_fragment = fragment(&acquisition, &build, fragment_ordinal)?;
     let endpoint_fragment = fragment(&acquisition, &build, build.staged_fragment_count())?;
     let quantum = advance_acquired_tree_build(acquisition.clone(), &build, &selected_fragment)?;
-    let (roots, marker_continuation) = marker_continuation_transition(
+    let (roots, marker_continuation) = match quantum.marker_effect_continuation {
+        Some(continuation) => (quantum.roots, continuation),
+        None => marker_continuation_transition(
+            &build,
+            Some(&selected_fragment),
+            quantum.roots,
+            quantum.frontier,
+        )?,
+    };
+    let writer_consumption = super::marker_advance::prepare_consumption(
+        &acquisition,
         &build,
-        Some(&selected_fragment),
-        quantum.roots,
-        quantum.frontier,
+        &selected_fragment,
+        marker_continuation,
+        writer.as_ref(),
     )?;
+    let writer_admission = writer_consumption
+        .as_ref()
+        .map(|consumption| consumption.admission())
+        .or(build.writer_admission());
     let (next, next_receipt) = next_build_record(
         &build,
         roots,
@@ -272,12 +305,17 @@ pub(super) fn prepare(
         DraftPieceBuildLifecycleV1::Open,
         Some(canonical_fragment_endpoint(&endpoint_fragment)),
         marker_continuation,
-        build.writer_admission(),
+        writer_admission,
     )
     .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
-    if !marker_effect_progress_transition_is_exact(&receipt, &next_receipt, scanned.as_ref()) {
+    if !marker_effect_progress_transition_is_exact(
+        &receipt,
+        &next_receipt,
+        Some(&selected_fragment),
+    ) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
+    validate_previous_proof(&acquisition, &receipt, &next_receipt)?;
     let next_session = session
         .advance_active_operation(&custody_for(&build), custody_for(&next))
         .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
@@ -308,8 +346,21 @@ pub(super) fn prepare(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
     }
-    if !quantum.index_records.is_empty() || !quantum.marker_order_records.is_empty() {
-        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    for value in &quantum.index_records {
+        if acquisition
+            .point::<DraftMarkerIdentityIndexFamily>(value.key())?
+            .is_some()
+        {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+    }
+    for value in &quantum.marker_order_records {
+        if acquisition
+            .point::<DraftMarkerOrderCommitmentsFamily>(value.key())?
+            .is_some()
+        {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
     }
     acquisition
         .budget
@@ -346,14 +397,35 @@ pub(super) fn prepare(
         marker_order_records: quantum.marker_order_records,
         records_read: quantum.records_read,
         admission_marker: None,
-        admission_consumption: None,
+        admission_consumption: writer_consumption
+            .as_ref()
+            .map(|value| value.index().clone()),
         bounded: Some(SourceFences {
             budget: acquisition.budget,
             receipt,
             staging,
             writer,
+            writer_consumption,
         }),
     })
+}
+
+fn validate_previous_proof(
+    acquisition: &BuildAcquisition<'_>,
+    previous: &DraftPieceBuildProgressReceiptV1,
+    current: &DraftPieceBuildProgressReceiptV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    let fragment = super::marker_advance::previous_proof_fragment_key(previous, current)
+        .map(|key| required::<DraftPieceBuildFragmentsFamily>(acquisition, key))
+        .transpose()?;
+    if !super::marker_advance::previous_proof_transition_is_exact(
+        previous,
+        current,
+        fragment.as_ref(),
+    ) {
+        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+    }
+    Ok(())
 }
 
 pub(super) fn submit(
@@ -417,5 +489,20 @@ pub(super) fn submit(
             return Err(SyndicMutationError::IdentityCollision);
         }
     }
-    Ok(Some((prepared, None)))
+    if let Some(consumption) = &source.writer_consumption {
+        if source
+            .budget
+            .recheck::<DraftMarkerAdmissionCapacityFamily>(
+                reader,
+                &DraftMarkerAdmissionCapacityKeyV1,
+            )?
+            .as_ref()
+            != Some(consumption.prior_capacity())
+            || source.writer.as_ref() != Some(consumption.prior_head())
+        {
+            return Err(SyndicMutationError::IdentityCollision);
+        }
+    }
+    let writer_consumption = source.writer_consumption.clone();
+    Ok(Some((prepared, writer_consumption)))
 }

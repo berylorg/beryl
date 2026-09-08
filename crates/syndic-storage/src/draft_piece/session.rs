@@ -380,34 +380,26 @@ pub(super) fn progress_receipt_closure_is_exact(
     if !progress_receipt_is_exact(receipt) {
         return Ok(false);
     }
-    if let Some(previous) = receipt.previous() {
-        let stored =
-            storage.point::<DraftPieceBuildProgressFamily>(store, previous.key(), point_limit())?;
-        let Some(stored) = stored else {
+    let previous = if let Some(previous) = receipt.previous() {
+        let Some(stored) =
+            storage.point::<DraftPieceBuildProgressFamily>(store, previous.key(), point_limit())?
+        else {
             return Ok(false);
         };
-        if stored.reference() != previous
-            || !progress_receipt_is_exact(&stored)
-            || !super::read::progress_receipt_effects_are_exact(
-                storage,
-                store,
-                &stored,
-                point_limit(),
-            )?
-        {
+        if stored.reference() != previous {
             return Ok(false);
         }
-        if !super::read::progress_receipt_transition_is_exact(
-            storage,
-            store,
-            &stored,
-            receipt,
-            point_limit(),
-        )? {
-            return Ok(false);
-        }
-    }
-    super::read::progress_receipt_effects_are_exact(storage, store, receipt, point_limit())
+        Some(stored)
+    } else {
+        None
+    };
+    super::read::progress_receipt_closure_is_exact(
+        storage,
+        store,
+        receipt,
+        previous.as_ref(),
+        point_limit(),
+    )
 }
 
 impl DomainMutation<SyndicDomain> for OpenSessionMutation {

@@ -6,6 +6,9 @@ use super::{
 };
 use sha2::{Digest, Sha256};
 
+mod marker_program;
+pub(crate) use marker_program::*;
+
 pub fn canonical_empty_marker_effect_chain_v1() -> DraftPieceDigestV1 {
     DraftPieceDigestV1::from_bytes(
         Sha256::digest(b"syndic/draft-marker-effect-chain/v1/empty").into(),
@@ -242,6 +245,10 @@ pub struct DraftPieceActiveMarkerEffectV1 {
     source_frontier: u64,
     successor_frontier: u64,
     phase: DraftPieceActiveMarkerPhaseV1,
+    removal_site: Option<DraftPieceMarkerRemovalSiteV1>,
+    planning: Option<DraftPieceMarkerPlanningV1>,
+    insertion_site: Option<DraftPieceMarkerInsertionSiteV1>,
+    pending: DraftPieceMarkerPendingV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -296,6 +303,7 @@ impl DraftPieceMarkerEffectContinuationV1 {
         marker_scan_is_exact(self.scan, identity)
             && self.active.is_none_or(|active| {
                 effect_is_exact(active.effect())
+                    && active.is_program_locally_exact()
                     && active.fragment_key().draft_id() == identity.draft_id()
                     && active.fragment_key().session_id() == identity.session_id()
                     && active.fragment_key().operation_id() == identity.operation_id()
@@ -326,6 +334,10 @@ impl DraftPieceActiveMarkerEffectV1 {
             source_frontier,
             successor_frontier,
             phase,
+            removal_site: None,
+            planning: None,
+            insertion_site: None,
+            pending: DraftPieceMarkerPendingV1::None,
         }
     }
 
@@ -359,6 +371,33 @@ impl DraftPieceActiveMarkerEffectV1 {
 
     pub const fn phase(self) -> DraftPieceActiveMarkerPhaseV1 {
         self.phase
+    }
+
+    pub(crate) const fn with_program(
+        mut self,
+        removal_site: Option<DraftPieceMarkerRemovalSiteV1>,
+        planning: Option<DraftPieceMarkerPlanningV1>,
+        insertion_site: Option<DraftPieceMarkerInsertionSiteV1>,
+        pending: DraftPieceMarkerPendingV1,
+    ) -> Self {
+        self.removal_site = removal_site;
+        self.planning = planning;
+        self.insertion_site = insertion_site;
+        self.pending = pending;
+        self
+    }
+
+    pub(crate) const fn removal_site(self) -> Option<DraftPieceMarkerRemovalSiteV1> {
+        self.removal_site
+    }
+    pub(crate) const fn planning(self) -> Option<DraftPieceMarkerPlanningV1> {
+        self.planning
+    }
+    pub(crate) const fn insertion_site(self) -> Option<DraftPieceMarkerInsertionSiteV1> {
+        self.insertion_site
+    }
+    pub(crate) const fn pending(self) -> DraftPieceMarkerPendingV1 {
+        self.pending
     }
 }
 

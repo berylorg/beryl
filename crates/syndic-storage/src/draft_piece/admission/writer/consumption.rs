@@ -15,6 +15,8 @@ use super::super::*;
 use super::model::*;
 #[derive(Clone)]
 pub(crate) struct PreparedDraftMarkerWriterConsumptionV1 {
+    prior_head: DraftMarkerAdmissionHeadV1,
+    prior_capacity: DraftMarkerAdmissionCapacityV1,
     admission: DraftMarkerWriterAdmissionV1,
     capacity: DraftMarkerAdmissionCapacityV1,
     head: DraftMarkerAdmissionHeadV1,
@@ -22,6 +24,18 @@ pub(crate) struct PreparedDraftMarkerWriterConsumptionV1 {
 }
 
 impl PreparedDraftMarkerWriterConsumptionV1 {
+    pub(crate) const fn prior_head(&self) -> &DraftMarkerAdmissionHeadV1 {
+        &self.prior_head
+    }
+    pub(crate) const fn prior_capacity(&self) -> &DraftMarkerAdmissionCapacityV1 {
+        &self.prior_capacity
+    }
+    pub(crate) const fn head(&self) -> &DraftMarkerAdmissionHeadV1 {
+        &self.head
+    }
+    pub(crate) const fn capacity(&self) -> &DraftMarkerAdmissionCapacityV1 {
+        &self.capacity
+    }
     pub(crate) const fn admission(&self) -> DraftMarkerWriterAdmissionV1 {
         self.admission
     }
@@ -73,6 +87,26 @@ pub(crate) fn prepare_draft_marker_writer_consumption_v1(
         page,
     )
     .map_err(|_| SyndicMutationError::IdentityCollision)?;
+    seal_draft_marker_writer_consumption_v1(admission, prior_head, prior_capacity, index)
+}
+
+pub(crate) fn seal_draft_marker_writer_consumption_v1(
+    admission: DraftMarkerWriterAdmissionV1,
+    prior_head: DraftMarkerAdmissionHeadV1,
+    prior_capacity: DraftMarkerAdmissionCapacityV1,
+    index: PreparedDraftMarkerAdmissionConsumptionV1,
+) -> Result<PreparedDraftMarkerWriterConsumptionV1, SyndicMutationError> {
+    let owner = admission.binding().owner();
+    if prior_head.owner() != owner
+        || prior_head.home_generation() != admission.binding().home_generation()
+        || prior_head.lifecycle() != DraftMarkerAdmissionLifecycleV1::Building
+        || prior_head.target_root() != admission.target_root()
+        || prior_head.remaining_builder_count() != admission.remaining_count()
+        || prior_head.occurrence_commitment() != admission.binding().occurrence_commitment()
+        || index.source_root() != admission.target_root()
+    {
+        return Err(SyndicMutationError::IdentityCollision);
+    }
     let successor_admission = admission
         .with_target_root(index.target_root())
         .ok_or(SyndicMutationError::IdentityCollision)?;
@@ -172,6 +206,8 @@ pub(crate) fn prepare_draft_marker_writer_consumption_v1(
     )
     .map_err(|_| SyndicMutationError::IdentityCollision)?;
     Ok(PreparedDraftMarkerWriterConsumptionV1 {
+        prior_head,
+        prior_capacity,
         admission: successor_admission,
         capacity,
         head,

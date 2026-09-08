@@ -58,19 +58,26 @@ fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
         DraftLogicalExtentV1::new(3, 1),
     );
     let source_roots = open_build(&storage, &store, &prepared, &fragment).working_roots();
-    let advance = storage
-        .prepare_draft_piece_build_advance(
-            &store,
-            identity.draft_id(),
-            identity.session_id(),
-            identity.operation_id().as_piece_operation(),
-        )
-        .unwrap()
-        .unwrap();
-    committed(execute(
-        &store,
-        storage.advance_draft_piece_edit(advance),
-    ));
+    for _ in 0..32 {
+        let build = open_build(&storage, &store, &prepared, &fragment);
+        if build
+            .marker_effect_continuation()
+            .active()
+            .is_some_and(|active| active.working_roots().sequence_summary().marker_count() == 0)
+        {
+            break;
+        }
+        let advance = storage
+            .prepare_draft_piece_build_advance(
+                &store,
+                identity.draft_id(),
+                identity.session_id(),
+                identity.operation_id().as_piece_operation(),
+            )
+            .unwrap()
+            .unwrap();
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
+    }
     let pending = open_build(&storage, &store, &prepared, &fragment);
     assert_eq!(pending.working_roots(), source_roots);
     assert_ne!(
@@ -195,10 +202,7 @@ fn marker_scan_and_active_identity_corruption_fail_closed() {
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         assert!(
             open_build(&storage, &store, &prepared, &fragment)
                 .marker_effect_continuation()
@@ -345,7 +349,27 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
             replacement,
             DraftLogicalExtentV1::new(3, 1),
         );
-        for _ in 0..advance_count {
+        for _ in 0..32 {
+            let snapshot = open_build(&storage, &store, &prepared, &fragment);
+            if snapshot
+                .marker_effect_continuation()
+                .active()
+                .is_some_and(|active| active.working_roots().sequence_summary().marker_count() == 1)
+            {
+                break;
+            }
+            let advance = storage
+                .prepare_draft_piece_build_advance(
+                    &store,
+                    identity.draft_id(),
+                    identity.session_id(),
+                    identity.operation_id().as_piece_operation(),
+                )
+                .unwrap()
+                .unwrap();
+            committed(execute(&store, storage.advance_draft_piece_edit(advance)));
+        }
+        for _ in 1..advance_count {
             let snapshot = open_build(&storage, &store, &prepared, &fragment);
             let advance = storage
                 .prepare_draft_piece_build_advance(
@@ -361,10 +385,7 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
                     )
                 })
                 .unwrap();
-            committed(execute(
-                &store,
-                storage.advance_draft_piece_edit(advance),
-            ));
+            committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         }
         let build = open_build(&storage, &store, &prepared, &fragment);
         let active = build.marker_effect_continuation().active().unwrap();
@@ -487,10 +508,7 @@ fn coordinated_receipt_count_and_chain_corruption_fail_between_effects() {
                 )
                 .unwrap()
                 .unwrap();
-            committed(execute(
-                &store,
-                storage.advance_draft_piece_edit(advance),
-            ));
+            committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         }
         committed(execute(
             &store,

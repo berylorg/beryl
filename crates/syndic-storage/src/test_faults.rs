@@ -10,6 +10,8 @@ mod content_text;
 mod draft_composer;
 mod draft_edit_history;
 mod draft_marker_admission;
+mod draft_marker_continuation;
+mod draft_marker_continuation_bounds;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
@@ -64,6 +66,8 @@ pub use draft_marker_admission::{
     draft_marker_admission_fixture_contribution, inject_malformed_draft_marker_admission_capacity,
     inject_malformed_draft_marker_admission_head,
 };
+pub use draft_marker_continuation::*;
+pub use draft_marker_continuation_bounds::*;
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;
 pub use draft_piece_corruption::{
@@ -146,7 +150,7 @@ pub fn syndic_v7_family_names() -> Vec<&'static str> {
 
 pub use draft_piece_encoding::{
     DraftPieceBuildEncodingForTest, draft_piece_build_encoding_for_test,
-    inject_draft_piece_build_v3_for_test,
+    inject_draft_piece_build_older_version_for_test,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

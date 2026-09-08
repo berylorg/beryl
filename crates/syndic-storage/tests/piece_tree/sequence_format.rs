@@ -1,12 +1,12 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use syndic_storage::test_faults::{
-    draft_piece_build_encoding_for_test, inject_draft_piece_build_v3_for_test,
+    draft_piece_build_encoding_for_test, inject_draft_piece_build_older_version_for_test,
 };
 
 #[test]
-fn sequence_build_families_have_canonical_v4_vectors_and_reject_v3_envelopes() {
-    for family in 0..3 {
+fn sequence_build_families_have_canonical_v5_vectors_and_reject_older_envelopes() {
+    for (family, version) in (0..3).flat_map(|family| [3, 4].map(|version| (family, version))) {
         let (_home, store, storage, thread) = fixture("sequence-format", 200);
         let edit = transaction(
             &storage,
@@ -27,7 +27,7 @@ fn sequence_build_families_have_canonical_v4_vectors_and_reject_v3_envelopes() {
             edit.operation,
         );
         let encodings = draft_piece_build_encoding_for_test(&store, &storage, key);
-        assert_eq!(encodings.versions, [4, 4, 4]);
+        assert_eq!(encodings.versions, [5, 5, 5]);
         assert_eq!(encodings.encoded, encodings.reencoded);
         let hashes = std::array::from_fn::<_, 3, _>(|index| {
             let mut digest = Sha256::new();
@@ -38,12 +38,12 @@ fn sequence_build_families_have_canonical_v4_vectors_and_reject_v3_envelopes() {
         assert_eq!(
             hashes,
             [
-                "ba55d95a5e84f57128bb2a8a8db30a7537069a7743581257e436adc821dd4c33",
-                "b5ef2b55406c9f16b69307313daca75cf3db2c9941c9ad2e386f214889f5e7c3",
-                "4939bf1159c0cab0683bac946521ffbd34cc272f26e687bf6c805732bfc4710d",
+                "27d0420bc72f1e3c3eee62e0db524dc90fd9a7e4a0ccd95543299960edcb185c",
+                "e2bb8ab6dabc90714935018cfadfa32f8895fe2325484ea9b56d342b42ff7ecc",
+                "0842202cb4afdd58deb686436e7a0bdeb325cbf0581781b994aa598112e93008",
             ]
         );
-        inject_draft_piece_build_v3_for_test(&store, &storage, key, family);
+        inject_draft_piece_build_older_version_for_test(&store, &storage, key, family, version);
         assert!(
             store
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

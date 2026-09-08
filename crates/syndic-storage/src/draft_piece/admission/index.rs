@@ -258,7 +258,7 @@ impl AdmissionNodeReader for DomainAdmissionNodeReader<'_, '_> {
 struct ReadLedger<'a, R> {
     reader: &'a R,
     read_bytes: u64,
-    work: AdmissionWorkLedger,
+    work: builder_work::IndexWork,
     cache: BTreeMap<DraftMarkerAdmissionNodeKeyV1, Option<DraftMarkerAdmissionNodeV1>>,
 }
 
@@ -277,7 +277,9 @@ impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
             Some(value) => encoded_node_record_charge(key, value)?,
             None => encoded_node_key_charge(key)?,
         };
-        reservation.finish(charge, value.is_some())?;
+        if let Some(reservation) = reservation {
+            reservation.finish(charge, value.is_some())?;
+        }
         let read_bytes = self
             .read_bytes
             .checked_add(charge)
@@ -288,7 +290,9 @@ impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
     }
 }
 
+mod builder_work;
 mod tree_edit;
+pub(crate) use builder_work::prepare_acquired_marker_consumption;
 
 use tree_edit::{
     NodeIdFactory, SearchKey, authenticate_fresh_put_keys, authenticate_replay_deletions,
@@ -346,7 +350,7 @@ fn prepare_assignment_with_reader<R: AdmissionNodeReader>(
     let mut ledger = ReadLedger {
         reader: node_reader,
         read_bytes: 0,
-        work: work.clone(),
+        work: work.clone().into(),
         cache: BTreeMap::new(),
     };
     authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
@@ -616,7 +620,7 @@ fn prepare_empty_with_reader<R: AdmissionNodeReader>(
     let mut ledger = ReadLedger {
         reader: node_reader,
         read_bytes: 0,
-        work: work.clone(),
+        work: work.clone().into(),
         cache: BTreeMap::new(),
     };
     if let Some(receipt) = prior_receipt {
@@ -693,7 +697,7 @@ pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
     let mut ledger = ReadLedger {
         reader: &node_reader,
         read_bytes: 0,
-        work: AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES),
+        work: AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES).into(),
         cache: BTreeMap::new(),
     };
     let mut retired_targets = Vec::new();
@@ -787,10 +791,22 @@ fn prepare_consumption_with_ledger<R: AdmissionNodeReader>(
     work: &AdmissionWorkLedger,
 ) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
 {
+    prepare_consumption_with_work(reader, owner, root, marker, identity, work.clone().into())
+}
+
+fn prepare_consumption_with_work<R: AdmissionNodeReader>(
+    reader: &R,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    marker: DraftPieceMarkerV1,
+    identity: DraftMarkerAdmissionPageIdentityV1,
+    work: builder_work::IndexWork,
+) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
     let mut ledger = ReadLedger {
         reader,
         read_bytes: 0,
-        work: work.clone(),
+        work,
         cache: BTreeMap::new(),
     };
     let leaf = point_target_leaf(&mut ledger, owner, root, marker.marker_id())?
@@ -826,6 +842,7 @@ fn prepare_consumption_with_ledger<R: AdmissionNodeReader>(
     )?;
     authenticate_fresh_put_keys(&mut ledger, &edit.puts)?;
     let mut deletions = Vec::with_capacity(edit.predecessor.len());
+    let mut deletion_work_bytes = 0u64;
     for child in &edit.predecessor {
         let node = ledger
             .point(&child.key())?
@@ -833,9 +850,9 @@ fn prepare_consumption_with_ledger<R: AdmissionNodeReader>(
         if node.digest() != child.digest() || node.count()? != child.count() {
             return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
         }
-        ledger
-            .work
-            .charge_delete(encoded_node_record_charge(&node.key(), &node)?)?;
+        deletion_work_bytes = deletion_work_bytes
+            .checked_add(ledger.work.charge_node_delete(&node)?)
+            .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?;
         deletions.push(node);
     }
     let write_bytes = sum_node_charges(&edit.puts)?;
@@ -843,7 +860,7 @@ fn prepare_consumption_with_ledger<R: AdmissionNodeReader>(
     checked_draft_marker_admission_command_charge_v1([
         ledger.read_bytes,
         write_bytes,
-        delete_bytes,
+        deletion_work_bytes,
     ])?;
     Ok(PreparedDraftMarkerAdmissionConsumptionV1 {
         source_root: root,
@@ -897,7 +914,7 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
     let mut ledger = ReadLedger {
         reader,
         read_bytes: 0,
-        work: AdmissionWorkLedger::new(command_limit),
+        work: AdmissionWorkLedger::new(command_limit).into(),
         cache: BTreeMap::new(),
     };
     authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
