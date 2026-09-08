@@ -154,6 +154,15 @@ fn candidate_is_exact<R: CheckpointReader>(
     if !root_and_frontier_are_exact(reader, head, frontier)? {
         return Ok(false);
     }
+    candidate_transition_is_exact(reader, head, frontier)
+}
+
+#[inline(never)]
+fn candidate_transition_is_exact<R: CheckpointReader>(
+    reader: &R,
+    head: &DraftEditorCandidateSessionV1,
+    frontier: &DraftEditHistoryFrontierV1,
+) -> Result<bool, R::Error> {
     if has_opening_identity(head) {
         return opening_is_exact(reader, head, frontier);
     }

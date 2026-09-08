@@ -81,12 +81,7 @@ pub(super) fn settle(
     generation: HomeGeneration,
 ) -> CapturedPreparation {
 
-    let prepared = SettleMutation {
-        prepared: *value,
-        home_generation: generation,
-        reconstructed_cleanup_admissions: Box::default(),
-    }
-    .prepare(reader)?;
+    let prepared = settlement::prepare_for_generation(&value, reader, generation, &[])?;
     let target = match &prepared {
         Some(value) => CapturedState {
             staging: source.staging.clone(),
@@ -97,7 +92,7 @@ pub(super) fn settle(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((PreparedCommandMutation::Settle(Box::new(prepared)), Box::new(target)))
+    Ok((PreparedCommandMutation::Settle(prepared), Box::new(target)))
 }
 
 pub(super) fn terminal(

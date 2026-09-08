@@ -13,7 +13,7 @@ pub(super) enum PreparedCommandMutation {
     Transfer(Box<<TransferMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Window(Box<<StageDurableWindowMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Advance(Box<<AdvanceMutation as DomainMutation<SyndicDomain>>::Prepared>),
-    Settle(Box<<SettleMutation as DomainMutation<SyndicDomain>>::Prepared>),
+    Settle(<SettleMutation as DomainMutation<SyndicDomain>>::Prepared),
     Terminal(Box<<TerminalMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Replay(Box<DraftPieceSettlementV1>),
 }
@@ -153,7 +153,7 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
             PreparedCommandMutation::Advance(value) => {
                 AdvanceMutation::contribute(*value, mutations)
             }
-            PreparedCommandMutation::Settle(value) => SettleMutation::contribute(*value, mutations),
+            PreparedCommandMutation::Settle(value) => SettleMutation::contribute(value, mutations),
             PreparedCommandMutation::Terminal(value) => {
                 TerminalMutation::contribute(*value, mutations)
             }

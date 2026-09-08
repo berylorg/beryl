@@ -33,54 +33,45 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 342: Correct Terminal Marker Admission Cleanup (finished)
+# Phase 343: Correct Bounded Settlement Stack Layout (finished)
 
-Accepted authenticated replay-target reclamation at writer handoff and ordinary terminalization,
-with exact logical/physical accounting, shared bounded work and deletion reconciliation. All 49
-focused storage cases and ten public app witnesses passed across the recorded runs. Isolated
-locked production Syndic/app checks and independent semantic/adversarial review passed. The
-[failure record](failures/draft-marker-replay-cleanup-accounting.md#accepted-writer-handoff-correction)
-preserves the cause, correction and evidence. App presentation and mounted acceptance remain next.
+Accepted borrowed settlement preparation and one bounded boxed contribution while preserving exact
+generation checks, ordered reads, replay and command custody. All ten pending activation cases,
+72 focused storage cases and two optimized-release storage witnesses pass. Isolated locked
+production Syndic/app checks in documented local mode and independent semantic/adversarial review
+passed. The [failure record](failures/syndic-composer-mutation-stack-layout.md#accepted-settlement-layout-correction)
+preserves the measured stack reduction, allocation costs and evidence limits.
 
 # Phase 329: Connect Production Marker Admission (wip)
 
-The staged-build reconciliation prerequisite is accepted. Renewed implementation readiness found
-no missing public API or architectural prerequisite under the
-[app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md#edit-marker-and-candidate-adaptation)
+All production marker-admission prerequisites are accepted, including mapped build frontiers,
+authenticated terminal cleanup and the bounded settlement-stack correction. The reviewed app
+composition and Notifications contribution are implemented; finish their joint acceptance under
+the [app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md#edit-marker-and-candidate-adaptation)
 and [feature reconciliation rules](features/composer/design.md#durable-mutation-reconciliation).
-The [failure record](failures/composer-marker-admission.md) preserves earlier app failures.
-The [Syndic mapping prerequisite](failures/syndic-marker-build-frontier.md#accepted-v6-continuation)
-is now accepted, as is the
-[terminal cleanup correction](failures/draft-marker-replay-cleanup-accounting.md#accepted-writer-handoff-correction).
-All ten public app evidence cases pass, including exact build cancellation, disposal and mismatched
-replay cleanup. Preserve that verified composition while finishing the unaccepted app work.
-Review found that typed admission refusals have no visible consumer; connect their distinct
-messages to the existing bounded GUI presentation. Then complete the mounted cases, focused
-regressions, production app check and final independent review. App acceptance remains outstanding.
+The [admission record](failures/composer-marker-admission.md) preserves the earlier findings.
 
-Replace post-finish raw submission and terminal-status polling with opaque Syndic prepared commands
-and retained outcome flights. Resume existing work before preparing another command, within the
-host's transition budget. Preserve exact flight custody through current and detached execution,
-cancellation and service disposal. Keep committed classification and original/later diagnostics
-separate from cleanup or availability failures. Terminally unavailable requests remain unavailable
-and cannot be revived through the marker-admission retry path.
+Run the complete focused app set on the accepted storage correction: composer lifecycle, public
+marker evidence, mounted composer, slot, notices, pending activation, history, mutations and
+publication. Preserve exact marker, candidate/root/history, cancellation, noncommit generation,
+typed feedback, late-flight and disposal assertions. Repeat the isolated production app check with
+the reviewed 29-file app composition in documented local dependency mode, and obtain final
+independent acceptance review before the scoped commit. The detached path is reviewed structurally;
+public disposal and mounted lifetime behavior are exercised. No larger test stack substitutes for
+the required ordinary-stack witnesses.
 
-Compose accepted widget evidence and Syndic fresh-asset readiness before production storage
-MutationBegin. Preserve generic HomeStore proof composition, exact selection and operation,
-bounded replay, cancellation and reconciliation. Remove the test-only admission restriction and
-verify fresh insertion, replacement, moves, removal, and the three previously failing mounted GUI
-cases without weakening their assertions. Broader process-provider work remains deferred.
-Verify bounded evidence and staging agreement, stale operation/predecessor/generation refusal,
-distinct size/capacity/storage failures, exact refusal cleanup, post-finish ambiguity, cancellation
-with a retained flight, committed cleanup failure and detached/disposal drain. Credit the accepted
-Syndic/HomeStore guarantees and verify the app's composition through real fault boundaries.
-Run the production app check and focused serial composer/slot/lifecycle regressions, including
-shared history support when changed. Obtain independent semantic and adversarial custody review
-before acceptance and commit.
-Use existing bounded local producers, replayable propagated cut, and the admitted-Asset marker
-entry point. The mounted rich/large clipboard event currently has no producer consumer; its
-composition remains part of the separate clipboard/image-assets rework checkpoint. Acceptance
-here does not claim end-to-end mounted clipboard image decoding or large/rich paste.
+Use existing bounded local producers, replayable propagated cut and the admitted-Asset marker entry
+point. Mounted clipboard image decoding and large/rich paste remain the separate clipboard/image-assets
+checkpoint. Broader process-provider work remains deferred. Canonical dependency publication and
+pinning remain Phase 344; the formal old widget pin cannot compile the new evidence/restart APIs.
+
+# Phase 344: Finalize Canonical Marker Dependency Revision (pending)
+
+After local app acceptance and Operator authorization for dependency publication, publish the
+accepted widget revision, update Beryl's formal pin and canonical lockfile, and verify locked
+canonical metadata plus the focused production app check. Refresh semantic navigation only after
+the validated Cargo model passes. This boundary follows the local-development workflow in
+[ENV.md](../ENV.md); it does not activate deferred process-provider work.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 

@@ -67,3 +67,115 @@ harness plus release evidence on an explicit 1 MiB stack. Phase 338 owns the can
 recurrence and requires the default-stack continuation and ordinary-range regressions together
 with isolated marker semantics. Its new regression is corrected and its independent acceptance
 review passed; the two pre-existing fixture stack limitations remain outside that correction.
+
+## Postpromotion Settlement Recurrence
+
+The final app run `1eedff7c-51f1-4224-ae58-e339c0e63324` passed 125 of 126 cases on ordinary
+stacks. `pending_composer_activation::predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usable`
+aborted with `0xc00000fd` while processing the promoted editor's next ordinary text edit. Target
+activation, pending-surface priming, the blocked dispatch, publication, late-flight release and all
+custody-zero assertions completed first.
+
+Moving setup into `promote_pending_with_blocked_dispatch` preserved the assertions but still
+aborted in run `63d2b870-a3ed-4504-aab0-88830a78cbe8`. Do not continue treating this recurrence
+as large fixture setup or weaken the subsequent-edit assertion. Selection identity alone is also
+insufficient to prove a committed edit after noncommit generation refresh; the fixture now requires
+candidate generation and root advancement.
+
+A CDB capture on 2026-09-08 used the same debug test executable with its exact test filter, ordinary
+thread stack, no stack override, and a first-chance stack-overflow break. The failing path is:
+
+```text
+history::codec::decode_transition
+history::retention::authentication::authenticate_draft_edit_history_frontier_v1
+checkpoint::candidate_is_exact
+publication::validate_publication_receipt_history
+mutation::settlement::{read_and_authenticate, prepare}
+staged_command::capture::{preparation::settle, CommandMutation::prepare}
+HomeStore::execute_current
+PreparedStagedDraftPieceCommandV1::submit
+SyndicComposerHost::run_build_command
+composer_slot::dispatch_quantum
+conversation_composer_owner::pump_dispatch
+```
+
+The remaining test frame is about `0x1610` bytes (5.5 KiB). Roughly 1.9 MiB is consumed in the
+nested production chain before the transition decoder completes stack probing. Independent review
+confirms this is a concrete ordinary-debug execution failure, not evidence of recursion or an
+unbounded draft, and not proof that optimized release code fails.
+
+Independent frame attribution identifies approximately 327 KiB in settlement
+`read_and_authenticate`, 322 KiB in staged capture `preparation::settle`, 275 KiB in frontier
+authentication, 170 KiB in `candidate_is_exact`, and 159 KiB in settlement `prepare`.
+The narrow correction is to reduce overlapping bounded result/value lifetimes with the already
+accepted borrowing and out-of-line mechanics. Preserve read order, identity/proof checks, typed
+failures and public command custody. A larger test stack cannot be credited as this correction.
+
+The app's 29-file production scope remained frozen at SHA-256
+`8577942819609264D864DDC2A895A4A3E437CDB15427122421B25CF06CDD91FF`
+while the Operator reviewed and then authorized the narrow correction below.
+
+## Accepted Settlement Layout Correction
+
+The Operator authorized borrowing first and targeted boxing when measurements justified it.
+The initial four-file borrowing correction made the previously failing ordinary-stack witness pass,
+but the measured decoder entry plus its prologue still consumed about 1,912,128 bytes of a 2 MiB
+thread stack. That left only about 185 KB at that probe. A passing witness alone was insufficient
+reason to stop reducing the demonstrated frame pressure.
+
+The final five-file correction borrows build and session values through settlement authentication,
+shares the exact writer-generation preparation entry, and separates checkpoint root/frontier
+authentication from transition-specific decoding. It boxes the bounded prepared settlement
+contribution once at construction and carries `Option<Box<...>>` through preparation and contribution.
+Staged capture reuses its existing allocation boundary instead of boxing that option again.
+Exact replay remains `None` and avoids the old outer allocation; direct settlement gains one
+bounded box. PDB type information gives the contribution payload as 32,432 bytes.
+
+A final owned build clone also duplicates its bounded canonical-header vector. The header contains
+fixed identities, references, positions, counts and a digest, not edit payload or a logical
+collection. The clone owns durable value data and duplicates no move-only capability. No new
+worker, public API, schema, operation identity, read ordering or custody protocol was introduced.
+
+Live debug probes on the same postpromotion witness measured a maximum of 1,607,808 bytes after
+the history decoder's prologue and 966,832 bytes after the settlement constructor's prologue.
+The measured decoder point leaves approximately 489 KB of the ordinary 2 MiB stack. Construction
+still has a bounded 113,664-byte frame; boxing does not establish direct in-place construction or
+the absence of a stack temporary. These are observed points on the exercised path, not an
+exhaustive runtime stack upper bound.
+
+Final debug frame allocations include 49,680 bytes for settlement authentication, 147,744 for
+staged settlement capture, 88,416 for settlement preparation, 744 for its shared generation entry,
+113,664 for contribution construction and 19,632 for contribution. The large prepared value no
+longer propagates through all caller result slots.
+
+Final ordinary-stack runs passed the strengthened postpromotion witness, all ten pending activation
+cases (`bccb3b61-f807-47ef-bdbf-f61ec0184f48`), and all 72 focused storage cases
+(`30890891-c500-4ae2-b81f-2db8f2d983dc`). The storage cases cover candidate publication, edit
+history and retention, publication evidence, editor checkpoints, and staged outcomes, including
+nonzero-generation openings, substituted forks, historical replay, ambiguous cleanup, dynamic
+history refusal and more than 256 fragments.
+
+The two existing storage release witnesses passed in ordinary optimized release
+(`bc87fe23-8aba-4151-84e7-cda01e965449`) and with debug symbols enabled for frame attribution
+(`6ff1c05d-3723-4d0d-beca-214462bddb19`). They exercise editing after immutable publication and
+prepared historical-settlement replay through the direct and staged preparation routes.
+Optimized probes measured decoder/constructor depths of 470,944/358,256 bytes in staged replay and
+536,864/342,048 bytes in postpublication editing. Frame allocations include 24,856 bytes for
+settlement authentication, 61,776 for staged settlement capture, 36,056 for the shared preparation
+entry with inlined preparation, and 47,720 for contribution construction. Checkpoint transition
+helpers use approximately 61 KB; the writer-generation check uses 9,512 bytes. These are measured
+optimized paths and frame allocations, not exhaustive runtime bounds.
+This evidence does not claim that the optimized GPUI witness was run.
+
+An isolated checkout of `35ebfdf` containing only the five production changes passed
+`cargo +stable --config .cargo/local.toml check --locked -p syndic-storage -p beryl-app --lib --no-default-features`.
+The documented local dependency configuration and ignored local lockfile were used; the canonical
+manifest and lockfile were unchanged. Independent semantic and adversarial review found no blocking
+difference in generation checks, ordered reads, replay classification, contribution writes,
+reservation inventory or single-owner command custody.
+
+The accepted five-file source fingerprint is SHA-256
+`8B941AA3172260437688C4F2A5D403FBCED69E4C0002D9575F380592243D9D03`, computed from sorted
+repo-relative `path=SHA256` rows joined by LF without a trailing LF.
+App marker-integration acceptance resumes separately with its final full regression and production
+checks; canonical widget publication and revision pinning remain a later boundary.

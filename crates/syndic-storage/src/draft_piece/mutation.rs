@@ -2021,22 +2021,18 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
 
 impl DomainMutation<SyndicDomain> for SettleMutation {
     type Error = SyndicMutationError;
-    type Prepared = Option<settlement::PreparedSettlementContribution>;
+    type Prepared = Option<Box<settlement::PreparedSettlementContribution>>;
 
     fn prepare(
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let build = required_build(reader, &settlement_key(&self.prepared))?;
-        if build.writer_admission().is_some_and(|admission| {
-            admission.binding().home_generation().get() != self.home_generation.get()
-                || self
-                    .reconstructed_cleanup_admissions
-                    .contains(&admission.binding().owner())
-        }) {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        settlement::prepare(&self.prepared, reader)
+        settlement::prepare_for_generation(
+            &self.prepared,
+            reader,
+            self.home_generation,
+            &self.reconstructed_cleanup_admissions,
+        )
     }
 
     fn reserve_reconciliation(
