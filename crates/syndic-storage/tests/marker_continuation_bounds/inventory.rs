@@ -68,6 +68,13 @@ pub(super) fn ceilings() -> [Ceiling; 10] {
     };
     let predecessor_combined_root = 49 + 65_536;
     let original_source_closure = predecessor_combined_root + 3 * 32_801 + 32_801;
+    let mapping = |ceiling: Ceiling| {
+        Ceiling::new(
+            ceiling.structures + 3,
+            ceiling.points + 3,
+            ceiling.charged + 7 * 480 + 3 * 1_449,
+        )
+    };
     [
         Ceiling::new(9, 29, common() + 32_801),
         Ceiling::new(77, 98, common() + sequence_half + original_source_closure),
@@ -80,22 +87,23 @@ pub(super) fn ceilings() -> [Ceiling; 10] {
         mutation(65, 130, (65 + 130) * order_node),
         Ceiling::new(61, 83, common() + 32_801 + 714_332 + 3 * 65_537 + 65_584),
     ]
+    .map(mapping)
 }
 
 #[test]
 fn full_command_inventory_derives_each_published_branch_ceiling() {
     assert_eq!(common(), 958_724);
     let expected = [
-        (9, 29, 991_525, 1_066_581),
-        (77, 98, 2_718_838, 2_793_894),
-        (73, 93, 2_522_049, 2_597_105),
-        (201, 221, 4_087_519, 4_162_575),
-        (205, 225, 4_109_813, 4_184_869),
-        (201, 221, 3_155_665, 3_230_721),
-        (203, 223, 3_180_554, 3_255_610),
-        (201, 221, 2_562_576, 2_637_632),
-        (203, 223, 2_581_319, 2_656_375),
-        (61, 83, 1_968_052, 2_043_108),
+        (12, 32, 999_232, 1_074_288),
+        (80, 101, 2_726_545, 2_801_601),
+        (76, 96, 2_529_756, 2_604_812),
+        (204, 224, 4_095_226, 4_170_282),
+        (208, 228, 4_117_520, 4_192_576),
+        (204, 224, 3_163_372, 3_238_428),
+        (206, 226, 3_188_261, 3_263_317),
+        (204, 224, 2_570_283, 2_645_339),
+        (206, 226, 2_589_026, 2_664_082),
+        (64, 86, 1_975_759, 2_050_815),
     ];
     for (actual, (structures, points, charged, peak)) in ceilings().into_iter().zip(expected) {
         assert_eq!(
@@ -111,7 +119,26 @@ fn full_command_inventory_derives_each_published_branch_ceiling() {
         assert!(actual.points <= 512);
         assert!(actual.peak <= 4_194_304);
     }
-    assert_eq!(4_194_304 - ceilings()[4].peak, 9_435);
+    assert_eq!(4_194_304 - ceilings()[4].peak, 1_728);
+}
+
+#[test]
+fn mapping_commands_and_compact_ready_keep_the_complete_shared_allowance() {
+    let control = ceilings()[0];
+    let base = control.charged - 3 * 1_449;
+    let lookup = Ceiling::new(33, 53, base + (22 + 2) * 1_449);
+    let insertion = Ceiling::new(78, 98, lookup.charged + 45 * (1_449 + 64));
+    let deletion = Ceiling::new(99, 119, insertion.charged + 21 * 1_449);
+    assert_eq!(lookup, Ceiling::new(33, 53, 1_029_661));
+    assert_eq!(insertion, Ceiling::new(78, 98, 1_097_746));
+    assert_eq!(deletion, Ceiling::new(99, 119, 1_128_175));
+    assert_eq!(deletion.peak, 1_203_231);
+    for command in [lookup, insertion, deletion] {
+        assert!(command.structures + 1 <= 256);
+        assert!(command.points <= 512);
+        assert!(command.peak <= 4_194_304);
+    }
+    assert_eq!(ceilings()[4].peak - 1_449, 4_191_127);
 }
 
 #[test]
@@ -152,5 +179,8 @@ fn sequence_split_inventory_includes_both_text_outputs_and_all_internal_construc
     assert!(actual_inventory <= 3_146_733);
     assert_eq!(height + 1, 65);
     assert_eq!(2 * height + 3 + 1, 132);
-    assert_eq!(common() + 3_146_733 + 132 * 33, ceilings()[4].charged);
+    assert_eq!(
+        common() + 3_146_733 + 132 * 33 + 7_707,
+        ceilings()[4].charged
+    );
 }

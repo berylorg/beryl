@@ -1,7 +1,7 @@
 use super::position::{PositionProof, locate, resolve, text_boundary};
 use super::*;
 
-fn previous(
+pub(super) fn previous(
     context: &BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
     fragment: &DraftPieceBuildFragmentV1,
@@ -47,8 +47,6 @@ fn after_source(
     Ok(
         if active.fragment_key().ordinal() > 1 && boundary == build.base_frontier() {
             proof(Purpose::PreviousStart)
-        } else if removal(active.effect()).is_some() {
-            proof(Purpose::WorkingOccurrence)
         } else {
             Pending::None
         },
@@ -61,7 +59,7 @@ fn occurrence(
     expected: DraftMarkerIdentityOccurrenceV1,
     anchor: u64,
     effect: DraftPieceMarkerEffectV1,
-) -> Result<DraftPieceMarkerRemovalSiteV1, DraftPiecePrepareErrorV1> {
+) -> Result<(DraftPieceMarkerRemovalSiteV1, u128), DraftPiecePrepareErrorV1> {
     let tree = sequence.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
     let fact = locate(
         context,
@@ -86,10 +84,13 @@ fn occurrence(
         ));
     }
     validate_marker_effect_charge(effect, &fact.leaf)?;
-    Ok(DraftPieceMarkerRemovalSiteV1 {
-        piece_rank: fact.located.rank,
-        marker_ordinal: fact.marker_ordinal,
-    })
+    Ok((
+        DraftPieceMarkerRemovalSiteV1 {
+            piece_rank: fact.located.rank,
+            marker_ordinal: fact.marker_ordinal,
+        },
+        u128::from(anchor) + u128::from(fact.marker_ordinal),
+    ))
 }
 
 pub(super) fn advance(
@@ -155,19 +156,20 @@ pub(super) fn advance(
                 .end(),
             _ => return invalid(),
         };
-        let boundary = match resolve(context, sequence, position, component, primary_marker_rank)? {
-            PositionProof::Primary(rank) => {
-                return Ok(with_pending(
-                    active,
-                    Pending::Proof {
-                        purpose,
-                        component: Component::Secondary,
-                        primary_marker_rank: Some(rank),
-                    },
-                ));
-            }
-            PositionProof::Complete(boundary) => durable_boundary(boundary),
-        };
+        let (boundary, unit) =
+            match resolve(context, sequence, position, component, primary_marker_rank)? {
+                PositionProof::Primary(rank) => {
+                    return Ok(with_pending(
+                        active,
+                        Pending::Proof {
+                            purpose,
+                            component: Component::Secondary,
+                            primary_marker_rank: Some(rank),
+                        },
+                    ));
+                }
+                PositionProof::Complete(boundary, unit) => (durable_boundary(boundary), unit),
+            };
         let pending = match purpose {
             Purpose::SourceBounds => {
                 if checked_boundary(boundary)? < checked_boundary(build.base_frontier())? {
@@ -176,6 +178,11 @@ pub(super) fn advance(
                     ));
                 }
                 planning.source_boundary = Some(boundary);
+                context
+                    .mapping
+                    .as_mut()
+                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
+                    .fragment_source_end_unit = Some(unit);
                 proof(if removal(active.effect()).is_some() {
                     Purpose::RemovalGap
                 } else {
@@ -206,11 +213,7 @@ pub(super) fn advance(
                     ));
                 }
                 planning.previous_start = None;
-                if removal(active.effect()).is_some() {
-                    proof(Purpose::WorkingOccurrence)
-                } else {
-                    Pending::None
-                }
+                Pending::None
             }
             _ => return invalid(),
         };
@@ -228,46 +231,31 @@ pub(super) fn advance(
         return invalid();
     }
     match purpose {
-        Purpose::SourceOccurrence | Purpose::WorkingOccurrence => {
+        Purpose::SourceOccurrence => {
             let removed = removal(active.effect()).ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-            let anchor = if purpose == Purpose::SourceOccurrence {
-                removed.position().utf8_offset()
-            } else {
-                removed
-                    .position()
-                    .utf8_offset()
-                    .checked_sub(active.source_frontier())
-                    .and_then(|offset| active.successor_frontier().checked_add(offset))
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
-            };
-            let site = occurrence(
+            let anchor = removed.position().utf8_offset();
+            let (site, unit) = occurrence(
                 context,
                 sequence,
                 removed.occurrence(),
                 anchor,
                 active.effect(),
             )?;
-            if purpose == Purpose::SourceOccurrence {
-                if !matches!(active.effect(), DraftPieceMarkerEffectV1::Move { .. })
-                    && active.planning().and_then(|p| p.source_boundary)
-                        != Some(DraftPieceBuildBoundaryV1::new(site.piece_rank, 0))
-                {
-                    return invalid();
-                }
-                Ok(with_pending(active, proof(Purpose::SourceIdentity)))
-            } else {
-                Ok(update(
-                    active,
-                    active.working_roots(),
-                    active.phase(),
-                    Some(site),
-                    active.planning(),
-                    None,
-                    proof(Purpose::WorkingIdentity),
-                ))
+            if !matches!(active.effect(), DraftPieceMarkerEffectV1::Move { .. })
+                && active.planning().and_then(|p| p.source_boundary)
+                    != Some(DraftPieceBuildBoundaryV1::new(site.piece_rank, 0))
+            {
+                return invalid();
             }
+            mapping_program::set_stage(
+                context,
+                mapping_program::Stage::MarkerSource {
+                    removal_source_unit: Some(unit),
+                },
+            )?;
+            Ok(with_pending(active, proof(Purpose::SourceIdentity)))
         }
-        Purpose::SourceIdentity | Purpose::WorkingIdentity => {
+        Purpose::SourceIdentity => {
             let expected = removal(active.effect())
                 .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
                 .occurrence();
@@ -276,14 +264,7 @@ pub(super) fn advance(
                     DraftPieceRejectedReasonV1::DuplicateMarkerIdentity,
                 ));
             }
-            Ok(with_pending(
-                active,
-                if purpose == Purpose::SourceIdentity {
-                    after_source(build, active)?
-                } else {
-                    Pending::RemoveSequence
-                },
-            ))
+            Ok(with_pending(active, after_source(build, active)?))
         }
         Purpose::SourceInsertIdentityAbsent | Purpose::InsertIdentityAbsent => {
             if purpose == Purpose::SourceInsertIdentityAbsent
@@ -307,7 +288,7 @@ pub(super) fn advance(
             ))
         }
         Purpose::InsertAnchor | Purpose::InsertOrder | Purpose::InsertAfter => {
-            insert_gap(context, build, active, sequence, purpose)
+            insert_gap(context, build, fragment, active, sequence, purpose)
         }
         _ => invalid(),
     }
@@ -316,6 +297,7 @@ pub(super) fn advance(
 fn insert_gap(
     context: &mut BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
     active: DraftPieceActiveMarkerEffectV1,
     sequence: Option<SequenceRef>,
     purpose: Purpose,
@@ -362,7 +344,9 @@ fn insert_gap(
                         }
                         if marker.order_key() > insertion.marker().order_key() {
                             return complete_gap(
+                                context,
                                 build,
+                                fragment,
                                 active,
                                 Boundary {
                                     rank: fact.located.rank,
@@ -379,22 +363,48 @@ fn insert_gap(
         Purpose::InsertAfter => text_boundary(sequence, fact.as_ref(), anchor)?,
         _ => return invalid(),
     };
-    complete_gap(build, active, site.0, site.1)
+    complete_gap(context, build, fragment, active, site.0, site.1)
 }
 
 fn complete_gap(
+    context: &mut BuildContext<'_>,
     build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
     active: DraftPieceActiveMarkerEffectV1,
     boundary: Boundary,
     marker_ordinal: u64,
 ) -> Result<DraftPieceActiveMarkerEffectV1, DraftPiecePrepareErrorV1> {
-    let DraftPieceBuildFrontierV1::Inserting { successor_end, .. } = build.frontier() else {
+    let DraftPieceBuildFrontierV1::Inserting { .. } = build.frontier() else {
         return invalid();
     };
-    let mapped_next_boundary = durable_boundary(boundary_after_marker_insertion(
-        checked_boundary(successor_end)?,
-        boundary,
-    )?);
+    let anchor = insertion(active.effect())?.anchor();
+    let frontier = fragment
+        .replacement()
+        .start()
+        .utf8_offset()
+        .checked_sub(active.source_frontier())
+        .and_then(|delta| active.successor_frontier().checked_add(delta))
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    if anchor > frontier {
+        return Err(DraftPiecePrepareErrorV1::Rejected(
+            DraftPieceRejectedReasonV1::OutOfOrder,
+        ));
+    }
+    mapping_program::set_stage(
+        context,
+        mapping_program::Stage::InsertMap {
+            splice: DraftPieceMappingSpliceV1 {
+                kind: DraftPieceMappingSpliceKindV1::MarkerInsert,
+                a: u128::from(anchor) + u128::from(marker_ordinal),
+                removed: 0,
+                inserted: 1,
+                leaf: None,
+                rank: boundary.rank,
+                local_start: boundary.inner as u64,
+                local_end: 0,
+            },
+        },
+    )?;
     Ok(update(
         active,
         active.working_roots(),
@@ -404,8 +414,7 @@ fn complete_gap(
         Some(DraftPieceMarkerInsertionSiteV1 {
             boundary: durable_boundary(boundary),
             marker_ordinal,
-            mapped_next_boundary,
         }),
-        Pending::InsertSequence,
+        Pending::None,
     ))
 }

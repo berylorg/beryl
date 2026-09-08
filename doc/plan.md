@@ -30,56 +30,28 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 341: Implement Authenticated Build Coordinate Mapping (finished)
+# Phase 340: Preserve Canonical Marker Build Frontiers (finished)
 
-Accepted the [authenticated mapping primitive](../crates/syndic-storage/doc/design-schema-v7.md#build-coordinate-mapping-encoding)
-and its shared-ledger integration. All 11 mapping cases and five inventory regressions passed,
-including independent composition and measured height-22 normalization. Isolated production
-Syndic compilation and independent semantic/adversarial review passed. The
-[failure record](failures/syndic-marker-build-frontier.md#accepted-mapping-primitive)
-preserves measured evidence and the shared-reader version-envelope correction. V6 builder
-continuation remains the next acceptance boundary.
+Accepted the [closed V6 mapping continuation](../crates/syndic-storage/doc/design-schema-v7.md#marker-continuation-encoding-and-program),
+canonical publication guard and mapping-root custody. All 90 focused cases passed across the
+main run and targeted corrections; canonical V6 vectors, isolated production Syndic/app checks
+and independent semantic/adversarial review passed. The
+[failure record](failures/syndic-marker-build-frontier.md#accepted-v6-continuation)
+preserves mixed-edit, partial-surgery, bounded-work and recovery evidence. Application marker
+admission remains its separate acceptance boundary.
 
-# Phase 340: Preserve Canonical Marker Build Frontiers (wip)
-
-Connect the accepted mapping primitive to the
-[closed V6 continuation program](../crates/syndic-storage/doc/design-schema-v7.md#marker-continuation-encoding-and-program).
-Replace all three build/progress/settlement family versions and digests together, requiring the
-mapping block on every implemented edit producer. Preserve the exact five-effect implicit-map
-initialization. Do not implement the deferred sealed-import pipeline or admit a mapless edit.
-Replace affine source translation with the specified text/marker proof stages, map-first splices,
-atomic coherent installation, and separate final frontier refresh/publication. Apply canonical
-shape validation before publication and preserve closed receipt transition validation without
-replaying proof paths. Extend terminal and exact-old/exact-new outcome custody to selected/prior
-mapping roots; retain mapping evidence through admission cleanup.
-
-Verify supported mixed Move/text/marker edits and repeated boundaries, original Copy-only removal,
-split-text refresh, every partial-map/marker cancellation boundary, missing or substituted map
-closure, acknowledgement loss, stale command refusal and more than 256 fragments. Measure full
-construction branches and outcome verification against the existing ceilings, including the
-tight sequence-insertion branch. Run focused serial nextest regressions, isolated production
-Syndic/app checks and independent semantic/adversarial review before acceptance and commit.
-No app endpoint repair, decoder relaxation or restriction of supported moves satisfies this phase.
-Current milestone: owning V6 design and the mapping primitive are accepted; continuation
-integration begins here. Preserve all unaccepted app and admission-fixture changes.
-
-# Phase 329: Connect Production Marker Admission (pending)
+# Phase 329: Connect Production Marker Admission (wip)
 
 The staged-build reconciliation prerequisite is accepted. Renewed implementation readiness found
 no missing public API or architectural prerequisite under the
 [app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md#edit-marker-and-candidate-adaptation)
 and [feature reconciliation rules](features/composer/design.md#durable-mutation-reconciliation).
 The [failure record](failures/composer-marker-admission.md) preserves earlier app failures.
-App implementation is paused for the accepted-design
-[Syndic mapping correction](failures/syndic-marker-build-frontier.md) until its implementation
-prerequisites are accepted.
-The partial app composition now retains opaque outcome flights and cleanup custody; an initial
-production check passed before later narrow lifecycle corrections. Seven public-evidence cases
-compile, but the first mixed-edit case still rejects after its source witness correction; the
-remaining six did not run. Three additional
-flight cases remain unregistered and uncompiled. Partial independent review found no additional
-established app blocker; final runtime and review acceptance, including all three mounted cases,
-remain outstanding. Preserve the uncommitted app/test work and apply no app endpoint workaround.
+The [Syndic mapping prerequisite](failures/syndic-marker-build-frontier.md#accepted-v6-continuation)
+is now accepted. Resume the preserved app composition and its seven public-evidence cases against
+that implementation. Register and verify the three additional outcome-flight cases, then complete
+the mounted cases, production app check and final independent review. The existing app work retains
+opaque outcome flights and cleanup custody; its runtime acceptance remains outstanding.
 
 Replace post-finish raw submission and terminal-status polling with opaque Syndic prepared commands
 and retained outcome flights. Resume existing work before preparing another command, within the

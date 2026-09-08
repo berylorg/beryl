@@ -6,16 +6,31 @@ pub(in crate::draft_piece) fn previous_proof_fragment_key(
     previous: &DraftPieceBuildProgressReceiptV1,
     current: &DraftPieceBuildProgressReceiptV1,
 ) -> Option<DraftPieceBuildFragmentKeyV1> {
-    [previous, current].into_iter().find_map(|receipt| {
-        let active = receipt.marker_effect_continuation().active()?;
-        match active.pending() {
+    [previous, current]
+        .into_iter()
+        .find_map(|receipt| match previous_position_proof(receipt)? {
             DraftPieceMarkerPendingV1::Proof {
                 purpose:
                     DraftPieceMarkerProofPurposeV1::PreviousStart
                     | DraftPieceMarkerProofPurposeV1::PreviousEnd,
                 ..
             } => {
-                let key = active.fragment_key();
+                let key = match receipt.marker_effect_continuation().active() {
+                    Some(active) => active.fragment_key(),
+                    None => {
+                        let DraftPieceBuildFrontierV1::Planning { fragment_ordinal } =
+                            receipt.frontier()
+                        else {
+                            return None;
+                        };
+                        DraftPieceBuildFragmentKeyV1::new(
+                            receipt.key().draft_id(),
+                            receipt.key().session_id(),
+                            receipt.key().operation_id(),
+                            fragment_ordinal,
+                        )
+                    }
+                };
                 Some(DraftPieceBuildFragmentKeyV1::new(
                     key.draft_id(),
                     key.session_id(),
@@ -24,7 +39,28 @@ pub(in crate::draft_piece) fn previous_proof_fragment_key(
                 ))
             }
             _ => None,
+        })
+}
+
+fn previous_position_proof(
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Option<DraftPieceMarkerPendingV1> {
+    if let Some(active) = receipt.marker_effect_continuation().active() {
+        return Some(active.pending());
+    }
+    let (purpose, proof) = match receipt.mapping()?.mapping_stage {
+        DraftPieceMappingStageV1::TextPreviousStart { proof, .. } => {
+            (DraftPieceMarkerProofPurposeV1::PreviousStart, proof)
         }
+        DraftPieceMappingStageV1::TextPreviousEnd { proof, .. } => {
+            (DraftPieceMarkerProofPurposeV1::PreviousEnd, proof)
+        }
+        _ => return None,
+    };
+    Some(DraftPieceMarkerPendingV1::Proof {
+        purpose,
+        component: proof.component,
+        primary_marker_rank: proof.primary_marker_rank,
     })
 }
 
@@ -39,7 +75,8 @@ pub(in crate::draft_piece) fn previous_proof_transition_is_exact(
             | DraftPieceBuildLifecycleV1::Cancelled
             | DraftPieceBuildLifecycleV1::Error
     ) {
-        return previous.marker_effect_continuation() == current.marker_effect_continuation();
+        return previous.marker_effect_continuation() == current.marker_effect_continuation()
+            && previous.mapping() == current.mapping();
     }
     let Some(key) = previous_proof_fragment_key(previous, current) else {
         return true;
@@ -61,14 +98,8 @@ pub(in crate::draft_piece) fn previous_proof_transition_is_exact(
     {
         return false;
     }
-    let prior = previous
-        .marker_effect_continuation()
-        .active()
-        .map(|active| active.pending());
-    let next = current
-        .marker_effect_continuation()
-        .active()
-        .map(|active| active.pending());
+    let prior = previous_position_proof(previous);
+    let next = previous_position_proof(current);
     let Some(DraftPieceMarkerPendingV1::Proof {
         purpose, component, ..
     }) = prior
@@ -206,7 +237,12 @@ pub(super) fn prepare_consumption(
     let Some(active) = build.marker_effect_continuation().active() else {
         return Ok(None);
     };
-    if active.phase() != DraftPieceActiveMarkerPhaseV1::Publishing {
+    if active.phase() != DraftPieceActiveMarkerPhaseV1::Publishing
+        || !matches!(
+            build.mapping().map(|mapping| mapping.mapping_stage),
+            Some(DraftPieceMappingStageV1::PublishReady { .. })
+        )
+    {
         return Ok(None);
     }
     if next.active().is_some()

@@ -90,6 +90,7 @@ fn admitted_publishing_and_utf8_split_share_construction_submission_and_stale_cl
             replacement,
         );
         let mut publishing_count = 0;
+        let mut refresh_stages = Vec::new();
         let mut surgeries = Vec::new();
         let mut reached_complete = false;
         for _ in 0..80 {
@@ -99,6 +100,8 @@ fn admitted_publishing_and_utf8_split_share_construction_submission_and_stale_cl
                 break;
             }
             let program = draft_marker_program_snapshot_for_test(&before);
+            let mapping =
+                syndic_storage::test_faults::draft_build_mapping_snapshot(&before).unwrap();
             let admitted_before = support::snapshot(&storage, &store, admission);
             let before_count = admitted_before.head().unwrap().target_root().count();
             syndic_storage::test_faults::reset_home_store_syndic_point_acquisition_count();
@@ -154,7 +157,11 @@ fn admitted_publishing_and_utf8_split_share_construction_submission_and_stale_cl
             let after = observed_build(&storage, &store, &prepared, &fragments);
             let admitted_after = support::snapshot(&storage, &store, admission);
             let after_head = admitted_after.head().unwrap();
-            let publishing = program.as_ref().is_some_and(|value| value.phase == 3);
+            let refreshing = program.as_ref().is_some_and(|value| value.phase == 3);
+            let publishing = refreshing && mapping.stage_tag == 24;
+            if refreshing {
+                refresh_stages.push(mapping.stage_tag);
+            }
             assert_eq!(
                 before_count - after_head.target_root().count(),
                 u64::from(publishing)
@@ -193,6 +200,20 @@ fn admitted_publishing_and_utf8_split_share_construction_submission_and_stale_cl
                     admitted_after.capacity().unwrap().digest()
                 );
                 assert_eq!(before.working_roots(), after.working_roots());
+                if refreshing {
+                    assert!(matches!(mapping.stage_tag, 22 | 23));
+                    assert_eq!(before.frontier(), after.frontier());
+                    assert_eq!(
+                        before.marker_effect_continuation(),
+                        after.marker_effect_continuation()
+                    );
+                    assert_eq!(
+                        syndic_storage::test_faults::draft_build_mapping_snapshot(&after)
+                            .unwrap()
+                            .stage_tag,
+                        mapping.stage_tag + 1
+                    );
+                }
             }
             syndic_storage::test_faults::reset_home_store_syndic_point_acquisition_count();
             let stale_outcome = execute(&store, storage.advance_draft_piece_edit(stale));
@@ -221,6 +242,7 @@ fn admitted_publishing_and_utf8_split_share_construction_submission_and_stale_cl
         }
         assert!(reached_complete);
         assert_eq!(publishing_count, 1);
+        assert_eq!(refresh_stages, [22, 23, 24]);
         assert_eq!(surgeries, [5, 6, 7]);
         committed(execute(
             &store,

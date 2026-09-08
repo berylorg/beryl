@@ -8,8 +8,6 @@ fn after_source(
         && active.planning().and_then(|p| p.source_boundary) == Some(base_frontier)
     {
         primary(Purpose::PreviousStart)
-    } else if has_removal(active.effect()) {
-        primary(Purpose::WorkingOccurrence)
     } else {
         Pending::None
     }
@@ -45,7 +43,7 @@ pub(super) fn transition(
         return false;
     }
     if left.pending() == Pending::None {
-        return finish(previous, current, left, right);
+        return false;
     }
     if previous.frontier() != current.frontier()
         || left.phase() != right.phase()
@@ -145,23 +143,13 @@ pub(super) fn transition(
                 }
                 Purpose::PreviousEnd => {
                     plan.previous_start = None;
-                    if has_removal(left.effect()) {
-                        primary(Purpose::WorkingOccurrence)
-                    } else {
-                        Pending::None
-                    }
+                    Pending::None
                 }
-                Purpose::WorkingOccurrence => primary(Purpose::WorkingIdentity),
-                Purpose::WorkingIdentity => Pending::RemoveSequence,
                 _ => return false,
             };
             right.pending() == expected
                 && plan == next_plan
-                && if purpose == Purpose::WorkingOccurrence {
-                    right.removal_site().is_some()
-                } else {
-                    left.removal_site() == right.removal_site()
-                }
+                && left.removal_site() == right.removal_site()
         }
         Pending::RemoveSequence => {
             matches!(right.pending(), Pending::RemoveIdentity { sequence_target } if removed_sequence(left.working_roots(), sequence_target))
@@ -181,7 +169,7 @@ pub(super) fn transition(
         } => {
             right.pending() == Pending::None
                 && left.planning() == right.planning()
-                && left.removal_site() == right.removal_site()
+                && right.removal_site().is_none()
                 && installed_targets(right.working_roots(), sequence_target, identity_target)
                 && left
                     .working_roots()
@@ -205,69 +193,4 @@ fn removed_sequence(roots: DraftPieceBuildRootsV1, target: DraftPieceSequenceDes
 fn removed_identity(roots: DraftPieceBuildRootsV1, target: DraftPieceIdentityDescriptorV1) -> bool {
     roots.marker_index_summary().record_count().checked_sub(1)
         == Some(target.summary.record_count())
-}
-
-fn finish(
-    previous: &DraftPieceBuildProgressReceiptV1,
-    current: &DraftPieceBuildProgressReceiptV1,
-    left: DraftPieceActiveMarkerEffectV1,
-    right: DraftPieceActiveMarkerEffectV1,
-) -> bool {
-    let Some(boundary) = left.planning().and_then(|plan| plan.source_boundary) else {
-        return false;
-    };
-    let effective_end = match left.effect() {
-        DraftPieceMarkerEffectV1::Remove { .. }
-        | DraftPieceMarkerEffectV1::SameIdReplacement { .. } => {
-            let Some(rank) = boundary.rank().checked_add(1) else {
-                return false;
-            };
-            DraftPieceBuildBoundaryV1::new(rank, 0)
-        }
-        _ => boundary,
-    };
-    let source = previous.base_frontier();
-    let successor = previous.successor_frontier();
-    let mapped = if boundary.rank() == source.rank() {
-        boundary
-            .inner()
-            .checked_sub(source.inner())
-            .and_then(|delta| successor.inner().checked_add(delta))
-            .map(|inner| DraftPieceBuildBoundaryV1::new(successor.rank(), inner))
-    } else {
-        boundary
-            .rank()
-            .checked_sub(source.rank())
-            .and_then(|delta| successor.rank().checked_add(delta))
-            .map(|rank| DraftPieceBuildBoundaryV1::new(rank, boundary.inner()))
-    };
-    let Some(mut mapped) = mapped else {
-        return false;
-    };
-    if left
-        .removal_site()
-        .is_some_and(|site| site.piece_rank < mapped.rank())
-    {
-        let Some(rank) = mapped.rank().checked_sub(1) else {
-            return false;
-        };
-        mapped = DraftPieceBuildBoundaryV1::new(rank, mapped.inner());
-    }
-    right.working_roots() == left.working_roots()
-        && right.planning().is_none()
-        && right.removal_site().is_none()
-        && right.insertion_site().is_none()
-        && right.pending() == Pending::None
-        && right.phase() == Phase::Removing
-        && previous.next_record_ordinal() == current.next_record_ordinal()
-        && current.frontier()
-            == DraftPieceBuildFrontierV1::Removing {
-                fragment_ordinal: left.fragment_key().ordinal(),
-                next_rank: boundary.rank(),
-                end_rank: boundary.rank(),
-                removed_markers: 0,
-                base_end: effective_end,
-                successor_start: mapped,
-                successor_end: mapped,
-            }
 }

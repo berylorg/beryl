@@ -1,28 +1,5 @@
 use super::*;
 
-pub(super) fn mapped_end(
-    insertion: DraftPieceBuildBoundaryV1,
-    end: DraftPieceBuildBoundaryV1,
-) -> Option<DraftPieceBuildBoundaryV1> {
-    let (r, i, f, j) = (insertion.rank(), insertion.inner(), end.rank(), end.inner());
-    if (r, i) > (f, j) {
-        return None;
-    }
-    if r < f {
-        return Some(DraftPieceBuildBoundaryV1::new(
-            f.checked_add(1 + u64::from(i != 0))?,
-            j,
-        ));
-    }
-    if i == 0 {
-        return Some(DraftPieceBuildBoundaryV1::new(f.checked_add(1)?, j));
-    }
-    Some(DraftPieceBuildBoundaryV1::new(
-        f.checked_add(2)?,
-        j.checked_sub(i)?,
-    ))
-}
-
 pub(super) fn transition(
     previous: &DraftPieceBuildProgressReceiptV1,
     current: &DraftPieceBuildProgressReceiptV1,
@@ -46,13 +23,15 @@ pub(super) fn transition(
                 Purpose::InsertIdentityAbsent => right.pending() == primary(Purpose::InsertAnchor),
                 Purpose::InsertAnchor => {
                     right.pending() == primary(Purpose::InsertOrder)
-                        || right.pending() == Pending::InsertSequence
+                        || right.pending() == Pending::None && right.insertion_site().is_some()
                 }
                 Purpose::InsertOrder => {
                     right.pending() == primary(Purpose::InsertAfter)
-                        || right.pending() == Pending::InsertSequence
+                        || right.pending() == Pending::None && right.insertion_site().is_some()
                 }
-                Purpose::InsertAfter => right.pending() == Pending::InsertSequence,
+                Purpose::InsertAfter => {
+                    right.pending() == Pending::None && right.insertion_site().is_some()
+                }
                 _ => false,
             }
         }
@@ -105,6 +84,7 @@ pub(super) fn transition(
             let DraftPieceBuildFrontierV1::Inserting {
                 fragment_ordinal,
                 base_end,
+                successor_end,
                 ..
             } = previous.frontier()
             else {
@@ -126,7 +106,7 @@ pub(super) fn transition(
                         next_piece: 1,
                         next_byte: 0,
                         base_end,
-                        successor_end: site.mapped_next_boundary,
+                        successor_end,
                     }
         }
         _ => false,

@@ -1,7 +1,10 @@
 use beryl_model::DraftMarkerCommitmentV1;
 
 use super::{
-    builder_model::{DraftPieceDurableBuildContinuationV1, DraftPieceMarkerEffectContinuationV1},
+    builder_model::{
+        DraftPieceBuildMappingV1, DraftPieceDurableBuildContinuationV1,
+        DraftPieceMarkerEffectContinuationV1,
+    },
     marker_seal::DraftMarkerSealProofV1,
     staging_model::DraftMutationStagingProgressReceiptReferenceV1,
 };
@@ -2667,6 +2670,7 @@ pub struct DraftPieceBuildRecordV1 {
     progress_receipt: DraftPieceBuildProgressReceiptReferenceV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    mapping: Option<DraftPieceBuildMappingV1>,
     writer_admission: Option<DraftMarkerWriterAdmissionV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
@@ -2726,6 +2730,7 @@ impl DraftPieceBuildRecordV1 {
             progress_receipt,
             durable_continuation: None,
             marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
+            mapping: None,
             writer_admission: None,
             successor,
             build_digest,
@@ -2826,6 +2831,13 @@ impl DraftPieceBuildRecordV1 {
         self.marker_effect_continuation = marker_effect_continuation;
         self
     }
+    pub(crate) const fn mapping(&self) -> Option<DraftPieceBuildMappingV1> {
+        self.mapping
+    }
+    pub(crate) fn with_mapping(mut self, mapping: Option<DraftPieceBuildMappingV1>) -> Self {
+        self.mapping = mapping;
+        self
+    }
     pub const fn writer_admission(&self) -> Option<DraftMarkerWriterAdmissionV1> {
         self.writer_admission
     }
@@ -2888,6 +2900,7 @@ pub struct DraftPieceBuildProgressReceiptV1 {
     frontier: DraftPieceBuildFrontierV1,
     durable_continuation: Option<DraftPieceDurableBuildContinuationV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    mapping: Option<DraftPieceBuildMappingV1>,
     writer_admission: Option<DraftMarkerWriterAdmissionV1>,
     successor: Option<DraftPieceRootReferenceV1>,
     build_digest: Option<DraftPieceDigestV1>,
@@ -2920,6 +2933,7 @@ impl DraftPieceBuildProgressReceiptV1 {
             frontier,
             durable_continuation: None,
             marker_effect_continuation: DraftPieceMarkerEffectContinuationV1::canonical_empty(),
+            mapping: None,
             writer_admission: None,
             successor,
             build_digest,
@@ -2972,6 +2986,13 @@ impl DraftPieceBuildProgressReceiptV1 {
         marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
     ) -> Self {
         self.marker_effect_continuation = marker_effect_continuation;
+        self
+    }
+    pub(crate) const fn mapping(&self) -> Option<DraftPieceBuildMappingV1> {
+        self.mapping
+    }
+    pub(crate) fn with_mapping(mut self, mapping: Option<DraftPieceBuildMappingV1>) -> Self {
+        self.mapping = mapping;
         self
     }
     pub const fn writer_admission(&self) -> Option<DraftMarkerWriterAdmissionV1> {

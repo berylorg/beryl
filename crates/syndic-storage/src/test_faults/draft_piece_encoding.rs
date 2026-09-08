@@ -85,7 +85,7 @@ pub fn inject_draft_piece_build_older_version_for_test(
         .unwrap()
         .unwrap();
     let encodings = draft_piece_build_encoding_for_test(store, storage, key);
-    assert!(matches!(version, 3 | 4));
+    assert!(matches!(version, 3 | 4 | 5));
     let mut stored = version.to_be_bytes().to_vec();
     stored.extend_from_slice(&encodings.encoded[family]);
     match family {

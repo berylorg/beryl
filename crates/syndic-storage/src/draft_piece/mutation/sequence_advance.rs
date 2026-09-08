@@ -91,6 +91,7 @@ fn receipt_effects(
         receipt.key().session_id(),
         receipt.key().operation_id(),
     );
+    super::mapping_custody::validate_roots_with(&mut acquisition.clone(), key, receipt.mapping())?;
     validate_acquired_build_roots(acquisition, key, receipt.working_roots())?;
     if let Some(active) = receipt.marker_effect_continuation().active() {
         let value = required::<DraftPieceBuildFragmentsFamily>(acquisition, active.fragment_key())?;
@@ -191,18 +192,8 @@ pub(super) fn prepare(
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
     receipt_effects(&acquisition, &previous)?;
-    let transition_fragment_key = receipt
-        .marker_effect_continuation()
-        .active()
-        .or(previous.marker_effect_continuation().active())
-        .map(|active| active.fragment_key())
-        .or_else(|| {
-            receipt
-                .marker_effect_continuation()
-                .scan()
-                .scanned_endpoint()
-                .map(|endpoint| endpoint.key())
-        });
+    let transition_fragment_key =
+        super::mapping_custody::transition_fragment_key(&previous, &receipt);
     let scanned = transition_fragment_key
         .map(|key| required::<DraftPieceBuildFragmentsFamily>(&acquisition, key))
         .transpose()?;
@@ -267,51 +258,68 @@ pub(super) fn prepare(
         }
         | DraftPieceBuildFrontierV1::Inserting {
             fragment_ordinal, ..
-        } => fragment_ordinal,
+        } => Some(fragment_ordinal),
+        DraftPieceBuildFrontierV1::CrossValidating => None,
         _ => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
     };
-    let selected_fragment = fragment(&acquisition, &build, fragment_ordinal)?;
-    let endpoint_fragment = fragment(&acquisition, &build, build.staged_fragment_count())?;
-    let quantum = advance_acquired_tree_build(acquisition.clone(), &build, &selected_fragment)?;
-    let (roots, marker_continuation) = match quantum.marker_effect_continuation {
-        Some(continuation) => (quantum.roots, continuation),
-        None => marker_continuation_transition(
-            &build,
-            Some(&selected_fragment),
-            quantum.roots,
-            quantum.frontier,
-        )?,
-    };
-    let writer_consumption = super::marker_advance::prepare_consumption(
-        &acquisition,
-        &build,
-        &selected_fragment,
-        marker_continuation,
-        writer.as_ref(),
-    )?;
+    let selected_fragment = fragment_ordinal
+        .map(|ordinal| fragment(&acquisition, &build, ordinal))
+        .transpose()?;
+    let endpoint_fragment = (build.staged_fragment_count() != 0)
+        .then(|| fragment(&acquisition, &build, build.staged_fragment_count()))
+        .transpose()?;
+    let quantum =
+        advance_acquired_tree_build(acquisition.clone(), &build, selected_fragment.as_ref())?;
+    let marker_continuation = quantum
+        .marker_effect_continuation
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let mapping = quantum
+        .mapping
+        .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+    let writer_consumption = selected_fragment
+        .as_ref()
+        .map(|fragment| {
+            super::marker_advance::prepare_consumption(
+                &acquisition,
+                &build,
+                fragment,
+                marker_continuation,
+                writer.as_ref(),
+            )
+        })
+        .transpose()?
+        .flatten();
     let writer_admission = writer_consumption
         .as_ref()
         .map(|consumption| consumption.admission())
         .or(build.writer_admission());
     let (next, next_receipt) = next_build_record(
         &build,
-        roots,
+        quantum.roots,
         quantum.base_frontier,
         quantum.successor_frontier,
         quantum.next_record_ordinal,
         quantum.frontier,
-        None,
-        None,
-        DraftPieceBuildLifecycleV1::Open,
-        Some(canonical_fragment_endpoint(&endpoint_fragment)),
+        quantum
+            .successor
+            .as_ref()
+            .map(DraftPieceRootRecordV1::reference),
+        quantum.build_digest,
+        if quantum.frontier == DraftPieceBuildFrontierV1::Complete {
+            DraftPieceBuildLifecycleV1::Complete
+        } else {
+            DraftPieceBuildLifecycleV1::Open
+        },
+        endpoint_fragment.as_ref().map(canonical_fragment_endpoint),
         marker_continuation,
+        Some(mapping),
         writer_admission,
     )
     .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
     if !marker_effect_progress_transition_is_exact(
         &receipt,
         &next_receipt,
-        Some(&selected_fragment),
+        selected_fragment.as_ref(),
     ) {
         return Err(DraftPiecePrepareErrorV1::InvalidRoot);
     }
@@ -395,6 +403,7 @@ pub(super) fn prepare(
         nodes: quantum.nodes,
         index_records: quantum.index_records,
         marker_order_records: quantum.marker_order_records,
+        mapping_records: quantum.mapping_records,
         records_read: quantum.records_read,
         admission_marker: None,
         admission_consumption: writer_consumption

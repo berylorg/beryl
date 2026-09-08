@@ -82,6 +82,12 @@ pub fn inject_coordinated_draft_marker_secondary_for_test(
                 continuation.scan(),
                 Some(active),
             ));
+    let mut mapping = replacement.mapping().unwrap();
+    mapping.fragment_source_end_unit = None;
+    mapping.mapping_stage = DraftPieceMappingStageV1::MarkerSource {
+        removal_source_unit: None,
+    };
+    let replacement = replacement.with_mapping(Some(mapping));
     let bytes = DraftPieceBuildsFamily::encode_value(&replacement).unwrap();
     assert!(DraftPieceBuildsFamily::decode_value(&bytes).is_ok());
     let receipt = storage

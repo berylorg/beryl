@@ -96,7 +96,7 @@ pub(super) fn transition_is_exact(
     }
     if start == end {
         return before == after
-            && current.base_frontier() == base_end
+            && current.base_frontier() == previous.base_frontier()
             && current.next_record_ordinal() == previous.next_record_ordinal()
             && matches!(current.frontier(), DraftPieceBuildFrontierV1::Inserting {
                 fragment_ordinal: next_fragment, next_piece: 0, next_byte: 0,

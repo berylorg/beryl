@@ -7,6 +7,12 @@ use crate::{
 };
 
 mod content_text;
+mod build_mapping_custody;
+pub use build_mapping_custody::*;
+mod draft_build_mapping_codec;
+pub use draft_build_mapping_codec::*;
+mod build_mapping_sequence;
+pub use build_mapping_sequence::seed_fragmented_copy_alignment_for_test;
 mod draft_composer;
 mod draft_edit_history;
 mod draft_marker_admission;

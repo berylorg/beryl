@@ -587,7 +587,8 @@ pub fn inject_draft_piece_build_corruption(
             .then(|| build.durable_continuation())
             .flatten(),
     )
-    .with_marker_effect_continuation(build.marker_effect_continuation());
+    .with_marker_effect_continuation(build.marker_effect_continuation())
+    .with_mapping(build.mapping());
     let corrupted = match corruption {
         DraftPieceBuildCorruption::MarkerScanNextOrdinal => {
             let marker = build.marker_effect_continuation();
@@ -816,7 +817,11 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                 receipt.successor(),
                 receipt.build_digest(),
                 receipt.lifecycle(),
-            );
+            )
+            .with_durable_continuation(receipt.durable_continuation())
+            .with_marker_effect_continuation(receipt.marker_effect_continuation())
+            .with_mapping(receipt.mapping())
+            .with_writer_admission(receipt.writer_admission());
             corrupted = recompute_progress_receipt_digest(corrupted);
             storage.handle.contribution(
                 storage.revision(store).expect("fixture revision reads"),
@@ -835,8 +840,8 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                 .point::<DraftPieceBuildProgressFamily>(store, previous.key(), limit)
                 .expect("fixture predecessor receipt reads")
                 .expect("fixture predecessor receipt exists");
-            let corrupted =
-                recompute_progress_receipt_digest(DraftPieceBuildProgressReceiptV1::new(
+            let corrupted = recompute_progress_receipt_digest(
+                DraftPieceBuildProgressReceiptV1::new(
                     DraftPieceBuildProgressReceiptReferenceV1::new(
                         stored.key(),
                         DraftPieceDigestV1::from_bytes([0; 32]),
@@ -854,7 +859,12 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                     stored.successor(),
                     stored.build_digest(),
                     stored.lifecycle(),
-                ));
+                )
+                .with_durable_continuation(stored.durable_continuation())
+                .with_marker_effect_continuation(stored.marker_effect_continuation())
+                .with_mapping(stored.mapping())
+                .with_writer_admission(stored.writer_admission()),
+            );
             storage.handle.contribution(
                 storage.revision(store).expect("fixture revision reads"),
                 DescendantReplacement(Replacement::Progress(previous.key(), corrupted)),
@@ -895,7 +905,11 @@ pub fn inject_draft_piece_progress_receipt_corruption(
                 build.successor(),
                 build.build_digest(),
                 build.lifecycle(),
-            );
+            )
+            .with_durable_continuation(build.durable_continuation())
+            .with_marker_effect_continuation(build.marker_effect_continuation())
+            .with_mapping(build.mapping())
+            .with_writer_admission(build.writer_admission());
             storage.handle.contribution(
                 storage.revision(store).expect("fixture revision reads"),
                 DescendantReplacement(Replacement::Build(key, corrupted)),

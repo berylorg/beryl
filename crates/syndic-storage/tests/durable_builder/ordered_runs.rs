@@ -50,6 +50,11 @@ fn assert_same_anchor_marker_order(
 
 #[test]
 fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
+    sparse_marker_runs_preserve_fragment_order();
+    same_anchor_runs_preserve_composite_order();
+}
+
+fn sparse_marker_runs_preserve_fragment_order() {
     let (_home, store, storage, thread) = fixture("sparse-same-anchor", 220);
     let sparse_current = current(&storage, &store, thread);
     let mut session = open_session(&storage, &store, &sparse_current, 221, 222);
@@ -122,10 +127,7 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -202,7 +204,9 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
         8,
     );
     assert_eq!(terminal.markers(), &sparse_all[2..]);
+}
 
+fn same_anchor_runs_preserve_composite_order() {
     let (_same_home, store, storage, thread) = fixture("same-anchor-pages", 235);
     let same_current = current(&storage, &store, thread);
     let mut session = open_session(&storage, &store, &same_current, 236, 237);
@@ -256,10 +260,7 @@ fn sparse_first_middle_last_and_same_anchor_runs_fold_in_fragment_order() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,

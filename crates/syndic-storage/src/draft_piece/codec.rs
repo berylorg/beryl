@@ -14,6 +14,11 @@ use crate::{DraftImageLabelProtectionHeadV1, ImageLabelAuthorityHeadV1, ImageLab
 use super::*;
 
 mod builder_continuation;
+mod mapping;
+pub(crate) use mapping::canonical_build_mapping_bytes;
+#[cfg(feature = "test-faults")]
+pub(crate) use mapping::mapping_roundtrip_for_test;
+use mapping::{dec_mapping, enc_mapping};
 
 #[cfg(feature = "test-faults")]
 pub(crate) use builder_continuation::canonical_active_marker_bytes;
@@ -1702,6 +1707,9 @@ fn decode_node(bytes: &[u8]) -> Result<DraftPieceNodeRecordV1, CodecError> {
 }
 
 fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> {
+    if value.mapping().is_none() {
+        return Err(CodecError::InvalidLength("edit mapping required"));
+    }
     let mut e = Encoder::new();
     e.fixed16(value.draft_id().as_bytes());
     e.fixed16(value.session_id().as_bytes());
@@ -1726,6 +1734,7 @@ fn encode_build(value: &DraftPieceBuildRecordV1) -> Result<Vec<u8>, CodecError> 
     enc_build_frontier(&mut e, value.frontier());
     enc_durable_continuation(&mut e, value.durable_continuation());
     enc_marker_effect_continuation(&mut e, value.marker_effect_continuation());
+    enc_mapping(&mut e, value.mapping());
     enc_writer_admission(&mut e, value.writer_admission());
     enc_progress_reference(&mut e, value.progress_receipt());
     match value.successor() {
@@ -1771,6 +1780,7 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
+    let mapping = dec_mapping(&mut d)?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let progress_receipt = dec_progress_reference(&mut d)?;
     let successor = match d.u8()? {
@@ -1837,6 +1847,7 @@ fn decode_build(bytes: &[u8]) -> Result<DraftPieceBuildRecordV1, CodecError> {
     )
     .with_durable_continuation(durable_continuation)
     .with_marker_effect_continuation(marker_effect_continuation)
+    .with_mapping(mapping)
     .with_writer_admission(writer_admission);
     d.finish()?;
     if !build_record_is_exact(&value) {
@@ -1898,6 +1909,7 @@ fn encode_progress_receipt(
     enc_build_frontier(&mut e, receipt.frontier());
     enc_durable_continuation(&mut e, receipt.durable_continuation());
     enc_marker_effect_continuation(&mut e, receipt.marker_effect_continuation());
+    enc_mapping(&mut e, receipt.mapping());
     enc_writer_admission(&mut e, receipt.writer_admission());
     match receipt.successor() {
         Some(successor) => {
@@ -1951,6 +1963,7 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     let frontier = dec_build_frontier(&mut d)?;
     let durable_continuation = dec_durable_continuation(&mut d)?;
     let marker_effect_continuation = dec_marker_effect_continuation(&mut d)?;
+    let mapping = dec_mapping(&mut d)?;
     let writer_admission = dec_writer_admission(&mut d)?;
     let successor = match d.u8()? {
         0 => None,
@@ -2003,6 +2016,7 @@ fn decode_progress_receipt(bytes: &[u8]) -> Result<DraftPieceBuildProgressReceip
     )
     .with_durable_continuation(durable_continuation)
     .with_marker_effect_continuation(marker_effect_continuation)
+    .with_mapping(mapping)
     .with_writer_admission(writer_admission);
     if !progress_receipt_is_exact(&receipt) {
         return Err(CodecError::InvalidLength("draft-piece progress receipt"));
@@ -2191,7 +2205,7 @@ fn dec_occupied_identity_proof(
 fn encode_settlement(value: &DraftPieceSettlementV1) -> Result<Vec<u8>, CodecError> {
     let payload = encode_settlement_payload(value)?;
     let mut encoded = payload.clone();
-    encoded.extend_from_slice(settlement_digest_v5(&payload).as_bytes());
+    encoded.extend_from_slice(settlement_digest_v6(&payload).as_bytes());
     Ok(encoded)
 }
 
@@ -2375,7 +2389,7 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
     );
     d.finish()?;
     let payload = encode_settlement_payload(&value)?;
-    if stored_digest != settlement_digest_v5(&payload) {
+    if stored_digest != settlement_digest_v6(&payload) {
         return Err(CodecError::InvalidLength("draft-piece settlement digest"));
     }
     if !settlement_closure_is_exact(&value) {
@@ -2384,8 +2398,8 @@ fn decode_settlement(bytes: &[u8]) -> Result<DraftPieceSettlementV1, CodecError>
     Ok(value)
 }
 
-fn settlement_digest_v5(payload: &[u8]) -> DraftPieceDigestV1 {
-    let domain = b"syndic/draft-piece-settlement/v5";
+fn settlement_digest_v6(payload: &[u8]) -> DraftPieceDigestV1 {
+    let domain = b"syndic/draft-piece-settlement/v6";
     let mut digest = Sha256::new();
     digest.update((domain.len() as u64).to_be_bytes());
     digest.update(domain);
@@ -2930,7 +2944,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceBuildRecordV1,
     "draft-piece-builds",
-    5,
+    6,
     48,
     8_192,
     encode_settlement_family_key,
@@ -2956,7 +2970,7 @@ family!(
     DraftPieceBuildProgressReceiptKeyV1,
     DraftPieceBuildProgressReceiptV1,
     "draft-piece-build-progress",
-    5,
+    6,
     56,
     8_192,
     encode_progress_family_key,
@@ -2969,7 +2983,7 @@ family!(
     DraftPieceSettlementKeyV1,
     DraftPieceSettlementV1,
     "draft-piece-settlements",
-    5,
+    6,
     48,
     65_536,
     encode_settlement_family_key,

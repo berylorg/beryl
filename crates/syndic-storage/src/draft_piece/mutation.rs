@@ -15,6 +15,7 @@ use super::admission::index::{
 use super::*;
 
 pub(in super::super) mod advance_budget;
+pub(super) mod mapping_custody;
 pub(super) mod marker_advance;
 mod sequence_advance;
 mod session_authentication;
@@ -72,6 +73,7 @@ pub struct PreparedDraftPieceAdvanceV1 {
     nodes: Vec<DraftPieceNodeRecordV1>,
     index_records: Vec<DraftMarkerIdentityRecordV1>,
     marker_order_records: Vec<DraftMarkerOrderRecordV1>,
+    mapping_records: Vec<build_mapping::model::Node>,
     records_read: u64,
     admission_marker: Option<DraftPieceMarkerV1>,
     admission_consumption: Option<PreparedDraftMarkerAdmissionConsumptionV1>,
@@ -91,6 +93,7 @@ impl PreparedDraftPieceAdvanceV1 {
             + self.nodes.len()
             + self.index_records.len()
             + self.marker_order_records.len()
+            + self.mapping_records.len()
             + 1
     }
 
@@ -344,197 +347,18 @@ impl SyndicStorage {
         if build_key(&selected) != key {
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
-        let marker_activation =
-            if let DraftPieceBuildFrontierV1::Planning { fragment_ordinal } = selected.frontier() {
-                acquisition
-                    .point::<DraftPieceBuildFragmentsFamily>(DraftPieceBuildFragmentKeyV1::new(
-                        draft_id,
-                        session_id,
-                        operation_id,
-                        fragment_ordinal,
-                    ))?
-                    .is_some_and(|fragment| fragment.replacement().marker_effect().is_some())
-            } else {
-                false
-            };
-        if (matches!(
-            selected.frontier(),
-            DraftPieceBuildFrontierV1::Applying { .. }
-        ) || selected.marker_effect_continuation().active().is_some()
-            || marker_activation)
-            && selected.lifecycle() == DraftPieceBuildLifecycleV1::Open
+        if selected.lifecycle() != DraftPieceBuildLifecycleV1::Open
+            || matches!(
+                selected.frontier(),
+                DraftPieceBuildFrontierV1::Receiving { .. } | DraftPieceBuildFrontierV1::Complete
+            )
         {
-            return sequence_advance::prepare(acquisition, expected_revision, selected).map(Some);
-        }
-        let (build, expected_session) = authenticated_build_from_store(self, store, key)?
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        if build.writer_admission().is_some_and(|admission| {
-            admission.binding().home_generation().get() != self.home_generation.get()
-                || self
-                    .reconstructed_cleanup_admissions
-                    .contains(&admission.binding().owner())
-        }) {
-            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
-        }
-        if build.lifecycle() != DraftPieceBuildLifecycleV1::Open {
+            authenticated_build_from_store(self, store, key)?
+                .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
             return Ok(None);
         }
-        let fragment = match build.frontier() {
-            DraftPieceBuildFrontierV1::Planning { fragment_ordinal }
-            | DraftPieceBuildFrontierV1::Removing {
-                fragment_ordinal, ..
-            }
-            | DraftPieceBuildFrontierV1::Applying {
-                fragment_ordinal, ..
-            }
-            | DraftPieceBuildFrontierV1::Inserting {
-                fragment_ordinal, ..
-            } => Some(load_authenticated_build_fragment(
-                self,
-                store,
-                &build,
-                fragment_ordinal,
-            )?),
-            DraftPieceBuildFrontierV1::Receiving { .. } | DraftPieceBuildFrontierV1::Complete => {
-                return Ok(None);
-            }
-            _ => None,
-        };
-        let quantum = advance_persistent_tree_build(self, store, &build, fragment.as_ref())?;
-        let fragment_endpoint = if build.staged_fragment_count() == 0 {
-            None
-        } else {
-            Some(canonical_fragment_endpoint(
-                &load_authenticated_build_fragment(
-                    self,
-                    store,
-                    &build,
-                    build.staged_fragment_count(),
-                )?,
-            ))
-        };
-        let staged_record_count = quantum.leaves.len()
-            + quantum.nodes.len()
-            + quantum.index_records.len()
-            + quantum.marker_order_records.len();
-        if staged_record_count > DRAFT_PIECE_STAGE_MAX_RECORDS {
-            return Err(DraftPiecePrepareErrorV1::Rejected(
-                DraftPieceRejectedReasonV1::TreeLimit,
-            ));
-        }
-        let (published_roots, marker_effect_continuation) = marker_continuation_transition(
-            &build,
-            fragment.as_ref(),
-            quantum.roots,
-            quantum.frontier,
-        )?;
-        let marker_effect_completed = marker_effect_continuation.scan().completed_effect_count()
-            > build
-                .marker_effect_continuation()
-                .scan()
-                .completed_effect_count();
-        let admission_marker = (marker_effect_completed && build.writer_admission().is_some())
-            .then(|| {
-                fragment
-                    .as_ref()
-                    .and_then(|fragment| fragment.replacement().marker_effect())
-            })
-            .flatten()
-            .and_then(|effect| match effect {
-                DraftPieceMarkerEffectV1::Insert(insertion)
-                | DraftPieceMarkerEffectV1::Move { insertion, .. }
-                | DraftPieceMarkerEffectV1::SameIdReplacement { insertion, .. } => {
-                    Some(insertion.marker())
-                }
-                DraftPieceMarkerEffectV1::Remove { .. } => None,
-            });
-        let admission_consumption = match (build.writer_admission(), admission_marker) {
-            (Some(admission), Some(marker)) => {
-                let transition_ordinal = build
-                    .progress_receipt()
-                    .key()
-                    .transition_ordinal()
-                    .checked_add(1)
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-                let identity = draft_marker_writer_consumption_identity_v1(
-                    admission.binding().owner(),
-                    transition_ordinal,
-                )
-                .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
-                Some(
-                    prepare_draft_marker_admission_consumption_from_store_v1(
-                        self,
-                        store,
-                        admission.binding().owner(),
-                        admission.target_root(),
-                        marker,
-                        identity,
-                    )
-                    .map_err(|error| match error {
-                        DraftMarkerAdmissionIndexPreparationErrorV1::StoreRead(error) => {
-                            DraftPiecePrepareErrorV1::Read(error)
-                        }
-                        _ => DraftPiecePrepareErrorV1::InvalidRoot,
-                    })?,
-                )
-            }
-            _ => None,
-        };
-        let writer_admission = match (build.writer_admission(), &admission_consumption) {
-            (Some(admission), Some(consumption)) => Some(
-                admission
-                    .with_target_root(consumption.target_root())
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
-            ),
-            (admission, None) => admission,
-            (None, Some(_)) => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
-        };
-        let (next, next_receipt) = next_build_record(
-            &build,
-            published_roots,
-            quantum.base_frontier,
-            quantum.successor_frontier,
-            quantum.next_record_ordinal,
-            quantum.frontier,
-            quantum.successor.map(|root| root.reference()),
-            quantum.build_digest,
-            if quantum.frontier == DraftPieceBuildFrontierV1::Complete {
-                DraftPieceBuildLifecycleV1::Complete
-            } else {
-                DraftPieceBuildLifecycleV1::Open
-            },
-            fragment_endpoint,
-            marker_effect_continuation,
-            writer_admission,
-        )
-        .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?;
-        let next_session = expected_session
-            .advance_active_operation(&custody_for(&build), custody_for(&next))
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        if self.revision(store).map_err(crate::SyndicReadError::from)? != expected_revision
-            || store.health().generation() != Some(self.home_generation)
-        {
-            return Err(DraftPiecePrepareErrorV1::ConcurrentChange);
-        }
-        Ok(Some(PreparedDraftPieceAdvanceV1 {
-            expected_revision,
-            home_generation: self.home_generation,
-            expected: build,
-            expected_session,
-            next,
-            next_receipt,
-            next_session,
-            leaves: quantum.leaves,
-            nodes: quantum.nodes,
-            index_records: quantum.index_records,
-            marker_order_records: quantum.marker_order_records,
-            records_read: quantum.records_read,
-            admission_marker,
-            admission_consumption,
-            bounded: None,
-        }))
+        sequence_advance::prepare(acquisition, expected_revision, selected).map(Some)
     }
-
     pub fn advance_draft_piece_edit(
         &self,
         prepared: PreparedDraftPieceAdvanceV1,
@@ -704,18 +528,7 @@ fn authenticate_progress_receipt_from_acquisition(
             return Err(DraftPiecePrepareErrorV1::InvalidRoot);
         }
         authenticate_progress_receipt_effects_from_acquisition(reader, &stored)?;
-        let fragment_key = receipt
-            .marker_effect_continuation()
-            .active()
-            .or(stored.marker_effect_continuation().active())
-            .map(|active| active.fragment_key())
-            .or_else(|| {
-                receipt
-                    .marker_effect_continuation()
-                    .scan()
-                    .scanned_endpoint()
-                    .map(|endpoint| endpoint.key())
-            });
+        let fragment_key = mapping_custody::transition_fragment_key(&stored, receipt);
         let fragment = fragment_key
             .map(|key| reader.point::<DraftPieceBuildFragmentsFamily>(key))
             .transpose()?
@@ -780,6 +593,15 @@ fn authenticate_progress_receipt_effects_from_acquisition(
         )?;
         marker_advance::validate_pending_roots_with(reader, receipt.key().draft_id(), active)?;
     }
+    mapping_custody::validate_roots_with(
+        reader,
+        DraftPieceSettlementKeyV1::new(
+            receipt.key().draft_id(),
+            receipt.key().session_id(),
+            receipt.key().operation_id(),
+        ),
+        receipt.mapping(),
+    )?;
     Ok(fragment)
 }
 
@@ -907,7 +729,10 @@ fn build_record(
             None,
             None,
             DraftPieceBuildLifecycleV1::Open,
-        ),
+        )
+        .with_mapping(Some(DraftPieceBuildMappingV1::initial(
+            header.predecessor_root().summary(),
+        ))),
         None,
         None,
     )
@@ -1004,6 +829,9 @@ pub(super) fn initial_build_for_staging(
             None,
             DraftPieceBuildLifecycleV1::Open,
         )
+        .with_mapping(Some(DraftPieceBuildMappingV1::initial(
+            header.predecessor_root().summary(),
+        )))
         .with_durable_continuation(Some(continuation))
         .with_writer_admission(writer_admission),
         None,
@@ -1060,7 +888,10 @@ fn terminal_first_build(
             None,
             None,
             lifecycle,
-        ),
+        )
+        .with_mapping(Some(DraftPieceBuildMappingV1::initial(
+            header.predecessor_root().summary(),
+        ))),
         None,
         None,
     )
@@ -1104,6 +935,7 @@ fn build_from_progress_receipt(
     )
     .with_durable_continuation(receipt.durable_continuation())
     .with_marker_effect_continuation(receipt.marker_effect_continuation())
+    .with_mapping(receipt.mapping())
     .with_writer_admission(receipt.writer_admission());
     if progress_receipt_matches_build(receipt, &build) && build_record_is_exact(&build) {
         Ok(build)
@@ -1178,6 +1010,7 @@ fn stage_transition(
         )
         .with_durable_continuation(build.durable_continuation())
         .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_mapping(build.mapping())
         .with_writer_admission(build.writer_admission()),
         Some(build.progress_receipt()),
         Some(canonical_fragment_endpoint(fragment)),
@@ -1302,6 +1135,7 @@ pub(super) fn staged_page_transition(
         )
         .with_durable_continuation(Some(target_continuation))
         .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_mapping(build.mapping())
         .with_writer_admission(build.writer_admission()),
         Some(build.progress_receipt()),
         endpoint,
@@ -1355,184 +1189,6 @@ pub(super) fn prepared_edit_from_staging_build(
     })
 }
 
-fn marker_continuation_transition(
-    build: &DraftPieceBuildRecordV1,
-    fragment: Option<&DraftPieceBuildFragmentV1>,
-    active_roots: DraftPieceBuildRootsV1,
-    next_frontier: DraftPieceBuildFrontierV1,
-) -> Result<(DraftPieceBuildRootsV1, DraftPieceMarkerEffectContinuationV1), DraftPiecePrepareErrorV1>
-{
-    let continuation = build.marker_effect_continuation();
-    let scan = continuation.scan();
-    let existing = continuation.active();
-    if fragment.is_none() {
-        let expected_next = build
-            .fragment_count()
-            .checked_add(1)
-            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-        let endpoint_matches = match (scan.scanned_endpoint(), build.fragment_count()) {
-            (None, 0) => true,
-            (Some(endpoint), count) => {
-                endpoint.key().ordinal() == count
-                    && endpoint.chain() == build.fragment_chain()
-                    && endpoint.key().draft_id() == build.draft_id()
-                    && endpoint.key().session_id() == build.session_id()
-                    && endpoint.key().operation_id() == build.operation_id()
-            }
-            _ => false,
-        };
-        if existing.is_some() || scan.next_fragment_ordinal() != expected_next || !endpoint_matches
-        {
-            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
-        }
-        return Ok((active_roots, continuation));
-    }
-    let fragment = fragment.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
-    let endpoint = canonical_fragment_endpoint(fragment);
-    let effect = fragment.replacement().marker_effect();
-    let starting = matches!(build.frontier(), DraftPieceBuildFrontierV1::Planning { .. });
-    let completing = matches!(
-        build.frontier(),
-        DraftPieceBuildFrontierV1::Inserting { .. }
-    ) && !matches!(next_frontier, DraftPieceBuildFrontierV1::Inserting { .. });
-    if scan.next_fragment_ordinal() != fragment.key().ordinal()
-        || existing.is_some_and(|active| {
-            active.fragment_key() != fragment.key()
-                || active.fragment_digest() != endpoint.digest()
-                || Some(active.effect()) != effect
-        })
-        || starting && existing.is_some()
-        || !starting && effect.is_some() && existing.is_none()
-    {
-        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
-    }
-    let (published_roots, active, marker_effect_scan) = if completing {
-        let (count, chain) = if existing.is_some() {
-            let count = scan.completed_effect_count().checked_add(1).ok_or(
-                DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::AggregateOverflow),
-            )?;
-            (
-                count,
-                draft_piece_marker_effect_chain_link_v1(
-                    scan.effect_chain(),
-                    fragment.key(),
-                    endpoint.digest(),
-                    count,
-                    active_roots,
-                ),
-            )
-        } else {
-            (scan.completed_effect_count(), scan.effect_chain())
-        };
-        let next_fragment_ordinal =
-            fragment
-                .key()
-                .ordinal()
-                .checked_add(1)
-                .ok_or(DraftPiecePrepareErrorV1::Rejected(
-                    DraftPieceRejectedReasonV1::AggregateOverflow,
-                ))?;
-        (
-            active_roots,
-            None,
-            DraftPieceMarkerEffectScanFrontierV1::new(
-                next_fragment_ordinal,
-                Some(endpoint),
-                count,
-                chain,
-            ),
-        )
-    } else if let Some(effect) = effect {
-        let source_roots = existing.map_or(build.working_roots(), |active| active.source_roots());
-        let source_frontier = existing.map_or(continuation.source_logical_frontier(), |active| {
-            active.source_frontier()
-        });
-        let successor_frontier = existing
-            .map_or(continuation.successor_logical_frontier(), |active| {
-                active.successor_frontier()
-            });
-        let phase = match next_frontier {
-            DraftPieceBuildFrontierV1::Planning { .. }
-            | DraftPieceBuildFrontierV1::Removing { .. } => DraftPieceActiveMarkerPhaseV1::Removing,
-            DraftPieceBuildFrontierV1::Applying { .. } => {
-                DraftPieceActiveMarkerPhaseV1::DerivingInsertionGap
-            }
-            DraftPieceBuildFrontierV1::Inserting { .. } => DraftPieceActiveMarkerPhaseV1::Inserting,
-            _ => DraftPieceActiveMarkerPhaseV1::Publishing,
-        };
-        (
-            source_roots,
-            Some(DraftPieceActiveMarkerEffectV1::new(
-                fragment.key(),
-                endpoint.digest(),
-                effect,
-                source_roots,
-                active_roots,
-                source_frontier,
-                successor_frontier,
-                phase,
-            )),
-            scan,
-        )
-    } else {
-        (active_roots, None, scan)
-    };
-    let target = DraftPieceMarkerEffectContinuationV1::new(
-        if completing {
-            if fragment.replacement().is_continuation() {
-                continuation.source_logical_frontier()
-            } else {
-                fragment.replacement().end().utf8_offset()
-            }
-        } else {
-            continuation.source_logical_frontier()
-        },
-        if completing {
-            let successor_start = if fragment.replacement().is_continuation() {
-                continuation.successor_logical_frontier()
-            } else {
-                fragment
-                    .replacement()
-                    .start()
-                    .utf8_offset()
-                    .checked_sub(continuation.source_logical_frontier())
-                    .and_then(|offset| {
-                        continuation
-                            .successor_logical_frontier()
-                            .checked_add(offset)
-                    })
-                    .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
-            };
-            fragment
-                .replacement()
-                .inserted()
-                .iter()
-                .try_fold(successor_start, |frontier, piece| {
-                    let bytes = match piece {
-                        DraftPieceV1::Text(text) => u64::try_from(text.len()).ok()?,
-                        DraftPieceV1::Marker(_) => 0,
-                    };
-                    frontier.checked_add(bytes)
-                })
-                .ok_or(DraftPiecePrepareErrorV1::Rejected(
-                    DraftPieceRejectedReasonV1::AggregateOverflow,
-                ))?
-        } else {
-            continuation.successor_logical_frontier()
-        },
-        marker_effect_scan,
-        active,
-    );
-    if !target.is_locally_exact(DraftPieceSettlementKeyV1::new(
-        build.draft_id(),
-        build.session_id(),
-        build.operation_id(),
-    )) {
-        return Err(DraftPiecePrepareErrorV1::InvalidRoot);
-    }
-    Ok((published_roots, target))
-}
-
 fn next_build_record(
     build: &DraftPieceBuildRecordV1,
     roots: DraftPieceBuildRootsV1,
@@ -1545,6 +1201,7 @@ fn next_build_record(
     lifecycle: DraftPieceBuildLifecycleV1,
     fragment_endpoint: Option<DraftPieceCanonicalFragmentEndpointV1>,
     marker_effect_continuation: DraftPieceMarkerEffectContinuationV1,
+    mapping: Option<DraftPieceBuildMappingV1>,
     writer_admission: Option<DraftMarkerWriterAdmissionV1>,
 ) -> Result<(DraftPieceBuildRecordV1, DraftPieceBuildProgressReceiptV1), SyndicMutationError> {
     authenticated_build_transition(
@@ -1577,6 +1234,7 @@ fn next_build_record(
         )
         .with_durable_continuation(build.durable_continuation())
         .with_marker_effect_continuation(marker_effect_continuation)
+        .with_mapping(mapping)
         .with_writer_admission(writer_admission),
         Some(build.progress_receipt()),
         fragment_endpoint,
@@ -1601,6 +1259,7 @@ fn terminal_build(
         lifecycle,
         fragment_endpoint,
         build.marker_effect_continuation(),
+        build.mapping(),
         build.writer_admission(),
     )
 }
@@ -1729,18 +1388,7 @@ pub(super) fn authenticate_progress_receipt(
             return Err(SyndicMutationError::IdentityCollision);
         }
         authenticate_progress_receipt_effects(reader, &stored)?;
-        let fragment_key = receipt
-            .marker_effect_continuation()
-            .active()
-            .or(stored.marker_effect_continuation().active())
-            .map(|active| active.fragment_key())
-            .or_else(|| {
-                receipt
-                    .marker_effect_continuation()
-                    .scan()
-                    .scanned_endpoint()
-                    .map(|endpoint| endpoint.key())
-            });
+        let fragment_key = mapping_custody::transition_fragment_key(&stored, receipt);
         let scanned_fragment = fragment_key
             .map(|key| required::<DraftPieceBuildFragmentsFamily>(reader, &key))
             .transpose()?;
@@ -1793,6 +1441,16 @@ fn authenticate_progress_receipt_effects(
         )
         .map_err(|_| SyndicMutationError::IdentityCollision)?;
     }
+    mapping_custody::validate_roots_with(
+        &mut &*reader,
+        DraftPieceSettlementKeyV1::new(
+            receipt.key().draft_id(),
+            receipt.key().session_id(),
+            receipt.key().operation_id(),
+        ),
+        receipt.mapping(),
+    )
+    .map_err(|_| SyndicMutationError::IdentityCollision)?;
     Ok(())
 }
 
@@ -2290,143 +1948,7 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         if self.prepared.bounded.is_some() {
             return sequence_advance::submit(self.prepared, reader);
         }
-        let current = required_build(reader, &build_key(&self.prepared.expected))?;
-        if current == self.prepared.next {
-            let receipt = required::<DraftPieceBuildProgressFamily>(
-                reader,
-                &self.prepared.next_receipt.key(),
-            )?;
-            if receipt != self.prepared.next_receipt {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            authenticate_target_transition(
-                reader,
-                &current,
-                &receipt,
-                &self.prepared.next_session,
-            )?;
-            for leaf in &self.prepared.leaves {
-                if point::<DraftPieceLeavesFamily>(reader, &leaf.key())?.as_ref() != Some(leaf) {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            for node in &self.prepared.nodes {
-                if point::<DraftPieceNodesFamily>(reader, &node.key())?.as_ref() != Some(node) {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            for record in &self.prepared.index_records {
-                if point::<DraftMarkerIdentityIndexFamily>(reader, &record.key())?.as_ref()
-                    != Some(record)
-                {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            for record in &self.prepared.marker_order_records {
-                if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.as_ref()
-                    != Some(record)
-                {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            if let Some(admission) = current.writer_admission()
-                && !draft_marker_writer_head_is_exact_v1(
-                    reader,
-                    admission,
-                    DraftMarkerAdmissionLifecycleV1::Building,
-                )?
-            {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-            if let Some(consumption) = &self.prepared.admission_consumption {
-                for node in consumption.puts() {
-                    if point::<DraftMarkerAdmissionNodesFamily>(reader, &node.key())?.as_ref()
-                        != Some(node)
-                    {
-                        return Err(SyndicMutationError::IdentityCollision);
-                    }
-                }
-                for node in consumption.deletions() {
-                    if point::<DraftMarkerAdmissionNodesFamily>(reader, &node.key())?.is_some() {
-                        return Err(SyndicMutationError::IdentityCollision);
-                    }
-                }
-            }
-            return Ok(None);
-        }
-        if current != self.prepared.expected {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        authenticate_source_transition(
-            reader,
-            &current,
-            &self.prepared.expected_session,
-            self.prepared.next_receipt.key(),
-        )?;
-        let writer_consumption = self
-            .prepared
-            .admission_marker
-            .map(|marker| {
-                let admission = self
-                    .prepared
-                    .expected
-                    .writer_admission()
-                    .ok_or(SyndicMutationError::IdentityCollision)?;
-                prepare_draft_marker_writer_consumption_v1(
-                    reader,
-                    admission,
-                    marker,
-                    self.prepared.next_receipt.key().transition_ordinal(),
-                )
-            })
-            .transpose()?;
-        if writer_consumption.as_ref().map(|prepared| prepared.index())
-            != self.prepared.admission_consumption.as_ref()
-        {
-            return Err(SyndicMutationError::IdentityCollision);
-        }
-        if let Some(consumption) = &writer_consumption {
-            let candidate = self
-                .prepared
-                .next
-                .clone()
-                .with_writer_admission(Some(consumption.admission()));
-            let (next, next_receipt) = authenticated_build_transition(
-                candidate,
-                Some(self.prepared.expected.progress_receipt()),
-                self.prepared.next_receipt.fragment_endpoint(),
-            )
-            .map_err(|()| SyndicMutationError::IdentityCollision)?;
-            let next_session = self
-                .prepared
-                .expected_session
-                .advance_active_operation(&custody_for(&self.prepared.expected), custody_for(&next))
-                .ok_or(SyndicMutationError::CurrentDraftConflict)?;
-            self.prepared.next = next;
-            self.prepared.next_receipt = next_receipt;
-            self.prepared.next_session = next_session;
-        }
-        for leaf in &self.prepared.leaves {
-            if point::<DraftPieceLeavesFamily>(reader, &leaf.key())?.is_some() {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-        }
-        for node in &self.prepared.nodes {
-            if point::<DraftPieceNodesFamily>(reader, &node.key())?.is_some() {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-        }
-        for record in &self.prepared.index_records {
-            if point::<DraftMarkerIdentityIndexFamily>(reader, &record.key())?.is_some() {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-        }
-        for record in &self.prepared.marker_order_records {
-            if point::<DraftMarkerOrderCommitmentsFamily>(reader, &record.key())?.is_some() {
-                return Err(SyndicMutationError::IdentityCollision);
-            }
-        }
-        Ok(Some((self.prepared, writer_consumption)))
+        Err(SyndicMutationError::IdentityCollision)
     }
 
     fn reserve_reconciliation(
@@ -2447,6 +1969,11 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
         if !self.prepared.marker_order_records.is_empty() {
             reservation.reserve_records::<DraftMarkerOrderCommitmentsCodec>(
                 self.prepared.marker_order_records.len(),
+            )?;
+        }
+        if !self.prepared.mapping_records.is_empty() {
+            reservation.reserve_records::<DraftPieceBuildMappingCodec>(
+                self.prepared.mapping_records.len(),
             )?;
         }
         reservation.reserve_records::<DraftPieceBuildsCodec>(1)?;
@@ -2478,6 +2005,9 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
             }
             for record in &prepared.marker_order_records {
                 mutations.put::<DraftMarkerOrderCommitmentsCodec>(&record.key(), record)?;
+            }
+            for record in &prepared.mapping_records {
+                mutations.put::<DraftPieceBuildMappingCodec>(&record.key, record)?;
             }
             put_build_transition(mutations, &prepared.next, &prepared.next_receipt)?;
             put_session_head(mutations, &prepared.next_session)?;

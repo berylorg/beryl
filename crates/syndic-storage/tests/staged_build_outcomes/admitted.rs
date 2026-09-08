@@ -174,6 +174,61 @@ fn cleanup_exact_new_retains_settlement_and_releases_only_the_empty_writer() {
 }
 
 #[test]
+fn committed_cleanup_exact_new_preserves_terminal_mapping_evidence() {
+    use syndic_storage::test_faults::{
+        DraftBuildMappingRootForTest, draft_build_mapping_record_for_test,
+        draft_build_mapping_root_key_for_test, draft_build_mapping_snapshot,
+    };
+    let faults = FaultController::new();
+    let (fixture, admission, identity) =
+        fresh_staging("mapping-cleanup-retention", 176, faults.clone());
+    let flight = committed_cleanup(&fixture, identity);
+    let terminal = staged_outcome_build_for_test(&fixture.storage, &fixture.store, identity);
+    let mapping = draft_build_mapping_snapshot(&terminal).unwrap();
+    assert_eq!(mapping.stage_tag, 0);
+    assert_eq!(mapping.pending_target_units, None);
+    let key = draft_build_mapping_root_key_for_test(
+        &fixture.storage,
+        &fixture.store,
+        &terminal,
+        DraftBuildMappingRootForTest::Current,
+    )
+    .unwrap();
+    let encoded =
+        draft_build_mapping_record_for_test(&fixture.storage, &fixture.store, key).unwrap();
+    let result = flight.result().unwrap().clone();
+    faults.fail_next(FaultPoint::AfterCommitBeforePersist);
+    let flight = flight.resume(&fixture.store);
+    assert_eq!(flight.state(), State::CleanupReconciling, "{flight:?}");
+    assert_eq!(flight.classification(), Durable::Committed);
+    assert_eq!(flight.result(), Some(&result));
+    assert!(flight.has_reconciliation_custody());
+    let flight = flight.resume(&fixture.store);
+    assert_eq!(flight.state(), State::Complete, "{flight:?}");
+    assert!(flight.verification_work().attempted_reads > 0);
+    assert!(flight.verification_work().attempted_reads <= 126);
+    let completion = complete(flight, &fixture.store);
+    assert_eq!(completion.result, result);
+    assert!(completion.cleanup_receipt.is_some());
+    assert!(completion.cleanup_failure.is_some());
+    assert_eq!(
+        staged_outcome_build_for_test(&fixture.storage, &fixture.store, identity),
+        terminal
+    );
+    assert_eq!(draft_build_mapping_snapshot(&terminal), Some(mapping));
+    assert_eq!(
+        draft_build_mapping_record_for_test(&fixture.storage, &fixture.store, key),
+        Some(encoded)
+    );
+    let admission = fixture
+        .storage
+        .draft_marker_admission_publication_snapshot_for_test(&fixture.store, admission, &[])
+        .unwrap();
+    assert!(admission.head().is_none());
+    assert!(admission.receipt().is_none());
+}
+
+#[test]
 fn cleanup_exact_old_retriggers_its_failed_handle_before_explicit_bounded_retry() {
     let faults = FaultController::new();
     let (fixture, admission, identity) = fresh_staging("outcome-cleanup-old", 100, faults);

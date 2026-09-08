@@ -40,7 +40,7 @@ fn ordinary_range_repair_crossing_a_leaf_boundary_removes_one_leaf_per_applying_
 
     let mut applying_steps = 0;
     let mut previous_end: Option<syndic_storage::DraftPieceBuildBoundaryV1> = None;
-    for step in 0..512 {
+    for step in 0..(129 * 16 + 64) {
         let before = open_build(&storage, &store, &edit);
         let Some(advance) = storage
             .prepare_draft_piece_build_advance(
@@ -74,16 +74,6 @@ fn ordinary_range_repair_crossing_a_leaf_boundary_removes_one_leaf_per_applying_
             assert!(work.encoded_bytes() <= 4_194_304);
             assert_eq!(start.inner(), 0);
             assert_eq!(end.inner(), 0);
-            if let Some(previous_end) = previous_end {
-                assert_eq!(end.rank() + 1, previous_end.rank());
-            }
-            previous_end = Some(end);
-            applying_steps += 1;
-        } else if !matches!(
-            before.frontier(),
-            DraftPieceBuildFrontierV1::Applying { .. }
-        ) {
-            assert!(advance.bounded_work().is_none());
         }
         let measured = advance.clone();
         let prepared_work = measured.bounded_work();
@@ -98,13 +88,21 @@ fn ordinary_range_repair_crossing_a_leaf_boundary_removes_one_leaf_per_applying_
         }
         if applying.is_some() {
             let after = open_build(&storage, &store, &edit);
-            assert_eq!(
-                after
-                    .working_roots()
-                    .sequence_summary()
-                    .logical_utf8_bytes(),
-                before_bytes - 1,
-            );
+            let after_bytes = after
+                .working_roots()
+                .sequence_summary()
+                .logical_utf8_bytes();
+            if after_bytes == before_bytes {
+                assert_eq!(after.working_roots(), before.working_roots());
+            } else {
+                assert_eq!(after_bytes, before_bytes - 1);
+                let (_, end) = applying.unwrap();
+                if let Some(previous_end) = previous_end {
+                    assert_eq!(end.rank() + 1, previous_end.rank());
+                }
+                previous_end = Some(end);
+                applying_steps += 1;
+            }
         }
     }
     assert_eq!(applying_steps, 129);
@@ -168,11 +166,12 @@ fn same_leaf_utf8_range_preserves_one_leaf_and_empty_range_enters_inserting() {
         )
         .unwrap()
     {
+        let before = open_build(&storage, &store, &middle);
         if let DraftPieceBuildFrontierV1::Applying {
             successor_start,
             successor_end,
             ..
-        } = open_build(&storage, &store, &middle).frontier()
+        } = before.frontier()
         {
             assert_eq!(successor_start.rank(), successor_end.rank());
             assert_eq!(successor_start.inner(), 2);
@@ -187,9 +186,29 @@ fn same_leaf_utf8_range_preserves_one_leaf_and_empty_range_enters_inserting() {
                 );
             }
             assert!(advance.bounded_work().is_some());
-            saw_same_leaf = true;
         }
         committed(execute(&store, storage.advance_draft_piece_edit(advance)));
+        let after = open_build(&storage, &store, &middle);
+        if after
+            .working_roots()
+            .sequence_summary()
+            .logical_utf8_bytes()
+            < before
+                .working_roots()
+                .sequence_summary()
+                .logical_utf8_bytes()
+        {
+            assert!(!saw_same_leaf);
+            assert_eq!(
+                after
+                    .working_roots()
+                    .sequence_summary()
+                    .logical_utf8_bytes(),
+                4
+            );
+            assert_eq!(after.working_roots().sequence_summary().piece_count(), 1);
+            saw_same_leaf = true;
+        }
     }
     assert!(saw_same_leaf);
     committed(execute(
@@ -275,7 +294,7 @@ fn later_leaf_end_prefix_trim_normalizes_the_remaining_end_cursor() {
     begin_and_stage(&storage, &store, &edit);
 
     let mut observed = false;
-    for step in 0..16 {
+    for step in 0..64 {
         let before = open_build(&storage, &store, &edit);
         let advance = storage
             .prepare_draft_piece_build_advance(
@@ -296,7 +315,19 @@ fn later_leaf_end_prefix_trim_normalizes_the_remaining_end_cursor() {
         {
             assert!(advance.bounded_work().is_some());
             committed(execute(&store, storage.advance_draft_piece_edit(advance)));
-            match open_build(&storage, &store, &edit).frontier() {
+            let after = open_build(&storage, &store, &edit);
+            if after.working_roots() == before.working_roots() {
+                assert_eq!(after.frontier(), before.frontier());
+                continue;
+            }
+            assert_eq!(
+                after
+                    .working_roots()
+                    .sequence_summary()
+                    .logical_utf8_bytes(),
+                6
+            );
+            match after.frontier() {
                 DraftPieceBuildFrontierV1::Applying {
                     successor_start: next_start,
                     successor_end: next_end,
@@ -365,7 +396,7 @@ fn start_leaf_tail_trim_normalizes_an_empty_range_before_inserting() {
     begin_and_stage(&storage, &store, &edit);
 
     let mut observed = false;
-    for step in 0..16 {
+    for step in 0..64 {
         let before = open_build(&storage, &store, &edit);
         let advance = storage
             .prepare_draft_piece_build_advance(
@@ -387,7 +418,19 @@ fn start_leaf_tail_trim_normalizes_an_empty_range_before_inserting() {
         {
             assert!(advance.bounded_work().is_some());
             committed(execute(&store, storage.advance_draft_piece_edit(advance)));
-            match open_build(&storage, &store, &edit).frontier() {
+            let after = open_build(&storage, &store, &edit);
+            if after.working_roots() == before.working_roots() {
+                assert_eq!(after.frontier(), before.frontier());
+                continue;
+            }
+            assert_eq!(
+                after
+                    .working_roots()
+                    .sequence_summary()
+                    .logical_utf8_bytes(),
+                4
+            );
+            match after.frontier() {
                 DraftPieceBuildFrontierV1::Applying {
                     successor_start: next_start,
                     successor_end: next_end,
@@ -569,16 +612,33 @@ fn partial_ordinary_range_repair_reopens_and_continues_from_persisted_progress()
             )
             .unwrap()
             .unwrap();
-        let applying = matches!(
-            before.frontier(),
-            DraftPieceBuildFrontierV1::Applying { .. }
-        );
         committed(execute(&store, storage.advance_draft_piece_edit(advance)));
-        if applying {
+        let after = open_build(&storage, &store, &edit);
+        let before_bytes = before
+            .working_roots()
+            .sequence_summary()
+            .logical_utf8_bytes();
+        let after_bytes = after
+            .working_roots()
+            .sequence_summary()
+            .logical_utf8_bytes();
+        if after_bytes < before_bytes {
+            assert!(matches!(
+                before.frontier(),
+                DraftPieceBuildFrontierV1::Applying { .. }
+            ));
+            assert_eq!(after_bytes, before_bytes - 1);
             applied += 1;
         }
     }
     let persisted = open_build(&storage, &store, &edit);
+    assert_eq!(
+        persisted
+            .working_roots()
+            .sequence_summary()
+            .logical_utf8_bytes(),
+        126
+    );
     drop(store);
 
     let mut reopened = HomeStore::open(HomeOpenOptions::new(

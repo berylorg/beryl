@@ -1,8 +1,8 @@
 use super::{continuation_support::*, *};
 use std::collections::BTreeSet;
 use syndic_storage::test_faults::{
-    draft_marker_program_codec_rejects_for_test, draft_marker_program_roundtrip_for_test,
-    draft_marker_program_snapshot_for_test,
+    draft_build_mapping_snapshot, draft_marker_program_codec_rejects_for_test,
+    draft_marker_program_roundtrip_for_test, draft_marker_program_snapshot_for_test,
 };
 
 pub(super) fn observed_build(
@@ -30,15 +30,18 @@ fn run_reopening(
     fragments: &[syndic_storage::DraftPieceBuildFragmentV1],
 ) -> (HomeStore, SyndicStorage, BTreeSet<(u8, u8, u8)>) {
     let mut observed = BTreeSet::new();
+    let mut mapping_stages = BTreeSet::new();
     for step in 0..512 {
         let before = observed_build(&storage, &store, prepared, fragments);
+        let mapping = draft_build_mapping_snapshot(&before).unwrap();
+        mapping_stages.insert(mapping.stage_tag);
         let program = draft_marker_program_snapshot_for_test(&before);
         if let Some(program) = &program {
             let (purpose, component) = program.proof.unwrap_or((255, 255));
             observed.insert((program.pending, purpose, component));
-            assert!(program.bytes.len() <= 272);
+            assert!(program.bytes.len() <= 256);
             if program.pending == 7 {
-                assert_eq!(program.bytes.len(), 272);
+                assert_eq!(program.bytes.len(), 256);
             }
             if program.pending == 4 {
                 assert!(program.bytes.len() <= 218);
@@ -98,6 +101,28 @@ fn run_reopening(
                 )
             })
         else {
+            for stage in [22, 23, 24] {
+                assert!(
+                    mapping_stages.contains(&stage),
+                    "missing refresh stage {stage}"
+                );
+            }
+            if observed.contains(&(2, 255, 255)) {
+                for stage in [10, 11, 12, 18, 20, 21] {
+                    assert!(
+                        mapping_stages.contains(&stage),
+                        "missing removal stage {stage}"
+                    );
+                }
+            }
+            if observed.contains(&(5, 255, 255)) {
+                for stage in [13, 14, 15, 19, 20, 21] {
+                    assert!(
+                        mapping_stages.contains(&stage),
+                        "missing insertion stage {stage}"
+                    );
+                }
+            }
             return (store, storage, observed);
         };
         let measured = advance.clone();
@@ -112,8 +137,29 @@ fn run_reopening(
         if let Some(program) = program {
             if program.phase != 3 {
                 assert_eq!(after.working_roots(), before.working_roots());
-            } else {
+            } else if mapping.stage_tag == 24 {
                 assert!(after.marker_effect_continuation().active().is_none());
+                let after_mapping = draft_build_mapping_snapshot(&after).unwrap();
+                assert_eq!(after_mapping.stage_tag, 0);
+                assert_eq!(
+                    Some(after_mapping.completed_source_unit),
+                    mapping.fragment_source_end_unit
+                );
+                assert_eq!(after_mapping.fragment_source_end_unit, None);
+            } else {
+                assert!(matches!(mapping.stage_tag, 22 | 23));
+                assert_eq!(
+                    after.marker_effect_continuation(),
+                    before.marker_effect_continuation()
+                );
+                assert_eq!(after.frontier(), before.frontier());
+                assert_eq!(after.base_frontier(), before.base_frontier());
+                assert_eq!(after.successor_frontier(), before.successor_frontier());
+                assert_eq!(after.working_roots(), before.working_roots());
+                assert_eq!(
+                    draft_build_mapping_snapshot(&after).unwrap().stage_tag,
+                    mapping.stage_tag + 1
+                );
             }
         }
         drop(store);
@@ -189,7 +235,7 @@ fn utf8_interior_insert_move_and_same_identity_replacement_reopen_every_boundary
     let (prepared, fragments) =
         stage_fragments(&storage, &store, &session, 67, vec![moving], point(0));
     let (store, storage, moved) = run_reopening(&home, store, storage, &prepared, &fragments);
-    for purpose in [0, 1, 2, 3, 6, 7, 8, 9] {
+    for purpose in [0, 1, 2, 3, 8, 9] {
         assert!(moved.contains(&(1, purpose, 0)), "missing proof {purpose}");
     }
     for pending in 2..=7 {

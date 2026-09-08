@@ -16,6 +16,7 @@ fn edit_leaf(
     start: usize,
     end: Option<usize>,
     marker: Option<DraftMarkerIdentityOccurrenceV1>,
+    prefix_units: u128,
 ) -> Result<EditedSequence, DraftPiecePrepareErrorV1> {
     if tree.height == 0 {
         if rank != 0 {
@@ -23,6 +24,13 @@ fn edit_leaf(
         }
         let leaf = context.load_sequence_leaf(tree.link)?;
         if let Some(expected) = marker {
+            mapping_program::verify_splice(
+                context,
+                mapping_program::Kind::MarkerDelete,
+                prefix_units,
+                1,
+                0,
+            )?;
             return if matches!(leaf.value(), DraftPieceLeafValueV1::Marker(value)
                 if value.marker_id() == expected.marker_id() && value.label() == expected.label()
                     && value.asset_id() == expected.asset_id() && value.order_key() == expected.order_key())
@@ -48,8 +56,22 @@ fn edit_leaf(
             ));
         }
         if start == 0 && end == text.len() {
+            mapping_program::verify_splice(
+                context,
+                mapping_program::Kind::TextDelete,
+                prefix_units,
+                (end - start) as u128,
+                0,
+            )?;
             return Ok(EditedSequence::Empty);
         }
+        mapping_program::verify_splice(
+            context,
+            mapping_program::Kind::TextDelete,
+            prefix_units + start as u128,
+            (end - start) as u128,
+            0,
+        )?;
         let mut retained = String::with_capacity(text.len() - (end - start));
         retained.push_str(&text[..start]);
         retained.push_str(&text[end..]);
@@ -61,6 +83,7 @@ fn edit_leaf(
     let node = context.load_sequence_node(tree.link, tree.height, tree.selected_root)?;
     let mut children = node.children().to_vec();
     let mut remaining = rank;
+    let mut selected_prefix = prefix_units;
     let index = children
         .iter()
         .position(|child| {
@@ -68,6 +91,8 @@ fn edit_leaf(
                 true
             } else {
                 remaining -= child.piece_count();
+                selected_prefix +=
+                    u128::from(child.logical_utf8_bytes()) + u128::from(child.marker_count());
                 false
             }
         })
@@ -77,7 +102,15 @@ fn edit_leaf(
         height: tree.height - 1,
         selected_root: false,
     };
-    match edit_leaf(context, child, remaining, start, end, marker)? {
+    match edit_leaf(
+        context,
+        child,
+        remaining,
+        start,
+        end,
+        marker,
+        selected_prefix,
+    )? {
         EditedSequence::Empty => {
             children.remove(index);
         }
@@ -186,7 +219,7 @@ pub(super) fn remove_text_slice(
             (rank, 0, None, start, Boundary { rank, inner: 0 })
         }
     };
-    let sequence = finish_edit(edit_leaf(context, tree, rank, first, last, None)?)?;
+    let sequence = finish_edit(edit_leaf(context, tree, rank, first, last, None, 0)?)?;
     Ok((sequence, next_start, next_end))
 }
 
@@ -213,5 +246,5 @@ pub(super) fn remove_marker(
     rank: u64,
     expected: DraftMarkerIdentityOccurrenceV1,
 ) -> Result<Option<SequenceRef>, DraftPiecePrepareErrorV1> {
-    finish_edit(edit_leaf(context, tree, rank, 0, None, Some(expected))?)
+    finish_edit(edit_leaf(context, tree, rank, 0, None, Some(expected), 0)?)
 }

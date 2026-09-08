@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 
 mod marker_program;
 pub(crate) use marker_program::*;
+mod mapping_program;
+pub(crate) use mapping_program::*;
 
 pub fn canonical_empty_marker_effect_chain_v1() -> DraftPieceDigestV1 {
     DraftPieceDigestV1::from_bytes(

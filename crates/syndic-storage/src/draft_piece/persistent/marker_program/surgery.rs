@@ -192,11 +192,12 @@ pub(super) fn advance(
             )?;
             let roots = target_roots(context, sequence_target, identity_target, order)?;
             validate_delta(active.working_roots(), roots, false, false)?;
+            mapping::install_map(context, roots, false)?;
             Ok(update(
                 active,
                 roots,
                 active.phase(),
-                active.removal_site(),
+                None,
                 active.planning(),
                 None,
                 Pending::None,
@@ -289,6 +290,7 @@ pub(super) fn advance(
             {
                 return invalid();
             }
+            mapping::install_map(context, roots, true)?;
             Ok(update(
                 active,
                 roots,

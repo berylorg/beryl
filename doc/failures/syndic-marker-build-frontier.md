@@ -122,3 +122,45 @@ Mapping is appended as implemented family 87, preserving all prior family order.
 terminal-repair families in the target schema remain unimplemented and outside this correction.
 The builder still requires the separately planned V6 continuation integration before the app's
 mixed-edit acceptance can resume.
+
+## Accepted V6 Continuation
+
+The complete V6 continuation now uses original-coordinate mapping for all implemented text and
+marker edits. Map updates precede sequence surgery; compact Ready states permit one atomic
+coherent tree/map installation. Separate refresh commands publish the actual resulting frontier.
+Build, progress and settlement codecs and digests advance together, and the final canonical-shape
+guard runs after the proposed progress reference is authenticated. Selected and predecessor map
+roots participate in construction, reopening and outcome custody; terminal and admitted-cleanup
+paths preserve that evidence.
+
+Focused serial nextest verification covered 90 cases across the main run and targeted correction
+runs. All passed. The three new mapping binaries contribute six behavioral, five codec/receipt and
+eight custody cases; existing durable-builder, marker-continuation, bounds, staged-outcome and
+sequence-continuation tests provide the remaining coverage. Separate canonical V6 vectors verify
+digest domains and rejection of older envelopes. Mixed-edit cases cover all marker effects,
+original Copy-only removal, intermediate and EOF source cuts, repeated insertion gaps and UTF-8
+continuation. A seeded text-leaf case requires four map-leaf deletions before one atomic sequence
+mutation. Partial reopen proves three actual sequence removals with 126 of 129 bytes remaining.
+
+The 257-fragment outcome case converges across two staging windows in exactly 5,912 advances
+(`257*23+1`). Executed construction commands check their combined preparation/submission counters
+against 256 stored-structure records, 512 point attempts and 4 MiB. Outcome commands separately
+check 128 reads and 8 MiB, including mapping-root custody and cleanup. These are measured limit
+assertions, not retained numeric runtime maxima. The complete sequence-insertion peak of
+4,192,576 bytes and its 1,728-byte margin remain conservative analytical bounds verified by the
+branch inventory and independent review.
+
+Existing fault fixtures needed the V6 field layout and full continuation closure; old eager
+mutation assertions needed to follow proof and refresh commands to the actual mutation or
+publication. Those repairs preserve malformed-record refusal, exact admission consumption and
+stale-command checks. Three large debug fault fixtures exceeded the default stack through their
+combined suspended test frames. Extracting sequential setup, execution and recovery helpers
+restored all assertions on the unchanged default stack, including all three writer fault cuts.
+Production validation and stack settings were not relaxed.
+
+Isolated production library checks for Syndic and the accepted app source passed without test
+features. All 42 copied source files matched the working implementation before and after those
+checks; unaccepted app and admission fixtures were excluded. Independent semantic/adversarial
+review accepted the final 60-file source/test change. Temporary verification and attributable
+aborted-test resources were removed. This resolves the storage prerequisite; application marker
+admission still requires its own resumed runtime and integration acceptance.

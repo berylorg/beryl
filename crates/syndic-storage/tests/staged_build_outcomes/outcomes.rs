@@ -305,6 +305,18 @@ pub(super) fn advance_to_terminal(
     store: &HomeStore,
     identity: DraftMutationStagingIdentityV1,
 ) -> syndic_storage::DraftPieceBuildProgressReceiptReferenceV1 {
+    advance_to_terminal_with_limit(storage, store, identity, MAX_RESUMES).0
+}
+
+fn advance_to_terminal_with_limit(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+    command_limit: usize,
+) -> (
+    syndic_storage::DraftPieceBuildProgressReceiptReferenceV1,
+    usize,
+) {
     let mut endpoint = building_endpoint(storage, store, identity);
     let mut advances = 0;
     loop {
@@ -312,7 +324,7 @@ pub(super) fn advance_to_terminal(
             .prepare_staged_draft_piece_advance(store, identity, endpoint)
             .unwrap()
         else {
-            return endpoint;
+            return (endpoint, advances);
         };
         assert_eq!(
             prepared.kind(),
@@ -326,7 +338,7 @@ pub(super) fn advance_to_terminal(
         ));
         assert_verification_budget(completion.verification);
         advances += 1;
-        assert!(advances < MAX_RESUMES, "build advances did not converge");
+        assert!(advances <= command_limit, "build advances did not converge");
         endpoint = building_endpoint(storage, store, identity);
     }
 }
@@ -837,6 +849,8 @@ fn fresh_and_accepted_marker_targets_preserve_committed_cleanup_custody_when_hom
 #[test]
 fn more_than_256_fragments_continue_across_windows_with_bounded_outcome_work() {
     const FRAGMENT_COUNT: usize = 257;
+    const COMMANDS_PER_REPLACEMENT: usize = 23;
+    const EXPECTED_COMMANDS: usize = FRAGMENT_COUNT * COMMANDS_PER_REPLACEMENT + 1;
     let faults = FaultController::new();
     let (_home, store, storage, thread) =
         fixture_with_faults("outcome-many-fragments", 60, faults.clone());
@@ -882,7 +896,9 @@ fn more_than_256_fragments_continue_across_windows_with_bounded_outcome_work() {
         windows, 2,
         "one operation must cross its durable window boundary"
     );
-    let endpoint = advance_to_terminal(&storage, &store, identity);
+    let (endpoint, advances) =
+        advance_to_terminal_with_limit(&storage, &store, identity, EXPECTED_COMMANDS);
+    assert_eq!(advances, EXPECTED_COMMANDS);
     let terminal = storage
         .prepare_staged_draft_piece_terminal(
             &store,

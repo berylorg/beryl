@@ -32,7 +32,7 @@ pub fn draft_marker_program_snapshot_for_test(
             + usize::from(planning.source_boundary.is_some()) * 16
             + usize::from(planning.previous_start.is_some()) * 16;
     }
-    pending_offset += 1 + usize::from(active.insertion_site().is_some()) * 40;
+    pending_offset += 1 + usize::from(active.insertion_site().is_some()) * 24;
     let proof = match active.pending() {
         DraftPieceMarkerPendingV1::Proof {
             purpose, component, ..

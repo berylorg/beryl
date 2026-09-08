@@ -20,7 +20,6 @@ pub(crate) struct DraftPieceMarkerPlanningV1 {
 pub(crate) struct DraftPieceMarkerInsertionSiteV1 {
     pub boundary: DraftPieceBuildBoundaryV1,
     pub marker_ordinal: u64,
-    pub mapped_next_boundary: DraftPieceBuildBoundaryV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,8 +43,6 @@ pub(crate) enum DraftPieceMarkerProofPurposeV1 {
     SourceIdentity = 3,
     PreviousStart = 4,
     PreviousEnd = 5,
-    WorkingOccurrence = 6,
-    WorkingIdentity = 7,
     InsertIdentityAbsent = 8,
     InsertAnchor = 9,
     InsertOrder = 10,
@@ -206,10 +203,7 @@ impl DraftPieceActiveMarkerEffectV1 {
                 Pending::Proof { purpose, .. } => match purpose {
                     Purpose::SourceBounds => (true, false, false),
                     Purpose::SourceInsertIdentityAbsent if !removes => (false, false, false),
-                    Purpose::RemovalGap
-                    | Purpose::SourceOccurrence
-                    | Purpose::SourceIdentity
-                    | Purpose::WorkingOccurrence
+                    Purpose::RemovalGap | Purpose::SourceOccurrence | Purpose::SourceIdentity
                         if removes =>
                     {
                         (false, false, false)
@@ -220,7 +214,6 @@ impl DraftPieceActiveMarkerEffectV1 {
                     Purpose::PreviousEnd if self.fragment_key().ordinal() > 1 => {
                         (false, true, false)
                     }
-                    Purpose::WorkingIdentity if removes => (false, false, true),
                     _ => return false,
                 },
                 Pending::RemoveSequence
@@ -230,7 +223,7 @@ impl DraftPieceActiveMarkerEffectV1 {
                 {
                     (false, false, true)
                 }
-                Pending::None => (false, false, removes),
+                Pending::None => (false, false, self.removal_site().is_some()),
                 _ => return false,
             };
             return planning.source_boundary.is_none() == source_absent
@@ -267,7 +260,8 @@ impl DraftPieceActiveMarkerEffectV1 {
                     && self.insertion_site().is_some()
                     && matches!(
                         self.pending(),
-                        Pending::InsertSequence
+                        Pending::None
+                            | Pending::InsertSequence
                             | Pending::InsertIdentity { .. }
                             | Pending::InsertOrder { .. }
                     )
@@ -279,7 +273,8 @@ impl DraftPieceActiveMarkerEffectV1 {
         use DraftPieceMarkerPendingV1 as Pending;
         let source = self.source_roots().sequence_summary();
         let working = self.working_roots().sequence_summary();
-        let removed = removes && (self.planning().is_none() || self.pending() == Pending::None);
+        let removed =
+            removes && (self.planning().is_none() || self.working_roots() != self.source_roots());
         let inserted = inserts && self.phase() == DraftPieceActiveMarkerPhaseV1::Publishing;
         let Some(markers) = source
             .marker_count()

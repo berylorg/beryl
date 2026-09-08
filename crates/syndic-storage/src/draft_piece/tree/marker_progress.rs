@@ -96,8 +96,6 @@ pub(super) fn endpoint_is_exact(
                     next_piece == 0
                         && site.marker_ordinal
                             <= active.working_roots().sequence_summary().marker_count()
-                        && insertion::mapped_end(site.boundary, successor_end)
-                            == Some(site.mapped_next_boundary)
                         && site.boundary.rank()
                             <= active.working_roots().sequence_summary().piece_count()
                 }
@@ -269,40 +267,4 @@ fn installed_targets(
         && roots.sequence_summary() == sequence.summary
         && roots.marker_index_root() == identity.root_node_id
         && roots.marker_index_summary() == identity.summary
-}
-
-pub(super) fn publication_is_exact(
-    previous: &DraftPieceBuildProgressReceiptV1,
-    current: &DraftPieceBuildProgressReceiptV1,
-    fragment: &DraftPieceBuildFragmentV1,
-) -> bool {
-    let Some(active) = previous.marker_effect_continuation().active() else {
-        return false;
-    };
-    let DraftPieceBuildFrontierV1::Inserting {
-        base_end,
-        successor_end,
-        ..
-    } = previous.frontier()
-    else {
-        return false;
-    };
-    endpoint_is_exact(Some(active), previous.frontier(), previous.working_roots())
-        && previous.lifecycle() == DraftPieceBuildLifecycleV1::Open
-        && current.lifecycle() == DraftPieceBuildLifecycleV1::Open
-        && active.phase() == Phase::Publishing
-        && fragment_matches(active, fragment)
-        && current.working_roots() == active.working_roots()
-        && current.base_frontier() == base_end
-        && current.successor_frontier() == successor_end
-        && current.next_record_ordinal() == previous.next_record_ordinal()
-        && match current.frontier() {
-            DraftPieceBuildFrontierV1::Planning { fragment_ordinal } => {
-                active.fragment_key().ordinal().checked_add(1) == Some(fragment_ordinal)
-            }
-            DraftPieceBuildFrontierV1::CrossValidating => current
-                .fragment_endpoint()
-                .is_some_and(|endpoint| endpoint.key() == active.fragment_key()),
-            _ => false,
-        }
 }

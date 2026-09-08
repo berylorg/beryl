@@ -37,10 +37,7 @@ fn complete_same_anchor_marker_setup(
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,
@@ -97,15 +94,15 @@ fn markerless_nonempty_ranges_reject_without_implicit_marker_deletion() {
             syndic_storage::canonical_empty_marker_effect_chain_v1()
         );
         assert!(matches!(
-            storage.prepare_draft_piece_build_advance(
-                &store,
-                identity.draft_id(),
-                identity.session_id(),
-                identity.operation_id().as_piece_operation(),
-            ),
-            Err(DraftPiecePrepareErrorV1::InvalidRoot)
+            advance_error(&storage, &store, identity),
+            DraftPiecePrepareErrorV1::Rejected(DraftPieceRejectedReasonV1::Overlap)
         ));
-        assert_eq!(open_build(&storage, &store, &prepared, &fragment), initial);
+        let rejected = open_build(&storage, &store, &prepared, &fragment);
+        assert_eq!(rejected.working_roots(), initial.working_roots());
+        assert_eq!(
+            rejected.marker_effect_continuation(),
+            initial.marker_effect_continuation()
+        );
 
         drop(store);
         store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
@@ -117,9 +114,11 @@ fn markerless_nonempty_ranges_reject_without_implicit_marker_deletion() {
                 identity.session_id(),
                 identity.operation_id().as_piece_operation(),
             ),
-            Err(DraftPiecePrepareErrorV1::InvalidRoot)
+            Err(DraftPiecePrepareErrorV1::Rejected(
+                DraftPieceRejectedReasonV1::Overlap
+            ))
         ));
-        assert_eq!(open_build(&storage, &store, &prepared, &fragment), initial);
+        assert_eq!(open_build(&storage, &store, &prepared, &fragment), rejected);
         let reopened = active_session(&storage, &store, session.draft_id(), session.session_id());
         assert_eq!(reopened.newest_root(), before.newest_root());
         assert_eq!(reopened.newest_history(), before.newest_history());
@@ -218,10 +217,7 @@ fn explicit_same_anchor_removals_precede_text_range_and_enumerate_every_effect()
         let Some(advance) = advance else {
             break;
         };
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     let complete = match storage
         .draft_piece_operation_status_page(&store, &prepared, 1, &fragments)
@@ -334,10 +330,9 @@ fn repeated_empty_ranges_reject_when_either_item_lacks_a_marker_effect() {
                     rejected = true;
                     break;
                 }
-                Ok(Some(advance)) => committed(execute(
-                    &store,
-                    storage.advance_draft_piece_edit(advance),
-                )),
+                Ok(Some(advance)) => {
+                    committed(execute(&store, storage.advance_draft_piece_edit(advance)))
+                }
                 _ => panic!("expected duplicate-empty rejection"),
             }
         }

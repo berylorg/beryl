@@ -90,7 +90,6 @@ pub(super) fn enc_program(e: &mut Encoder, active: DraftPieceActiveMarkerEffectV
             e.u8(1);
             enc_build_boundary(e, site.boundary);
             e.u64(site.marker_ordinal);
-            enc_build_boundary(e, site.mapped_next_boundary);
         }
     }
     use DraftPieceMarkerPendingV1::*;
@@ -166,8 +165,6 @@ fn dec_purpose(d: &mut Decoder<'_>) -> Result<DraftPieceMarkerProofPurposeV1, Co
         3 => SourceIdentity,
         4 => PreviousStart,
         5 => PreviousEnd,
-        6 => WorkingOccurrence,
-        7 => WorkingIdentity,
         8 => InsertIdentityAbsent,
         9 => InsertAnchor,
         10 => InsertOrder,
@@ -213,7 +210,6 @@ pub(super) fn dec_program(
         Some(DraftPieceMarkerInsertionSiteV1 {
             boundary: dec_build_boundary(d)?,
             marker_ordinal: d.u64()?,
-            mapped_next_boundary: dec_build_boundary(d)?,
         })
     } else {
         Option::None

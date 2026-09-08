@@ -1,12 +1,12 @@
 use super::*;
 
-pub(super) struct Fact {
-    pub(super) located: LocatedLeaf,
-    pub(super) marker_ordinal: u64,
-    pub(super) leaf: DraftPieceLeafRecordV1,
+pub(in crate::draft_piece::persistent) struct Fact {
+    pub(in crate::draft_piece::persistent) located: LocatedLeaf,
+    pub(in crate::draft_piece::persistent) marker_ordinal: u64,
+    pub(in crate::draft_piece::persistent) leaf: DraftPieceLeafRecordV1,
 }
 
-pub(super) fn locate(
+pub(in crate::draft_piece::persistent) fn locate(
     context: &mut BuildContext<'_>,
     tree: SequenceRef,
     target: DraftCompositeSearchKeyV1,
@@ -89,7 +89,7 @@ pub(super) fn locate(
     }))
 }
 
-pub(super) fn text_boundary(
+pub(in crate::draft_piece::persistent) fn text_boundary(
     tree: Option<SequenceRef>,
     fact: Option<&Fact>,
     offset: u64,
@@ -136,12 +136,12 @@ pub(super) fn text_boundary(
     }
 }
 
-pub(super) enum PositionProof {
-    Complete(Boundary),
+pub(in crate::draft_piece::persistent) enum PositionProof {
+    Complete(Boundary, u128),
     Primary(u64),
 }
 
-pub(super) fn resolve(
+pub(in crate::draft_piece::persistent) fn resolve(
     context: &mut BuildContext<'_>,
     tree: Option<SequenceRef>,
     position: DraftCompositePositionV1,
@@ -196,9 +196,13 @@ pub(super) fn resolve(
         .transpose()?
         .flatten();
     match (gap, component) {
-        (DraftCompositeGapWitnessV1::Unambiguous, Component::Primary) => Ok(
-            PositionProof::Complete(text_boundary(tree, fact.as_ref(), offset)?.0),
-        ),
+        (DraftCompositeGapWitnessV1::Unambiguous, Component::Primary) => {
+            let (boundary, marker_ordinal) = text_boundary(tree, fact.as_ref(), offset)?;
+            Ok(PositionProof::Complete(
+                boundary,
+                u128::from(offset) + u128::from(marker_ordinal),
+            ))
+        }
         (
             DraftCompositeGapWitnessV1::BeforeAll | DraftCompositeGapWitnessV1::AfterAll,
             Component::Primary,
@@ -216,20 +220,26 @@ pub(super) fn resolve(
             if gap == DraftCompositeGapWitnessV1::AfterAll {
                 Ok(PositionProof::Primary(fact.located.rank))
             } else {
-                Ok(PositionProof::Complete(Boundary {
-                    rank: fact.located.rank,
-                    inner: 0,
-                }))
+                Ok(PositionProof::Complete(
+                    Boundary {
+                        rank: fact.located.rank,
+                        inner: 0,
+                    },
+                    u128::from(offset) + u128::from(fact.marker_ordinal),
+                ))
             }
         }
         (DraftCompositeGapWitnessV1::AfterAll, Component::Secondary) => {
-            let boundary = text_boundary(tree, fact.as_ref(), offset)?.0;
+            let (boundary, marker_ordinal) = text_boundary(tree, fact.as_ref(), offset)?;
             if boundary.inner != 0
                 || boundary.rank <= primary.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?
             {
                 return invalid();
             }
-            Ok(PositionProof::Complete(boundary))
+            Ok(PositionProof::Complete(
+                boundary,
+                u128::from(offset) + u128::from(marker_ordinal),
+            ))
         }
         (DraftCompositeGapWitnessV1::Between { .. }, _) => {
             let fact = fact.ok_or(DraftPiecePrepareErrorV1::Rejected(
@@ -247,10 +257,13 @@ pub(super) fn resolve(
             } else if fact.located.rank
                 == increment(primary.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?)?
             {
-                Ok(PositionProof::Complete(Boundary {
-                    rank: fact.located.rank,
-                    inner: 0,
-                }))
+                Ok(PositionProof::Complete(
+                    Boundary {
+                        rank: fact.located.rank,
+                        inner: 0,
+                    },
+                    u128::from(offset) + u128::from(fact.marker_ordinal),
+                ))
             } else {
                 Err(DraftPiecePrepareErrorV1::Rejected(
                     DraftPieceRejectedReasonV1::InvalidGapWitness,

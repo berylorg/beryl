@@ -1,5 +1,17 @@
 #[test]
 fn staged_marker_effects_derive_current_placement_and_close_identity_collisions() {
+    let (home, store, storage, session, original) = seed_original_marker();
+    let session = reject_marker_collisions(&storage, &store, session, original);
+    move_replace_and_remove_original_marker(home, store, storage, session, original);
+}
+
+fn seed_original_marker() -> (
+    TestHome,
+    HomeStore,
+    SyndicStorage,
+    DraftEditorCandidateSessionV1,
+    DraftPieceMarkerV1,
+) {
     let (home, store, storage, thread) = fixture("marker-effects", 1);
     let current = current(&storage, &store, thread);
     let mut session = open_session(&storage, &store, &current, 3, 4);
@@ -36,6 +48,15 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         insert,
         DraftLogicalExtentV1::new(3, 1),
     );
+    (home, store, storage, session, original)
+}
+
+fn reject_marker_collisions(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    mut session: DraftEditorCandidateSessionV1,
+    original: DraftPieceMarkerV1,
+) -> DraftEditorCandidateSessionV1 {
     let accepted_anchors: Vec<_> = (0..=3)
         .filter(|anchor| {
             storage
@@ -176,6 +197,16 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
         ),
     ));
     session = active_session(&storage, &store, session.draft_id(), session.session_id());
+    session
+}
+
+fn move_replace_and_remove_original_marker(
+    home: TestHome,
+    store: HomeStore,
+    storage: SyndicStorage,
+    mut session: DraftEditorCandidateSessionV1,
+    original: DraftPieceMarkerV1,
+) {
     let occurrence = storage
         .draft_marker_identity(&store, session.newest_root(), original.marker_id())
         .unwrap()

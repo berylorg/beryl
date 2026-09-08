@@ -1,4 +1,6 @@
 use super::*;
+use crate::draft_piece::build_mapping::DraftPieceBuildMappingFamily;
+use crate::draft_piece::mutation::mapping_custody;
 
 pub(super) fn build_endpoint(
     reader: &mut OutcomeReader<'_>,
@@ -52,16 +54,12 @@ pub(super) fn build_endpoint(
             }
             None => None,
         };
-        let active = receipt
-            .marker_effect_continuation()
-            .active()
-            .or(prior.marker_effect_continuation().active());
-        let fragment = match active {
-            Some(active) => Some(fragment_reference(
+        let fragment = match mapping_custody::transition_fragment_key(&prior, &receipt) {
+            Some(key) => Some(fragment_reference(
                 reader,
                 &mut fragments,
-                active.fragment_key(),
-                "transition marker fragment",
+                key,
+                "transition build fragment",
             )?),
             None => scanned_fragment,
         };
@@ -98,6 +96,7 @@ fn receipt_effects(
     receipt: &DraftPieceBuildProgressReceiptV1,
     fragments: &mut Vec<DraftPieceBuildFragmentV1>,
 ) -> Result<(), StagedDraftPieceOutcomeErrorV1> {
+    mapping_roots(reader, receipt)?;
     if let Some(endpoint) = receipt.fragment_endpoint() {
         let fragment = fragment_reference(
             reader,
@@ -129,6 +128,40 @@ fn receipt_effects(
         }
         roots(reader, receipt.key().draft_id(), active.working_roots())?;
         pending_roots(reader, receipt.key().draft_id(), active)?;
+    }
+    Ok(())
+}
+
+fn mapping_roots(
+    reader: &mut OutcomeReader<'_>,
+    receipt: &DraftPieceBuildProgressReceiptV1,
+) -> Result<(), StagedDraftPieceOutcomeErrorV1> {
+    let mapping = receipt
+        .mapping()
+        .ok_or(StagedDraftPieceOutcomeErrorV1::Invariant(
+            "build mapping presence",
+        ))?;
+    let owner = DraftPieceSettlementKeyV1::new(
+        receipt.key().draft_id(),
+        receipt.key().session_id(),
+        receipt.key().operation_id(),
+    );
+    for root in [
+        Some(mapping.current_map),
+        mapping_custody::pending_root(mapping),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let key = mapping_custody::stored_key(owner, root)
+            .map_err(|_| StagedDraftPieceOutcomeErrorV1::Invariant("build mapping root"))?;
+        if let Some(key) = key {
+            let node =
+                reader.required::<DraftPieceBuildMappingFamily>(key, "build mapping node")?;
+            mapping_custody::validate_node(key, root, &node).map_err(|_| {
+                StagedDraftPieceOutcomeErrorV1::Invariant("build mapping node agreement")
+            })?;
+        }
     }
     Ok(())
 }

@@ -1,7 +1,10 @@
 use super::*;
+use crate::draft_piece::build_mapping::{DraftPieceBuildMappingFamily, model::MapRoot};
+use crate::draft_piece::mutation::mapping_custody;
 
 #[derive(Default)]
 struct Evidence {
+    mapping: Vec<([u8; 64], MapRoot)>,
     sequence: Vec<DraftPieceSequenceDescriptorV1>,
     identity: Vec<DraftPieceIdentityDescriptorV1>,
     order: Vec<DraftPieceBuildRootsV1>,
@@ -9,6 +12,55 @@ struct Evidence {
 }
 
 impl Evidence {
+    fn mapping(
+        &mut self,
+        storage: &SyndicStorage,
+        store: &HomeStore,
+        receipt: &DraftPieceBuildProgressReceiptV1,
+        limit: crate::SyndicPointReadLimit,
+    ) -> Result<bool, SyndicReadError> {
+        let Some(mapping) = receipt.mapping() else {
+            return Ok(false);
+        };
+        let owner = DraftPieceSettlementKeyV1::new(
+            receipt.key().draft_id(),
+            receipt.key().session_id(),
+            receipt.key().operation_id(),
+        );
+        for root in [
+            Some(mapping.current_map),
+            mapping_custody::pending_root(mapping),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let Ok(key) = mapping_custody::stored_key(owner, root) else {
+                return Ok(false);
+            };
+            let Some(key) = key else {
+                continue;
+            };
+            if let Some((_, prior)) = self.mapping.iter().find(|(prior_key, _)| *prior_key == key) {
+                if *prior != root {
+                    return Ok(false);
+                }
+                continue;
+            }
+            if self.mapping.len() >= 3 {
+                return Ok(false);
+            }
+            let Some(node) = storage.point::<DraftPieceBuildMappingFamily>(store, key, limit)?
+            else {
+                return Ok(false);
+            };
+            if mapping_custody::validate_node(key, root, &node).is_err() {
+                return Ok(false);
+            }
+            self.mapping.push((key, root));
+        }
+        Ok(true)
+    }
+
     fn sequence(
         &mut self,
         storage: &SyndicStorage,
@@ -182,7 +234,7 @@ impl Evidence {
         receipt: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
-        if !progress_receipt_is_exact(receipt) {
+        if !progress_receipt_is_exact(receipt) || !self.mapping(storage, store, receipt, limit)? {
             return Ok(false);
         }
         if let Some(endpoint) = receipt.fragment_endpoint() {
@@ -249,17 +301,7 @@ impl Evidence {
         current: &DraftPieceBuildProgressReceiptV1,
         limit: crate::SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
-        let active = current
-            .marker_effect_continuation()
-            .active()
-            .or(previous.marker_effect_continuation().active());
-        let key = active.map(|active| active.fragment_key()).or_else(|| {
-            current
-                .marker_effect_continuation()
-                .scan()
-                .scanned_endpoint()
-                .map(|endpoint| endpoint.key())
-        });
+        let key = mapping_custody::transition_fragment_key(previous, current);
         let fragment = match key {
             Some(key) => self.fragment(storage, store, key, limit)?,
             None => None,
