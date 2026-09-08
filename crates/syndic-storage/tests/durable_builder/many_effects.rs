@@ -103,7 +103,7 @@ fn more_than_256_marker_effects_use_one_fixed_continuation() {
         assert!(advances < 10_000);
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(

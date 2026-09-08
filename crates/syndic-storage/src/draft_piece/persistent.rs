@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{SyndicStorage, draft_piece::*};
 
 mod marker_identity_lookup;
+mod sequence_edit;
 
 pub(crate) use marker_identity_lookup::{
     SnapshotMarkerLookupErrorV1, marker_identity_lookup, marker_identity_lookup_on_snapshot,
@@ -66,6 +67,7 @@ struct BuildContext<'a> {
     loaded_index_records: BTreeMap<DraftMarkerIdentityRecordKeyV1, DraftMarkerIdentityRecordV1>,
     loaded_marker_order_records: BTreeMap<DraftMarkerOrderRecordKeyV1, DraftMarkerOrderRecordV1>,
     records_read: u64,
+    acquisition: Option<super::mutation::advance_budget::BuildAcquisition<'a>>,
 }
 
 impl<'a> BuildContext<'a> {
@@ -103,6 +105,7 @@ impl<'a> BuildContext<'a> {
             loaded_index_records: BTreeMap::new(),
             loaded_marker_order_records: BTreeMap::new(),
             records_read: 0,
+            acquisition: None,
         }
     }
 
@@ -129,6 +132,30 @@ impl<'a> BuildContext<'a> {
         Ok(id)
     }
 
+    fn point<F: crate::codec::Family>(
+        &self,
+        key: F::Key,
+    ) -> Result<Option<F::Value>, DraftPiecePrepareErrorV1> {
+        match &self.acquisition {
+            Some(acquisition) => acquisition.point::<F>(key),
+            None => self
+                .storage
+                .point::<F>(self.store, key, point_limit())
+                .map_err(DraftPiecePrepareErrorV1::from),
+        }
+    }
+
+    fn charge_emission<F: crate::codec::Family>(
+        &self,
+        key: &F::Key,
+        value: &F::Value,
+    ) -> Result<(), DraftPiecePrepareErrorV1> {
+        if let Some(acquisition) = &self.acquisition {
+            acquisition.budget.emission::<F>(key, value)?;
+        }
+        Ok(())
+    }
+
     fn load_sequence_node(
         &mut self,
         expected: DraftPieceChildV1,
@@ -144,8 +171,7 @@ impl<'a> BuildContext<'a> {
         }
         let key = DraftPieceRecordKeyV1::new(self.draft_id, id);
         let node = self
-            .storage
-            .point::<DraftPieceNodesFamily>(self.store, key, point_limit())?
+            .point::<DraftPieceNodesFamily>(key)?
             .ok_or(DraftPiecePrepareErrorV1::Absent)?;
         self.records_read =
             self.records_read
@@ -171,8 +197,7 @@ impl<'a> BuildContext<'a> {
         }
         let key = DraftPieceRecordKeyV1::new(self.draft_id, id);
         let node = self
-            .storage
-            .point::<DraftPieceNodesFamily>(self.store, key, point_limit())?
+            .point::<DraftPieceNodesFamily>(key)?
             .ok_or(DraftPiecePrepareErrorV1::Absent)?;
         self.records_read =
             self.records_read
@@ -201,8 +226,7 @@ impl<'a> BuildContext<'a> {
         }
         let key = DraftPieceRecordKeyV1::new(self.draft_id, id);
         let leaf = self
-            .storage
-            .point::<DraftPieceLeavesFamily>(self.store, key, point_limit())?
+            .point::<DraftPieceLeavesFamily>(key)?
             .ok_or(DraftPiecePrepareErrorV1::Absent)?;
         self.records_read =
             self.records_read
@@ -232,6 +256,7 @@ impl<'a> BuildContext<'a> {
             digest,
         );
         let link = child_for_leaf(&record);
+        self.charge_emission::<DraftPieceLeavesFamily>(&record.key(), &record)?;
         self.sequence_leaves.insert(id, record);
         Ok(SequenceRef {
             link,
@@ -263,6 +288,7 @@ impl<'a> BuildContext<'a> {
             digest,
         );
         let link = child_for_node(&record).map_err(DraftPiecePrepareErrorV1::Rejected)?;
+        self.charge_emission::<DraftPieceNodesFamily>(&record.key(), &record)?;
         self.sequence_nodes.insert(id, record);
         Ok(SequenceRef {
             link,
@@ -289,8 +315,7 @@ impl<'a> BuildContext<'a> {
             return validate_index_record(record.clone(), expected, selected_root);
         }
         let record = self
-            .storage
-            .point::<DraftMarkerIdentityIndexFamily>(self.store, key, point_limit())?
+            .point::<DraftMarkerIdentityIndexFamily>(key)?
             .ok_or(DraftPiecePrepareErrorV1::Absent)?;
         self.records_read =
             self.records_read
@@ -321,8 +346,7 @@ impl<'a> BuildContext<'a> {
             return validate_index_root_record(record.clone(), summary);
         }
         let record = self
-            .storage
-            .point::<DraftMarkerIdentityIndexFamily>(self.store, key, point_limit())?
+            .point::<DraftMarkerIdentityIndexFamily>(key)?
             .ok_or(DraftPiecePrepareErrorV1::Absent)?;
         self.records_read =
             self.records_read
@@ -422,8 +446,7 @@ impl<'a> BuildContext<'a> {
             record.clone()
         } else {
             let record = self
-                .storage
-                .point::<DraftMarkerOrderCommitmentsFamily>(self.store, key, point_limit())?
+                .point::<DraftMarkerOrderCommitmentsFamily>(key)?
                 .ok_or(DraftPiecePrepareErrorV1::Absent)?;
             self.records_read =
                 self.records_read
@@ -3088,12 +3111,13 @@ fn validate_build_phase_cursor(
             if replacement.is_continuation() {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
-            let (start, end, exact_base_end, exact_start, exact_end) =
-                exact_replacement_boundaries(storage, store, build, replacement)?;
-            if start > end
-                || base_end != exact_base_end
-                || successor_start != exact_start
-                || successor_end != exact_end
+            let roots = build
+                .marker_effect_continuation()
+                .active()
+                .map_or(build.working_roots(), |active| active.working_roots());
+            if checked_boundary(successor_start)? > checked_boundary(successor_end)?
+                || successor_end.rank() > roots.sequence_summary().piece_count()
+                || base_end.rank() > build.predecessor_root().summary().piece_count()
             {
                 return Err(DraftPiecePrepareErrorV1::InvalidRoot);
             }
@@ -3177,6 +3201,47 @@ pub(crate) fn advance_persistent_tree_build(
     build: &DraftPieceBuildRecordV1,
     fragment: Option<&DraftPieceBuildFragmentV1>,
 ) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    advance_tree_build(storage, store, build, fragment, None)
+}
+
+pub(super) fn advance_acquired_tree_build<'a>(
+    acquisition: super::mutation::advance_budget::BuildAcquisition<'a>,
+    build: &DraftPieceBuildRecordV1,
+    fragment: &DraftPieceBuildFragmentV1,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
+    advance_tree_build(
+        acquisition.storage,
+        acquisition.store,
+        build,
+        Some(fragment),
+        Some(acquisition),
+    )
+}
+
+pub(super) fn validate_acquired_build_roots(
+    acquisition: &super::mutation::advance_budget::BuildAcquisition<'_>,
+    key: DraftPieceSettlementKeyV1,
+    roots: DraftPieceBuildRootsV1,
+) -> Result<(), DraftPiecePrepareErrorV1> {
+    let mut context = BuildContext::new(
+        acquisition.storage,
+        acquisition.store,
+        key.draft_id(),
+        Some(key.session_id()),
+        key.operation_id(),
+    );
+    context.acquisition = Some(acquisition.clone());
+    load_working_roots(&mut context, roots)?;
+    Ok(())
+}
+
+fn advance_tree_build<'a>(
+    storage: &'a SyndicStorage,
+    store: &'a HomeStore,
+    build: &DraftPieceBuildRecordV1,
+    fragment: Option<&DraftPieceBuildFragmentV1>,
+    acquisition: Option<super::mutation::advance_budget::BuildAcquisition<'a>>,
+) -> Result<DraftPieceTreeQuantumV1, DraftPiecePrepareErrorV1> {
     if let Some(fragment) = fragment {
         validate_build_phase_cursor(storage, store, build, fragment)?;
     }
@@ -3188,6 +3253,7 @@ pub(crate) fn advance_persistent_tree_build(
         build.operation_id(),
         build.next_record_ordinal(),
     );
+    context.acquisition = acquisition;
     let continuation = build.marker_effect_continuation();
     let mut roots = continuation
         .active()
@@ -3339,40 +3405,29 @@ pub(crate) fn advance_persistent_tree_build(
             let (sequence, index, marker_order) = load_working_roots(&mut context, roots)?;
             let start = checked_boundary(successor_start)?;
             let end = checked_boundary(successor_end)?;
-            require_marker_free_range(&mut context, sequence, start, end)?;
-            let (sequence, insertion) = if start == end {
-                (sequence, start)
+            if start == end {
+                base_frontier = base_end;
+                DraftPieceBuildFrontierV1::Inserting {
+                    fragment_ordinal,
+                    next_piece: 0,
+                    next_byte: 0,
+                    base_end,
+                    successor_end: successor_start,
+                }
             } else {
-                let (prefix, tail) = match sequence {
-                    Some(tree) => split_sequence(&mut context, tree, start)?,
-                    None => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
-                };
-                let relative_end = Boundary {
-                    rank: end.rank - start.rank,
-                    inner: if end.rank == start.rank {
-                        end.inner - start.inner
-                    } else {
-                        end.inner
-                    },
-                };
-                let (_, suffix) = match tail {
-                    Some(tail) => split_sequence(&mut context, tail, relative_end)?,
-                    None if relative_end.rank == 0 && relative_end.inner == 0 => (None, None),
-                    None => return Err(DraftPiecePrepareErrorV1::InvalidRoot),
-                };
-                let insertion = Boundary {
-                    rank: prefix.map_or(0, |tree| tree.link.piece_count()),
-                    inner: 0,
-                };
-                (join_sequence(&mut context, prefix, suffix)?, insertion)
-            };
-            roots = build_roots(&mut context, sequence, index, marker_order)?;
-            DraftPieceBuildFrontierV1::Inserting {
-                fragment_ordinal,
-                next_piece: 0,
-                next_byte: 0,
-                base_end,
-                successor_end: durable_boundary(insertion),
+                let (sequence, remaining_start, remaining_end) = sequence_edit::remove_text_slice(
+                    &mut context,
+                    sequence.ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?,
+                    start,
+                    end,
+                )?;
+                roots = build_roots(&mut context, sequence, index, marker_order)?;
+                DraftPieceBuildFrontierV1::Applying {
+                    fragment_ordinal,
+                    base_end,
+                    successor_start: durable_boundary(remaining_start),
+                    successor_end: durable_boundary(remaining_end),
+                }
             }
         }
         DraftPieceBuildFrontierV1::Inserting {
@@ -3563,7 +3618,7 @@ pub(crate) fn advance_persistent_tree_build(
             )?;
             roots = DraftPieceBuildRootsV1::from_root(root.reference());
             build_digest = Some(digest_parts(
-                b"syndic/draft-piece-build/v3",
+                b"syndic/draft-piece-build/v4",
                 &[
                     build.proposal_digest().as_bytes(),
                     root.reference().combined_digest().as_bytes(),

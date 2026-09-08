@@ -75,7 +75,7 @@ fn rightward_move_preserves_following_frontier_across_restart() {
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     drop(store);
@@ -93,7 +93,7 @@ fn rightward_move_preserves_following_frontier_across_restart() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -200,7 +200,7 @@ fn same_id_replacement_preserves_following_frontier_across_restart() {
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     drop(store);
@@ -218,7 +218,7 @@ fn same_id_replacement_preserves_following_frontier_across_restart() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -298,7 +298,7 @@ fn earlier_inner_anchor_preserves_later_inner_frontier() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(

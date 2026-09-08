@@ -101,7 +101,7 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
                 .unwrap();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), preceding),
+                storage.advance_draft_piece_edit(preceding),
             ));
         };
         let advance = storage
@@ -117,7 +117,7 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
         faults.fail_next(fault_point);
         let outcome = execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         );
         let committed_target = match fault_point {
             FaultPoint::BeforeCommit => {
@@ -171,7 +171,7 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
         } else {
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), retry),
+                storage.advance_draft_piece_edit(retry),
             ));
         }
         while let Some(advance) = storage
@@ -193,12 +193,12 @@ fn active_marker_command_writer_cuts_recover_one_atomic_root_triplet() {
             let replay = advance.clone();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             ));
             assert!(matches!(
                 execute(
                     &store,
-                    storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), replay),
+                    storage.advance_draft_piece_edit(replay),
                 ),
                 CommandOutcome::NotCommitted {
                     evidence: CommandError::EmptyContribution { .. }

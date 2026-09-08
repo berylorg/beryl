@@ -272,7 +272,7 @@ fn one_page_payload_is_durable_before_bounded_builder_construction() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -2195,7 +2195,7 @@ fn advance_candidate(
     {
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(

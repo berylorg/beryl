@@ -224,7 +224,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         .expect("large edit unexpectedly completed before its first advance");
     committed(execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), first_advance),
+        storage.advance_draft_piece_edit(first_advance),
     ));
     drop(store);
     let mut store =
@@ -241,7 +241,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -841,7 +841,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
         let outcome = execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         );
         assert!(matches!(outcome, CommandOutcome::Indeterminate { .. }));
     }
@@ -1403,7 +1403,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
                 .unwrap();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             ));
         }
         committed(execute(
@@ -1922,7 +1922,7 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
         .expect("fixture has one build advance");
     committed(execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance.clone()),
+        storage.advance_draft_piece_edit(advance.clone()),
     ));
     committed(execute(
         &store,
@@ -1935,7 +1935,7 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
     ));
     not_committed(execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+        storage.advance_draft_piece_edit(advance),
     ));
 }
 
@@ -2063,7 +2063,7 @@ fn begin_stage_build(storage: &SyndicStorage, store: &HomeStore, transaction: &T
     {
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
 }
@@ -2099,7 +2099,7 @@ fn build_and_reject(
         ) {
             Ok(Some(advance)) => committed(execute(
                 store,
-                storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             )),
             Err(DraftPiecePrepareErrorV1::Rejected(reason)) => break reason,
             Ok(None) => panic!("invalid marker edit unexpectedly completed"),

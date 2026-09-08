@@ -278,6 +278,26 @@ pub fn draft_piece_root_with_fixture_payload(
     )
 }
 
+pub fn inject_miskeyed_draft_piece_build_for_test(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    selected_key: DraftPieceSettlementKeyV1,
+    source_key: DraftPieceSettlementKeyV1,
+) -> MutationContribution {
+    let build = storage
+        .point::<DraftPieceBuildsFamily>(
+            store,
+            source_key,
+            SyndicPointReadLimit::new(8_192).expect("fixture point bound is nonzero"),
+        )
+        .expect("fixture source build reads")
+        .expect("fixture source build exists");
+    storage.handle.contribution(
+        storage.revision(store).expect("fixture revision reads"),
+        DescendantReplacement(Replacement::Build(selected_key, build)),
+    )
+}
+
 pub fn inject_draft_piece_build_corruption(
     store: &HomeStore,
     storage: &SyndicStorage,

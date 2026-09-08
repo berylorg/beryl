@@ -17,13 +17,15 @@ change persisted bytes.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
   `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
-  `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V3; every other
-  V7 family uses record V1. V6 domain values and V2 records in those three replaced families are
+  `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V4; every other
+  V7 family uses record V1. V6 domain values and prior records in those three replaced families are
   rejected rather than accepted, migrated, dual-written, or adapted.
 - The Rust boundary values remain `DraftPieceBuildRecordV1`,
   `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
-  semantic API shapes; the enclosing family codec version is V3 and the digest domains are
-  `/v3`.
+  semantic API shapes; the enclosing family codec version is V4 and the digest domains are
+  `/v4`. V4 replaces the prior whole-range Applying semantics with exact partial continuation.
+  Unchanged cursor field widths do not establish compatibility: V3 in-flight builds, progress
+  receipts, and settlements are rejected at the version boundary, with no legacy transition reader.
 - The primary families are `threads`, `image-label-authority-heads`,
   `draft-image-label-protection-heads`, `thread-executions`,
   `thread-attributes`,
@@ -309,7 +311,12 @@ canonical byte comparison of the point-read target closure.
   generation/combined root, complete canonical combined-root summaries, and
   exactly `Open`, `Complete`, `Committed(settlement)`,
   `Rejected(settlement)`, `Conflict(settlement)`, `Cancelled(settlement)`, or `Error(settlement)`
-  lifecycle. It contains no whole edit, replacement collection, inserted payload, or mutable self-
+  lifecycle. The Applying fragment ordinal and `base_end` remain fixed while its two successor
+  boundaries encode the exact remaining interval in the selected working sequence. Their field
+  order and widths are unchanged within the replacement V4 encoding; the closed partial-removal transitions are owned by
+  [bounded sequence continuation](design-draft-storage.md#bounded-sequence-range-continuation).
+  Both the build head and each progress receipt carry that same cursor meaning. It contains no
+  whole edit, replacement collection, inserted payload, or mutable self-
   hash; its current transition authority is the exact latest progress-receipt key and digest.
   `draft-piece-build-fragments` is keyed by that build plus one-based fragment ordinal and stores
   one bounded exact replacement, inserted-piece, or self-contained marker-effect fragment with its
@@ -333,13 +340,13 @@ canonical byte comparison of the point-read target closure.
   cumulative chain, optional fixed-size active marker effect; next
   record ordinal; optional
   successor root and build digest; lifecycle; and the SHA-256 receipt digest under exact ASCII
-  domain `syndic/draft-piece-build-progress-receipt/v3` over the canonical key and every preceding
+  domain `syndic/draft-piece-build-progress-receipt/v4` over the canonical key and every preceding
   canonical value field. A non-one ordinal without the exact immediately preceding key/digest, any skipped or
   disagreeing transition, or any key/value/digest disagreement is invalid. While the build head
   selects the preceding receipt, this receipt's key must be absent; occupied bytes in that state are
   a corrupt split even when equal. Once the build head selects this receipt, it can prove replay only
   together with byte equality of the complete same-command closure.
-- The V3 family encodings of `DraftPieceBuildRecordV1` and
+- The V4 family encodings of `DraftPieceBuildRecordV1` and
   `DraftPieceBuildProgressReceiptV1`, together with the immutable fragment value shape, own
   the durable continuation fields;
   no further secondary index, operation-page history, or marker-effect map is required beyond the
@@ -371,8 +378,8 @@ canonical byte comparison of the point-read target closure.
   and referenced build fragments; the stored settlement itself must pass canonical decoding and
   exact closure validation. Equal digests are not sufficient for either check.
 - The replacement record digests use exact ASCII domains
-  `syndic/draft-piece-build/v3`, `syndic/draft-piece-build-progress-receipt/v3`, and
-  `syndic/draft-piece-settlement/v3`. The marker-effect chain begins from its one canonical empty
+  `syndic/draft-piece-build/v4`, `syndic/draft-piece-build-progress-receipt/v4`, and
+  `syndic/draft-piece-settlement/v4`. The marker-effect chain begins from its one canonical empty
   value under `syndic/draft-marker-effect-chain/v1`; each completed step hashes the prior chain,
   exact fragment natural identity and canonical digest, completed effect count, and post-effect
   sequence/index/commitment root digest. No prior build, progress, settlement, or effect-chain domain
@@ -708,9 +715,17 @@ canonical byte comparison of the point-read target closure.
   plus-value sum of those five effects is bounded by and must
   fit the existing 4,194,304-byte draft-piece command ceiling; excess rejects before mutation.
 - One post-finish draft-piece fragment command admits at most 256 fragment records and 65,536 inserted UTF-8
-  payload bytes. One path-copy command reads or emits at most 256 records across all three structures and
-  at most
-  4,194,304 encoded key-plus-value bytes. Larger replacements and tree repairs continue through
+  payload bytes. One path-copy command reads or emits at most 256 stored records across all three
+  structures. This counts acquired existing structure records and emitted structure records
+  together; an absent point result is not a stored record. Independently, the complete Syndic
+  command admits at most 512 point-read attempts, including absent and repeated reads, and at most
+  4,194,304 encoded key-plus-value bytes across acquisition and emission, including control records,
+  mutable submission fences, and absence-probe keys. Reads served from the one acquired immutable
+  cache are not new acquisitions. Every actual repeated acquisition is charged again. Reserve the
+  canonical family maximum before acquisition, then release unused allowance after bounded decode;
+  reject before work exceeding any ceiling. Emissions reserve their exact encoded size before
+  retaining or submitting them. These ceilings cover preparation and submission together, with no
+  fresh helper allowance. Larger replacements and tree repairs continue through
   revision-bound build frontiers. After the five-effect finish-to-builder transfer above, every
   fragment-stage, path-copy, other build-advance, and terminal build command targets exactly one
   fixed-size immutable build-progress receipt and one compact build-head successor plus one fixed-
@@ -771,6 +786,23 @@ canonical byte comparison of the point-read target closure.
   `FinishInputV1` declarations and the derived fragment count and chain must equal the finish-derived
   proposal header. Later reconciliation proves prior bytes through those authenticated cumulative
   checkpoints and does not rescan already consumed staging pages or fragments.
+- The process-local staged-build outcome verifier admits at most 128 Syndic point-read attempts
+  and 8,388,608 charged encoded-value bytes per classification. It reserves 65,536 bytes before each
+  attempt, including absent results and repeated reads, and rejects before exceeding either cap.
+  The public diagnostics expose attempted reads and charged byte allowance; this is an acquisition
+  allowance, not retained memory. Every nested referenced-closure read uses that same reader.
+  HomeStore separately owns exact classification of reserved changed effects, which Syndic does not
+  scan again. A known package-owned commit uses its captured serialized result without this verifier.
+  The conservative referenced-closure bound is 124 reads: 14 first/last observations of staging,
+  build, candidate-session, admission, capacity, protection and live-history anchors; 19 selected
+  and immediate-predecessor build receipt, endpoint, root, active-effect and scan references; two
+  staging receipts; 16 combined-root/structure-root, history-frontier, history-transition and
+  settlement references; three admission-root/terminal-receipt references; three split-publication
+  occupancy checks; three history boundary references; and at most 64 history-floor selection reads.
+  It verifies only the exact selected side against captured command authority. It does not rebuild
+  history ancestry witnesses, invoke general frontier authentication, or authenticate two alternative
+  endpoints as simultaneously current. The existing staging acquisition and structure-command
+  bounds remain separate and unchanged; this outcome flight adds no persisted record format.
 - Edit-history transition, frontier, stack-link, and historical-root-adoption values each fit the
   65,536-byte value ceiling and contain only compact roots, positions, links, counters, policy, and
   replay facts. Each transition carries exactly one fixed 64-slot authenticated ancestor array and

@@ -27,7 +27,7 @@ pub use marker_commitment::canonical_empty_draft_marker_commitment_v1;
 pub use marker_seal::*;
 pub use materializer::*;
 pub use model::*;
-pub use mutation::{PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
+pub use mutation::{DraftPieceBuildWorkV1, PreparedDraftPieceAdvanceV1, PreparedDraftPieceEditV1};
 pub use publication::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationCommandErrorV1,
     DraftEditorCandidatePublicationSourceCaptureRequestV1,

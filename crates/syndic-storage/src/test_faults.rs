@@ -13,6 +13,7 @@ mod draft_marker_admission;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
+mod draft_piece_encoding;
 mod draft_piece_staging;
 mod fixture_command;
 mod fixture_delete;
@@ -81,7 +82,8 @@ pub use draft_piece_corruption::{
     inject_draft_piece_fragment_ahead, inject_draft_piece_fragment_corruption,
     inject_draft_piece_occupied_stage_target, inject_draft_piece_progress_receipt_corruption,
     inject_draft_piece_progress_root_corruption, inject_draft_piece_session_generation_inflation,
-    inject_draft_piece_settlement_closure_corruption, rekey_draft_piece_root_for_collision,
+    inject_draft_piece_settlement_closure_corruption, inject_miskeyed_draft_piece_build_for_test,
+    rekey_draft_piece_root_for_collision,
 };
 pub use draft_piece_current_drift::arm_draft_piece_current_read_fault;
 pub(crate) use draft_piece_current_drift::run_draft_piece_current_read_fault;
@@ -131,6 +133,11 @@ pub use schema_history::{
 pub fn syndic_v7_family_names() -> Vec<&'static str> {
     crate::domain::v7_family_names().collect()
 }
+
+pub use draft_piece_encoding::{
+    DraftPieceBuildEncodingForTest, draft_piece_build_encoding_for_test,
+    inject_draft_piece_build_v3_for_test,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPieceImmutableSnapshot {

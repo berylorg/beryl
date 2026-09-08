@@ -14,7 +14,10 @@ use super::admission::index::{
 };
 use super::*;
 
+pub(in super::super) mod advance_budget;
+mod sequence_advance;
 mod settlement;
+pub use advance_budget::DraftPieceBuildWorkV1;
 
 #[derive(Clone)]
 pub struct PreparedDraftPieceEditV1 {
@@ -55,6 +58,8 @@ impl PreparedDraftPieceEditV1 {
 
 #[derive(Clone)]
 pub struct PreparedDraftPieceAdvanceV1 {
+    expected_revision: DomainRevision,
+    home_generation: beryl_home_store::HomeGeneration,
     expected: DraftPieceBuildRecordV1,
     expected_session: DraftEditorCandidateSessionV1,
     next: DraftPieceBuildRecordV1,
@@ -67,9 +72,13 @@ pub struct PreparedDraftPieceAdvanceV1 {
     records_read: u64,
     admission_marker: Option<DraftPieceMarkerV1>,
     admission_consumption: Option<PreparedDraftMarkerAdmissionConsumptionV1>,
+    bounded: Option<sequence_advance::SourceFences>,
 }
 
 impl PreparedDraftPieceAdvanceV1 {
+    pub fn bounded_work(&self) -> Option<DraftPieceBuildWorkV1> {
+        self.bounded.as_ref().map(|source| source.budget.work())
+    }
     pub const fn records_read(&self) -> u64 {
         self.records_read
     }
@@ -320,7 +329,25 @@ impl SyndicStorage {
         session_id: DraftEditorCandidateSessionIdV1,
         operation_id: DraftPieceOperationIdV1,
     ) -> Result<Option<PreparedDraftPieceAdvanceV1>, DraftPiecePrepareErrorV1> {
+        let expected_revision = self.revision(store).map_err(crate::SyndicReadError::from)?;
+        if store.health().generation() != Some(self.home_generation) {
+            return Err(DraftPiecePrepareErrorV1::ConcurrentChange);
+        }
         let key = DraftPieceSettlementKeyV1::new(draft_id, session_id, operation_id);
+        let acquisition = advance_budget::BuildAcquisition::new(self, store);
+        let selected = acquisition
+            .point::<DraftPieceBuildsFamily>(key)?
+            .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        if build_key(&selected) != key {
+            return Err(DraftPiecePrepareErrorV1::InvalidRoot);
+        }
+        if matches!(
+            selected.frontier(),
+            DraftPieceBuildFrontierV1::Applying { .. }
+        ) && selected.lifecycle() == DraftPieceBuildLifecycleV1::Open
+        {
+            return sequence_advance::prepare(acquisition, expected_revision, selected).map(Some);
+        }
         let (build, expected_session) = authenticated_build_from_store(self, store, key)?
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
         if build.writer_admission().is_some_and(|admission| {
@@ -466,7 +493,14 @@ impl SyndicStorage {
         let next_session = expected_session
             .advance_active_operation(&custody_for(&build), custody_for(&next))
             .ok_or(DraftPiecePrepareErrorV1::InvalidRoot)?;
+        if self.revision(store).map_err(crate::SyndicReadError::from)? != expected_revision
+            || store.health().generation() != Some(self.home_generation)
+        {
+            return Err(DraftPiecePrepareErrorV1::ConcurrentChange);
+        }
         Ok(Some(PreparedDraftPieceAdvanceV1 {
+            expected_revision,
+            home_generation: self.home_generation,
             expected: build,
             expected_session,
             next,
@@ -479,18 +513,18 @@ impl SyndicStorage {
             records_read: quantum.records_read,
             admission_marker,
             admission_consumption,
+            bounded: None,
         }))
     }
 
     pub fn advance_draft_piece_edit(
         &self,
-        expected_domain_revision: DomainRevision,
         prepared: PreparedDraftPieceAdvanceV1,
     ) -> MutationContribution {
-        let writer_progress_allowed =
-            writer_progress_is_current(self, prepared.expected.writer_admission());
+        let writer_progress_allowed = prepared.home_generation == self.home_generation
+            && writer_progress_is_current(self, prepared.expected.writer_admission());
         self.handle.contribution(
-            expected_domain_revision,
+            prepared.expected_revision,
             AdvanceMutation {
                 prepared,
                 writer_progress_allowed,
@@ -2425,6 +2459,9 @@ impl DomainMutation<SyndicDomain> for AdvanceMutation {
     ) -> Result<Self::Prepared, Self::Error> {
         if !self.writer_progress_allowed {
             return Err(SyndicMutationError::IdentityCollision);
+        }
+        if self.prepared.bounded.is_some() {
+            return sequence_advance::submit(self.prepared, reader);
         }
         let current = required_build(reader, &build_key(&self.prepared.expected))?;
         if current == self.prepared.next {

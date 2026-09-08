@@ -72,7 +72,7 @@ fn cancellation_during_an_effect_and_between_effects_preserves_candidate_state()
                 .unwrap();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             ));
         }
         drop(store);

@@ -39,7 +39,7 @@ fn complete_same_anchor_marker_setup(
     {
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -220,7 +220,7 @@ fn explicit_same_anchor_removals_precede_text_range_and_enumerate_every_effect()
         };
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     let complete = match storage
@@ -336,7 +336,7 @@ fn repeated_empty_ranges_reject_when_either_item_lacks_a_marker_effect() {
                 }
                 Ok(Some(advance)) => committed(execute(
                     &store,
-                    storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                    storage.advance_draft_piece_edit(advance),
                 )),
                 _ => panic!("expected duplicate-empty rejection"),
             }

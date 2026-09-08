@@ -30,53 +30,50 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 335: Preserve Typed Marker Admission Refusals (finished)
+# Phase 337: Continue Bounded Sequence Range Repairs (finished)
 
-Accepted typed operation-limit, shared-capacity, storage-failure, and committed-unavailable results
-through readiness, assignment and reconciliation under the
-[draft-storage contract](../crates/syndic-storage/doc/design-draft-storage.md). Postcommit readiness
-retry retains its exclusive exact attempt; known durable outcomes survive local cleanup failures.
-Independent semantic and adversarial review passed after correcting retry capability duplication
-and failure-provenance loss. The final 41 submission, assignment and cleanup tests passed after all
-changes; the earlier 113-test marker regression run and locked local Syndic/HomeStore checks passed.
-The accepted widget evidence, fresh readiness, and admitted target resolver prerequisites remain
-ready for production composition.
+Accepted ordinary Applying continuation under the
+[sequence contract](../crates/syndic-storage/doc/design-draft-storage.md#bounded-sequence-range-continuation)
+and replacement V4 build/progress/settlement codecs. One text-leaf slice advances an exact
+right-to-left remaining cursor with canonical heights and occupancy. One acquisition/emission/
+submission ledger enforces 256 stored structure records, 512 point attempts and 4,194,304 encoded
+bytes. Captured Syndic revision fences sealed preparation facts. Independent architecture and
+implementation adversarial review passed after closing requested-build identity substitution and
+clarifying the [physical-fault boundary](failures/syndic-draft-piece-revision-witness.md).
 
-# Phase 337: Continue Bounded Sequence Range Repairs (pending)
+The isolated accepted source passed locked Syndic/app checks and all 22 selected piece-tree and
+admitted-marker diagnostic tests, including UTF-8 edges, 129-leaf collapse, marker preservation,
+reopen, acknowledgement-loss reconciliation, cancellation, corruption, substituted identity,
+post-submit budget accounting and V4 vectors/prior-version rejection. The preserved 257-fragment
+staged operation also passed in the working tree. Its bounded text-read pagination correction
+remains with the unaccepted outcome tests. Broader marker-tree and staged-outcome behavior retain
+their separate acceptance boundaries below.
 
-The Operator approved the split-height repair and subsequent outcome/app completion. Readiness
-proved that repairing whole-fragment surgery inside one command cannot satisfy the existing
-aggregate byte ceiling for every supported tree. A canonical counterexample requires at least
-4,251,960 acquired/emitted reference bytes before record overhead. The
-[budget evidence](failures/syndic-draft-piece-range-budget.md) records both the rejected local join
-strategy and the stronger one-command lower bound. No tree-algorithm changes have been made.
+# Phase 338: Continue Bounded Marker Tree Effects (pending)
 
-Proposed revised boundary, awaiting Operator direction and owning-design readiness: make partial
-range surgery resumable through canonical intermediate working roots and an exact remaining range
-or repair cursor. Preserve actual subtree heights, canonical occupancy and immutable reuse, and
-charge all selected reads/emissions before exceeding the existing 256-record/4,194,304-byte limits.
-Each quantum must commit authenticated progress; rejection of the same unchanged frontier is not
-continuation. Define exact cursor/receipt/head binding, replay, cancellation, corruption rejection,
-and final transition to insertion in the owning draft-storage and V7 schema authority before
-implementation. Whether the existing fields can carry that cursor remains an explicit design
-question; the plan does not authorize a format assumption.
+The approved resumable repair separates marker effects from ordinary range removal because they
+have distinct continuation and acceptance rules. Existing marker removal changes sequence,
+identity and order trees in one quantum; valid height-45 binary trees require 270 stored reads
+across those three deletions before authentication or emissions. Ordinary range continuation alone
+does not satisfy that boundary.
 
-Verify the [height-transition reproduction](failures/syndic-draft-piece-split-height.md), both range
-edges, UTF-8 and marker gaps, exact text/root/history results, restart and replay across partial
-repair, measured whole-quantum bounds, and the preserved 257-fragment operation. Obtain independent
-semantic and package-required adversarial review before acceptance and resumed outcome verification.
+Establish owning authority for exact pending per-structure roots and closed effect substeps under
+the existing operation's active-effect custody. Keep the coherent source roots selected until all
+three changes finish; incomplete pending roots are not ordinary build roots. Preserve marker
+identity/Asset/label facts, complete effect-chain advancement once, and authenticate each bounded
+partial transition, replay and terminal cleanup. Verify forced continuation, restart, corruption,
+and aggregate quantum charges before acceptance and staged-outcome completion. This phase is
+pending design readiness and does not authorize implementation against unspecified cursor bytes.
 
 # Phase 336: Reconcile Durable Staged Build Outcomes (pending)
 
-Blocked after partial implementation by the approved persistent split repair above.
-The initial locked production check passed. The latest focused run excluding the separate long
-reproduction passed 5 tests and failed 3: settlement replay returns `EmptyContribution`, mixed-marker
-advance reports `InvalidGapWitness`, and a fixture expects one window where two are observed.
-Independent static review found no demonstrated blocker in capture, reconciliation, or charged
-reference verification; runtime evidence and final review remain incomplete. The long-operation
-test fails in the existing tree algorithm, and dynamic settlement, cleanup ambiguity, corruption,
-successor/collision and long-prefix bounds still need evidence. No implementation is accepted or
-committed. Preserve the source and tests; do not weaken the long-operation requirement.
+Preserved partial implementation waits for the marker-tree repair boundary above. Ordinary range
+repair now passes the 257-fragment staged-operation reproduction. The earlier focused outcome run
+left settlement replay (`EmptyContribution`), mixed-marker advancement (`InvalidGapWitness`) and a
+one-window fixture expectation unresolved. Recheck those after marker continuation; dynamic
+settlement, cleanup ambiguity, corruption, successor/collision and long-prefix bounds still need
+complete runtime evidence and final review. No staged-outcome implementation is accepted or
+committed. Preserve its source and tests and the long-operation requirement.
 
 The Operator approved this prerequisite and subsequent production integration. Independent
 architecture readiness passed for the owning

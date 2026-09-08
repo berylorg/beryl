@@ -71,7 +71,7 @@ fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     let completed = complete_continued_build(&storage, &store, &prepared, &fragments);

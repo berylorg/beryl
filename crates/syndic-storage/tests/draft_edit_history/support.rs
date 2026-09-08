@@ -310,7 +310,7 @@ pub(super) fn build(storage: &SyndicStorage, store: &HomeStore, transaction: &Tr
     {
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
 }

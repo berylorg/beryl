@@ -966,6 +966,21 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   retained verification state are fixed-size, and there is exactly one receipt per bounded work
   quantum, so command work and resident state stay fixed as one logical edit spans more commands
   within its applicable operation profile.
+- Syndic owns production staged-build submission and its command-associated outcome flight. The app
+  transports one opaque prepared command or retained flight; it never supplies an unrelated raw
+  command outcome or reconstructs released fragments. Serialized command preparation captures the
+  actual authenticated transition, including a terminal election's actual result and exact replay.
+  A known commit returns that command's historical result after its exact local finalization,
+  without claiming that result remains the current endpoint after later work. For ambiguous
+  outcomes, HomeStore proves the complete reserved changed-effect bytes and Syndic authenticates
+  the selected endpoint's bounded referenced closure under the package's charged verification cap.
+  The command's authenticated history witnesses remain authoritative; only the required bounded
+  history-floor selection is repeated, without a general ancestry or consumed-prefix scan.
+  Original failures, later failures, committed classification, local finalization and cleanup
+  custody remain distinct. The local finalization capability is consumed once, and unresolved
+  reconciliation retains the same owner. Committed empty-writer reclamation is a subsequent bounded
+  resume retaining the committed result; noncommit returns only its exact inert cleanup authority.
+  Neither a status observation nor a cleanup failure changes the operation's durable outcome.
 - Each newly committed staging-window command byte-compares only its bounded source page/receipt and
   complete target effects. Its target receipt commits the prior authenticated build receipt, before/
   after lane-consumption frontiers, before/after fragment endpoint and chain, and every same-command

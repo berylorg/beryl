@@ -518,7 +518,7 @@ fn stage_and_build(storage: &SyndicStorage, store: &HomeStore, transaction: &Tra
         previous = Some(advance.frontier());
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
 }

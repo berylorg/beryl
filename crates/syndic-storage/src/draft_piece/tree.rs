@@ -5,6 +5,8 @@ use crate::{SyndicPointReadLimit, SyndicReadError};
 
 use super::*;
 
+mod sequence_progress;
+
 const EMPTY_MARKERS: &[u8] = b"syndic/draft-ordered-marker-fold/v1/empty";
 const EMPTY_ROOT: &[u8] = b"syndic/draft-sequence-root/v1/empty";
 const EMPTY_MARKER_INDEX: &[u8] = b"syndic/draft-marker-identity-index-root/v1/empty";
@@ -1313,7 +1315,7 @@ pub(crate) fn draft_piece_build_progress_receipt_digest_v1(
     key: DraftPieceBuildProgressReceiptKeyV1,
 ) -> DraftPieceDigestV1 {
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v3");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v4");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1436,7 +1438,7 @@ fn progress_receipt_digest_from_value(
 ) -> DraftPieceDigestV1 {
     let key = receipt.key();
     let mut digest = Sha256::new();
-    digest.update(b"syndic/draft-piece-build-progress-receipt/v3");
+    digest.update(b"syndic/draft-piece-build-progress-receipt/v4");
     digest.update(key.draft_id().as_bytes());
     digest.update(key.session_id().as_bytes());
     digest.update(key.operation_id().as_bytes());
@@ -1572,6 +1574,9 @@ pub(crate) fn marker_effect_progress_transition_is_exact(
     current: &DraftPieceBuildProgressReceiptV1,
     scanned_fragment: Option<&DraftPieceBuildFragmentV1>,
 ) -> bool {
+    if !sequence_progress::transition_is_exact(previous, current) {
+        return false;
+    }
     let previous_continuation = previous.marker_effect_continuation();
     let current_continuation = current.marker_effect_continuation();
     let previous_scan = previous_continuation.scan();
@@ -1971,7 +1976,7 @@ pub(crate) fn draft_piece_build_digest_v1(
     proposal_digest: DraftPieceDigestV1,
     successor: DraftPieceRootReferenceV1,
 ) -> DraftPieceDigestV1 {
-    let domain = b"syndic/draft-piece-build/v3";
+    let domain = b"syndic/draft-piece-build/v4";
     let mut digest = Sha256::new();
     digest.update((domain.len() as u64).to_be_bytes());
     digest.update(domain);

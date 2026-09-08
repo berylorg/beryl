@@ -173,7 +173,7 @@ impl SyndicComposerHost {
             Ok(Some(advance)) => {
                 let contribution = self
                     .storage
-                    .advance_draft_piece_edit(self.storage.revision(store)?, advance);
+                    .advance_draft_piece_edit(advance);
                 self.run_build_command(store, pending, prepared, contribution)
                     .map(Some)
             }

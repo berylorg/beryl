@@ -83,6 +83,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   missing, or corrupt readiness publishes no marker, caret, selection, candidate, or history change.
 - Every admitted edit uses its typed public settlement. Indeterminate remains reconciliation
   custody; only proven committed adoption advances the widget and candidate session.
+- Post-finish build commands use Syndic's opaque prepared-command submission and retained outcome
+  flight. The host retains that flight through local finalization, reconciliation and required
+  committed cleanup, transporting typed progress and settlement only as the boundary permits.
+  It neither substitutes terminal status reads for completion nor retains or reconstructs the
+  original edit fragments. A known committed result remains distinguishable from later cleanup or
+  availability failure.
 
 ## History, Publication, And Submission
 

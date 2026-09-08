@@ -188,6 +188,128 @@ exact source and terminal progress closure, and exactly one of `Committed`, `Rej
 Noncommit outcomes prove absence of candidate adoption. An occupied natural key with differing bytes
 returns an immutable occupied-identity noncommit proof and never selects another identity.
 
+### Bounded Sequence Range Continuation
+
+Ordinary replacement removal continues right to left, changing at most one text leaf per Applying
+command. Planning proves that the remaining interval contains no markers. The command selects the
+active marker effect's coherent working roots when present, otherwise the build's working roots.
+It preserves marker roots, counts, order commitments, fragment identity, completed source and
+successor frontiers, and marker scan/effect progress until that interval is empty. Each nonempty
+step strictly decreases working UTF-8 bytes and publishes a canonical sequence root, its exact
+remaining interval, the next immutable progress receipt, and the matching build/session endpoint
+atomically. No whole-fragment split/join or retry of an unchanged over-budget frontier substitutes
+for this progress.
+
+The Applying cursor retains its fragment ordinal and fixed predecessor-source completion boundary
+`base_end`. Its `successor_start` and `successor_end` are the remaining interval in the actual
+working sequence, rather than immutable original replacement boundaries. Boundaries are piece rank
+plus UTF-8 byte offset. For previous start `(s,a)` and end `(e,b)`, exactly these nonempty steps exist:
+
+- With `b > 0` and `e > s`, trim `[0,b)` from text leaf `e`; preserve the start and set the end to
+  `(e,0)`. Piece count is unchanged and exactly `b` bytes disappear.
+- With `b > 0` and `e == s`, trim `[a,b)` in that leaf, retaining its prefix and suffix in one
+  nonempty leaf; both boundaries become `(s,a)`. Piece count is unchanged and `b-a` bytes disappear.
+- With `b == 0` and `e-1 > s`, remove the whole text leaf `e-1`; preserve the start and set the end
+  to `(e-1,0)`. Piece count decreases by one and 1 through 32,768 bytes disappear.
+- With `b == 0`, `e-1 == s`, and `a == 0`, remove that sole covered text leaf; the end becomes the
+  start. Piece count decreases by one and 1 through 32,768 bytes disappear.
+- With `b == 0`, `e-1 == s`, and `a > 0`, trim that leaf's suffix and normalize both boundaries to
+  `(s+1,0)`. Piece count is unchanged and 1 through `32,768-a` bytes disappear.
+
+An empty remaining interval enters Inserting at piece/byte cursor zero and advances the completed
+source frontier to `base_end` exactly once. No other Applying-to-Applying cursor transition is
+valid. Construction authenticates the selected leaf, both UTF-8 boundaries relevant to that leaf,
+and the exact local edit. Reopen authenticates the selected and immediate predecessor receipts,
+their exact operation/header/fragment and endpoint relationships, root descriptors, invariant
+marker/effect facts, and the closed cursor and summary delta above. It does not repeat prior tree
+surgery or rederive the original replacement across already removed leaves. Immutable receipt
+publication establishes derivation; local decode and bounded referenced-closure checks retain the
+package's existing fail-closed trust boundary rather than claiming protection against coordinated
+replacement of every same-database authority anchor.
+
+Sequence deletion preserves actual returned subtree heights. Underfull child vectors exist only
+transiently: merge with a sibling whenever their combined fanout fits 128, otherwise redistribute
+into canonical children. Every emitted nonroot internal node has 2 through 128 children. A
+singleton root collapses while its child is internal; a single surviving leaf retains the existing
+selected height-one root-node wrapper. Root descriptors continue to name node records, and the
+schema's selected-root occupancy exception remains in force. Unchanged authenticated subtrees
+remain shared. Text trimming never splits a retained leaf into two leaves.
+
+One operation-local acquisition cache and ledger covers preparation and serialized submission.
+Every Syndic-selected read, emitted record, and target-absence probe is charged before its work;
+nested helpers cannot reset the allowance or invoke a broader uncharged authentication path. The
+schema owns the separate structure-record, point-attempt, and aggregate encoded-byte ceilings.
+The complete closure includes selected/predecessor receipts, source/working roots, referenced
+fragments, session and staging custody, optional writer state, exact mutable submission fences,
+target absence, and build/receipt/session effects. HomeStore's mandatory engine checks retain
+their own engine quotas; Syndic work cannot be reclassified as generic engine work to evade a cap.
+
+Preparation captures Syndic domain revision `D0`, acquires the bounded immutable closure and
+target-absence witnesses, and seals them only after observing the same domain revision again and
+the same originating handle/home generation. Serialized submission uses a fresh HomeStore revision
+and a contribution fenced by captured `D0`; revision admission must precede callbacks reusing sealed
+facts. It also checks the exact mutable source build, selected receipt, session, staging and any
+writer fence using the same ledger. Any intervening admitted Syndic-domain mutation invalidates the
+witness, including fault or retention mutations that advance that domain's revision. The fence
+does not detect raw physical corruption after capture that bypasses revision publication; the
+package's existing immutable-publication trust boundary excludes that guarantee. Fresh acquisition
+still performs fail-closed codec and referenced-closure checks. Raw persisted-corruption tests prove
+those fresh-read checks, not invalidation of an already captured witness. Unrelated-domain writes
+need not invalidate the long preparation interval. Legacy callers may not replace captured `D0` with a fresh domain
+revision. A stale prepared command remains a known noncommit; retry requires fresh construction.
+Selected source and progress roots remain protected by existing operation custody. Cancellation
+retains that exact custody through its terminal command and subsequent bounded cleanup.
+
+### Staged Build Command Outcomes
+
+Production post-finish submission uses one opaque move-only prepared command with a closed kind:
+finished-staging transfer to the builder, consumption of the next durable staging window,
+successor-construction advance, or terminal election. Terminal election covers ordinary settlement,
+cancellation, rejection, and operational error under their existing exact evidence requirements.
+Preparation binds the HomeStore generation and attachment, draft/session/operation and staging
+identity, canonical header, writer owner, exact source and proposed target endpoints, and the one
+bounded command closure. A package-owned submit operation consumes the prepared command and executes
+its associated HomeStore command; it does not accept a caller-supplied `CommandOutcome`.
+
+The command captures its actual authenticated result during serialized preparation and contribution,
+including a dynamically selected terminal outcome, writer-consumption successor, or exact replay
+target. A preflight prediction is not that result. The capture remains inaccessible as completion
+authority until the command outcome proves it. A known commit may return that historical committed
+endpoint without repeating a generic status query; it does not assert that the endpoint remains
+current after later work. Any returned `CommittedLocalFinalization` is consumed exactly once for
+this command and owner, including when subsequent reads or local availability fail. A receipt or a
+later retry cannot recreate it. Authenticated nonterminal progress resolves the exact local writer
+attempt once before permitting continuation.
+
+Ambiguous submission transfers the original failure and exact HomeStore reconciliation owner into
+one move-only outcome flight. Resume consumes and returns that same flight while unresolved and
+re-triggers only its exact handle after a failed reconciliation attempt. HomeStore proves canonical
+equality of reserved changed effects; Syndic additionally verifies the selected side's referenced
+endpoint, immediate predecessor, staging, roots, active effect, session, writer and terminal/history
+closure through the charged verifier in [V7 bounds](design-schema-v7.md#v7-bounds-and-canonical-encoding).
+It uses the captured authenticated command history and repeats required history-floor selection,
+not general ancestry reconstruction. Every nested verification read uses the same budget. No caller
+fragment callback, arbitrary starting ordinal, receipt-chain walk, or consumed-prefix replay is
+part of this boundary.
+
+Proven noncommit and `ExactOld` preserve the original error and exact source ownership for explicit
+retry or cancellation; resume never automatically resubmits the edit. `ExactNew` advances the exact
+target once and retains the originating failure evidence. A later successor, stale generation or
+endpoint, collision, or failed local finalization cannot become current progress or mint replacement
+authority. Typed failures remain observable while unresolved custody is retained. Durable command
+classification, transaction outcome, original or later failure, local finalization, and cleanup
+progress remain separate; a cleanup failure cannot reclassify a committed edit as refused.
+
+An authenticated committed settlement transfers to a separate cleanup state in the same outcome
+flight. A later resume performs at most one bounded empty-writer reclamation command or cleanup
+reconciliation trigger; it retains the settled transaction, original receipt, diagnostics and exact
+cleanup handle until completion. It authenticates zero remaining targets and the existing settled
+admission, capacity and label-protection closure. An authenticated noncommit settlement resolves
+local writer ownership only with its exact terminal admission evidence and returns the inert
+operation-owned cleanup authority. It does not start unrelated cleanup. Pending or unavailable
+flights are custody states, not additional transaction outcomes. Status reads cannot substitute for
+these finalization and release transitions.
+
 Replacement ranges are half-open, ordered, non-overlapping, and interpreted against one predecessor
 root. Adjacent ranges are valid. Repeated empty ranges at one position require distinct closed marker
 effects in canonical marker order. Moves prove one predecessor occurrence and one successor

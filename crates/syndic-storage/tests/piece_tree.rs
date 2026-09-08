@@ -34,6 +34,13 @@ use syndic_storage::{
 #[path = "support/syndic_command_fixture.rs"]
 mod syndic_command_fixture;
 
+#[path = "piece_tree/sequence_continuation.rs"]
+mod sequence_continuation;
+
+#[cfg(feature = "test-faults")]
+#[path = "piece_tree/sequence_format.rs"]
+mod sequence_format;
+
 use syndic_command_fixture::{
     TestHome, assert_committed as committed, execute_contribution as execute,
     execution_binding as execution, fixture,
@@ -152,7 +159,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         .unwrap();
     committed(execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), first),
+        storage.advance_draft_piece_edit(first),
     ));
     assert_eq!(
         current(&storage, &store, thread).draft().piece_root(),
@@ -509,7 +516,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
         assert!(advance.staged_record_count() <= 256);
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     assert!(saw_intra_text_offset);
@@ -527,69 +534,6 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
             .bytes(),
         &text.as_bytes()[65_520..]
     );
-}
-
-#[test]
-fn staged_record_diagnostic_includes_marker_order_record_and_root() {
-    let (_home, store, storage, thread) = fixture("staged-marker-order-diagnostic", 100);
-    let seed = transaction(
-        &storage,
-        &store,
-        &current(&storage, &store, thread),
-        101,
-        vec![DraftPieceReplacementV1::new(
-            point(0),
-            point(0),
-            vec![DraftPieceV1::Text("x".to_owned())],
-        )],
-        point(1),
-    );
-    run_transaction(&storage, &store, &seed, 101);
-    let base = current(&storage, &store, thread);
-    let marker = DraftPieceMarkerV1::new(
-        SyndicDraftMarkerId::from_bytes([0xA5; 16]),
-        1,
-        ImageLabelOrdinal::new(1).unwrap(),
-        AssetId::sha256_v1([0x5A; 32], std::num::NonZeroU64::new(1).unwrap()),
-    );
-    let edit = transaction(
-        &storage,
-        &store,
-        &base,
-        102,
-        vec![
-            DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Marker(marker)])
-                .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
-                    DraftPieceMarkerInsertionV1::new(
-                        0,
-                        marker,
-                        DraftPieceMarkerEffectChargesV1::for_marker(marker),
-                    ),
-                )),
-        ],
-        DraftCompositePositionV1::new(0, DraftCompositeGapWitnessV1::BeforeAll),
-    );
-    begin_and_stage(&storage, &store, &edit);
-    let mut staged_counts = Vec::new();
-    for _ in 0..8 {
-        let Some(advance) = storage
-            .prepare_draft_piece_build_advance(
-                &store,
-                base.draft().id(),
-                edit.session,
-                edit.operation,
-            )
-            .unwrap()
-        else {
-            break;
-        };
-        staged_counts.push(advance.staged_record_count());
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
-        ));
-    }
-    assert_eq!(staged_counts, [1, 1, 1, 7, 1]);
 }
 
 #[cfg(feature = "test-faults")]
@@ -716,7 +660,7 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let indeterminate = execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+        storage.advance_draft_piece_edit(advance),
     );
     assert!(matches!(
         &indeterminate,
@@ -895,7 +839,7 @@ fn advance_until_complete_for(
         preceding = Some(advance.frontier());
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     panic!("draft-piece build did not make bounded progress")

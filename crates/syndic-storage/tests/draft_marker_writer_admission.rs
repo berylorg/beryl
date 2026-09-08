@@ -28,6 +28,58 @@ use support::{
 };
 
 #[test]
+fn staged_record_diagnostic_includes_marker_order_record_and_root() {
+    let (_home, store, storage, thread) = fixture("staged-marker-order-diagnostic", 100);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 101, 102);
+    let session = complete_staged(
+        &storage,
+        &store,
+        &session,
+        103,
+        DraftPieceReplacementV1::new(point(0), point(0), vec![DraftPieceV1::Text("x".to_owned())]),
+        DraftLogicalExtentV1::new(1, 1),
+    );
+    let marker = marker(165, 1, 1);
+    let admission = owner(&session, 104);
+    let proof = storage
+        .seed_draft_marker_writer_ready_target_for_test(&store, &session, admission, marker)
+        .unwrap();
+    let (_, identity, _) = stage_admitted_marker_edit(
+        &storage,
+        &store,
+        &session,
+        admission,
+        proof,
+        DraftPieceReplacementV1::new(point(1), point(1), vec![DraftPieceV1::Marker(marker)])
+            .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                DraftPieceMarkerInsertionV1::new(
+                    1,
+                    marker,
+                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
+                ),
+            )),
+    );
+    let mut staged_counts = Vec::new();
+    for _ in 0..8 {
+        let Some(advance) = storage
+            .prepare_draft_piece_build_advance(
+                &store,
+                identity.draft_id(),
+                identity.session_id(),
+                identity.operation_id().as_piece_operation(),
+            )
+            .unwrap()
+        else {
+            break;
+        };
+        staged_counts.push(advance.staged_record_count());
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
+    }
+    assert_eq!(staged_counts, [1, 1, 1, 7, 1]);
+}
+
+#[test]
 fn exact_marker_insert_consumes_the_target_and_settles_then_releases_writer_custody() {
     let (_home, store, storage, thread) = fixture("happy", 1);
     let (session, source) = marked_session(&storage, &store, thread, 2);
@@ -148,10 +200,7 @@ fn history_capacity_refusal_terminalizes_writer_without_publishing_candidate_his
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     let outcome = execute(
         &store,
@@ -288,10 +337,9 @@ fn wrong_target_label_cannot_advance_build_or_consume_admission() {
             identity.session_id(),
             identity.operation_id().as_piece_operation(),
         ) {
-            Ok(Some(advance)) => committed(execute(
-                &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
-            )),
+            Ok(Some(advance)) => {
+                committed(execute(&store, storage.advance_draft_piece_edit(advance)))
+            }
             Ok(None) => panic!("mismatched target completed without point authentication"),
             Err(DraftPiecePrepareErrorV1::InvalidRoot) => break,
             Err(error) => {
@@ -359,19 +407,13 @@ fn cloned_consuming_advance_replays_without_consuming_the_target_twice() {
             .unwrap()
             .expect("unfinished admitted build produces a quantum");
         let replay = advance.clone();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         let once = snapshot(&storage, &store, admission);
         let once_head = once.head().unwrap();
         let consumed = once_head.target_root().count() == 0;
         let digest = once_head.digest();
         let capacity = once.capacity().unwrap().digest();
-        let replay_outcome = execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), replay),
-        );
+        let replay_outcome = execute(&store, storage.advance_draft_piece_edit(replay));
         assert!(matches!(
             replay_outcome,
             CommandOutcome::NotCommitted {
@@ -394,10 +436,7 @@ fn cloned_consuming_advance_replays_without_consuming_the_target_twice() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,

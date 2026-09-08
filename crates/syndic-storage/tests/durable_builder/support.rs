@@ -211,7 +211,7 @@ fn complete_staged(
     {
         committed(execute(
             store,
-            storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -235,7 +235,7 @@ fn advance_error(
         ) {
             Ok(Some(advance)) => committed(execute(
                 store,
-                storage.advance_draft_piece_edit(storage.revision(store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             )),
             Ok(None) => panic!("invalid effect unexpectedly completed"),
             Err(error) => return error,

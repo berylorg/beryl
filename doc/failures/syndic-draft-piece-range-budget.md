@@ -53,5 +53,6 @@ semantics do not; no unchanged-format claim is established. Raising limits, pers
 internal padding, or repeatedly rejecting unchanged work does not meet the existing contract.
 
 Work stopped under the Operator's technical-plan rule. No production source, tests, manifests, or
-storage-format authority changed during this readiness investigation. The revised proposal is
-pending in [the implementation plan](../plan.md).
+storage-format authority changed during that readiness investigation. The Operator subsequently
+approved the revised resumable repair; owning-design readiness and implementation are tracked in
+[the implementation plan](../plan.md).

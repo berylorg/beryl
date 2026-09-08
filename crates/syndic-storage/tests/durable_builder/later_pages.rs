@@ -226,7 +226,7 @@ fn leading_marker_and_following_text_delete_in_one_atomic_build() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -308,7 +308,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
         if open_build_fragments(&storage, &store, &prepared, &fragments)
             .marker_effect_continuation()
@@ -344,7 +344,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(
@@ -437,7 +437,7 @@ fn later_marker_effects_complete_in_canonical_fragment_order() {
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     while let Some(advance) = storage
@@ -451,7 +451,7 @@ fn later_marker_effects_complete_in_canonical_fragment_order() {
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(

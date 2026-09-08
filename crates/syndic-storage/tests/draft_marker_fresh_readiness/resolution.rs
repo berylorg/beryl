@@ -188,9 +188,7 @@ fn assigned_marker_resolution_preserves_read_state_and_builder_consumes_once() {
         {
             committed(execute(
                 &fixture.store,
-                fixture.storage.advance_draft_piece_edit(
-                    fixture.storage.revision(&fixture.store).unwrap(),
-                    advance,
+                fixture.storage.advance_draft_piece_edit(advance,
                 ),
             ));
         }

@@ -69,7 +69,7 @@ fn missing_durable_continuation_fails_status_advance_and_reopen_closed() {
         .unwrap();
     committed(execute(
         &store,
-        storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+        storage.advance_draft_piece_edit(advance),
     ));
     let pending = open_build(&storage, &store, &prepared, &fragment);
     assert_eq!(pending.working_roots(), source_roots);
@@ -197,7 +197,7 @@ fn marker_scan_and_active_identity_corruption_fail_closed() {
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
         assert!(
             open_build(&storage, &store, &prepared, &fragment)
@@ -363,7 +363,7 @@ fn each_published_and_hidden_active_root_fails_authentication_independently() {
                 .unwrap();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             ));
         }
         let build = open_build(&storage, &store, &prepared, &fragment);
@@ -489,7 +489,7 @@ fn coordinated_receipt_count_and_chain_corruption_fail_between_effects() {
                 .unwrap();
             committed(execute(
                 &store,
-                storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+                storage.advance_draft_piece_edit(advance),
             ));
         }
         committed(execute(

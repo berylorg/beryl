@@ -216,7 +216,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
             .unwrap();
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
         let build = open_build(&storage, &store, &prepared, &fragment);
         if let Some(pending) = build.marker_effect_continuation().active() {
@@ -245,7 +245,7 @@ fn staged_marker_effects_derive_current_placement_and_close_identity_collisions(
     {
         committed(execute(
             &store,
-            storage.advance_draft_piece_edit(storage.revision(&store).unwrap(), advance),
+            storage.advance_draft_piece_edit(advance),
         ));
     }
     committed(execute(

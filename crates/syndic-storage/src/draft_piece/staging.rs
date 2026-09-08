@@ -325,6 +325,12 @@ pub(crate) fn draft_mutation_staging_receipt_is_locally_exact(
     digest::draft_mutation_staging_receipt_is_locally_exact(receipt)
 }
 
+pub(in crate::draft_piece) fn staging_finish_receipt_is_exact(
+    receipt: &DraftMutationStagingProgressReceiptV1,
+) -> bool {
+    integrity::receipt_finish_digest_is_exact(receipt)
+}
+
 fn admitted_writer_is_current_generation(
     storage: &SyndicStorage,
     head: &DraftMutationStagingHeadV1,
