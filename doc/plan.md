@@ -45,23 +45,20 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 348: Reduce Agent Orchestration Overhead (finished)
+# Phase 349: Disable Cargo Incremental Compilation (finished)
 
-Accepted conditional delegation by total team effort, compact evidence, targeted verification
-and Astra/medium as the persisted main default, with Terra workers and explicit frontier review.
-Canonical AIPM instructions, references and display metadata match Beryl's installed copies;
-both bundled skill validations, scoped whitespace checks and configuration parsing pass.
-Required review, ownership and root-only delegation remain intact. Explicit session selections
-may override the default. No Sol route was introduced.
+Accepted `build.incremental = false` in Beryl's tracked Cargo configuration and the shared local
+parent configuration for independent sibling/nested checkouts. Both parse; inspected local files
+and process environment contain no overriding setting. Locked canonical/local metadata pass and
+both lockfiles retain their hashes. The serialized guarded local app check passed in 28.49s;
+27 compiler invocations, including Beryl and every local dependency workspace, contained no
+incremental flag. Peak guarded commitment was 1.28 GiB; the root was reaped with no remaining job
+members. Shared artifacts remain intact; net SSD-write savings are unmeasured.
 
-# Phase 349: Disable Cargo Incremental Compilation (wip)
-
-Disable incremental compilation in Beryl's tracked Cargo configuration and the shared local parent
-configuration used by sibling checkouts. Preserve linker, symbols, dependency selection and
-lockfiles. Inspect inherited configuration and environment overrides, validate locked metadata,
-then run one serialized, memory-guarded focused app check and inspect compiler invocations for
-incremental flags. Document the setting's scope and rebuild/write tradeoff. Do not clean shared
-artifacts or rerun integration suites for unchanged product behavior.
+The preceding orchestration changes are accepted: Astra/medium default, Terra workers,
+conditional delegation, compact evidence and preserved required reviews. Canonical AIPM and
+installed Beryl skill copies passed validation and match. [ENV.md](../ENV.md) records local Cargo
+inheritance and model-default override behavior. Product development remains paused below.
 
 # Phase 329: Connect Production Marker Admission (pending)
 

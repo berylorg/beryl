@@ -71,6 +71,9 @@ Let users create, browse, branch, edit, and resume durable threads without makin
   Precompiled toolchain and native inputs may still contribute data to Windows PDB files.
 - Large verification runs use one active Cargo invocation and one compiler job by default to
   protect Windows memory commitment headroom. Test execution concurrency is controlled separately.
+- Cargo incremental compilation is disabled for Beryl and its compiled dependencies, including
+  local forks, across build profiles. Local dependency checkouts also use this setting when built
+  independently. This avoids incremental-cache writes; net SSD-write savings remain unmeasured.
 - The desktop client uses `gpui` and does not depend on browser technologies, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native application libraries.
 - Beryl may use the official `gpui` package or a Beryl-maintained fork anchored to upstream Zed `gpui` when targeted patches are required.
 - GPUI-owned transitive native build dependencies remain allowed.
