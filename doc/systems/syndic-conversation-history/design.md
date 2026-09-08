@@ -848,7 +848,10 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   occurrence in the authenticated removal-applied working roots. Encountering any marker in that
   range rejects the fragment; text replacement never removes a marker implicitly or advances roots
   without the matching effect count and chain step. The caller must stage each required marker
-  removal as its own closed effect before the text-range fragment.
+  removal as its own closed effect before the text-range fragment. Original gap witnesses are
+  authenticated against the predecessor even when their neighbors no longer survive in the
+  working sequence. Mapped text intervals must remain free of current markers, including inserted
+  and moved markers; removed original markers do not themselves invalidate those intervals.
 - Immutable canonical fragment records are the only effect collection. After fragment staging is
   complete, successor construction performs one canonical fragment-ordinal fold; it does not run a
   global marker-effect reconciliation prepass or retain the first encountered effect while scanning
@@ -857,7 +860,7 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   effect chain. Each effect-chain step commits the fragment identity and canonical digest together
   with the post-effect sequence, identity-index, and marker-order-commitment root digest.
 - The fold admits at most one fixed-size active effect. It binds the exact fragment identity and
-  digest, source roots, unreachable working roots, fixed source/successor logical-mapping frontiers,
+  digest, source roots, unreachable working roots, fixed completed source/successor frontiers,
   and one bounded removal, range-application, or optional-insertion subphase. A fragment with an
   effect may start only while this slot is empty. Storage authenticates removal against the
   predecessor occurrence and current working index, applies the removal, then derives marker gap and
@@ -866,15 +869,24 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   advances the scan frontier, completed count, and effect chain, and clears the active slot; only
   then may the next fragment be scanned. A fragment without an effect advances the authenticated
   scan frontier without changing the effect count or chain. Later effects remain solely in immutable
-  cursor-addressed fragment records, never in a vector, queue, registry, continuation list, or
-  accumulated mapping-delta state. Live and mutable continuation state is therefore `O(1)` in marker
-  count; immutable staged input and unreachable working/final tree records may scale through cursor
-  pages with the logical edit.
+  cursor-addressed fragment records, never in a resident vector, queue, registry or continuation
+  list. One build-private persistent coordinate map separately relates original predecessor cuts
+  to the effective coherent working sequence. It stores only surviving, deleted and inserted spans,
+  not marker identities, effect payloads or caller-supplied deltas. Live continuation retains one
+  current map descriptor, at most one pending descriptor and a fixed tagged proof/splice state.
+  Resident state remains `O(1)` in marker count; immutable staged input, mapping nodes and
+  unreachable working/final tree records may scale with the logical edit.
 - The fold supports adjacent, sparse, and same-anchor markers because each effect derives its gap and
   ordering from the current removal-applied roots. An anchor beyond the current logical construction
   frontier, occupied `(anchor, order key)` owned by another id, repeated id when absence is required,
-  wrong source occurrence, or disagreeing checked charge rejects at that fragment. No semantic
-  reorder, widget pre-scan, prior-page buffer, or operation-wide marker map is used.
+  wrong source occurrence, or disagreeing checked charge rejects at that fragment. The insertion
+  admission frontier is a logical UTF-8 anchor, not a composite piece rank: an insertion after an
+  untouched same-anchor marker may lie beyond the mapped source cut. Source ordering uses each
+  fragment's actual predecessor end, including the shared empty boundary for every marker effect;
+  removing a marker does not advance that ordering boundary. The coordinate map independently
+  accounts for consumption and preserves later source cuts and original occurrences on either
+  side of the completed frontier. No semantic reorder, widget pre-scan, prior-page buffer or
+  resident operation-wide marker map is used.
 - Proposal ranges remain strictly ordered across page boundaries by the predecessor end and
   successor anchor/order effect frontier committed in the build receipt. An out-of-order,
   overlapping, future-dependent anchor, duplicate same-anchor order key, charge mismatch, or second semantic
@@ -1225,7 +1237,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   sixth outcome or falsely claim noncommit. Unadmitted staging for an operation that never claimed
   the slot may remain an unreachable orphan. Once admitted, work remains claimed until its one
   terminal settlement; its immutable terminal records remain durable closure rather than
-  disposable orphan authority and never become a fallback successor.
+  disposable orphan authority and never become a fallback successor. Operation-owned coordinate
+  mapping nodes follow this same immutable build-evidence lifecycle. They remain protected through
+  partial splices, cancellation, terminal settlement and outcome reconciliation. Admission cleanup,
+  session disposal, history-floor advancement and process retirement do not delete them; future
+  explicit garbage collection must honor every durable reference. They are not adopted document
+  roots, marker-admission capacity or edit-history retention charges. Their acquisitions, emissions
+  and probes share the existing bounded build-command ledger; this adds no whole-home disk cap.
 - Draft text pages, marker pages, composite-position validation, and restoration validation bind
   one exact combined root with fixed page and retained-byte bounds. An exact-root read validates
   its combined-root record, all three summaries, requested paths, digests, and cross-structure marker facts but

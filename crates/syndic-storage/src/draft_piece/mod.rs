@@ -1,4 +1,5 @@
 mod admission;
+pub(crate) mod build_mapping;
 mod builder_model;
 mod checkpoint;
 mod codec;
@@ -76,6 +77,7 @@ pub(crate) use admission::{
     DraftMarkerAdmissionReceiptsCodec, DraftMarkerAdmissionReceiptsFamily,
 };
 pub(crate) use codec::*;
+pub(crate) use build_mapping::DraftPieceBuildMappingCodec;
 pub(crate) use history::{
     DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
     DraftEditHistoryTransitionsCodec, DraftEditHistoryTransitionsFamily,

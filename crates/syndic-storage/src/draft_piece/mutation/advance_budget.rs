@@ -52,6 +52,7 @@ fn is_structure<F: Family>() -> bool {
             | "draft-marker-identity-index"
             | "draft-marker-order-commitments"
             | "draft-marker-label-admission-nodes"
+            | "draft-piece-build-mapping"
     )
 }
 
@@ -178,8 +179,7 @@ impl BuildBudget {
             reader
                 .point::<ExactCodec<F>>(
                     key,
-                    beryl_home_store::PointReadLimit::new(F::MAX_VALUE_BYTES)
-                        .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?,
+                    crate::codec::family_point_limit::<F>(),
                 )
                 .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)
         })
@@ -212,7 +212,7 @@ impl<'a> BuildAcquisition<'a> {
                 .point::<F>(
                     self.store,
                     key.clone(),
-                    crate::SyndicPointReadLimit::new(F::MAX_VALUE_BYTES)
+                    crate::SyndicPointReadLimit::new(crate::codec::family_point_limit::<F>().max_bytes())
                         .map_err(|_| DraftPiecePrepareErrorV1::InvalidRoot)?,
                 )
                 .map_err(DraftPiecePrepareErrorV1::from)

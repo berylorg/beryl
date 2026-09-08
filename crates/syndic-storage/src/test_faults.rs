@@ -12,6 +12,10 @@ mod draft_edit_history;
 mod draft_marker_admission;
 mod draft_marker_continuation;
 mod draft_marker_continuation_bounds;
+pub use crate::draft_piece::build_mapping::fixture::{
+    BuildMappingForTest, MappingWorkForTest, mapping_node_codec_roundtrip, mapping_root_codec_roundtrip,
+};
+pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
 mod draft_staged_outcomes;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;

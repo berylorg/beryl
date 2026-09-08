@@ -1,7 +1,7 @@
 # V7 Persisted Schema
 
 This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
-the complete 67-primary plus 23-index family inventory, family and record versions, natural keys,
+the complete 68-primary plus 23-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
 change persisted bytes.
@@ -17,13 +17,14 @@ change persisted bytes.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
   `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
-  `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V5; every other
+  `draft-piece-build-progress`, and `draft-piece-settlements` use replacement record V6; every other
   V7 family uses record V1. V6 domain values and prior records in those three replaced families are
   rejected rather than accepted, migrated, dual-written, or adapted.
 - The Rust boundary values remain `DraftPieceBuildRecordV1`,
   `DraftPieceBuildProgressReceiptV1`, and `DraftPieceSettlementV1`. Those suffixes name their
-  semantic API shapes; the enclosing family codec version is V5 and the digest domains are
-  `/v5`. V5 includes exact partial range continuation and closed per-structure marker continuation.
+  semantic API shapes; the enclosing family codec version is V6 and the digest domains are
+  `/v6`. V6 includes exact partial range continuation, closed per-structure marker continuation
+  and the edit-successor coordinate-mapping block. `draft-piece-build-mapping` uses record V1.
   Unchanged cursor field widths do not establish compatibility: prior in-flight builds, progress
   receipts, and settlements are rejected at the version boundary, with no legacy transition reader.
 - The primary families are `threads`, `image-label-authority-heads`,
@@ -38,7 +39,8 @@ change persisted bytes.
   `draft-editor-candidate-sessions`, `draft-piece-builds`,
   `draft-mutation-staging-heads`, `draft-mutation-staging-pages`,
   `draft-mutation-staging-progress`,
-  `draft-piece-build-fragments`, `draft-piece-build-progress`, `draft-piece-settlements`,
+  `draft-piece-build-fragments`, `draft-piece-build-progress`, `draft-piece-build-mapping`,
+  `draft-piece-settlements`,
   `draft-edit-history-frontiers`, `draft-edit-history-transitions`,
   `draft-historical-root-adoptions`,
   `draft-composer-builds`,
@@ -75,7 +77,7 @@ change persisted bytes.
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V7 inventory is exactly 67 primary plus 23 index families, or 90 total. Family names,
+- The complete V7 inventory is exactly 68 primary plus 23 index families, or 91 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
@@ -313,7 +315,7 @@ canonical byte comparison of the point-read target closure.
   `Rejected(settlement)`, `Conflict(settlement)`, `Cancelled(settlement)`, or `Error(settlement)`
   lifecycle. The Applying fragment ordinal and `base_end` remain fixed while its two successor
   boundaries encode the exact remaining interval in the selected working sequence. Their field
-  order and widths are unchanged within the replacement V5 encoding; the closed partial-removal transitions are owned by
+  order and widths remain fixed within the replacement V6 encoding; the closed partial-removal transitions are owned by
   [bounded sequence continuation](design-draft-storage.md#bounded-sequence-range-continuation).
   Both the build head and each progress receipt carry that same cursor meaning. It contains no
   whole edit, replacement collection, inserted payload, or mutable self-
@@ -340,17 +342,17 @@ canonical byte comparison of the point-read target closure.
   cumulative chain, optional fixed-size active marker effect; next
   record ordinal; optional
   successor root and build digest; lifecycle; and the SHA-256 receipt digest under exact ASCII
-  domain `syndic/draft-piece-build-progress-receipt/v5` over the canonical key and every preceding
+  domain `syndic/draft-piece-build-progress-receipt/v6` over the canonical key and every preceding
   canonical value field. A non-one ordinal without the exact immediately preceding key/digest, any skipped or
   disagreeing transition, or any key/value/digest disagreement is invalid. While the build head
   selects the preceding receipt, this receipt's key must be absent; occupied bytes in that state are
   a corrupt split even when equal. Once the build head selects this receipt, it can prove replay only
   together with byte equality of the complete same-command closure.
-- The V5 family encodings of `DraftPieceBuildRecordV1` and
+- The V6 family encodings of `DraftPieceBuildRecordV1` and
   `DraftPieceBuildProgressReceiptV1`, together with the immutable fragment value shape, own
   the durable continuation fields;
-  no further secondary index, operation-page history, or marker-effect map is required beyond the
-  declared marker-order-commitment and marker-seal families. A build endpoint locates its next staging page by one natural-key point read from the
+  the one additional immutable `draft-piece-build-mapping` family owns coordinate-map nodes.
+  It is not a proposal collection or an operation-page history. A build endpoint locates its next staging page by one natural-key point read from the
   retained staging identity, selected lane, and next lane ordinal, which is `O(1)` in operation
   length.
 - `draft-piece-settlements` is keyed by the exact 48-byte draft/session/operation identity. Its immutable `DraftPieceSettlementV1`
@@ -378,8 +380,8 @@ canonical byte comparison of the point-read target closure.
   and referenced build fragments; the stored settlement itself must pass canonical decoding and
   exact closure validation. Equal digests are not sufficient for either check.
 - The replacement record digests use exact ASCII domains
-  `syndic/draft-piece-build/v5`, `syndic/draft-piece-build-progress-receipt/v5`, and
-  `syndic/draft-piece-settlement/v5`. The marker-effect chain begins from its one canonical empty
+  `syndic/draft-piece-build/v6`, `syndic/draft-piece-build-progress-receipt/v6`, and
+  `syndic/draft-piece-settlement/v6`. The marker-effect chain begins from its one canonical empty
   value under `syndic/draft-marker-effect-chain/v1`; each completed step hashes the prior chain,
   exact fragment natural identity and canonical digest, completed effect count, and post-effect
   sequence/index/commitment root digest. No prior build, progress, settlement, or effect-chain domain
@@ -621,144 +623,351 @@ canonical byte comparison of the point-read target closure.
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
+## Build Coordinate Mapping Encoding
+
+`draft-piece-build-mapping` is an immutable primary family with record V1. Its key is the exact
+64-byte concatenation `draft16 || session16 || operation16 || node16`. Nodes are build-private
+evidence; they are not combined-root structures or admission-node records. Every map acquisition,
+emission and absence probe is a stored-structure operation under the existing builder ledger.
+
+A node value repeats that key, then encodes `height:u8`, `entry_count:BE-u64`, the ordered entries
+and its 32-byte digest. Height one denotes a leaf. Its entries are `kind:u8, length:BE-u128`,
+with exactly `0=Copy`, `1=Deleted`, `2=Inserted` and positive length. Internal entries are
+`node16, digest32, source_units:BE-u128, target_units:BE-u128` in that order; their height is
+the containing height minus one. Copy contributes its length to both totals, Deleted to source
+only and Inserted to target only. Internal totals are checked sums of child totals. Every
+descriptor has positive source-plus-target measure; each total is at most `2*(2^64-1)`.
+Root totals additionally equal their exact operation/working extents as required below.
+
+The exact value maximum is `1385 = 64+1+8+16*80+32` bytes; key plus value is at most 1,449.
+A leaf's complete key-plus-value maximum is `169+16*17 = 441`. Counts are validated before
+allocation. No separate population count is encoded.
+
+A selected leaf has 1 through 16 runs; a selected internal root has 2 through 16 children.
+Every nonroot node has 8 through 16 entries. Leaf depth is uniform, singleton roots collapse,
+and no underfull nonroot or intermediate descriptor is emitted. Adjacent equal-kind runs may
+remain adjacent: canonical encoding and deterministic surgery do not require a unique tree for
+semantically equivalent alignments. Never reorder Inserted and Deleted runs.
+
+Every positive run contributes at least one source-plus-target unit. That population is below
+`2^66`. Height 23 would require at least `2*8^22 = 2^67` runs, so Stored height is 1 through 22.
+The bound derives from existing extents and adds no smaller logical draft limit.
+
+MapRoot has exactly these ordered encodings:
+
+- `0=Empty`, no payload; source and target are zero.
+- `1=Identity(units:BE-u128)`, positive units; one implicit Copy run with equal source and target.
+- `2=Stored(node16,digest32,height:u8,source_units:BE-u128,target_units:BE-u128)`.
+
+Their maxima are respectively 1, 17 and 82 bytes. Initial edit construction selects Empty or
+Identity from authenticated predecessor measure and emits no mapping node. Stored descriptors
+bind the same owner as their build. They authenticate the referenced node, its height, digest,
+summary and selected-root shape. Implicit roots require no database acquisition. Root
+normalization selects Empty only when both totals are zero; a materialized nonempty leaf may
+remain Stored even when its one Copy run has the same function as Identity.
+
+With `H` and `LP` as defined for draft roots, the node digest is
+`H(LP("syndic/draft-piece-build-mapping-node/v1") || LP(owner48) || LP(height:u8) ||
+LP(entry_count:BE-u64) || LP(canonical_ordered_entries))`. It excludes the node's own ID and
+stored digest. The deterministic record ID is the first 16 bytes of
+`H(LP("syndic/draft-piece-build-mapping-record-id/v1") || LP(draft16) || LP(session16) ||
+LP(operation16) || LP(shared_record_ordinal:BE-u64) || LP(node_digest32))`.
+The shared checked build record ordinal is allocated once per emission. Key/value identity,
+owner and digest agreement are mandatory; occupied target keys fail closed under ordinary
+build publication rules.
+
+A point insertion splits at the leftmost path position for its target coordinate, including the
+start of a Deleted plateau. Right-affinity source lookup includes all Inserted units at the
+source cut. Summary descent skips zero-measure children without scanning a plateau.
+
+A pending deletion `[a,end)` selects target unit `end-1` and transforms only that one leaf's
+intersection with the interval. Covered Copy becomes Deleted, covered Inserted disappears and
+Deleted remains. Preserve unremoved prefixes/suffixes. At most 16 input runs produce at most 18
+output runs. Remove empty outputs. Normalize the single changed leaf and its ancestor path:
+prefer the immediate left sibling when present, otherwise the right; merge when the combined
+count fits 16, otherwise redistribute the ordered entries into floor/ceiling equal halves.
+An overflow likewise splits into floor/ceiling halves. Each emitted nonroot remains 8 through
+16 entries, with unchanged uniform depth. The selected root may collapse or split canonically.
+
+Only one leaf changes, so an underflowing parent loses at most one child whose surviving
+siblings are already normalized. At height `H<=22`, a deletion step acquires at most `2H-1=43`
+nodes and emits at most `2H+1=45`; insertion acquires at most 22 and emits at most 45.
+The new remaining end is the maximum of `a` and the selected leaf's target start and strictly
+decreases. Even a sequence-leaf deletion spanning many map leaves therefore advances through
+bounded commands; no whole-interval cut/join or operation-sized resident tree is permitted.
+
+Mapping nodes remain immutable operation evidence through terminal custody and future explicit
+garbage collection. Admission cleanup and edit-history retention accounting do not own them.
+
 ## Marker Continuation Encoding And Program
 
-The V5 build and progress encodings contain the same optional active marker state. Settlement
-digests commit the corresponding V5 source/terminal closure. The active value retains its existing
-fields in order: fragment key, fragment digest, effect, source roots, coherent working roots,
-source logical frontier, successor logical frontier, and active phase. It then appends, in order,
-`removal_site`, `planning`, `insertion_site`, and `pending` below. All fields participate in the
-enclosing canonical bytes and hashes. There is no compatibility reader for the previous layout.
+The V6 build and progress encodings contain the same optional active marker state and mapping
+block. Settlement digests commit the corresponding V6 source/terminal closure. There is no reader
+for prior build/progress/settlement record versions.
 
-- A boundary is `(piece_rank:u64, inner_byte_offset:u64)` in that order. Integer encoding and
-  checked arithmetic follow the existing boundary codec. An option uses `0=None`, `1=Some`.
-- `removal_site` is an optional `(piece_rank:u64, marker_ordinal:u64)`, both measured before removal.
-- `planning` is an optional pair, in order, `source_boundary:Option<Boundary>` and
-  `previous_start:Option<Boundary>`. No other source, effective-end or mapped boundary is stored.
-- `insertion_site` is an optional `(boundary:Boundary, marker_ordinal:u64,
-  mapped_next_boundary:Boundary)`. Its last boundary maps the frozen outer Inserting successor
-  end, not the insertion boundary.
-- A sequence descriptor is an optional sequence-root identity followed by the complete existing
-  canonical sequence summary; its maximum width is 122 bytes. An identity descriptor is an optional
-  identity-root identity followed by the complete existing canonical identity summary; its maximum
-  width is 58 bytes. Each validates its own empty form, height, selected-root shape and digest.
-  An individual descriptor never encodes an incoherent combined three-root value.
-- `pending` has exactly these one-byte tags and ordered payloads: `0=None`;
+The active value retains, in order, fragment key, fragment digest, effect, source roots, coherent
+working roots, captured source logical frontier, captured successor logical frontier and active
+phase. It then stores `removal_site`, `planning`, `insertion_site` and `pending`:
+
+- Boundary is `(piece_rank:u64, inner_byte_offset:u64)`. All integers are big-endian and checked;
+  options use `0=None` and `1=Some`.
+- Removal site is an optional `(piece_rank:u64, marker_ordinal:u64)` measured before removal.
+- Planning is an optional ordered pair `source_boundary:Option<Boundary>,
+  previous_start:Option<Boundary>`.
+- Insertion site is an optional `(boundary:Boundary, marker_ordinal:u64)`. There is no
+  mapped-next-boundary field.
+- A sequence descriptor retains the existing optional root identity and complete summary, at
+  most 122 bytes. An identity descriptor retains its optional root identity and complete summary,
+  at most 58 bytes. Each has its canonical empty form, height, selected-root shape and digest.
+- Pending tags and ordered payloads are `0=None`;
   `1=Proof(purpose:u8, component:u8, primary_marker_rank:Option<u64>)`;
   `2=RemoveSequence`; `3=RemoveIdentity(sequence_target)`;
   `4=RemoveOrder(sequence_target, identity_target)`; `5=InsertSequence`;
-  `6=InsertIdentity(sequence_target, new_leaf_id:16 bytes, new_leaf_digest:32 bytes)`;
-  `7=InsertOrder(sequence_target, identity_target, new_leaf_id:16 bytes,
-  new_leaf_digest:32 bytes)`. The final order command installs the coherent triple, so there is
-  no pending order descriptor.
-- Proof purposes have exactly these tags: `0=SourceBounds`, `1=RemovalGap`,
-  `2=SourceOccurrence`, `3=SourceIdentity`, `4=PreviousStart`, `5=PreviousEnd`,
-  `6=WorkingOccurrence`, `7=WorkingIdentity`, `8=InsertIdentityAbsent`, `9=InsertAnchor`,
-  `10=InsertOrder`, `11=InsertAfter`, `12=SourceInsertIdentityAbsent`.
-  Components are `0=Primary`, `1=Secondary`.
-  Only SourceBounds, RemovalGap, PreviousStart and PreviousEnd permit Secondary, and only for
-  an AfterAll or Between source-position witness. Primary always has absent scratch; Secondary
-  always has the authenticated primary marker piece rank. No other scratch presence is valid.
-- Effect tags remain `0=Insert`, `1=Remove`, `2=Move`, `3=SameIdReplacement`; active phase tags
+  `6=InsertIdentity(sequence_target,new_leaf_id:16,new_leaf_digest:32)`;
+  `7=InsertOrder(sequence_target,identity_target,new_leaf_id:16,new_leaf_digest:32)`.
+  Order surgery installs the coherent triple and map, so there is no pending order descriptor.
+- Proof purposes are `0=SourceBounds`, `1=RemovalGap`, `2=SourceOccurrence`,
+  `3=SourceIdentity`, `4=PreviousStart`, `5=PreviousEnd`, `8=InsertIdentityAbsent`,
+  `9=InsertAnchor`, `10=InsertOrder`, `11=InsertAfter`, `12=SourceInsertIdentityAbsent`.
+  Purpose tags 6 and 7 are invalid; working removal proofs belong to mapping stages below.
+  Components are `0=Primary` and `1=Secondary`. Only SourceBounds, RemovalGap, PreviousStart
+  and PreviousEnd permit Secondary, exactly for AfterAll or Between witnesses. Primary has no
+  scratch; Secondary has exactly the authenticated primary marker rank.
+- Effect tags remain `0=Insert`, `1=Remove`, `2=Move`, `3=SameIdReplacement`. Active phases
   remain `0=Removing`, `1=DerivingInsertionGap`, `2=Inserting`, `3=Publishing`.
-  Unknown tags, trailing fields, wrong optional presence and impossible phase/effect/cursor
-  combinations are rejected. Terminal endpoints may preserve the exact prior active program
-  under terminal custody; normal Complete, CrossValidating and adoption states have no active effect.
 
-The following is the complete open-state program. `P` is the operation's original predecessor
-combined root, `A` the active pre-effect working triple, `W` its coherent working triple, and `B`
-the resolved shared source boundary. The fragment has equal canonical source positions, no text
-pieces and no continuation flag; Remove has zero inserted pieces and the other kinds exactly their
-one matching marker. Throughout activation and partial work, the published build roots equal `A`.
-The selected and immediately preceding receipts must prove each successor; fields cannot select
-an arbitrary program entry point.
+### Mapping Block And Stage Grammar
 
-- Activation changes outer Planning with no active effect to Planning/active Removing, with
-  `A=W` equal to the current build roots, fixed logical frontier snapshots, planning present with
-  both slots absent, both sites absent, and pending SourceBounds/Primary. It emits no tree record.
-- SourceBounds resolves the shared position on `P.sequence`, requires `B >= base_frontier`, and
-  fills `source_boundary`. Remove, Move and SameIdReplacement continue through RemovalGap,
-  SourceOccurrence and SourceIdentity. RemovalGap resolves the exact removal witness on `P`;
-  Remove/SameIdReplacement additionally require its result to equal `B`. SourceOccurrence proves
-  the complete removed marker/Asset/label/order/leaf identity/digest and charge on `P.sequence`;
-  Remove/SameIdReplacement require `B=(occurrence_rank,0)`. SourceIdentity proves the exact
-  occurrence on `P.identity`. Move has no equality requirement between its source boundary and
-  removed occurrence.
-- Pure Insert follows SourceBounds with SourceInsertIdentityAbsent, which proves the inserted
-  stable identity absent from `P.identity` in its own Primary command. This prevents Remove then
-  Insert of the same identity within one operation; an empty working index cannot establish that
-  guarantee. This purpose is forbidden for the removal kinds, which prove their original occurrence.
-- PreviousStart then PreviousEnd are mandatory exactly when the fragment ordinal exceeds one
-  and `B == base_frontier`. Insert reaches this conditional after SourceInsertIdentityAbsent; removal kinds
-  reach it after SourceIdentity. They resolve the exact immediately previous fragment's positions
-  on `P`, retain its start only while PreviousEnd is pending, and reject an empty previous range
-  whose fragment lacks a marker effect. PreviousEnd clears `previous_start`. No older fragment is
-  acquired for this rule. Insert next reaches FinishPlanning; removal kinds reach WorkingOccurrence.
-- WorkingOccurrence on `A.sequence` proves the exact removal at the checked mapped anchor
-  `removal_offset - active.source_frontier + active.successor_frontier` and records the piece rank
-  and marker ordinal from that one descent. WorkingIdentity proves the full occurrence on
-  `W.identity`. RemoveSequence, RemoveIdentity and RemoveOrder then execute one normalized
-  structure primitive each. The first two retain their individual targets with `W` unchanged.
-  RemoveOrder proves the exact removed tuple and local summary deltas, installs the coherent
-  target triple, and clears pending. The removal site remains until FinishPlanning.
-- Throughout active Planning, phase is Removing and planning is present. Its source slot is absent
-  exactly during SourceBounds and present thereafter. Its previous-start slot is present exactly
-  during either component of PreviousEnd. The removal site is present exactly after
-  WorkingOccurrence through WorkingIdentity, removal surgery and removal-kind FinishPlanning.
-  The insertion site is always absent. Pending None is legal only at FinishPlanning after the
-  required proof and surgery chain; it is not a caller-provided completion flag.
-- FinishPlanning does no lookup. It derives effective source end `B` for Insert/Move and
-  `(B.rank+1,0)` for Remove/SameIdReplacement. It maps `B` through the completed source/successor
-  frontiers and shifts the mapped rank down by one exactly when the removed piece rank precedes
-  it. It publishes outer Removing with `next_rank=end_rank=B.rank`, zero removed-marker counter,
-  derived `base_end`, and both successor boundaries equal to that mapped empty boundary. Planning
-  and both sites are absent and pending is None. Active phase remains Removing.
-- The sole active outer Removing successor is Applying with those same boundaries and roots and
-  active DerivingInsertionGap. The sole active Applying successor requires equal remaining
-  boundaries, advances the completed source frontier to `base_end` once, and enters Inserting at
-  piece/byte zero. Remove is already exhausted and enters active Publishing with no pending facts.
-  Other kinds enter DerivingInsertionGap with pending InsertIdentityAbsent/Primary. No active
-  nonempty Applying or Removing rank loop is legal.
-- Inserting proof states freeze the entire outer cursor and `W`; planning and both sites are
-  absent, active phase is DerivingInsertionGap, and pending is Primary with purpose 8 through 11
-  and absent scratch. InsertIdentityAbsent proves the inserted stable identity absent on
-  `W.identity`, then InsertAnchor searches `W.sequence` at BeforeMarkers of the insertion anchor.
-  A valid text/EOF position without a marker at that anchor directly supplies the insertion site.
-  A first marker at that anchor requires InsertOrder, which locates the insertion target for the
-  exact anchor/order key and the canonical zero marker-id lower bound. An equal returned order key
-  is rejected only at that same anchor. A greater marker there supplies its boundary and ordinal;
-  otherwise InsertAfter searches AfterMarkers at the anchor for the boundary/EOF and ordinal.
-  Every sequence descent derives marker ordinal together with piece rank.
-- Completing an insertion gap checks its UTF-8 boundary and checked mapping of the frozen outer
-  successor end, publishes the complete insertion site, and enters active Inserting with pending
-  InsertSequence. Surgery states have only that site present; planning and removal site are
-  absent. InsertSequence, InsertIdentity and InsertOrder execute one structure mutation each.
-  The first retains its exact newly emitted marker-leaf identity/digest and sequence target; the
-  second adds its exact identity target. Only InsertOrder validates all association/count/commitment
-  deltas, installs `W`, maps the outer successor end, advances piece zero to one with byte zero,
-  clears site/pending, and enters active Publishing. It does not advance the effect chain.
-- Publishing requires outer Inserting exhausted at piece zero for Remove or one for the other
-  kinds, byte zero, absent planning/sites and pending None. A separate command publishes `W`,
-  completes structural/logical frontiers and the exact fragment scan/count/chain once, consumes
-  matching admission when applicable, clears active and enters next Planning or CrossValidating.
-  No other transition clears an open active effect or completes its effect chain.
+Immediately after the active marker state, both endpoint encodings append an optional mapping
+block. Some is mandatory for edit-successor records; None belongs only to the separately identified
+sealed-composer-import kind. Absence never infers an import kind or admits a mapless edit. This
+presence byte participates in V6 canonical bytes and digests for both kinds.
 
-Every proof performs at most one authenticated path lookup, or an empty/root-summary result needing
-no path. An Unambiguous position requires a valid text UTF-8 boundary, normalizes text-end to the
-next rank, or proves canonical EOF. BeforeAll proves the first marker at the exact anchor.
-AfterAll Primary proves that first marker and saves its rank; Secondary proves the same-root
-AfterMarkers boundary or EOF with a strictly greater rank. Between Primary proves the exact left
-marker; Secondary proves the exact right marker with rank exactly one greater. Successful completion
-clears scratch. A proof-only command may retain its record ordinal, but its receipt ordinal and
-closed program must advance. Surgery charges each emitted deterministic record before retention,
-including intermediate outputs omitted from final roots. Reopen authenticates the closed local
-receipt transition and referenced root records without repeating completed proof paths or surgery.
+The Some payload is, in order:
 
-The appended fields are bounded by 17 bytes for removal site, 35 for planning, 41 for insertion site,
-12 for Proof and 229 for the largest pending InsertOrder. Their independent maxima cannot coexist.
-The largest legal addition is 272 bytes: absent removal and planning tags, the 41-byte insertion
-site and 229-byte InsertOrder. Planning/RemoveOrder uses at most 218 bytes. A decoder must enforce
-the legal presence grammar rather than accept the 322-byte sum of unrelated maxima.
+- `current_map:MapRoot`, paired with effective coherent roots: active working roots when an
+  effect exists, otherwise build working roots.
+- `completed_source_unit:u128`, the actual original end of the last completed fragment.
+- `fragment_source_end_unit:Option<u128>`, the authenticated original end of the current
+  fragment. It persists through splices/refresh and is cleared only on fragment publication.
+- `mapping_stage:MappingStage`, one tagged union. Query and splice scratch cannot coexist.
+
+SourceFact is `(boundary:Boundary, unit:u128)`, 32 bytes. Position-proof component `C` is
+`(component:u8, primary_marker_rank:Option<u64>)`, at most ten bytes, with the same two-component
+witness rules above.
+
+Splice is `kind:u8, a:u128, removed:u128, inserted:u128,
+leaf:Option<(id:16,digest:32)>, rank:u64, local_start:u64, local_end:u64`, at most 122 bytes.
+Its kinds are exactly `0=TextDelete`, `1=TextInsert`, `2=MarkerDelete`, `3=MarkerInsert`.
+TextDelete has Some leaf, positive removal at most 32,768, zero insertion and proved UTF-8 local
+endpoints. TextInsert has no leaf, zero removal and the exact next positive UTF-8 chunk of at most
+32,768 bytes. MarkerDelete has no leaf, removal one and insertion zero; its original leaf is bound
+by the effect. MarkerInsert has no leaf, removal zero and insertion one. Insertion local_start is
+the proved inner offset and local_end is zero; MarkerDelete has both local offsets zero. Rank and
+local positions agree with the frozen outer cursor or marker site. Unused fields must be zero.
+
+ReadySplice is `kind:u8, a:u128, removed:u128, inserted:u128, target:MapRoot`, at most 131 bytes.
+It has no leaf/local proof fields.
+
+MappingStage has exactly the following one-byte tags and ordered payloads:
+
+```text
+0  Idle
+1  TextSourceStart(C)
+2  TextSourceEnd(start:SourceFact, C)
+3  TextPreviousStart(start:SourceFact, end:SourceFact, C)
+4  TextPreviousEnd(start:SourceFact, end:SourceFact, previous_start:Boundary, C)
+5  TextMapStart(start:SourceFact, end:SourceFact)
+6  TextMapEnd(source_start:Boundary, source_end:Boundary, mapped_start:u128)
+7  TextResolveStart(source_start:Boundary, source_end:Boundary,
+                   mapped_start:u128, mapped_end:u128)
+8  TextResolveEnd(source_start:Boundary, source_end:Boundary, mapped_end:u128,
+                 start_boundary:Boundary, start_marker_ordinal:u64)
+9  MarkerSource(removal_source_unit:Option<u128>)
+10 MarkerMapRemoval(source_unit:u128)
+11 MarkerResolveRemoval(mapped_unit:u128)
+12 MarkerWorkingIdentity(mapped_unit:u128)
+13 MarkerMapBoundary
+14 MarkerResolveBoundary(mapped_unit:u128)
+15 MarkerPlanningReady(boundary:Boundary)
+16 TextDeleteProof
+17 TextInsertProof
+18 DeleteMap(splice:Splice, target:MapRoot, remaining_end:u128)
+19 InsertMap(splice:Splice)
+20 MapComplete(splice:Splice, target:MapRoot)
+21 Ready(ReadySplice)
+22 RefreshMap
+23 RefreshSequence(mapped_unit:u128)
+24 PublishReady(successor_boundary:Boundary, logical_offset:u64)
+```
+
+Unknown tags, trailing fields, wrong optional presence and phase/tag combinations outside the closed
+program reject. The largest query stage is 91 bytes; DeleteMap is at most `1+122+82+16=221`.
+The complete added endpoint block, including its outer presence tag, is at most
+`1+82+16+17+221=337` bytes. The command certificate conservatively allows 480. No reduction
+in pre-existing fields is credited. The remaining active marker additions are at most 256 bytes;
+the existing 272-byte common allowance remains conservative.
+
+### Ordinary Text Program
+
+Noncontinuation Planning with Idle enters TextSourceStart, then TextSourceEnd. Each component
+performs one original-predecessor sequence proof. Completion stores the fragment's source end unit
+and checks original start <= end and start >= the last completed actual predecessor end.
+Exactly when a nonfirst current range is empty at that completed end, TextPreviousStart and
+TextPreviousEnd authenticate the immediately preceding range. An empty previous range rejects
+because the current fragment is markerless. A preceding nonempty range permits ordinary adjacency.
+
+TextMapStart, TextMapEnd, TextResolveStart and TextResolveEnd then perform, respectively, one map
+lookup, one map lookup, one working-sequence lookup and one working-sequence lookup. The map end
+lookup uses retained fragment_source_end_unit. Sequence proofs produce canonical boundaries and
+marker ordinals; equal ordinals are mandatory. This proves the mapped interval contains no current
+marker, including inserted or moved markers, without another range walk.
+
+TextResolveEnd enters outer Removing with `next_rank=end_rank=source_end.rank`,
+`removed_markers=0`, actual `base_end=source_end` and the proved working boundaries. Removing
+has exactly one control-only successor, Applying, preserving roots/map/boundaries. Unequal Removing
+ranks are invalid; no original-piece loop or original-marker rejection remains.
+
+For nonempty Applying, TextDeleteProof proves the exact text leaf and UTF-8 slice selected by
+[the five sequence-removal rules](design-draft-storage.md#bounded-sequence-range-continuation).
+That one sequence path supplies prefix units and the leaf identity/digest. It enters DeleteMap,
+then MapComplete and Ready as specified below. Ready's already-required sequence traversal verifies
+its actual splice against kind/a/removed/inserted and atomically installs the new sequence and map,
+preserving marker roots. It updates only the remaining Applying interval. If nonempty, return to
+TextDeleteProof; otherwise return Idle.
+
+Empty Applying enters Inserting at piece/byte zero without publishing completed frontiers.
+Every positive text chunk follows TextInsertProof, InsertMap, MapComplete and Ready.
+TextInsertProof proves the current cut and determines the exact next bounded UTF-8 chunk from the
+fragment/piece/byte cursors. Ready installs its sequence/map and advances those cursors once.
+Exhausted Inserting enters RefreshMap; final-chunk mutation never publishes the fragment inline.
+
+A legitimate nonmarker continuation authenticates exact current/previous source-position equality
+through its existing fragment rules, inherits completed_source_unit and the completed structural
+endpoints, sets fragment_source_end_unit to that inherited unit and enters Inserting directly.
+It does not rerun original source-position proofs, overlap checks or repeated-empty checks for a
+new replacement. Its positive payload uses the same bounded chunk and refresh program.
+
+### Marker Program
+
+Let `P` be the original predecessor, `A` the pre-effect working triple, `W` the active coherent
+triple and `B` the shared original boundary. The fragment has equal canonical positions, no text
+and no continuation. Remove has no inserted piece; the other kinds have their one matching marker.
+Published build roots remain `A` until effect publication. Current map always describes `W`.
+
+Activation sets `A=W`, fixed completed logical snapshots, planning with both slots absent, no
+sites, pending SourceBounds/Primary and MarkerSource(None). It emits no tree node. SourceBounds
+resolves B on P, requires B >= the completed actual source end, fills planning.source_boundary and
+fragment_source_end_unit. Every empty marker kind uses actual end B; no kind increments B past
+a removed piece.
+
+Removal kinds continue through RemovalGap, SourceOccurrence and SourceIdentity. Remove and
+SameIdReplacement require the removal gap and occurrence boundary to equal B. Move has no such
+equality requirement. SourceOccurrence proves the complete original marker/Asset/label/order/leaf/
+digest/charge association and records its source unit in MarkerSource. SourceIdentity proves that
+association on P.identity. Pure Insert instead uses SourceInsertIdentityAbsent on P.identity,
+preventing an earlier Remove from hiding reuse.
+
+PreviousStart and PreviousEnd are mandatory exactly for a nonfirst empty range at the completed
+source end. They retain/clear planning.previous_start under the same original-root component
+rules and permit repeated emptiness only for distinct closed marker effects. After the source
+chain, pending is None. Removal kinds enter MarkerMapRemoval with their proved source unit;
+pure Insert enters MarkerMapBoundary.
+
+MarkerMapRemoval proves the whole original unit remains Copy and returns its mapped start.
+MarkerResolveRemoval performs one W.sequence descent there, proves the exact original occurrence
+and fills removal_site. MarkerWorkingIdentity performs the corresponding identity proof.
+These stages have pending None. Identity completion starts a one-unit DeleteMap. W/current map
+remain unchanged during map work. MapComplete-to-Ready installs pending RemoveSequence.
+
+Ready stays fixed through RemoveSequence, RemoveIdentity and RemoveOrder. The first two retain
+their individual targets with W unchanged. RemoveOrder validates exact associations and summary
+deltas, installs the coherent triple and target map together, clears pending/removal_site and
+enters MarkerMapBoundary. Planning.source_boundary remains available.
+
+MarkerMapBoundary maps the retained source end unit; MarkerResolveBoundary resolves that working
+unit; MarkerPlanningReady then performs FinishPlanning without a lookup. It sets both outer
+successor boundaries to the proved boundary, `base_end=B`, `next_rank=end_rank=B.rank` and
+zero removed-marker count. Planning and sites clear, pending is None and mapping stage is Idle.
+
+The sole outer Removing successor is empty Applying with the same boundaries, active
+DerivingInsertionGap. Applying enters Inserting without advancing completed frontiers. Remove
+is exhausted and enters active Publishing/RefreshMap. Other kinds start InsertIdentityAbsent.
+
+Insertion proofs freeze the outer cursor and W. Working identity absence precedes InsertAnchor,
+which locates BeforeMarkers of the supplied successor anchor. A text/EOF cut supplies the site
+directly; a first marker requires InsertOrder, using lower-bound key
+`(anchor, order key, zero marker ID)`. Equal keys reject only at that same anchor.
+A greater same-anchor marker supplies the gap; otherwise InsertAfter locates AfterMarkers/EOF.
+Each sequence descent derives marker ordinal, unit coordinate and piece boundary. Proof component
+scratch is absent for these purposes.
+
+Gap completion requires a valid UTF-8 boundary and insertion anchor no greater than the current
+fragment's logical construction frontier. It does not require composite insertion gap <= f(B).
+It stores the exact site, enters active Inserting with pending None and starts InsertMap.
+MapComplete-to-Ready installs pending InsertSequence.
+
+Ready stays fixed through InsertSequence, InsertIdentity and InsertOrder. The first two retain
+the exact new leaf identity/digest and individual targets. InsertOrder validates association/count/
+commitment deltas, installs W and target map together, advances piece zero to one with byte zero,
+clears sites/pending and enters active Publishing/RefreshMap. It does not complete the effect.
+
+The exhausted outer Inserting cursor is frozen proof state throughout refresh; its old inner
+position is not reinterpreted in changed W. Publishing requires exhausted piece zero for Remove
+or one otherwise, byte zero, no planning/site/pending descriptor, and PublishReady.
+
+### Map Splice And Publication Program
+
+For DeleteMap, let `b=a+removed`, current map `M`, pending target `T` and remaining end `e`.
+Require `a<=e<=b`, `T.source=M.source` and `T.target=M.target-(b-e)`. T is the result of
+deleting `[e,b)` from M. Initially T=M and e=b. Each selected map-leaf step preserves source
+measure, decreases e and target measure by the same positive amount, and binds the exact
+old/new descriptors through the closed local receipt. It changes neither W nor current map.
+At e=a enter MapComplete. InsertMap performs its exact point insertion and enters MapComplete.
+
+MapComplete-to-Ready is a mandatory separate control command. It checks completed splice totals
+and strips leaf/local proof scratch. Ready cannot change source order, fragment cursors or effect
+count. Only its matching text mutation or final coherent marker installation consumes it. During
+Ready marker surgery, current map still describes old W until final order installation.
+
+Every completed fragment performs RefreshMap, RefreshSequence, PublishReady, then publication.
+RefreshMap queries retained fragment_source_end_unit in current map. RefreshSequence resolves it
+in effective coherent roots and validates its UTF-8 cut. PublishReady retains only successor
+boundary and logical offset. Publication does no map or sequence lookup.
+
+Publication installs completed original boundary/unit and successor boundary/logical frontier
+together. Marker publication additionally installs W into build roots, advances exact effect
+count/chain and scan frontier once, consumes matching admission when required and clears active.
+Text publication advances fragment/scan progress without changing effect count/chain. Both clear
+fragment_source_end_unit and mapping stage to Idle before next Planning or CrossValidating.
+
+The logical construction frontier is the UTF-8 position of the current source prefix and completed
+inserted text. Before marker insertion, the checked forward original UTF-8 gap from the captured
+completed source end, added to its captured completed successor logical offset, determines this
+frontier. It is never used to locate an arbitrary original removal. Final publication uses the
+actual logical offset proved by RefreshSequence. Other source/proposal and successor anchor/order
+rules remain unchanged.
+
+Initialization has zero completed_source_unit, absent fragment end and Idle, with Empty/Identity
+derived from authenticated predecessor extent. Current map source measure always equals the
+original extent; its target measure always matches effective coherent roots. Only pending targets
+may differ. Normal CrossValidating, Complete and adoption require Idle, absent fragment end, no
+active effect and no pending descriptor. Cancellation, rejection and error preserve the exact prior
+program and referenced roots under terminal custody without refreshing or adopting partial work.
+
+Every proof performs at most one authenticated path lookup, or an implicit/empty summary result.
+Unambiguous source positions require a UTF-8 boundary and normalize text-end/EOF. BeforeAll proves
+the first marker at its anchor. AfterAll Primary proves that first marker and retains rank;
+Secondary proves the same-root AfterMarkers boundary/EOF with strictly greater rank. Between
+proves the exact left and adjacent right markers in separate commands. Successful completion
+clears scratch.
+
+Every command's receipt advances its closed program even when record ordinal is unchanged.
+Surgery charges deterministic emissions before retention. Reopen validates selected and immediately
+preceding canonical receipts, closed stage/cursor transitions and referenced roots. It never
+repeats completed source/map paths or surgery, reconstructs affine boundaries, or traverses receipt
+history. Before serializing a proposed successor, final canonical build-shape validation checks
+the complete phase/presence/cursor/root grammar; invalid inputs cannot publish an unreadable endpoint.
 
 ### Complete Marker Command Bounds
 
@@ -776,7 +985,8 @@ primitive shares one with its path, leaving eight off-path root allowances; Publ
 Only original-source proof commands additionally acquire the predecessor combined-root record and
 its three tree roots. Mutation reopen must not repeat that original-source closure or completed paths.
 
-The conservative common mutation allowance is `958,724 = 694,412 + 7*272 + 8*32,801` bytes.
+Before the mapping allowance, the conservative common mutation basis is
+`958,724 = 694,412 + 7*272 + 8*32,801` bytes.
 The 694,412 comprises constructor observations 197,178, mutable submission fences 164,089,
 build/receipt/session emissions 32,921 and four fragment allowances 300,224. The seven added active
 copies are constructor build/selected receipt/prior receipt, submission build/selected receipt and
@@ -794,28 +1004,49 @@ and emission halves each fit `64*23,913+32,893 = 1,563,325` sequence bytes. Iden
 smaller canonical widths and the same normalized shape bound. Transient unary output would not
 satisfy this inventory and is not emitted.
 
+The V6 mapping block adds at most 337 bytes to each endpoint. Reserve a conservative 480 bytes
+in each of the seven control copies. A single closed transition introduces at most one new current
+or pending map root, so selected/immediate-predecessor endpoints name at most three distinct
+stored map roots. The conservative addition to each existing branch is therefore three records,
+three attempts and `7*480 + 3*1,449 = 7,707` bytes. Mapping paths use separate commands; existing
+surgery commands acquire only mapping root records. Mandatory MapComplete-to-Ready ensures
+sequence surgery actually has at most two distinct map roots.
+
 Complete branch ceilings below include target-absence keys. Each lists stored structure records,
 point attempts, charged bytes and peak reserved bytes respectively; peak conservatively adds one
 75,056-byte reservation to the charged upper bound. An absent structure probe may additionally
 reserve one structure slot, still within 256.
 
-- Control-only transition: 9; 29; 991,525; 1,066,581.
-- Original-predecessor proof, including either composite component: 77; 98; 2,718,838; 2,793,894.
-- Working-tree proof: 73; 93; 2,522,049; 2,597,105.
-- Sequence removal: 201; 221; 4,087,519; 4,162,575.
-- Sequence insertion, including text split: 205; 225; 4,109,813; 4,184,869.
-- Identity removal: 201; 221; 3,155,665; 3,230,721.
-- Identity insertion: 203; 223; 3,180,554; 3,255,610.
-- Order removal: 201; 221; 2,562,576; 2,637,632.
-- Order insertion: 203; 223; 2,581,319; 2,656,375.
-- Publishing with canonical admission consumption: 61; 83; 1,968,052; 2,043,108.
+- Control-only transition: 12; 32; 999,232; 1,074,288.
+- Original-predecessor proof, including either composite component: 80; 101; 2,726,545; 2,801,601.
+- Working-tree proof: 76; 96; 2,529,756; 2,604,812.
+- Sequence removal: 204; 224; 4,095,226; 4,170,282.
+- Sequence insertion, including text split: 208; 228; 4,117,520; 4,192,576.
+- Identity removal: 204; 224; 3,163,372; 3,238,428.
+- Identity insertion: 206; 226; 3,188,261; 3,263,317.
+- Order removal: 204; 224; 2,570,283; 2,645,339.
+- Order insertion: 206; 226; 2,589,026; 2,664,082.
+- Publishing with canonical admission consumption: 64; 86; 1,975,759; 2,050,815.
 
-Publishing bytes are `694,412 + 7*272 + 9*32,801 + 714,332 + 3*65,537 + 65,584`.
+Publishing bytes are `694,412 + 7*272 + 9*32,801 + 714,332 + 3*65,537 + 65,584 + 7,707`.
 The accepted admission primitive includes its acquisitions, emissions, deletion keys and fresh-put
 absence probes. The additional terms cover preparation/submission/emission of capacity and the
 writer-head emission; writer-head preparation and submission are already in common controls.
 Publishing reuses the sealed D0 deletion result under fresh exact mutable fences, with no second
 target-path preparation. The actual serialized writer successor belongs to the captured result.
+
+Mapping-specific complete branch ceilings use the same common closure and reservation:
+
+- Map lookup: 33; 53; 1,029,661; 1,104,717.
+- Map insertion: 78; 98; 1,097,746; 1,172,802.
+- One map-deletion leaf step: 99; 119; 1,128,175; 1,203,231.
+
+A map lookup acquires at most 22 path nodes and two off-path map roots. Insertion acquires at most
+22 nodes and emits at most 45; deletion acquires at most 43 and emits at most 45. Every fresh
+target probe charges its 64-byte key. An outstanding absent-structure reservation may add one
+temporary structure slot, leaving deletion at most 100. The tightest conservative existing branch
+is sequence insertion at 4,192,576 bytes, 1,728 below the command ceiling. Its actual two-map-root
+inventory lowers that peak to 4,191,127. No helper receives a fresh ledger.
 
 A cloned prepared construction keeps captured D0 and its shared ledger. Once another command has
 advanced that revision, admission rejects it before callbacks; it cannot obtain a fresh domain
@@ -1038,8 +1269,8 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
   plus-value sum of those five effects is bounded by and must
   fit the existing 4,194,304-byte draft-piece command ceiling; excess rejects before mutation.
 - One post-finish draft-piece fragment command admits at most 256 fragment records and 65,536 inserted UTF-8
-  payload bytes. One path-copy command reads or emits at most 256 stored records across all three
-  structures. This counts acquired existing structure records and emitted structure records
+  payload bytes. One path-copy command reads or emits at most 256 stored records across the three document
+  structures and build-coordinate mapping. This counts acquired existing structure records and emitted structure records
   together; an absent point result is not a stored record. Independently, the complete Syndic
   command admits at most 512 point-read attempts, including absent and repeated reads, and at most
   4,194,304 encoded key-plus-value bytes across acquisition and emission, including control records,
@@ -1123,6 +1354,13 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
   staging receipts; 16 combined-root/structure-root, history-frontier, history-transition and
   settlement references; three admission-root/terminal-receipt references; three split-publication
   occupancy checks; three history boundary references; and at most 64 history-floor selection reads.
+  The mapping extension preserves that limit through mutually exclusive branch inventories.
+  Noncommitted selected-side verification omits the 64 history-floor reads and adds at most four
+  stored current/pending mapping roots from selected/prior receipts: at most `128-64+4=68`.
+  Committed settlement requires Complete endpoints with no active or pending work, removing the
+  four pending sequence/identity reads and adding at most two current map roots:
+  `128-4+2=126`. Implicit roots require no acquisition. These bounds do not rely on cache
+  deduplication or on enlarging the 65,536-byte per-attempt reservation.
   It verifies only the exact selected side against captured command authority. It does not rebuild
   history ancestry witnesses, invoke general frontier authentication, or authenticate two alternative
   endpoints as simultaneously current. The existing staging acquisition and structure-command
