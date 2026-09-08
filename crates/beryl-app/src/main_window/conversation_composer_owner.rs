@@ -58,6 +58,24 @@ pub type ComposerClipboardWriter =
     Box<dyn FnMut(&str, &mut App) -> ClipboardWriteOutcome + 'static>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MainWindowComposerMutationFeedbackKind {
+    OperationTooLarge,
+    CapacityUnavailable,
+    Storage,
+    Refused,
+    Unavailable,
+    AdmittedWorkUnavailable,
+    CommittedUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MainWindowComposerMutationFeedback {
+    pub selection: MainWindowComposerSelectionIdentity,
+    pub key: gpui_text_input::MutationKey,
+    pub kind: MainWindowComposerMutationFeedbackKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MainWindowConversationComposerEvent {
     SelectionAdvanced {
         previous: MainWindowComposerSelectionIdentity,
@@ -126,9 +144,14 @@ pub struct MainWindowConversationComposer {
         gpui_text_input::MutationKey,
         Box<[ComposerHostImageMarkerMetadata]>,
     )>,
+    mutation_evidence: Option<dispatch::ActiveComposerMutationEvidence>,
+    last_mutation_admission_failure:
+        Option<std::sync::Arc<crate::composer_host::ComposerHostMutationAdmissionFailure>>,
+    mutation_feedback: Option<MainWindowComposerMutationFeedback>,
     admitted_positions: Option<gpui_text_input::MutationPositions>,
     next_flight: u64,
     active_flight: Option<u64>,
+    pending_dispatch: Option<dispatch::MainWindowConversationComposerPendingDispatch>,
     phase: MainWindowConversationComposerPhase,
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
@@ -141,8 +164,26 @@ pub struct MainWindowConversationComposer {
 impl EventEmitter<MainWindowConversationComposerEvent> for MainWindowConversationComposer {}
 
 impl MainWindowConversationComposer {
+    pub fn mutation_feedback(&self) -> Option<MainWindowComposerMutationFeedback> {
+        self.mutation_feedback.filter(|feedback| {
+            self.route == MainWindowConversationComposerRoute::Selected
+                && feedback.selection == self.selection
+                && matches!(
+                    self.phase,
+                    MainWindowConversationComposerPhase::Live
+                        | MainWindowConversationComposerPhase::Fencing
+                )
+        })
+    }
+
     pub fn last_error(&self) -> Option<&str> {
         self.last_error.as_deref()
+    }
+
+    pub fn last_mutation_admission_failure(
+        &self,
+    ) -> Option<&crate::composer_host::ComposerHostMutationAdmissionFailure> {
+        self.last_mutation_admission_failure.as_deref()
     }
 
     pub fn realization_diagnostics(
@@ -250,7 +291,7 @@ impl MainWindowConversationComposer {
         {
             return Err("composer marker insertion lane is busy".to_owned());
         }
-        let retained_bytes = std::mem::size_of::<ComposerHostImageMarkerMetadata>();
+        let retained_bytes = metadata.retained_bytes();
         let key = self
             .input
             .update(cx, |input, input_cx| {

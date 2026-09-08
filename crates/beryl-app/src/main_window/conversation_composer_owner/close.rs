@@ -35,6 +35,7 @@ impl MainWindowConversationComposer {
         }
         Ok(self.is_live()
             && self.active_flight.is_none()
+            && self.pending_dispatch.is_none()
             && self.propagated_clipboard.is_none()
             && self
                 .input

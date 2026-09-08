@@ -22,42 +22,20 @@ fn prove_recovery_after_failed_dirty_switch(
     switch_after_failure: bool,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("recovery-switch", 181);
-    let (selected_claim, target_claim) = fixture.claims();
-    let thread = fixture.selected_thread;
-    let target_thread = fixture.target_thread;
-    let window_id = fixture.window_id;
-    let assets = fixture.assets();
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
-    let marker_seals = fixture.marker_seals();
-    let original_durable_root = fixture.current_draft(thread).draft().piece_root();
-    let (_directory, store, storage) = fixture.into_store();
-    let cancelled = CommandCancellation::new();
-    let cancel_at_execution = cancelled.clone();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 182, 183, 1, 0),
-            &CommandCancellation::new()
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    host.test_arm_publication_before_execute_fault(move |_, _| cancel_at_execution.cancel());
-    let slot = MainWindowComposerSlot::new(
-        window_id,
+    let (
+        _directory,
+        service,
+        store,
+        storage,
+        marker_seals,
+        assets,
+        thread,
+        target_thread,
+        target_claim,
         selected_claim,
-        host,
-        storage.clone(),
-        marker_authority,
-    )
-    .unwrap();
-    let store = Arc::new(store);
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
-        slot,
-    ));
+        original_durable_root,
+        cancelled,
+    ) = recovery_switch_fixture();
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
     let key = control
         .install_route_for_test(
@@ -461,4 +439,70 @@ fn begin_switch_flush(
         }
     }
     Some(ticket.expect("switch flush did not start"))
+}
+
+fn recovery_switch_fixture() -> (
+    tempfile::TempDir,
+    Arc<MainWindowConversationComposerService>,
+    Arc<beryl_home_store::HomeStore>,
+    syndic_storage::SyndicStorage,
+    beryl_app::composer_marker_seal::DraftMarkerSealService,
+    beryl_state::AssetState,
+    SyndicThreadId,
+    SyndicThreadId,
+    beryl_state::WindowClaimSelection,
+    beryl_state::WindowClaimSelection,
+    syndic_storage::DraftPieceRootReferenceV1,
+    CommandCancellation,
+) {
+    let fixture = Fixture::new("recovery-switch", 181);
+    let (selected_claim, target_claim) = fixture.claims();
+    let thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    let window_id = fixture.window_id;
+    let assets = fixture.assets();
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
+    let marker_seals = fixture.marker_seals();
+    let original_durable_root = fixture.current_draft(thread).draft().piece_root();
+    let (_directory, store, storage) = fixture.into_store();
+    let cancelled = CommandCancellation::new();
+    let cancel_at_execution = cancelled.clone();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 182, 183, 1, 0),
+            &CommandCancellation::new()
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    host.test_arm_publication_before_execute_fault(move |_, _| cancel_at_execution.cancel());
+    let slot = MainWindowComposerSlot::new(
+        window_id,
+        selected_claim,
+        host,
+        storage.clone(),
+        marker_authority,
+    )
+    .unwrap();
+    let store = Arc::new(store);
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        store.clone(),
+        slot,
+    ));
+    (
+        _directory,
+        service,
+        store,
+        storage,
+        marker_seals,
+        assets,
+        thread,
+        target_thread,
+        target_claim,
+        selected_claim,
+        original_durable_root,
+        cancelled,
+    )
 }

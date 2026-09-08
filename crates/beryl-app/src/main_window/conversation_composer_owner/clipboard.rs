@@ -27,21 +27,24 @@ use paging::{cursor_after_gap, deletion_caret, deletion_extent, read_cut_page};
 pub(super) struct ActivePropagatedCut {
     key: gpui_text_input::MutationKey,
     scan: PropagatedCutScan,
+    initial_scan: PropagatedCutScan,
     prepared_items: Option<Vec<MutationPageItem>>,
-    object_count: usize,
-    item_count: usize,
+    totals: MutationTotals,
     text_deletion_pending: bool,
     next_cursor: MutationCursor,
     next_ordinal: u64,
     cumulative_identity: MutationIdentity,
     intended_extent: gpui_text_input::LogicalExtent,
     intended: MutationPositions,
+    staging_pass: Option<gpui_text_input::MutationPass>,
+    finish_submitted: bool,
 }
 
 pub(super) struct PreparedPropagatedCut {
     deletion: gpui_text_input::CutDeletion,
     proof: MainWindowComposerSuccessorProof,
     scan: PropagatedCutScan,
+    initial_scan: PropagatedCutScan,
     prepared_items: Vec<MutationPageItem>,
 }
 
@@ -114,12 +117,14 @@ pub(super) fn prepare_cut_after_write(
         proof_limits.objects.max_pending_bytes(),
         proof_limits.presentation_generation,
     )?;
+    let initial_scan = scan;
     let prepared = read_cut_page(&mut slot, &service.store, selection, scan.request()?)?;
     scan.admit(&prepared)?;
     Ok(PreparedPropagatedCut {
         deletion,
         proof,
         scan,
+        initial_scan,
         prepared_items: prepared.items,
     })
 }
@@ -146,6 +151,7 @@ impl PreparedPropagatedCut {
             deletion,
             proof,
             scan,
+            initial_scan,
             prepared_items,
         } = self;
         let operation = input
@@ -170,7 +176,10 @@ impl PreparedPropagatedCut {
             }
         }
         let begin =
-            MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0));
+            MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0))
+                .with_replayable_producer(gpui_text_input::MutationProducerIdentity::new(
+                    operation.operation().get(),
+                ));
         let key = input
             .begin_host_mutation(
                 operation,
@@ -184,15 +193,17 @@ impl PreparedPropagatedCut {
         Ok(ActivePropagatedCut {
             key,
             scan,
+            initial_scan,
             prepared_items: (!prepared_items.is_empty()).then_some(prepared_items),
-            object_count: 0,
-            item_count: 0,
+            totals: MutationTotals::default(),
             text_deletion_pending: replacement.start().byte_offset != replacement.end().byte_offset,
             next_cursor: MutationCursor::new(0),
             next_ordinal: 0,
             cumulative_identity: MutationIdentity::ROOT,
             intended_extent,
             intended,
+            staging_pass: None,
+            finish_submitted: false,
         })
     }
 }
@@ -207,12 +218,53 @@ impl ActivePropagatedCut {
         input: &mut RangeTextInput,
         cx: &mut gpui::Context<RangeTextInput>,
     ) -> Result<(), String> {
+        let pass = self
+            .staging_pass
+            .ok_or_else(|| "composer cut has not restarted for staging".to_owned())?;
+        match self.next_input()? {
+            Some(CutMutationInput::Page(page)) => input
+                .submit_mutation_pass_page(pass, page, cx)
+                .map(|_| ())
+                .map_err(|_| "composer cut mutation page submission was rejected".to_owned()),
+            Some(CutMutationInput::Finish(finish)) => input
+                .submit_mutation_pass_finish(pass, finish, cx)
+                .map_err(|_| "composer cut mutation finish was rejected".to_owned()),
+            None => Ok(()),
+        }
+    }
+
+    pub(super) fn is_staging(&self) -> bool {
+        self.staging_pass.is_some() && !self.finish_submitted
+    }
+
+    pub(super) fn restart(&mut self, pass: gpui_text_input::MutationPass) -> Result<(), String> {
+        if pass.key() != self.key
+            || pass.kind() != gpui_text_input::MutationPassKind::Staging
+            || pass.producer()
+                != gpui_text_input::MutationProducerIdentity::new(self.key.operation().get())
+        {
+            return Err("composer cut restart changed its immutable producer".to_owned());
+        }
+        let next_request_id = self.scan.next_request_id;
+        self.scan = self.initial_scan;
+        self.scan.next_request_id = next_request_id;
+        self.prepared_items = None;
+        self.totals = MutationTotals::default();
+        self.text_deletion_pending =
+            self.scan.selection.start().byte_offset != self.scan.selection.end().byte_offset;
+        self.next_cursor = MutationCursor::new(0);
+        self.next_ordinal = 0;
+        self.cumulative_identity = MutationIdentity::ROOT;
+        self.staging_pass = Some(pass);
+        self.finish_submitted = false;
+        Ok(())
+    }
+
+    pub(super) fn next_input(&mut self) -> Result<Option<CutMutationInput>, String> {
+        if self.finish_submitted {
+            return Ok(None);
+        }
         if let Some(items) = self.prepared_items.take() {
-            let item_count = items.len();
-            let object_count = items
-                .iter()
-                .filter(|item| matches!(item, MutationPageItem::Object(_)))
-                .count();
             let page = MutationPage::new(
                 MutationPageKey::new(
                     self.key,
@@ -221,25 +273,27 @@ impl ActivePropagatedCut {
                     self.next_ordinal,
                     self.cumulative_identity,
                 ),
-                MutationCursor::new(self.next_cursor.get().saturating_add(1)),
+                MutationCursor::new(
+                    self.next_cursor
+                        .get()
+                        .checked_add(1)
+                        .ok_or_else(|| "composer cut cursor exhausted".to_owned())?,
+                ),
                 items,
             )
             .map_err(|_| "composer cut mutation page was rejected".to_owned())?;
-            self.object_count = self.object_count.saturating_add(object_count);
-            self.item_count = self.item_count.saturating_add(item_count);
+            self.totals = add_cut_totals(self.totals, page.totals())
+                .ok_or_else(|| "composer cut mutation totals exhausted".to_owned())?;
             self.next_cursor = page.next_cursor();
-            self.next_ordinal = self.next_ordinal.saturating_add(1);
+            self.next_ordinal = self
+                .next_ordinal
+                .checked_add(1)
+                .ok_or_else(|| "composer cut ordinal exhausted".to_owned())?;
             self.cumulative_identity = page.cumulative_identity();
-            input
-                .submit_mutation_page(page, cx)
-                .map_err(|_| "composer cut mutation page submission was rejected".to_owned())?;
-            if item_count == 0 {
-                return Err("composer cut prepared an empty mutation page".into());
-            }
-            return Ok(());
+            return Ok(Some(CutMutationInput::Page(page)));
         }
         if !self.scan.complete {
-            return Err("composer cut marker page was not prepared".into());
+            return Ok(None);
         }
         if self.text_deletion_pending {
             self.text_deletion_pending = false;
@@ -247,7 +301,7 @@ impl ActivePropagatedCut {
                 inserted_offset: 0,
                 text: "".into(),
             }]);
-            return self.submit_next(input, cx);
+            return self.next_input();
         }
         let source = MutationStreamFinish {
             next_cursor: MutationCursor::new(0),
@@ -259,25 +313,16 @@ impl ActivePropagatedCut {
             next_cursor: self.next_cursor,
             next_ordinal: self.next_ordinal,
             cumulative_identity: self.cumulative_identity,
-            totals: MutationTotals {
-                pages: self.next_ordinal,
-                items: self.item_count as u64,
-                objects: self.object_count as u64,
-                ..MutationTotals::default()
-            },
+            totals: self.totals,
         };
-        input
-            .submit_mutation_finish(
-                MutationFinishInput::new(
-                    self.key,
-                    source,
-                    proposal,
-                    self.intended_extent,
-                    self.intended,
-                ),
-                cx,
-            )
-            .map_err(|_| "composer cut mutation finish was rejected".to_owned())
+        self.finish_submitted = true;
+        Ok(Some(CutMutationInput::Finish(MutationFinishInput::new(
+            self.key,
+            source,
+            proposal,
+            self.intended_extent,
+            self.intended,
+        ))))
     }
 
     pub(super) fn next_page_request(&self) -> Option<PropagatedCutPageRequest> {
@@ -299,6 +344,28 @@ impl ActivePropagatedCut {
         self.prepared_items = (!prepared.items.is_empty()).then_some(prepared.items);
         Ok(())
     }
+}
+
+pub(super) enum CutMutationInput {
+    Page(MutationPage),
+    Finish(MutationFinishInput),
+}
+
+fn add_cut_totals(left: MutationTotals, right: MutationTotals) -> Option<MutationTotals> {
+    Some(MutationTotals {
+        pages: left.pages.checked_add(right.pages)?,
+        items: left.items.checked_add(right.items)?,
+        retained_bytes: left.retained_bytes.checked_add(right.retained_bytes)?,
+        inserted_bytes: left.inserted_bytes.checked_add(right.inserted_bytes)?,
+        inserted_line_breaks: left
+            .inserted_line_breaks
+            .checked_add(right.inserted_line_breaks)?,
+        objects: left.objects.checked_add(right.objects)?,
+        object_bytes: left.object_bytes.checked_add(right.object_bytes)?,
+        presentation_bytes: left
+            .presentation_bytes
+            .checked_add(right.presentation_bytes)?,
+    })
 }
 
 impl PropagatedCutScan {

@@ -13,6 +13,87 @@ use super::{
     MainWindowConversationComposerService,
 };
 
+mod evidence;
+pub(super) use evidence::ActiveComposerMutationEvidence;
+
+#[derive(Clone)]
+enum PendingComposerMutationRequest {
+    SourcePage(gpui_text_input::MutationPageRequest),
+    ProposalPage(gpui_text_input::MutationPageRequest),
+    FinishInput(gpui_text_input::MutationFinishInput),
+    Commit(gpui_text_input::MutationCommitRequest),
+    Cancel(gpui_text_input::MutationCancelRequest),
+    Detached(gpui_text_input::MutationKey),
+}
+
+impl PendingComposerMutationRequest {
+    fn key(&self) -> gpui_text_input::MutationKey {
+        match self {
+            Self::SourcePage(request) | Self::ProposalPage(request) => request.page().key().key(),
+            Self::FinishInput(request) => request.key(),
+            Self::Commit(request) => request.key(),
+            Self::Cancel(request) => request.key(),
+            Self::Detached(key) => *key,
+        }
+    }
+
+    fn is_staging(&self) -> bool {
+        matches!(
+            self,
+            Self::SourcePage(_) | Self::ProposalPage(_) | Self::FinishInput(_)
+        )
+    }
+
+    fn retain(request: &RangeTextInputRequest) -> Option<Self> {
+        Some(match request {
+            RangeTextInputRequest::MutationSourcePage(request) => Self::SourcePage(request.clone()),
+            RangeTextInputRequest::MutationProposalPage(request) => {
+                Self::ProposalPage(request.clone())
+            }
+            RangeTextInputRequest::MutationFinishInput(request) => Self::FinishInput(*request),
+            RangeTextInputRequest::MutationCommit(request) => Self::Commit(*request),
+            RangeTextInputRequest::CancelMutation(request) => Self::Cancel(*request),
+            RangeTextInputRequest::DetachedMutation(key) => Self::Detached(*key),
+            _ => return None,
+        })
+    }
+
+    fn into_request(self) -> RangeTextInputRequest {
+        match self {
+            Self::SourcePage(request) => RangeTextInputRequest::MutationSourcePage(request),
+            Self::ProposalPage(request) => RangeTextInputRequest::MutationProposalPage(request),
+            Self::FinishInput(request) => RangeTextInputRequest::MutationFinishInput(request),
+            Self::Commit(request) => RangeTextInputRequest::MutationCommit(request),
+            Self::Cancel(request) => RangeTextInputRequest::CancelMutation(request),
+            Self::Detached(key) => RangeTextInputRequest::DetachedMutation(key),
+        }
+    }
+}
+
+pub(super) struct MainWindowConversationComposerPendingDispatch {
+    selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    route: MainWindowConversationComposerRoute,
+    request: PendingComposerMutationRequest,
+    marker_metadata: Box<[crate::composer_host::ComposerHostImageMarkerMetadata]>,
+    cancellation: CommandCancellation,
+}
+
+impl MainWindowConversationComposerPendingDispatch {
+    fn resume_request(&self) -> RangeTextInputRequest {
+        if self.cancelled_staging() {
+            RangeTextInputRequest::CancelMutation(gpui_text_input::MutationCancelRequest::new(
+                self.request.key(),
+            ))
+        } else {
+            self.request.clone().into_request()
+        }
+    }
+
+    fn cancelled_staging(&self) -> bool {
+        self.request.is_staging() && self.cancellation.is_cancelled()
+    }
+}
+
 struct MainWindowConversationComposerDispatch {
     initiating_selection: crate::main_window::MainWindowComposerSelectionIdentity,
     settled_selection: crate::main_window::MainWindowComposerSelectionIdentity,
@@ -41,6 +122,18 @@ enum MainWindowConversationComposerTaskError {
         error: String,
         settlement: Option<MainWindowConversationComposerFailureSettlement>,
     },
+    Dispatch {
+        error: Box<crate::main_window::MainWindowComposerDispatchError>,
+        selection: super::MainWindowComposerSelectionIdentity,
+        mutation_key: Option<gpui_text_input::MutationKey>,
+        settlement: Option<MainWindowConversationComposerFailureSettlement>,
+    },
+    CommittedPresentation {
+        error: Box<crate::main_window::MainWindowComposerDispatchError>,
+        initiating_selection: super::MainWindowComposerSelectionIdentity,
+        successor: super::MainWindowComposerSelectionIdentity,
+        key: gpui_text_input::MutationKey,
+    },
 }
 
 type MainWindowConversationComposerTaskResult =
@@ -58,6 +151,11 @@ impl MainWindowConversationComposerTaskError {
 impl MainWindowConversationComposer {
     pub(super) fn pump_one(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_pump() || self.active_flight.is_some() || self.last_error.is_some() {
+            return;
+        }
+        if let Some(pending) = &self.pending_dispatch {
+            let request = pending.resume_request();
+            self.pump_dispatch(request, window, cx);
             return;
         }
         if matches!(self.phase, MainWindowConversationComposerPhase::Fencing) {
@@ -83,6 +181,14 @@ impl MainWindowConversationComposer {
         }
         let request = self.input.update(cx, |input, _| input.take_request());
         let Some(request) = request else {
+            match self.pump_mutation_producer(window, cx) {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(error) => {
+                    self.last_error = Some(error);
+                    return;
+                }
+            }
             self.pump_edit_proof(window, cx);
             return;
         };
@@ -101,6 +207,14 @@ impl MainWindowConversationComposer {
             self.last_error = Some(error);
             return;
         }
+        match self.intercept_mutation_evidence(&request, window, cx) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                self.last_error = Some(error);
+                return;
+            }
+        }
         if let RangeTextInputRequest::HistoryIntent(intent) = request
             && let Err(error) = self.input.update(cx, |input, _| {
                 input.submit_history_session(gpui_text_input::RangeHistorySession::new(intent))
@@ -109,14 +223,15 @@ impl MainWindowConversationComposer {
             self.last_error = Some("composer history admission was rejected".into());
             return;
         }
-        let cut_page_request = matches!(request, RangeTextInputRequest::MutationProposalPage(_))
-            .then(|| {
-                self.propagated_cut
-                    .as_ref()
-                    .and_then(super::clipboard::ActivePropagatedCut::next_page_request)
-            })
-            .flatten();
-        let cut_page_expected = cut_page_request.is_some();
+        self.pump_dispatch(request, window, cx);
+    }
+
+    fn pump_dispatch(
+        &mut self,
+        request: RangeTextInputRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let flight = match self.begin_flight() {
             Ok(flight) => flight,
             Err(error) => {
@@ -125,8 +240,38 @@ impl MainWindowConversationComposer {
             }
         };
         let service = self.service.clone();
-        let selection = self.selection;
-        let route = self.route;
+        let (selection, route, marker_metadata, cancellation) =
+            if let Some(pending) = &self.pending_dispatch {
+                (
+                    pending.selection,
+                    pending.route,
+                    if pending.cancelled_staging() {
+                        Vec::new().into_boxed_slice()
+                    } else {
+                        pending.marker_metadata.clone()
+                    },
+                    pending.cancellation.clone(),
+                )
+            } else {
+                let marker_metadata = self.marker_metadata_for_request(&request);
+                let cancellation = CommandCancellation::new();
+                #[cfg(feature = "test-faults")]
+                if matches!(request, RangeTextInputRequest::MutationCommit(_))
+                    && self.service.take_test_mutation_commit_cancellation()
+                {
+                    cancellation.cancel();
+                }
+                if let Some(retained) = PendingComposerMutationRequest::retain(&request) {
+                    self.pending_dispatch = Some(MainWindowConversationComposerPendingDispatch {
+                        selection: self.selection,
+                        route: self.route,
+                        request: retained,
+                        marker_metadata: marker_metadata.clone(),
+                        cancellation: cancellation.clone(),
+                    });
+                }
+                (self.selection, self.route, marker_metadata, cancellation)
+            };
         let settlement = match &request {
             RangeTextInputRequest::Page(request) => Some(
                 MainWindowConversationComposerFailureSettlement::Page(request.key()),
@@ -136,15 +281,9 @@ impl MainWindowConversationComposer {
             ),
             _ => None,
         };
+        let mutation_key =
+            PendingComposerMutationRequest::retain(&request).map(|request| request.key());
         let proof_limits = self.proof_limits;
-        let marker_metadata = self.marker_metadata_for_request(&request);
-        let cancellation = CommandCancellation::new();
-        #[cfg(feature = "test-faults")]
-        if matches!(request, RangeTextInputRequest::MutationCommit(_))
-            && self.service.take_test_mutation_commit_cancellation()
-        {
-            cancellation.cancel();
-        }
         let task = cx.background_executor().spawn(async move {
             #[cfg(feature = "test-faults")]
             if matches!(route, MainWindowConversationComposerRoute::Pending(_))
@@ -190,6 +329,19 @@ impl MainWindowConversationComposer {
                         },
                     );
                 }
+                #[cfg(feature = "test-faults")]
+                if matches!(request, RangeTextInputRequest::MutationCommit(_))
+                    && let Some(error) = service.take_test_mutation_dispatch_error()
+                {
+                    return Err(MainWindowConversationComposerTaskError::Dispatch {
+                        error: Box::new(crate::main_window::MainWindowComposerDispatchError::Host(
+                            error,
+                        )),
+                        selection,
+                        mutation_key,
+                        settlement,
+                    });
+                }
                 let outcome = match route {
                     MainWindowConversationComposerRoute::Selected => slot
                         .dispatch_selected_request(
@@ -199,11 +351,11 @@ impl MainWindowConversationComposer {
                             marker_metadata,
                             &cancellation,
                         )
-                        .map_err(|error| {
-                            MainWindowConversationComposerTaskError::exact(
-                                format!("composer dispatch failed: {error}"),
-                                settlement,
-                            )
+                        .map_err(|error| MainWindowConversationComposerTaskError::Dispatch {
+                            error: Box::new(error),
+                            selection,
+                            mutation_key,
+                            settlement,
                         })?,
                     MainWindowConversationComposerRoute::Pending(receipt) => slot
                         .dispatch_pending_request(
@@ -213,11 +365,11 @@ impl MainWindowConversationComposer {
                             request,
                             &cancellation,
                         )
-                        .map_err(|error| {
-                            MainWindowConversationComposerTaskError::exact(
-                                format!("pending composer dispatch failed: {error}"),
-                                settlement,
-                            )
+                        .map_err(|error| MainWindowConversationComposerTaskError::Dispatch {
+                            error: Box::new(error),
+                            selection,
+                            mutation_key,
+                            settlement,
                         })?,
                 };
                 let proof = match &outcome {
@@ -231,6 +383,8 @@ impl MainWindowConversationComposer {
                                 settlement,
                             )
                         })?;
+                        #[cfg(feature = "test-faults")]
+                        service.run_test_successor_proof_fault();
                         Some((
                             *key,
                             slot.build_selected_successor_proof(
@@ -240,10 +394,12 @@ impl MainWindowConversationComposer {
                                 proof_limits,
                             )
                             .map_err(|error| {
-                                MainWindowConversationComposerTaskError::exact(
-                                    format!("composer successor proof failed: {error}"),
-                                    settlement,
-                                )
+                                MainWindowConversationComposerTaskError::CommittedPresentation {
+                                    error: Box::new(error),
+                                    initiating_selection: selection,
+                                    successor,
+                                    key: *key,
+                                }
                             })?,
                         ))
                     }
@@ -273,22 +429,14 @@ impl MainWindowConversationComposer {
                     settlement,
                 ));
             }
-            let cut_page = cut_page_request
-                .map(|request| {
-                    super::clipboard::prepare_next_cut_page(&service, selection, request)
-                })
-                .transpose()
-                .map_err(|error| {
-                    MainWindowConversationComposerTaskError::exact(error, settlement)
-                })?;
             Ok(Box::new(MainWindowConversationComposerDispatch {
                 initiating_selection: selection,
                 settled_selection,
                 outcome,
                 proof,
                 edit_proof: None,
-                cut_page,
-                cut_page_expected,
+                cut_page: None,
+                cut_page_expected: false,
             }))
         });
         cx.spawn_in(window, async move |this, cx| {
@@ -297,13 +445,48 @@ impl MainWindowConversationComposer {
                 if !this.settle_flight(flight) {
                     return;
                 }
+                if this.pending_dispatch.as_ref().is_some_and(|pending| {
+                    pending.cancelled_staging()
+                        && result.as_ref().is_ok_and(|result| {
+                            matches!(
+                                result.outcome,
+                                MainWindowComposerDispatchOutcome::MutationPage { .. }
+                                    | MainWindowComposerDispatchOutcome::MutationInputFinished(_)
+                            )
+                        })
+                }) {
+                    this.schedule_pump(window, cx);
+                    return;
+                }
+                let dispatch_settled = result.as_ref().is_ok_and(|result| {
+                    !matches!(
+                        result.outcome,
+                        MainWindowComposerDispatchOutcome::MutationWorkPending
+                    )
+                }) || matches!(
+                    &result,
+                    Err(MainWindowConversationComposerTaskError::CustodyNotDispatched { .. })
+                );
                 if let Err(error) = this.finish(route, result, window, cx) {
                     this.last_error = Some(error);
+                }
+                if dispatch_settled {
+                    this.pending_dispatch = None;
                 }
                 this.schedule_pump(window, cx);
             });
         })
         .detach();
+    }
+
+    pub(super) fn observe_mutation_cancellation(&mut self, key: gpui_text_input::MutationKey) {
+        if let Some(pending) = &self.pending_dispatch
+            && pending.selection == self.selection
+            && pending.route == self.route
+            && pending.request.key() == key
+        {
+            pending.cancellation.cancel();
+        }
     }
 
     fn observe_operation(
@@ -340,9 +523,10 @@ impl MainWindowConversationComposer {
         if key.is_none_or(|key| key.key() != *expected) {
             return Vec::new().into_boxed_slice();
         }
-        self.pending_marker_metadata
-            .take()
-            .map_or_else(|| Vec::new().into_boxed_slice(), |(_, metadata)| metadata)
+        self.pending_marker_metadata.as_ref().map_or_else(
+            || Vec::new().into_boxed_slice(),
+            |(_, metadata)| metadata.clone(),
+        )
     }
 
     fn pump_edit_proof(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -469,6 +653,78 @@ impl MainWindowConversationComposer {
                 }
                 return Err(error);
             }
+            Err(MainWindowConversationComposerTaskError::CommittedPresentation {
+                error,
+                initiating_selection,
+                successor,
+                key,
+            }) => {
+                if initiating_selection != self.selection
+                    || !route_is_current(&self.service, route, self.route, successor)
+                {
+                    return Ok(());
+                }
+                self.mutation_feedback = Some(super::MainWindowComposerMutationFeedback {
+                    selection: initiating_selection,
+                    key,
+                    kind: super::MainWindowComposerMutationFeedbackKind::CommittedUnavailable,
+                });
+                cx.notify();
+                return Err(format!("committed composer presentation failed: {error}"));
+            }
+            Err(MainWindowConversationComposerTaskError::Dispatch {
+                error,
+                selection,
+                mutation_key,
+                settlement,
+            }) => {
+                self.settle_exact_dispatch_failure(settlement, cx)?;
+                if selection != self.selection
+                    || !route_is_current(&self.service, route, self.route, selection)
+                {
+                    return Ok(());
+                }
+                if let Some(key) = mutation_key {
+                    use crate::composer_host::ComposerHostError;
+                    use crate::main_window::MainWindowComposerDispatchError;
+                    match error.as_ref() {
+                        MainWindowComposerDispatchError::Host(
+                            ComposerHostError::MutationAdmission(failure),
+                        ) => {
+                            self.record_mutation_feedback(key, failure, true, cx);
+                            self.last_mutation_admission_failure = Some(failure.clone());
+                        }
+                        MainWindowComposerDispatchError::Host(
+                            host_error @ (ComposerHostError::MutationUnavailable
+                            | ComposerHostError::MutationAdmittedWorkUnavailable
+                            | ComposerHostError::MutationCommittedUnavailable),
+                        ) => {
+                            self.mutation_feedback = Some(
+                                super::MainWindowComposerMutationFeedback {
+                                    selection,
+                                    key,
+                                    kind: if matches!(
+                                        host_error,
+                                        ComposerHostError::MutationCommittedUnavailable
+                                    ) {
+                                        super::MainWindowComposerMutationFeedbackKind::CommittedUnavailable
+                                    } else if matches!(
+                                        host_error,
+                                        ComposerHostError::MutationAdmittedWorkUnavailable
+                                    ) {
+                                        super::MainWindowComposerMutationFeedbackKind::AdmittedWorkUnavailable
+                                    } else {
+                                        super::MainWindowComposerMutationFeedbackKind::Unavailable
+                                    },
+                                },
+                            );
+                            cx.notify();
+                        }
+                        _ => {}
+                    }
+                }
+                return Err(error.to_string());
+            }
         };
         if result.initiating_selection != self.selection
             || !route_is_current(&self.service, route, self.route, result.settled_selection)
@@ -506,6 +762,7 @@ impl MainWindowConversationComposer {
             return Ok(());
         }
         if let Some((key, proof)) = result.proof {
+            self.clear_mutation_evidence(key);
             if self
                 .propagated_cut
                 .as_ref()
@@ -545,8 +802,36 @@ impl MainWindowConversationComposer {
             return Ok(());
         }
         let outcome = result.outcome;
+        if matches!(outcome, MainWindowComposerDispatchOutcome::Mutation { .. })
+            && self.selection != result.settled_selection
+        {
+            let previous = self.selection;
+            self.selection = result.settled_selection;
+            self.image_surfaces.selection_changed(self.selection);
+            cx.emit(
+                super::MainWindowConversationComposerEvent::SelectionAdvanced {
+                    previous,
+                    current: self.selection,
+                },
+            );
+        }
+        if let MainWindowComposerDispatchOutcome::Mutation { key, outcome } = &outcome
+            && !matches!(outcome, ComposerHostMutationOutcome::Committed { .. })
+            && self
+                .pending_dispatch
+                .as_ref()
+                .is_some_and(|pending| pending.cancelled_staging() && pending.request.key() == *key)
+        {
+            self.clear_mutation_evidence(*key);
+            self.clear_propagated_cut(*key);
+            return self.finish_marker_removal_noncommit(*key, window, cx);
+        }
         let input = self.input.clone();
         match outcome {
+            MainWindowComposerDispatchOutcome::MutationWorkPending => Ok(()),
+            MainWindowComposerDispatchOutcome::MutationEvidence(outcome) => {
+                self.finish_mutation_evidence(outcome, window, cx)
+            }
             MainWindowComposerDispatchOutcome::Page(_)
             | MainWindowComposerDispatchOutcome::ObjectPage(_) => {
                 self.apply_page_or_object_outcome(outcome, window, cx)
@@ -670,6 +955,7 @@ impl MainWindowConversationComposer {
     }
 
     fn clear_propagated_cut(&mut self, key: gpui_text_input::MutationKey) {
+        self.clear_mutation_evidence(key);
         if self
             .propagated_cut
             .as_ref()

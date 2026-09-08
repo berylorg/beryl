@@ -18,6 +18,9 @@ enum MutationBeginReadiness {
 impl SyndicComposerHost {
     pub const fn mutation_status(&self) -> Option<ComposerHostMutationStatus> {
         match self.pending_mutation {
+            Some(ComposerHostPendingMutation::Admission(_)) => {
+                Some(ComposerHostMutationStatus::Evidence)
+            }
             Some(ComposerHostPendingMutation::Active(ref pending)) => match pending.phase {
                 ComposerHostMutationPhase::Receiving => Some(ComposerHostMutationStatus::Admitted),
                 ComposerHostMutationPhase::Finished => Some(ComposerHostMutationStatus::Admitted),
@@ -37,11 +40,14 @@ impl SyndicComposerHost {
 
     pub const fn retained_mutation_intent(&self) -> Option<&ComposerHostRetainedMutationIntent> {
         match &self.pending_mutation {
-            Some(ComposerHostPendingMutation::Unavailable(intent)) => Some(intent),
+            Some(ComposerHostPendingMutation::Unavailable(pending)) => {
+                pending.unavailable_intent.as_ref()
+            }
             _ => None,
         }
     }
 
+    #[cfg(feature = "test-faults")]
     pub fn begin_mutation(
         &mut self,
         store: &HomeStore,
@@ -207,6 +213,14 @@ impl SyndicComposerHost {
             ComposerHostMutationCoordinator {
                 binding,
                 begin: request,
+                storage_begin,
+                evidence: None,
+                cleanup: None,
+                build_flight: None,
+                build_completion: None,
+                build_noncommit: None,
+                build_diagnostics: Default::default(),
+                unavailable_intent: None,
                 identity: storage_identity,
                 session: target_session,
                 head,
@@ -238,6 +252,12 @@ impl SyndicComposerHost {
             self.validate_mutation_store(pending.binding, store)?;
             if !matches!(pending.phase, ComposerHostMutationPhase::Receiving)
                 || request.page().key().key() != pending.begin.proposal().key()
+                || pending.evidence.is_some()
+                    && request.pass().is_none_or(|pass| {
+                        pass.kind() != gpui_text_input::MutationPassKind::Staging
+                            || pass.key() != pending.begin.proposal().key()
+                            || Some(pass.producer()) != pending.begin.producer()
+                    })
             {
                 return Err(ComposerHostError::MutationMalformed);
             }
@@ -298,6 +318,7 @@ impl SyndicComposerHost {
                 || finish.key() != pending.begin.proposal().key()
                 || !pending.source.matches_finish(finish.source())
                 || !pending.proposal.matches_finish(finish.proposal())
+                || pending.evidence.is_some_and(|evidence| evidence != finish)
             {
                 return Err(ComposerHostError::MutationMalformed);
             }
@@ -397,6 +418,15 @@ impl SyndicComposerHost {
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
         if matches!(
             self.pending_mutation,
+            Some(ComposerHostPendingMutation::Admission(_))
+        ) {
+            if !cancellation.is_cancelled() {
+                return Err(ComposerHostError::MutationWorkPending);
+            }
+            return self.cancel_pending_mutation_evidence(store, request.key());
+        }
+        if matches!(
+            self.pending_mutation,
             Some(ComposerHostPendingMutation::Terminal(_))
         ) {
             let Some(ComposerHostPendingMutation::Terminal(terminal)) =
@@ -415,16 +445,30 @@ impl SyndicComposerHost {
         }
         let mut pending = self.take_active_mutation()?;
         let result = self.execute_active_mutation(store, request, cancellation, &mut pending);
+        let result = match result {
+            Ok(
+                outcome @ (ComposerHostMutationOutcome::Rejected
+                | ComposerHostMutationOutcome::Cancelled
+                | ComposerHostMutationOutcome::Error),
+            ) => self
+                .adopt_terminal_noncommit_session(&pending)
+                .map(|()| outcome),
+            result => result,
+        };
         match &result {
             Ok(ComposerHostMutationOutcome::Committed { .. })
             | Ok(ComposerHostMutationOutcome::Rejected)
             | Ok(ComposerHostMutationOutcome::Cancelled)
-            | Ok(ComposerHostMutationOutcome::Error) => {}
+            | Ok(ComposerHostMutationOutcome::Error) => {
+                self.last_mutation_build_diagnostics =
+                    Some(std::mem::take(&mut pending.build_diagnostics));
+            }
             Ok(ComposerHostMutationOutcome::Conflict)
-            | Err(ComposerHostError::MutationUnavailable) => {
-                self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(Box::new(
-                    pending.intent(),
-                )));
+            | Err(ComposerHostError::MutationUnavailable)
+            | Err(ComposerHostError::MutationAdmittedWorkUnavailable)
+            | Err(ComposerHostError::MutationCommittedUnavailable) => {
+                pending.unavailable_intent = Some(pending.intent());
+                self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(pending));
             }
             Err(_) => self.restore_active_mutation(pending),
         }
@@ -444,6 +488,32 @@ impl SyndicComposerHost {
             .ok_or(ComposerHostError::MutationNotPending)?;
         let pending = self.detached_mutations.remove(position);
         match pending {
+            ComposerHostPendingMutation::Admission(mut pending) => {
+                pending.fail(ComposerHostMutationAdmissionFailure::Cancelled);
+                let result = self.cancel_mutation_admission(store, &mut pending);
+                if let Ok(ComposerHostMutationEvidenceOutcome::Refused { failure, .. }) = result {
+                    return if matches!(
+                        failure.as_ref(),
+                        ComposerHostMutationAdmissionFailure::Cancelled
+                    ) {
+                        Ok(ComposerHostMutationOutcome::Conflict)
+                    } else {
+                        Err(ComposerHostError::MutationAdmission(failure))
+                    };
+                }
+                self.detached_mutations
+                    .push(ComposerHostPendingMutation::Admission(pending));
+                match result {
+                    Ok(ComposerHostMutationEvidenceOutcome::Pending(_)) => {
+                        Err(ComposerHostError::MutationWorkPending)
+                    }
+                    Ok(ComposerHostMutationEvidenceOutcome::Unavailable { failure, .. }) => {
+                        Err(ComposerHostError::MutationAdmission(failure))
+                    }
+                    Ok(_) => Err(ComposerHostError::MutationUnavailable),
+                    Err(error) => Err(error),
+                }
+            }
             ComposerHostPendingMutation::Terminal(terminal) => {
                 if request.key() != terminal.key {
                     self.detached_mutations
@@ -452,8 +522,11 @@ impl SyndicComposerHost {
                 }
                 Ok(ComposerHostMutationOutcome::Conflict)
             }
-            ComposerHostPendingMutation::Unavailable(_) => {
-                Ok(ComposerHostMutationOutcome::Conflict)
+            ComposerHostPendingMutation::Unavailable(pending) => {
+                let error = pending.unavailable_error();
+                self.detached_mutations
+                    .push(ComposerHostPendingMutation::Unavailable(pending));
+                Err(error)
             }
             ComposerHostPendingMutation::Active(mut pending) => {
                 if request.key() != pending.begin.proposal().key() {
@@ -464,7 +537,19 @@ impl SyndicComposerHost {
                 let result =
                     self.execute_active_mutation(store, request, cancellation, &mut pending);
                 match result {
-                    Ok(_) | Err(ComposerHostError::MutationUnavailable) => {
+                    Ok(ComposerHostMutationOutcome::Conflict)
+                    | Err(ComposerHostError::MutationUnavailable)
+                    | Err(ComposerHostError::MutationAdmittedWorkUnavailable)
+                    | Err(ComposerHostError::MutationCommittedUnavailable) => {
+                        let error = pending.unavailable_error();
+                        pending.unavailable_intent = Some(pending.intent());
+                        self.detached_mutations
+                            .push(ComposerHostPendingMutation::Unavailable(pending));
+                        Err(error)
+                    }
+                    Ok(_) => {
+                        self.last_mutation_build_diagnostics =
+                            Some(std::mem::take(&mut pending.build_diagnostics));
                         Ok(ComposerHostMutationOutcome::Conflict)
                     }
                     Err(error) => {
@@ -486,15 +571,47 @@ impl SyndicComposerHost {
             .ok_or(ComposerHostError::MutationNotPending)?
         {
             ComposerHostPendingMutation::Active(pending) => Ok(pending),
+            ComposerHostPendingMutation::Admission(pending) => {
+                self.pending_mutation = Some(ComposerHostPendingMutation::Admission(pending));
+                Err(ComposerHostError::MutationWorkPending)
+            }
             ComposerHostPendingMutation::Terminal(terminal) => {
                 self.pending_mutation = Some(ComposerHostPendingMutation::Terminal(terminal));
                 Err(ComposerHostError::MutationUnavailable)
             }
             ComposerHostPendingMutation::Unavailable(intent) => {
+                let error = intent.unavailable_error();
                 self.pending_mutation = Some(ComposerHostPendingMutation::Unavailable(intent));
-                Err(ComposerHostError::MutationUnavailable)
+                Err(error)
             }
         }
+    }
+
+    pub(in crate::composer_host) fn drain_evidenced_mutations_for_disposal(
+        &mut self,
+        store: &HomeStore,
+    ) -> Result<(), ComposerHostError> {
+        let cancellation = CommandCancellation::new();
+        cancellation.cancel();
+        let keys = self
+            .pending_mutation
+            .iter()
+            .chain(self.detached_mutations.iter())
+            .filter_map(|pending| match pending {
+                ComposerHostPendingMutation::Admission(_) => Some(pending.key()),
+                ComposerHostPendingMutation::Active(_)
+                | ComposerHostPendingMutation::Unavailable(_) => Some(pending.key()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for key in keys {
+            self.execute_mutation(
+                store,
+                MutationCommitRequest::new(key, MutationIdentity::ROOT),
+                &cancellation,
+            )?;
+        }
+        Ok(())
     }
 
     fn restore_active_mutation(&mut self, pending: Box<ComposerHostMutationCoordinator>) {
@@ -523,7 +640,7 @@ impl SyndicComposerHost {
     }
 }
 
-fn validate_begin_key(
+pub(super) fn validate_begin_key(
     binding: ComposerHostBinding,
     request: MutationBeginRequest,
 ) -> Result<(), ComposerHostError> {
@@ -538,7 +655,7 @@ fn validate_begin_key(
     Ok(())
 }
 
-fn operation_id(operation: u64) -> DraftMutationOperationIdV1 {
+pub(super) fn operation_id(operation: u64) -> DraftMutationOperationIdV1 {
     let mut bytes = [0; 16];
     bytes[8..].copy_from_slice(&operation.to_be_bytes());
     DraftMutationOperationIdV1::from_bytes(bytes)

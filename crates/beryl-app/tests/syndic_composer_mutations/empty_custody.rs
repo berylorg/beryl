@@ -4,7 +4,7 @@ use super::*;
 #[test]
 fn internal_empty_page_source_retry_and_pre_admission_cancel_keep_exact_custody() {
     let (_home, store, storage, thread) = fixture("empty-source-retry", 141);
-    let (mut host, base) = activated(storage, &store, thread, 142, 143);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 142, 143);
     let text = commit_text(&mut host, &store, base, 144, 0, 0, "old", 3, 1);
     let retry_key = begin_deletion(&mut host, &store, text, 145, 3);
     arm_source_selection(&mut host, thread, 146);
@@ -63,10 +63,10 @@ fn internal_empty_page_source_retry_and_pre_admission_cancel_keep_exact_custody(
     host.test_set_mutation_transition_limit(4096);
     host.finish_mutation_input(&store, finish).unwrap();
     let empty = commit(&mut host, &store, retry_key);
-    assert_eq!(candidate_text(storage, &store, empty), b"");
+    assert_eq!(candidate_text(storage.clone(), &store, empty), b"");
 
     let (_home, store, storage, thread) = fixture("empty-source-cancel", 151);
-    let (mut host, base) = activated(storage, &store, thread, 152, 153);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 152, 153);
     let text = commit_text(&mut host, &store, base, 154, 0, 0, "old", 3, 1);
     let cancel_key = begin_deletion(&mut host, &store, text, 155, 3);
     arm_source_selection(&mut host, thread, 156);
@@ -89,7 +89,11 @@ fn internal_empty_page_source_retry_and_pre_admission_cancel_keep_exact_custody(
         .unwrap(),
         ComposerHostMutationOutcome::Cancelled
     );
-    assert_eq!(host.binding(), Some(text));
+    let drained = host.binding().unwrap();
+    assert_eq!(drained.root(), text.root());
+    assert_eq!(drained.history(), text.history());
+    assert_eq!(drained.range_binding(), text.range_binding());
+    assert!(drained.candidate().session_generation() > text.candidate().session_generation());
 }
 
 #[cfg(feature = "test-faults")]
@@ -99,7 +103,7 @@ fn internal_empty_page_indeterminate_target_reconciles_without_reconstruction() 
     use support::fault_fixture;
 
     let (_home, store, storage, thread, faults) = fault_fixture("empty-indeterminate", 161);
-    let (mut host, base) = activated(storage, &store, thread, 162, 163);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 162, 163);
     let text = commit_text(&mut host, &store, base, 164, 0, 0, "old", 3, 1);
     let key = begin_deletion(&mut host, &store, text, 165, 3);
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -109,7 +113,7 @@ fn internal_empty_page_indeterminate_target_reconciles_without_reconstruction() 
     )
     .unwrap();
     let empty = commit(&mut host, &store, key);
-    assert_eq!(candidate_text(storage, &store, empty), b"");
+    assert_eq!(candidate_text(storage.clone(), &store, empty), b"");
 }
 
 #[cfg(feature = "test-faults")]
@@ -119,8 +123,8 @@ fn indeterminate_cancellation_while_building_settles_without_fresh_binding_adopt
     use support::fault_fixture;
 
     let (_home, store, storage, thread, faults) = fault_fixture("building-cancel", 171);
-    let current_before = current(storage, &store, thread);
-    let (mut host, base) = activated(storage, &store, thread, 172, 173);
+    let current_before = current(storage.clone(), &store, thread);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 172, 173);
     let (key, finish) = stage_text(&mut host, &store, base, 174, 0, 0, "cancel", 6, 1);
     host.finish_mutation_input(&store, finish).unwrap();
     host.test_set_mutation_transition_limit(1);
@@ -147,15 +151,19 @@ fn indeterminate_cancellation_while_building_settles_without_fresh_binding_adopt
         }
     };
     assert_eq!(outcome, ComposerHostMutationOutcome::Cancelled);
-    assert_eq!(host.binding(), Some(base));
-    assert_eq!(current(storage, &store, thread), current_before);
+    let drained = host.binding().unwrap();
+    assert_eq!(drained.root(), base.root());
+    assert_eq!(drained.history(), base.history());
+    assert_eq!(drained.range_binding(), base.range_binding());
+    assert!(drained.candidate().session_generation() > base.candidate().session_generation());
+    assert_eq!(current(storage.clone(), &store, thread), current_before);
 }
 
 #[cfg(feature = "test-faults")]
 #[test]
 fn widget_page_fail_closed_reconciliation_retains_exact_custody() {
     let (_home, store, storage, thread) = fixture("widget-fail-closed", 181);
-    let (mut host, base) = activated(storage, &store, thread, 182, 183);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 182, 183);
     let key = mutation_key(base, 184);
     let zero = source_position(0);
     host.begin_mutation(
@@ -260,7 +268,7 @@ fn widget_page_fail_closed_reconciliation_retains_exact_custody() {
 #[test]
 fn synthetic_deletion_fail_closed_reconciliation_retains_exact_custody() {
     let (_home, store, storage, thread) = fixture("empty-fail-closed", 191);
-    let (mut host, base) = activated(storage, &store, thread, 192, 193);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 192, 193);
     let text = commit_text(&mut host, &store, base, 194, 0, 0, "old", 3, 1);
     let key = begin_deletion(&mut host, &store, text, 195, 3);
     arm_head_fork(&mut host, staging_identity(text, 195));
@@ -343,7 +351,7 @@ fn arm_source_selection(
     host.test_set_mutation_transition_limit(1);
     host.test_arm_mutation_before_execute_fault(move |store, storage| {
         let _ = thread;
-        support::bump_home_revision(storage, store, session_seed);
+        support::bump_home_revision(storage.clone(), store, session_seed);
     });
 }
 
@@ -351,7 +359,7 @@ fn arm_source_selection(
 fn arm_head_fork(host: &mut SyndicComposerHost, identity: DraftMutationStagingIdentityV1) {
     host.test_arm_mutation_before_execute_fault(move |store, storage| {
         let contribution = syndic_storage::test_faults::inject_draft_mutation_staging_head_fork(
-            store, storage, identity,
+            store, &storage, identity,
         );
         support::committed(support::execute(store, contribution));
     });

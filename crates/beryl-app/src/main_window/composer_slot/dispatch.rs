@@ -11,6 +11,7 @@ use crate::composer_host::{
 
 use super::{MainWindowComposerSelectionIdentity, MainWindowComposerSlot};
 
+mod evidence;
 mod proof;
 mod terminal;
 mod translate;
@@ -25,6 +26,8 @@ pub(in crate::main_window) use proof::{
 };
 
 pub enum MainWindowComposerDispatchOutcome {
+    MutationWorkPending,
+    MutationEvidence(crate::composer_host::ComposerHostMutationEvidenceOutcome),
     Page(RangePage),
     ObjectPage(gpui_text_input::ObjectPage),
     MutationBegan(MutationKey),
@@ -362,6 +365,22 @@ fn dispatch(
     marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
     cancellation: &CommandCancellation,
 ) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
+    match dispatch_quantum(host, dispatcher, store, request, marker_metadata, cancellation) {
+        Err(MainWindowComposerDispatchError::Host(ComposerHostError::MutationWorkPending)) => {
+            Ok(MainWindowComposerDispatchOutcome::MutationWorkPending)
+        }
+        result => result,
+    }
+}
+
+fn dispatch_quantum(
+    host: &mut SyndicComposerHost,
+    dispatcher: &mut MainWindowComposerDispatcher,
+    store: &HomeStore,
+    request: RangeTextInputRequest,
+    marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
+    cancellation: &CommandCancellation,
+) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
     Ok(match request {
         RangeTextInputRequest::Page(request) => {
             let request_id = host
@@ -398,14 +417,8 @@ fn dispatch(
         RangeTextInputRequest::ClipboardProvenancePage(_) => {
             return Err(MainWindowComposerDispatchError::Malformed);
         }
-        RangeTextInputRequest::MutationBegin(request) => {
-            let key = request.proposal().key();
-            dispatcher.mutation_begin =
-                Some((key, request.source_cursor(), request.proposal_cursor()));
-            dispatcher.mutation_finish = None;
-            dispatcher.early_terminal = None;
-            host.begin_mutation(store, dispatcher.binding, request)?;
-            MainWindowComposerDispatchOutcome::MutationBegan(key)
+        RangeTextInputRequest::MutationBegin(_) => {
+            return Err(ComposerHostError::MutationUnavailable.into());
         }
         RangeTextInputRequest::MutationSourcePage(request)
         | RangeTextInputRequest::MutationProposalPage(request) => {

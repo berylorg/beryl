@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "main_window_composer_mount/cancellation.rs"]
+mod cancellation;
 #[path = "syndic_composer_history/support.rs"]
 mod composer_support;
 #[path = "native_lineage_gui/support.rs"]
@@ -40,7 +42,7 @@ use beryl_app::{
 use beryl_home_store::{
     CommandCancellation, CommandOutcome, HomeCommand, SidecarByteLimit, SidecarNamespace,
 };
-use beryl_model::{AssetId, BindingRevision, ImageLabelOrdinal};
+use beryl_model::{AssetId, BindingRevision, SyndicThreadId};
 use beryl_state::{AssetMediaType, PublishAssetMetadata};
 use gpui::{
     AppContext, Entity, EntityInputHandler, Focusable, InteractiveElement, IntoElement,
@@ -61,6 +63,60 @@ use syndic_storage::{
 };
 
 use support::{Fixture, operation_id};
+
+struct MountedMarkerFixture {
+    directory: tempfile::TempDir,
+    store: Arc<beryl_home_store::HomeStore>,
+    service: Arc<MainWindowConversationComposerService>,
+    target_thread: SyndicThreadId,
+    target_claim: beryl_state::WindowClaimSelection,
+    assets: beryl_state::AssetState,
+    marker_seals: beryl_app::composer_marker_seal::DraftMarkerSealService,
+    image_asset: AssetId,
+}
+
+fn mounted_marker_fixture(
+    name: &str,
+    seed: u8,
+    session: u8,
+    operation: u8,
+    image_bytes: &[u8],
+) -> MountedMarkerFixture {
+    let fixture = Fixture::new(name, seed);
+    let (selected_claim, target_claim) = fixture.claims();
+    let assets = fixture.assets();
+    let marker_seals = fixture.marker_seals();
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
+    let image_asset = publish_image_asset(&fixture, image_bytes);
+    let window_id = fixture.window_id;
+    let selected_thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    let (directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(selected_thread, session, operation, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, selected_claim, host, storage, marker_authority)
+            .unwrap();
+    let store = Arc::new(store);
+    MountedMarkerFixture {
+        directory,
+        store: store.clone(),
+        service: Arc::new(MainWindowConversationComposerService::new(store, slot)),
+        target_thread,
+        target_claim,
+        assets,
+        marker_seals,
+        image_asset,
+    }
+}
 
 struct MountRoot {
     mount: Entity<MainWindowConversationComposerMount>,
@@ -389,30 +445,8 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("native-lineage-cycles", 245);
-    let (claim, target_claim) = fixture.claims();
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let unrelated_thread = fixture.target_thread;
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 246, 247, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let (_directory, service, marker_seals, thread, unrelated_thread, target_claim) =
+        native_lineage_cycles_fixture();
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
     let first_key = control
         .install_route_for_test(
@@ -995,62 +1029,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
 #[gpui::test]
 fn native_lineage_late_flights_drain_after_route_cancellation(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("native-lineage-late-flights", 90);
-    let claim = fixture.claims().0;
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let marker_asset = publish_image_asset(&fixture, b"native-lineage-object-page");
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            ComposerHostActivationRequest::new(
-                thread,
-                syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([91; 16]),
-                operation_id(92),
-                NonZeroU64::new(1).unwrap(),
-                None,
-                Box::new([]),
-            ),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let binding = host.binding().unwrap();
-    let binding = composer_support::commit_text(&mut host, &store, binding, 93, 0, 0, "a", 1, 1);
-    let binding = native_lineage_support::insert_published_marker_with_readiness(
-        &mut host,
-        &store,
-        &storage,
-        binding,
-        94,
-        marker_asset,
-    );
-    host.dispose_composer_service(&store).unwrap();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 91, 92, 1, 1),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated {
-            binding: rebound,
-            ..
-        } if rebound.root() == binding.root()
-    ));
-    assert_eq!(binding.root().summary().marker_count(), 1);
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let (_directory, service, marker_seals, thread) = native_lineage_late_flights_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1660,29 +1639,7 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("mounted-commands", 21);
-    let claim = fixture.claims().0;
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 22, 23, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let (_directory, service, marker_seals) = mounted_commands_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1765,40 +1722,17 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("composer-mount", 31);
-    let (selected_claim, target_claim) = fixture.claims();
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
-    let target_thread = fixture.target_thread;
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let image_asset = publish_image_asset(&fixture, b"mounted-marker");
-    let (_directory, store, storage) = fixture.into_store();
-    let mut selected_host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &store,
-                activation(selected_thread, 32, 33, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let mut initial_selection = slot.selected_identity().unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let MountedMarkerFixture {
+        directory: _directory,
+        service,
+        target_thread,
+        target_claim,
+        assets,
+        marker_seals,
+        image_asset,
+        ..
+    } = mounted_marker_fixture("composer-mount", 31, 32, 33, b"mounted-marker");
+    let mut initial_selection = service.selected_identity().unwrap();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1852,7 +1786,7 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
             input.replace_and_mark_text_in_range(None, "a", None, window, input_cx)
         })
     });
-    drive(cx, 32);
+    drive_until_quiescent(cx, &initial);
     initial_selection = service.selected_identity().unwrap();
     assert_eq!(
         initial.read_with(cx, |composer, _| composer.selection_identity()),
@@ -1861,17 +1795,13 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     initial
         .update(cx, |composer, composer_cx| {
             composer.insert_authenticated_image_marker(
-                ComposerHostImageMarkerMetadata::new(
-                    InlineObjectId::new(0x181),
-                    ImageLabelOrdinal::new(1).unwrap(),
-                    image_asset,
-                ),
+                ComposerHostImageMarkerMetadata::new(InlineObjectId::new(0x181), image_asset),
                 InlineObjectOrder::new(1),
                 composer_cx,
             )
         })
         .unwrap();
-    drive(cx, 48);
+    drive_until_quiescent(cx, &initial);
     initial_selection = service.selected_identity().unwrap();
     assert_eq!(
         initial_selection.binding().root().summary().marker_count(),
@@ -2136,101 +2066,16 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
             input.replace_and_mark_text_in_range(None, "x", None, window, input_cx)
         })
     });
-    drive(cx, 32);
-    let disposal_selection = service.selected_identity().unwrap();
-    assert_ne!(disposal_selection, target_selection);
-    assert_eq!(
-        target.read_with(cx, |composer, _| composer.selection_identity()),
-        disposal_selection
+    drive_until_quiescent(cx, &target);
+    dispose_selected_marker_mount(
+        cx,
+        &mount,
+        &target,
+        &service,
+        target_selection,
+        assets,
+        &marker_seals,
     );
-    let disposal_flush = match cx
-        .update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.begin_disposal(window, mount_cx)
-            })
-        })
-        .unwrap()
-    {
-        MainWindowConversationComposerMountFlushStart::Started(
-            ComposerHostFlushAdmission::Started { ticket, .. },
-        ) => ticket,
-        start => panic!("selected disposal flush did not start: {start:?}"),
-    };
-    assert!(matches!(
-        mount
-            .update(cx, |mount, _| mount.capture_flush_publication(
-                disposal_selection,
-                disposal_flush,
-                assets,
-                &marker_seals,
-                operation_id(52),
-                None,
-                SyndicTimestamp::from_unix_millis(52),
-                &CommandCancellation::new(),
-            ))
-            .unwrap(),
-        ComposerHostFlushCapture::Captured(_)
-    ));
-    let mut selected_disposal_required = false;
-    for _ in 0..16 {
-        let advance = cx.update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.advance_disposal(window, mount_cx)
-            })
-        });
-        if matches!(
-            advance,
-            Ok(
-                MainWindowConversationComposerMountDisposalAdvance::Retained(
-                    beryl_app::main_window::MainWindowComposerDisposalAdvance::Progress(
-                        ComposerHostFlushState::DisposalRequired
-                    )
-                )
-            )
-        ) {
-            selected_disposal_required = true;
-            break;
-        }
-    }
-    assert!(selected_disposal_required);
-    let disposal_release_selection = service.selected_identity().unwrap();
-    assert_eq!(
-        target.read_with(cx, |composer, _| composer.selection_identity()),
-        disposal_release_selection
-    );
-    assert!(matches!(
-        mount
-            .update(cx, |mount, _| mount.capture_flush_disposal(
-                disposal_release_selection,
-                disposal_flush,
-                operation_id(53),
-                &CommandCancellation::new(),
-            ))
-            .unwrap(),
-        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
-    ));
-    let disposed = loop {
-        drive(cx, 4);
-        let advance = cx.update(|window, app| {
-            mount.update(app, |mount, mount_cx| {
-                mount.advance_disposal(window, mount_cx)
-            })
-        });
-        match advance.unwrap() {
-            MainWindowConversationComposerMountDisposalAdvance::WidgetReleasePending(_) => continue,
-            advance => break advance,
-        }
-    };
-    assert_eq!(
-        disposed,
-        MainWindowConversationComposerMountDisposalAdvance::Disposed
-    );
-    assert!(
-        mount
-            .read_with(cx, |mount, _| mount.contribution())
-            .is_none()
-    );
-    assert_eq!(service.selected_identity(), None);
 }
 
 #[gpui::test]
@@ -2238,30 +2083,19 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("terminal-anchor-marker-run", 71);
-    let (claim, _) = fixture.claims();
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let image_asset = publish_image_asset(&fixture, b"terminal-anchor-marker");
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 72, 73, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let MountedMarkerFixture {
+        directory: _directory,
+        service,
+        marker_seals,
+        image_asset,
+        ..
+    } = mounted_marker_fixture(
+        "terminal-anchor-marker-run",
+        71,
+        72,
+        73,
+        b"terminal-anchor-marker",
+    );
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -2298,23 +2132,19 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
             input.replace_and_mark_text_in_range(None, "a", None, window, input_cx)
         })
     });
-    drive(cx, 32);
+    drive_until_quiescent(cx, &composer);
 
     for (id, order) in [(0x191_u128, 1_u128), (0x192_u128, 2_u128)] {
         composer
             .update(cx, |composer, composer_cx| {
                 composer.insert_authenticated_image_marker(
-                    ComposerHostImageMarkerMetadata::new(
-                        InlineObjectId::new(id),
-                        ImageLabelOrdinal::new(1).unwrap(),
-                        image_asset,
-                    ),
+                    ComposerHostImageMarkerMetadata::new(InlineObjectId::new(id), image_asset),
                     InlineObjectOrder::new(order),
                     composer_cx,
                 )
             })
             .unwrap();
-        drive(cx, 48);
+        drive_until_quiescent(cx, &composer);
         assert_eq!(
             service
                 .selected_identity()
@@ -2348,31 +2178,20 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
 #[gpui::test]
 fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("mounted-autosave-recoverable", 71);
-    let (claim, _) = fixture.claims();
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let image_asset = publish_image_asset(&fixture, b"recoverable-marker");
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 72, 73, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let MountedMarkerFixture {
+        directory: _directory,
+        service,
+        assets,
+        marker_seals,
+        image_asset,
+        ..
+    } = mounted_marker_fixture(
+        "mounted-autosave-recoverable",
+        71,
+        72,
+        73,
+        b"recoverable-marker",
+    );
     let mounted_service = service.clone();
     let mounted_seals = marker_seals.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
@@ -2411,21 +2230,17 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
             input.replace_and_mark_text_in_range(None, "a", None, window, input_cx)
         })
     });
-    drive(cx, 32);
+    drive_until_quiescent(cx, &contribution);
     contribution
         .update(cx, |composer, composer_cx| {
             composer.insert_authenticated_image_marker(
-                ComposerHostImageMarkerMetadata::new(
-                    InlineObjectId::new(0x182),
-                    ImageLabelOrdinal::new(1).unwrap(),
-                    image_asset,
-                ),
+                ComposerHostImageMarkerMetadata::new(InlineObjectId::new(0x182), image_asset),
                 InlineObjectOrder::new(1),
                 composer_cx,
             )
         })
         .unwrap();
-    drive(cx, 48);
+    drive_until_quiescent(cx, &contribution);
     let dirty_selection = service.selected_identity().unwrap();
     assert_eq!(
         dirty_selection.binding().root().summary().marker_count(),
@@ -2469,7 +2284,7 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
     assert_eq!(settled.last_error(), None);
 
     let settled_generation = settled.generation();
-    drive(cx, 32);
+    drive_until_quiescent(cx, &contribution);
     let quiescent = mount.read_with(cx, |mount, _| mount.autosave_diagnostics());
     assert_eq!(quiescent.generation(), settled_generation);
     assert_eq!(quiescent.retained_tasks(), 1);
@@ -2495,30 +2310,7 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("mounted-autosave-join", 61);
-    let (claim, _) = fixture.claims();
-    let window_id = fixture.window_id;
-    let thread = fixture.selected_thread;
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
-    let (_directory, store, storage) = fixture.into_store();
-    let mut host = SyndicComposerHost::new(storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &store,
-            activation(thread, 62, 63, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let slot =
-        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let (_directory, service, marker_seals, assets) = autosave_disposal_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -2776,6 +2568,25 @@ fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {
         cx.run_until_parked();
         cx.update(|window, app| window.draw(app).clear());
     }
+}
+
+fn drive_until_quiescent(
+    cx: &mut gpui::VisualTestContext,
+    composer: &Entity<beryl_app::main_window::MainWindowConversationComposer>,
+) {
+    let input = composer.read_with(cx, |composer, _| composer.gpui_input());
+    for _ in 0..4096 {
+        drive(cx, 1);
+        if input.read_with(cx, |input, _| input.is_quiescent())
+            && !composer.read_with(cx, |composer, _| composer.test_has_active_flight())
+        {
+            return;
+        }
+    }
+    panic!(
+        "mounted editor did not settle within the bounded drive budget: {:?}",
+        composer.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+    )
 }
 
 fn wait_for_native_lineage_prompt(
@@ -3292,4 +3103,343 @@ fn widget_config(
         theme: TextInputTheme::default(),
         scrollbar_style: ScrollbarStyle::default(),
     }
+}
+
+fn dispose_selected_marker_mount(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    target: &Entity<beryl_app::main_window::MainWindowConversationComposer>,
+    service: &Arc<MainWindowConversationComposerService>,
+    target_selection: MainWindowComposerSelectionIdentity,
+    assets: beryl_state::AssetState,
+    marker_seals: &beryl_app::composer_marker_seal::DraftMarkerSealService,
+) {
+    let disposal_selection = service.selected_identity().unwrap();
+    assert_ne!(disposal_selection, target_selection);
+    assert_eq!(
+        target.read_with(cx, |composer, _| composer.selection_identity()),
+        disposal_selection
+    );
+    let disposal_flush = match cx
+        .update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.begin_disposal(window, mount_cx)
+            })
+        })
+        .unwrap()
+    {
+        MainWindowConversationComposerMountFlushStart::Started(
+            ComposerHostFlushAdmission::Started { ticket, .. },
+        ) => ticket,
+        start => panic!("selected disposal flush did not start: {start:?}"),
+    };
+    assert!(matches!(
+        mount
+            .update(cx, |mount, _| mount.capture_flush_publication(
+                disposal_selection,
+                disposal_flush,
+                assets.clone(),
+                &marker_seals,
+                operation_id(52),
+                None,
+                SyndicTimestamp::from_unix_millis(52),
+                &CommandCancellation::new(),
+            ))
+            .unwrap(),
+        ComposerHostFlushCapture::Captured(_)
+    ));
+    let mut selected_disposal_required = false;
+    let mut selected_disposal_advance = None;
+    for _ in 0..16 {
+        let advance = cx.update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.advance_disposal(window, mount_cx)
+            })
+        });
+        if matches!(
+            advance,
+            Ok(
+                MainWindowConversationComposerMountDisposalAdvance::Retained(
+                    beryl_app::main_window::MainWindowComposerDisposalAdvance::Progress(
+                        ComposerHostFlushState::CaptureRequired
+                    )
+                )
+            )
+        ) {
+            let current = service.selected_identity().unwrap();
+            assert!(matches!(
+                mount
+                    .update(cx, |mount, _| mount.capture_flush_publication(
+                        current,
+                        disposal_flush,
+                        assets.clone(),
+                        &marker_seals,
+                        operation_id(52),
+                        None,
+                        SyndicTimestamp::from_unix_millis(52),
+                        &CommandCancellation::new(),
+                    ))
+                    .unwrap(),
+                ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+            ));
+        }
+        if matches!(
+            advance,
+            Ok(
+                MainWindowConversationComposerMountDisposalAdvance::Retained(
+                    beryl_app::main_window::MainWindowComposerDisposalAdvance::Progress(
+                        ComposerHostFlushState::DisposalRequired
+                    )
+                )
+            )
+        ) {
+            selected_disposal_required = true;
+            break;
+        }
+        selected_disposal_advance = Some(advance);
+    }
+    assert!(
+        selected_disposal_required,
+        "selected disposal did not become ready: {selected_disposal_advance:?}"
+    );
+    let disposal_release_selection = service.selected_identity().unwrap();
+    assert_eq!(
+        target.read_with(cx, |composer, _| composer.selection_identity()),
+        disposal_release_selection
+    );
+    assert!(matches!(
+        mount
+            .update(cx, |mount, _| mount.capture_flush_disposal(
+                disposal_release_selection,
+                disposal_flush,
+                operation_id(53),
+                &CommandCancellation::new(),
+            ))
+            .unwrap(),
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+    ));
+    let disposed = loop {
+        drive(cx, 4);
+        let advance = cx.update(|window, app| {
+            mount.update(app, |mount, mount_cx| {
+                mount.advance_disposal(window, mount_cx)
+            })
+        });
+        match advance.unwrap() {
+            MainWindowConversationComposerMountDisposalAdvance::WidgetReleasePending(_) => continue,
+            advance => break advance,
+        }
+    };
+    assert_eq!(
+        disposed,
+        MainWindowConversationComposerMountDisposalAdvance::Disposed
+    );
+    assert!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .is_none()
+    );
+    assert_eq!(service.selected_identity(), None);
+}
+
+fn mounted_commands_fixture() -> (
+    tempfile::TempDir,
+    Arc<MainWindowConversationComposerService>,
+    beryl_app::composer_marker_seal::DraftMarkerSealService,
+) {
+    let fixture = Fixture::new("mounted-commands", 21);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 22, 23, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    (_directory, service, marker_seals)
+}
+
+fn autosave_disposal_fixture() -> (
+    tempfile::TempDir,
+    Arc<MainWindowConversationComposerService>,
+    beryl_app::composer_marker_seal::DraftMarkerSealService,
+    beryl_state::AssetState,
+) {
+    let fixture = Fixture::new("mounted-autosave-join", 61);
+    let (claim, _) = fixture.claims();
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let assets = fixture.assets();
+    let marker_seals = fixture.marker_seals();
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 62, 63, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    (_directory, service, marker_seals, assets)
+}
+
+fn native_lineage_cycles_fixture() -> (
+    tempfile::TempDir,
+    Arc<MainWindowConversationComposerService>,
+    beryl_app::composer_marker_seal::DraftMarkerSealService,
+    SyndicThreadId,
+    SyndicThreadId,
+    beryl_state::WindowClaimSelection,
+) {
+    let fixture = Fixture::new("native-lineage-cycles", 245);
+    let (claim, target_claim) = fixture.claims();
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let unrelated_thread = fixture.target_thread;
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 246, 247, 1, 0),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    (
+        _directory,
+        service,
+        marker_seals,
+        thread,
+        unrelated_thread,
+        target_claim,
+    )
+}
+
+fn native_lineage_late_flights_fixture() -> (
+    tempfile::TempDir,
+    Arc<MainWindowConversationComposerService>,
+    beryl_app::composer_marker_seal::DraftMarkerSealService,
+    SyndicThreadId,
+) {
+    let fixture = Fixture::new("native-lineage-late-flights", 90);
+    let claim = fixture.claims().0;
+    let window_id = fixture.window_id;
+    let thread = fixture.selected_thread;
+    let marker_asset = publish_image_asset(&fixture, b"native-lineage-object-page");
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let marker_seals = fixture.marker_seals();
+    let (_directory, store, storage) = fixture.into_store();
+    let binding = seed_native_lineage_marker_candidate(&store, &storage, thread, marker_asset);
+    let service = reopen_native_lineage_service(
+        store,
+        storage,
+        window_id,
+        claim,
+        marker_authority,
+        thread,
+        binding,
+    );
+    (_directory, service, marker_seals, thread)
+}
+
+fn seed_native_lineage_marker_candidate(
+    store: &beryl_home_store::HomeStore,
+    storage: &syndic_storage::SyndicStorage,
+    thread: SyndicThreadId,
+    marker_asset: AssetId,
+) -> beryl_app::composer_host::ComposerHostBinding {
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            ComposerHostActivationRequest::new(
+                thread,
+                syndic_storage::DraftEditorCandidateSessionIdV1::from_bytes([91; 16]),
+                operation_id(92),
+                NonZeroU64::new(1).unwrap(),
+                None,
+                Box::new([]),
+            ),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    let binding = host.binding().unwrap();
+    let binding = composer_support::commit_text(&mut host, &store, binding, 93, 0, 0, "a", 1, 1);
+    let binding = native_lineage_support::insert_published_marker_with_readiness(
+        &mut host,
+        &store,
+        &storage,
+        binding,
+        94,
+        marker_asset,
+    );
+    host.dispose_composer_service(&store).unwrap();
+    binding
+}
+
+fn reopen_native_lineage_service(
+    store: beryl_home_store::HomeStore,
+    storage: syndic_storage::SyndicStorage,
+    window_id: beryl_model::WindowId,
+    claim: beryl_state::WindowClaimSelection,
+    marker_authority: MainWindowComposerMarkerMetadataAuthority,
+    thread: SyndicThreadId,
+    binding: beryl_app::composer_host::ComposerHostBinding,
+) -> Arc<MainWindowConversationComposerService> {
+    let mut host = SyndicComposerHost::new(storage.clone());
+    assert!(matches!(
+        host.test_activate(
+            &store,
+            activation(thread, 91, 92, 1, 1),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        ComposerHostActivationOutcome::Activated {
+            binding: rebound,
+            ..
+        } if rebound.root() == binding.root()
+    ));
+    assert_eq!(binding.root().summary().marker_count(), 1);
+    let slot =
+        MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        Arc::new(store),
+        slot,
+    ));
+    service
 }

@@ -5,10 +5,12 @@ fn begin_empty_edit(
     store: &beryl_home_store::HomeStore,
     binding: ComposerHostBinding,
     operation: u64,
+    markers: &[DraftPieceMarkerV1],
 ) -> MutationKey {
     let key = mutation_key(binding, operation);
     let zero = source_position(0);
-    host.begin_mutation(
+    marker_readiness::begin_with_markers(
+        host,
         store,
         binding,
         MutationBeginRequest::new(
@@ -22,6 +24,7 @@ fn begin_empty_edit(
             MutationCursor::new(0),
             MutationCursor::new(0),
         ),
+        markers,
     )
     .unwrap();
     key
@@ -43,8 +46,8 @@ fn initial_page(
 #[test]
 fn source_page_rejects_marker_metadata_before_frontier_or_storage_effect() {
     let (_home, store, storage, thread) = fixture("source-marker-metadata", 231);
-    let (mut host, binding) = activated(storage, &store, thread, 232, 233);
-    let key = begin_empty_edit(&mut host, &store, binding, 234);
+    let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
+    let key = begin_empty_edit(&mut host, &store, binding, 234, &[]);
     let page = initial_page(
         key,
         MutationLane::Source,
@@ -54,16 +57,13 @@ fn source_page_rejects_marker_metadata_before_frontier_or_storage_effect() {
         }],
     );
     let object_id = InlineObjectId::new(235);
-    let label = ImageLabelOrdinal::new(1).unwrap();
     let asset_id = asset_id_for_object(object_id);
 
     assert!(matches!(
         host.stage_mutation_page(
             &store,
             MutationPageRequest::new(page.clone()),
-            Box::new([ComposerHostImageMarkerMetadata::new(
-                object_id, label, asset_id,
-            )]),
+            Box::new([ComposerHostImageMarkerMetadata::new(object_id, asset_id,)]),
         ),
         Err(ComposerHostError::MutationMalformed)
     ));
@@ -83,12 +83,23 @@ fn source_page_rejects_marker_metadata_before_frontier_or_storage_effect() {
 #[test]
 fn mixed_proposal_requires_exact_insert_metadata_count_before_admission() {
     let (_home, store, storage, thread) = fixture("mixed-marker-metadata", 241);
-    let (mut host, binding) = activated(storage, &store, thread, 242, 243);
-    let key = begin_empty_edit(&mut host, &store, binding, 244);
+    let (mut host, binding) = activated(storage.clone(), &store, thread, 242, 243);
     let object_id = InlineObjectId::new(245);
     let extra_id = InlineObjectId::new(246);
     let label = ImageLabelOrdinal::new(2).unwrap();
     let asset_id = asset_id_for_object(object_id);
+    let key = begin_empty_edit(
+        &mut host,
+        &store,
+        binding,
+        244,
+        &[DraftPieceMarkerV1::new(
+            SyndicDraftMarkerId::from_bytes(object_id.get().to_be_bytes()),
+            1,
+            label,
+            asset_id,
+        )],
+    );
     let page = initial_page(
         key,
         MutationLane::Proposal,
@@ -112,7 +123,7 @@ fn mixed_proposal_requires_exact_insert_metadata_count_before_admission() {
             },
         ],
     );
-    let exact = ComposerHostImageMarkerMetadata::new(object_id, label, asset_id);
+    let exact = ComposerHostImageMarkerMetadata::new(object_id, asset_id);
 
     assert!(matches!(
         host.stage_mutation_page(&store, MutationPageRequest::new(page.clone()), Box::new([]),),
@@ -124,12 +135,8 @@ fn mixed_proposal_requires_exact_insert_metadata_count_before_admission() {
             &store,
             MutationPageRequest::new(page.clone()),
             Box::new([
-                exact,
-                ComposerHostImageMarkerMetadata::new(
-                    extra_id,
-                    label,
-                    asset_id_for_object(extra_id),
-                ),
+                exact.clone(),
+                ComposerHostImageMarkerMetadata::new(extra_id, asset_id_for_object(extra_id),),
             ]),
         ),
         Err(ComposerHostError::MutationMalformed)
@@ -156,12 +163,31 @@ fn mixed_proposal_requires_exact_insert_metadata_count_before_admission() {
 #[test]
 fn proposal_rejects_duplicate_marker_metadata_identity_before_admission() {
     let (_home, store, storage, thread) = fixture("duplicate-marker-metadata", 247);
-    let (mut host, binding) = activated(storage, &store, thread, 248, 249);
-    let key = begin_empty_edit(&mut host, &store, binding, 250);
+    let (mut host, binding) = activated(storage.clone(), &store, thread, 248, 249);
     let first_id = InlineObjectId::new(251);
     let second_id = InlineObjectId::new(252);
     let first_label = ImageLabelOrdinal::new(1).unwrap();
     let second_label = ImageLabelOrdinal::new(2).unwrap();
+    let key = begin_empty_edit(
+        &mut host,
+        &store,
+        binding,
+        250,
+        &[
+            DraftPieceMarkerV1::new(
+                SyndicDraftMarkerId::from_bytes(first_id.get().to_be_bytes()),
+                1,
+                first_label,
+                asset_id_for_object(first_id),
+            ),
+            DraftPieceMarkerV1::new(
+                SyndicDraftMarkerId::from_bytes(second_id.get().to_be_bytes()),
+                2,
+                second_label,
+                asset_id_for_object(second_id),
+            ),
+        ],
+    );
     let page = initial_page(
         key,
         MutationLane::Proposal,
@@ -192,16 +218,8 @@ fn proposal_rejects_duplicate_marker_metadata_identity_before_admission() {
             &store,
             MutationPageRequest::new(page.clone()),
             Box::new([
-                ComposerHostImageMarkerMetadata::new(
-                    first_id,
-                    first_label,
-                    asset_id_for_object(first_id),
-                ),
-                ComposerHostImageMarkerMetadata::new(
-                    first_id,
-                    second_label,
-                    asset_id_for_object(second_id),
-                ),
+                ComposerHostImageMarkerMetadata::new(first_id, asset_id_for_object(first_id),),
+                ComposerHostImageMarkerMetadata::new(first_id, asset_id_for_object(second_id),),
             ]),
         ),
         Err(ComposerHostError::MutationMalformed)
@@ -218,16 +236,8 @@ fn proposal_rejects_duplicate_marker_metadata_identity_before_admission() {
             &store,
             MutationPageRequest::new(page),
             Box::new([
-                ComposerHostImageMarkerMetadata::new(
-                    first_id,
-                    first_label,
-                    asset_id_for_object(first_id),
-                ),
-                ComposerHostImageMarkerMetadata::new(
-                    second_id,
-                    second_label,
-                    asset_id_for_object(second_id),
-                ),
+                ComposerHostImageMarkerMetadata::new(first_id, asset_id_for_object(first_id),),
+                ComposerHostImageMarkerMetadata::new(second_id, asset_id_for_object(second_id),),
             ]),
         ),
         Ok(MutationPageAcceptance::Accepted { .. })

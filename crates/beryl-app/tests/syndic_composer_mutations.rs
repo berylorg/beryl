@@ -3,6 +3,12 @@
 #[path = "syndic_composer_host/support.rs"]
 mod support;
 
+#[path = "composer_marker_evidence/marker_readiness.rs"]
+mod marker_readiness;
+
+#[path = "syndic_composer_mutations/marker_sources.rs"]
+mod marker_sources;
+
 use std::num::NonZeroU64;
 
 use beryl_app::composer_host::{
@@ -48,7 +54,7 @@ fn commit_items(
     replacement: SourceRange,
     items: Vec<MutationPageItem>,
     intended: MutationPositions,
-    marker_metadata: Vec<ComposerHostImageMarkerMetadata>,
+    marker_metadata: Vec<(ComposerHostImageMarkerMetadata, ImageLabelOrdinal)>,
     byte_len: u64,
     line_count: u64,
 ) -> ComposerHostBinding {
@@ -60,12 +66,53 @@ fn commit_items(
         replacement,
         0,
     );
-    host.begin_mutation(
-        store,
-        binding,
-        MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0)),
-    )
-    .unwrap();
+    let mut markers: Vec<_> = marker_metadata
+        .iter()
+        .map(|(metadata, label)| {
+            let order = items
+                .iter()
+                .find_map(|item| match item {
+                    MutationPageItem::Object(
+                        ObjectChange::Insert { object } | ObjectChange::Replace { object, .. },
+                    ) if object.id() == metadata.object_id() => Some(object.order()),
+                    _ => None,
+                })
+                .expect("fixture marker has an insertion");
+            DraftPieceMarkerV1::new(
+                SyndicDraftMarkerId::from_bytes(metadata.object_id().get().to_be_bytes()),
+                u64::try_from(order.get()).unwrap(),
+                *label,
+                metadata.asset_id(),
+            )
+        })
+        .collect();
+    for item in &items {
+        if let MutationPageItem::Object(ObjectChange::Move { target, object }) = item {
+            let storage = SyndicStorage::reacquire(store).unwrap();
+            let marker_id = SyndicDraftMarkerId::from_bytes(target.id().get().to_be_bytes());
+            let source = storage
+                .draft_marker_identity(store, binding.root(), marker_id)
+                .unwrap()
+                .unwrap();
+            markers.push(DraftPieceMarkerV1::new(
+                marker_id,
+                u64::try_from(object.order().get()).unwrap(),
+                source.label(),
+                source.asset_id(),
+            ));
+        }
+    }
+    let begin = MutationBeginRequest::new(proposal, MutationCursor::new(0), MutationCursor::new(0));
+    if markers.is_empty()
+        && items
+            .iter()
+            .any(|item| matches!(item, MutationPageItem::Object(ObjectChange::Remove { .. })))
+    {
+        marker_sources::begin_marker_removal(host, store, binding, begin);
+    } else {
+        marker_readiness::begin_with_markers(host, store, binding, begin, &markers).unwrap();
+    }
+    let source_finish = marker_sources::stage_marker_sources(host, store, key, &items);
     let page = MutationPage::new(
         MutationPageKey::new(
             key,
@@ -87,14 +134,17 @@ fn commit_items(
     host.stage_mutation_page(
         store,
         MutationPageRequest::new(page),
-        marker_metadata.into_boxed_slice(),
+        marker_metadata
+            .into_iter()
+            .map(|(metadata, _)| metadata)
+            .collect(),
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("operation {operation} staging failed: {error:?}"));
     host.finish_mutation_input(
         store,
         MutationFinishInput::new(
             key,
-            empty_finish(),
+            source_finish,
             proposal_finish,
             LogicalExtent::new(byte_len, line_count),
             intended,
@@ -102,6 +152,14 @@ fn commit_items(
     )
     .unwrap();
     commit(host, store, key)
+}
+
+fn labeled_marker_metadata(
+    id: InlineObjectId,
+    label: ImageLabelOrdinal,
+    asset: AssetId,
+) -> (ComposerHostImageMarkerMetadata, ImageLabelOrdinal) {
+    (ComposerHostImageMarkerMetadata::new(id, asset), label)
 }
 
 fn assert_marker(
@@ -233,7 +291,7 @@ fn commit(
     store: &beryl_home_store::HomeStore,
     key: MutationKey,
 ) -> ComposerHostBinding {
-    for _ in 0..16 {
+    for _ in 0..64 {
         match host.execute_mutation(
             store,
             MutationCommitRequest::new(key, MutationIdentity::ROOT),
@@ -244,7 +302,7 @@ fn commit(
             other => panic!("mutation did not commit: {other:?}"),
         }
     }
-    panic!("mutation remained pending after sixteen bounded drives")
+    panic!("mutation remained pending after sixty-four bounded drives")
 }
 
 fn activated(
@@ -254,8 +312,15 @@ fn activated(
     session: u8,
     operation: u8,
 ) -> (SyndicComposerHost, ComposerHostBinding) {
-    let mut host = SyndicComposerHost::new(storage);
-    let binding = reactivate(&mut host, storage, store, thread, session, operation);
+    let mut host = SyndicComposerHost::new(storage.clone());
+    let binding = reactivate(
+        &mut host,
+        storage.clone(),
+        store,
+        thread,
+        session,
+        operation,
+    );
     (host, binding)
 }
 
@@ -269,7 +334,7 @@ fn reactivate(
 ) -> ComposerHostBinding {
     if host.binding().is_some() {
         host.dispose_composer_service(store).unwrap();
-        *host = SyndicComposerHost::new(storage);
+        *host = SyndicComposerHost::new(storage.clone());
     }
     let request = ComposerHostActivationRequest::new(
         thread,

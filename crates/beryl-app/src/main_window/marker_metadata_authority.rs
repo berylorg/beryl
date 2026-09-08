@@ -53,7 +53,7 @@ impl MainWindowComposerMarkerMetadataAuthority {
             return Err("composer marker metadata does not match the mutation page".to_owned());
         }
         let mut admitted = Vec::with_capacity(metadata.len());
-        for value in metadata.iter().copied() {
+        for value in metadata.iter() {
             if admitted.contains(&value.object_id()) || !supplied.contains(&value.object_id()) {
                 return Err("composer marker metadata identity is duplicate or foreign".to_owned());
             }

@@ -8,6 +8,8 @@ use crate::main_window::{
 use crate::theme_runtime::{AppearancePublicationTarget, GpuiAppearancePublicationTarget};
 use gpui::Focusable;
 
+mod composer;
+
 #[derive(Clone)]
 pub struct MainWindowNoticeIngress {
     window: WindowHandle<MainWindowShellRoot>,
@@ -130,6 +132,7 @@ impl MainWindowNoticeIngress {
 
 pub(super) struct MainWindowShellNotices {
     arbiter: MainWindowNoticeArbiter,
+    composer: composer::ComposerNoticeContribution,
     window_id: beryl_model::WindowId,
     pub(super) widget: Entity<MainWindowNoticeWidget>,
     home: beryl_state::ThemeHomeIdentity,
@@ -154,6 +157,7 @@ impl MainWindowShellNotices {
         let appearance = controller.appearance().clone();
         Self {
             arbiter: MainWindowNoticeArbiter::new(controller.window_id()),
+            composer: composer::ComposerNoticeContribution::default(),
             window_id: controller.window_id(),
             home: appearance.prepared().home(),
             publication,
@@ -236,6 +240,7 @@ impl MainWindowShellRoot {
         self.refresh_notice_safe_focus(cx);
         self.notices.retired = true;
         self.notices.subscription = None;
+        self.notices.composer = composer::ComposerNoticeContribution::default();
         self.notices.arbiter.dispose();
         self.notices.projected = None;
         self.notices.allocation = None;
@@ -312,6 +317,7 @@ impl MainWindowShellRoot {
             self.retire_notices(window, cx);
             return;
         }
+        self.sync_composer_notice(cx);
         self.refresh_notice_safe_focus(cx);
         let viewport = window.viewport_size();
         let chrome = self

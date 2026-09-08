@@ -193,9 +193,13 @@ impl MainWindowConversationComposer {
             propagated_clipboard: None,
             propagated_cut: None,
             pending_marker_metadata: None,
+            mutation_evidence: None,
+            last_mutation_admission_failure: None,
+            mutation_feedback: None,
             admitted_positions: None,
             next_flight: 1,
             active_flight: None,
+            pending_dispatch: None,
             phase: MainWindowConversationComposerPhase::Live,
             release_fence_requires_restoration: false,
             window_close: None,
@@ -440,6 +444,13 @@ impl MainWindowConversationComposer {
             &self.input,
             window,
             |this, _, event: &RangeTextInputEvent, window, cx| match event {
+                RangeTextInputEvent::MutationSettled {
+                    key,
+                    outcome: gpui_text_input::MutationOutcome::Cancelled,
+                } => {
+                    this.observe_mutation_cancellation(*key);
+                    this.schedule_pump(window, cx);
+                }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Copy) => {
                     this.begin_propagated_clipboard(ClipboardKind::Copy, window, cx)
                 }

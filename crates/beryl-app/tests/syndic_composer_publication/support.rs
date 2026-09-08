@@ -319,7 +319,7 @@ fn insert_marker_at(
         MutationCursor::new(0),
         MutationCursor::new(0),
     );
-    let readiness_owner = if let Some(storage) = readiness_storage {
+    if let Some(storage) = readiness_storage {
         let session = match storage
             .draft_editor_candidate_session(
                 store,
@@ -349,11 +349,9 @@ fn insert_marker_at(
             .unwrap();
         host.test_begin_marker_mutation(store, binding, begin, readiness)
             .unwrap();
-        Some(owner)
     } else {
         host.begin_mutation(store, binding, begin).unwrap();
-        None
-    };
+    }
 
     let page = MutationPage::new(
         MutationPageKey::new(
@@ -384,7 +382,7 @@ fn insert_marker_at(
     host.stage_mutation_page(
         store,
         MutationPageRequest::new(page),
-        Box::from([metadata(object, u64::try_from(order).unwrap(), asset)]),
+        Box::from([ComposerHostImageMarkerMetadata::new(object, asset)]),
     )
     .unwrap();
     let after = SourcePosition::new(
@@ -417,11 +415,6 @@ fn insert_marker_at(
             &CommandCancellation::new(),
         ) {
             Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => {
-                if let (Some(storage), Some(owner)) = (readiness_storage, readiness_owner) {
-                    storage
-                        .release_settled_draft_marker_writer(store, owner)
-                        .unwrap();
-                }
                 return binding;
             }
             Err(ComposerHostError::MutationWorkPending) => {}
@@ -470,8 +463,4 @@ fn metadata_asset(id: InlineObjectId) -> AssetId {
     digest[..16].copy_from_slice(&id.get().to_be_bytes());
     digest[16..].copy_from_slice(&id.get().to_be_bytes());
     AssetId::sha256_v1(digest, NonZeroU64::MIN)
-}
-
-fn metadata(id: InlineObjectId, label: u64, asset: AssetId) -> ComposerHostImageMarkerMetadata {
-    ComposerHostImageMarkerMetadata::new(id, ImageLabelOrdinal::new(label).unwrap(), asset)
 }

@@ -178,6 +178,10 @@ impl MainWindowNoticeArbiter {
         self.diagnostics.disposed = true;
     }
 
+    pub fn contains(&self, expected: &NoticeRecordToken) -> bool {
+        self.find_exact(expected).is_ok()
+    }
+
     pub fn diagnostics(&self) -> NoticeDiagnostics {
         NoticeDiagnostics {
             retained_records: self.entries.len(),

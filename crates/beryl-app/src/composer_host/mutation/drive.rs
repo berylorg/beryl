@@ -1,12 +1,9 @@
 use syndic_storage::{
-    DraftMutationStagingPageInputV1, DraftMutationStagingReconcileV1, DraftMutationStagingStatusV1,
-    DraftPieceDurableBuildWindowLimitsV1, DraftPieceOperationStatusV1,
-    DraftPieceOperationVerificationV1, DraftPiecePrepareErrorV1,
+    DraftMutationStagingPageInputV1, DraftMutationStagingReconcileV1,
+    DraftPieceDurableBuildWindowLimitsV1, DraftPiecePrepareErrorV1,
     PreparedDraftMutationStagingBatchV1,
 };
 
-use super::execution::active_session;
-use super::settlement::command_selection;
 use super::translation::TranslatedWidgetPage;
 use super::*;
 
@@ -18,18 +15,50 @@ impl SyndicComposerHost {
         cancellation: &CommandCancellation,
         pending: &mut ComposerHostMutationCoordinator,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        self.validate_mutation_store(pending.binding, store)?;
+        if pending.build_flight.is_none() && pending.cleanup.is_none() {
+            self.validate_mutation_store(pending.binding, store)?;
+        }
+        if request.key() != pending.begin.proposal().key() {
+            return Err(ComposerHostError::MutationMalformed);
+        }
+        if pending.cleanup.is_some() {
+            return self.drive_mutation_cleanup(store, pending);
+        }
+        let outcome = self.execute_active_mutation_step(store, request, cancellation, pending)?;
+        if pending.evidence.is_some()
+            && pending.cleanup.is_none()
+            && !matches!(outcome, ComposerHostMutationOutcome::Committed { .. })
+        {
+            pending.cleanup = Some(super::cleanup::ComposerHostMutationCleanup::new(
+                pending.identity,
+                outcome.clone(),
+            ));
+        }
+        if pending.cleanup.is_some() {
+            return self.drive_mutation_cleanup(store, pending);
+        }
+        Ok(outcome)
+    }
+
+    fn execute_active_mutation_step(
+        &mut self,
+        store: &HomeStore,
+        request: MutationCommitRequest,
+        cancellation: &CommandCancellation,
+        pending: &mut ComposerHostMutationCoordinator,
+    ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
+        if pending.build_flight.is_none() {
+            self.validate_mutation_store(pending.binding, store)?;
+        }
         if request.key() != pending.begin.proposal().key() {
             return Err(ComposerHostError::MutationMalformed);
         }
         if cancellation.is_cancelled()
+            && pending.build_flight.is_none()
             && !matches!(pending.phase, ComposerHostMutationPhase::Building { .. })
         {
             self.release_unadmitted_in_flight_page(store, pending)?;
             return self.cancel_staging_mutation(store, pending);
-        }
-        if matches!(pending.phase, ComposerHostMutationPhase::Finished) {
-            self.transfer_finished_mutation(store, pending)?;
         }
         self.drive_build_mutation(store, cancellation, pending)
     }
@@ -39,43 +68,18 @@ impl SyndicComposerHost {
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
     ) -> Result<(), ComposerHostError> {
-        let transfer = self
-            .storage
-            .prepare_draft_mutation_staging_transfer(&pending.head, &pending.session)?;
-        let prepared_edit = transfer.prepared_edit().clone();
-        let endpoint = transfer.build().progress_receipt();
-        let mut command = HomeCommand::new(store.home_revision()?);
-        command.add(
-            self.storage.transfer_draft_mutation_staging_to_builder(
-                self.storage.revision(store)?,
-                transfer,
-            ),
+        let command = self.storage.prepare_staged_draft_piece_transfer(
+            store,
+            pending.identity,
+            pending.head.receipt(),
         )?;
-        let outcome = self.execute_mutation_command(store, command);
-        match command_selection(store, outcome)? {
-            StagingCommandResult::Source => return Err(ComposerHostError::MutationWorkPending),
-            StagingCommandResult::Target => {}
-            StagingCommandResult::Terminal => {
-                return Err(ComposerHostError::MutationMalformed);
+        match self.run_build_command(store, pending, command)? {
+            BuildCommandResult::Pending(endpoint) => {
+                pending.phase = ComposerHostMutationPhase::Building { endpoint };
+                Ok(())
             }
+            BuildCommandResult::Terminal(_) => Err(ComposerHostError::MutationMalformed),
         }
-        if !matches!(
-            self.storage
-                .draft_mutation_staging_status(store, pending.identity)?,
-            DraftMutationStagingStatusV1::Building { .. }
-        ) {
-            return Err(ComposerHostError::MutationMalformed);
-        }
-        pending.head = self
-            .storage
-            .draft_mutation_staging_head(store, pending.identity)?
-            .ok_or(ComposerHostError::MutationMalformed)?;
-        pending.session = active_session(&self.storage, store, pending.binding)?;
-        pending.phase = ComposerHostMutationPhase::Building {
-            prepared: prepared_edit,
-            endpoint,
-        };
-        Ok(())
     }
 
     fn drive_build_mutation(
@@ -84,44 +88,47 @@ impl SyndicComposerHost {
         cancellation: &CommandCancellation,
         pending: &mut ComposerHostMutationCoordinator,
     ) -> Result<ComposerHostMutationOutcome, ComposerHostError> {
-        let (prepared, mut endpoint) = match &pending.phase {
-            ComposerHostMutationPhase::Building { prepared, endpoint } => {
-                (prepared.clone(), *endpoint)
-            }
-            _ => return Err(ComposerHostError::MutationMalformed),
-        };
-        let transition_limit = self.mutation_transition_limit();
-        for _ in 0..transition_limit {
-            if cancellation.is_cancelled() {
-                return self.cancel_build_mutation(store, pending, &prepared);
-            }
-            match self.advance_build_mutation(store, pending, &prepared)? {
-                Some(BuildCommandResult::Pending(next)) => {
-                    endpoint = next;
-                    pending.phase = ComposerHostMutationPhase::Building {
-                        prepared: prepared.clone(),
-                        endpoint,
-                    };
-                    continue;
+        for _ in 0..self.mutation_transition_limit() {
+            if pending.build_flight.is_some() {
+                match self.resume_build_command(store, pending)? {
+                    BuildCommandResult::Pending(endpoint) => {
+                        pending.phase = ComposerHostMutationPhase::Building { endpoint };
+                        continue;
+                    }
+                    BuildCommandResult::Terminal(outcome) => return Ok(outcome),
                 }
-                Some(BuildCommandResult::Terminal(outcome)) => return Ok(outcome),
-                None => {}
             }
-            if let Some(next) = self.stage_next_build_window(store, pending, endpoint)? {
-                endpoint = next;
-                pending.phase = ComposerHostMutationPhase::Building {
-                    prepared: prepared.clone(),
-                    endpoint,
-                };
+            self.validate_mutation_store(pending.binding, store)?;
+            if matches!(pending.phase, ComposerHostMutationPhase::Finished) {
+                if cancellation.is_cancelled() || pending.build_noncommit.is_some() {
+                    let outcome = self.cancel_staging_mutation(store, pending)?;
+                    return Ok(
+                        if pending.build_noncommit.is_some()
+                            && matches!(outcome, ComposerHostMutationOutcome::Cancelled)
+                        {
+                            ComposerHostMutationOutcome::Error
+                        } else {
+                            outcome
+                        },
+                    );
+                }
+                self.transfer_finished_mutation(store, pending)?;
                 continue;
             }
-            match self.settle_build_mutation(store, pending, &prepared)? {
-                BuildCommandResult::Pending(next) => {
-                    endpoint = next;
-                    pending.phase = ComposerHostMutationPhase::Building {
-                        prepared: prepared.clone(),
-                        endpoint,
-                    };
+            let endpoint = pending.build_endpoint()?;
+            if cancellation.is_cancelled() || pending.build_noncommit.is_some() {
+                return self.cancel_build_mutation(store, pending);
+            }
+            let result = if let Some(result) = self.advance_build_mutation(store, pending)? {
+                result
+            } else if let Some(result) = self.stage_next_build_window(store, pending, endpoint)? {
+                result
+            } else {
+                self.settle_build_mutation(store, pending)?
+            };
+            match result {
+                BuildCommandResult::Pending(endpoint) => {
+                    pending.phase = ComposerHostMutationPhase::Building { endpoint };
                 }
                 BuildCommandResult::Terminal(outcome) => return Ok(outcome),
             }
@@ -134,8 +141,8 @@ impl SyndicComposerHost {
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
         endpoint: DraftPieceBuildProgressReceiptReferenceV1,
-    ) -> Result<Option<DraftPieceBuildProgressReceiptReferenceV1>, ComposerHostError> {
-        let Some(window) = self.storage.prepare_next_durable_draft_piece_window(
+    ) -> Result<Option<BuildCommandResult>, ComposerHostError> {
+        let Some(command) = self.storage.prepare_staged_draft_piece_window(
             store,
             pending.identity,
             endpoint,
@@ -144,43 +151,24 @@ impl SyndicComposerHost {
         else {
             return Ok(None);
         };
-        let target_endpoint = window.target_endpoint();
-        let mut command = HomeCommand::new(store.home_revision()?);
-        command.add(
-            self.storage
-                .stage_next_durable_draft_piece_window(self.storage.revision(store)?, window),
-        )?;
-        let outcome = self.execute_mutation_command(store, command);
-        match command_selection(store, outcome)? {
-            StagingCommandResult::Target => Ok(Some(target_endpoint)),
-            StagingCommandResult::Source => Err(ComposerHostError::MutationWorkPending),
-            StagingCommandResult::Terminal => Err(ComposerHostError::MutationMalformed),
-        }
+        self.run_build_command(store, pending, command).map(Some)
     }
 
     fn advance_build_mutation(
         &mut self,
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
-        prepared: &PreparedDraftPieceEditV1,
     ) -> Result<Option<BuildCommandResult>, ComposerHostError> {
-        match self.storage.prepare_draft_piece_build_advance(
+        match self.storage.prepare_staged_draft_piece_advance(
             store,
-            prepared.header().draft_id(),
-            prepared.header().session_id(),
-            prepared.header().operation_id(),
+            pending.identity,
+            pending.build_endpoint()?,
         ) {
-            Ok(Some(advance)) => {
-                let contribution = self
-                    .storage
-                    .advance_draft_piece_edit(advance);
-                self.run_build_command(store, pending, prepared, contribution)
-                    .map(Some)
-            }
+            Ok(Some(command)) => self.run_build_command(store, pending, command).map(Some),
             Ok(None) => Ok(None),
-            Err(DraftPiecePrepareErrorV1::Rejected(reason)) => self
-                .reject_build_mutation(store, pending, prepared, reason)
-                .map(Some),
+            Err(syndic_storage::StagedDraftPiecePreparationErrorV1::Build(
+                DraftPiecePrepareErrorV1::Rejected(reason),
+            )) => self.reject_build_mutation(store, pending, reason).map(Some),
             Err(error) => Err(error.into()),
         }
     }
@@ -189,29 +177,30 @@ impl SyndicComposerHost {
         &mut self,
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
-        prepared: &PreparedDraftPieceEditV1,
     ) -> Result<BuildCommandResult, ComposerHostError> {
-        let contribution = self
-            .storage
-            .settle_draft_piece_edit(self.storage.revision(store)?, prepared.clone());
-        self.run_build_command(store, pending, prepared, contribution)
+        let command = self.storage.prepare_staged_draft_piece_terminal(
+            store,
+            pending.identity,
+            pending.build_endpoint()?,
+            syndic_storage::StagedDraftPieceTerminalElectionV1::Settle,
+        )?;
+        self.run_build_command(store, pending, command)
     }
 
     fn reject_build_mutation(
         &mut self,
         store: &HomeStore,
         pending: &mut ComposerHostMutationCoordinator,
-        prepared: &PreparedDraftPieceEditV1,
         reason: syndic_storage::DraftPieceRejectedReasonV1,
     ) -> Result<BuildCommandResult, ComposerHostError> {
-        let contribution = self.storage.reject_draft_piece_edit(
-            self.storage.revision(store)?,
-            prepared.clone(),
-            reason,
-        );
-        self.run_build_command(store, pending, prepared, contribution)
+        let command = self.storage.prepare_staged_draft_piece_terminal(
+            store,
+            pending.identity,
+            pending.build_endpoint()?,
+            syndic_storage::StagedDraftPieceTerminalElectionV1::Reject(reason),
+        )?;
+        self.run_build_command(store, pending, command)
     }
-
     pub(super) fn prepare_translated_page(
         &mut self,
         pending: &ComposerHostMutationCoordinator,
@@ -437,15 +426,7 @@ impl SyndicComposerHost {
                     prepared.clone(),
                 ),
             )?;
-            #[cfg(not(feature = "test-faults"))]
-            let _ = self.execute_mutation_command(store, command);
-            #[cfg(feature = "test-faults")]
             let outcome = self.execute_mutation_command(store, command);
-            #[cfg(not(feature = "test-faults"))]
-            let reconciliation = self
-                .storage
-                .reconcile_draft_mutation_staging_command(store, prepared)?;
-            #[cfg(feature = "test-faults")]
             let reconciliation = if prepared.target_head().begin().writer_admission().is_some() {
                 self.storage
                     .reconcile_draft_mutation_staging_command_outcome(store, prepared, outcome)?
@@ -464,50 +445,6 @@ impl SyndicComposerHost {
             }
         }
         Ok(StagingCommandResult::Source)
-    }
-
-    pub(super) fn run_build_command(
-        &mut self,
-        store: &HomeStore,
-        pending: &mut ComposerHostMutationCoordinator,
-        prepared: &PreparedDraftPieceEditV1,
-        contribution: beryl_home_store::MutationContribution,
-    ) -> Result<BuildCommandResult, ComposerHostError> {
-        let mut command = HomeCommand::new(store.home_revision()?);
-        command.add(contribution)?;
-        let outcome = self.execute_mutation_command(store, command);
-        if let CommandOutcome::Indeterminate { reconciliation, .. } = outcome {
-            let handle = reconciliation.install_and_handle();
-            let _ = store.reconcile(&handle)?;
-        }
-        let terminal_ordinal = prepared
-            .header()
-            .fragment_count()
-            .checked_add(1)
-            .ok_or(ComposerHostError::MutationMalformed)?;
-        let status = self.storage.draft_piece_operation_status_page(
-            store,
-            prepared,
-            terminal_ordinal,
-            &[],
-        )?;
-        match status {
-            DraftPieceOperationVerificationV1::More { .. } => {
-                Err(ComposerHostError::MutationMalformed)
-            }
-            DraftPieceOperationVerificationV1::Status(
-                DraftPieceOperationStatusV1::Open(build)
-                | DraftPieceOperationStatusV1::Complete(build),
-            ) => Ok(BuildCommandResult::Pending(build.progress_receipt())),
-            DraftPieceOperationVerificationV1::Status(DraftPieceOperationStatusV1::Settled(
-                settlement,
-            )) => Ok(BuildCommandResult::Terminal(
-                self.finish_build_settlement(pending, settlement)?,
-            )),
-            DraftPieceOperationVerificationV1::Status(
-                DraftPieceOperationStatusV1::Absent | DraftPieceOperationStatusV1::Collision(_),
-            ) => Err(ComposerHostError::MutationMalformed),
-        }
     }
 
     fn execute_mutation_command(

@@ -1,5 +1,9 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "notice_mount/composer_feedback.rs"]
+mod composer_feedback;
+#[path = "notice_mount/mutation_completion.rs"]
+mod mutation_completion;
 #[path = "pending_composer_activation/support.rs"]
 mod composer_support;
 #[path = "main_window_creation/support.rs"]
@@ -8,6 +12,8 @@ mod creation_support;
 mod home_support;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[path = "syndic_composer_history/support.rs"]
+mod mutation_support;
 #[path = "notice_mount/support.rs"]
 mod support;
 
@@ -442,7 +448,7 @@ fn current_command_forwards_once_without_dismissal_and_stale_routes_are_rejected
 #[gpui::test]
 fn two_windows_and_retired_owner_keep_exact_notice_routes_isolated(cx: &mut gpui::TestAppContext) {
     let mounted = support::mount(cx, 51);
-    let second = support::activate_second(&mounted, cx);
+    let second = support::mount_second(&mounted, cx);
     let first_ingress = support::ingress(mounted.window, cx);
     let second_ingress = support::ingress(second, cx);
     let first_window = support::window_id(mounted.window, cx);

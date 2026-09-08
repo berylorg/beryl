@@ -1,16 +1,10 @@
 # Scope
 
-The Operator authorizes the reviewed orchestration-efficiency changes: Astra/medium as the main
-default, Terra workers, conditional delegation and bounded evidence/verification overhead, without
-introducing Sol. Also disable Cargo incremental compilation for Beryl and local dependencies under
-the root [technology decisions](design.md#implementation-technology). Preserve all required
-acceptance checks and independent-review boundaries. Product development remains paused.
-
-The Operator prioritizes permanent LLVM linking and disabling normal-build debug information across Beryl's
-resolved local dependency graph, with opt-in debugging, under the root
-[technology decisions](design.md#implementation-technology). Investigate Serena cache controls
-and audit the previous memory exhaustion separately. Marker acceptance remains paused during
-this tooling work; its successful 145-case diagnostic run is retained evidence.
+Production marker admission has passed local acceptance with the accepted LLVM, one-job,
+no-normal-debug and nonincremental settings under the root
+[technology decisions](design.md#implementation-technology). The next boundary is canonical widget
+publication and pinning, which requires explicit Operator authorization below. Preserve required
+checks and independent review while using conditional delegation and bounded evidence.
 
 Keep GUI thread switching clean without overengineering. The Operator now authorizes the two
 reported non-GUI corrections: marker admission and healthy scheduler-conflict handling. Keep each
@@ -45,43 +39,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 349: Disable Cargo Incremental Compilation (finished)
+# Phase 329: Connect Production Marker Admission (finished)
 
-Accepted `build.incremental = false` in Beryl's tracked Cargo configuration and the shared local
-parent configuration for independent sibling/nested checkouts. Both parse; inspected local files
-and process environment contain no overriding setting. Locked canonical/local metadata pass and
-both lockfiles retain their hashes. The serialized guarded local app check passed in 28.49s;
-27 compiler invocations, including Beryl and every local dependency workspace, contained no
-incremental flag. Peak guarded commitment was 1.28 GiB; the root was reaped with no remaining job
-members. Shared artifacts remain intact; net SSD-write savings are unmeasured.
-
-The preceding orchestration changes are accepted: Astra/medium default, Terra workers,
-conditional delegation, compact evidence and preserved required reviews. Canonical AIPM and
-installed Beryl skill copies passed validation and match. [ENV.md](../ENV.md) records local Cargo
-inheritance and model-default override behavior. Product development remains paused below.
-
-# Phase 329: Connect Production Marker Admission (pending)
-
-All production marker-admission prerequisites are accepted, including mapped build frontiers,
-authenticated terminal cleanup and the bounded settlement-stack correction. The reviewed app
-composition and Notifications contribution are implemented; finish their joint acceptance under
-the [app composer contract](../crates/beryl-app/doc/design-catalog-and-composer.md#edit-marker-and-candidate-adaptation)
-and [feature reconciliation rules](features/composer/design.md#durable-mutation-reconciliation).
-The [admission record](failures/composer-marker-admission.md) preserves the earlier findings.
-
-Run the complete focused app set on the accepted storage correction: composer lifecycle, public
-marker evidence, mounted composer, slot, notices, pending activation, history, mutations and
-publication. Preserve exact marker, candidate/root/history, cancellation, noncommit generation,
-typed feedback, late-flight and disposal assertions. Repeat the isolated production app check with
-the reviewed 29-file app composition in documented local dependency mode, and obtain final
-independent acceptance review before the scoped commit. The detached path is reviewed structurally;
-public disposal and mounted lifetime behavior are exercised. No larger test stack substitutes for
-the required ordinary-stack witnesses.
-
-Use existing bounded local producers, replayable propagated cut and the admitted-Asset marker entry
-point. Mounted clipboard image decoding and large/rich paste remain the separate clipboard/image-assets
-checkpoint. Broader process-provider work remains deferred. Canonical dependency publication and
-pinning remain Phase 344; the formal old widget pin cannot compile the new evidence/restart APIs.
+Accepted the production evidence/admission composition, exact retained mutation custody and
+Notifications feedback, including unavailable build and committed-presentation failures. All 156
+distinct focused cases passed on ordinary stacks, and the isolated 30-file production app check
+passed with the accepted storage correction and local dependencies. Independent review found no
+remaining blocking issue. The [admission record](failures/composer-marker-admission.md#evidence-and-status)
+preserves evidence and structural-coverage limits; canonical publication remains below.
 
 # Phase 344: Finalize Canonical Marker Dependency Revision (pending)
 
@@ -90,6 +55,11 @@ accepted widget revision, update Beryl's formal pin and canonical lockfile, and 
 canonical metadata plus the focused production app check. Refresh semantic navigation only after
 the validated Cargo model passes. This boundary follows the local-development workflow in
 [ENV.md](../ENV.md); it does not activate deferred process-provider work.
+
+Blocked on explicit publication authorization: accepted widget commit
+`5f2f272b71666b56f990a1d2ee15e83219a05c9e` is ready for `gpui-text-input` origin/main. Read-only
+remote verification still reports `fc17c5738c35350e58e32437cdae74e28ebc31af`, matching Beryl's
+formal pin. No dependency push or canonical pin change has been performed.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 

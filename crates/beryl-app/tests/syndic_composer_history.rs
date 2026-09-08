@@ -2,6 +2,8 @@
 
 #[path = "syndic_composer_host/support.rs"]
 mod fixture_support;
+#[path = "syndic_composer_history/fresh_marker.rs"]
+mod fresh_marker;
 #[path = "syndic_composer_history/support.rs"]
 mod support;
 
@@ -23,19 +25,19 @@ use support::*;
 #[test]
 fn sequential_undo_redo_branching_and_fresh_activation_use_compact_durable_authority() {
     let (home, store, storage, thread) = fixture("sequence", 41);
-    let (mut host, empty) = activated(storage, &store, thread, 42, 43);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 42, 43);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
 
     let undone = select_history(&mut host, &store, ab, 3, MutationKind::Undo);
-    assert_eq!(candidate_text(storage, &store, undone), b"a");
+    assert_eq!(candidate_text(storage.clone(), &store, undone), b"a");
     assert!(undone.range_history_frontier().redo_available);
     let redone = select_history(&mut host, &store, undone, 4, MutationKind::Redo);
-    assert_eq!(candidate_text(storage, &store, redone), b"ab");
+    assert_eq!(candidate_text(storage.clone(), &store, redone), b"ab");
 
     let undone = select_history(&mut host, &store, redone, 5, MutationKind::Undo);
     let branched = commit_text(&mut host, &store, undone, 6, 1, 1, "c", 2, 1);
-    assert_eq!(candidate_text(storage, &store, branched), b"ac");
+    assert_eq!(candidate_text(storage.clone(), &store, branched), b"ac");
     assert!(!branched.range_history_frontier().redo_available);
     let rejected = history_intent(branched, 7, MutationKind::Redo, position(2));
     host.begin_history_selection(&store, branched, rejected)
@@ -48,13 +50,13 @@ fn sequential_undo_redo_branching_and_fresh_activation_use_compact_durable_autho
     assert_eq!(host.binding(), Some(branched));
 
     host.dispose_composer_service(&store).unwrap();
-    host = SyndicComposerHost::new(storage);
+    host = SyndicComposerHost::new(storage.clone());
     let fresh = reactivate(&mut host, &store, thread, 44, 45);
-    assert_eq!(candidate_text(storage, &store, fresh), b"");
+    assert_eq!(candidate_text(storage.clone(), &store, fresh), b"");
     drop(store);
     let (store, storage) = reopen(&home);
-    let (mut restarted, fresh) = activated(storage, &store, thread, 46, 47);
-    assert_eq!(candidate_text(storage, &store, fresh), b"");
+    let (mut restarted, fresh) = activated(storage.clone(), &store, thread, 46, 47);
+    assert_eq!(candidate_text(storage.clone(), &store, fresh), b"");
     assert!(!fresh.range_history_frontier().undo_available);
     restarted.dispose_composer_service(&store).unwrap();
     assert!(restarted.binding().is_none());
@@ -63,7 +65,7 @@ fn sequential_undo_redo_branching_and_fresh_activation_use_compact_durable_autho
 #[test]
 fn five_outcomes_pre_admission_cancel_and_candidate_drift_preserve_exact_live_state() {
     let (_home, store, storage, thread) = fixture("outcomes", 51);
-    let (mut host, empty) = activated(storage, &store, thread, 52, 53);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 52, 53);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
 
@@ -84,7 +86,7 @@ fn five_outcomes_pre_admission_cancel_and_candidate_drift_preserve_exact_live_st
     host.test_arm_history_before_execute_fault(move |store, storage| {
         direct_adopt(
             store,
-            storage,
+            storage.clone(),
             DraftHistoricalRootSelectionIntentV1::new(
                 ab.candidate(),
                 operation_id(400),
@@ -99,7 +101,7 @@ fn five_outcomes_pre_admission_cancel_and_candidate_drift_preserve_exact_live_st
     );
     assert_eq!(host.binding(), Some(ab));
 
-    let (mut host, current) = activated(storage, &store, thread, 54, 55);
+    let (mut host, current) = activated(storage.clone(), &store, thread, 54, 55);
     let current = commit_text(&mut host, &store, current, 5, 0, 0, "x", 1, 1);
     let error = history_intent(current, 6, MutationKind::Undo, position(1));
     host.begin_history_selection(&store, current, error)
@@ -142,7 +144,7 @@ fn five_outcomes_pre_admission_cancel_and_candidate_drift_preserve_exact_live_st
 #[test]
 fn identical_retry_replays_pre_admission_cancel_without_reissuing_adoption() {
     let (_home, store, storage, thread) = fixture("cancel_replay", 131);
-    let (mut host, empty) = activated(storage, &store, thread, 132, 133);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 132, 133);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
     let intent = history_intent(ab, 3, MutationKind::Undo, position(2));
@@ -165,14 +167,15 @@ fn identical_retry_replays_pre_admission_cancel_without_reissuing_adoption() {
     );
     assert_eq!(host.binding(), Some(ab));
     assert_eq!(host.binding().unwrap().range_history_frontier(), frontier);
-    assert_eq!(candidate_text(storage, &store, ab), b"ab");
+    assert_eq!(candidate_text(storage.clone(), &store, ab), b"ab");
     assert_eq!(host.settlement_custody_in_use(), 0);
 }
 
 #[test]
 fn service_replacement_cuts_late_history_completion_and_custody_exactly() {
     let (_home, store, storage, thread) = fixture("lifecycle", 61);
-    let mut host = SyndicComposerHost::with_settlement_custody_capacity(storage, NonZeroUsize::MIN);
+    let mut host =
+        SyndicComposerHost::with_settlement_custody_capacity(storage.clone(), NonZeroUsize::MIN);
     let empty = reactivate(&mut host, &store, thread, 62, 63);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let intent = history_intent(a, 2, MutationKind::Undo, position(1));
@@ -183,7 +186,7 @@ fn service_replacement_cuts_late_history_completion_and_custody_exactly() {
         host.execute_history_selection(&store, intent.key(), &CommandCancellation::new()),
         Err(ComposerHostError::HistoryNotPending)
     ));
-    host = SyndicComposerHost::with_settlement_custody_capacity(storage, NonZeroUsize::MIN);
+    host = SyndicComposerHost::with_settlement_custody_capacity(storage.clone(), NonZeroUsize::MIN);
     let replacement = reactivate(&mut host, &store, thread, 64, 65);
     assert_eq!(host.binding(), Some(replacement));
     assert_eq!(host.settlement_custody_in_use(), 0);
@@ -204,7 +207,7 @@ fn service_replacement_cuts_late_history_completion_and_custody_exactly() {
 #[test]
 fn committed_postread_failure_rebinds_once_and_retains_fail_closed_custody() {
     let (_home, store, storage, thread) = fixture("postread", 71);
-    let (mut host, empty) = activated(storage, &store, thread, 72, 73);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 72, 73);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
     let intent = history_intent(ab, 3, MutationKind::Undo, position(2));
@@ -215,7 +218,7 @@ fn committed_postread_failure_rebinds_once_and_retains_fail_closed_custody() {
             .add(
                 syndic_storage::test_faults::delete_draft_piece_immutable_record(
                     store,
-                    storage,
+                    &storage,
                     a.root(),
                     DraftPieceImmutableDeletion::Root,
                 ),
@@ -248,13 +251,34 @@ fn committed_postread_failure_rebinds_once_and_retains_fail_closed_custody() {
 
 #[test]
 fn historical_before_all_and_after_all_positions_hydrate_one_exact_neighbor() {
-    let (_home, store, storage, thread) = fixture("before_all", 81);
-    let (mut host, empty) = activated(storage, &store, thread, 82, 83);
-    let (with_marker, before, after) = insert_marker(&mut host, &store, empty, 1, false);
-    let without_marker = remove_marker(&mut host, &store, with_marker, 2, before, after, before);
-    let page = storage
+    let fixture = fresh_marker::fixture("before_all", 81);
+    let asset = fresh_marker::publish_image_asset(
+        &fixture.store,
+        fixture.assets.clone(),
+        b"before-all-image",
+    );
+    let (mut host, empty) = fresh_marker::activate(
+        fixture.storage.clone(),
+        &fixture.store,
+        fixture.thread,
+        82,
+        83,
+    );
+    let (with_marker, before, after) =
+        fresh_marker::admit_fresh_marker(&fixture, &mut host, empty, 1, asset, false);
+    let without_marker = remove_marker(
+        &mut host,
+        &fixture.store,
+        with_marker,
+        2,
+        before,
+        after,
+        before,
+    );
+    let page = fixture
+        .storage
         .draft_piece_marker_demand(
-            &store,
+            &fixture.store,
             with_marker.root(),
             DraftPieceMarkerDemandV1::new(
                 DraftPieceMarkerScopeV1::ExactAnchor(0),
@@ -266,28 +290,73 @@ fn historical_before_all_and_after_all_positions_hydrate_one_exact_neighbor() {
         )
         .unwrap();
     assert_eq!(page.markers().len(), 1, "{page:?}");
-    let intent = history_intent(without_marker, 3, MutationKind::Undo, position(0));
-    host.begin_history_selection(&store, without_marker, intent)
-        .unwrap();
-    let RangeHistoryOutcome::Committed(commit) = host
-        .execute_history_selection(&store, intent.key(), &CommandCancellation::new())
+    let marker = page.markers()[0].marker();
+    assert_eq!(
+        marker.marker_id(),
+        beryl_model::SyndicDraftMarkerId::from_bytes(fresh_marker::marker_id().get().to_be_bytes())
+    );
+    assert_eq!(marker.order_key(), 1);
+    assert_eq!(
+        marker.label(),
+        beryl_model::ImageLabelOrdinal::new(1).unwrap()
+    );
+    let protection = fixture
+        .storage
+        .draft_image_label_protection_head(
+            &fixture.store,
+            fixture.thread,
+            syndic_storage::SyndicPointReadLimit::new(65_536).unwrap(),
+        )
         .unwrap()
-    else {
-        panic!("before-all history did not commit")
+        .expect("fresh image admission must create a protection head");
+    let maximum = with_marker
+        .root()
+        .marker_commitment()
+        .maximum_image_label()
+        .expect("fresh marker root must carry its image label");
+    assert!(protection.protected_maximum().contains(maximum));
+    let intent = history_intent(without_marker, 3, MutationKind::Undo, position(0));
+    host.begin_history_selection(&fixture.store, without_marker, intent)
+        .unwrap();
+    let outcome = host
+        .execute_history_selection(&fixture.store, intent.key(), &CommandCancellation::new())
+        .unwrap();
+    let RangeHistoryOutcome::Committed(commit) = outcome else {
+        panic!("before-all history did not commit: {outcome:?}")
     };
     assert_eq!(commit.caret(), before);
     assert_eq!(commit.selection().anchor, before);
     assert_eq!(commit.selection().head, before);
 
-    let (_home, store, storage, thread) = fixture("after_all", 84);
-    let (mut host, empty) = activated(storage, &store, thread, 85, 86);
-    let (with_marker, before, after) = insert_marker(&mut host, &store, empty, 1, true);
-    let without_marker = remove_marker(&mut host, &store, with_marker, 2, before, after, after);
+    let fixture = fresh_marker::fixture("after_all", 84);
+    let asset = fresh_marker::publish_image_asset(
+        &fixture.store,
+        fixture.assets.clone(),
+        b"after-all-image",
+    );
+    let (mut host, empty) = fresh_marker::activate(
+        fixture.storage.clone(),
+        &fixture.store,
+        fixture.thread,
+        85,
+        86,
+    );
+    let (with_marker, before, after) =
+        fresh_marker::admit_fresh_marker(&fixture, &mut host, empty, 1, asset, true);
+    let without_marker = remove_marker(
+        &mut host,
+        &fixture.store,
+        with_marker,
+        2,
+        before,
+        after,
+        after,
+    );
     let intent = history_intent(without_marker, 3, MutationKind::Undo, position(0));
-    host.begin_history_selection(&store, without_marker, intent)
+    host.begin_history_selection(&fixture.store, without_marker, intent)
         .unwrap();
     let RangeHistoryOutcome::Committed(commit) = host
-        .execute_history_selection(&store, intent.key(), &CommandCancellation::new())
+        .execute_history_selection(&fixture.store, intent.key(), &CommandCancellation::new())
         .unwrap()
     else {
         panic!("after-all history did not commit")
@@ -300,7 +369,7 @@ fn historical_before_all_and_after_all_positions_hydrate_one_exact_neighbor() {
 #[test]
 fn post_admission_cancellation_cannot_override_the_committed_settlement() {
     let (_home, store, storage, thread) = fixture("late_cancel", 91);
-    let (mut host, empty) = activated(storage, &store, thread, 92, 93);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 92, 93);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ab = commit_text(&mut host, &store, a, 2, 1, 1, "b", 2, 1);
     let intent = history_intent(ab, 3, MutationKind::Undo, position(2));
@@ -315,7 +384,7 @@ fn post_admission_cancellation_cannot_override_the_committed_settlement() {
     ));
     assert!(cancellation.is_cancelled());
     assert_eq!(
-        candidate_text(storage, &store, host.binding().unwrap()),
+        candidate_text(storage.clone(), &store, host.binding().unwrap()),
         b"a"
     );
 }
@@ -323,7 +392,7 @@ fn post_admission_cancellation_cannot_override_the_committed_settlement() {
 #[test]
 fn occupied_disagreeing_operation_is_terminal_unavailable_not_widget_error() {
     let (_home, store, storage, thread) = fixture("collision", 101);
-    let (mut host, empty) = activated(storage, &store, thread, 102, 103);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let DraftHistoricalRootSelectionV1::Prepared(stale) = storage
         .prepare_draft_historical_root_selection(
@@ -367,10 +436,23 @@ fn occupied_disagreeing_operation_is_terminal_unavailable_not_widget_error() {
 #[test]
 fn missing_transition_and_frontier_fail_without_mutating_the_live_binding() {
     let (_home, store, storage, thread) = fixture("missing_transition", 111);
-    let (mut host, empty) = activated(storage, &store, thread, 112, 113);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
+    let Some(syndic_storage::DraftPieceReconciledCommandV1::Terminal(
+        syndic_storage::DraftPieceTransactionOutcomeV1::Committed(
+            syndic_storage::DraftPieceSettlementProofV1::Settlement(settlement),
+        ),
+    )) = host.mutation_build_diagnostics().unwrap().result
+    else {
+        panic!("transition fixture did not retain its committed settlement")
+    };
+    let syndic_storage::DraftPieceSettlementClosureV1::Committed(adoption) = settlement.closure()
+    else {
+        panic!("transition fixture did not retain its committed adoption")
+    };
+    let transition = adoption.transition().key();
     let intent = history_intent(a, 2, MutationKind::Undo, position(1));
-    let DraftHistoricalRootSelectionV1::Prepared(prepared) = storage
+    let DraftHistoricalRootSelectionV1::Prepared(_prepared) = storage
         .prepare_draft_historical_root_selection(
             &store,
             DraftHistoricalRootSelectionIntentV1::new(
@@ -388,10 +470,8 @@ fn missing_transition_and_frontier_fail_without_mutating_the_live_binding() {
         .add(
             syndic_storage::test_faults::delete_draft_edit_history_record(
                 &store,
-                storage,
-                syndic_storage::test_faults::DraftEditHistoryRecordDeletion::Transition(
-                    prepared.request().selected_transition().key(),
-                ),
+                storage.clone(),
+                syndic_storage::test_faults::DraftEditHistoryRecordDeletion::Transition(transition),
             ),
         )
         .unwrap();
@@ -408,7 +488,7 @@ fn missing_transition_and_frontier_fail_without_mutating_the_live_binding() {
     assert_eq!(host.binding(), Some(a));
 
     let (_home, store, storage, thread) = fixture("missing_frontier", 114);
-    let (mut host, empty) = activated(storage, &store, thread, 115, 116);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 115, 116);
     let a = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let intent = history_intent(a, 2, MutationKind::Undo, position(1));
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -416,7 +496,7 @@ fn missing_transition_and_frontier_fail_without_mutating_the_live_binding() {
         .add(
             syndic_storage::test_faults::delete_draft_edit_history_frontier(
                 &store,
-                storage,
+                storage.clone(),
                 a.history().key(),
             ),
         )
@@ -437,7 +517,7 @@ fn missing_transition_and_frontier_fail_without_mutating_the_live_binding() {
 #[test]
 fn bounded_retention_evicts_old_undo_transitions_without_unbounded_host_custody() {
     let (_home, store, storage, thread) = fixture_with_history_budget("retention", 121, 4_096);
-    let (mut host, mut binding) = activated(storage, &store, thread, 122, 123);
+    let (mut host, mut binding) = activated(storage.clone(), &store, thread, 122, 123);
     const EDITS: u64 = 32;
     for operation in 1..=EDITS {
         let offset = binding.logical_extent().logical_utf8_bytes();

@@ -265,10 +265,7 @@ pub fn run_transaction(
         else {
             break;
         };
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

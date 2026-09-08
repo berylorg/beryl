@@ -53,6 +53,25 @@ ranges needed for the seeded caret, selection, viewport, and overscan before pub
 coherent restored editor. Recovery controls remain outside the canonical `conversation composer`
 widget.
 
+## Composer Mutation Feedback Contribution
+
+The composer mounts no `main-window notice`. It contributes one bounded record for the selected
+composer's exact mutation to the Notifications arbiter, which owns the sole visible notice,
+priority, preemption, capacity, replacement, and dismissal mechanics.
+
+Determinate marker-admission refusals contribute dismissible error records. Operation size refusal
+guides the user to a smaller selection, temporary capacity refusal explains that retry may succeed
+after capacity is released, and storage failure keeps its distinct storage explanation. Dismissal
+does not change the draft or retry the operation; rerendering does not recreate a dismissed record.
+A later distinct operation has its own feedback identity.
+
+Terminal `Unavailable` contributes a persistent bounded explanation with no retry or repair
+command. The composer retains that exact explanation while the selected request remains
+unavailable, including while a higher-priority notice is visible or admission is pending under
+the existing notification capacity policy. Its removal from presentation when the selected
+composer scope ends does not settle, cancel, retry, or release mutation custody. Stale feedback
+cannot attach to a replacement composer. This contribution changes no composer panel geometry.
+
 ## Composer Marker Menu And Image Preview
 
 Mount-into: main-window.overlays

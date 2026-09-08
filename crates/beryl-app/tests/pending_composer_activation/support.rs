@@ -342,6 +342,26 @@ fn append_activation_chunk(
         session.session_id(),
         DraftMutationOperationIdV1::from_bytes([operation; 16]),
     );
+    let active = stage_activation_chunk(storage.clone(), store, session, identity, offset);
+    let prepared = transfer_activation_chunk(storage.clone(), store, &active, identity);
+    advance_activation_chunk(storage.clone(), store, identity);
+    settle_activation_chunk(storage.clone(), store, prepared);
+    match storage
+        .draft_editor_candidate_session(store, session.draft_id(), session.session_id())
+        .unwrap()
+    {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+        other => panic!("activation editor session was not active: {other:?}"),
+    }
+}
+
+fn stage_activation_chunk(
+    storage: SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    session: &DraftEditorCandidateSessionV1,
+    identity: DraftMutationStagingIdentityV1,
+    offset: u64,
+) -> DraftEditorCandidateSessionV1 {
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, session, offset), session)
         .unwrap();
@@ -399,12 +419,21 @@ fn append_activation_chunk(
         store,
         storage.draft_mutation_staging_command(storage.revision(store).unwrap(), finish),
     ));
+    active
+}
+
+fn transfer_activation_chunk(
+    storage: SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    active: &DraftEditorCandidateSessionV1,
+    identity: DraftMutationStagingIdentityV1,
+) -> syndic_storage::PreparedDraftPieceEditV1 {
     let head = storage
         .draft_mutation_staging_head(store, identity)
         .unwrap()
         .unwrap();
     let transfer = storage
-        .prepare_draft_mutation_staging_transfer(&head, &active)
+        .prepare_draft_mutation_staging_transfer(&head, active)
         .unwrap();
     let prepared = transfer.prepared_edit().clone();
     committed(execute(
@@ -431,6 +460,14 @@ fn append_activation_chunk(
         store,
         storage.stage_next_durable_draft_piece_window(storage.revision(store).unwrap(), window),
     ));
+    prepared
+}
+
+fn advance_activation_chunk(
+    storage: SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+) {
     let mut settled = false;
     for _ in 0..16_384 {
         let Some(advance) = storage
@@ -445,26 +482,23 @@ fn append_activation_chunk(
             settled = true;
             break;
         };
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     assert!(
         settled,
         "activation builder exceeded its finite advance bound"
     );
+}
+
+fn settle_activation_chunk(
+    storage: SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    prepared: syndic_storage::PreparedDraftPieceEditV1,
+) {
     committed(execute(
         store,
         storage.settle_draft_piece_edit(storage.revision(store).unwrap(), prepared),
     ));
-    match storage
-        .draft_editor_candidate_session(store, session.draft_id(), session.session_id())
-        .unwrap()
-    {
-        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
-        other => panic!("activation editor session was not active: {other:?}"),
-    }
 }
 
 fn prepare_page(

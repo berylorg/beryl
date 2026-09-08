@@ -27,6 +27,8 @@ use syndic_storage::{
     SyndicTimestamp,
 };
 
+#[path = "syndic_composer_publication/admitted_markers.rs"]
+mod admitted_markers;
 #[path = "syndic_composer_host/support.rs"]
 mod base;
 #[path = "syndic_composer_history/support.rs"]
@@ -34,15 +36,13 @@ mod composer;
 #[path = "syndic_composer_publication/support.rs"]
 mod publication;
 
+use admitted_markers::{insert_later_marker, insert_published_marker, insert_two_markers};
 use base::{current, fixture};
 use composer::{
     activated, commit_text, direct_adopt, insert_marker, operation_id, remove_marker,
     select_history,
 };
-use publication::{
-    authority, insert_later_marker, insert_published_marker, insert_text_after_published_marker,
-    insert_two_markers, publish_image_asset, service,
-};
+use publication::{authority, insert_text_after_published_marker, publish_image_asset, service};
 
 trait LifecyclePublicationSettlement {
     fn drive_publication(
@@ -175,15 +175,15 @@ fn settle_publication_step(
 fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_custody() {
     let (_home, mut store, storage, thread) = fixture("unchanged-empty", 11);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 12, 13);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 12, 13);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
 
     let cancellation = CommandCancellation::new();
     let old = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         None,
@@ -203,7 +203,7 @@ fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_c
     let current_ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(3),
         None,
@@ -221,7 +221,9 @@ fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_c
         ComposerHostPublicationCompletion::Published
     );
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(storage.clone(), &store, thread)
+            .draft()
+            .piece_root(),
         dirty.root()
     );
     assert_eq!(seals.diagnostics().current_flights(), 0);
@@ -231,25 +233,25 @@ fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_c
 fn changed_nonempty_streams_multiple_pages_and_later_edit_remains_dirty() {
     let (_home, mut store, storage, thread) = fixture("changed-nonempty", 21);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 22, 23);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 22, 23);
     let marker_assets = [
-        publish_image_asset(&store, assets, b"marker-a"),
-        publish_image_asset(&store, assets, b"marker-b"),
+        publish_image_asset(&store, assets.clone(), b"marker-a"),
+        publish_image_asset(&store, assets.clone(), b"marker-b"),
     ];
-    let captured_binding = insert_two_markers(&mut host, &store, empty, 10, marker_assets);
+    let captured_binding = insert_two_markers(&mut host, &store, &assets, empty, 10, marker_assets);
     let cancellation = CommandCancellation::new();
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         Some(authority(24)),
         SyndicTimestamp::from_unix_millis(20),
         &cancellation,
     ));
-    let later = insert_later_marker(&mut host, &store, captured_binding, 12);
+    let later = insert_later_marker(&mut host, &store, &assets, captured_binding, 12);
     let newest = insert_text_after_published_marker(&mut host, &store, later, 13);
     let mut progress = 0;
     loop {
@@ -288,17 +290,18 @@ fn changed_nonempty_streams_multiple_pages_and_later_edit_remains_dirty() {
 fn marker_changing_undo_source_survives_two_later_candidates() {
     let (_home, mut store, storage, thread) = fixture("historical-undo", 25);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 26, 27);
-    let asset = publish_image_asset(&store, assets, b"historical-undo-marker");
-    let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 26, 27);
+    let asset = publish_image_asset(&store, assets.clone(), b"historical-undo-marker");
+    let (marker, before, after) =
+        insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let removed = remove_marker(&mut host, &store, marker, 2, before, after, after);
     let captured_binding = select_history(&mut host, &store, removed, 3, MutationKind::Undo);
     assert_eq!(captured_binding.root(), marker.root());
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(4),
         Some(authority(28)),
@@ -308,7 +311,13 @@ fn marker_changing_undo_source_survives_two_later_candidates() {
     let later = insert_text_after_published_marker(&mut host, &store, captured_binding, 5);
     let newest = commit_text(&mut host, &store, later, 6, 1, 1, "y", 2, 1);
     publish_ticket(&mut host, &store, ticket);
-    assert_captured_published_and_newest_dirty(storage, &store, thread, captured_binding, newest);
+    assert_captured_published_and_newest_dirty(
+        storage.clone(),
+        &store,
+        thread,
+        captured_binding,
+        newest,
+    );
     assert!(host.is_dirty());
     assert!(
         assets
@@ -325,17 +334,17 @@ fn marker_changing_undo_source_survives_two_later_candidates() {
 fn marker_changing_redo_source_survives_two_later_candidates() {
     let (_home, mut store, storage, thread) = fixture("historical-redo", 29);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 30, 31);
-    let asset = publish_image_asset(&store, assets, b"historical-redo-marker");
-    let (marker, _, _) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 30, 31);
+    let asset = publish_image_asset(&store, assets.clone(), b"historical-redo-marker");
+    let (marker, _, _) = insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let reverted = select_history(&mut host, &store, marker, 2, MutationKind::Undo);
     let captured_binding = select_history(&mut host, &store, reverted, 3, MutationKind::Redo);
     assert_eq!(captured_binding.root(), marker.root());
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(4),
         Some(authority(32)),
@@ -347,7 +356,13 @@ fn marker_changing_redo_source_survives_two_later_candidates() {
     let later = insert_text_after_published_marker(&mut host, &store, captured_binding, 5);
     let newest = commit_text(&mut host, &store, later, 6, 1, 1, "y", 2, 1);
     publish_ticket(&mut host, &store, ticket);
-    assert_captured_published_and_newest_dirty(storage, &store, thread, captured_binding, newest);
+    assert_captured_published_and_newest_dirty(
+        storage.clone(),
+        &store,
+        thread,
+        captured_binding,
+        newest,
+    );
     assert!(host.is_dirty());
     assert!(assets.owner_head(&store, owner).unwrap().is_some());
 }
@@ -356,14 +371,14 @@ fn marker_changing_redo_source_survives_two_later_candidates() {
 fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
     let (_home, mut store, storage, thread) = fixture("empty-transition", 31);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 32, 33);
-    let asset = publish_image_asset(&store, assets, b"marker-transition");
-    let (marker, _, _) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
+    let asset = publish_image_asset(&store, assets.clone(), b"marker-transition");
+    let (marker, _, _) = insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let marker_ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         Some(authority(34)),
@@ -386,7 +401,7 @@ fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(4),
         None,
@@ -408,14 +423,15 @@ fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
 fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
     let (_home, mut store, storage, thread) = fixture("changed-empty", 36);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 37, 38);
-    let asset = publish_image_asset(&store, assets, b"marker-removal");
-    let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 37, 38);
+    let asset = publish_image_asset(&store, assets.clone(), b"marker-removal");
+    let (marker, before, after) =
+        insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let marker_ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         Some(authority(39)),
@@ -435,9 +451,11 @@ fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
     let owner = AssetOwner::CurrentDraft(marker.candidate().draft_id());
     assert!(assets.owner_head(&store, owner).unwrap().is_some());
 
-    publish_changed(&mut host, &store, assets, &seals, 100, 40);
+    publish_changed(&mut host, &store, assets.clone(), &seals, 100, 40);
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(storage.clone(), &store, thread)
+            .draft()
+            .piece_root(),
         empty_again.root()
     );
     assert!(assets.owner_head(&store, owner).unwrap().is_none());
@@ -447,8 +465,8 @@ fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
 fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
     let (_home, mut store, storage, thread) = fixture("atomic-stale-nonempty", 112);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -457,13 +475,14 @@ fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 113, 114);
-    let asset = publish_image_asset(&store, assets, b"atomic-stale-nonempty");
-    let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 113, 114);
+    let asset = publish_image_asset(&store, assets.clone(), b"atomic-stale-nonempty");
+    let (marker, before, after) =
+        insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(115),
         Some(authority(116)),
@@ -483,7 +502,7 @@ fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
     );
     host.test_arm_publication_before_execute_fault(move |store, storage| {
         assert!(matches!(
-            publish_lower(store, storage, request),
+            publish_lower(store, storage.clone(), request),
             syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
         ));
     });
@@ -494,21 +513,22 @@ fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
         ComposerHostPublicationCompletion::Superseded
     );
     assert!(assets.owner_head(&store, owner).unwrap().is_none());
-    assert_publication_head_is_coherent(storage, &store, thread, winner);
+    assert_publication_head_is_coherent(storage.clone(), &store, thread, winner);
 }
 
 #[test]
 fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
     let (_home, mut store, storage, thread) = fixture("atomic-stale-empty", 118);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 119, 120);
-    let asset = publish_image_asset(&store, assets, b"atomic-stale-empty");
-    let (marker, before, after) = insert_published_marker(&mut host, &store, empty, 1, asset);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 119, 120);
+    let asset = publish_image_asset(&store, assets.clone(), b"atomic-stale-empty");
+    let (marker, before, after) =
+        insert_published_marker(&mut host, &store, &assets, empty, 1, asset);
     let marker_ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(121),
         Some(authority(122)),
@@ -518,7 +538,7 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
     let _empty_again = remove_marker(&mut host, &store, marker, 2, before, after, after);
     publish_ticket(&mut host, &store, marker_ticket);
     let empty_again = host.binding().unwrap();
-    let durable = current(storage, &store, thread);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -530,7 +550,7 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(123),
         Some(authority(124)),
@@ -552,7 +572,7 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
     };
     direct_adopt(
         &store,
-        storage,
+        storage.clone(),
         DraftHistoricalRootSelectionIntentV1::new(
             syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&session),
             operation_id(125),
@@ -582,7 +602,7 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
         SyndicTimestamp::from_unix_millis(126),
     );
     assert!(matches!(
-        publish_lower(&store, storage, request),
+        publish_lower(&store, storage.clone(), request),
         syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
     assert_eq!(
@@ -590,7 +610,7 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
         ComposerHostPublicationCompletion::Superseded
     );
     assert_eq!(assets.owner_head(&store, owner).unwrap().unwrap(), head);
-    let durable = current(storage, &store, thread);
+    let durable = current(storage.clone(), &store, thread);
     let session = storage
         .draft_editor_candidate_session(
             &store,
@@ -613,14 +633,14 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
 fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
     let (_home, mut store, storage, thread) = fixture("release", 41);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 42, 43);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 42, 43);
     let (dirty, _, _) = insert_marker(&mut host, &store, empty, 1, true);
     assert!(matches!(
         capture_joined_publication(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(2),
             None,
@@ -636,7 +656,7 @@ fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         Some(auth),
@@ -681,13 +701,13 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
     ] {
         let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let seals = service(&store, storage, assets, 1, 1);
-        let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
+        let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+        let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let marker_assets = [
-            publish_image_asset(&store, assets, name.as_bytes()),
-            publish_image_asset(&store, assets, &[seed, seed.wrapping_add(1)]),
+            publish_image_asset(&store, assets.clone(), name.as_bytes()),
+            publish_image_asset(&store, assets.clone(), &[seed, seed.wrapping_add(1)]),
         ];
-        let dirty = insert_two_markers(&mut host, &store, empty, 1, marker_assets);
+        let dirty = insert_two_markers(&mut host, &store, &assets, empty, 1, marker_assets);
         let seed_request = DraftMarkerSealRequestV1::new(
             dirty.root(),
             DraftMarkerSealOperationIdV1::from_bytes([seed.wrapping_add(3); 16]),
@@ -708,7 +728,7 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
         let ticket = captured(capture_joined_publication(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             operation_id(u64::from(seed.wrapping_add(4))),
             Some(authority(seed.wrapping_add(5))),
@@ -716,7 +736,7 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
             &cancellation,
         ));
         assert_eq!(host.test_publication_source_custody_count(), 1);
-        let later = insert_later_marker(&mut host, &store, dirty, 3);
+        let later = insert_later_marker(&mut host, &store, &assets, dirty, 3);
         assert_eq!(host.binding(), Some(later));
         assert!(host.is_dirty());
         if collide_during_release {
@@ -761,7 +781,7 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
             capture_joined_publication(
                 &mut host,
                 &store,
-                assets,
+                assets.clone(),
                 &seals,
                 operation_id(u64::from(seed.wrapping_add(6))),
                 Some(authority(seed.wrapping_add(7))),
@@ -816,8 +836,8 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
     for (name, seed, collide) in [("replay", 51, false), ("collision", 61, true)] {
         let (_home, mut store, storage, thread) = fixture(name, seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let seals = service(&store, storage, assets, 1, 1);
-        let durable = current(storage, &store, thread);
+        let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+        let durable = current(storage.clone(), &store, thread);
         let selector = DraftEditorCurrentSelectorV1::new(
             durable.thread().id(),
             durable.thread().revision(),
@@ -826,14 +846,14 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
             durable.draft().piece_root(),
             durable.draft().history(),
         );
-        let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
+        let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
         let operation = operation_id(u64::from(seed + 3));
         let published_at = SyndicTimestamp::from_unix_millis(60);
         let ticket = captured(capture_joined_publication(
             &mut host,
             &store,
-            assets,
+            assets.clone(),
             &seals,
             operation,
             None,
@@ -853,7 +873,7 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
                 published_at
             },
         );
-        let competing_source = capture_lower_source(&store, storage, competing_request);
+        let competing_source = capture_lower_source(&store, storage.clone(), competing_request);
         let dependent_binding = if collide {
             commit_text(&mut host, &store, dirty, 2, 1, 1, "y", 2, 2)
         } else {
@@ -930,8 +950,8 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
 fn exact_replay_callback_converges_to_a_same_session_later_publication() {
     let (_home, mut store, storage, thread) = fixture("replay-descendant", 111);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -940,7 +960,7 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 112, 113);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let operation = operation_id(2);
     let published_at = SyndicTimestamp::from_unix_millis(111);
@@ -953,11 +973,11 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         published_at,
     );
-    let first_source = capture_lower_source(&store, storage, first_request);
+    let first_source = capture_lower_source(&store, storage.clone(), first_request);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation,
         None,
@@ -967,10 +987,10 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
     let later = commit_text(&mut host, &store, first, 3, 1, 1, "b", 2, 1);
     drive_ticket_ready(&mut host, &store, ticket);
     assert!(matches!(
-        publish_lower_source(&store, storage, first_source, first_request),
+        publish_lower_source(&store, storage.clone(), first_source, first_request),
         syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let published_first = current(storage, &store, thread);
+    let published_first = current(storage.clone(), &store, thread);
     let published_first_selector = DraftEditorCurrentSelectorV1::new(
         published_first.thread().id(),
         published_first.thread().revision(),
@@ -988,10 +1008,10 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(112),
     );
-    let later_source = capture_lower_source(&store, storage, later_request);
+    let later_source = capture_lower_source(&store, storage.clone(), later_request);
     host.test_arm_publication_convergence_read_fault(move |store, storage| {
         assert!(matches!(
-            publish_lower_source(store, storage, later_source, later_request),
+            publish_lower_source(store, storage.clone(), later_source, later_request),
             syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
         ));
     });
@@ -1015,7 +1035,7 @@ fn exact_replay_callback_converges_to_a_same_session_later_publication() {
     assert!(!host.is_unavailable());
     assert_eq!(host.publication_custody_count(), 0);
     assert_eq!(host.test_publication_source_custody_count(), 0);
-    assert_publication_head_is_coherent(storage, &store, thread, converged);
+    assert_publication_head_is_coherent(storage.clone(), &store, thread, converged);
 }
 
 #[test]
@@ -1026,8 +1046,8 @@ fn exact_replay_callback_rejects_a_competing_session_later_publication() {
 fn exact_replay_callback_rejects_a_competing_session_case() {
     let (_home, mut store, storage, thread) = fixture("replay-other-session", 116);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -1036,7 +1056,7 @@ fn exact_replay_callback_rejects_a_competing_session_case() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 117, 118);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 117, 118);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let operation = operation_id(2);
     let published_at = SyndicTimestamp::from_unix_millis(116);
@@ -1049,11 +1069,11 @@ fn exact_replay_callback_rejects_a_competing_session_case() {
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         published_at,
     );
-    let first_source = capture_lower_source(&store, storage, first_request);
+    let first_source = capture_lower_source(&store, storage.clone(), first_request);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation,
         None,
@@ -1062,10 +1082,11 @@ fn exact_replay_callback_rejects_a_competing_session_case() {
     ));
     drive_ticket_ready(&mut host, &store, ticket);
     assert!(matches!(
-        publish_lower_source(&store, storage, first_source, first_request),
+        publish_lower_source(&store, storage.clone(), first_source, first_request),
         syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let competing = publish_competing_text_candidate(storage, &store, thread, 119, 120, 117);
+    let competing =
+        publish_competing_text_candidate(storage.clone(), &store, thread, 119, 120, 117);
     assert_eq!(
         host.execute_publication(&store, ticket).unwrap(),
         ComposerHostPublicationCompletion::DurableBaseConflict
@@ -1079,7 +1100,9 @@ fn exact_replay_callback_rejects_a_competing_session_case() {
         Some(ComposerHostPublicationUnavailable::DurableBaseConflict)
     );
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(storage.clone(), &store, thread)
+            .draft()
+            .piece_root(),
         competing.root()
     );
 }
@@ -1092,8 +1115,8 @@ fn superseded_callback_rejects_a_competing_session_later_publication() {
 fn superseded_callback_rejects_a_competing_session_case() {
     let (_home, mut store, storage, thread) = fixture("superseded-other-session", 121);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -1102,14 +1125,14 @@ fn superseded_callback_rejects_a_competing_session_case() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 122, 123);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 122, 123);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let operation = operation_id(2);
     let published_at = SyndicTimestamp::from_unix_millis(121);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation,
         None,
@@ -1127,12 +1150,13 @@ fn superseded_callback_rejects_a_competing_session_case() {
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(122),
     );
-    let later_source = capture_lower_source(&store, storage, later_request);
+    let later_source = capture_lower_source(&store, storage.clone(), later_request);
     assert!(matches!(
-        publish_lower_source(&store, storage, later_source, later_request),
+        publish_lower_source(&store, storage.clone(), later_source, later_request),
         syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
-    let competing = publish_competing_text_candidate(storage, &store, thread, 124, 125, 123);
+    let competing =
+        publish_competing_text_candidate(storage.clone(), &store, thread, 124, 125, 123);
     assert_eq!(
         host.execute_publication(&store, ticket).unwrap(),
         ComposerHostPublicationCompletion::DurableBaseConflict
@@ -1146,7 +1170,9 @@ fn superseded_callback_rejects_a_competing_session_case() {
         Some(ComposerHostPublicationUnavailable::DurableBaseConflict)
     );
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(storage.clone(), &store, thread)
+            .draft()
+            .piece_root(),
         competing.root()
     );
 }
@@ -1155,8 +1181,8 @@ fn superseded_callback_rejects_a_competing_session_case() {
 fn session_disposal_retains_terminal_publication_custody() {
     let (_home, mut store, storage, thread) = fixture("session-disposed", 70);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -1165,12 +1191,12 @@ fn session_disposal_retains_terminal_publication_custody() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 71, 72);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 71, 72);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(73),
         None,
@@ -1187,7 +1213,7 @@ fn session_disposal_retains_terminal_publication_custody() {
             DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
             SyndicTimestamp::from_unix_millis(74),
         );
-        let prepared = prepare_lower(store, storage, request);
+        let prepared = prepare_lower(store, storage.clone(), request);
         let outcome = base::execute(
             store,
             storage
@@ -1243,8 +1269,8 @@ fn session_disposal_retains_terminal_publication_custody() {
 fn newer_durable_publication_supersedes_only_the_captured_generation() {
     let (_home, mut store, storage, thread) = fixture("superseded", 65);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let durable = current(storage, &store, thread);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
         durable.thread().revision(),
@@ -1253,12 +1279,12 @@ fn newer_durable_publication_supersedes_only_the_captured_generation() {
         durable.draft().piece_root(),
         durable.draft().history(),
     );
-    let (mut host, empty) = activated(storage, &store, thread, 66, 67);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 66, 67);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         None,
@@ -1276,7 +1302,7 @@ fn newer_durable_publication_supersedes_only_the_captured_generation() {
             DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
             SyndicTimestamp::from_unix_millis(66),
         );
-        let prepared = prepare_lower(store, storage, request);
+        let prepared = prepare_lower(store, storage.clone(), request);
         let outcome = base::execute(
             store,
             storage
@@ -1307,13 +1333,13 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
     ] {
         let (_home, mut store, storage, thread) = fixture(name, seed);
         let assets = BerylState::register(&mut store).unwrap().assets();
-        let seals = service(&store, storage, assets, 1, 1);
-        let (mut host, empty) = activated(storage, &store, thread, seed + 1, seed + 2);
+        let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+        let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
-        publish_unchanged(&mut host, &store, assets, &seals, 2);
+        publish_unchanged(&mut host, &store, assets.clone(), &seals, 2);
         let binding = host.binding().unwrap();
         let operation = operation_id(u64::from(seed + 3));
-        let flush = started_release(&mut host);
+        let flush = started_release(&mut host, &store, &assets, &seals);
         assert!(matches!(
             host.capture_flush_disposal(&store, flush, operation, &CommandCancellation::new(),)
                 .unwrap(),
@@ -1365,12 +1391,12 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
 
     let (_home, mut store, storage, thread) = fixture("disposal-stale", 101);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 102, 103);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let _dirty = commit_text(&mut host, &store, empty, 10, 0, 0, "x", 1, 1);
-    publish_unchanged(&mut host, &store, assets, &seals, 11);
+    publish_unchanged(&mut host, &store, assets.clone(), &seals, 11);
     let cancellation = CommandCancellation::new();
-    let stale = started_release(&mut host);
+    let stale = started_release(&mut host, &store, &assets, &seals);
     assert!(matches!(
         host.capture_flush_disposal(&store, stale, operation_id(1), &cancellation)
             .unwrap(),
@@ -1381,7 +1407,7 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
         host.advance_flush(&store, stale).unwrap(),
         ComposerHostFlushAdvance::Unsatisfied(ComposerHostFlushFailure::Cancelled)
     );
-    let current = started_release(&mut host);
+    let current = started_release(&mut host, &store, &assets, &seals);
     assert!(matches!(
         host.capture_flush_disposal(
             &store,
@@ -1407,13 +1433,13 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
     let (_home, mut store, storage, thread, faults) =
         base::fault_fixture("indeterminate-collision", 106);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 107, 108);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 107, 108);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(109),
         None,
@@ -1439,7 +1465,7 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
     };
     direct_adopt(
         &store,
-        storage,
+        storage.clone(),
         DraftHistoricalRootSelectionIntentV1::new(
             syndic_storage::DraftEditorCandidateActivationBindingV1::from_head(&session),
             operation_id(110),
@@ -1461,13 +1487,13 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
 fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
     let (_home, mut store, storage, thread, faults) = base::fault_fixture("indeterminate", 71);
     let assets = BerylState::register(&mut store).unwrap().assets();
-    let seals = service(&store, storage, assets, 1, 1);
-    let (mut host, empty) = activated(storage, &store, thread, 72, 73);
+    let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
+    let (mut host, empty) = activated(storage.clone(), &store, thread, 72, 73);
     let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
     let ticket = captured(capture_joined_publication(
         &mut host,
         &store,
-        assets,
+        assets.clone(),
         &seals,
         operation_id(2),
         None,
@@ -1487,11 +1513,13 @@ fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
         ComposerHostPublicationCompletion::Published
     );
     assert_eq!(
-        current(storage, &store, thread).draft().piece_root(),
+        current(storage.clone(), &store, thread)
+            .draft()
+            .piece_root(),
         host.binding().unwrap().root()
     );
 
-    let flush = started_release(&mut host);
+    let flush = started_release(&mut host, &store, &assets, &seals);
     assert!(matches!(
         host.capture_flush_disposal(&store, flush, operation_id(3), &CommandCancellation::new(),)
             .unwrap(),
@@ -1503,12 +1531,41 @@ fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
     );
 }
 
-fn started_release(host: &mut SyndicComposerHost) -> ComposerHostFlushTicket {
+fn started_release(
+    host: &mut SyndicComposerHost,
+    store: &beryl_home_store::HomeStore,
+    assets: &beryl_state::AssetState,
+    seals: &DraftMarkerSealService,
+) -> ComposerHostFlushTicket {
     match host.begin_flush(ComposerHostFlushPurpose::Release).unwrap() {
         ComposerHostFlushAdmission::Started {
             ticket,
             state: ComposerHostFlushState::DisposalRequired,
         } => ticket,
+        ComposerHostFlushAdmission::Started {
+            ticket,
+            state: ComposerHostFlushState::CaptureRequired,
+        }
+        | ComposerHostFlushAdmission::Joined {
+            ticket,
+            state: ComposerHostFlushState::CaptureRequired,
+        } => {
+            assert!(matches!(
+                host.capture_flush_publication(
+                    store,
+                    ticket,
+                    assets.clone(),
+                    seals,
+                    operation_id(u64::MAX),
+                    None,
+                    SyndicTimestamp::from_unix_millis(0),
+                    &CommandCancellation::new(),
+                )
+                .unwrap(),
+                ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+            ));
+            ticket
+        }
         other => panic!("release flush did not require disposal: {other:?}"),
     }
 }
@@ -1542,7 +1599,7 @@ fn capture_joined_publication(
     match host.capture_flush_publication(
         store,
         flush,
-        assets,
+        assets.clone(),
         seals,
         operation_id,
         marker_authority,
@@ -1570,7 +1627,7 @@ fn publish_changed(
     let ticket = captured(capture_joined_publication(
         host,
         store,
-        assets,
+        assets.clone(),
         seals,
         operation_id(operation),
         Some(authority(authority_seed)),
@@ -1590,7 +1647,7 @@ fn publish_unchanged(
     let ticket = captured(capture_joined_publication(
         host,
         store,
-        assets,
+        assets.clone(),
         seals,
         operation_id(operation),
         None,
@@ -1642,7 +1699,7 @@ fn publish_lower(
     storage: syndic_storage::SyndicStorage,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> syndic_storage::DraftEditorCandidatePublicationOutcomeV1 {
-    let prepared = prepare_lower(store, storage, request);
+    let prepared = prepare_lower(store, storage.clone(), request);
     let outcome = base::execute(
         store,
         storage.publish_draft_editor_candidate(storage.revision(store).unwrap(), prepared.clone()),
@@ -1706,7 +1763,7 @@ fn prepare_lower(
     storage: syndic_storage::SyndicStorage,
     request: DraftEditorCandidatePublicationRequestV1,
 ) -> syndic_storage::PreparedDraftEditorCandidatePublicationV1 {
-    let source = capture_lower_source(store, storage, request);
+    let source = capture_lower_source(store, storage.clone(), request);
     storage
         .prepare_draft_editor_candidate_publication(store, source, request.evidence())
         .unwrap()
@@ -1718,7 +1775,7 @@ fn assert_publication_head_is_coherent(
     thread: beryl_model::SyndicThreadId,
     binding: beryl_app::composer_host::ComposerHostBinding,
 ) {
-    let durable = current(storage, store, thread);
+    let durable = current(storage.clone(), store, thread);
     let session = storage
         .draft_editor_candidate_session(
             store,
@@ -1750,14 +1807,14 @@ fn publish_competing_text_candidate(
     open_operation: u8,
     timestamp: u64,
 ) -> beryl_app::composer_host::ComposerHostBinding {
-    let durable = current(storage, store, thread);
+    let durable = current(storage.clone(), store, thread);
     let end = durable
         .draft()
         .piece_root()
         .summary()
         .logical_extent()
         .logical_utf8_bytes();
-    let (mut host, base) = activated(storage, store, thread, session, open_operation);
+    let (mut host, base) = activated(storage.clone(), store, thread, session, open_operation);
     let competing = commit_text(&mut host, store, base, 3, end, end, "z", end + 1, 1);
     let selector = DraftEditorCurrentSelectorV1::new(
         durable.thread().id(),
@@ -1776,9 +1833,9 @@ fn publish_competing_text_candidate(
         DraftEditorCandidatePublicationEvidenceV1::UnchangedEmpty,
         SyndicTimestamp::from_unix_millis(timestamp),
     );
-    let source = capture_lower_source(store, storage, request);
+    let source = capture_lower_source(store, storage.clone(), request);
     assert!(matches!(
-        publish_lower_source(store, storage, source, request),
+        publish_lower_source(store, storage.clone(), source, request),
         syndic_storage::DraftEditorCandidatePublicationOutcomeV1::Published(_, _)
     ));
     competing
@@ -1801,7 +1858,7 @@ fn assert_captured_published_and_newest_dirty(
     captured: beryl_app::composer_host::ComposerHostBinding,
     newest: beryl_app::composer_host::ComposerHostBinding,
 ) {
-    let durable = current(storage, store, thread);
+    let durable = current(storage.clone(), store, thread);
     let session = storage
         .draft_editor_candidate_session(
             store,

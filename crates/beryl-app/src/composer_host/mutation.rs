@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use beryl_home_store::{CommandCancellation, CommandOutcome, HomeCommand, HomeStore};
-use beryl_model::{AssetId, ImageLabelOrdinal};
+use beryl_model::AssetId;
 use gpui_text_input::{
     BindingId, MutationBeginRequest, MutationCommitRequest, MutationCursor, MutationFinishInput,
     MutationIdentity, MutationKind, MutationLane, MutationPage, MutationPageAcceptance,
@@ -13,7 +13,7 @@ use syndic_storage::{
     DraftEditorCandidateSessionV1, DraftMutationBeginV1, DraftMutationFinishInputV1,
     DraftMutationOperationIdV1, DraftMutationStagingHeadV1, DraftMutationStagingIdentityV1,
     DraftMutationStagingLaneV1, DraftPieceBuildProgressReceiptReferenceV1, DraftPieceDigestV1,
-    PreparedDraftMutationStagingBatchV1, PreparedDraftPieceEditV1,
+    PreparedDraftMutationStagingBatchV1,
 };
 
 use super::request::validate_store;
@@ -21,35 +21,60 @@ use super::{ComposerHostBinding, ComposerHostError, SyndicComposerHost};
 
 pub(super) const COMPOSER_HOST_MAX_MUTATION_TRANSITIONS: usize = 4096;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComposerHostImageMarkerMetadata {
     object_id: gpui_text_input::InlineObjectId,
-    label: ImageLabelOrdinal,
     asset_id: AssetId,
+    source: Option<Box<syndic_storage::DraftMarkerReadinessSourceSelectorV1>>,
 }
 
 impl ComposerHostImageMarkerMetadata {
-    pub const fn new(
-        object_id: gpui_text_input::InlineObjectId,
-        label: ImageLabelOrdinal,
-        asset_id: AssetId,
-    ) -> Self {
+    pub const fn new(object_id: gpui_text_input::InlineObjectId, asset_id: AssetId) -> Self {
         Self {
             object_id,
-            label,
             asset_id,
+            source: None,
         }
     }
 
-    pub const fn object_id(self) -> gpui_text_input::InlineObjectId {
+    pub const fn object_id(&self) -> gpui_text_input::InlineObjectId {
         self.object_id
     }
 
-    pub const fn label(self) -> ImageLabelOrdinal {
-        self.label
+    pub fn from_source(
+        object_id: gpui_text_input::InlineObjectId,
+        asset_id: AssetId,
+        source: syndic_storage::DraftMarkerReadinessSourceSelectorV1,
+    ) -> Self {
+        let source = match source {
+            syndic_storage::DraftMarkerReadinessSourceSelectorV1::FreshAsset(source_asset)
+                if source_asset == asset_id =>
+            {
+                None
+            }
+            source => Some(Box::new(source)),
+        };
+        Self {
+            object_id,
+            asset_id,
+            source,
+        }
     }
 
-    pub const fn asset_id(self) -> AssetId {
+    pub fn source(&self) -> syndic_storage::DraftMarkerReadinessSourceSelectorV1 {
+        self.source.as_deref().copied().unwrap_or(
+            syndic_storage::DraftMarkerReadinessSourceSelectorV1::FreshAsset(self.asset_id),
+        )
+    }
+
+    pub fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.source.as_ref().map_or(0, |_| {
+                std::mem::size_of::<syndic_storage::DraftMarkerReadinessSourceSelectorV1>()
+            })
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
         self.asset_id
     }
 }
@@ -83,6 +108,7 @@ pub enum ComposerHostMutationOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerHostMutationStatus {
+    Evidence,
     Admitted,
     Unavailable,
 }
@@ -229,7 +255,6 @@ enum ComposerHostMutationPhase {
     Receiving,
     Finished,
     Building {
-        prepared: PreparedDraftPieceEditV1,
         endpoint: DraftPieceBuildProgressReceiptReferenceV1,
     },
 }
@@ -261,6 +286,14 @@ enum ComposerHostInFlightPageKind {
 pub(super) struct ComposerHostMutationCoordinator {
     binding: ComposerHostBinding,
     begin: MutationBeginRequest,
+    storage_begin: DraftMutationBeginV1,
+    evidence: Option<MutationFinishInput>,
+    cleanup: Option<cleanup::ComposerHostMutationCleanup>,
+    build_flight: Option<syndic_storage::StagedDraftPieceOutcomeFlightV1>,
+    build_completion: Option<syndic_storage::StagedDraftPieceCommandCompletionV1>,
+    build_noncommit: Option<syndic_storage::PreparedStagedDraftPieceCommandV1>,
+    build_diagnostics: outcome::BuildDiagnostics,
+    unavailable_intent: Option<ComposerHostRetainedMutationIntent>,
     identity: DraftMutationStagingIdentityV1,
     session: DraftEditorCandidateSessionV1,
     head: DraftMutationStagingHeadV1,
@@ -342,14 +375,16 @@ impl SyndicComposerHost {
 }
 
 pub(super) enum ComposerHostPendingMutation {
+    Admission(Box<admission::ComposerHostMutationAdmission>),
     Active(Box<ComposerHostMutationCoordinator>),
     Terminal(Box<ComposerHostTerminalMutation>),
-    Unavailable(Box<ComposerHostRetainedMutationIntent>),
+    Unavailable(Box<ComposerHostMutationCoordinator>),
 }
 
 impl ComposerHostPendingMutation {
     pub(super) fn key(&self) -> gpui_text_input::MutationKey {
         match self {
+            Self::Admission(pending) => pending.begin.proposal().key(),
             Self::Active(pending) => pending.begin.proposal().key(),
             Self::Terminal(terminal) => terminal.key,
             Self::Unavailable(intent) => intent.begin.proposal().key(),
@@ -375,12 +410,21 @@ enum BuildCommandResult {
     Terminal(ComposerHostMutationOutcome),
 }
 
+mod admission;
+mod cleanup;
 mod drive;
 mod execution;
+pub(super) mod outcome;
 mod settlement;
 mod translation;
 
 use translation::canonical_position;
+
+pub use admission::{
+    ComposerHostMutationAdmissionFailure, ComposerHostMutationEvidenceOutcome,
+    ComposerHostMutationEvidenceRequest,
+};
+pub use outcome::ComposerHostMutationBuildDiagnostics;
 
 fn checked_add_totals(left: MutationTotals, right: MutationTotals) -> Option<MutationTotals> {
     Some(MutationTotals {

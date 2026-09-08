@@ -77,7 +77,7 @@ impl MainWindowConversationComposer {
 
     #[cfg(feature = "test-faults")]
     pub fn test_has_active_flight(&self) -> bool {
-        self.active_flight.is_some()
+        self.active_flight.is_some() || self.pending_dispatch.is_some()
     }
 
     #[cfg(feature = "test-faults")]
@@ -312,6 +312,7 @@ impl MainWindowConversationComposer {
         }
         self.propagated_cut = None;
         self.pending_marker_metadata = None;
+        self.mutation_evidence = None;
         self.pending_marker_removal = None;
         self.image_surface_attachment = None;
         self.image_surfaces.clear();
@@ -409,6 +410,7 @@ impl MainWindowConversationComposer {
     pub fn widget_release_ready(&self, cx: &mut Context<Self>) -> bool {
         matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
             && self.active_flight.is_none()
+            && self.pending_dispatch.is_none()
             && self.last_error.is_none()
             && self
                 .input
@@ -421,6 +423,7 @@ impl MainWindowConversationComposer {
     ) -> bool {
         matches!(self.phase, MainWindowConversationComposerPhase::Fencing)
             && self.active_flight.is_none()
+            && self.pending_dispatch.is_none()
             && self.last_error.is_none()
             && self.input.update(cx, |input, _| input.is_quiescent())
             && self.input.update(cx, |input, _| {

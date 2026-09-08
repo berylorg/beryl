@@ -12,8 +12,9 @@ use std::{
 
 use beryl_app::{
     composer_host::{
-        ComposerHostActivationOutcome, ComposerHostFlushAdmission, ComposerHostFlushCapture,
-        ComposerHostFlushPurpose, ComposerHostFlushState, SyndicComposerHost,
+        ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostFlushAdmission,
+        ComposerHostFlushCapture, ComposerHostFlushPurpose, ComposerHostFlushState,
+        SyndicComposerHost,
     },
     main_window::{
         MainWindowComposerActivationAdvance, MainWindowComposerMarkerMetadataAuthority,
@@ -58,6 +59,86 @@ struct StableMountRoot {
     mount: Entity<MainWindowConversationComposerMount>,
 }
 
+struct MountedComposerFixture {
+    _directory: tempfile::TempDir,
+    service: Arc<MainWindowConversationComposerService>,
+    store: Arc<beryl_home_store::HomeStore>,
+    storage: syndic_storage::SyndicStorage,
+    selected_thread: beryl_model::SyndicThreadId,
+    target_thread: beryl_model::SyndicThreadId,
+    target_claim: beryl_state::WindowClaimSelection,
+    assets: beryl_state::AssetState,
+    marker_seals: beryl_app::composer_marker_seal::DraftMarkerSealService,
+}
+
+fn mounted_composer_fixture(
+    name: &str,
+    seed: u8,
+    setup: impl FnOnce(&Fixture) -> ComposerHostActivationRequest,
+) -> MountedComposerFixture {
+    mounted_composer_fixture_with_hooks(name, seed, setup, |_| {}, |_| {})
+}
+
+fn mounted_composer_fixture_with_hooks(
+    name: &str,
+    seed: u8,
+    setup: impl FnOnce(&Fixture) -> ComposerHostActivationRequest,
+    host_setup: impl FnOnce(&mut SyndicComposerHost),
+    slot_setup: impl FnOnce(&mut MainWindowComposerSlot),
+) -> MountedComposerFixture {
+    let fixture = Fixture::new(name, seed);
+    let request = setup(&fixture);
+    activate_mounted_composer_fixture(fixture, request, host_setup, slot_setup)
+}
+
+fn activate_mounted_composer_fixture(
+    fixture: Fixture,
+    request: ComposerHostActivationRequest,
+    host_setup: impl FnOnce(&mut SyndicComposerHost),
+    slot_setup: impl FnOnce(&mut MainWindowComposerSlot),
+) -> MountedComposerFixture {
+    let window_id = fixture.window_id;
+    let selected_thread = fixture.selected_thread;
+    let target_thread = fixture.target_thread;
+    let (selected_claim, target_claim) = fixture.claims();
+    let assets = fixture.assets();
+    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets.clone());
+    let marker_seals = fixture.marker_seals();
+    let mut host = SyndicComposerHost::new(fixture.storage.clone());
+    assert!(matches!(
+        host.test_activate(&fixture.store, request, &CommandCancellation::new())
+            .unwrap(),
+        ComposerHostActivationOutcome::Activated { .. }
+    ));
+    host_setup(&mut host);
+    let (directory, store, storage) = fixture.into_store();
+    let mut slot = MainWindowComposerSlot::new(
+        window_id,
+        selected_claim,
+        host,
+        storage.clone(),
+        marker_authority,
+    )
+    .unwrap();
+    slot_setup(&mut slot);
+    let store = Arc::new(store);
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        store.clone(),
+        slot,
+    ));
+    MountedComposerFixture {
+        _directory: directory,
+        service,
+        store,
+        storage,
+        selected_thread,
+        target_thread,
+        target_claim,
+        assets,
+        marker_seals,
+    }
+}
+
 impl Render for StableMountRoot {
     fn render(
         &mut self,
@@ -74,34 +155,13 @@ impl Render for StableMountRoot {
 #[gpui::test]
 fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-small", 184);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("pending-small", 184, |fixture| {
+        activation(fixture.selected_thread, 1, 2, 1, 0)
+    });
     let target_thread = fixture.target_thread;
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 1, 2, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let clean_predecessor = slot.selected_identity().unwrap();
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let clean_predecessor = fixture.service.selected_identity().unwrap();
     assert_eq!(
         clean_predecessor
             .binding()
@@ -109,8 +169,7 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
             .candidate_generation(),
         0
     );
-    let store = Arc::new(store);
-    let service = Arc::new(MainWindowConversationComposerService::new(store, slot));
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -270,38 +329,18 @@ fn small_seed_promotes_over_a_clean_generation_zero_predecessor(cx: &mut gpui::T
 #[gpui::test]
 fn multi_page_pending_target_promotes_the_exact_unpublished_entity(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-promote", 185);
-    let window_id = fixture.window_id;
+    let fixture = mounted_composer_fixture("pending-promote", 185, |fixture| {
+        seed_activation_published_draft(fixture, fixture.target_thread);
+        activation(fixture.selected_thread, 11, 12, 1, 0)
+    });
     let selected_thread = fixture.selected_thread;
     let target_thread = fixture.target_thread;
-    seed_activation_published_draft(&fixture, target_thread);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 11, 12, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage.clone(),
-        marker_authority,
-    )
-    .unwrap();
-    let store = Arc::new(store);
-    let durable_store = store.clone();
-    let service = Arc::new(MainWindowConversationComposerService::new(store, slot));
+    let target_claim = fixture.target_claim;
+    let assets = fixture.assets;
+    let marker_seals = fixture.marker_seals;
+    let storage = fixture.storage;
+    let durable_store = fixture.store;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -627,45 +666,29 @@ fn prior_flush_failure_detaches_pending_presentation_while_retirement_is_pending
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-final-drift", 188);
-    let window_id = fixture.window_id;
+    let fixture = mounted_composer_fixture_with_hooks(
+        "pending-final-drift",
+        188,
+        |fixture| activation(fixture.selected_thread, 91, 92, 1, 0),
+        |host| {
+            host.test_arm_publication_before_execute_fault(move |store, storage| {
+                composer_base::bump_home_revision(storage, store, 97);
+            });
+        },
+        |slot| {
+            slot.test_arm_abandonment_before_execute_fault(move |store, storage| {
+                composer_base::bump_home_revision(storage, store, 98);
+            });
+        },
+    );
     let selected_thread = fixture.selected_thread;
     let target_thread = fixture.target_thread;
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 91, 92, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    selected_host.test_arm_publication_before_execute_fault(move |store, storage| {
-        composer_base::bump_home_revision(storage, store, 97);
-    });
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let durable_store = Arc::new(store);
-    let mut slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage.clone(),
-        marker_authority,
-    )
-    .unwrap();
-    slot.test_arm_abandonment_before_execute_fault(move |store, storage| {
-        composer_base::bump_home_revision(storage, store, 98);
-    });
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        durable_store.clone(),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let assets = fixture.assets;
+    let marker_seals = fixture.marker_seals;
+    let storage = fixture.storage;
+    let durable_store = fixture.store;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -887,38 +910,14 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-predispatch", 188);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("pending-predispatch", 188, |fixture| {
+        seed_activation_published_draft(fixture, fixture.target_thread);
+        activation(fixture.selected_thread, 101, 102, 1, 0)
+    });
     let target_thread = fixture.target_thread;
-    seed_activation_published_draft(&fixture, target_thread);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 101, 102, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -945,137 +944,8 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
     });
     drive(cx, 24);
     let mount = root.read_with(cx, |root, _| root.mount.clone());
-    let MainWindowComposerActivationAdvance::Ready(receipt) = mount
-        .update(cx, |mount, mount_cx| {
-            mount.begin_activation(
-                target_claim,
-                activation(target_thread, 103, 104, 2, ACTIVATION_DRAFT_BYTES),
-                operation_id(105),
-                &CommandCancellation::new(),
-                mount_cx,
-            )
-        })
-        .unwrap()
-    else {
-        panic!("predispatch target did not open")
-    };
-    let mut pending = None;
-    let mut admitted = false;
-    for _ in 0..64 {
-        let started = match cx
-            .update(|window, app| {
-                mount.update(app, |mount, mount_cx| {
-                    mount.begin_publish(receipt, window, mount_cx)
-                })
-            })
-            .unwrap()
-        {
-            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => false,
-            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => false,
-            MainWindowConversationComposerMountFlushStart::Started(
-                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
-            ) => true,
-            other => panic!("unexpected predispatch priming advance: {other:?}"),
-        };
-        pending = mount.read_with(cx, |mount, _| mount.test_pending_contribution());
-        if started {
-            admitted = true;
-            break;
-        }
-        drive(cx, 1);
-        if pending.as_ref().is_some_and(|pending| {
-            pending.read_with(cx, |pending, app| pending.pending_surface_ready(app))
-        }) {
-            continue;
-        }
-    }
-    assert!(
-        admitted,
-        "predispatch pending target was not admitted: diagnostics={:?}",
-        pending
-            .as_ref()
-            .map(|pending| pending
-                .read_with(cx, |pending, app| pending.realization_diagnostics(app)))
-    );
-    let pending = pending
-        .or_else(|| mount.read_with(cx, |mount, _| mount.test_pending_contribution()))
-        .unwrap();
-    let pending_id = pending.entity_id();
-    let release = service.test_block_next_pending_dispatch();
-    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
-    pending_input.update(cx, |input, input_cx| {
-        input
-            .platform_text_for_range(
-                0..usize::try_from(ACTIVATION_DRAFT_BYTES).unwrap(),
-                input_cx,
-            )
-            .unwrap()
-    });
-    for _ in 0..32 {
-        if release.is_blocked() {
-            break;
-        }
-        drive(cx, 1);
-    }
-    assert!(
-        release.is_blocked(),
-        "pending dispatch gate was not entered"
-    );
-    assert!(pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
-    assert!(pending.read_with(cx, |composer, app| composer.pending_surface_ready(app)));
-
-    let mut published = None;
-    for _ in 0..24 {
-        match cx
-            .update(|window, app| {
-                mount.update(app, |mount, mount_cx| {
-                    mount.advance_publish(receipt, window, mount_cx)
-                })
-            })
-            .unwrap()
-        {
-            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
-                assert_eq!(current, receipt);
-                drive(cx, 1);
-            }
-            MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(_) => {
-                drive(cx, 1)
-            }
-            MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
-                published = Some(selection);
-                break;
-            }
-            other => panic!("unexpected predispatch publication: {other:?}"),
-        }
-    }
-    let published = published.expect("predispatch pending entity was not promoted");
-    assert_eq!(service.selected_identity(), Some(published));
-    assert_eq!(
-        mount
-            .read_with(cx, |mount, _| mount.contribution())
-            .unwrap()
-            .entity_id(),
-        pending_id
-    );
-
-    release.release();
-    for _ in 0..64 {
-        drive(cx, 1);
-        if !pending.read_with(cx, |composer, _| composer.test_has_active_flight()) {
-            break;
-        }
-    }
-    assert!(!pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
-    assert!(pending.read_with(cx, |composer, _| composer.last_error().is_none()));
-    let settled = pending.read_with(cx, |composer, app| composer.realization_diagnostics(app));
-    assert_eq!(settled.current.dispatched_page_requests, 0);
-    assert_eq!(settled.current.dispatched_object_requests, 0);
-    assert_eq!(settled.current.response_custody_count, 0);
-    assert_eq!(settled.current.response_processing_bytes, 0);
-    assert_eq!(settled.current.response_processing_items, 0);
-    assert_eq!(settled.current.deferred_response_bytes, 0);
-    assert_eq!(settled.current.deferred_response_items, 0);
-
+    let (pending, published) =
+        promote_pending_with_blocked_dispatch(cx, &mount, &service, target_thread, target_claim);
     let promoted_input = pending.read_with(cx, |composer, _| composer.gpui_input());
     cx.update(|window, app| promoted_input.update(app, |input, _| input.focus(window)));
     cx.update(|window, app| {
@@ -1087,11 +957,17 @@ fn predispatch_pending_flight_loss_settles_custody_and_keeps_promoted_editor_usa
     for _ in 0..128 {
         drive(cx, 1);
         edited = service.selected_identity().unwrap();
-        if edited != published {
+        if edited.binding().candidate().candidate_generation()
+            > published.binding().candidate().candidate_generation()
+        {
             break;
         }
     }
-    assert_ne!(edited, published);
+    assert!(
+        edited.binding().candidate().candidate_generation()
+            > published.binding().candidate().candidate_generation()
+    );
+    assert_ne!(edited.binding().root(), published.binding().root());
     drive(cx, 16);
     assert!(pending.read_with(cx, |composer, _| composer.last_error().is_none()));
     assert!(promoted_input.read_with(cx, |input, _| input.is_enabled()));
@@ -1109,28 +985,12 @@ fn ordinary_release_fence_settles_the_exact_admitted_edit_and_active_flight(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("admitted-edit-fence", 191);
-    let window_id = fixture.window_id;
-    let (claim, _) = fixture.claims();
-    let mut host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        host.test_activate(
-            &fixture.store,
-            activation(fixture.selected_thread, 121, 122, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(window_id, claim, host, storage, authority).unwrap();
-    let before = slot.selected_identity().unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let fixture = mounted_composer_fixture("admitted-edit-fence", 191, |fixture| {
+        activation(fixture.selected_thread, 121, 122, 1, 0)
+    });
+    let marker_seals = fixture.marker_seals;
+    let before = fixture.service.selected_identity().unwrap();
+    let service = fixture.service;
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
             MainWindowConversationComposerMount::new(
@@ -1230,39 +1090,16 @@ fn assert_predecessor_release_before_index_completion(
     abort_restoration: bool,
 ) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("predecessor-index-release", 189);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("predecessor-index-release", 189, |fixture| {
+        let predecessor_extent =
+            seed_activation_published_draft_chunks(fixture, fixture.selected_thread, 32);
+        activation(fixture.selected_thread, 111, 112, 1, predecessor_extent)
+    });
     let target_thread = fixture.target_thread;
-    let predecessor_extent = seed_activation_published_draft_chunks(&fixture, selected_thread, 32);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 111, 112, 1, predecessor_extent),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let predecessor_selection = slot.selected_identity().unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let predecessor_selection = fixture.service.selected_identity().unwrap();
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1468,38 +1305,14 @@ fn assert_predecessor_release_before_index_completion(
 #[gpui::test]
 fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-flight-failure", 187);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("pending-flight-failure", 187, |fixture| {
+        seed_activation_published_draft(fixture, fixture.target_thread);
+        activation(fixture.selected_thread, 81, 82, 1, 0)
+    });
     let target_thread = fixture.target_thread;
-    seed_activation_published_draft(&fixture, target_thread);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 81, 82, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1669,39 +1482,16 @@ fn promoted_pending_flight_failure_settles_the_exact_widget_request(cx: &mut gpu
 #[gpui::test]
 fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("pending-terminal", 186);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("pending-terminal", 186, |fixture| {
+        seed_activation_published_draft(fixture, fixture.target_thread);
+        activation(fixture.selected_thread, 31, 32, 1, 0)
+    });
     let target_thread = fixture.target_thread;
-    seed_activation_published_draft(&fixture, target_thread);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 31, 32, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage.clone(),
-        marker_authority,
-    )
-    .unwrap();
-    let durable_store = Arc::new(store);
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        durable_store.clone(),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let storage = fixture.storage;
+    let durable_store = fixture.store;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -2060,38 +1850,14 @@ fn pending_target_releases_on_cancel_supersession_and_disposal(cx: &mut gpui::Te
 #[gpui::test]
 fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("single-pending-authority", 190);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
+    let fixture = mounted_composer_fixture("single-pending-authority", 190, |fixture| {
+        seed_activation_published_draft(fixture, fixture.target_thread);
+        activation(fixture.selected_thread, 81, 82, 1, 0)
+    });
     let target_thread = fixture.target_thread;
-    seed_activation_published_draft(&fixture, target_thread);
-    let (selected_claim, target_claim) = fixture.claims();
-    let mut selected_host = SyndicComposerHost::new(fixture.storage.clone());
-    assert!(matches!(
-        selected_host
-            .test_activate(
-                &fixture.store,
-                activation(selected_thread, 81, 82, 1, 0),
-                &CommandCancellation::new(),
-            )
-            .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
-    let marker_seals = fixture.marker_seals();
-    let (_directory, store, storage) = fixture.into_store();
-    let slot = MainWindowComposerSlot::new(
-        window_id,
-        selected_claim,
-        selected_host,
-        storage,
-        marker_authority,
-    )
-    .unwrap();
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
-        slot,
-    ));
+    let target_claim = fixture.target_claim;
+    let marker_seals = fixture.marker_seals;
+    let service = fixture.service;
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -2314,4 +2080,148 @@ fn submission_source() -> MainWindowComposerSubmissionRequestSource {
         .unwrap()
         .turn_start_admission_requirement(),
     )
+}
+
+fn promote_pending_with_blocked_dispatch(
+    cx: &mut gpui::VisualTestContext,
+    mount: &Entity<MainWindowConversationComposerMount>,
+    service: &Arc<MainWindowConversationComposerService>,
+    target_thread: beryl_model::SyndicThreadId,
+    target_claim: beryl_state::WindowClaimSelection,
+) -> (
+    Entity<beryl_app::main_window::MainWindowConversationComposer>,
+    beryl_app::main_window::MainWindowComposerSelectionIdentity,
+) {
+    let MainWindowComposerActivationAdvance::Ready(receipt) = mount
+        .update(cx, |mount, mount_cx| {
+            mount.begin_activation(
+                target_claim,
+                activation(target_thread, 103, 104, 2, ACTIVATION_DRAFT_BYTES),
+                operation_id(105),
+                &CommandCancellation::new(),
+                mount_cx,
+            )
+        })
+        .unwrap()
+    else {
+        panic!("predispatch target did not open")
+    };
+    let mut pending = None;
+    let mut admitted = false;
+    for _ in 0..64 {
+        let started = match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.begin_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountFlushStart::TargetPriming(_) => false,
+            MainWindowConversationComposerMountFlushStart::WidgetFencePending(_) => false,
+            MainWindowConversationComposerMountFlushStart::Started(
+                ComposerHostFlushAdmission::Satisfied(ComposerHostFlushPurpose::ThreadSwitch),
+            ) => true,
+            other => panic!("unexpected predispatch priming advance: {other:?}"),
+        };
+        pending = mount.read_with(cx, |mount, _| mount.test_pending_contribution());
+        if started {
+            admitted = true;
+            break;
+        }
+        drive(cx, 1);
+        if pending.as_ref().is_some_and(|pending| {
+            pending.read_with(cx, |pending, app| pending.pending_surface_ready(app))
+        }) {
+            continue;
+        }
+    }
+    assert!(
+        admitted,
+        "predispatch pending target was not admitted: diagnostics={:?}",
+        pending
+            .as_ref()
+            .map(|pending| pending
+                .read_with(cx, |pending, app| pending.realization_diagnostics(app)))
+    );
+    let pending = pending
+        .or_else(|| mount.read_with(cx, |mount, _| mount.test_pending_contribution()))
+        .unwrap();
+    let pending_id = pending.entity_id();
+    let release = service.test_block_next_pending_dispatch();
+    let pending_input = pending.read_with(cx, |composer, _| composer.gpui_input());
+    pending_input.update(cx, |input, input_cx| {
+        input
+            .platform_text_for_range(
+                0..usize::try_from(ACTIVATION_DRAFT_BYTES).unwrap(),
+                input_cx,
+            )
+            .unwrap()
+    });
+    for _ in 0..32 {
+        if release.is_blocked() {
+            break;
+        }
+        drive(cx, 1);
+    }
+    assert!(
+        release.is_blocked(),
+        "pending dispatch gate was not entered"
+    );
+    assert!(pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    assert!(pending.read_with(cx, |composer, app| composer.pending_surface_ready(app)));
+
+    let mut published = None;
+    for _ in 0..24 {
+        match cx
+            .update(|window, app| {
+                mount.update(app, |mount, mount_cx| {
+                    mount.advance_publish(receipt, window, mount_cx)
+                })
+            })
+            .unwrap()
+        {
+            MainWindowConversationComposerMountPublishAdvance::TargetSurfacePending(current) => {
+                assert_eq!(current, receipt);
+                drive(cx, 1);
+            }
+            MainWindowConversationComposerMountPublishAdvance::WidgetReleasePending(_) => {
+                drive(cx, 1)
+            }
+            MainWindowConversationComposerMountPublishAdvance::Published(selection) => {
+                published = Some(selection);
+                break;
+            }
+            other => panic!("unexpected predispatch publication: {other:?}"),
+        }
+    }
+    let published = published.expect("predispatch pending entity was not promoted");
+    assert_eq!(service.selected_identity(), Some(published));
+    assert_eq!(
+        mount
+            .read_with(cx, |mount, _| mount.contribution())
+            .unwrap()
+            .entity_id(),
+        pending_id
+    );
+
+    release.release();
+    for _ in 0..64 {
+        drive(cx, 1);
+        if !pending.read_with(cx, |composer, _| composer.test_has_active_flight()) {
+            break;
+        }
+    }
+    assert!(!pending.read_with(cx, |composer, _| composer.test_has_active_flight()));
+    assert!(pending.read_with(cx, |composer, _| composer.last_error().is_none()));
+    let settled = pending.read_with(cx, |composer, app| composer.realization_diagnostics(app));
+    assert_eq!(settled.current.dispatched_page_requests, 0);
+    assert_eq!(settled.current.dispatched_object_requests, 0);
+    assert_eq!(settled.current.response_custody_count, 0);
+    assert_eq!(settled.current.response_processing_bytes, 0);
+    assert_eq!(settled.current.response_processing_items, 0);
+    assert_eq!(settled.current.deferred_response_bytes, 0);
+    assert_eq!(settled.current.deferred_response_items, 0);
+
+    (pending, published)
 }

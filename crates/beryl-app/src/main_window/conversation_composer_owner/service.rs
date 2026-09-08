@@ -203,6 +203,10 @@ pub struct MainWindowConversationComposerService {
     #[cfg(feature = "test-faults")]
     test_cancel_next_mutation_commit: AtomicBool,
     #[cfg(feature = "test-faults")]
+    test_mutation_dispatch_error: Mutex<Option<crate::composer_host::ComposerHostError>>,
+    #[cfg(feature = "test-faults")]
+    test_successor_proof_fault: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    #[cfg(feature = "test-faults")]
     test_cut_preparation_gate: Mutex<Option<CutPreparationTestGate>>,
     #[cfg(feature = "test-faults")]
     test_pending_completion_gate: Mutex<Option<PendingCompletionTestGate>>,
@@ -321,6 +325,10 @@ impl MainWindowConversationComposerService {
             #[cfg(feature = "test-faults")]
             test_cancel_next_mutation_commit: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
+            test_mutation_dispatch_error: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            test_successor_proof_fault: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
             test_cut_preparation_gate: Mutex::new(None),
             #[cfg(feature = "test-faults")]
             test_pending_completion_gate: Mutex::new(None),
@@ -355,6 +363,46 @@ impl MainWindowConversationComposerService {
 
     pub fn selected_identity(&self) -> Option<MainWindowComposerSelectionIdentity> {
         self.slot.lock().ok()?.selected_identity()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_with_selected_host<T>(
+        &self,
+        action: impl FnOnce(&mut crate::composer_host::SyndicComposerHost) -> T,
+    ) -> T {
+        let mut slot = self.slot.lock().unwrap();
+        action(
+            slot.test_selected_host_mut()
+                .expect("selected test composer host"),
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_fail_next_mutation_dispatch(&self, error: crate::composer_host::ComposerHostError) {
+        let mut pending = self.test_mutation_dispatch_error.lock().unwrap();
+        assert!(pending.is_none());
+        *pending = Some(error);
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn take_test_mutation_dispatch_error(
+        &self,
+    ) -> Option<crate::composer_host::ComposerHostError> {
+        self.test_mutation_dispatch_error.lock().unwrap().take()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_arm_successor_proof_fault(&self, fault: impl FnOnce() + Send + 'static) {
+        let mut pending = self.test_successor_proof_fault.lock().unwrap();
+        assert!(pending.is_none());
+        *pending = Some(Box::new(fault));
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn run_test_successor_proof_fault(&self) {
+        if let Some(fault) = self.test_successor_proof_fault.lock().unwrap().take() {
+            fault();
+        }
     }
 
     pub(in crate::main_window) fn retain_native_lineage_source(

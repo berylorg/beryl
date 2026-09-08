@@ -1,8 +1,8 @@
 use super::*;
 use beryl_app::theme_runtime::{
     AppearanceCoordinator, AppearanceCoordinatorConfig, AppearanceGeneration,
-    GpuiAppearanceWindowSet, PreparedPreviewAppearance, PreviewCandidateIdentity, PreviewSource,
-    PreviewSourceIdentity,
+    AppearancePublicationTarget, GpuiAppearanceWindowSet, PreparedPreviewAppearance,
+    PreviewCandidateIdentity, PreviewSource, PreviewSourceIdentity,
 };
 use gpui::{AppContext, Entity, TestAppContext, WindowHandle};
 use std::num::NonZeroUsize;
@@ -17,6 +17,36 @@ pub struct Mounted {
 }
 
 pub fn mount(cx: &mut TestAppContext, seed: u8) -> Mounted {
+    mount_with_preparation(cx, seed, move |fixture, services, appearance| {
+        let mut initial = fixture.begin(seed.wrapping_add(1));
+        assert_eq!(
+            initial.advance(&CommandCancellation::new()).unwrap(),
+            MainWindowInitialComposerProgress::Activated
+        );
+        initial
+            .prepare(&mut config)
+            .unwrap_or_else(|failure| panic!("{}", failure.error))
+            .into_shell(
+                Box::new(config),
+                services.marker_seals.clone(),
+                MainWindowComposerSubmissionRequestSource::new(services.turn_start_requirement),
+                appearance,
+            )
+            .unwrap_or_else(|failure| panic!("{}", failure.error))
+    })
+}
+
+pub fn mount_with_preparation(
+    cx: &mut TestAppContext,
+    seed: u8,
+    prepare: impl FnOnce(
+        &Fixture,
+        &Arc<MainWindowCreationServices>,
+        Arc<AppearanceGeneration>,
+    ) -> MainWindowShellPrepared
+    + Send
+    + 'static,
+) -> Mounted {
     cx.update(gpui_text_input::ensure_text_input_bindings);
     let (fixture, services, mut coordinator, appearance, prepared) = home_support::join(
         home_support::worker(move || {
@@ -27,22 +57,7 @@ pub fn mount(cx: &mut TestAppContext, seed: u8) -> Mounted {
                 initial_appearance.prepared().clone(),
             );
             let appearance = coordinator.current();
-            let mut initial = fixture.begin(seed.wrapping_add(1));
-            assert_eq!(
-                initial.advance(&CommandCancellation::new()).unwrap(),
-                MainWindowInitialComposerProgress::Activated
-            );
-            let prepared = initial
-                .prepare(&mut config)
-                .unwrap_or_else(|failure| panic!("{}", failure.error));
-            let prepared = prepared
-                .into_shell(
-                    Box::new(config),
-                    services.marker_seals.clone(),
-                    MainWindowComposerSubmissionRequestSource::new(services.turn_start_requirement),
-                    appearance.clone(),
-                )
-                .unwrap_or_else(|failure| panic!("{}", failure.error));
+            let prepared = prepare(&fixture, &services, appearance.clone());
             (fixture, services, coordinator, appearance, prepared)
         }),
         cx,
@@ -84,30 +99,47 @@ pub fn mount(cx: &mut TestAppContext, seed: u8) -> Mounted {
     }
 }
 
-pub fn activate_second(
+pub fn mount_second(
     mounted: &Mounted,
     cx: &mut TestAppContext,
 ) -> WindowHandle<MainWindowShellRoot> {
-    cx.update(|app| {
-        let root = mounted.window.entity(app).expect("mounted root");
-        mounted
-            .owner
-            .update(app, |owner, cx| owner.activate(&root, cx))
-            .expect("activate second window");
-    });
-    drive_until(cx, |cx| {
-        cx.windows().len() == 2
-            && mounted
-                .owner
-                .read_with(cx, |owner, _| owner.pending_count())
-                == 0
-    });
-    cx.windows()
-        .into_iter()
-        .find(|window| *window != mounted.window.into())
-        .expect("second main window")
-        .downcast::<MainWindowShellRoot>()
-        .expect("second shell root")
+    let services = mounted.services.clone();
+    let target = creation_support::target(&mounted.fixture);
+    let appearance = mounted
+        .appearance
+        .read_with(cx, |owner, _| owner.target().snapshot().current);
+    let window_id = WindowId::from_bytes([mounted.fixture.seed.wrapping_add(2); 16]);
+    let prepared = home_support::join(
+        home_support::worker(move || {
+            let mut work = MainWindowCreation::admit(services, window_id, target).unwrap();
+            for _ in 0..64 {
+                match work.advance(appearance.clone()) {
+                    MainWindowCreationOutcome::Pending(next) => work = next,
+                    MainWindowCreationOutcome::Prepared { prepared, .. } => return prepared,
+                    MainWindowCreationOutcome::Settled { error, .. } => {
+                        panic!("second notice shell preparation failed: {error:?}")
+                    }
+                }
+            }
+            panic!("second notice shell preparation exceeded its bounded budget")
+        }),
+        cx,
+    );
+    let mut shell = cx
+        .update(|app| {
+            GpuiMainWindowShellHost::new(app, mounted.appearance.clone()).construct_hidden(prepared)
+        })
+        .unwrap_or_else(|_| panic!("second hidden notice shell"));
+    cx.update(|app| shell.attach_creation(mounted.owner.clone(), app));
+    drive_until(cx, |cx| cx.update(|app| shell.ready_to_publish(app)));
+    cx.update(|app| shell.publish(app).unwrap());
+    let window = shell.window();
+    cx.update(|app| shell.release_published_handle(app))
+        .unwrap_or_else(|_| panic!("second notice shell publication"));
+    assert_ne!(window, mounted.window);
+    assert_eq!(cx.windows().len(), 2);
+    assert_eq!(mounted.fixture.process.main_window_occupancy(), 2);
+    window
 }
 
 pub fn ingress(

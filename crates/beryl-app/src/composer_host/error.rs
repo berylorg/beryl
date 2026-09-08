@@ -60,6 +60,12 @@ pub enum ComposerHostError {
     MutationIdentityCollision,
     #[error("the composer mutation path is unavailable")]
     MutationUnavailable,
+    #[error("the composer mutation committed but its completion is unavailable")]
+    MutationCommittedUnavailable,
+    #[error("the composer mutation has committed intermediate work but its outcome is unavailable")]
+    MutationAdmittedWorkUnavailable,
+    #[error("composer mutation admission failed: {0}")]
+    MutationAdmission(std::sync::Arc<super::ComposerHostMutationAdmissionFailure>),
     #[error("the shared composer settlement-custody capacity is exhausted")]
     SettlementCustodyLimit,
     #[error("a composer history selection is already pending")]
@@ -124,6 +130,8 @@ pub enum ComposerHostError {
     Reconciliation(#[from] DraftPieceCommandReconciliationErrorV1),
     #[error("draft mutation staging failed: {0}")]
     MutationStaging(#[from] DraftMutationStagingErrorV1),
+    #[error("staged composer build preparation failed: {0}")]
+    MutationBuildPreparation(#[from] syndic_storage::StagedDraftPiecePreparationErrorV1),
     #[error("historical-root selection preparation failed: {0}")]
     HistoryPrepare(#[from] DraftHistoricalRootAdoptionPrepareErrorV1),
     #[error("historical-root selection reconciliation failed: {0}")]

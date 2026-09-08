@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn leading_marker_removal_and_remaining_text_delete_share_one_atomic_mutation() {
     let (_home, store, storage, thread) = fixture("leading-marker-delete", 61);
-    let (mut host, base) = activated(storage, &store, thread, 62, 63);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 62, 63);
     let text = commit_text(&mut host, &store, base, 64, 0, 0, "AB", 2, 1);
     let id = InlineObjectId::new(0x8001);
     let order = InlineObjectOrder::new(1);
@@ -25,7 +25,7 @@ fn leading_marker_removal_and_remaining_text_delete_share_one_atomic_mutation() 
             object: SuccessorObject::new(id, ByteOffset::new(0), order, 17, 5),
         })],
         MutationPositions::collapsed(before),
-        vec![ComposerHostImageMarkerMetadata::new(
+        vec![labeled_marker_metadata(
             id,
             ImageLabelOrdinal::new(1).unwrap(),
             asset_id_for_object(id),
@@ -52,14 +52,14 @@ fn leading_marker_removal_and_remaining_text_delete_share_one_atomic_mutation() 
         1,
         1,
     );
-    assert_eq!(candidate_text(storage, &store, committed), b"B");
+    assert_eq!(candidate_text(storage.clone(), &store, committed), b"B");
     assert_eq!(committed.root().summary().marker_count(), 0);
 }
 
 #[test]
 fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
     let (_home, store, storage, thread) = fixture("markers", 71);
-    let (mut host, base) = activated(storage, &store, thread, 72, 73);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 72, 73);
     let text = commit_text(&mut host, &store, base, 74, 0, 0, "x", 1, 1);
     let id_value = u128::from_be_bytes([0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0xfe]);
     let id = InlineObjectId::new(id_value);
@@ -81,12 +81,21 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
             object: SuccessorObject::new(id, ByteOffset::new(1), order_one, 17, 5),
         })],
         MutationPositions::collapsed(after_one),
-        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
+        vec![labeled_marker_metadata(id, label, asset_id)],
         1,
         1,
     );
     let marker_id = SyndicDraftMarkerId::from_bytes(id_value.to_be_bytes());
-    assert_marker(storage, &store, inserted, marker_id, 1, 1, label, asset_id);
+    assert_marker(
+        storage.clone(),
+        &store,
+        inserted,
+        marker_id,
+        1,
+        1,
+        label,
+        asset_id,
+    );
 
     let before_one = SourcePosition::new(
         ByteOffset::new(1),
@@ -109,11 +118,20 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
             object: SuccessorObject::new(id, ByteOffset::new(1), order_two, 17, 5),
         })],
         MutationPositions::collapsed(after_two_at_one),
-        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
+        vec![labeled_marker_metadata(id, label, asset_id)],
         1,
         1,
     );
-    assert_marker(storage, &store, replaced, marker_id, 1, 2, label, asset_id);
+    assert_marker(
+        storage.clone(),
+        &store,
+        replaced,
+        marker_id,
+        1,
+        2,
+        label,
+        asset_id,
+    );
 
     let before_two_at_one = SourcePosition::new(
         ByteOffset::new(1),
@@ -146,7 +164,16 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
         1,
         1,
     );
-    assert_marker(storage, &store, moved, marker_id, 0, 2, label, asset_id);
+    assert_marker(
+        storage.clone(),
+        &store,
+        moved,
+        marker_id,
+        0,
+        2,
+        label,
+        asset_id,
+    );
 
     let before_two_at_zero = SourcePosition::new(
         ByteOffset::new(0),
@@ -166,7 +193,7 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
         1,
         1,
     );
-    assert_eq!(candidate_text(storage, &store, removed), b"x");
+    assert_eq!(candidate_text(storage.clone(), &store, removed), b"x");
     assert_eq!(
         storage
             .draft_marker_identity(&store, removed.root(), marker_id)
@@ -178,10 +205,11 @@ fn marker_insert_replace_move_and_remove_commit_through_paged_staging() {
 #[test]
 fn marker_metadata_accepts_256_entries_as_one_bounded_widget_page() {
     let (_home, store, storage, thread) = fixture("marker-metadata-256", 201);
-    let (mut host, base) = activated(storage, &store, thread, 202, 203);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 202, 203);
     let key = mutation_key(base, 204);
     let zero = source_position(0);
-    host.begin_mutation(
+    marker_readiness::begin_with_markers(
+        &mut host,
         &store,
         base,
         MutationBeginRequest::new(
@@ -195,6 +223,7 @@ fn marker_metadata_accepts_256_entries_as_one_bounded_widget_page() {
             MutationCursor::new(0),
             MutationCursor::new(0),
         ),
+        &bounded_marker_targets(256),
     )
     .unwrap();
     let (items, metadata) = marker_insertions(256, 0);
@@ -240,10 +269,11 @@ fn marker_metadata_accepts_256_entries_as_one_bounded_widget_page() {
 #[test]
 fn marker_metadata_rejects_257_entries_before_frontier_or_storage_effect() {
     let (_home, store, storage, thread) = fixture("marker-metadata-257", 211);
-    let (mut host, base) = activated(storage, &store, thread, 212, 213);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 212, 213);
     let key = mutation_key(base, 214);
     let zero = source_position(0);
-    host.begin_mutation(
+    marker_readiness::begin_with_markers(
+        &mut host,
         &store,
         base,
         MutationBeginRequest::new(
@@ -257,6 +287,7 @@ fn marker_metadata_rejects_257_entries_before_frontier_or_storage_effect() {
             MutationCursor::new(0),
             MutationCursor::new(0),
         ),
+        &bounded_marker_targets(1),
     )
     .unwrap();
     let (mut items, metadata) = marker_insertions(257, 0);
@@ -290,7 +321,7 @@ fn marker_metadata_rejects_257_entries_before_frontier_or_storage_effect() {
     host.stage_mutation_page(
         &store,
         MutationPageRequest::new(page),
-        Box::new([metadata[0]]),
+        Box::new([metadata[0].clone()]),
     )
     .unwrap();
 }
@@ -303,7 +334,6 @@ fn marker_insertions(
     let mut metadata = Vec::with_capacity(count);
     for ordinal in 1..=u64::try_from(count).unwrap() {
         let id = bounded_marker_id(ordinal);
-        let label = ImageLabelOrdinal::new(ordinal).unwrap();
         items.push(MutationPageItem::Object(ObjectChange::Insert {
             object: SuccessorObject::new(
                 id,
@@ -315,7 +345,6 @@ fn marker_insertions(
         }));
         metadata.push(ComposerHostImageMarkerMetadata::new(
             id,
-            label,
             asset_id_for_object(id),
         ));
     }
@@ -326,10 +355,24 @@ fn bounded_marker_id(ordinal: u64) -> InlineObjectId {
     InlineObjectId::new(0xa100_0000_0000_0000_0000_0000_0000_0000_u128 + u128::from(ordinal))
 }
 
+fn bounded_marker_targets(count: u64) -> Vec<DraftPieceMarkerV1> {
+    (1..=count)
+        .map(|ordinal| {
+            let id = bounded_marker_id(ordinal);
+            DraftPieceMarkerV1::new(
+                SyndicDraftMarkerId::from_bytes(id.get().to_be_bytes()),
+                ordinal,
+                ImageLabelOrdinal::new(ordinal).unwrap(),
+                asset_id_for_object(id),
+            )
+        })
+        .collect()
+}
+
 #[test]
 fn pure_rightward_marker_move_persists_at_its_successor_anchor() {
     let (_home, store, storage, thread) = fixture("rightward-marker-move", 85);
-    let (mut host, base) = activated(storage, &store, thread, 86, 87);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 86, 87);
     let text = commit_text(&mut host, &store, base, 88, 0, 0, "ab", 2, 1);
     let id = InlineObjectId::new(0x8181);
     let order = InlineObjectOrder::new(1);
@@ -350,7 +393,7 @@ fn pure_rightward_marker_move_persists_at_its_successor_anchor() {
             object: SuccessorObject::new(id, ByteOffset::new(0), order, 17, 5),
         })],
         MutationPositions::collapsed(after_zero),
-        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)],
+        vec![labeled_marker_metadata(id, label, asset_id)],
         2,
         1,
     );
@@ -379,9 +422,9 @@ fn pure_rightward_marker_move_persists_at_its_successor_anchor() {
         1,
     );
 
-    assert_eq!(candidate_text(storage, &store, moved), b"ab");
+    assert_eq!(candidate_text(storage.clone(), &store, moved), b"ab");
     assert_marker(
-        storage,
+        storage.clone(),
         &store,
         moved,
         SyndicDraftMarkerId::from_bytes(id.get().to_be_bytes()),
@@ -395,12 +438,18 @@ fn pure_rightward_marker_move_persists_at_its_successor_anchor() {
 #[test]
 fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     let (_home, store, storage, thread) = fixture("later-marker", 91);
-    let (mut host, base) = activated(storage, &store, thread, 92, 93);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 92, 93);
     let text = commit_text(&mut host, &store, base, 94, 0, 0, "ab", 2, 1);
     let key = mutation_key(text, 95);
     let start = source_position(0);
     let end = source_position(2);
-    host.begin_mutation(
+    let id_value = u128::from_be_bytes([0x80, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 0xfe]);
+    let id = InlineObjectId::new(id_value);
+    let order = InlineObjectOrder::new(7);
+    let label = ImageLabelOrdinal::new(11).unwrap();
+    let asset_id = asset_id_for_object(id);
+    marker_readiness::begin_with_markers(
+        &mut host,
         &store,
         text,
         MutationBeginRequest::new(
@@ -414,6 +463,12 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
             MutationCursor::new(0),
             MutationCursor::new(0),
         ),
+        &[DraftPieceMarkerV1::new(
+            SyndicDraftMarkerId::from_bytes(id_value.to_be_bytes()),
+            7,
+            label,
+            asset_id,
+        )],
     )
     .unwrap();
 
@@ -437,11 +492,6 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     host.stage_mutation_page(&store, MutationPageRequest::new(utf8), Box::new([]))
         .unwrap();
 
-    let id_value = u128::from_be_bytes([0x80, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 0xfe]);
-    let id = InlineObjectId::new(id_value);
-    let order = InlineObjectOrder::new(7);
-    let label = ImageLabelOrdinal::new(11).unwrap();
-    let asset_id = asset_id_for_object(id);
     let marker = MutationPage::new(
         MutationPageKey::new(
             key,
@@ -461,7 +511,7 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     host.stage_mutation_page(
         &store,
         MutationPageRequest::new(marker),
-        vec![ComposerHostImageMarkerMetadata::new(id, label, asset_id)].into_boxed_slice(),
+        vec![ComposerHostImageMarkerMetadata::new(id, asset_id)].into_boxed_slice(),
     )
     .unwrap();
 
@@ -486,9 +536,9 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
     )
     .unwrap();
     let committed = commit(&mut host, &store, key);
-    assert_eq!(candidate_text(storage, &store, committed), b"AB");
+    assert_eq!(candidate_text(storage.clone(), &store, committed), b"AB");
     assert_marker(
-        storage,
+        storage.clone(),
         &store,
         committed,
         SyndicDraftMarkerId::from_bytes(id_value.to_be_bytes()),
@@ -502,8 +552,8 @@ fn marker_effect_on_a_later_proposal_page_commits_from_durable_staging() {
 #[test]
 fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
     let (_home, store, storage, thread) = fixture("stale-conflict", 81);
-    let durable_before = current(storage, &store, thread);
-    let (mut host, base) = activated(storage, &store, thread, 82, 83);
+    let durable_before = current(storage.clone(), &store, thread);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 82, 83);
     let high_key = mutation_key(base, 87);
     let zero = source_position(0);
     host.begin_mutation(
@@ -533,6 +583,12 @@ fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
         .unwrap(),
         ComposerHostMutationOutcome::Cancelled
     );
+    let drained = host.binding().unwrap();
+    assert_eq!(drained.root(), base.root());
+    assert_eq!(drained.history(), base.history());
+    assert_eq!(drained.range_binding(), base.range_binding());
+    assert!(drained.candidate().session_generation() > base.candidate().session_generation());
+    let base = drained;
     let session = match storage
         .draft_editor_candidate_session(
             &store,
@@ -545,7 +601,7 @@ fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
         other => panic!("candidate session was not active: {other:?}"),
     };
     let advance = transaction_for_session(
-        storage,
+        storage.clone(),
         &store,
         session,
         88,
@@ -556,7 +612,7 @@ fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
         )],
         point(0),
     );
-    run_transaction(storage, &store, &advance, 2);
+    run_transaction(storage.clone(), &store, &advance, 2);
     let advanced = match storage
         .draft_editor_candidate_session(
             &store,
@@ -615,5 +671,5 @@ fn stale_candidate_and_lower_operation_aba_elect_exact_durable_conflict() {
             .unwrap(),
         DraftMutationStagingStatusV1::Conflict { .. }
     ));
-    assert_eq!(current(storage, &store, thread), durable_before);
+    assert_eq!(current(storage.clone(), &store, thread), durable_before);
 }

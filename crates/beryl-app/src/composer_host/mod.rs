@@ -22,7 +22,9 @@ pub use lifecycle::*;
 pub use model::*;
 use mutation::ComposerHostPendingMutation;
 pub use mutation::{
-    ComposerHostImageMarkerMetadata, ComposerHostMutationOutcome, ComposerHostMutationStatus,
+    ComposerHostImageMarkerMetadata, ComposerHostMutationAdmissionFailure,
+    ComposerHostMutationBuildDiagnostics, ComposerHostMutationEvidenceOutcome,
+    ComposerHostMutationEvidenceRequest, ComposerHostMutationOutcome, ComposerHostMutationStatus,
     ComposerHostRetainedMutationIntent,
 };
 pub use publication::*;
@@ -50,6 +52,7 @@ pub struct SyndicComposerHost {
     last_request_id: u64,
     pending: BTreeMap<u64, ComposerHostPendingRequest>,
     pending_mutation: Option<ComposerHostPendingMutation>,
+    last_mutation_build_diagnostics: Option<mutation::outcome::BuildDiagnostics>,
     detached_mutations: Vec<ComposerHostPendingMutation>,
     pending_history: Option<history::ComposerHostPendingHistory>,
     detached_history: Vec<history::ComposerHostPendingHistory>,
@@ -87,6 +90,8 @@ pub struct SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     mutation_transition_limit: usize,
     #[cfg(feature = "test-faults")]
+    mutation_admission_retained_limits: Option<syndic_storage::DraftMarkerAdmissionLimitsV1>,
+    #[cfg(feature = "test-faults")]
     next_mutation_custody_serial: u64,
 }
 
@@ -109,6 +114,7 @@ impl SyndicComposerHost {
             last_request_id: 0,
             pending: BTreeMap::new(),
             pending_mutation: None,
+            last_mutation_build_diagnostics: None,
             detached_mutations: Vec::new(),
             pending_history: None,
             detached_history: Vec::new(),
@@ -137,6 +143,8 @@ impl SyndicComposerHost {
             submission_transition_fault: None,
             #[cfg(feature = "test-faults")]
             mutation_transition_limit: mutation::COMPOSER_HOST_MAX_MUTATION_TRANSITIONS,
+            #[cfg(feature = "test-faults")]
+            mutation_admission_retained_limits: None,
             #[cfg(feature = "test-faults")]
             next_mutation_custody_serial: 1,
         }
@@ -279,6 +287,14 @@ impl SyndicComposerHost {
     #[cfg(feature = "test-faults")]
     pub fn test_set_mutation_transition_limit(&mut self, limit: usize) {
         self.mutation_transition_limit = limit;
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_set_mutation_admission_retained_limits(
+        &mut self,
+        limits: syndic_storage::DraftMarkerAdmissionLimitsV1,
+    ) {
+        self.mutation_admission_retained_limits = Some(limits);
     }
 
     #[cfg(feature = "test-faults")]

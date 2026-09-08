@@ -54,7 +54,7 @@ a second proof. Keep the retry's exact attempt exclusive and bind proof issuance
 command. Verify no-mutation retry, competing-attempt rejection, drop-to-cleanup, and real journal
 failure reconciliation through the public API.
 
-## Remaining Staged Build Settlement Boundary
+## Staged Build Settlement Boundary
 
 Production composition exposed another unsupported handoff. The app's
 `composer_host/mutation/drive.rs::run_build_command` reads terminal operation status and discards
@@ -95,21 +95,82 @@ generation-bound finalization capability. They now consume the complete original
 the package helper before recovery and authenticate the persisted settlement afterward, preserving
 all root/history, retention-floor, byte-budget and absent-successor assertions. The corrected three
 passed in run `51fac404-11a4-496d-be8c-1f17952b4b83`. Do not move an unconsumed capability across
-recovery or manufacture a replacement outcome to make a fixture pass. App integration remains
-unaccepted and must use the accepted outcome boundary.
+recovery or manufacture a replacement outcome to make a fixture pass. App integration now uses
+the accepted outcome boundary.
 
 ## Evidence And Status
 
-The typed-refusal prerequisite is accepted in `a50186a`, with 113 prior marker regressions and 41
-final submission, assignment and cleanup cases passing. The resumed app implementation remains
-uncommitted and unaccepted. It adds bounded evidence/restart, AssetId-only fresh metadata, target
-resolution, shared typed diagnostics, and exact-operation cleanup. Existing marker assertions and
-the 256-byte fixture limit remain intact; compact fresh metadata fixed the surface-capacity failure.
+The typed-refusal prerequisite is accepted in `a50186a`, the mapped build frontier in
+`0042f2e`, authenticated terminal replay cleanup in `35ebfdf`, and bounded settlement preparation
+in `27aef10`. The last correction resolves the ordinary-stack postpromotion abort documented in
+[the stack-layout record](syndic-composer-mutation-stack-layout.md#postpromotion-settlement-recurrence).
+Moving fixture setup alone had not corrected the nested production settlement stack.
 
-Combined run `30310164` passed 35 of 37 tests across `composer_marker_evidence`,
-`main_window_composer_mount`, `main_window_composer_slot`, and `pending_composer_activation`.
-The latest corrected-fixture run `083f9ade` passed one of three focused tests. Evidence cancellation
-passes; the public success case fails with `Restoration(InvalidRoot)`, and mounted coherence remains
-at `Retained(Progress(CaptureRequired))`. These remain acceptance failures to investigate after the
-public settlement boundary is corrected; they do not replace the independent API-gap evidence.
-All runs used locked local Cargo configuration and serial test execution. Task processes exited.
+The app composes bounded widget evidence and replay, fresh Asset metadata, Syndic readiness and
+label assignment, and exact target resolution before production mutation begin. Existing marker,
+candidate/root/history, cancellation, generation and 256-byte surface assertions remain intact.
+Current, detached and disposing hosts retain opaque outcome flights through finalization,
+reconciliation and cleanup; terminal unavailable admission cannot be revived by retry.
+
+Mounted review corrected a dequeued staging request being treated as an owner error when its host
+returned `MutationWorkPending`. The owner retains the bounded exact request and shared cancellation
+state, resumes it first, suppresses late acknowledgement after actual widget cancellation, and
+drains the same operation. Authenticated noncommit may advance session generation while preserving
+candidate, root, history and logical range authority; detached settlement cannot replace a live
+binding.
+
+Final review found two additional lost-error boundaries. Stringifying post-begin host failures
+prevented Notifications from distinguishing committed edits, committed intermediate work and
+unavailable outcomes. A successor-proof read failure after commit was also discarded because the
+slot had advanced while the mounted editor retained its predecessor. Host errors now preserve
+classification from the retained authenticated transaction result. Dispatch retains typed errors,
+exact owner and mutation identity; committed presentation failure additionally retains the exact
+successor identity. The original editor remains context, further dispatch stops, and the existing
+Notifications contribution supplies a persistent explanation. Neither an intermediate command's
+commit nor a presentation failure manufactures successful widget adoption.
+
+Size, temporary capacity and storage refusals retain distinct dismissible explanations. Dismissed
+records are not recreated by rerendering, stale dismissal cannot remove a later operation's record,
+and unavailable feedback remains persistent without retry commands. Published owner and mount
+identity authenticate presentation without taking the service selection lock during rendering.
+
+The final test evidence covers 156 distinct focused cases on ordinary stacks with the accepted
+LLVM, one-job, no-normal-debug and nonincremental configuration. Run
+`e94a5f38-bfe2-4b3f-ad86-a9cf349adf79` passed 127 cases in 227.732s across marker evidence, mounted
+composer, slot, notices, pending activation, host, history, mutations and publication. After the
+successor-proof correction, run `3c7e1614-fcd8-42f6-a2dc-d1d766f3feec` passed all 69 lifecycle,
+notice, mounted and pending cases in 142.301s. These runs overlap; they are not 196 distinct tests.
+Their guarded peak commitment was below 1.5 GiB, and both jobs reaped all children.
+
+Real host recovery witnesses preserve committed-versus-intermediate classification and exact
+custody across repeated unavailable calls. Mounted transport witnesses retain actual post-begin
+custody and inject the typed dispatch failure; the mounted shared HomeStore cannot execute the
+consuming recovery operation. A separate mounted test injects a real storage read failure after
+commit, verifies the persisted marker and released storage custody, and checks exact persistent
+feedback without replay. Notice-owner retirement is exercised; replacement-composer rejection
+and the dormant detached-flight branch are reviewed structurally. Tests named detached do not
+claim runtime coverage of that branch.
+
+Independent final review found no remaining blocking issue in these boundaries. The isolated
+30-file production composition and five accepted storage corrections passed locked local metadata
+and `cargo +stable --config .cargo/local.toml check --locked -p beryl-app --lib --no-default-features`
+in 185 seconds. Every isolated app source matched the main checkout by SHA-256. Guarded peak
+commitment was 3.30 GiB with no remaining children. Local app acceptance is complete; canonical
+dependency publication remains the separate gate below.
+
+Historical marker setup now admits a real published Asset through evidence and label assignment;
+synthetic reused-label setup did not establish that authority. The malformed two-empty-page stream
+is tested as invalid input, with retained custody, authenticated cancellation, unchanged logical
+authority and a subsequent successful edit. No production filtering or storage-rule exception was
+introduced. Mounted clipboard image decoding and large/rich paste remain a separate checkpoint.
+
+## Remaining Canonical Dependency Boundary
+
+Local app verification depends on the accepted widget checkout
+`5f2f272b71666b56f990a1d2ee15e83219a05c9e`. Beryl's formal widget pin and the observed remote main
+remain `fc17c5738c35350e58e32437cdae74e28ebc31af`. A canonical check therefore reports the expected
+missing widget evidence/restart APIs and is not credited as passing. After local acceptance and
+Operator authorization to publish the accepted dependency commit, update Beryl's formal revision
+and canonical lockfile, run locked canonical metadata and the focused production check, then
+refresh semantic navigation for the validated Cargo model. Keep this gate separate from deferred
+process-provider work.

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
+use beryl_model::{AssetId, SyndicDraftMarkerId};
 use gpui_text_input::{
     InlineObjectGap, InlineObjectId, MutationLane, MutationPage, MutationPageItem, ObjectChange,
     SourcePosition,
@@ -33,6 +33,12 @@ pub(super) fn validate_marker_metadata_intake(
         || page.items().len() > 256
         || page.totals().retained_bytes > 65_536
         || marker_metadata.len() > 256
+        || marker_metadata
+            .iter()
+            .try_fold(0usize, |total, metadata| {
+                total.checked_add(metadata.retained_bytes())
+            })
+            .is_none_or(|bytes| bytes > 65_536)
     {
         return Err(ComposerHostError::MutationMalformed);
     }
@@ -53,6 +59,18 @@ pub(super) fn validate_marker_metadata_intake(
     };
     if marker_metadata.len() != consuming_items {
         return Err(ComposerHostError::MutationMalformed);
+    }
+    for (index, metadata) in marker_metadata.iter().enumerate() {
+        if marker_metadata[..index].iter().any(|prior| prior.object_id() == metadata.object_id())
+            || !page.items().iter().any(|item| matches!(item,
+                MutationPageItem::Object(ObjectChange::Insert { object } | ObjectChange::Replace { object, .. })
+                    if object.id() == metadata.object_id()
+            ))
+            || matches!(metadata.source(), syndic_storage::DraftMarkerReadinessSourceSelectorV1::FreshAsset(asset)
+                if asset != metadata.asset_id())
+        {
+            return Err(ComposerHostError::MutationMalformed);
+        }
     }
     Ok(())
 }
@@ -202,7 +220,7 @@ fn translate_proposal_page(
                 };
                 let (pieces, effect, natural_point, use_natural_point) = match *change {
                     ObjectChange::Insert { object } => {
-                        let marker = new_marker(&mut metadata, object)?;
+                        let marker = new_marker(storage, store, pending, &mut metadata, object)?;
                         let point = canonical_position(SourcePosition::new(
                             object.anchor(),
                             InlineObjectGap::NoObjects,
@@ -239,7 +257,7 @@ fn translate_proposal_page(
                         }
                         let target_marker = target_marker(storage, store, root, target)?;
                         let target_start = canonical_position(target.range().start())?;
-                        let marker = new_marker(&mut metadata, object)?;
+                        let marker = new_marker(storage, store, pending, &mut metadata, object)?;
                         if marker.label() != target_marker.marker.marker().label()
                             || marker.asset_id() != target_marker.marker.marker().asset_id()
                         {
@@ -268,12 +286,13 @@ fn translate_proposal_page(
                             object.anchor(),
                             InlineObjectGap::NoObjects,
                         ))?;
-                        let marker = DraftPieceMarkerV1::new(
+                        let marker = storage.resolve_draft_mutation_staging_marker(
+                            store,
+                            pending.storage_begin,
                             target_marker.marker.marker().marker_id(),
-                            object_order(object.order())?,
-                            target_marker.marker.marker().label(),
                             target_marker.marker.marker().asset_id(),
-                        );
+                            object_order(object.order())?,
+                        )?;
                         (
                             vec![DraftPieceV1::Marker(marker)],
                             DraftPieceMarkerEffectV1::Move {
@@ -383,11 +402,11 @@ fn scalar_chunks(value: &str, max_bytes: usize) -> Vec<&str> {
 
 fn marker_metadata_map(
     supplied: &[ComposerHostImageMarkerMetadata],
-) -> Result<BTreeMap<InlineObjectId, (ImageLabelOrdinal, AssetId)>, ComposerHostError> {
+) -> Result<BTreeMap<InlineObjectId, AssetId>, ComposerHostError> {
     let mut metadata = BTreeMap::new();
     for value in supplied {
         if metadata
-            .insert(value.object_id(), (value.label(), value.asset_id()))
+            .insert(value.object_id(), value.asset_id())
             .is_some()
         {
             return Err(ComposerHostError::MutationMalformed);
@@ -397,18 +416,22 @@ fn marker_metadata_map(
 }
 
 fn new_marker(
-    metadata: &mut BTreeMap<InlineObjectId, (ImageLabelOrdinal, AssetId)>,
+    storage: &syndic_storage::SyndicStorage,
+    store: &HomeStore,
+    pending: &ComposerHostMutationCoordinator,
+    metadata: &mut BTreeMap<InlineObjectId, AssetId>,
     object: gpui_text_input::SuccessorObject,
 ) -> Result<DraftPieceMarkerV1, ComposerHostError> {
-    let (label, asset_id) = metadata
+    let asset_id = metadata
         .remove(&object.id())
         .ok_or(ComposerHostError::MutationMalformed)?;
-    Ok(DraftPieceMarkerV1::new(
+    Ok(storage.resolve_draft_mutation_staging_marker(
+        store,
+        pending.storage_begin,
         marker_id(object.id()),
-        object_order(object.order())?,
-        label,
         asset_id,
-    ))
+        object_order(object.order())?,
+    )?)
 }
 
 fn target_marker(
@@ -452,7 +475,7 @@ fn object_order(order: gpui_text_input::InlineObjectOrder) -> Result<u64, Compos
     u64::try_from(order.get()).map_err(|_| ComposerHostError::MutationMalformed)
 }
 
-fn marker_id(id: InlineObjectId) -> SyndicDraftMarkerId {
+pub(super) fn marker_id(id: InlineObjectId) -> SyndicDraftMarkerId {
     SyndicDraftMarkerId::from_bytes(id.get().to_be_bytes())
 }
 

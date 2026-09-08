@@ -1,5 +1,11 @@
 use std::num::NonZeroU64;
 
+#[path = "../composer_marker_evidence/marker_readiness.rs"]
+mod marker_readiness;
+
+#[path = "../syndic_composer_mutations/marker_sources.rs"]
+mod marker_sources;
+
 use beryl_app::composer_host::{
     ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostBinding,
     ComposerHostError, ComposerHostImageMarkerMetadata, ComposerHostMutationOutcome,
@@ -188,7 +194,6 @@ pub fn insert_marker(
         MutationPositions::collapsed(intended),
         vec![ComposerHostImageMarkerMetadata::new(
             id,
-            ImageLabelOrdinal::new(1).unwrap(),
             asset_id_for_object(id),
         )],
     );
@@ -219,7 +224,6 @@ pub fn insert_markers(
         }));
         metadata.push(ComposerHostImageMarkerMetadata::new(
             id,
-            ImageLabelOrdinal::new(ordinal).unwrap(),
             asset_id_for_object(id),
         ));
     }
@@ -292,22 +296,50 @@ fn commit_items(
     marker_metadata: Vec<ComposerHostImageMarkerMetadata>,
 ) -> ComposerHostBinding {
     let key = mutation_key(binding, operation);
-    host.begin_mutation(
-        store,
-        binding,
-        MutationBeginRequest::new(
-            MutationProposal::new(
-                key,
-                MutationKind::Edit,
-                MutationPositions::collapsed(current),
-                replacement,
-                0,
-            ),
-            MutationCursor::new(0),
-            MutationCursor::new(0),
+    let markers: Vec<_> = marker_metadata
+        .iter()
+        .map(|metadata| {
+            let order = items
+                .iter()
+                .find_map(|item| match item {
+                    MutationPageItem::Object(
+                        ObjectChange::Insert { object } | ObjectChange::Replace { object, .. },
+                    ) if object.id() == metadata.object_id() => Some(object.order()),
+                    _ => None,
+                })
+                .expect("fixture marker has an insertion");
+            let ordinal = u64::try_from(order.get()).unwrap();
+            syndic_storage::DraftPieceMarkerV1::new(
+                beryl_model::SyndicDraftMarkerId::from_bytes(
+                    metadata.object_id().get().to_be_bytes(),
+                ),
+                ordinal,
+                ImageLabelOrdinal::new(ordinal).unwrap(),
+                metadata.asset_id(),
+            )
+        })
+        .collect();
+    let begin = MutationBeginRequest::new(
+        MutationProposal::new(
+            key,
+            MutationKind::Edit,
+            MutationPositions::collapsed(current),
+            replacement,
+            0,
         ),
-    )
-    .unwrap();
+        MutationCursor::new(0),
+        MutationCursor::new(0),
+    );
+    if markers.is_empty()
+        && items
+            .iter()
+            .any(|item| matches!(item, MutationPageItem::Object(ObjectChange::Remove { .. })))
+    {
+        marker_sources::begin_marker_removal(host, store, binding, begin);
+    } else {
+        marker_readiness::begin_with_markers(host, store, binding, begin, &markers).unwrap();
+    }
+    let source_finish = marker_sources::stage_marker_sources(host, store, key, &items);
     let page = MutationPage::new(
         MutationPageKey::new(
             key,
@@ -336,7 +368,7 @@ fn commit_items(
         store,
         MutationFinishInput::new(
             key,
-            empty_finish(),
+            source_finish,
             proposal_finish,
             LogicalExtent::new(0, 1),
             intended,

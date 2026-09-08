@@ -424,7 +424,6 @@ impl SyndicComposerHost {
                 self.active = None;
                 self.pending.clear();
                 self.pending_mutation = None;
-                self.detached_mutations.clear();
                 self.pending_history = None;
                 self.detached_history.clear();
                 self.lifecycle.clear_runtime();

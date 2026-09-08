@@ -319,10 +319,7 @@ fn settle_admitted_marker_insertion(
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

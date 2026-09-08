@@ -3,32 +3,35 @@ use super::*;
 #[test]
 fn typing_newline_paste_delete_and_cut_use_one_paged_protocol() {
     let (_home, store, storage, thread) = fixture("text", 1);
-    let durable_before = current(storage, &store, thread);
-    let (mut host, base) = activated(storage, &store, thread, 2, 3);
+    let durable_before = current(storage.clone(), &store, thread);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 2, 3);
 
     let typed = commit_text(&mut host, &store, base, 4, 0, 0, "hello\n", 6, 2);
-    assert_eq!(candidate_text(storage, &store, typed), b"hello\n");
+    assert_eq!(candidate_text(storage.clone(), &store, typed), b"hello\n");
 
     let pasted = commit_text(&mut host, &store, typed, 5, 6, 6, "世界!", 13, 2);
     assert_eq!(
-        candidate_text(storage, &store, pasted),
+        candidate_text(storage.clone(), &store, pasted),
         "hello\n世界!".as_bytes()
     );
 
     let deleted = commit_text(&mut host, &store, pasted, 6, 6, 12, "", 7, 2);
-    assert_eq!(candidate_text(storage, &store, deleted), b"hello\n!");
+    assert_eq!(
+        candidate_text(storage.clone(), &store, deleted),
+        b"hello\n!"
+    );
 
     let cut = commit_text(&mut host, &store, deleted, 7, 0, 5, "", 2, 2);
-    assert_eq!(candidate_text(storage, &store, cut), b"\n!");
+    assert_eq!(candidate_text(storage.clone(), &store, cut), b"\n!");
     assert_eq!(host.binding(), Some(cut));
     assert_ne!(cut.history(), base.history());
-    assert_eq!(current(storage, &store, thread), durable_before);
+    assert_eq!(current(storage.clone(), &store, thread), durable_before);
 }
 
 #[test]
 fn more_than_256_pages_commit_once_without_coordinator_growth() {
     let (_home, store, storage, thread) = fixture("large", 21);
-    let (mut host, base) = activated(storage, &store, thread, 22, 23);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 22, 23);
     let key = mutation_key(base, 24);
     let zero = source_position(0);
     let proposal = MutationProposal::new(
@@ -85,13 +88,16 @@ fn more_than_256_pages_commit_once_without_coordinator_growth() {
     );
     host.finish_mutation_input(&store, finish).unwrap();
     let binding = commit(&mut host, &store, key);
-    assert_eq!(candidate_text(storage, &store, binding), vec![b'x'; 258]);
+    assert_eq!(
+        candidate_text(storage.clone(), &store, binding),
+        vec![b'x'; 258]
+    );
 }
 
 #[test]
 fn lane_order_replay_wrong_cursor_collision_and_backpressure_are_exact() {
     let (_home, store, storage, thread) = fixture("order", 41);
-    let (mut host, base) = activated(storage, &store, thread, 42, 43);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 42, 43);
     let key = mutation_key(base, 44);
     let zero = source_position(0);
     let proposal = MutationProposal::new(
@@ -210,7 +216,7 @@ fn lane_order_replay_wrong_cursor_collision_and_backpressure_are_exact() {
 #[test]
 fn one_widget_page_admits_the_maximum_257_physical_pages_atomically_and_releases_payload() {
     let (_home, store, storage, thread) = fixture("max-batch", 51);
-    let (mut host, base) = activated(storage, &store, thread, 52, 53);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 52, 53);
     let key = mutation_key(base, 54);
     let zero = source_position(0);
     let proposal = MutationProposal::new(
@@ -270,13 +276,17 @@ fn one_widget_page_admits_the_maximum_257_physical_pages_atomically_and_releases
         .unwrap(),
         ComposerHostMutationOutcome::Cancelled
     );
-    assert_eq!(host.binding(), Some(base));
+    let drained = host.binding().unwrap();
+    assert_eq!(drained.root(), base.root());
+    assert_eq!(drained.history(), base.history());
+    assert_eq!(drained.range_binding(), base.range_binding());
+    assert!(drained.candidate().session_generation() > base.candidate().session_generation());
 }
 
 #[test]
 fn page_limits_reject_before_frontier_or_storage_effect() {
     let (_home, store, storage, thread) = fixture("page-limits", 55);
-    let (mut host, base) = activated(storage, &store, thread, 56, 57);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 56, 57);
     let key = mutation_key(base, 58);
     let zero = source_position(0);
     host.begin_mutation(
@@ -344,13 +354,13 @@ fn page_limits_reject_before_frontier_or_storage_effect() {
 #[test]
 fn operation_highwater_and_lane_receipts_reset_on_rebind_release_and_fresh_session() {
     let (_home, store, storage, thread) = fixture("binding-highwater", 61);
-    let (mut host, base) = activated(storage, &store, thread, 62, 63);
+    let (mut host, base) = activated(storage.clone(), &store, thread, 62, 63);
     begin_then_cancel(&mut host, &store, base, 100);
 
-    let rebound = reactivate(&mut host, storage, &store, thread, 62, 63);
+    let rebound = reactivate(&mut host, storage.clone(), &store, thread, 62, 63);
     begin_then_cancel(&mut host, &store, rebound, 1);
 
-    let fresh = reactivate(&mut host, storage, &store, thread, 65, 66);
+    let fresh = reactivate(&mut host, storage.clone(), &store, thread, 65, 66);
     begin_then_cancel(&mut host, &store, fresh, 1);
 }
 
