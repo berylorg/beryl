@@ -36,9 +36,9 @@ use crate::{
 };
 
 use super::{
-    AssignmentCommandLimit, AssignmentFlightState, DraftMarkerAdmissionCommandIdV1,
-    DraftMarkerAdmissionOwnerV1, DraftMarkerLabelAssignmentErrorV1,
-    DraftMarkerLabelAssignmentFlightV1, DraftMarkerLabelReadinessProofV1,
+    AssignmentFlightState, DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionOwnerV1,
+    DraftMarkerLabelAssignmentErrorV1, DraftMarkerLabelAssignmentFlightV1,
+    DraftMarkerLabelReadinessProofV1,
 };
 
 #[derive(Clone)]
@@ -197,14 +197,13 @@ impl SyndicStorage {
         let mut flight = self.prepare_draft_marker_label_assignment(store, owner, command)?;
         let AssignmentFlightState::Ready {
             retained_limits: flight_retained_limits,
-            command_limit: flight_command_limit,
             ..
         } = &mut flight.state
         else {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
         };
         *flight_retained_limits = retained_limits;
-        *flight_command_limit = AssignmentCommandLimit::Exact(command_limit);
+        flight.work.lower_limit(command_limit);
         Ok(flight)
     }
 
@@ -214,11 +213,11 @@ impl SyndicStorage {
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
     ) -> Result<DraftMarkerLabelAssignmentFlightV1, DraftMarkerLabelAssignmentErrorV1> {
-        let mut flight = self.prepare_draft_marker_label_assignment(store, owner, command)?;
-        let AssignmentFlightState::Ready { command_limit, .. } = &mut flight.state else {
-            return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
-        };
-        *command_limit = AssignmentCommandLimit::BeforeAuthorityReads;
+        let flight = self.prepare_draft_marker_label_assignment(store, owner, command)?;
+
+        flight
+            .work
+            .lower_limit(flight.work.snapshot().encoded_bytes);
         Ok(flight)
     }
 

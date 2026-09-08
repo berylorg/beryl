@@ -146,6 +146,100 @@ preparation remains unavailable for capacity until the flight resolves or releas
 attempt; releasing the flight does not delete durable custody and permits owner-qualified
 cancellation or recovery cleanup.
 
+### Canonical Admission Deletion
+
+Source-order assignment and target-id builder consumption use the same canonical admission-tree
+deletion. Assignment removes one source leaf and replaces the matching target leaf's disposition;
+builder consumption removes one assigned target leaf. Neither operation changes an unrelated
+occurrence, owner, evidence payload or assignment group. The exact successor counts, envelopes,
+digests, retained charge, head and capacity transition publish atomically under existing custody.
+
+Deletion returns an empty subtree, a canonical subtree with its actual height, or a transient
+underfull internal child vector with its unchanged height. An underfull nonroot uses its left
+sibling when one exists, otherwise its right sibling. Before using that sibling, authenticate its
+exact parent-bound identity, owner, tree, height, complete summary and canonical occupancy. Combine
+the child vectors in their existing key order. Merge when their combined fanout fits 128;
+otherwise split at the midpoint into 64 and 65 children. Propagate any resulting parent
+underflow before emission. Never persist a transient unary nonroot or retain a fictitious height.
+
+Collapse a singleton selected root to its child, repeating while the selected child is internal
+and unary. A surviving leaf is selected directly at height one; an empty root has height zero.
+Previously valid selected unary roots remain readable, but their children must satisfy nonroot
+occupancy. Deletion emits no unnecessary unary root. Existing invalid nonroot state is corruption;
+ordinary deletion does not repair or migrate it.
+Only transient unary levels produced by this deletion may collapse beneath the selected root;
+a stored nonroot unary node rejects even when collapsing it could hide the invalidity.
+
+Assign deterministic operation-local identities only to final surviving emitted nodes, in bottom-up
+repair order and left-to-right within one level. The retained predecessor list contains the
+original descent in root-to-leaf order, followed by superseded siblings in bottom-up repair order.
+Assignment appends the target-replacement descent after that source list. Every superseded record
+appears exactly once; reused children and surviving subtrees never enter this deletion set.
+
+Assignment retains that complete predecessor closure for its selected receipt's exact
+reconstruction. Its successor atomically reclaims the previous receipt and previous replay-only
+records. Builder consumption instead deletes the complete superseded set with the target/head/
+capacity update and ordinary build receipt. Bounded index reconstruction authenticates the exact
+retained membership and reproduces deterministic roots, keys and bytes for the selected tree
+transition. Whole-command acknowledgement-loss classification instead retains the existing
+move-only captured command and HomeStore reconciliation authority. That authority proves the
+complete reserved changed closure, including prior receipt and superseded-node deletion absence.
+The selected receipt's compact source-head bytes cannot reconstruct deleted cleanup keys or mint
+replacement command custody. A repeated assignment request with the same command identity remains
+rejected; it is not a stateless command-replay entry point.
+
+Selected-target verification uses captured deletion keys, byte-compares selected put records, and
+does not also acquire deleted predecessor cleanup records or probe those puts as fresh absent
+targets. Builder replay likewise uses the captured deletion result and ordinary build outcome
+authority; it never walks a deleted predecessor admission path. Missing or substituted siblings,
+duplicate or unrelated retained entries, cross-owner references and byte-different occupancy fail
+closed. Neither reconstruction, reconciliation nor cancellation scans earlier receipt history.
+
+Before reclaiming a selected ingestion or assignment receipt's predecessors, authenticate the
+complete transition from its before-roots to the head-selected after-roots. A self-consistent
+receipt digest, individually valid descriptors, or membership in an untrusted before-root alone
+does not prove that those records were superseded. Decode the existing
+[transition metadata](design-schema-v7.md#admission-receipt-transition-metadata), derive the exact
+association and deterministic identity sequence, and verify both resulting root descriptors and
+the entire ordered retained list. Empty EOF or empty final assignment requires unchanged roots
+and an empty retained list.
+
+This structural-integrity check streams expected summaries and hashes through bounded scratch
+over already acquired receipt bytes, retained paths and repair siblings. It creates no put
+records, fresh-key probes or independently retained tree graph. A reused surviving child/root
+uses the current-root acquisition already required by the same assignment, with canonical
+occupancy checked before accepting collapse. Ingestion's reused leaf payload is not acquired
+again: retained height-two child descriptors, or the current after-root for a prior height-one
+root, provide the authenticated envelope. No extra reader or helper allowance is introduced.
+These checks prove structural derivation; they do not replace captured-command canonical-byte
+comparison or create replay custody from a digest.
+
+One assignment invocation owns an acquisition/emission allowance through public preparation,
+serialized assignment and its first committed readiness attempt. Reserve the canonical family
+maximum before each physical point acquisition and release unused allowance only after bounded
+decode. Charge each emitted record before retaining it, every absence probe, repeated acquisition
+and deletion effect before its work. Authority, head, capacity, receipt and node helpers share this
+allowance; immutable cache hits do not acquire again. Exact retained-storage charge is separate
+from physical acquisition accounting and neither counter can reset in a nested helper. Mutable
+authority observations remain actual observations. The
+immutable-node cache is confined to one authenticated revision/snapshot boundary unless the
+composing command supplies the existing captured-revision seal. It never supplies an earlier
+head, capacity, session or authority value in place of a required later observation. The
+[schema bound](design-schema-v7.md#canonical-admission-deletion-bounds) includes the public head
+read, serialized session/label/protection checks, and the postcommit head/receipt/authority reads.
+A later committed-readiness retry remains a bounded read-only attempt that retains the committed
+result and cannot repeat assignment or tree mutation.
+
+The bounded deletion result binds its exact source and target roots, final puts, complete
+superseded records, ordered replay descriptors and retained-charge delta. It does not create a new
+durable cursor or writer lifecycle. A composing builder may reuse that immutable result only
+under its existing captured-revision admission and exact mutable head/capacity fences; it must not
+reconstruct the same target path through an uncharged second reader. Cancellation, terminal
+cleanup, ambiguous outcomes and local writer ownership retain their existing exact authorities.
+The standalone deletion and complete assignment bounds do not establish the composing builder's
+complete quantum bound. Marker-effect continuation must compose the sealed deletion result with
+its other work under one builder ledger before that integration can be accepted.
+
 ### Staging Session
 
 `DraftMutationOperationIdV1` is one opaque caller-owned identity reused for one transaction's begin,

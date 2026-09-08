@@ -375,7 +375,7 @@ fn wrong_target_label_cannot_advance_build_or_consume_admission() {
 }
 
 #[test]
-fn cloned_consuming_advance_replays_without_consuming_the_target_twice() {
+fn stale_cloned_advance_is_refused_without_consuming_the_target_twice() {
     let (_home, store, storage, thread) = fixture("consumption-replay", 90);
     let (session, source) = marked_session(&storage, &store, thread, 91);
     let admission = owner(&session, 100);
@@ -417,7 +417,7 @@ fn cloned_consuming_advance_replays_without_consuming_the_target_twice() {
         assert!(matches!(
             replay_outcome,
             CommandOutcome::NotCommitted {
-                evidence: CommandError::EmptyContribution { .. }
+                evidence: CommandError::Conflict { .. }
             }
         ));
         let replayed = snapshot(&storage, &store, admission);

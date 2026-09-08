@@ -28,6 +28,8 @@ use super::{
 
 const NODE_ID_DOMAIN: &[u8] = b"syndic/draft-marker-label-admission-index-node/v1";
 
+use super::ledger::AdmissionWorkLedger;
+
 #[derive(Debug)]
 pub(crate) enum DraftMarkerAdmissionIndexPreparationErrorV1 {
     Read(ReadError),
@@ -146,13 +148,21 @@ pub(crate) struct PreparedDraftMarkerAdmissionIndexSuccessorV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedDraftMarkerAdmissionConsumptionV1 {
+    source_root: DraftMarkerAdmissionRootV1,
     target_root: DraftMarkerAdmissionRootV1,
     puts: Box<[DraftMarkerAdmissionNodeV1]>,
     deletions: Box<[DraftMarkerAdmissionNodeV1]>,
     retained_charge_delta: DraftMarkerAdmissionRetainedChargeDeltaV1,
+    predecessor: Box<[DraftMarkerAdmissionChildV1]>,
 }
 
 impl PreparedDraftMarkerAdmissionConsumptionV1 {
+    pub(crate) const fn source_root(&self) -> DraftMarkerAdmissionRootV1 {
+        self.source_root
+    }
+    pub(crate) fn predecessor(&self) -> &[DraftMarkerAdmissionChildV1] {
+        &self.predecessor
+    }
     pub(crate) const fn target_root(&self) -> DraftMarkerAdmissionRootV1 {
         self.target_root
     }
@@ -248,7 +258,7 @@ impl AdmissionNodeReader for DomainAdmissionNodeReader<'_, '_> {
 struct ReadLedger<'a, R> {
     reader: &'a R,
     read_bytes: u64,
-    maximum_bytes: u64,
+    work: AdmissionWorkLedger,
     cache: BTreeMap<DraftMarkerAdmissionNodeKeyV1, Option<DraftMarkerAdmissionNodeV1>>,
 }
 
@@ -261,18 +271,17 @@ impl<R: AdmissionNodeReader> ReadLedger<'_, R> {
         if let Some(value) = self.cache.get(key) {
             return Ok(value.clone());
         }
+        let reservation = self.work.reserve_node_point(SMALL_MAX as u64 + 65)?;
         let value = self.reader.point(key)?;
         let charge = match value.as_ref() {
             Some(value) => encoded_node_record_charge(key, value)?,
             None => encoded_node_key_charge(key)?,
         };
+        reservation.finish(charge, value.is_some())?;
         let read_bytes = self
             .read_bytes
             .checked_add(charge)
             .ok_or(DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow)?;
-        if read_bytes > self.maximum_bytes {
-            return Err(DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge.into());
-        }
         self.read_bytes = read_bytes;
         self.cache.insert(*key, value.clone());
         Ok(value)
@@ -300,19 +309,53 @@ pub(crate) fn prepare_draft_marker_admission_assignment_v1(
     owner: DraftMarkerAdmissionOwnerV1,
     source_root: DraftMarkerAdmissionRootV1,
     target_root: DraftMarkerAdmissionRootV1,
+    prior_receipt: &super::DraftMarkerAdmissionReplayReceiptV1,
+    command: super::DraftMarkerAdmissionCommandIdV1,
+    assignment_ordinal: u64,
+    continuation: super::DraftMarkerAdmissionAssignmentContinuationV1,
+    work: &AdmissionWorkLedger,
+) -> Result<PreparedDraftMarkerAdmissionAssignmentV1, DraftMarkerAdmissionIndexPreparationErrorV1> {
+    let node_reader = DomainAdmissionNodeReader { reader };
+    prepare_assignment_with_reader(
+        &node_reader,
+        owner,
+        source_root,
+        target_root,
+        prior_receipt.retained_predecessor_nodes(),
+        command,
+        assignment_ordinal,
+        continuation,
+        Some(prior_receipt),
+        work,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_assignment_with_reader<R: AdmissionNodeReader>(
+    node_reader: &R,
+    owner: DraftMarkerAdmissionOwnerV1,
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
     prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
     command: super::DraftMarkerAdmissionCommandIdV1,
     assignment_ordinal: u64,
     continuation: super::DraftMarkerAdmissionAssignmentContinuationV1,
+    prior_receipt: Option<&super::DraftMarkerAdmissionReplayReceiptV1>,
+    work: &AdmissionWorkLedger,
 ) -> Result<PreparedDraftMarkerAdmissionAssignmentV1, DraftMarkerAdmissionIndexPreparationErrorV1> {
-    let node_reader = DomainAdmissionNodeReader { reader };
     let mut ledger = ReadLedger {
-        reader: &node_reader,
+        reader: node_reader,
         read_bytes: 0,
-        maximum_bytes: super::DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        work: work.clone(),
         cache: BTreeMap::new(),
     };
     authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
+    if let Some(receipt) = prior_receipt {
+        if receipt.source_after() != source_root || receipt.target_after() != target_root {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
+        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt)?;
+    }
     let source_leaf = least_leaf(&mut ledger, owner, source_root)?;
     let DraftMarkerAdmissionNodePayloadV1::SourceLeaf {
         source_key,
@@ -509,13 +552,80 @@ pub(crate) fn prepare_empty_draft_marker_admission_index_successor_v1(
     prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
 ) -> Result<PreparedDraftMarkerAdmissionIndexSuccessorV1, DraftMarkerAdmissionIndexPreparationErrorV1>
 {
+    prepare_empty_draft_marker_admission_index_successor_v1_with_ledger(
+        reader,
+        owner,
+        source_root,
+        target_root,
+        prior_replay_nodes,
+        &AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES),
+    )
+}
+
+pub(crate) fn prepare_empty_draft_marker_admission_index_successor_v1_with_ledger(
+    reader: &DomainReader<'_, SyndicDomain>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
+    work: &AdmissionWorkLedger,
+) -> Result<PreparedDraftMarkerAdmissionIndexSuccessorV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
     let node_reader = DomainAdmissionNodeReader { reader };
+    prepare_empty_with_reader(
+        &node_reader,
+        owner,
+        source_root,
+        target_root,
+        prior_replay_nodes,
+        None,
+        work,
+    )
+}
+
+pub(crate) fn prepare_empty_draft_marker_admission_assignment_v1(
+    reader: &DomainReader<'_, SyndicDomain>,
+    owner: DraftMarkerAdmissionOwnerV1,
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    prior_receipt: &super::DraftMarkerAdmissionReplayReceiptV1,
+    work: &AdmissionWorkLedger,
+) -> Result<PreparedDraftMarkerAdmissionIndexSuccessorV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
+    prepare_empty_with_reader(
+        &DomainAdmissionNodeReader { reader },
+        owner,
+        source_root,
+        target_root,
+        prior_receipt.retained_predecessor_nodes(),
+        Some(prior_receipt),
+        work,
+    )
+}
+
+fn prepare_empty_with_reader<R: AdmissionNodeReader>(
+    node_reader: &R,
+    owner: DraftMarkerAdmissionOwnerV1,
+    source_root: DraftMarkerAdmissionRootV1,
+    target_root: DraftMarkerAdmissionRootV1,
+    prior_replay_nodes: &[DraftMarkerAdmissionChildV1],
+    prior_receipt: Option<&super::DraftMarkerAdmissionReplayReceiptV1>,
+    work: &AdmissionWorkLedger,
+) -> Result<PreparedDraftMarkerAdmissionIndexSuccessorV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
     let mut ledger = ReadLedger {
-        reader: &node_reader,
+        reader: node_reader,
         read_bytes: 0,
-        maximum_bytes: super::DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        work: work.clone(),
         cache: BTreeMap::new(),
     };
+    if let Some(receipt) = prior_receipt {
+        if receipt.source_after() != source_root || receipt.target_after() != target_root {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
+        authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
+        tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt)?;
+    }
     let mut protected = BTreeSet::new();
     for root in [source_root, target_root] {
         root.validate_shape()?;
@@ -583,7 +693,7 @@ pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
     let mut ledger = ReadLedger {
         reader: &node_reader,
         read_bytes: 0,
-        maximum_bytes: super::DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        work: AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES),
         cache: BTreeMap::new(),
     };
     let mut retired_targets = Vec::new();
@@ -658,10 +768,29 @@ fn prepare_draft_marker_admission_consumption_with_reader<R: AdmissionNodeReader
     identity: DraftMarkerAdmissionPageIdentityV1,
 ) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
 {
+    prepare_consumption_with_ledger(
+        reader,
+        owner,
+        root,
+        marker,
+        identity,
+        &AdmissionWorkLedger::new(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES),
+    )
+}
+
+fn prepare_consumption_with_ledger<R: AdmissionNodeReader>(
+    reader: &R,
+    owner: DraftMarkerAdmissionOwnerV1,
+    root: DraftMarkerAdmissionRootV1,
+    marker: DraftPieceMarkerV1,
+    identity: DraftMarkerAdmissionPageIdentityV1,
+    work: &AdmissionWorkLedger,
+) -> Result<PreparedDraftMarkerAdmissionConsumptionV1, DraftMarkerAdmissionIndexPreparationErrorV1>
+{
     let mut ledger = ReadLedger {
         reader,
         read_bytes: 0,
-        maximum_bytes: DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
+        work: work.clone(),
         cache: BTreeMap::new(),
     };
     let leaf = point_target_leaf(&mut ledger, owner, root, marker.marker_id())?
@@ -704,6 +833,9 @@ fn prepare_draft_marker_admission_consumption_with_reader<R: AdmissionNodeReader
         if node.digest() != child.digest() || node.count()? != child.count() {
             return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
         }
+        ledger
+            .work
+            .charge_delete(encoded_node_record_charge(&node.key(), &node)?)?;
         deletions.push(node);
     }
     let write_bytes = sum_node_charges(&edit.puts)?;
@@ -714,6 +846,7 @@ fn prepare_draft_marker_admission_consumption_with_reader<R: AdmissionNodeReader
         delete_bytes,
     ])?;
     Ok(PreparedDraftMarkerAdmissionConsumptionV1 {
+        source_root: root,
         target_root: edit.root,
         puts: edit.puts.into_boxed_slice(),
         deletions: deletions.into_boxed_slice(),
@@ -721,6 +854,7 @@ fn prepare_draft_marker_admission_consumption_with_reader<R: AdmissionNodeReader
             added: DraftMarkerAdmissionRetainedChargeV1::new(0, 0, write_bytes),
             removed: DraftMarkerAdmissionRetainedChargeV1::new(0, 1, delete_bytes),
         },
+        predecessor: edit.predecessor.into_boxed_slice(),
     })
 }
 
@@ -763,7 +897,7 @@ fn prepare_with_reader<R: AdmissionNodeReader>(
     let mut ledger = ReadLedger {
         reader,
         read_bytes: 0,
-        maximum_bytes: command_limit,
+        work: AdmissionWorkLedger::new(command_limit),
         cache: BTreeMap::new(),
     };
     authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
@@ -884,7 +1018,14 @@ fn authenticate_retained_predecessor_nodes<R: AdmissionNodeReader>(
     owner: DraftMarkerAdmissionOwnerV1,
     retained: &[DraftMarkerAdmissionChildV1],
 ) -> Result<(), DraftMarkerAdmissionIndexPreparationErrorV1> {
+    if retained.len() > 52 {
+        return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount.into());
+    }
+    let mut seen = BTreeSet::new();
     for expected in retained {
+        if expected.key().owner() != owner || !seen.insert(expected.key()) {
+            return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
+        }
         let node = ledger
             .point(&expected.key())?
             .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::MissingNode)?;
@@ -963,7 +1104,7 @@ fn point_target_leaf_with(
     if root.tree() != DraftMarkerAdmissionTreeV1::TargetId {
         return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
     }
-    root.validate_shape()?;
+    tree_edit::validate_profile_root(root)?;
     let Some(root_key) = root.node() else {
         return Ok(None);
     };
@@ -981,9 +1122,19 @@ fn point_target_leaf_with(
     {
         return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
     }
+    let mut is_root = true;
     loop {
         match node.payload() {
             DraftMarkerAdmissionNodePayloadV1::Internal { height, children } => {
+                if !is_root && children.len() < 2 {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::NodeFanout.into());
+                }
+                if children
+                    .iter()
+                    .any(|child| child.count() < (1u64 << (height - 2)))
+                {
+                    return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount.into());
+                }
                 let mut selected = None;
                 for (index, child) in children.iter().enumerate() {
                     let DraftMarkerAdmissionEnvelopeV1::TargetId { last, .. } = child.envelope()
@@ -1015,6 +1166,7 @@ fn point_target_leaf_with(
                     return Err(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication);
                 }
                 node = child;
+                is_root = false;
             }
             DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
                 target_marker_id, ..

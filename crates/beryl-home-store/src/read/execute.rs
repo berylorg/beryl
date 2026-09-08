@@ -1,5 +1,11 @@
 use std::ops::Bound;
 
+#[cfg(feature = "test-faults")]
+use std::{
+    any::TypeId,
+    sync::{Mutex, OnceLock},
+};
+
 use super::*;
 
 pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
@@ -11,6 +17,8 @@ pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
     validate_codec::<D, R>()?;
     let family = resolve_family::<D, R>(families)?;
     let encoded_key = encode_stored_key::<D, R>(key)?;
+    #[cfg(feature = "test-faults")]
+    record_test_point_acquisition::<D>();
     let Some(point) = snapshot
         .point(&family.keyspace, &encoded_key)
         .map_err(|source| fjall_storage(ReadStage::PointSize, source))?
@@ -27,6 +35,57 @@ pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
     let (value, decoded_bytes) = decode_value_with_size::<D, R>(pair.value())?;
     ensure_caller_byte_bound::<D, R>(decoded_bytes, limit.max_bytes())?;
     Ok(Some(value))
+}
+
+#[cfg(feature = "test-faults")]
+struct TestPointAcquisitionObserver {
+    domain: Option<TypeId>,
+    count: u64,
+}
+
+#[cfg(feature = "test-faults")]
+fn test_point_acquisition_observer() -> &'static Mutex<TestPointAcquisitionObserver> {
+    static OBSERVER: OnceLock<Mutex<TestPointAcquisitionObserver>> = OnceLock::new();
+    OBSERVER.get_or_init(|| {
+        Mutex::new(TestPointAcquisitionObserver {
+            domain: None,
+            count: 0,
+        })
+    })
+}
+
+#[cfg(feature = "test-faults")]
+pub fn reset_test_point_acquisition_count<D: StorageDomain>() {
+    let mut observer = test_point_acquisition_observer()
+        .lock()
+        .expect("test point acquisition observer lock");
+    observer.domain = Some(TypeId::of::<D>());
+    observer.count = 0;
+}
+
+#[cfg(feature = "test-faults")]
+pub fn test_point_acquisition_count<D: StorageDomain>() -> u64 {
+    let observer = test_point_acquisition_observer()
+        .lock()
+        .expect("test point acquisition observer lock");
+    if observer.domain == Some(TypeId::of::<D>()) {
+        observer.count
+    } else {
+        0
+    }
+}
+
+#[cfg(feature = "test-faults")]
+fn record_test_point_acquisition<D: StorageDomain>() {
+    let mut observer = test_point_acquisition_observer()
+        .lock()
+        .expect("test point acquisition observer lock");
+    if observer.domain == Some(TypeId::of::<D>()) {
+        observer.count = observer
+            .count
+            .checked_add(1)
+            .expect("test point count overflow");
+    }
 }
 
 pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(

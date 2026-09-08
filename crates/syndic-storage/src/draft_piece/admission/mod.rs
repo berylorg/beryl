@@ -1,6 +1,7 @@
 mod assignment;
 pub(crate) mod codec;
 pub(crate) mod index;
+mod ledger;
 mod model;
 mod publication;
 mod readiness_source;
@@ -44,6 +45,9 @@ pub use index::{
     DraftMarkerAdmissionIndexTestErrorV1, DraftMarkerAdmissionIndexTestStateV1,
     DraftMarkerAdmissionIndexTestStepV1,
 };
+
+#[cfg(feature = "test-faults")]
+pub use ledger::{DraftMarkerAdmissionWorkDiagnosticsV1, DraftMarkerAdmissionWorkSnapshotV1};
 
 pub const DRAFT_MARKER_ADMISSION_MAX_HEADS: u64 = 64;
 pub const DRAFT_MARKER_ADMISSION_MAX_ASSOCIATIONS: u64 = 65_536;

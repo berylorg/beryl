@@ -139,13 +139,6 @@ pub(crate) fn request_authority_is_exact(
     Ok(request_authority_observation(reader, authority)?.is_some())
 }
 
-pub(crate) fn request_authority_exact_read_bytes(
-    reader: &DomainReader<'_, SyndicDomain>,
-    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
-) -> Result<Option<u64>, ReadError> {
-    request_authority_observation(reader, authority)
-}
-
 fn request_authority_observation(
     reader: &DomainReader<'_, SyndicDomain>,
     authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
@@ -196,6 +189,48 @@ fn request_authority_observation(
                     .and_then(|charge| bytes.checked_add(charge))
             }),
     )
+}
+
+pub(crate) fn request_authority_exact_read_bytes_with_ledger(
+    reader: &DomainReader<'_, SyndicDomain>,
+    authority: &DraftMarkerLabelReadinessRequestAuthorityV1,
+    work: &super::super::ledger::AdmissionWorkLedger,
+) -> Result<Option<u64>, super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1> {
+    fn point<F: Family>(
+        reader: &DomainReader<'_, SyndicDomain>,
+        work: &super::super::ledger::AdmissionWorkLedger,
+        key: &F::Key,
+    ) -> Result<Option<F::Value>, super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1>
+    {
+        work.point::<F, super::super::index::DraftMarkerAdmissionIndexPreparationErrorV1>(
+            key,
+            super::super::ledger::AdmissionWorkLedger::family_maximum::<F>(),
+            || {
+                reader
+                    .point::<crate::codec::ExactCodec<F>>(key, source_limit())
+                    .map_err(Into::into)
+            },
+        )
+    }
+    let before = work.snapshot().encoded_bytes;
+    let session_key = DraftEditorCandidateSessionRecordKeyV1::head(
+        authority.session.draft_id(),
+        authority.session.session_id(),
+    );
+    let session = point::<DraftEditorCandidateSessionsFamily>(reader, work, &session_key)?;
+    let thread_id = authority.session.thread_id();
+    let label_authority = point::<ImageLabelAuthorityHeadsFamily>(reader, work, &thread_id)?;
+    let protection = point::<DraftImageLabelProtectionHeadsFamily>(reader, work, &thread_id)?;
+    let exact = matches!(session.as_ref(), Some(DraftEditorCandidateSessionRecordV1::Head(session))
+        if session == &authority.session && session.lifecycle() == DraftEditorCandidateSessionLifecycleV1::Active)
+        && label_authority.as_ref() == Some(&authority.label_authority)
+        && protection.as_ref() == Some(&authority.protection)
+        && authority.protection.protected_maximum()
+            >= authority
+                .label_authority
+                .inherited()
+                .max(authority.label_authority.permanent());
+    Ok(exact.then(|| work.snapshot().encoded_bytes - before))
 }
 
 fn encoded_record_bytes<F: Family>(key: &F::Key, value: &F::Value) -> Option<u64> {

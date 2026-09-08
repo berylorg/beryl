@@ -621,6 +621,124 @@ canonical byte comparison of the point-read target closure.
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
+## Canonical Admission Deletion Bounds
+
+Admission trees retain the existing node and receipt encodings. Leaves have height one; every
+nonroot internal node has 2 through 128 children, and an existing selected internal root may have
+1 through 128. New deletion roots collapse as specified by
+[canonical admission deletion](design-draft-storage.md#canonical-admission-deletion).
+The production profile bounds each tree's leaf count by 65,536. Thus valid admitted roots have
+height at most 18, including the one permitted selected unary root. The family height ceiling
+remains 64; impossible profile count/height combinations and malformed referenced closures fail
+closed before exhausting the command allowance.
+
+A deletion acquires at most 18 descent records and 16 sibling records, and emits at most 18
+canonical internal records. Assignment's target replacement additionally acquires and emits at
+most 18 records. Its exact retained predecessor closure therefore has at most 52 descriptors,
+within the existing receipt vector limit of 128. That list includes superseded siblings required
+for reconstruction, in the order defined by the draft-storage contract; it is not merely a path.
+No codec version, persisted field or digest domain changes for canonical admission deletion.
+
+For path-node fanouts `c_l` at heights `l = 2..H`, the minimum leaf population is
+`1 + sum((c_l - 1) * 2^(l - 2)) <= 65,536`. With the occupancy rules above, the total path
+child-reference count is at most 1,155. Disjoint sibling vectors contain at most 1,152 child
+references. Deletion therefore acquires at most 2,307 internal child references; its surviving
+replacement region emits no more references than that acquired region. These bounds use the
+admitted population, not independent maximum fanout at every height.
+
+Including the family key, an admission internal record has 169 fixed bytes plus its children;
+a source-order child uses at most 222 bytes and a target-id child 138. The admission-node family
+maximum is 65,601 bytes including its key. Source deletion acquisition is bounded by
+`2,307 * 222 + 33 * 169 + 65,601 = 583,332` bytes. A target replacement path is bounded by
+`1,155 * 138 + 17 * 169 + 65,601 = 227,864`. Their combined current or retained predecessor
+closure is at most 811,196 bytes; new source and target records together occupy at most 743,060.
+The special collapse to a surviving leaf remains below these bounds because its input population
+is correspondingly small.
+
+The conservative complete assignment tree inventory charges 811,196 bytes each for current
+acquisition, previous retained-closure acquisition and deletion of that previous closure under
+the existing full-record deletion convention, plus 743,060 emitted bytes and at most 2,340
+new-node absence-key bytes. This totals 3,178,988 bytes. Controls add eleven conservative 65,601-byte
+allowances: six session/label/protection observations across serialized assignment and final
+readiness, and five receipt allowances for prior read, new emission, prior deletion, new occupancy
+probe and postcommit read. Four head allowances cover public preparation, callback read, emission
+and postcommit read; two capacity allowances cover callback read and emission. A canonical
+admission head uses at most 756 bytes including its 48-byte key; capacity uses 89 including its
+singleton key. Complete control charge is therefore `11 * 65,601 + 4 * 756 + 2 * 89 = 724,813`.
+
+One complete assignment invocation admits at most 153 point attempts and 140 stored node
+acquisitions plus emissions. Its conservative encoded charge is 3,903,801 bytes, and its peak with
+one additional family reservation is 3,969,402, within the existing 4,194,304-byte command ceiling.
+The allowance spans all the observations and effects above; a helper cannot obtain a fresh budget.
+Oversize or malformed work rejects before the next acquisition or emission, without partial
+authority. Diagnostics expose actual attempts, stored acquisitions/emissions, encoded charges and
+peak reservation so verification can distinguish pre-reserved work from a late result-size check.
+
+Selected-target verification is mutually exclusive with fresh assignment. Its conservative tree
+inventory authenticates at most 52 retained predecessor records, reconstructs at most 36 emitted
+nodes, byte-checks at most 36 selected put records, and probes at most 52 captured deletion keys.
+It does not additionally reacquire prior cleanup records or test selected puts as fresh absent
+targets. These are at most 140 node point attempts plus 13 control attempts, and at most 124 stored
+node acquisitions/emissions. Even retaining the full-record deletion-charge convention, its tree
+charge is at most 3,111,892 bytes; with the same controls it is 3,836,705, with reservation peak
+3,902,306. These fit the complete assignment ceilings above. Captured command authority supplies
+the deleted keys; receipt-local bytes alone do not establish a stateless replay branch. HomeStore
+retains its existing engine-owned reconciliation quota; any Syndic-selected verification uses the
+shared Syndic allowance and cannot borrow that engine quota.
+
+Normalized target-id deletion acquires at most 389,544 bytes and emits at most 321,408. Its complete
+primitive costs at most 1,101,666 bytes under full-record deletion charging, or 714,332 when a
+composing acquisition/emission ledger charges the actual deletion keys, including all superseded
+keys and put-absence probes. Retained-storage accounting remains exact under either convention.
+The composing build command must additionally charge its controls and other effects under the
+existing draft-piece command ceiling; this primitive bound does not admit three draft-tree
+mutations and admission consumption in one quantum.
+
+### Admission Receipt Transition Metadata
+
+The following specifies the existing producer bytes inside admission receipt source/target
+metadata; it does not change a family version or add a field. Ingestion metadata begins with the
+504-byte canonical request-authority prefix, bound by the receipt's request commitment. Its order
+is home generation; thread id; label revision, inherited and permanent frontiers and digest;
+protection revision, maximum and digest; draft and session ids; session and candidate generations;
+the existing fixed 327-byte candidate-root reference; and the disposition tag. Integer fields
+are little-endian `u64`, identities are their exact bytes, and digests occupy 32 bytes.
+
+Both source and target metadata append the same 81-byte page header: draft/session/operation
+identities (48 bytes), page identity (16), little-endian ordinal (8), canonical EOF boolean (1),
+and little-endian entry count (8). Source entries encode assignment group then evidence; target
+entries encode the same group, target marker id (16 bytes), then the same evidence. Groups retain
+their existing 9/25/42-byte forms. Evidence retains the existing candidate/cut/accepted/fresh
+correlation forms of 434/450/194/42 bytes under the
+[readiness byte contract](#draft-marker-label-readiness-byte-contract). Validate the complete
+source/target sequences, exact framing and consumption, canonical tags/counts, request prefix,
+owner, page, ordinal and EOF. Do not infer an insertion key from arbitrary opaque byte offsets.
+
+An ingestion receipt selected at entry to assignment is the final EOF entry. For nonempty input,
+its selected association index is `entry_count - 1`; that entry supplies exact group, target id,
+AssetId and evidence for canonical source/target insertion. A zero-entry EOF requires identical
+before/after roots and no retained predecessors. Verification uses exact retained internal paths
+and referenced leaf descriptors, simulates canonical insertion/splits and deterministic identity
+order, and requires both complete after-root descriptors plus source-then-target predecessor
+membership to agree. No new node acquisition is needed beyond the retained closure and current
+roots already required by the assignment invocation.
+
+For nonempty prior assignment, source metadata is the old head digest (32 bytes), canonical
+assignment group (9/25/42), AssetId digest (32), and little-endian nonzero asset length (8).
+Target metadata is exactly 48 bytes: target-before root digest (32), its little-endian count (8),
+and assigned nonzero label (8). The retained source leaf supplies the source key, group, evidence
+and asset; the retained unassigned target leaf must agree. Derive the association index as
+`target_before.count - source_before.count` with checked arithmetic and use the receipt command
+with assignment page ordinal one. Stream canonical normalized deletion and target replacement,
+including exact sibling order and root collapse, and require both after-roots and the complete
+retained list to agree. The historical head-digest prefix is not recoverable command custody.
+
+Transition verification retains only bounded scratch and expected child/root summaries. Hashing
+already charged inputs for integrity creates neither physical acquisitions nor emitted records;
+it must not invoke an emitting builder or fresh-key probe. Required reused-root checks share the
+mandatory current-root cache. The complete assignment inventory above remains unchanged.
+Canonical-byte replay and captured deletion-absence checks retain their separate requirements.
+
 ## V7 Bounds And Canonical Encoding
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.

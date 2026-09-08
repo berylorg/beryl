@@ -1,4 +1,5 @@
 use super::*;
+use crate::DraftMarkerAdmissionCommandIdV1;
 
 #[cfg(feature = "test-faults")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,10 +62,12 @@ pub struct DraftMarkerAdmissionIndexTestStepV1 {
     target_root: DraftMarkerAdmissionRootV1,
     puts: Box<[DraftMarkerAdmissionNodeKeyV1]>,
     deletions: Box<[DraftMarkerAdmissionNodeKeyV1]>,
+    superseded_nodes: Box<[DraftMarkerAdmissionNodeKeyV1]>,
     retained_predecessor_nodes: Box<[DraftMarkerAdmissionNodeKeyV1]>,
     added: DraftMarkerAdmissionRetainedChargeV1,
     removed: DraftMarkerAdmissionRetainedChargeV1,
     footprint: DraftMarkerAdmissionIndexFootprintV1,
+    work: super::super::ledger::DraftMarkerAdmissionWorkSnapshotV1,
 }
 
 #[cfg(feature = "test-faults")]
@@ -83,6 +86,10 @@ impl DraftMarkerAdmissionIndexTestStepV1 {
 
     pub fn deletions(&self) -> &[DraftMarkerAdmissionNodeKeyV1] {
         &self.deletions
+    }
+
+    pub fn superseded_nodes(&self) -> &[DraftMarkerAdmissionNodeKeyV1] {
+        &self.superseded_nodes
     }
 
     pub fn retained_predecessor_nodes(&self) -> &[DraftMarkerAdmissionNodeKeyV1] {
@@ -111,6 +118,22 @@ impl DraftMarkerAdmissionIndexTestStepV1 {
 
     pub const fn command_bytes(&self) -> u64 {
         self.footprint.command_bytes
+    }
+
+    pub const fn point_attempts(&self) -> u64 {
+        self.work.point_attempts
+    }
+
+    pub const fn stored_node_acquisitions(&self) -> u64 {
+        self.work.stored_node_acquisitions
+    }
+
+    pub const fn stored_node_emissions(&self) -> u64 {
+        self.work.stored_node_emissions
+    }
+
+    pub const fn peak_reserved_bytes(&self) -> u64 {
+        self.work.peak_reserved_bytes
     }
 }
 
@@ -181,6 +204,13 @@ impl DraftMarkerAdmissionIndexTestStateV1 {
     ) {
         self.source_root = source_root;
         self.target_root = target_root;
+    }
+
+    pub fn set_prior_replay_nodes_for_test(
+        &mut self,
+        prior_replay_nodes: impl Into<Vec<DraftMarkerAdmissionChildV1>>,
+    ) {
+        self.prior_replay_nodes = prior_replay_nodes.into();
     }
 
     pub fn corrupt_source_root_height_for_test(&mut self, height: u8) {
@@ -272,7 +302,7 @@ impl DraftMarkerAdmissionIndexTestStateV1 {
             self.maximum_height,
             self.command_limit,
         )?;
-        Ok(test_step(&prepared))
+        Ok(test_step(&prepared, Default::default()))
     }
 
     pub fn apply(
@@ -301,11 +331,98 @@ impl DraftMarkerAdmissionIndexTestStateV1 {
             nodes.remove(index);
         }
         nodes.extend(prepared.puts().iter().cloned());
-        let step = test_step(&prepared);
+        let step = test_step(&prepared, Default::default());
         self.source_root = prepared.source_root();
         self.target_root = prepared.target_root();
         self.prior_replay_nodes = prepared.retained_predecessor_nodes().to_vec();
         self.nodes = nodes;
+        Ok(step)
+    }
+
+    pub fn assign_next(
+        &mut self,
+        command: DraftMarkerAdmissionCommandIdV1,
+        assignment_ordinal: u64,
+    ) -> Result<DraftMarkerAdmissionIndexTestStepV1, DraftMarkerAdmissionIndexTestErrorV1> {
+        let reader = SliceAdmissionNodeReader { nodes: &self.nodes };
+        let work = AdmissionWorkLedger::assignment(self.command_limit);
+        let prepared = prepare_assignment_with_reader(
+            &reader,
+            self.owner,
+            self.source_root,
+            self.target_root,
+            &self.prior_replay_nodes,
+            command,
+            assignment_ordinal,
+            super::super::DraftMarkerAdmissionAssignmentContinuationV1::reuse(None),
+            None,
+            &work,
+        )?;
+        let step = test_step(&prepared.index, work.snapshot());
+        self.apply_prepared(
+            prepared.index.source_root(),
+            prepared.index.target_root(),
+            prepared.index.puts(),
+            prepared.index.deletions(),
+            prepared.index.retained_predecessor_nodes(),
+        )?;
+        Ok(step)
+    }
+
+    pub fn assign_next_with_receipt(
+        &mut self,
+        receipt: &super::super::DraftMarkerAdmissionReplayReceiptV1,
+        command: DraftMarkerAdmissionCommandIdV1,
+        assignment_ordinal: u64,
+    ) -> Result<DraftMarkerAdmissionIndexTestStepV1, DraftMarkerAdmissionIndexTestErrorV1> {
+        let reader = SliceAdmissionNodeReader { nodes: &self.nodes };
+        let work = AdmissionWorkLedger::assignment(self.command_limit);
+        let prepared = prepare_assignment_with_reader(
+            &reader,
+            self.owner,
+            self.source_root,
+            self.target_root,
+            receipt.retained_predecessor_nodes(),
+            command,
+            assignment_ordinal,
+            super::super::DraftMarkerAdmissionAssignmentContinuationV1::reuse(None),
+            Some(receipt),
+            &work,
+        )?;
+        let step = test_step(&prepared.index, work.snapshot());
+        self.apply_prepared(
+            prepared.index.source_root(),
+            prepared.index.target_root(),
+            prepared.index.puts(),
+            prepared.index.deletions(),
+            prepared.index.retained_predecessor_nodes(),
+        )?;
+        Ok(step)
+    }
+
+    pub fn consume_target(
+        &mut self,
+        marker: DraftPieceMarkerV1,
+        identity: DraftMarkerAdmissionPageIdentityV1,
+    ) -> Result<DraftMarkerAdmissionIndexTestStepV1, DraftMarkerAdmissionIndexTestErrorV1> {
+        let reader = SliceAdmissionNodeReader { nodes: &self.nodes };
+        let work = AdmissionWorkLedger::new(self.command_limit);
+        let prepared = prepare_consumption_with_ledger(
+            &reader,
+            self.owner,
+            self.target_root,
+            marker,
+            identity,
+            &work,
+        )?;
+        let step = consumption_test_step(&prepared, work.snapshot())?;
+        self.apply_prepared(
+            self.source_root,
+            prepared.target_root(),
+            prepared.puts(),
+            prepared.deletions(),
+            &[],
+        )?;
         Ok(step)
     }
 
@@ -372,6 +489,30 @@ impl DraftMarkerAdmissionIndexTestStateV1 {
         );
         true
     }
+
+    fn apply_prepared(
+        &mut self,
+        source_root: DraftMarkerAdmissionRootV1,
+        target_root: DraftMarkerAdmissionRootV1,
+        puts: &[DraftMarkerAdmissionNodeV1],
+        deletions: &[DraftMarkerAdmissionNodeV1],
+        retained_predecessor_nodes: &[DraftMarkerAdmissionChildV1],
+    ) -> Result<(), DraftMarkerAdmissionIndexTestErrorV1> {
+        let mut nodes = self.nodes.clone();
+        for deletion in deletions {
+            let index = nodes
+                .iter()
+                .position(|node| node.key() == deletion.key())
+                .ok_or(DraftMarkerAdmissionIndexTestErrorV1::MissingNode)?;
+            nodes.remove(index);
+        }
+        nodes.extend(puts.iter().cloned());
+        self.source_root = source_root;
+        self.target_root = target_root;
+        self.prior_replay_nodes = retained_predecessor_nodes.to_vec();
+        self.nodes = nodes;
+        Ok(())
+    }
 }
 
 #[cfg(feature = "test-faults")]
@@ -393,6 +534,7 @@ impl AdmissionNodeReader for SliceAdmissionNodeReader<'_> {
 #[cfg(feature = "test-faults")]
 fn test_step(
     prepared: &PreparedDraftMarkerAdmissionIndexSuccessorV1,
+    work: super::super::ledger::DraftMarkerAdmissionWorkSnapshotV1,
 ) -> DraftMarkerAdmissionIndexTestStepV1 {
     let delta = prepared.retained_charge_delta();
     DraftMarkerAdmissionIndexTestStepV1 {
@@ -408,6 +550,7 @@ fn test_step(
             .iter()
             .map(DraftMarkerAdmissionNodeV1::key)
             .collect(),
+        superseded_nodes: Box::new([]),
         retained_predecessor_nodes: prepared
             .retained_predecessor_nodes()
             .iter()
@@ -416,5 +559,65 @@ fn test_step(
         added: delta.added,
         removed: delta.removed,
         footprint: prepared.footprint(),
+        work,
     }
+}
+
+#[cfg(feature = "test-faults")]
+fn consumption_test_step(
+    prepared: &PreparedDraftMarkerAdmissionConsumptionV1,
+    work: super::super::ledger::DraftMarkerAdmissionWorkSnapshotV1,
+) -> Result<DraftMarkerAdmissionIndexTestStepV1, DraftMarkerAdmissionIndexTestErrorV1> {
+    let delta = prepared.retained_charge_delta();
+    let write_bytes = sum_node_charges(prepared.puts()).map_err(|error| {
+        DraftMarkerAdmissionIndexTestErrorV1::from(
+            DraftMarkerAdmissionIndexPreparationErrorV1::from(error),
+        )
+    })?;
+    let delete_bytes = sum_node_charges(prepared.deletions()).map_err(|error| {
+        DraftMarkerAdmissionIndexTestErrorV1::from(
+            DraftMarkerAdmissionIndexPreparationErrorV1::from(error),
+        )
+    })?;
+    let read_bytes = work
+        .encoded_bytes
+        .checked_sub(write_bytes)
+        .and_then(|bytes| bytes.checked_sub(delete_bytes))
+        .ok_or(DraftMarkerAdmissionIndexTestErrorV1::Schema(
+            DraftMarkerAdmissionSchemaErrorV1::ArithmeticOverflow,
+        ))?;
+    let superseded_nodes = prepared
+        .predecessor()
+        .iter()
+        .map(|child| child.key())
+        .collect::<Box<_>>();
+    let deletions = prepared
+        .deletions()
+        .iter()
+        .map(DraftMarkerAdmissionNodeV1::key)
+        .collect::<Box<_>>();
+    if superseded_nodes != deletions {
+        return Err(DraftMarkerAdmissionIndexTestErrorV1::PathAuthentication);
+    }
+    Ok(DraftMarkerAdmissionIndexTestStepV1 {
+        source_root: prepared.source_root(),
+        target_root: prepared.target_root(),
+        puts: prepared
+            .puts()
+            .iter()
+            .map(DraftMarkerAdmissionNodeV1::key)
+            .collect(),
+        deletions,
+        superseded_nodes,
+        retained_predecessor_nodes: Box::new([]),
+        added: delta.added,
+        removed: delta.removed,
+        footprint: DraftMarkerAdmissionIndexFootprintV1 {
+            read_bytes,
+            write_bytes,
+            delete_bytes,
+            command_bytes: work.encoded_bytes,
+        },
+        work,
+    })
 }

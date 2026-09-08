@@ -30,24 +30,25 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 337: Continue Bounded Sequence Range Repairs (finished)
+# Phase 339: Preserve Canonical Marker Admission Deletion (finished)
 
-Accepted ordinary Applying continuation under the
-[sequence contract](../crates/syndic-storage/doc/design-draft-storage.md#bounded-sequence-range-continuation)
-and replacement V4 build/progress/settlement codecs. One text-leaf slice advances an exact
-right-to-left remaining cursor with canonical heights and occupancy. One acquisition/emission/
-submission ledger enforces 256 stored structure records, 512 point attempts and 4,194,304 encoded
-bytes. Captured Syndic revision fences sealed preparation facts. Independent architecture and
-implementation adversarial review passed after closing requested-build identity substitution and
-clarifying the [physical-fault boundary](failures/syndic-draft-piece-revision-witness.md).
+Accepted [canonical admission deletion](../crates/syndic-storage/doc/design-draft-storage.md#canonical-admission-deletion)
+and its [complete bounds](../crates/syndic-storage/doc/design-schema-v7.md#canonical-admission-deletion-bounds).
+Both tree kinds normalize underflow, preserve untouched subtrees and return exact deletion results.
+Assignment authenticates the complete prior receipt transition before cleanup and shares one
+pre-reserved ledger through public preparation, serialized work and first postcommit readiness.
+The existing durable formats and captured reconciliation custody remain intact.
 
-The isolated accepted source passed locked Syndic/app checks and all 22 selected piece-tree and
-admitted-marker diagnostic tests, including UTF-8 edges, 129-leaf collapse, marker preservation,
-reopen, acknowledgement-loss reconciliation, cancellation, corruption, substituted identity,
-post-submit budget accounting and V4 vectors/prior-version rejection. The preserved 257-fragment
-staged operation also passed in the working tree. Its bounded text-read pagination correction
-remains with the unaccepted outcome tests. Broader marker-tree and staged-outcome behavior retain
-their separate acceptance boundaries below.
+Independent readiness and implementation review passed. Isolated locked Syndic/app checks passed;
+17 deletion and 15 writer tests passed, together with the other 124 selected admission/readiness
+cases in the broader run. Evidence covers height 18, consecutive tall-tree cleanup, full fanout,
+65,410 associations reaching 1,155 path references, real retained-receipt corruption, exact work
+counters, cancellation and captured reconciliation. A stale cloned-advance expectation was
+corrected to the documented revision conflict after an identical baseline failure was confirmed.
+
+The [failure record](failures/syndic-marker-admission-deletion.md) retains the invalidated assumptions.
+This accepts the deletion result and complete assignment boundary. The builder's duplicate
+preparation still requires Phase 338's sealed-result reuse and one complete quantum ledger.
 
 # Phase 338: Continue Bounded Marker Tree Effects (pending)
 
@@ -64,6 +65,16 @@ identity/Asset/label facts, complete effect-chain advancement once, and authenti
 partial transition, replay and terminal cleanup. Verify forced continuation, restart, corruption,
 and aggregate quantum charges before acceptance and staged-outcome completion. This phase is
 pending design readiness and does not authorize implementation against unspecified cursor bytes.
+Compose the canonical admission-deletion result in the separate Publishing command under the
+captured Syndic revision and exact mutable head/capacity fences. Replace the current second
+target-path preparation with sealed-result reuse and charge the complete builder invocation to
+one ledger; the accepted standalone deletion and assignment proof cannot substitute for this work.
+
+The [admission-deletion prerequisite](failures/syndic-marker-admission-deletion.md) is accepted.
+Renew marker readiness against its canonical result and complete charged proof. The earlier
+Publishing and insertion estimates remain provisional; owning V5 draft edits were restored and
+no marker-continuation implementation began. The Operator approved subsequent continuation;
+implementation still requires the closed cursor/program authority and independent readiness.
 
 # Phase 336: Reconcile Durable Staged Build Outcomes (pending)
 

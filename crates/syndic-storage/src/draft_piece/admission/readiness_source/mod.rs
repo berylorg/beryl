@@ -15,4 +15,5 @@ pub(crate) use model::{
     DraftMarkerLabelReadinessRequestAuthorityV1, PageProtocol,
     SealedDraftMarkerReadinessSourcePageV1, page_closure_bytes,
 };
-pub(crate) use proof::{request_authority_exact_read_bytes, request_authority_is_exact};
+pub(crate) use proof::request_authority_exact_read_bytes_with_ledger;
+pub(crate) use proof::request_authority_is_exact;

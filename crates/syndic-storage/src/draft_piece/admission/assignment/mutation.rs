@@ -1,4 +1,26 @@
 use super::*;
+
+fn assignment_point<F: crate::codec::Family>(
+    reader: &DomainReader<'_, SyndicDomain>,
+    work: &AdmissionWorkLedger,
+    key: &F::Key,
+) -> Result<Option<F::Value>, AssignmentMutationError> {
+    work.point::<F, AssignmentMutationError>(
+        key,
+        AdmissionWorkLedger::family_maximum::<F>(),
+        || {
+            reader
+                .point::<crate::codec::ExactCodec<F>>(
+                    key,
+                    beryl_home_store::PointReadLimit::new(
+                        AdmissionWorkLedger::family_value_limit::<F>(),
+                    )
+                    .expect("admission control point bound is nonzero"),
+                )
+                .map_err(Into::into)
+        },
+    )
+}
 use crate::DraftMarkerAdmissionLimitsV1;
 
 pub(super) struct AssignmentMutation {
@@ -6,7 +28,7 @@ pub(super) struct AssignmentMutation {
     pub(super) command: DraftMarkerAdmissionCommandIdV1,
     pub(super) authority: DraftMarkerAdmissionLiveAuthorityV1,
     pub(super) retained_limits: DraftMarkerAdmissionLimitsV1,
-    pub(super) command_limit: AssignmentCommandLimit,
+    pub(super) work: AdmissionWorkLedger,
 }
 
 pub(super) struct PreparedAssignmentMutation {
@@ -40,6 +62,7 @@ pub(super) enum AssignmentMutationError {
 impl From<DraftMarkerAdmissionIndexPreparationErrorV1> for AssignmentMutationError {
     fn from(value: DraftMarkerAdmissionIndexPreparationErrorV1) -> Self {
         match value {
+            DraftMarkerAdmissionIndexPreparationErrorV1::Schema(error) => Self::Schema(error),
             DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => Self::Read(error),
             DraftMarkerAdmissionIndexPreparationErrorV1::OperationTooLarge => {
                 Self::Limit(super::super::refusal::AdmissionLimitError::OperationTooLarge)
@@ -113,21 +136,24 @@ fn prepare_assignment(
     reader: &DomainReader<'_, SyndicDomain>,
     mutation: AssignmentMutation,
 ) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
-    let authority_read_bytes =
-        request_authority_exact_read_bytes(reader, &mutation.authority.authority)?
-            .ok_or(AssignmentMutationError::Authority)?;
-    let capacity = reader
-        .point::<DraftMarkerAdmissionCapacityCodec>(
-            &DraftMarkerAdmissionCapacityKeyV1,
-            family_point_limit::<DraftMarkerAdmissionCapacityFamily>(),
-        )?
-        .ok_or(AssignmentMutationError::Authority)?;
-    let head = reader
-        .point::<DraftMarkerAdmissionHeadsCodec>(
-            &mutation.owner,
-            family_point_limit::<DraftMarkerAdmissionHeadsFamily>(),
-        )?
-        .ok_or(AssignmentMutationError::Authority)?;
+    request_authority_exact_read_bytes_with_ledger(
+        reader,
+        &mutation.authority.authority,
+        &mutation.work,
+    )?
+    .ok_or(AssignmentMutationError::Authority)?;
+    let capacity = assignment_point::<DraftMarkerAdmissionCapacityFamily>(
+        reader,
+        &mutation.work,
+        &DraftMarkerAdmissionCapacityKeyV1,
+    )?
+    .ok_or(AssignmentMutationError::Authority)?;
+    let head = assignment_point::<DraftMarkerAdmissionHeadsFamily>(
+        reader,
+        &mutation.work,
+        &mutation.owner,
+    )?
+    .ok_or(AssignmentMutationError::Authority)?;
     if head.lifecycle() != DraftMarkerAdmissionLifecycleV1::Assigning
         || head.home_generation() != mutation.authority.authority.home_generation
         || head.request_commitment() != mutation.authority.authority.request_commitment()
@@ -145,13 +171,22 @@ fn prepare_assignment(
     if prior_command == mutation.command {
         return Err(AssignmentMutationError::Collision);
     }
+    if assignment_point::<DraftMarkerAdmissionReceiptsFamily>(
+        reader,
+        &mutation.work,
+        &DraftMarkerAdmissionReceiptKeyV1::new(mutation.owner, mutation.command),
+    )?
+    .is_some()
+    {
+        return Err(AssignmentMutationError::Collision);
+    }
     let prior_receipt_key = DraftMarkerAdmissionReceiptKeyV1::new(mutation.owner, prior_command);
-    let prior_receipt = reader
-        .point::<DraftMarkerAdmissionReceiptsCodec>(
-            &prior_receipt_key,
-            family_point_limit::<DraftMarkerAdmissionReceiptsFamily>(),
-        )?
-        .ok_or(AssignmentMutationError::Authority)?;
+    let prior_receipt = assignment_point::<DraftMarkerAdmissionReceiptsFamily>(
+        reader,
+        &mutation.work,
+        &prior_receipt_key,
+    )?
+    .ok_or(AssignmentMutationError::Authority)?;
     if prior_receipt.owner() != mutation.owner
         || prior_receipt.command_id() != prior_command
         || prior_receipt.request_commitment() != head.request_commitment()
@@ -174,12 +209,13 @@ fn prepare_assignment(
         {
             return Err(AssignmentMutationError::Authority);
         }
-        let index = prepare_empty_draft_marker_admission_index_successor_v1(
+        let index = prepare_empty_draft_marker_admission_assignment_v1(
             reader,
             head.owner(),
             head.source_root(),
             head.target_root(),
-            prior_receipt.retained_predecessor_nodes(),
+            &prior_receipt,
+            &mutation.work,
         )?;
         let source_closure = empty_assignment_source_closure(&head);
         let target_closure = empty_assignment_target_closure(&head);
@@ -193,9 +229,8 @@ fn prepare_assignment(
             continuation,
             source_closure,
             target_closure,
-            authority_read_bytes,
             mutation.retained_limits,
-            mutation.command_limit,
+            &mutation.work,
         );
     }
     let assignment = prepare_draft_marker_admission_assignment_v1(
@@ -203,10 +238,11 @@ fn prepare_assignment(
         mutation.owner,
         head.source_root(),
         head.target_root(),
-        prior_receipt.retained_predecessor_nodes(),
+        &prior_receipt,
         mutation.command,
         processed,
         continuation,
+        &mutation.work,
     )?;
     finish_prepared_assignment(
         reader,
@@ -216,9 +252,8 @@ fn prepare_assignment(
         prior_receipt_key,
         mutation.command,
         assignment,
-        authority_read_bytes,
         mutation.retained_limits,
-        mutation.command_limit,
+        &mutation.work,
     )
 }
 
@@ -230,9 +265,8 @@ fn finish_prepared_assignment(
     prior_receipt_key: DraftMarkerAdmissionReceiptKeyV1,
     command: DraftMarkerAdmissionCommandIdV1,
     assignment: PreparedDraftMarkerAdmissionAssignmentV1,
-    authority_read_bytes: u64,
     retained_limits: DraftMarkerAdmissionLimitsV1,
-    command_limit: AssignmentCommandLimit,
+    work: &AdmissionWorkLedger,
 ) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
     let source_closure =
         assignment_source_closure(&prior_head, assignment.group, assignment.asset_id);
@@ -247,9 +281,8 @@ fn finish_prepared_assignment(
         assignment.continuation,
         source_closure,
         target_closure,
-        authority_read_bytes,
         retained_limits,
-        command_limit,
+        work,
     )
 }
 
@@ -264,9 +297,8 @@ fn finish_assignment_transition(
     continuation: DraftMarkerAdmissionAssignmentContinuationV1,
     source_closure: Box<[u8]>,
     target_closure: Box<[u8]>,
-    authority_read_bytes: u64,
     retained_limits: DraftMarkerAdmissionLimitsV1,
-    command_limit: AssignmentCommandLimit,
+    work: &AdmissionWorkLedger,
 ) -> Result<PreparedAssignmentMutation, AssignmentMutationError> {
     let ready = index.source_root().count() == 0;
     let next_revision = NonZeroU64::new(
@@ -358,53 +390,19 @@ fn finish_assignment_transition(
         .ok_or(AssignmentMutationError::Charge)?,
         aggregate,
     )?;
-    let footprint = index.footprint();
-    let read_bytes = footprint
-        .read_bytes()
-        .checked_add(authority_read_bytes)
-        .and_then(|bytes| {
-            bytes.checked_add(
-                encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)
-                    .ok()?,
-            )
-        })
-        .and_then(|bytes| bytes.checked_add(prior_metadata))
-        .ok_or(AssignmentMutationError::Charge)?;
-    let command_bytes = checked_draft_marker_admission_command_charge_v1([
-        read_bytes,
-        footprint
-            .write_bytes()
-            .checked_add(encoded_capacity_record_charge(
-                &DraftMarkerAdmissionCapacityKeyV1,
-                &capacity,
-            )?)
-            .and_then(|bytes| {
-                bytes.checked_add(encoded_head_record_charge(&head.owner(), &head).ok()?)
-            })
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    encoded_receipt_record_charge(&successor_receipt_key, &receipt).ok()?,
-                )
-            })
-            .ok_or(AssignmentMutationError::Charge)?,
-        footprint
-            .delete_bytes()
-            .checked_add(encoded_receipt_record_charge(
-                &prior_receipt_key,
-                &prior_receipt,
-            )?)
-            .ok_or(AssignmentMutationError::Charge)?,
-    ])?;
-    let command_limit = match command_limit {
-        AssignmentCommandLimit::Exact(command_limit) => command_limit,
-        #[cfg(feature = "test-faults")]
-        AssignmentCommandLimit::BeforeAuthorityReads => command_bytes
-            .checked_sub(authority_read_bytes)
-            .ok_or(AssignmentMutationError::Charge)?,
-    };
-    if command_bytes > command_limit {
-        return Err(DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge.into());
-    }
+    work.charge_emit(
+        encoded_capacity_record_charge(&DraftMarkerAdmissionCapacityKeyV1, &capacity)?,
+        false,
+    )?;
+    work.charge_emit(encoded_head_record_charge(&head.owner(), &head)?, false)?;
+    work.charge_emit(
+        encoded_receipt_record_charge(&successor_receipt_key, &receipt)?,
+        false,
+    )?;
+    work.charge_delete(encoded_receipt_record_charge(
+        &prior_receipt_key,
+        &prior_receipt,
+    )?)?;
     Ok(PreparedAssignmentMutation {
         capacity,
         head,

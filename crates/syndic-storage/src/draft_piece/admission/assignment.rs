@@ -13,9 +13,7 @@ use crate::{
     admission_attachment::{
         DraftMarkerAdmissionLiveAuthorityV1, DraftMarkerAdmissionPreparedAttempt,
     },
-    codec::{
-        DraftImageLabelProtectionHeadsFamily, ImageLabelAuthorityHeadsFamily, family_point_limit,
-    },
+    codec::{DraftImageLabelProtectionHeadsFamily, ImageLabelAuthorityHeadsFamily},
     domain::SyndicDomain,
     draft_piece::{
         DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
@@ -26,9 +24,10 @@ use crate::{
 use super::index::{
     DraftMarkerAdmissionIndexPreparationErrorV1, PreparedDraftMarkerAdmissionAssignmentV1,
     PreparedDraftMarkerAdmissionIndexSuccessorV1, prepare_draft_marker_admission_assignment_v1,
-    prepare_empty_draft_marker_admission_index_successor_v1,
+    prepare_empty_draft_marker_admission_assignment_v1,
 };
-use super::readiness_source::request_authority_exact_read_bytes;
+use super::ledger::AdmissionWorkLedger;
+use super::readiness_source::request_authority_exact_read_bytes_with_ledger;
 
 mod mutation;
 #[cfg(feature = "test-faults")]
@@ -48,8 +47,7 @@ use super::{
     DraftMarkerAdmissionReplayReceiptV1, DraftMarkerAdmissionRetainedChargeV1,
     DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1,
     DraftMarkerLabelAllocationRangeV1, DraftMarkerLabelReadinessDispositionV1,
-    canonical_empty_draft_marker_admission_root_v1,
-    checked_draft_marker_admission_command_charge_v1, encoded_capacity_record_charge,
+    canonical_empty_draft_marker_admission_root_v1, encoded_capacity_record_charge,
     encoded_head_record_charge, encoded_receipt_record_charge,
 };
 use crate::{
@@ -101,11 +99,28 @@ impl Error for DraftMarkerLabelAssignmentErrorV1 {
     }
 }
 
+impl From<DraftMarkerAdmissionSchemaErrorV1> for DraftMarkerLabelAssignmentErrorV1 {
+    fn from(error: DraftMarkerAdmissionSchemaErrorV1) -> Self {
+        match error {
+            DraftMarkerAdmissionSchemaErrorV1::CommandTooLarge => Self::OperationTooLarge,
+            _ => Self::Rejected,
+        }
+    }
+}
+
 pub struct DraftMarkerLabelAssignmentFlightV1 {
     state: AssignmentFlightState,
+    work: AdmissionWorkLedger,
+    readiness_retry: bool,
 }
 
 impl DraftMarkerLabelAssignmentFlightV1 {
+    #[cfg(feature = "test-faults")]
+    pub fn work_diagnostics_for_test(
+        &self,
+    ) -> super::ledger::DraftMarkerAdmissionWorkDiagnosticsV1 {
+        self.work.diagnostics()
+    }
     #[cfg(feature = "test-faults")]
     pub fn defer_committed_readiness_once_for_test(mut self) -> Self {
         if let AssignmentFlightState::Ready {
@@ -149,7 +164,6 @@ enum AssignmentFlightState {
         reservation: DraftMarkerAdmissionPreparedAttempt,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
         retained_limits: super::DraftMarkerAdmissionLimitsV1,
-        command_limit: AssignmentCommandLimit,
     },
     Reconciling {
         owner: DraftMarkerAdmissionOwnerV1,
@@ -159,13 +173,6 @@ enum AssignmentFlightState {
         retry_failed: bool,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
     },
-}
-
-#[derive(Clone, Copy)]
-enum AssignmentCommandLimit {
-    Exact(u64),
-    #[cfg(feature = "test-faults")]
-    BeforeAuthorityReads,
 }
 
 pub enum DraftMarkerLabelAssignmentOutcomeV1 {
@@ -285,19 +292,40 @@ impl DraftMarkerLabelReadinessProofV1 {
 }
 
 impl SyndicStorage {
+    fn assignment_point<F: crate::codec::Family>(
+        &self,
+        work: &AdmissionWorkLedger,
+        store: &HomeStore,
+        key: F::Key,
+    ) -> Result<Option<F::Value>, DraftMarkerLabelAssignmentErrorV1> {
+        work.point::<F, DraftMarkerLabelAssignmentErrorV1>(
+            &key,
+            AdmissionWorkLedger::family_maximum::<F>(),
+            || {
+                self
+                    .point::<F>(
+                        store,
+                        key.clone(),
+                        crate::SyndicPointReadLimit::new(
+                            AdmissionWorkLedger::family_value_limit::<F>(),
+                        )
+                        .expect("admission control point bound is nonzero"),
+                    )
+                    .map_err(DraftMarkerLabelAssignmentErrorV1::Read)
+            },
+        )
+    }
+
     pub fn prepare_draft_marker_label_assignment(
         &self,
         store: &HomeStore,
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
     ) -> Result<DraftMarkerLabelAssignmentFlightV1, DraftMarkerLabelAssignmentErrorV1> {
+        let work =
+            AdmissionWorkLedger::assignment(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES);
         let head = self
-            .point::<DraftMarkerAdmissionHeadsFamily>(
-                store,
-                owner,
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?
+            .assignment_point::<DraftMarkerAdmissionHeadsFamily>(&work, store, owner)?
             .ok_or(DraftMarkerLabelAssignmentErrorV1::Rejected)?;
         let generation = store
             .health()
@@ -328,6 +356,8 @@ impl SyndicStorage {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
         }
         Ok(DraftMarkerLabelAssignmentFlightV1 {
+            work,
+            readiness_retry: false,
             state: AssignmentFlightState::Ready {
                 #[cfg(feature = "test-faults")]
                 defer_readiness: false,
@@ -336,9 +366,6 @@ impl SyndicStorage {
                 reservation,
                 authority,
                 retained_limits: super::DraftMarkerAdmissionLimitsV1::PRODUCTION,
-                command_limit: AssignmentCommandLimit::Exact(
-                    DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES,
-                ),
             },
         })
     }
@@ -348,6 +375,11 @@ impl SyndicStorage {
         store: &HomeStore,
         flight: DraftMarkerLabelAssignmentFlightV1,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
+        let work = if flight.readiness_retry {
+            AdmissionWorkLedger::assignment(DRAFT_MARKER_ADMISSION_COMMAND_MAX_ENCODED_BYTES)
+        } else {
+            flight.work
+        };
         match flight.state {
             AssignmentFlightState::Readiness {
                 owner,
@@ -357,6 +389,7 @@ impl SyndicStorage {
                 later_failure,
             } => self.assignment_advanced_or_ready(
                 store,
+                work.clone(),
                 owner,
                 reservation,
                 authority,
@@ -371,15 +404,14 @@ impl SyndicStorage {
                 reservation,
                 authority,
                 retained_limits,
-                command_limit,
             } => self.submit_ready_assignment(
                 store,
+                work.clone(),
                 owner,
                 command,
                 reservation,
                 authority,
                 retained_limits,
-                command_limit,
                 #[cfg(feature = "test-faults")]
                 defer_readiness,
             ),
@@ -392,6 +424,7 @@ impl SyndicStorage {
                 authority,
             } => self.finish_assignment_reconciliation(
                 store,
+                work.clone(),
                 owner,
                 reservation,
                 handle,
@@ -405,12 +438,12 @@ impl SyndicStorage {
     fn submit_ready_assignment(
         &self,
         store: &HomeStore,
+        work: AdmissionWorkLedger,
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
         mut reservation: DraftMarkerAdmissionPreparedAttempt,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
         retained_limits: super::DraftMarkerAdmissionLimitsV1,
-        command_limit: AssignmentCommandLimit,
         #[cfg(feature = "test-faults")] defer_readiness: bool,
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
         if reservation.dispatch().is_err() {
@@ -423,7 +456,7 @@ impl SyndicStorage {
             command,
             authority: authority.clone(),
             retained_limits,
-            command_limit,
+            work: work.clone(),
         })) {
             CommandOutcome::NotCommitted { evidence } => {
                 let classification = classify_assignment_failure(&evidence);
@@ -486,6 +519,8 @@ impl SyndicStorage {
                 if defer_readiness {
                     return DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
                         flight: DraftMarkerLabelAssignmentFlightV1 {
+                            work: work.clone(),
+                            readiness_retry: false,
                             state: AssignmentFlightState::Readiness {
                                 owner,
                                 reservation,
@@ -503,6 +538,7 @@ impl SyndicStorage {
                 }
                 self.assignment_advanced_or_ready(
                     store,
+                    work.clone(),
                     owner,
                     reservation,
                     authority,
@@ -517,6 +553,8 @@ impl SyndicStorage {
                 let _ = self.finish_assignment_attempt(store, owner, command, true, true);
                 DraftMarkerLabelAssignmentOutcomeV1::ReconciliationPending(
                     DraftMarkerLabelAssignmentFlightV1 {
+                        work: work.clone(),
+                        readiness_retry: false,
                         state: AssignmentFlightState::Reconciling {
                             owner,
                             reservation,
@@ -534,6 +572,7 @@ impl SyndicStorage {
     fn finish_assignment_reconciliation(
         &self,
         store: &HomeStore,
+        work: AdmissionWorkLedger,
         owner: DraftMarkerAdmissionOwnerV1,
         mut reservation: DraftMarkerAdmissionPreparedAttempt,
         handle: ReconciliationHandle,
@@ -557,6 +596,7 @@ impl SyndicStorage {
                 }
                 self.assignment_advanced_or_ready(
                     store,
+                    work.clone(),
                     owner,
                     reservation,
                     authority,
@@ -571,6 +611,8 @@ impl SyndicStorage {
             }
             Err(_) => DraftMarkerLabelAssignmentOutcomeV1::ReconciliationPending(
                 DraftMarkerLabelAssignmentFlightV1 {
+                    work: work.clone(),
+                    readiness_retry: false,
                     state: AssignmentFlightState::Reconciling {
                         owner,
                         reservation,
@@ -587,6 +629,7 @@ impl SyndicStorage {
     fn assignment_advanced_or_ready(
         &self,
         store: &HomeStore,
+        work: AdmissionWorkLedger,
         owner: DraftMarkerAdmissionOwnerV1,
         reservation: DraftMarkerAdmissionPreparedAttempt,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
@@ -595,6 +638,7 @@ impl SyndicStorage {
     ) -> DraftMarkerLabelAssignmentOutcomeV1 {
         let outcome = self.issue_draft_marker_label_readiness_proof(
             store,
+            &work,
             owner,
             reservation.command_id(),
             authority.clone(),
@@ -604,6 +648,8 @@ impl SyndicStorage {
         {
             return DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
                 flight: DraftMarkerLabelAssignmentFlightV1 {
+                    work: work.clone(),
+                    readiness_retry: true,
                     state: AssignmentFlightState::Readiness {
                         owner,
                         reservation,
@@ -627,6 +673,8 @@ impl SyndicStorage {
             },
             Err(error) => DraftMarkerLabelAssignmentOutcomeV1::CommittedReadinessPending {
                 flight: DraftMarkerLabelAssignmentFlightV1 {
+                    work: work.clone(),
+                    readiness_retry: true,
                     state: AssignmentFlightState::Readiness {
                         owner,
                         reservation,
@@ -643,6 +691,7 @@ impl SyndicStorage {
     fn issue_draft_marker_label_readiness_proof(
         &self,
         store: &HomeStore,
+        work: &AdmissionWorkLedger,
         owner: DraftMarkerAdmissionOwnerV1,
         command: DraftMarkerAdmissionCommandIdV1,
         authority: DraftMarkerAdmissionLiveAuthorityV1,
@@ -666,12 +715,7 @@ impl SyndicStorage {
             return Err(DraftMarkerLabelAssignmentErrorV1::Unavailable);
         }
         let head = self
-            .point::<DraftMarkerAdmissionHeadsFamily>(
-                store,
-                owner,
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?
+            .assignment_point::<DraftMarkerAdmissionHeadsFamily>(&work, store, owner)?
             .ok_or(DraftMarkerLabelAssignmentErrorV1::Rejected)?;
         if head.selected_receipt() != Some(command) {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
@@ -698,12 +742,11 @@ impl SyndicStorage {
             .selected_receipt()
             .ok_or(DraftMarkerLabelAssignmentErrorV1::Rejected)?;
         let replay = self
-            .point::<DraftMarkerAdmissionReceiptsFamily>(
+            .assignment_point::<DraftMarkerAdmissionReceiptsFamily>(
+                &work,
                 store,
                 DraftMarkerAdmissionReceiptKeyV1::new(owner, selected),
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?
+            )?
             .ok_or(DraftMarkerLabelAssignmentErrorV1::Rejected)?;
         if replay.owner() != owner
             || replay.command_id() != selected
@@ -714,30 +757,24 @@ impl SyndicStorage {
         {
             return Err(DraftMarkerLabelAssignmentErrorV1::Rejected);
         }
-        let session = self
-            .point::<DraftEditorCandidateSessionsFamily>(
-                store,
-                DraftEditorCandidateSessionRecordKeyV1::head(
-                    authority.authority.session.draft_id(),
-                    authority.authority.session.session_id(),
-                ),
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?;
-        let label_authority = self
-            .point::<ImageLabelAuthorityHeadsFamily>(
-                store,
-                authority.authority.session.thread_id(),
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?;
-        let protection = self
-            .point::<DraftImageLabelProtectionHeadsFamily>(
-                store,
-                authority.authority.session.thread_id(),
-                crate::draft_piece::point_limit(),
-            )
-            .map_err(DraftMarkerLabelAssignmentErrorV1::Read)?;
+        let session = self.assignment_point::<DraftEditorCandidateSessionsFamily>(
+            &work,
+            store,
+            DraftEditorCandidateSessionRecordKeyV1::head(
+                authority.authority.session.draft_id(),
+                authority.authority.session.session_id(),
+            ),
+        )?;
+        let label_authority = self.assignment_point::<ImageLabelAuthorityHeadsFamily>(
+            &work,
+            store,
+            authority.authority.session.thread_id(),
+        )?;
+        let protection = self.assignment_point::<DraftImageLabelProtectionHeadsFamily>(
+            &work,
+            store,
+            authority.authority.session.thread_id(),
+        )?;
         if session
             != Some(DraftEditorCandidateSessionRecordV1::Head(
                 authority.authority.session.clone(),

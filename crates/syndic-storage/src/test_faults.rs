@@ -112,6 +112,16 @@ pub use metrics::{
     reset_syndic_point_read_count, reset_validation_page_metrics, syndic_point_read_count,
     validation_page_metrics,
 };
+
+pub fn reset_home_store_syndic_point_acquisition_count() {
+    beryl_home_store::test_faults::reset_test_point_acquisition_count::<SyndicDomain>();
+}
+
+#[must_use]
+pub fn home_store_syndic_point_acquisition_count() -> u64 {
+    beryl_home_store::test_faults::test_point_acquisition_count::<SyndicDomain>()
+}
+
 pub use physical::{
     PhysicalCorruption, PhysicalFamily, RepresentativePhysicalCorruption,
     RetiredWorkerCapacityCodecField, inject_physical_corruption,

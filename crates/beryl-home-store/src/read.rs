@@ -24,6 +24,8 @@ pub(crate) use execute::{
     validate_physical_family, validate_record_envelope,
 };
 use execute::{read_cursor, read_point};
+#[cfg(feature = "test-faults")]
+pub use execute::{reset_test_point_acquisition_count, test_point_acquisition_count};
 
 /// Codec operation that rejected a typed value or stored record.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

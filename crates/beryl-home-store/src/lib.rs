@@ -350,6 +350,7 @@ pub mod test_faults {
     };
     pub use crate::metadata::{decode_test_domain_metadata, encode_test_domain_metadata};
     pub use crate::proof::ProofCommandIdentityTestHarness;
+    pub use crate::read::{reset_test_point_acquisition_count, test_point_acquisition_count};
     pub use crate::scrub::{ScrubTerminalDecisionBlock, ScrubTestSnapshot};
 }
 
