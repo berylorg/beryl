@@ -321,6 +321,8 @@
   origin and capture-owned failure handoff; independent review and 72 selected checks passed.
 - [x] Accepted exact continuation-failure attention across compaction, home loss and uncertain
   settlement, preserving proven admission and cancellation; independent review and 92 checks passed.
+- [x] Accepted the process-owned ordinary tool dispatcher with bounded deferred-branch refusal,
+  canonical registry preservation and exact lifecycle authority; review and 27 checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

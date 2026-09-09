@@ -4,6 +4,7 @@ include!("../normal_terminal/server.rs");
 
 enum YieldCommand {
     Call(&'static str),
+    ResolveBranch,
     Complete,
     Compact,
     LiveCompaction,
@@ -20,6 +21,14 @@ pub struct YieldServer {
 
 impl YieldServer {
     pub fn spawn() -> Self {
+        Self::spawn_for(None)
+    }
+
+    pub fn spawn_resume(cas_thread_id: String) -> Self {
+        Self::spawn_for(Some(cas_thread_id))
+    }
+
+    fn spawn_for(resume: Option<String>) -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
         let (started_tx, started) = mpsc::sync_channel(1);
@@ -38,27 +47,35 @@ impl YieldServer {
             )
             .unwrap();
             complete_admission(&mut socket);
+            let cas_thread_id = resume.as_deref().unwrap_or(CAS_THREAD_ID);
             let load = read_json(&mut socket).unwrap();
-            assert_eq!(load["method"], "thread/start");
+            assert_eq!(
+                load["method"],
+                if resume.is_some() {
+                    "thread/resume"
+                } else {
+                    "thread/start"
+                }
+            );
             send_thread_load_metadata(
                 &mut socket,
                 load["id"].as_u64().unwrap(),
-                CAS_THREAD_ID,
-                false,
+                cas_thread_id,
+                resume.is_some(),
                 "lifecycle-model",
                 None,
             );
-            let id = read_ordinary_turn_start(&mut socket, CAS_THREAD_ID);
+            let id = read_ordinary_turn_start(&mut socket, cas_thread_id);
             send_checked_user(
                 &mut socket,
-                CAS_THREAD_ID,
+                cas_thread_id,
                 "item/started",
                 "startedAtMs",
                 STARTED_AT_MS,
             );
             send_checked_user(
                 &mut socket,
-                CAS_THREAD_ID,
+                cas_thread_id,
                 "item/completed",
                 "completedAtMs",
                 COMPLETED_AT_MS,
@@ -73,7 +90,19 @@ impl YieldServer {
                         send_json(
                             &mut socket,
                             &format!(
-                                r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{CAS_THREAD_ID}","turnId":"{CAS_TURN_ID}","callId":"yield-{request_id}","namespace":"beryl","tool":"yield","arguments":{{"outcome":"{outcome}"}}}}}}"#,
+                                r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{cas_thread_id}","turnId":"{CAS_TURN_ID}","callId":"yield-{request_id}","namespace":"beryl","tool":"yield","arguments":{{"outcome":"{outcome}"}}}}}}"#,
+                            ),
+                        );
+                        let response = read_json(&mut socket).unwrap();
+                        assert_eq!(response["id"], request_id);
+                        responses_tx.send(response).unwrap();
+                    }
+                    YieldCommand::ResolveBranch => {
+                        request_id += 1;
+                        send_json(
+                            &mut socket,
+                            &format!(
+                                r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{cas_thread_id}","turnId":"{CAS_TURN_ID}","callId":"resolution-{request_id}","namespace":"beryl","tool":"resolve_branch_discussion","arguments":{{"resolution":"private resolution must not be retained or echoed"}}}}}}"#,
                             ),
                         );
                         let response = read_json(&mut socket).unwrap();
@@ -83,7 +112,7 @@ impl YieldServer {
                     YieldCommand::Complete
                     | YieldCommand::Compact
                     | YieldCommand::LiveCompaction => {
-                        send_json(&mut socket, &terminal_wire());
+                        send_json(&mut socket, &terminal_wire_for(cas_thread_id));
                         if matches!(
                             command,
                             YieldCommand::Compact | YieldCommand::LiveCompaction
@@ -98,13 +127,13 @@ impl YieldServer {
                                 send_json(
                                     &mut socket,
                                     &format!(
-                                        r#"{{"method":"thread/status/changed","params":{{"threadId":"{CAS_THREAD_ID}","status":{{"type":"active","activeFlags":[]}}}}}}"#
+                                        r#"{{"method":"thread/status/changed","params":{{"threadId":"{cas_thread_id}","status":{{"type":"active","activeFlags":[]}}}}}}"#
                                     ),
                                 );
                                 send_json(
                                     &mut socket,
                                     &format!(
-                                        r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"continuation-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":1,"completedAt":null,"durationMs":null}}}}}}"#
+                                        r#"{{"method":"turn/started","params":{{"threadId":"{cas_thread_id}","turn":{{"id":"continuation-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":1,"completedAt":null,"durationMs":null}}}}}}"#
                                     ),
                                 );
                             }
@@ -156,6 +185,11 @@ impl YieldServer {
 
     pub fn call(&self, outcome: &'static str) -> Value {
         self.commands.send(YieldCommand::Call(outcome)).unwrap();
+        self.responses.recv_timeout(TIMEOUT).unwrap()
+    }
+
+    pub fn resolve_branch(&self) -> Value {
+        self.commands.send(YieldCommand::ResolveBranch).unwrap();
         self.responses.recv_timeout(TIMEOUT).unwrap()
     }
 

@@ -5,8 +5,9 @@ use beryl_app::{
     LifecycleYieldRequestHandler,
     cas_projection::{
         AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest,
-        LoadedCasProjection, OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers,
-        OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
+        LoadedCasProjection, OrdinaryDynamicToolAuthority, OrdinaryDynamicToolContext,
+        OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
+        OrdinaryTurnExecutionRequest,
     },
 };
 use beryl_backend::{
@@ -74,6 +75,26 @@ pub fn execute(
     projection: LoadedCasProjection,
     lifecycle: &mut dyn LifecycleYieldRequestHandler,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
+    execute_with_handlers(
+        fixture,
+        projection,
+        OrdinaryDynamicToolHandlers::new(lifecycle, &mut UnusedBranch),
+    )
+}
+
+pub fn execute_with_authority(
+    fixture: &Fixture,
+    projection: LoadedCasProjection,
+    tools: &mut dyn OrdinaryDynamicToolAuthority,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
+    execute_with_handlers(fixture, projection, tools.handlers())
+}
+
+fn execute_with_handlers(
+    fixture: &Fixture,
+    projection: LoadedCasProjection,
+    handlers: OrdinaryDynamicToolHandlers<'_>,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
     let home = fixture.store.home_for_shutdown_test();
     let coordinator = CasProjectionCoordinator::for_healthy_home(home).unwrap();
     coordinator.execute_ordinary_turn(
@@ -83,6 +104,6 @@ pub fn execute(
         projection,
         &fixture.cancellation,
         &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
-        OrdinaryDynamicToolHandlers::new(lifecycle, &mut UnusedBranch),
+        handlers,
     )
 }

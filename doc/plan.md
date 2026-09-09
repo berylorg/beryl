@@ -38,14 +38,13 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 353: Publish Exact Continuation Failure Attention (finished)
+# Phase 354: Own Production Execution Tool Dispatch (finished)
 
-Accepted exact continuation completion custody through preparation, backend/home loss and ambiguous
-settlement. Proven admission and prior user-input, stop or shutdown cancellation suppress failure;
-pending failures publish bounded attention and release their attempt. Independent review, production
-compilation, formatting and 92 selected checks passed with a 2.02 GiB job peak and no remaining child
-processes. The [custody correction](failures/lifecycle-continuation-attention-custody.md) records the
-settlement and verification lessons. Process/window composition remains a separate boundary.
+Accepted the process-owned tool authority through real direct and scheduled dispatch, exact-origin
+rejection and retirement. Deferred branch resolution returns bounded unavailability without mutation
+or payload echo; the canonical registry remains intact. Independent review, production compilation,
+formatting and 27 selected checks passed with a 2.02 GiB job peak and no remaining child processes.
+Full branch handoff and process/window assembly remain separate acceptance boundaries.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

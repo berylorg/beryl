@@ -42,6 +42,7 @@ mod native_lineage_recovery;
 mod ordinary;
 mod persistent_failure;
 mod process_sessions;
+mod process_tools;
 mod provider_frame;
 mod provider_identity;
 mod publication;
@@ -117,6 +118,7 @@ pub use process_sessions::{
     ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionRegistration,
     ScheduledSessionRegistrationError,
 };
+pub use process_tools::ProcessOrdinaryDynamicToolAuthority;
 pub use runtime::AdmittedProjectionSession;
 pub use runtime_interest::{
     RuntimeActivityPeriod, RuntimeFailure, RuntimeInterest, RuntimeInterestConfig,
