@@ -105,6 +105,7 @@ impl CasProjectionCoordinator {
         drop(route_reservation);
         let lease = match session.register_loaded(
             cas_thread_id.clone(),
+            loaded.metadata().clone(),
             request.thread_id(),
             request.timeout(),
         ) {

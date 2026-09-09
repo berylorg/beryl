@@ -309,6 +309,8 @@
   independent view/work interest and joined retirement; independent review and 74 focused checks passed.
 - [x] Accepted production execution-session admission retaining exact required runtime interest through
   checkout and retirement, with runtime-wide configuration invalidation and independent semantic review.
+- [x] Retained exact backend policy metadata with loaded-session authority across native and recovered
+  projection paths, reuse and retirement; independent review and 25 selected regression checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

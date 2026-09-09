@@ -376,6 +376,16 @@ impl LoadedCasProjection {
         }
     }
 
+    pub fn observed_thread_metadata(
+        &self,
+    ) -> Result<Option<beryl_backend::ThreadSessionMetadata>, super::ProjectionCoordinatorError>
+    {
+        match &self.lease {
+            Some(lease) => lease.observed_metadata(),
+            None => Ok(None),
+        }
+    }
+
     /// Consumes this projection into the sole provisional target registered before `turn/start`.
     pub fn into_pending_live_event_target(
         self,

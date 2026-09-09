@@ -38,15 +38,24 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 346: Retain Runtime Interest In Admitted Execution Sessions (finished)
+# Phase 347: Retain Exact Loaded-Thread Policy Metadata (finished)
 
-Accepted production session admission with exact owner, root and activity-period validation and
-required runtime interest retained through exclusive checkout, return and retirement. A contradictory
-configuration ends the whole matching runtime period through ordered disposal; transport and
-capacity failures remain local. Independent semantic review, formatting and diff checks passed.
-The final runtime suite passed 25/25 after the [configuration correction](failures/cas-runtime-admission-contradiction.md);
-the preceding provider/scheduler/failure regression run passed 82/82. The final guarded run peaked
-at 1.47 GiB and left no child processes. Automatic execution composition remains below.
+Accepted exact backend model/reasoning observations retained by the existing loaded-session
+registry through fresh, resumed, forked, recovered and reused projections, with retirement and
+replacement fencing and no additional requests. Independent semantic review, production check,
+formatting and diff checks passed. All 25 selected regression cases passed across the broad run
+and focused correction of obsolete fixture/disposal assertions. Guarded runs stayed below 1.5 GiB
+of job memory and left no child processes. Attempt-time policy resolution remains below.
+
+# Phase 348: Resolve Backend-Default Policy For Each Start Attempt (pending)
+
+Compose production request policy from exact backend root/thread defaults and the latest applied
+developer instructions for each ordinary start, retry, replacement and continuation. Preserve
+hidden-context exclusions and typed unavailability when required policy is unknown. Do not freeze
+instructions at session registration. Verify the actual execution path and independent review.
+Explicit model/reasoning controls remain unavailable: their ownership, accepted-input custody,
+consumption and restart contract require owning design authority before that separate feature
+slice can be implemented.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

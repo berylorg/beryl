@@ -71,6 +71,7 @@ impl CasProjectionCoordinator {
         let cas_thread_id = fresh.thread_id().clone();
         let lease = match session.register_loaded(
             cas_thread_id.clone(),
+            fresh.metadata().clone(),
             request.thread_id(),
             request.timeout(),
         ) {

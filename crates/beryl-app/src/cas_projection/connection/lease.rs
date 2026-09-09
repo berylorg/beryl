@@ -129,6 +129,21 @@ impl LoadedProjectionLease {
         )
     }
 
+    pub(in crate::cas_projection) fn observed_metadata(
+        &self,
+    ) -> Result<Option<beryl_backend::ThreadSessionMetadata>, ProjectionCoordinatorError> {
+        if !self.active || self.connection.authority.is_retired() {
+            return Ok(None);
+        }
+        registry::observed_metadata(
+            &self.key,
+            self.connection.authority.generation,
+            self.owner,
+            self.generation,
+            self.token,
+        )
+    }
+
     pub(in crate::cas_projection) fn register_event_target(
         &mut self,
         home_generation: u64,

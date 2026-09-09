@@ -85,6 +85,10 @@ fn production_recovery_rendezvous_holds_one_fixed_page_then_releases() {
     });
 
     assert_eq!(projection.cas_thread_id().as_str(), TARGET_THREAD);
+    let metadata = projection.observed_thread_metadata().unwrap().unwrap();
+    assert_eq!(metadata.model.as_deref(), Some("gpt-5.6"));
+    assert_eq!(metadata.model_provider.as_deref(), Some("openai"));
+    assert_eq!(metadata.reasoning_effort.as_deref(), Some("high"));
     assert!(matches!(
         projection.lineage_proof(),
         CasLineageProof::RecoveredInjection(_)
@@ -96,6 +100,7 @@ fn production_recovery_rendezvous_holds_one_fixed_page_then_releases() {
     );
 
     session.invalidate_connection();
+    assert!(projection.observed_thread_metadata().unwrap().is_none());
     drop(projection);
     drop(session);
     server.join();

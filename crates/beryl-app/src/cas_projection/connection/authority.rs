@@ -233,6 +233,7 @@ impl ConnectionRegistryAuthority {
     pub(super) fn register_new(
         &self,
         key: LoadedThreadKey,
+        metadata: beryl_backend::ThreadSessionMetadata,
         owner: SyndicThreadId,
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
         seed: &mut RawLoadedLeaseSeed,
@@ -242,7 +243,8 @@ impl ConnectionRegistryAuthority {
             return Ok(None);
         }
         match command.commit_if_current(|| {
-            let (generation, token) = registry::register_new(key, self.generation, owner)?;
+            let (generation, token) =
+                registry::register_new(key, self.generation, owner, metadata)?;
             seed.arm(generation, token);
             Ok(())
         }) {
@@ -284,7 +286,7 @@ impl ConnectionRegistryAuthority {
         if self.is_retired() {
             return Ok(None);
         }
-        registry::register_new(key, self.generation, owner).map(Some)
+        registry::register_new(key, self.generation, owner, Default::default()).map(Some)
     }
 
     #[cfg(test)]

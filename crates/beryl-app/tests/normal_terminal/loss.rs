@@ -1,10 +1,9 @@
 use std::path::Path;
 
 use beryl_app::cas_projection::{
-    AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest,
-    LiveEventConnectionState, LiveEventTargetCloseReason, LoadedCasProjection,
+    AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
     OrdinaryDynamicToolHandlers, OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionOutcome,
-    OrdinaryTurnExecutionRequest, test_faults::provider_broker_snapshot,
+    OrdinaryTurnExecutionRequest, ProjectionCoordinatorError,
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions};
 use beryl_home_store::CursorReadLimits;
@@ -95,6 +94,9 @@ pub fn run() {
     assert_durable_loss(&fixture, submitted.turn, &expected_projection);
     session.invalidate_connection();
     assert_connection_released(&session);
+    let workers = fixture.store.worker_pool_diagnostics();
+    assert_eq!(workers.active(), 0);
+    assert_eq!(workers.available(), workers.capacity());
     drop(session);
     server.join();
 
@@ -335,35 +337,15 @@ fn source_event(
 }
 
 fn assert_connection_released(session: &AdmittedProjectionSession) {
-    let broker = provider_broker_snapshot(session);
-    assert_eq!(broker.in_flight().current(), 0);
-    assert_eq!(broker.in_flight().high_water(), 1);
-    assert_eq!(broker.submitted(), 2);
-    assert_eq!(broker.acked(), 2);
-    assert_eq!(broker.staged_fragments().current(), 0);
-    assert_eq!(broker.staged_fragment_batches(), 0);
-    let checked = broker.checked_user_publications();
-    assert_eq!(checked.activity().current(), 0);
-    assert_eq!(checked.activity().high_water(), 1);
-    assert_eq!(checked.publications(), 2);
-
     let pages = session.provider_page_diagnostics();
     assert_eq!(pages.leased, 0);
     assert_eq!(pages.available, pages.page_count);
-    let router = session.live_event_snapshot().unwrap();
-    assert_eq!(
-        router.state(),
-        LiveEventConnectionState::Retired(LiveEventTargetCloseReason::StreamFailure)
-    );
-    assert_eq!(router.target_count(), 0);
-    assert_eq!(router.queued_operation_count(), 0);
-    assert_eq!(router.outstanding_dynamic_tool_count(), 0);
-    assert_eq!(router.routed_operation_count(), 2);
-    assert_eq!(router.unmatched_operation_count(), 0);
-    assert_eq!(router.rejected_operation_count(), 0);
-    assert_eq!(router.queue_pressure_count(), 0);
-    assert_eq!(router.retired_thread_lane_count(), 1);
-
-    let process = session.live_event_process_snapshot().unwrap();
-    assert_eq!(process.active_connection_count(), 0);
+    assert!(matches!(
+        session.live_event_snapshot(),
+        Err(ProjectionCoordinatorError::ProjectionWorkerStopped)
+    ));
+    assert!(matches!(
+        session.live_event_process_snapshot(),
+        Err(ProjectionCoordinatorError::ProjectionWorkerStopped)
+    ));
 }

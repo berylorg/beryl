@@ -371,6 +371,14 @@ impl Fixture {
             .unwrap()
             .unwrap();
         let generation = head.generation();
+        if head.lifecycle() == ProjectionLifecycle::Current {
+            assert_eq!(head.committed_tail(), thread_record.committed_tail());
+            assert_eq!(
+                head.selected_path_digest(),
+                thread_record.selected_path_digest()
+            );
+            return;
+        }
         execute(
             home,
             self.storage.start_transcript_build(

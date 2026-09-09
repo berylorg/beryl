@@ -167,10 +167,12 @@ impl AdmittedProjectionSession {
     pub(super) fn register_loaded(
         &self,
         cas_thread_id: beryl_model::CasThreadId,
+        metadata: beryl_backend::ThreadSessionMetadata,
         owner: beryl_model::SyndicThreadId,
         timeout: Duration,
     ) -> Result<super::connection::LoadedProjectionLease, super::ProjectionCoordinatorError> {
-        self.connection.register_new(cas_thread_id, owner, timeout)
+        self.connection
+            .register_new(cas_thread_id, metadata, owner, timeout)
     }
 
     pub(super) fn retire_loaded_thread(

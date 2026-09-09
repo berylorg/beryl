@@ -1066,6 +1066,7 @@ impl ProjectionConnection {
     pub(in crate::cas_projection) fn register_new(
         self: &Arc<Self>,
         cas_thread_id: CasThreadId,
+        metadata: beryl_backend::ThreadSessionMetadata,
         owner: SyndicThreadId,
         unsubscribe_timeout: Duration,
     ) -> Result<LoadedProjectionLease, ProjectionCoordinatorError> {
@@ -1075,7 +1076,7 @@ impl ProjectionConnection {
             RawLoadedLeaseSeed::pending(Arc::clone(self), key.clone(), owner, unsubscribe_timeout);
         let Some(()) = self
             .authority
-            .register_new(key, owner, &command, &mut seed)?
+            .register_new(key, metadata, owner, &command, &mut seed)?
         else {
             return Err(self.unavailable());
         };

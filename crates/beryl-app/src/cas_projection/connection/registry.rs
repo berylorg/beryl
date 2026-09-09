@@ -66,6 +66,7 @@ struct LoadedThreadEntry {
     owner: SyndicThreadId,
     generation: CasLoadedThreadGeneration,
     leases: HashSet<LeaseToken>,
+    metadata: beryl_backend::ThreadSessionMetadata,
 }
 
 #[derive(Default)]
@@ -150,6 +151,7 @@ pub(in crate::cas_projection) fn register_new(
     key: LoadedThreadKey,
     connection: ConnectionGeneration,
     owner: SyndicThreadId,
+    metadata: beryl_backend::ThreadSessionMetadata,
 ) -> Result<(CasLoadedSessionGeneration, LeaseToken), ProjectionCoordinatorError> {
     let mut state = lock()?;
     if let Some(entry) = state.entries.get(&key) {
@@ -166,6 +168,7 @@ pub(in crate::cas_projection) fn register_new(
             owner,
             generation,
             leases,
+            metadata,
         },
     );
     add_connection_authority(&mut state, connection);
@@ -217,6 +220,29 @@ pub(in crate::cas_projection) fn contains_exact(
             && entry.generation == generation.thread()
             && entry.leases.contains(&token)
     }))
+}
+
+pub(in crate::cas_projection) fn observed_metadata(
+    key: &LoadedThreadKey,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+    generation: CasLoadedSessionGeneration,
+    token: LeaseToken,
+) -> Result<Option<beryl_backend::ThreadSessionMetadata>, ProjectionCoordinatorError> {
+    if generation.process() != key.process_generation {
+        return Ok(None);
+    }
+    let state = lock()?;
+    Ok(state
+        .entries
+        .get(key)
+        .filter(|entry| {
+            entry.connection == connection
+                && entry.owner == owner
+                && entry.generation == generation.thread()
+                && entry.leases.contains(&token)
+        })
+        .map(|entry| entry.metadata.clone()))
 }
 
 pub(in crate::cas_projection) fn connection_has_authority(

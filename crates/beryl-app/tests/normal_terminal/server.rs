@@ -304,17 +304,28 @@ fn send_thread_load_response(
     cas_thread_id: &str,
     resumed: bool,
 ) {
+    send_thread_load_metadata(socket, id, cas_thread_id, resumed, "gpt-5.6", Some("high"));
+}
+
+fn send_thread_load_metadata(
+    socket: &mut WebSocket<TcpStream>,
+    id: u64,
+    cas_thread_id: &str,
+    resumed: bool,
+    model: &str,
+    reasoning: Option<&str>,
+) {
     let initial_turns_page = if resumed {
         r#","initialTurnsPage":null,"turnsBackwardsCursor":null,"itemsBackwardsCursor":null"#
     } else {
         ""
     };
-    send_json(
-        socket,
-        &format!(
-            r#"{{"id":{id},"result":{{"thread":{{"id":"{cas_thread_id}","extra":null,"sessionId":"session-id","forkedFromId":null,"parentThreadId":null,"preview":"preview","ephemeral":false,"historyMode":"legacy","modelProvider":"openai","createdAt":1,"updatedAt":2,"recencyAt":null,"status":{{"type":"idle"}},"path":null,"cwd":"C:\\work\\beryl","cliVersion":"0.146.0","source":"appServer","threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"turns":[]}},"model":"gpt-5.6","modelProvider":"openai","serviceTier":null,"cwd":"C:\\work\\beryl","runtimeWorkspaceRoots":[],"instructionSources":[],"approvalPolicy":"never","approvalsReviewer":"user","sandbox":{{}},"activePermissionProfile":null,"reasoningEffort":"high","multiAgentMode":"explicitRequestOnly"{initial_turns_page}}}}}"#,
-        ),
-    );
+    let mut response: Value = serde_json::from_str(&format!(
+        r#"{{"id":{id},"result":{{"thread":{{"id":"{cas_thread_id}","extra":null,"sessionId":"session-id","forkedFromId":null,"parentThreadId":null,"preview":"preview","ephemeral":false,"historyMode":"legacy","modelProvider":"openai","createdAt":1,"updatedAt":2,"recencyAt":null,"status":{{"type":"idle"}},"path":null,"cwd":"C:\\work\\beryl","cliVersion":"0.146.0","source":"appServer","threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"turns":[]}},"model":"gpt-5.6","modelProvider":"openai","serviceTier":null,"cwd":"C:\\work\\beryl","runtimeWorkspaceRoots":[],"instructionSources":[],"approvalPolicy":"never","approvalsReviewer":"user","sandbox":{{}},"activePermissionProfile":null,"reasoningEffort":"high","multiAgentMode":"explicitRequestOnly"{initial_turns_page}}}}}"#,
+    )).unwrap();
+    response["result"]["model"] = json!(model);
+    response["result"]["reasoningEffort"] = json!(reasoning);
+    send_json(socket, &response.to_string());
 }
 
 fn complete_ordinary_turn(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
