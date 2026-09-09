@@ -57,6 +57,16 @@ continuation identity and pending/cancelled state when the accepted intent moves
 registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
 not queue/worker counts alone; observe without retaining capabilities or changing execution.
 
+Readiness is blocked before implementation: failed target registration removes a local compaction
+before its caller releases command custody, and connection retirement can reuse worker capacity
+while that caller remains paused. Independent source review confirms that the existing queue and
+worker limits do not bound this interval. The
+[compaction custody finding](failures/cas-compaction-admission-custody-bound.md)
+proposes reserving capacity before admission through final disposal using the existing 64+8 envelope.
+Await Operator direction for that execution-lifetime prerequisite; update the owning live-control
+authority and split its acceptance phase before resuming observation. Stop/permission acceptance
+remains complete.
+
 # Phase 361: Compose Revision-Bound Control Work Facts (pending)
 
 Compose the accepted stop/interruption and compaction/continuation sources into bounded exact
