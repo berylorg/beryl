@@ -38,15 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 365: Retain Connection Reservations Through Stop Disposal (finished)
+# Phase 366: Dispose Permission Slots Before Ingester Completion (finished)
 
-Accepted the existing worker pair's retention through primary caller/queue custody, loss,
-retirement, settlement and backend unbind. Exact reservation observation proves cleanup retention
-after ingester exit; denied replacement and subsequent reuse cover rejected handoff and unwind.
-Independent semantic review, production compilation and 43 focused stop, approval, worker and
-terminal checks passed. Peak guarded job memory was 2.08 GiB; all children exited and temporary
-directories were removed. The [custody-bound evidence](failures/cas-stop-custody-worker-reservation.md)
-records the resolved prerequisite; stop observation remains its own acceptance boundary.
+Accepted approval-slot disposal before caught-panic ingester completion and worker release.
+Joined pending and reserved slot tests prove closure before later cancellation and capacity reuse.
+Independent semantic review, production compilation and 49 selected stop, approval, worker and
+terminal checks passed. Peak guarded job memory was 2.07 GiB; all children exited and temporary
+directories were removed. The [custody evidence](failures/cas-stop-custody-worker-reservation.md#permission-disposal-prerequisite)
+records the accepted prerequisite.
 
 # Phase 363: Publish Revision-Bound Stop And Interruption Custody Facts (wip)
 
@@ -73,6 +72,9 @@ remaining driver custody; map removal or response completion alone does not prov
 Reservation-lifetime acceptance establishes the stop custody prerequisite. Include the driver's
 post-settlement unbind interval as well as the primary owner itself. Do not omit tails, introduce
 an unbounded observer catalog, or substitute an arbitrary observation cutoff for a derived bound.
+
+Accepted permission-slot completion ordering establishes the worker-derived permission bound.
+Stop and permission observation can now resume from the accepted custody prerequisites.
 
 Existing volatile-stop fallback begins only after persistent failure closes the healthy generation;
 these source pages reject that generation and do not claim to inventory post-failure cleanup.

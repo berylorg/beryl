@@ -324,6 +324,8 @@ impl ProviderBroker {
                 command: None,
                 active: None,
                 authority_lost: false,
+                #[cfg(test)]
+                panic_before_receive: build_fault == ProviderBrokerBuildFault::IngesterPanic,
                 #[cfg(feature = "test-faults")]
                 test_metrics: Arc::clone(&test_metrics),
             })),

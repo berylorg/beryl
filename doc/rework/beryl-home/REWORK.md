@@ -338,6 +338,8 @@
   handoff, approval response and disposal; independent review and 34 lifecycle checks passed.
 - [x] Retained existing connection worker reservations through primary stop custody and driver
   disposal; independent semantic review and 43 focused stop, approval and capacity checks passed.
+- [x] Closed pending and reserved permission slots before caught-panic ingester completion and
+  worker reuse; independent semantic review, production compilation and 49 selected checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

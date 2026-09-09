@@ -90,5 +90,10 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 - Cancellation, denial, local failure, broker or connection loss, terminal, reconciliation,
   supersession, generation loss, and disposal move or release exact obligations, capabilities,
   permits, waiters, and operation custody at their typed cut.
+- Ingester completion closes and disposes the approval-interruption slot before publishing its
+  terminal receipt or releasing worker admission, including caught-panic exit. Prepared custody
+  unwinds before that completion boundary; a joined obligation without a primary stop owner cannot
+  remain pending after capacity becomes reusable. Verify pending joined and reserved-preparation
+  failure paths independently of a later retirement caller's cancellation signal.
 - Selected UI state, status text, guessed process ids, coarse activity, and displayed CAS ids are
   never mutation authority.

@@ -18,6 +18,11 @@ pub(in crate::cas_projection::connection) struct PendingApprovalInterruption {
 }
 
 impl ApprovalInterruptionSlot {
+    #[cfg(test)]
+    pub(super) fn is_closed_for_test(&self) -> bool {
+        matches!(*self.state.lock().unwrap(), SlotState::Closed)
+    }
+
     pub(super) const fn new() -> Self {
         Self {
             state: Mutex::new(SlotState::Empty),

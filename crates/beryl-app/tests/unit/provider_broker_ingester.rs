@@ -22,6 +22,13 @@ use crate::cas_projection::{
     stop::StopCoordinator,
 };
 
+mod approval_disposal {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/provider_broker_ingester/approval_disposal.rs"
+    ));
+}
+
 struct BrokerBuildFixture {
     authority: Arc<ConnectionRegistryAuthority>,
     router: Arc<EventRouter>,
@@ -132,10 +139,17 @@ impl BrokerBuildFixture {
     }
 
     fn prepare_start_blocked(&self) -> PreparedProviderBroker {
+        self.prepare_start_blocked_with_fault(ProviderBrokerBuildFault::None)
+    }
+
+    fn prepare_start_blocked_with_fault(
+        &self,
+        fault: ProviderBrokerBuildFault,
+    ) -> PreparedProviderBroker {
         let mut workers = self.workers.try_acquire_pair().unwrap();
         let ingester_worker = workers.take_ingester();
         drop(workers.take_driver());
-        ProviderBroker::prepare_with_initial_start(
+        ProviderBroker::prepare_with_initial_start_inner(
             Arc::clone(&self.home),
             self.home_id,
             self.home_generation,
@@ -147,6 +161,7 @@ impl BrokerBuildFixture {
             self.failure_notification.clone(),
             ingester_worker,
             InitialStartGate::ready(),
+            fault,
         )
         .unwrap()
     }

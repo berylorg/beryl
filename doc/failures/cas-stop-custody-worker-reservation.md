@@ -65,3 +65,47 @@ Independent semantic review accepted the exact retention and disposal ordering. 
 fixture was corrected for the already accepted non-idle source record; production footprint
 behavior did not change. Guarded job memory peaked at 2.08 GiB; all owned children exited and test
 temporary directories were removed.
+
+## Permission Disposal Prerequisite
+
+The accepted stop correction does not cover a joined permission obligation, whose primary owner
+is absent. Its proposed observation bound uses one driver-held obligation plus one reserved or
+pending slot per connection. Normal ingester exit closes the slot, but caught-panic exit does not.
+Independent source review found this release-order counterexample; no live reproduction is claimed.
+
+- `Ingester::run` in `connection/provider_broker/ingester/core.rs` catches a panic from
+  `run_loop` and returns a terminal receipt without executing its final `approval.close`.
+  An already installed joined `Pending` can remain in the shared broker slot. Its ingester
+  worker is terminal but initially retained under the undecided worker disposition.
+- `ProjectionConnection::request_ordinary_retirement` in `connection/lifecycle.rs` elects
+  ordinary retirement and marks connection authority retired before dropping its locks and
+  separately calling `signal_ordinary_retirement`. Suspend the elected caller between those cuts.
+- `begin_ordinary_retirement` arms ordinary ingester release. For the already terminal ingester,
+  `ProviderBrokerWorkerOwner::arm_ordinary_release` in `provider_broker/ingester/lifecycle.rs`
+  immediately releases its worker admission.
+- The sole driver observes retired authority and exits. Its retirement guard in
+  `connection/driver.rs` does not call `broker.request_cancel` when another caller already elected
+  ordinary retirement. The driver admission is released while the elected caller remains paused.
+- Both worker units are now reusable but the joined obligation remains in its retained slot.
+  Moving the driver's worker variable outside its retirement guard does not close this schedule:
+  the guard itself skips cancellation when retirement was previously elected.
+
+All source paths above are relative to `crates/beryl-app/src/cas_projection`. The stop reservation
+acceptance remains valid; permission-slot disposal before capacity reuse was a separate gap.
+The public page bound could not rely on worker capacity while that interval existed.
+
+The Operator approved making approval-slot closure and disposal
+precede ingester terminal publication on caught-panic exit as well as normal exit. Verify an
+installed joined obligation, failed ingester, paused ordinary retirement, driver exit and exact
+capacity reuse. A reserved preparation must also release its observation during unwind. Preserve
+the existing ordered obligation and interruption rules; introduce no extra pool or observation
+cutoff. The prerequisite is independently accepted and stop/permission observation has resumed.
+Updating driver drop order alone would have been insufficient.
+
+`Ingester::run` now closes the slot and cancels its abandoned reservation after the caught execution
+boundary and before its receipt. Two focused tests use the real broker worker and caught-panic
+path, with a routed joined obligation or a reserved slot. Before cancellation or join, they prove
+the slot is fully closed while its worker is still reserved, then prove exact ordinary release and
+replacement admission. The failure receipt remains unclean. Independent review, production
+compilation and 49 selected broker, approval, worker, stop and terminal tests passed; peak guarded
+job memory was 2.07 GiB and all owned processes and test temporary directories were reclaimed.

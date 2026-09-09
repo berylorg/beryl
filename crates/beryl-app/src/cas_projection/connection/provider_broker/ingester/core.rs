@@ -6,6 +6,9 @@ impl Ingester {
         let service_generation = self.commands.service_generation();
         let home_generation = self.home_generation;
         let clean = catch_unwind(AssertUnwindSafe(|| self.run_loop())).is_ok();
+        self.approval.close();
+        // The sole producer has returned or unwound, so no reserved installation can follow.
+        self.approval.cancel_reservation();
         ProviderBrokerTerminalReceipt {
             service_generation,
             home_generation,
@@ -27,6 +30,11 @@ impl Ingester {
     }
 
     fn run_loop(&mut self) {
+        #[cfg(test)]
+        assert!(
+            !self.panic_before_receive,
+            "injected ingester execution panic"
+        );
         let mut persistent_failure = false;
         while let Some(operation) = receive_next(&self.receiver, &self.cancelled) {
             let command = match self.commands.authorize() {

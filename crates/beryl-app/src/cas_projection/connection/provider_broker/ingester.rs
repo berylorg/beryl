@@ -176,6 +176,8 @@ enum ProviderBrokerBuildFault {
     Channel,
     #[cfg(test)]
     Spawn,
+    #[cfg(test)]
+    IngesterPanic,
 }
 
 #[cfg(any(test, feature = "test-faults"))]
@@ -302,6 +304,8 @@ struct Ingester {
     command: Option<LiveCommandPermit>,
     active: Option<ActiveIngress>,
     authority_lost: bool,
+    #[cfg(test)]
+    panic_before_receive: bool,
     #[cfg(feature = "test-faults")]
     test_metrics: Arc<crate::cas_projection::test_faults::ProviderBrokerTestMetrics>,
 }
