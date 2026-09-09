@@ -48,6 +48,7 @@ pub(in crate::cas_projection) struct StopElectionPermit {
     token: u64,
     command: Option<crate::cas_projection::LiveCommandPermit>,
     finished: bool,
+    worker_retention: Option<crate::cas_projection::service_config::ConnectionWorkerRetention>,
 }
 
 /// Result of revalidating the live-command gate after the exact stop election is held.
@@ -81,6 +82,14 @@ pub(super) struct VolatileStopAdmissionProof {
 }
 
 impl StopElectionPermit {
+    pub(in crate::cas_projection) fn take_worker_retention(
+        &mut self,
+    ) -> crate::cas_projection::service_config::ConnectionWorkerRetention {
+        self.worker_retention
+            .take()
+            .expect("an elected stop retains its connection workers")
+    }
+
     pub(in crate::cas_projection) fn admission(
         self,
         syndic_turn_id: SyndicTurnId,
@@ -288,7 +297,7 @@ impl EventRouter {
             .commands
             .authorize()
             .map_err(|_| StopElectionAcquireError::Router)?;
-        let token = final_command
+        let (token, worker_retention) = final_command
             .commit_if_current(|| {
                 validate_proof(self, &state, proof)?;
                 if state.active_steering_attempt.is_some()
@@ -300,6 +309,10 @@ impl EventRouter {
                 {
                     return Err(StopElectionAcquireError::Busy);
                 }
+                let worker_retention = self
+                    .worker_retention
+                    .retain()
+                    .ok_or(StopElectionAcquireError::Router)?;
                 state.next_stop_election = state
                     .next_stop_election
                     .checked_add(1)
@@ -311,7 +324,7 @@ impl EventRouter {
                     registration: proof.registration,
                 });
                 advance_revision(&mut state);
-                Ok(token)
+                Ok((token, worker_retention))
             })
             .unwrap_or(Err(StopElectionAcquireError::Router))?;
         Ok(StopElectionPermit {
@@ -320,6 +333,7 @@ impl EventRouter {
             token,
             command: Some(final_command),
             finished: false,
+            worker_retention: Some(worker_retention),
         })
     }
 

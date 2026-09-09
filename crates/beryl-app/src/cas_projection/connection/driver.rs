@@ -946,6 +946,10 @@ fn dispatch_stop_owner(
     session: &mut ConnectionRequestSession<'_>,
     owner: StopDispatchOwner,
 ) -> StopDriverOutcome {
+    // Settlement consumes the owner before backend unbind; both paths must retain capacity.
+    let _worker_retention = owner.retain_workers();
+    #[cfg(feature = "test-faults")]
+    let stop_thread = owner.thread_id_for_test();
     if let Err(error) = owner.begin_dispatch() {
         return StopDriverOutcome {
             settlement: Err(error),
@@ -995,6 +999,8 @@ fn dispatch_stop_owner(
         | beryl_backend::TurnInterruptDisposition::RejectedBeforeCoreInterrupt => false,
     };
     let settlement = owner.settle_interrupt(&outcome);
+    #[cfg(feature = "test-faults")]
+    crate::cas_projection::test_faults::pause_stop_cleanup(stop_thread);
     let unbind = session.backend.unbind_exact_foreground_turn();
     let invalidates_connection = invalidates_connection
         || unbind

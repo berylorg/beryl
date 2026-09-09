@@ -10,7 +10,10 @@ use beryl_backend::ForegroundSessionConfig;
 use beryl_home_store::{MinimumTurnCaptureReserve, TurnStartAdmissionRequirement};
 use thiserror::Error;
 
+mod connection_retention;
 mod preparation;
+
+pub(super) use connection_retention::{ConnectionWorkerRetention, ConnectionWorkerRetentionSource};
 
 pub(super) const CONNECTION_WORKER_PERMITS: usize = 2;
 pub(super) const SCHEDULED_ORDINARY_WORKER_PERMITS: usize = 1;

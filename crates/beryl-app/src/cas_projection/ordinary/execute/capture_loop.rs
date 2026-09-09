@@ -151,6 +151,8 @@ fn run_capture(
     limit: SyndicPointReadLimit,
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
+    #[cfg(feature = "test-faults")]
+    let mut target = target;
     let mut lifecycle = OrdinaryLifecycleGuard {
         stop: target.stop_coordinator()?,
         thread_id: pending.thread_id,
@@ -161,6 +163,8 @@ fn run_capture(
         .stop
         .dynamic_tool_context(pending.thread_id, pending.turn_id);
     let result = (|| loop {
+        #[cfg(feature = "test-faults")]
+        crate::cas_projection::test_faults::abandon_live_event_target_if_requested(&mut target);
         match target.poll(LIVE_POLL_INTERVAL) {
             LiveEventPoll::Approval(approval) => {
                 if approval.thread_id() != target.cas_thread_id()

@@ -177,6 +177,7 @@ impl ProjectionConnection {
             commands.clone(),
             Some(terminal_disposer.clone()),
             process_fact.observe(),
+            worker_permits.retention_source(),
         )?);
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
         let persistent_failure = Arc::new(persistent_failure::PersistentFailureDriverSlot::new());
@@ -569,6 +570,19 @@ impl ProjectionConnection {
 
     pub(in crate::cas_projection) fn retire(&self) {
         let _ = self.shutdown();
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn ingester_finished_for_test(&self) -> bool {
+        self.current_attachment()
+            .is_ok_and(|attachment| attachment.ingester_is_finished())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn retained_worker_units_for_test(&self) -> Option<(bool, bool)> {
+        self.current_attachment()
+            .ok()
+            .map(|attachment| attachment.router.retained_worker_units_for_test())
     }
 
     pub(super) fn request_ordinary_retirement(&self) {

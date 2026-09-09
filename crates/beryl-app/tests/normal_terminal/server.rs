@@ -36,10 +36,13 @@ enum ServerScenario {
     ResumeTerminal(Box<str>),
     ResumeDelayedRejection(Box<str>),
     ConnectionLoss,
+    ControlledConnectionLoss,
+    AcceptedStop,
     SteeringCorrelationLoss,
 }
 
 enum ServerCommand {
+    CloseConnection,
     AssertQuietAndClose,
     ReleaseTurnStartRejection,
     SendSteeringCorrelationLoss(String),
@@ -84,6 +87,18 @@ impl NormalTerminalServer {
 
     pub fn spawn_connection_loss() -> Self {
         Self::spawn_scenario(ServerScenario::ConnectionLoss)
+    }
+
+    pub fn spawn_controlled_connection_loss() -> Self {
+        Self::spawn_scenario(ServerScenario::ControlledConnectionLoss)
+    }
+
+    pub fn spawn_accepted_stop() -> Self {
+        Self::spawn_scenario(ServerScenario::AcceptedStop)
+    }
+
+    pub fn close_connection(&self) {
+        self.commands.send(ServerCommand::CloseConnection).unwrap();
     }
 
     pub fn spawn_steering_correlation_loss() -> Self {
@@ -232,6 +247,30 @@ fn run_server(
             complete_projection(&mut socket);
             events.send(ServerEvent::ProjectionReady).unwrap();
             complete_connection_loss(&mut socket, CAS_THREAD_ID);
+        }
+        ServerScenario::ControlledConnectionLoss => {
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
+            assert!(matches!(
+                commands.recv_timeout(TIMEOUT).unwrap(),
+                ServerCommand::CloseConnection
+            ));
+            socket.close(None).unwrap();
+        }
+        ServerScenario::AcceptedStop => {
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
+            let interrupt = read_json(&mut socket).expect("one exact stop interrupt");
+            assert_eq!(interrupt["method"], "turn/interrupt");
+            assert_eq!(interrupt["params"]["threadId"], CAS_THREAD_ID);
+            assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
+            send_json(
+                &mut socket,
+                &json!({"id": interrupt["id"], "result": {}}).to_string(),
+            );
+            read_until_close(&mut socket).unwrap();
         }
         ServerScenario::SteeringCorrelationLoss => {
             complete_projection(&mut socket);
@@ -395,6 +434,11 @@ fn complete_unsubscribe(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) 
 }
 
 fn complete_connection_loss(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
+    begin_connection_loss_turn(socket, cas_thread_id);
+    socket.close(None).unwrap();
+}
+
+fn begin_connection_loss_turn(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str) {
     let id = read_ordinary_turn_start(socket, cas_thread_id);
     send_checked_user(
         socket,
@@ -411,7 +455,6 @@ fn complete_connection_loss(socket: &mut WebSocket<TcpStream>, cas_thread_id: &s
         COMPLETED_AT_MS,
     );
     send_turn_start_response(socket, id);
-    socket.close(None).unwrap();
 }
 
 fn complete_steering_correlation_loss(
@@ -440,8 +483,10 @@ fn complete_steering_correlation_loss(
         .expect("steering-loss test must supply the accepted-input correlation")
     {
         ServerCommand::SendSteeringCorrelationLoss(correlation) => correlation,
-        ServerCommand::AssertQuietAndClose | ServerCommand::ReleaseTurnStartRejection => {
-            panic!("steering-loss server received a turn-start rejection release")
+        ServerCommand::AssertQuietAndClose
+        | ServerCommand::ReleaseTurnStartRejection
+        | ServerCommand::CloseConnection => {
+            panic!("steering-loss server received an unrelated control command")
         }
     };
     let steering = read_json(socket).expect("steering delivery must send one turn/steer request");

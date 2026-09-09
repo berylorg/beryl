@@ -9,11 +9,16 @@ mod provider;
 mod recovery;
 mod response;
 mod scheduler;
+mod stop_handoff;
 mod target;
 mod terminal_history;
 
 pub(crate) use response::pause_response_write;
 pub use response::{ResponseWriteBarrierController, install_response_write_barrier};
+pub use stop_handoff::{
+    StopHandoffBarrierController, install_stop_cleanup_barrier, install_stop_handoff_barrier,
+};
+pub(crate) use stop_handoff::{pause_stop_cleanup, pause_stop_handoff};
 
 pub fn respond_routed_dynamic_tool(
     target: &super::LiveEventTarget,

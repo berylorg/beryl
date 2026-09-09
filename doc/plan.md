@@ -38,21 +38,60 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 360: Publish Revision-Bound Connection Work Facts (finished)
+# Phase 365: Retain Connection Reservations Through Stop Disposal (finished)
 
-Accepted bounded owner/home/service-revision pages for exact connection targets and response
-requests. Checked aggregate revisions fence membership, detachment, router state, queue handoff
-and backend custody without retaining capabilities or a full version vector. Independent review,
-production compilation, formatting and 34 distinct focused lifecycle checks passed, including a
-paused admitted writer, automatic approval response custody and full-queue paging. Peak guarded
-job memory was 1.52 GiB; all children exited and temporary directories were removed. Control-owner
-facts and complete work inventory remain subsequent boundaries.
+Accepted the existing worker pair's retention through primary caller/queue custody, loss,
+retirement, settlement and backend unbind. Exact reservation observation proves cleanup retention
+after ingester exit; denied replacement and subsequent reuse cover rejected handoff and unwind.
+Independent semantic review, production compilation and 43 focused stop, approval, worker and
+terminal checks passed. Peak guarded job memory was 2.08 GiB; all children exited and temporary
+directories were removed. The [custody-bound evidence](failures/cas-stop-custody-worker-reservation.md)
+records the resolved prerequisite; stop observation remains its own acceptance boundary.
 
-# Phase 361: Publish Revision-Bound Control Work Facts (pending)
+# Phase 363: Publish Revision-Bound Stop And Interruption Custody Facts (wip)
 
-Expose exact bounded stop, compaction and continuation facts from their existing owners. Preserve
-observation through continuation handoff and terminal settlement without creating another owner,
-admitting work or changing cancellation, response or shutdown authority.
+Expose bounded healthy-generation stop and permission-interruption facts from their existing
+coordinator, broker and driver owners. Distinguish durable settlement, registry membership and
+remaining driver custody; map removal or response completion alone does not prove work release.
+
+- Page existing retained stop records without another historical catalog; distinguish abandoned
+  records from live work. Observe removed-but-owned stop identities until exact settlement and
+  release, including terminal consumption during backend interruption and nondispatch settlement.
+- Preserve compact exact permission-obligation identity through preparation, broker installation,
+  driver transfer, joined admission without a primary owner, invalidation and disposal. Reuse the
+  existing app obligation custody; retain no backend payload or usable capability in observations.
+- Derive removed-owner bookkeeping from the accepted stop reservation lifetime, covering one
+  election-owning stop and one post-election driver tail per retained connection reservation.
+  Permission observation still requires the driver-held and reserved/pending obligation intervals.
+- Publish owner/home/service-bound revisions and count/byte-bounded pages; fence every exposed
+  mutation and reject foreign/stale cursors, counter exhaustion and closed/unavailable generations.
+  Queries never prune, admit, acknowledge, settle, dispatch or acquire operation authority.
+- Verify exact handoff and terminal-before-driver-release intervals, joined permission handling,
+  disposal, stable repeated reads, page limits and stale/foreign rejection; run focused stop and
+  approval regressions, production compilation and independent semantic review with bounded cleanup.
+
+Reservation-lifetime acceptance establishes the stop custody prerequisite. Include the driver's
+post-settlement unbind interval as well as the primary owner itself. Do not omit tails, introduce
+an unbounded observer catalog, or substitute an arbitrary observation cutoff for a derived bound.
+
+Existing volatile-stop fallback begins only after persistent failure closes the healthy generation;
+these source pages reject that generation and do not claim to inventory post-failure cleanup.
+Compaction/continuation observation and complete control-page composition remain separate boundaries.
+
+# Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (pending)
+
+Expose compact exact facts through compaction queue/driver work, completion and target cleanup,
+including the removed local operation before its driver releases command custody. Preserve
+continuation identity and pending/cancelled state when the accepted intent moves out of the stop
+registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
+not queue/worker counts alone; observe without retaining capabilities or changing execution.
+
+# Phase 361: Compose Revision-Bound Control Work Facts (pending)
+
+Compose the accepted stop/interruption and compaction/continuation sources into bounded exact
+control pages. Revalidate every contributing source and preserve handoff/settlement visibility
+without creating another owner, admitting work or changing cancellation, response or shutdown
+authority.
 
 # Phase 358: Project Revision-Bound Process Work Inventory (pending)
 

@@ -32,10 +32,6 @@ pub struct LiveEventTargetAbandonmentController {
     abandoned: Receiver<()>,
 }
 
-/// Requests receiver abandonment for one exact connection and Syndic thread.
-///
-/// Ordinary execution still performs real target registration. The feature-only seam acts at the
-/// owner immediately afterward and exposes no target handle or content.
 pub fn install_live_event_target_abandonment(
     session: &AdmittedProjectionSession,
     thread_id: SyndicThreadId,

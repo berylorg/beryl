@@ -338,6 +338,7 @@ pub(in crate::cas_projection) struct StopDispatchOwner {
     timeout: std::time::Duration,
     _command: super::persistent_failure::LiveCommandPermit,
     settled: bool,
+    worker_retention: super::service_config::ConnectionWorkerRetention,
 }
 
 pub(in crate::cas_projection) enum StopDispatchSettlement {
@@ -347,6 +348,14 @@ pub(in crate::cas_projection) enum StopDispatchSettlement {
 }
 
 impl StopCoordinator {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn has_local_stop_for_test(
+        &self,
+        thread: SyndicThreadId,
+    ) -> bool {
+        self.state.lock().unwrap().stops.contains_key(&thread)
+    }
+
     pub(in crate::cas_projection) fn new(
         home: &Arc<HomeStore>,
         home_id: BerylHomeId,
@@ -479,7 +488,7 @@ impl StopCoordinator {
             return Ok(ownership);
         }
 
-        let (live, permit, _command) = match self.read(proof.syndic_thread_id())? {
+        let (live, mut permit, _command) = match self.read(proof.syndic_thread_id())? {
             StopAdmissionRead::Admissible(candidate) => {
                 if !proof.matches(candidate.target()) {
                     return Err(StopCoordinationError::TargetUnavailable);
@@ -607,6 +616,7 @@ impl StopCoordinator {
             drop(state);
             return Err(StopCoordinationError::LocalAuthorityMismatch);
         }
+        let worker_retention = permit.take_worker_retention();
         Ok(StopOwnership::Primary(StopDispatchOwner {
             coordinator: Arc::clone(self),
             operation_id: live.operation_id(),
@@ -616,6 +626,7 @@ impl StopCoordinator {
             timeout: proof.request_timeout(),
             _command,
             settled: false,
+            worker_retention,
         }))
     }
 
@@ -892,6 +903,17 @@ fn system_timestamp_at_least(
 }
 
 impl StopDispatchOwner {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn thread_id_for_test(&self) -> SyndicThreadId {
+        self.target.thread_id()
+    }
+
+    pub(in crate::cas_projection) fn retain_workers(
+        &self,
+    ) -> super::service_config::ConnectionWorkerRetention {
+        self.worker_retention.retain()
+    }
+
     pub(in crate::cas_projection) const fn operation_id(&self) -> StopOperationId {
         self.operation_id
     }

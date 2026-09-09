@@ -28,6 +28,8 @@ mod loss;
 mod server;
 #[path = "normal_terminal/steering_loss.rs"]
 mod steering_loss;
+#[path = "normal_terminal/stop_retention.rs"]
+mod stop_retention;
 #[path = "normal_terminal/verification.rs"]
 mod verification;
 

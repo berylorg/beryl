@@ -74,6 +74,19 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 
 - Approval, stop, compaction, and continuation state uses explicit count, byte, and concurrency
   bounds. Each non-cloneable capability has one coordinator or driver owner.
+- An admitted primary stop retains the exact connection's existing two-worker reservation through
+  caller custody, queue handoff, driver dispatch, settlement and backend unbind or disposal. The
+  reservation is shared with its already-admitted workers; it consumes no additional capacity and
+  creates no new capacity pool. Joined callers obtain no primary custody reservation.
+- Target loss, local stop removal, connection retirement and worker exit do not release that
+  reservation while primary stop custody or its driver cleanup remains. Worker joins need not wait
+  for a suspended pre-handoff caller; the capacity remains unavailable for replacement admission
+  until the original custody releases it. Rejected handoff, cancellation and unwinding release the
+  retained reservation after their exact stop/election disposal. Idle observation retains none.
+- Reservation retention does not authorize dispatch after loss, alter stop election or loss
+  convergence, or create an interruption retry. Existing generation and command fences remain the
+  authority boundary. Verify the reservation through a paused admitted caller, loss-driven local
+  removal, ordinary retirement and attempted replacement admission, and through driver cleanup.
 - Cancellation, denial, local failure, broker or connection loss, terminal, reconciliation,
   supersession, generation loss, and disposal move or release exact obligations, capabilities,
   permits, waiters, and operation custody at their typed cut.

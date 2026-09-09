@@ -188,6 +188,16 @@ impl AdmittedProjectionSession {
     pub fn invalidate_connection(&self) {
         self.connection.retire();
     }
+
+    #[cfg(feature = "test-faults")]
+    pub fn ingester_finished_for_test(&self) -> bool {
+        self.connection.ingester_finished_for_test()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn retained_worker_units_for_test(&self) -> Option<(bool, bool)> {
+        self.connection.retained_worker_units_for_test()
+    }
 }
 
 impl Drop for AdmittedProjectionSession {

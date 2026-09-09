@@ -578,6 +578,7 @@ pub(in crate::cas_projection) struct EventRouter {
     connection_generation: u64,
     process: process::ProcessEventObservation,
     commands: LiveCommandAuthorizer,
+    worker_retention: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
     terminal_disposer:
         Option<crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer>,
     state: Arc<Mutex<RouterState>>,
@@ -587,6 +588,8 @@ pub(in crate::cas_projection) struct EventRouter {
     stop_election_wait_observer: Mutex<Option<SyncSender<()>>>,
     #[cfg(test)]
     terminal_publication_wait_observer: Mutex<Option<SyncSender<()>>>,
+    #[cfg(test)]
+    test_worker_retention: Option<crate::cas_projection::service_config::ConnectionWorkerRetention>,
 }
 
 impl EventRouter {

@@ -16,6 +16,11 @@ pub(in crate::cas_projection::connection) enum TargetProjectionDropSettlement {
 }
 
 impl EventRouter {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn retained_worker_units_for_test(&self) -> (bool, bool) {
+        self.worker_retention.retained_units_for_test()
+    }
+
     /// Settles one exact long-lived router owner on the ordinary side of the master cut.
     ///
     /// Router authority is acquired before the gate mutex. The transition must remain a bounded
@@ -77,6 +82,7 @@ impl EventRouter {
         )
     }
 
+    #[cfg(test)]
     pub(in crate::cas_projection) fn new_with_scheduler(
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
@@ -92,7 +98,16 @@ impl EventRouter {
             process_generation,
             connection_generation,
         )?;
-        Self::new_with_process(
+        let workers = crate::cas_projection::service_config::ProjectionWorkerPool::new(
+            std::num::NonZeroUsize::new(4).expect("the router fixture worker capacity is nonzero"),
+        )
+        .try_acquire_pair()
+        .expect("the router fixture reserves its connection workers");
+        let source = workers.retention_source();
+        let retention = source
+            .retain()
+            .expect("the fixture owns its unsplit workers");
+        let mut router = Self::new_with_process(
             runtime_id,
             process_generation,
             connection_generation,
@@ -100,7 +115,10 @@ impl EventRouter {
             commands,
             terminal_disposer,
             process.observe(),
-        )
+            source,
+        )?;
+        router.test_worker_retention = Some(retention);
+        Ok(router)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -114,6 +132,7 @@ impl EventRouter {
             crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
         >,
         process: super::process::ProcessEventObservation,
+        worker_retention: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
     ) -> Result<Self, ProjectionCoordinatorError> {
         Ok(Self {
             runtime_id,
@@ -121,6 +140,7 @@ impl EventRouter {
             connection_generation,
             process,
             commands,
+            worker_retention,
             terminal_disposer,
             state: std::sync::Arc::new(std::sync::Mutex::new(RouterState {
                 revision: 0,
@@ -150,6 +170,8 @@ impl EventRouter {
             stop_election_wait_observer: std::sync::Mutex::new(None),
             #[cfg(test)]
             terminal_publication_wait_observer: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            test_worker_retention: None,
         })
     }
 

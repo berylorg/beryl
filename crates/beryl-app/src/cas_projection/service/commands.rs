@@ -198,7 +198,11 @@ impl ProjectionConnectionService {
             }
         };
         let outcome = match connection.coordinate_stop(&self.stop_coordinator, proof, cause)? {
-            StopOwnership::Primary(owner) => connection.dispatch_exact_stop(owner),
+            StopOwnership::Primary(owner) => {
+                #[cfg(feature = "test-faults")]
+                crate::cas_projection::test_faults::pause_stop_handoff(thread_id);
+                connection.dispatch_exact_stop(owner)
+            }
             StopOwnership::Joined {
                 operation_id,
                 interruption: _,
@@ -208,6 +212,11 @@ impl ProjectionConnectionService {
             }),
         }?;
         Ok((outcome, Some(target)))
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn has_local_stop_for_test(&self, thread: SyndicThreadId) -> bool {
+        self.stop_coordinator.has_local_stop_for_test(thread)
     }
 
     fn prepare_stop(
