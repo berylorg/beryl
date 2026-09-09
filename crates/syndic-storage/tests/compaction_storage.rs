@@ -1,6 +1,8 @@
 #[cfg(feature = "test-faults")]
 mod support;
 
+#[path = "compaction_storage/admission.rs"]
+mod admission;
 #[path = "compaction_storage/support.rs"]
 mod compaction_support;
 #[cfg(feature = "test-faults")]

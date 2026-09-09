@@ -327,7 +327,7 @@ impl ContextCompactionCoordinator {
             || candidate.binding_revision() != projection.binding_revision()
             || candidate.runtime_id() != projection.execution_binding().runtime_id()
             || candidate.cas_thread_id() != projection.cas_thread_id()
-            || candidate.represented_prefix() != projection.lineage_proof().established_prefix()
+            || candidate.lineage() != projection.lineage_proof()
         {
             return Err(ContextCompactionError::AuthorityMismatch);
         }

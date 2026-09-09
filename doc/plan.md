@@ -38,21 +38,40 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 348: Resolve Backend-Default Policy For Each Start Attempt (finished)
+# Phase 350: Preserve Distinct Proofs At Lifecycle Compaction Handoff (finished)
 
-Accepted backend-default ordinary policy with typed settings read before each start attempt,
-explicit hidden-context clearing, exact model provenance and shared invalidation before fixed
-overrides can dispatch. Direct retry, replacement and actual scheduled checkout passed wire tests;
-continuation reaches the same resolver through the verified pending-turn path. Independent review,
-production check, formatting and diff checks passed; the final regression run passed 42/42, peaked
-at 2.01 GiB of job memory and left no child processes. Explicit model/reasoning selection remains
-unavailable pending its owning custody, consumption and restart contract.
+Accepted like-for-like lineage validation at lifecycle compaction admission, preserving independent
+current-prefix and revision checks in storage. Real ordinary-terminal-to-compaction verification
+passed with unchanged lineage and history; stale candidate admission proved no second operation.
+Storage compaction passed 45/45 and app terminal/compaction regression passed 35/35. Independent
+semantic review, formatting and diff checks passed; all test processes were reaped. The pending
+timeout changes were preserved separately during prerequisite verification.
 
 # Phase 349: Resolve Timeout Policy At Compaction Admission (pending)
 
 Resolve the latest valid applied timeout when manual or lifecycle compaction is admitted, preserving
 that value for the admitted operation and typed settings failure. Verify settings changes during a
 preceding ordinary turn affect only subsequently admitted compaction, under the status-line contract.
+
+Authority readiness and independent review passed against status-line, Settings startup availability,
+typed settings reads and the app lifecycle contracts. Carry a narrow applied-settings capability to
+admission; resolve whole seconds in `1..=86400`, distinguish absent and rejected saved values using
+the default of 180 seconds, and preserve typed schema/home/read failure before admission. Retain
+one resolved timeout per operation, including callers joining it. Fixed caller policy remains
+available. Verify manual and lifecycle admission, mid-turn Apply, retained deadlines, invalid-value
+feedback and settings failures with focused integration tests and independent completion review.
+
+Blocked during real lifecycle verification: ordinary terminal publication advances the durable
+represented prefix, but the returned projection retains its establishment lineage. Lifecycle
+compaction compares those different proofs and returns `AuthorityMismatch` before timeout
+resolution. Independent review confirmed this existing production contradiction; a focused probe
+observed an empty establishment tail versus the completed turn's represented tail. See the
+[binding-prefix failure record](failures/syndic-phase9-binding-prefix.md). The Operator authorized
+the separate Phase 350 prerequisite; resume this timeout phase after its acceptance.
+
+The timeout implementation remains unaccepted and uncommitted. Production checking passed; the
+corrected real manual-admission/retained-deadline test and settings scalar matrix passed 2/2.
+Lifecycle timing and typed-settings-failure acceptance remain blocked by the earlier proof check.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

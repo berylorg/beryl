@@ -104,6 +104,10 @@ impl CompactionAdmissionCandidate {
         self.usable.represented_prefix()
     }
 
+    pub const fn lineage(&self) -> crate::CasLineageProof {
+        self.usable.lineage()
+    }
+
     /// Binds fresh caller-owned operation and attempt identities to this exact stabilized source.
     #[must_use]
     pub fn admission(
