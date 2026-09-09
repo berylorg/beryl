@@ -58,6 +58,7 @@ use super::{
 
 mod admission;
 mod commands;
+mod compaction_work;
 mod construction;
 mod flight_registry;
 mod runtime_interest;

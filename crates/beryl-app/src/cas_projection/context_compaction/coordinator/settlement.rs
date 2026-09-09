@@ -85,7 +85,7 @@ impl ContextCompactionCoordinator {
         operations
             .get(&operation_id.thread_id())
             .filter(|local| local.operation_id == operation_id)
-            .cloned()
+            .map(|entry| Arc::clone(&entry.local))
             .ok_or(ContextCompactionError::AuthorityMismatch)
     }
 
@@ -94,6 +94,9 @@ impl ContextCompactionCoordinator {
         local: &LocalCompaction,
         operation: &CompactionOperationRecord,
     ) -> Result<(), ContextCompactionError> {
+        local
+            .observation
+            .stage(CompactionCommandWorkStage::Settling);
         let result = self
             .ensure_local_current(local)
             .and_then(|()| self.finalize_terminal_inner(local, operation));
@@ -364,7 +367,10 @@ impl ContextCompactionCoordinator {
             .map_err(|_| ContextCompactionError::Storage)?
         {
             status @ (CompactionRequestTransitionStatus::Exact
-            | CompactionRequestTransitionStatus::TerminalAlreadySettled) => return Ok(status),
+            | CompactionRequestTransitionStatus::TerminalAlreadySettled) => {
+                local.observation.request(disposition);
+                return Ok(status);
+            }
             CompactionRequestTransitionStatus::Prior => {}
             CompactionRequestTransitionStatus::Collision => {
                 return Err(ContextCompactionError::Storage);
@@ -382,7 +388,10 @@ impl ContextCompactionCoordinator {
             .map_err(|_| ContextCompactionError::Storage)?;
         match status {
             CompactionRequestTransitionStatus::Exact
-            | CompactionRequestTransitionStatus::TerminalAlreadySettled => Ok(status),
+            | CompactionRequestTransitionStatus::TerminalAlreadySettled => {
+                local.observation.request(disposition);
+                Ok(status)
+            }
             CompactionRequestTransitionStatus::Prior
             | CompactionRequestTransitionStatus::Collision => Err(ContextCompactionError::Storage),
         }

@@ -38,28 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 368: Retain Shared Capacity From Continuation Acceptance Through Disposal (finished)
+# Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (finished)
 
-Accepted the shared 72-slot reservation before `PhaseContinue` acceptance through exact intent and
-compaction cleanup. Full-budget handoff shares rather than reacquires capacity. Independent review,
-93 regressions and production compilation passed, including direct-caller connection reuse and
-persistent failure during preparation with normal disposal or unwind. Formatting and diff checks
-passed; guarded job memory peaked at 2.10 GiB. Owned children and eight temporary directories were
-reclaimed. The [continuation evidence](failures/cas-compaction-admission-custody-bound.md#continuation-verification)
-records acceptance and the preparation lifetime correction.
-
-# Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (pending)
-
-Expose compact exact facts through compaction queue/driver work, completion and target cleanup,
-including the removed local operation before its driver releases command custody. Preserve
-continuation identity and pending/cancelled state when the accepted intent moves out of the stop
-registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
-not queue/worker counts alone; observe without retaining capabilities or changing execution.
-
-Compaction and shared continuation reservation prerequisites are accepted. Independent readiness
-review derives at most 72 command and 72 continuation owners, with no additional execution-policy
-change required. Other lifecycle-yield outcomes remain outside this source. Stop/permission
-acceptance remains complete.
+Accepted bounded metadata-only custody pages with exact service/generation revisions, checked
+identities and revision exhaustion, independent local membership and cleanup visibility after
+registry removal. Independent review, 100 regressions, production compilation, formatting and
+diff checks passed. Seven guarded verification runs left no owned children or temporary
+directories. The [membership evidence](failures/cas-compaction-work-membership-cut.md) records
+the atomic replacement correction and acceptance.
 
 # Phase 361: Compose Revision-Bound Control Work Facts (pending)
 

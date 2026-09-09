@@ -61,6 +61,10 @@ impl CompactionCustodyPressureGuard {
 }
 
 impl ContextCompactionLifecycleTestHarness {
+    pub fn release_compaction_driver(&self) {
+        self.driver.lock().unwrap().take();
+    }
+
     pub fn pause_compaction_custody(
         &self,
         stage: CompactionCustodyTestStage,
@@ -111,7 +115,7 @@ impl ContextCompactionLifecycleTestHarness {
     ) -> ContextCompactionWaitTestHarness {
         let coordinator = self.coordinator().unwrap();
         let operations = coordinator.operations.lock().unwrap();
-        ContextCompactionWaitTestHarness(Arc::clone(operations.get(&thread).unwrap()))
+        ContextCompactionWaitTestHarness(Arc::clone(&operations.get(&thread).unwrap().local))
     }
 }
 

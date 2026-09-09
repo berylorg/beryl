@@ -108,6 +108,26 @@ fn run_settlement(case: SettlementCase) {
     ));
     assert!(pool.snapshot().is_empty());
     assert_eq!(pressure.in_use(), 72);
+    let live_page = work_facts::page(&fixture);
+    assert_eq!(live_page.records().len(), 1);
+    let live = &live_page.records()[0];
+    assert!(live.continuation.as_ref().unwrap().pending);
+    let compaction = live.compaction.as_ref().unwrap();
+    assert!(compaction.local_registered);
+    assert!(compaction.command.is_some());
+    assert_eq!(
+        compaction
+            .operation
+            .as_ref()
+            .unwrap()
+            .operation_id
+            .provider_turn_id(),
+        live.continuation
+            .as_ref()
+            .unwrap()
+            .compaction_turn_id
+            .unwrap()
+    );
     let operation = match fixture
         .storage
         .compaction_admission_read(&fixture.home(), fixture.thread, point_limit())
@@ -257,6 +277,22 @@ fn run_settlement(case: SettlementCase) {
         thread::scope(|scope| {
             let worker = scope.spawn(publish_terminal);
             pause.wait_until_settled();
+            let detached = work_facts::page(&fixture);
+            assert_eq!(detached.records().len(), 1);
+            let continuation = detached.records()[0].continuation.as_ref().unwrap();
+            assert_eq!(
+                continuation.stage,
+                beryl_app::cas_projection::ContinuationWorkStage::Detached
+            );
+            assert!(continuation.pending);
+            assert!(
+                detached.records()[0]
+                    .compaction
+                    .as_ref()
+                    .unwrap()
+                    .command
+                    .is_some()
+            );
             force_home_failure(&fixture, &faults);
             assert!(
                 pool.snapshot().is_empty(),
@@ -400,6 +436,22 @@ fn run_failed_preparation_custody(unwind: bool) {
         pause.wait_until_paused();
         assert_eq!(pressure.in_use(), 72);
         assert!(!custody.has_local_compaction(fixture.thread));
+        let preparing = work_facts::page(&fixture);
+        assert_eq!(preparing.records().len(), 1);
+        let preparation = preparing.records()[0].compaction.as_ref().unwrap();
+        assert_eq!(
+            preparation.command,
+            Some(beryl_app::cas_projection::CompactionCommandWorkStage::Preparing)
+        );
+        assert!(preparation.operation.is_none());
+        assert!(!preparation.local_registered);
+        assert!(
+            preparing.records()[0]
+                .continuation
+                .as_ref()
+                .unwrap()
+                .pending
+        );
         force_home_failure(&fixture, &faults);
         let deadline = std::time::Instant::now() + server::TIMEOUT;
         while pool.snapshot().is_empty() {
@@ -413,6 +465,10 @@ fn run_failed_preparation_custody(unwind: bool) {
         assert_ne!(
             fixture.store.persistent_failure_cut_snapshot().state(),
             beryl_app::cas_projection::PersistentFailureCutState::Finished
+        );
+        assert_eq!(
+            fixture.store.compaction_work_revision(),
+            Err(beryl_app::cas_projection::CompactionWorkError::Closed)
         );
         if unwind {
             pause.unwind();

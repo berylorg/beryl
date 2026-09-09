@@ -10,6 +10,8 @@ mod server;
 mod support;
 #[path = "projection/syndic.rs"]
 mod syndic;
+#[path = "lifecycle_yield/work_facts.rs"]
+mod work_facts;
 
 use std::{sync::Arc, thread};
 

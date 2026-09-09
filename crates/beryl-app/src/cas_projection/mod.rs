@@ -29,6 +29,7 @@ mod accepted_delivery_recovery;
 mod accepted_input_scheduler;
 mod active_steering;
 mod cancellation;
+mod compaction_work;
 mod connection;
 mod connection_work;
 mod context_compaction;
@@ -56,6 +57,11 @@ mod service_registry;
 mod service_supervisor;
 mod stop;
 mod stop_work;
+pub use compaction_work::{
+    CompactionCommandWorkStage, CompactionOperationWorkFact, CompactionWorkCursor,
+    CompactionWorkError, CompactionWorkFact, CompactionWorkPage, CompactionWorkPageLimits,
+    CompactionWorkRecord, CompactionWorkRevision, ContinuationWorkFact, ContinuationWorkStage,
+};
 
 pub use stop_work::{
     PermissionInterruptionWorkFact, PermissionInterruptionWorkStage, StopDispatchWorkState,

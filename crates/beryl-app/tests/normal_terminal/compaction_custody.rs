@@ -89,6 +89,24 @@ fn run(unwind: bool, before_registration: bool) {
         ready.wait_until_paused();
         assert_eq!(harness.compaction_custody_in_use(), 72);
         assert!(harness.has_local_compaction(fixture.thread));
+        let admitted_page = work_page(fixture);
+        assert_eq!(admitted_page.records().len(), 1);
+        let admitted = admitted_page.records()[0].compaction.as_ref().unwrap();
+        assert!(admitted.local_registered);
+        assert!(admitted.command.is_some());
+        assert_eq!(
+            admitted
+                .operation
+                .as_ref()
+                .unwrap()
+                .operation_id
+                .thread_id(),
+            fixture.thread
+        );
+        assert_eq!(
+            fixture.store.compaction_work_revision().unwrap(),
+            *admitted_page.revision()
+        );
         let result_waiter = harness.retain_compaction_result(fixture.thread);
         session.invalidate_connection();
         assert_eq!(fixture.store.worker_pool_diagnostics().active(), 0);
@@ -97,6 +115,8 @@ fn run(unwind: bool, before_registration: bool) {
             assert!(caller.join().is_err());
             assert!(!harness.has_local_compaction(fixture.thread));
             assert_eq!(harness.compaction_custody_in_use(), 71);
+            assert!(work_page(fixture).records().is_empty());
+            assert_eq!(admitted_page.records().len(), 1);
             assert_eq!(
                 result_waiter.wait(),
                 beryl_app::cas_projection::ContextCompactionOutcome::Failed
@@ -107,6 +127,25 @@ fn run(unwind: bool, before_registration: bool) {
         failed.wait_until_paused();
         assert!(!harness.has_local_compaction(fixture.thread));
         assert_eq!(harness.compaction_custody_in_use(), 72);
+
+        let cleanup_page = work_page(fixture);
+        assert_eq!(cleanup_page.records().len(), 1);
+        let cleanup = cleanup_page.records()[0].compaction.as_ref().unwrap();
+        assert!(!cleanup.local_registered);
+        assert_eq!(
+            cleanup.command,
+            Some(beryl_app::cas_projection::CompactionCommandWorkStage::Cleanup)
+        );
+        assert_eq!(
+            cleanup.result,
+            Some(beryl_app::cas_projection::ContextCompactionOutcome::Failed)
+        );
+        assert_eq!(
+            fixture
+                .store
+                .validate_compaction_work_revision(admitted_page.revision()),
+            Err(beryl_app::cas_projection::CompactionWorkError::StaleRevision)
+        );
 
         let replacement_server = NormalTerminalServer::spawn_admission_only();
         let replacement_connector = ManagedBackendClientConnector::for_lifecycle_test(
@@ -168,6 +207,8 @@ fn run(unwind: bool, before_registration: bool) {
             ));
         }
         assert_eq!(harness.compaction_custody_in_use(), 71);
+        assert!(work_page(fixture).records().is_empty());
+        assert_eq!(cleanup_page.records().len(), 1);
         assert_eq!(
             result_waiter.wait(),
             beryl_app::cas_projection::ContextCompactionOutcome::Failed
@@ -184,4 +225,16 @@ fn run(unwind: bool, before_registration: bool) {
     let (directory, service) = fixture.into_service();
     service.close().unwrap();
     drop(directory);
+}
+
+fn work_page(fixture: &Fixture) -> beryl_app::cas_projection::CompactionWorkPage {
+    let revision = fixture.store.compaction_work_revision().unwrap();
+    fixture
+        .store
+        .compaction_work_page(
+            &revision,
+            None,
+            beryl_app::cas_projection::CompactionWorkPageLimits::new(256, 65_536).unwrap(),
+        )
+        .unwrap()
 }

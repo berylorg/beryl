@@ -35,6 +35,10 @@ use super::{ContextCompactionTimeoutPolicy, ResolvedContextCompactionTimeout};
 
 mod admission;
 pub(in crate::cas_projection) mod custody;
+use crate::cas_projection::compaction_work::{
+    CompactionCommandWorkStage,
+    source::{CompactionLocalObservation, CompactionWorkHandle},
+};
 use custody::{CompactionCommandCustody, CompactionCustodyPool};
 pub(in crate::cas_projection) mod dispatch;
 #[cfg(test)]
@@ -44,6 +48,7 @@ pub(super) mod model;
 mod settlement;
 #[cfg(feature = "test-faults")]
 mod test_faults;
+mod work_facts;
 
 #[cfg(feature = "test-faults")]
 use model::validate_completion_timeout;
@@ -106,7 +111,7 @@ pub(in crate::cas_projection) struct ContextCompactionCoordinator {
     custody: Arc<CompactionCustodyPool>,
     #[cfg(feature = "test-faults")]
     custody_pauses: Mutex<test_faults::CompactionCustodyPauses>,
-    operations: Mutex<HashMap<SyndicThreadId, Arc<LocalCompaction>>>,
+    operations: Mutex<HashMap<SyndicThreadId, RegisteredCompaction>>,
     work: Mutex<Option<mpsc::SyncSender<CompactionWork>>>,
     workers: Mutex<Vec<std::thread::JoinHandle<()>>>,
     queued_current: AtomicUsize,
@@ -140,9 +145,22 @@ struct LocalCompaction {
     origin: CompactionOrigin,
     completion_timeout: ResolvedContextCompactionTimeout,
     command: Mutex<Option<CompactionCommandCustody>>,
+    observation: CompactionWorkHandle,
     mutation: Mutex<()>,
     wait: Mutex<CompactionWait>,
     changed: Condvar,
+}
+
+struct RegisteredCompaction {
+    _membership: CompactionLocalObservation,
+    local: Arc<LocalCompaction>,
+}
+
+impl std::ops::Deref for RegisteredCompaction {
+    type Target = LocalCompaction;
+    fn deref(&self) -> &Self::Target {
+        &self.local
+    }
 }
 
 #[derive(Default)]
@@ -317,7 +335,7 @@ impl ContextCompactionCoordinator {
         };
         let command = CompactionCommandCustody {
             command,
-            _reservation: reservation,
+            preparation: reservation,
         };
         // Keep preparation custody until the projection has disposed, including on unwind.
         let projection = projection;
@@ -398,7 +416,12 @@ impl ContextCompactionCoordinator {
         let locals = self
             .operations
             .lock()
-            .map(|operations| operations.values().cloned().collect::<Vec<_>>())
+            .map(|operations| {
+                operations
+                    .values()
+                    .map(|entry| Arc::clone(&entry.local))
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         for local in locals {
             if matches!(local.origin, CompactionOrigin::Lifecycle { .. }) {
@@ -556,12 +579,14 @@ impl LocalCompaction {
         completion_timeout: ResolvedContextCompactionTimeout,
         command: CompactionCommandCustody,
     ) -> Self {
+        let observation = command.observation();
         Self {
             operation_id,
             attempt,
             origin,
             completion_timeout,
             command: Mutex::new(Some(command)),
+            observation,
             mutation: Mutex::new(()),
             wait: Mutex::new(CompactionWait::default()),
             changed: Condvar::new(),
@@ -594,6 +619,7 @@ impl LocalCompaction {
             .unwrap_or_else(|poison| poison.into_inner());
         if wait.result.is_none() {
             wait.result = Some(result);
+            self.observation.complete(result);
         }
         drop(wait);
         self.changed.notify_all();

@@ -78,7 +78,7 @@ impl DriverFixture {
             ResolvedContextCompactionTimeout::fixed(Duration::from_secs(1)),
             CompactionCommandCustody {
                 command,
-                _reservation: custody.reserve().unwrap(),
+                preparation: custody.reserve().unwrap().prepare_command(),
             },
         ));
         let driver = dispatch::CompactionDriverGuard(Arc::clone(&local));

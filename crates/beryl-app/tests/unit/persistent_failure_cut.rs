@@ -112,10 +112,57 @@ fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers(
     let home_generation = service.home_generation();
     let service_generation = service.service_generation();
     let stop_revision = service.stop_work_revision().unwrap();
+    let compaction_revision = service.compaction_work_revision().unwrap();
+    let mut foreign_compaction_revision = compaction_revision.clone();
+    foreign_compaction_revision.owner = Arc::new(());
+    let foreign_cursor = crate::cas_projection::CompactionWorkCursor {
+        revision: foreign_compaction_revision,
+        after: 1,
+    };
+    let compaction_limits =
+        crate::cas_projection::CompactionWorkPageLimits::new(1, 65_536).unwrap();
+    assert_eq!(
+        service.compaction_work_page(
+            &compaction_revision,
+            Some(&foreign_cursor),
+            compaction_limits
+        ),
+        Err(crate::cas_projection::CompactionWorkError::ForeignRevision)
+    );
+    let mut different_cut = compaction_revision.clone();
+    different_cut.stamp += 1;
+    let different_cursor = crate::cas_projection::CompactionWorkCursor {
+        revision: different_cut,
+        after: 1,
+    };
+    assert_eq!(
+        service.compaction_work_page(
+            &compaction_revision,
+            Some(&different_cursor),
+            compaction_limits
+        ),
+        Err(crate::cas_projection::CompactionWorkError::ForeignRevision)
+    );
+    assert_eq!(
+        service.compaction_work_revision().unwrap(),
+        compaction_revision
+    );
     fail_home(&service, state, &faults);
     wait_until("the persistent-failure cut to finish", || {
         service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
     });
+    assert_eq!(
+        service.compaction_work_revision(),
+        Err(crate::cas_projection::CompactionWorkError::Closed)
+    );
+    assert_eq!(
+        service.validate_compaction_work_revision(&compaction_revision),
+        Err(crate::cas_projection::CompactionWorkError::Closed)
+    );
+    assert_eq!(
+        service.compaction_work_page(&compaction_revision, None, compaction_limits),
+        Err(crate::cas_projection::CompactionWorkError::Closed)
+    );
     assert_eq!(
         service.stop_work_revision(),
         Err(crate::cas_projection::StopWorkError::Closed)

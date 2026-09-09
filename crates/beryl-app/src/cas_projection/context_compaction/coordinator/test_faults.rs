@@ -193,7 +193,7 @@ impl ContextCompactionLifecycleTestHarness {
                     .commands
                     .authorize()
                     .map_err(|_| ContextCompactionError::Unavailable)?,
-                _reservation: coordinator
+                preparation: coordinator
                     .stop
                     .share_continuation_custody(
                         operation_id.thread_id(),
@@ -203,6 +203,9 @@ impl ContextCompactionLifecycleTestHarness {
                     .map_err(|_| ContextCompactionError::AuthorityMismatch)?,
             },
         ));
+        local
+            .observation
+            .operation(operation_id, attempt, operation.target());
         coordinator.install_local(Arc::clone(&local))?;
         coordinator
             .stop
@@ -212,6 +215,7 @@ impl ContextCompactionLifecycleTestHarness {
                 operation_id.provider_turn_id(),
             )
             .map_err(|_| ContextCompactionError::AuthorityMismatch)?;
+        local.observation.stage(CompactionCommandWorkStage::Driver);
         *driver = Some(dispatch::CompactionDriverGuard(local));
         Ok(())
     }
@@ -426,7 +430,10 @@ impl ContextCompactionWaitTestHarness {
             ResolvedContextCompactionTimeout::fixed(completion_timeout),
             CompactionCommandCustody {
                 command: test_live_command(),
-                _reservation: CompactionCustodyPool::new().reserve().unwrap(),
+                preparation: CompactionCustodyPool::new()
+                    .reserve()
+                    .unwrap()
+                    .prepare_command(),
             },
         )))
     }

@@ -14,7 +14,7 @@ impl ContextCompactionCoordinator {
             .filter(|local| {
                 local.operation_id == operation.id() && local.attempt == operation.attempt()
             })
-            .cloned()
+            .map(|entry| Arc::clone(&entry.local))
             .ok_or(ContextCompactionError::AuthorityMismatch)
     }
 
@@ -24,7 +24,7 @@ impl ContextCompactionCoordinator {
         timeout_policy: &ContextCompactionTimeoutPolicy,
         command: LiveCommandPermit,
     ) -> Result<Arc<LocalCompaction>, ContextCompactionError> {
-        let command = self.reserve_command(command)?;
+        let command = self.reserve_command(command, candidate.thread_id())?;
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;
         let (connection, projection) = self.projection_for(candidate)?;
@@ -36,6 +36,9 @@ impl ContextCompactionCoordinator {
             timestamp_now()?,
         );
         let operation_id = admission.operation_id();
+        command
+            .observation()
+            .operation(operation_id, attempt, admission.target());
         let local = Arc::new(LocalCompaction::new(
             operation_id,
             attempt,
@@ -118,6 +121,9 @@ impl ContextCompactionCoordinator {
             timestamp_now()?,
         );
         let operation_id = admission.operation_id();
+        command
+            .observation()
+            .operation(operation_id, attempt, admission.target());
         let local = Arc::new(LocalCompaction::new(
             operation_id,
             attempt,
@@ -193,6 +199,9 @@ impl ContextCompactionCoordinator {
         local: Arc<LocalCompaction>,
         target: LiveEventTarget,
     ) -> Result<(), CompactionWork> {
+        local
+            .observation
+            .stage(CompactionCommandWorkStage::PendingDispatch);
         self.try_enqueue_work(CompactionWork::Operation { local, target })
     }
 
@@ -302,15 +311,25 @@ impl ContextCompactionCoordinator {
         {
             return Err(ContextCompactionError::AuthorityMismatch);
         }
-        operations.insert(local.operation_id.thread_id(), local);
+        let replaced = operations
+            .get(&local.operation_id.thread_id())
+            .map(|entry| &entry.local.observation);
+        let _membership = local.observation.register_local(replaced);
+        operations.insert(
+            local.operation_id.thread_id(),
+            RegisteredCompaction { _membership, local },
+        );
         Ok(())
     }
 
     pub(super) fn remove_local(&self, local: &LocalCompaction) {
-        if let Ok(mut operations) = self.operations.lock()
-            && operations
-                .get(&local.operation_id.thread_id())
-                .is_some_and(|current| current.operation_id == local.operation_id)
+        let Ok(mut operations) = self.operations.lock() else {
+            self.custody.source.invalidate();
+            return;
+        };
+        if operations
+            .get(&local.operation_id.thread_id())
+            .is_some_and(|current| current.operation_id == local.operation_id)
         {
             operations.remove(&local.operation_id.thread_id());
         }

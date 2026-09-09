@@ -120,6 +120,7 @@ impl ContextCompactionCoordinator {
         let _driver = CompactionDriverGuard(Arc::clone(&local));
         // A parameter would outlive the guard during unwind.
         let mut target = target;
+        local.observation.stage(CompactionCommandWorkStage::Driver);
         if !local.command_is_current() {
             self.fail_local(&local);
             drop(target);

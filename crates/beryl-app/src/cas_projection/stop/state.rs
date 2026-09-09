@@ -19,6 +19,10 @@ pub(super) struct StopStateGuard<'a> {
 }
 
 impl StopState {
+    pub(super) fn is_poisoned(&self) -> bool {
+        self.inner.is_poisoned()
+    }
+
     pub(super) fn new(value: StopCoordinatorState) -> Self {
         Self {
             inner: Mutex::new(VersionedState {

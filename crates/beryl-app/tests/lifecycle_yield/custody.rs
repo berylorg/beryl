@@ -81,16 +81,53 @@ fn run_paused_acceptance(cancelled: bool) {
         accepted_rx.recv_timeout(TIMEOUT).unwrap();
         assert_eq!(pressure.in_use(), 72);
         assert!(pool.snapshot().is_empty());
+        let accepted_page = work_facts::page(&fixture);
+        assert_eq!(accepted_page.records().len(), 1);
+        let accepted_fact = &accepted_page.records()[0];
+        assert_eq!(accepted_fact.thread_id, fixture.thread);
+        assert!(accepted_fact.compaction.is_none());
+        assert!(accepted_fact.continuation.as_ref().unwrap().pending);
+        assert_eq!(
+            accepted_fact.continuation.as_ref().unwrap().stage,
+            beryl_app::cas_projection::ContinuationWorkStage::Registered
+        );
+        assert_eq!(
+            fixture.store.compaction_work_revision().unwrap(),
+            *accepted_page.revision()
+        );
+        assert_eq!(
+            fixture.store.compaction_work_page(
+                accepted_page.revision(),
+                None,
+                beryl_app::cas_projection::CompactionWorkPageLimits::new(1, 1).unwrap()
+            ),
+            Err(beryl_app::cas_projection::CompactionWorkError::ByteLimit)
+        );
         if cancelled {
             fixture
                 .store
                 .cancel_selected_continuation_for_window_close(fixture.thread)
                 .unwrap();
             assert_eq!(pressure.in_use(), 72);
+            assert_eq!(
+                fixture
+                    .store
+                    .validate_compaction_work_revision(accepted_page.revision()),
+                Err(beryl_app::cas_projection::CompactionWorkError::StaleRevision)
+            );
+            let cancelled_page = work_facts::page(&fixture);
+            assert!(
+                !cancelled_page.records()[0]
+                    .continuation
+                    .as_ref()
+                    .unwrap()
+                    .pending
+            );
         }
         session.invalidate_connection();
         assert_eq!(fixture.store.worker_pool_diagnostics().active(), 0);
         assert_eq!(pressure.in_use(), 72);
+        assert_eq!(work_facts::page(&fixture).records().len(), 1);
         let replacement_server = NormalTerminalServer::spawn_admission_only();
         let connector = ManagedBackendClientConnector::for_lifecycle_test(
             replacement_server.endpoint(),
@@ -115,6 +152,8 @@ fn run_paused_acceptance(cancelled: bool) {
         drop(release);
         let _result = worker.join().unwrap();
         assert_eq!(pressure.in_use(), 71);
+        assert!(work_facts::page(&fixture).records().is_empty());
+        assert_eq!(accepted_page.records().len(), 1);
         let replacement_slot = custody.occupy_compaction_custody(1);
         assert_eq!(pressure.in_use(), 72);
         drop(replacement_slot);

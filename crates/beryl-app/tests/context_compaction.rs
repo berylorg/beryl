@@ -8,6 +8,8 @@ mod syndic;
 mod terminal_ordering;
 #[path = "context_compaction/window_close.rs"]
 mod window_close;
+#[path = "context_compaction/work_facts.rs"]
+mod work_facts;
 
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 
