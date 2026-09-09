@@ -38,15 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 345: Own Managed Runtime Interest And Retirement (finished)
+# Phase 346: Retain Runtime Interest In Admitted Execution Sessions (finished)
 
-Accepted bounded process-owned runtime interest with coalesced managed launch, foreground admission,
-fresh activity periods and exact joined retirement. View and required-work interests have independent
-lifetimes; saturation and uncertain disposal fail closed. All 74 focused nextest checks passed,
-including six real managed-process cases and scheduler/persistent-failure regressions. Independent
-semantic review, formatting, diff checks and canonical locked metadata passed; the lockfile is
-unchanged. The guarded run peaked at 2.00 GiB and left no child processes. Full execution composition
-and application shutdown remain below.
+Accepted production session admission with exact owner, root and activity-period validation and
+required runtime interest retained through exclusive checkout, return and retirement. A contradictory
+configuration ends the whole matching runtime period through ordered disposal; transport and
+capacity failures remain local. Independent semantic review, formatting and diff checks passed.
+The final runtime suite passed 25/25 after the [configuration correction](failures/cas-runtime-admission-contradiction.md);
+the preceding provider/scheduler/failure regression run passed 82/82. The final guarded run peaked
+at 1.47 GiB and left no child processes. Automatic execution composition remains below.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

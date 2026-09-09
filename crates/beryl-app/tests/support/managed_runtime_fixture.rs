@@ -37,7 +37,35 @@ fn main() {
     );
     let authorization = format!("Bearer {token}");
     let listener = TcpListener::bind(address).unwrap();
-    let (stream, _) = listener.accept().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let mut connections: Vec<std::thread::JoinHandle<()>> = Vec::new();
+    while connections.len() < 8 && connections.first().is_none_or(|first| !first.is_finished()) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fixture lifetime exceeded"
+        );
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let authorization = authorization.clone();
+                let index = connections.len();
+                connections.push(std::thread::spawn(move || {
+                    serve_connection(stream, &authorization, index);
+                }));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(error) => panic!("fixture accept failed: {error}"),
+        }
+    }
+    for connection in connections {
+        connection.join().unwrap();
+    }
+}
+
+fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
+    stream.set_nonblocking(false).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
@@ -50,7 +78,7 @@ fn main() {
                 .headers()
                 .get("authorization")
                 .and_then(|value| value.to_str().ok())
-                == Some(authorization.as_str())
+                == Some(authorization)
         );
         Ok(response)
     })
@@ -89,7 +117,11 @@ fn main() {
     let mode = fs::read_to_string("fixture-mode").unwrap_or_default();
     let reject = mode == "reject-config";
     fs::write(
-        "runtime-evidence.json",
+        if index == 0 {
+            "runtime-evidence.json".to_owned()
+        } else {
+            format!("runtime-session-evidence-{index}.json")
+        },
         serde_json::to_vec(&json!({
             "pid": std::process::id(),
             "authenticated": true,
@@ -100,6 +132,9 @@ fn main() {
         .unwrap(),
     )
     .unwrap();
+    if mode == "drop-config" {
+        return;
+    }
     if mode == "pause-config" {
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !std::path::Path::new("release-config").exists() {

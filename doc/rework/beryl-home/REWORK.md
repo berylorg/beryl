@@ -307,6 +307,8 @@
   retirement; independent semantic review and 20 focused provider/scheduler/lease checks passed.
 - [x] Accepted bounded runtime-interest ownership with coalesced managed launch, foreground admission,
   independent view/work interest and joined retirement; independent review and 74 focused checks passed.
+- [x] Accepted production execution-session admission retaining exact required runtime interest through
+  checkout and retirement, with runtime-wide configuration invalidation and independent semantic review.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

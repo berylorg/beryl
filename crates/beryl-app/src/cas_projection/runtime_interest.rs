@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use beryl_backend::ManagedBackendLaunchSpec;
+use beryl_backend::{ManagedBackendClientConnector, ManagedBackendLaunchSpec};
 use beryl_model::{CasProcessGeneration, ExecutionBinding, RuntimeId};
 use thiserror::Error;
 
@@ -14,7 +14,10 @@ use super::persistent_failure::LiveCommandAuthorizer;
 
 mod managed;
 mod owner;
+mod session;
 mod worker;
+
+pub use session::RuntimeSessionAdmissionError;
 
 #[cfg(feature = "test-faults")]
 mod test_support;
@@ -126,6 +129,16 @@ pub struct RuntimeInterest {
     kind: RuntimeInterestKind,
 }
 
+impl std::fmt::Debug for RuntimeInterest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RuntimeInterest")
+            .field("runtime_id", &self.runtime_id)
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
 impl RuntimeInterest {
     pub fn binding(&self) -> &ExecutionBinding {
         &self.binding
@@ -234,9 +247,13 @@ struct RuntimeEntry {
     status: RuntimeInterestStatus,
     worker: Option<JoinHandle<bool>>,
     cleanup_complete: bool,
+    connector: Option<ManagedBackendClientConnector>,
 }
 
 trait RunningRuntime: Send {
+    fn connector(&self) -> Option<ManagedBackendClientConnector> {
+        None
+    }
     fn process_generation(&self) -> CasProcessGeneration;
     fn poll_health(&mut self) -> Result<(), RuntimeFailure>;
     fn retire(&mut self) -> Result<(), RuntimeFailure>;

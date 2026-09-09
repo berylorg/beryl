@@ -99,6 +99,7 @@ impl RuntimeInterestOwner {
                         status: RuntimeInterestStatus::Starting,
                         worker: None,
                         cleanup_complete: false,
+                        connector: None,
                     },
                 );
                 state.interest_count += 1;

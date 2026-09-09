@@ -20,7 +20,7 @@ impl ScheduledExecutionSessions {
             if state.closed || !context.commands.is_open() {
                 return Err(ScheduledSessionRegistrationError::Closed);
             }
-            if session.runtime_id() != binding.runtime_id() || !context.owns(&session) {
+            if !session.permits_execution_binding(&binding) || !context.owns(&session) {
                 return Err(ScheduledSessionRegistrationError::SessionAuthorityUnavailable);
             }
             if policy.thread_options().is_ephemeral() {

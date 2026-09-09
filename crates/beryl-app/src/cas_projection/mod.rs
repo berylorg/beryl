@@ -120,6 +120,7 @@ pub use runtime::AdmittedProjectionSession;
 pub use runtime_interest::{
     RuntimeActivityPeriod, RuntimeFailure, RuntimeInterest, RuntimeInterestConfig,
     RuntimeInterestError, RuntimeInterestKind, RuntimeInterestStatus, RuntimeReadiness,
+    RuntimeSessionAdmissionError,
 };
 #[cfg(feature = "test-faults")]
 pub use runtime_interest::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};

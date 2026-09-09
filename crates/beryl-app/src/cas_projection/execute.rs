@@ -95,6 +95,9 @@ impl CasProjectionCoordinator {
                 admitted: session.runtime_id(),
             });
         }
+        if !session.permits_execution_binding(request.execution_binding()) {
+            return Err(ProjectionExecutionError::RuntimeInterestUnavailable);
+        }
         if request.thread_options().is_ephemeral() {
             return Err(ProjectionExecutionError::EphemeralProjectionThread);
         }

@@ -26,6 +26,7 @@ pub(super) fn run(
         && entry.attempt == attempt
     {
         entry.cleanup_complete = clean;
+        entry.connector = None;
         entry.status = failure.map_or(
             RuntimeInterestStatus::Retired,
             RuntimeInterestStatus::Unavailable,
@@ -70,11 +71,12 @@ fn run_inner(
                 if wanted(shared, &state, runtime_id, attempt) {
                     if let Ok(command) = shared.commands.authorize() {
                         let _ = command.commit_if_current(|| {
-                            state
+                            let entry = state
                                 .runtimes
                                 .get_mut(&runtime_id)
-                                .expect("current runtime")
-                                .status = RuntimeInterestStatus::Ready(RuntimeReadiness {
+                                .expect("current runtime");
+                            entry.connector = runtime.connector();
+                            entry.status = RuntimeInterestStatus::Ready(RuntimeReadiness {
                                 process_generation: runtime.process_generation(),
                                 activity_period: RuntimeActivityPeriod(period),
                             });
@@ -106,6 +108,12 @@ fn run_inner(
         if let Some(entry) = state.runtimes.get_mut(&runtime_id)
             && entry.attempt == attempt
         {
+            if failure.is_none()
+                && let RuntimeInterestStatus::Unavailable(requested) = entry.status
+            {
+                failure = Some(requested);
+            }
+            entry.connector = None;
             entry.status = failure.map_or(
                 RuntimeInterestStatus::Retiring,
                 RuntimeInterestStatus::Unavailable,

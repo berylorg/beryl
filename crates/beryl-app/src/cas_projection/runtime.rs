@@ -15,11 +15,36 @@ use super::{
 #[derive(Debug)]
 pub struct AdmittedProjectionSession {
     connection: Arc<ProjectionConnection>,
+    runtime_interest: Option<(super::RuntimeInterest, super::RuntimeActivityPeriod)>,
 }
 
 impl AdmittedProjectionSession {
     pub(super) const fn from_admitted_connection(connection: Arc<ProjectionConnection>) -> Self {
-        Self { connection }
+        Self {
+            connection,
+            runtime_interest: None,
+        }
+    }
+
+    pub(in crate::cas_projection) fn retain_runtime_interest(
+        &mut self,
+        interest: super::RuntimeInterest,
+        period: super::RuntimeActivityPeriod,
+    ) {
+        self.runtime_interest = Some((interest, period));
+    }
+
+    pub(in crate::cas_projection) fn permits_execution_binding(
+        &self,
+        binding: &beryl_model::ExecutionBinding,
+    ) -> bool {
+        self.runtime_id() == binding.runtime_id()
+            && self
+                .runtime_interest
+                .as_ref()
+                .is_none_or(|(interest, period)| {
+                    interest.binding() == binding && interest.is_current(*period)
+                })
     }
 
     /// Returns the exact configured runtime associated with the owned session.

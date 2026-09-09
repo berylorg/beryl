@@ -61,6 +61,8 @@ pub enum ProjectionExecutionError {
         requested: RuntimeId,
         admitted: RuntimeId,
     },
+    #[error("the admitted session has no current runtime interest for this execution binding")]
+    RuntimeInterestUnavailable,
     #[error("loaded CAS thread {thread_id} is owned by another exact client connection")]
     LoadedProjectionConnectionMismatch { thread_id: CasThreadId },
     #[error("a loaded-projection lease could not be released cleanly")]

@@ -71,6 +71,12 @@ impl ManagedRuntime {
 }
 
 impl RunningRuntime for ManagedRuntime {
+    fn connector(&self) -> Option<ManagedBackendClientConnector> {
+        self.server
+            .as_ref()
+            .map(ManagedBackendServer::client_connector)
+    }
+
     fn process_generation(&self) -> CasProcessGeneration {
         self.session
             .as_ref()

@@ -189,6 +189,14 @@ impl ScheduledOrdinaryAdmission {
             });
         }
         let process_generation = admitted_session.process_generation();
+        if !admitted_session.permits_execution_binding(&self.execution_binding) {
+            return Err(
+                ScheduledOrdinaryAdmissionError::SessionAuthorityUnavailable {
+                    runtime_id: admitted,
+                    process_generation,
+                },
+            );
+        }
         let connection = Arc::clone(admitted_session.connection());
         if policy.thread_options().is_ephemeral() {
             return Err(ScheduledOrdinaryAdmissionError::EphemeralThreadPolicy);

@@ -248,6 +248,9 @@ impl CasProjectionCoordinator {
                 admitted: session.runtime_id(),
             });
         }
+        if !session.permits_execution_binding(decision.request().execution_binding()) {
+            return Err(ProjectionExecutionError::RuntimeInterestUnavailable);
+        }
         if decision.request().thread_options().is_ephemeral() {
             return Err(ProjectionExecutionError::EphemeralProjectionThread);
         }
