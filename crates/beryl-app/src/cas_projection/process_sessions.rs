@@ -19,6 +19,10 @@ use super::{
 
 mod checkout;
 mod control;
+pub(in crate::cas_projection) mod preparation;
+pub use preparation::{
+    RuntimeSessionPreparationConfig, RuntimeSessionPreparationError, RuntimeTokenDirectories,
+};
 
 #[derive(Clone)]
 pub struct ScheduledExecutionProviderContext {
@@ -132,6 +136,8 @@ struct SessionState {
     next_serial: u64,
     high_water: usize,
     slots: HashMap<SyndicThreadId, SessionSlot>,
+    preparation: Option<Arc<preparation::PreparationContext>>,
+    preparing: HashMap<SyndicThreadId, preparation::PreparationWorker>,
 }
 
 struct SessionSlot {
@@ -159,6 +165,8 @@ impl ProcessScheduledExecutionProvider {
                 next_serial: 0,
                 high_water: 0,
                 slots: HashMap::new(),
+                preparation: None,
+                preparing: HashMap::new(),
             })),
         };
         (
@@ -183,6 +191,7 @@ impl ScheduledExecutionSessions {
     }
 
     fn reap(&self) {
+        self.reap_preparation();
         let resources: Vec<_> = {
             let mut state = self.lock();
             if state

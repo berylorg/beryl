@@ -282,7 +282,7 @@ fn ended_activity_period_cannot_be_reused_by_a_new_service_generation() {
 }
 
 #[test]
-fn admission_failure_publishes_no_readiness_and_clean_release_allows_a_fresh_attempt() {
+fn admission_failure_remains_unavailable_after_clean_interest_release() {
     let mut owner = harness(1, 1);
     let failed = probe(510);
     failed.fail_admission(RuntimeFailure::Admission);
@@ -295,9 +295,14 @@ fn admission_failure_publishes_no_readiness_and_clean_release_allows_a_fresh_att
         RuntimeInterestStatus::Unavailable(RuntimeFailure::Admission)
     );
     drop(interest);
-    let replacement = acquire_after_retirement(&owner, 1, 1, &probe(511));
-    ready(&replacement);
-    drop(replacement);
+    let unused = probe(511);
+    let (spec, binding) = demand(1, 1);
+    assert!(matches!(
+        owner.acquire(spec, binding, RuntimeInterestKind::View, unused.clone()),
+        Err(RuntimeInterestError::Unavailable(RuntimeFailure::Admission))
+    ));
+    assert_eq!(unused.counts(), (0, 0, 0));
+    assert_eq!(owner.retained_counts(), (1, 0));
     assert!(owner.shutdown());
 }
 
@@ -317,7 +322,8 @@ fn failed_disposal_quarantines_the_runtime_instead_of_overlapping_a_new_process(
     let (spec, binding) = demand(1, 1);
     assert!(matches!(
         owner.acquire(spec, binding, RuntimeInterestKind::View, unused.clone()),
-        Err(RuntimeInterestError::Retiring)
+        Err(RuntimeInterestError::Retiring
+            | RuntimeInterestError::Unavailable(RuntimeFailure::BackendDisposal))
     ));
     assert_eq!(unused.counts(), (0, 0, 0));
     assert!(!owner.shutdown());
@@ -347,6 +353,133 @@ fn foreground_loss_ends_only_the_matching_runtime_period() {
     assert!(failed.wait_for_disposal(TIMEOUT));
     drop((first, second));
     assert!(owner.shutdown());
+}
+
+#[test]
+fn scheduled_interest_capacity_refusal_wakes_on_real_interest_release() {
+    let mut owner = harness(2, 1);
+    let current_probe = probe(520);
+    current_probe.allow_retirement(false);
+    let (spec, binding) = demand(1, 1);
+    let view = owner
+        .acquire(
+            spec,
+            binding,
+            RuntimeInterestKind::View,
+            current_probe.clone(),
+        )
+        .unwrap();
+    ready(&view);
+    let next = probe(521);
+    for _ in 0..2 {
+        let (spec, binding) = demand(2, 1);
+        assert!(matches!(
+            owner.acquire_scheduled(spec, binding, next.clone()),
+            Err(RuntimeInterestError::InterestCapacity)
+        ));
+    }
+    assert_eq!(owner.preparation_wake_count(), 0);
+    assert_eq!(next.counts(), (0, 0, 0));
+    drop(view);
+    assert_eq!(owner.preparation_wake_count(), 1);
+    let (spec, binding) = demand(2, 1);
+    let work = owner.acquire_scheduled(spec, binding, next).unwrap();
+    ready(&work);
+    current_probe.allow_retirement(true);
+    drop(work);
+    assert!(owner.shutdown());
+}
+
+#[test]
+fn scheduled_runtime_capacity_wait_ignores_unrelated_interest_release() {
+    let mut owner = harness(1, 3);
+    let current_probe = probe(522);
+    current_probe.allow_retirement(false);
+    let (spec, binding) = demand(1, 1);
+    let view = owner
+        .acquire(
+            spec,
+            binding,
+            RuntimeInterestKind::View,
+            current_probe.clone(),
+        )
+        .unwrap();
+    ready(&view);
+    let (spec, binding) = demand(1, 2);
+    let extra = owner
+        .acquire(
+            spec,
+            binding,
+            RuntimeInterestKind::View,
+            current_probe.clone(),
+        )
+        .unwrap();
+    let next = probe(523);
+    let (spec, binding) = demand(2, 1);
+    assert!(matches!(
+        owner.acquire_scheduled(spec, binding, next.clone()),
+        Err(RuntimeInterestError::RuntimeCapacity)
+    ));
+    drop(extra);
+    assert_eq!(owner.preparation_wake_count(), 0);
+    drop(view);
+    assert!(current_probe.wait_for_retirement(TIMEOUT));
+    assert_eq!(owner.preparation_wake_count(), 0);
+    current_probe.allow_retirement(true);
+    wait_for_preparation_wake(&owner);
+    let (spec, binding) = demand(2, 1);
+    let work = owner.acquire_scheduled(spec, binding, next).unwrap();
+    ready(&work);
+    drop(work);
+    assert!(owner.shutdown());
+}
+
+#[test]
+fn scheduled_retiring_runtime_wait_wakes_after_terminal_cleanup_publication() {
+    let mut owner = harness(1, 2);
+    let current_probe = probe(524);
+    current_probe.allow_retirement(false);
+    let (spec, binding) = demand(1, 1);
+    let view = owner
+        .acquire(
+            spec,
+            binding,
+            RuntimeInterestKind::View,
+            current_probe.clone(),
+        )
+        .unwrap();
+    ready(&view);
+    drop(view);
+    assert!(current_probe.wait_for_retirement(TIMEOUT));
+    let next = probe(525);
+    let (spec, binding) = demand(1, 2);
+    assert!(matches!(
+        owner.acquire_scheduled(spec, binding, next.clone()),
+        Err(RuntimeInterestError::Retiring)
+    ));
+    assert_eq!(owner.preparation_wake_count(), 0);
+    current_probe.allow_retirement(true);
+    wait_for_preparation_wake(&owner);
+    let (spec, binding) = demand(1, 2);
+    let work = owner.acquire_scheduled(spec, binding, next).unwrap();
+    assert_eq!(
+        ready(&work).process_generation(),
+        CasProcessGeneration::new(525).unwrap()
+    );
+    drop(work);
+    assert!(owner.shutdown());
+}
+
+fn wait_for_preparation_wake(owner: &RuntimeInterestTestHarness) {
+    let deadline = Instant::now() + TIMEOUT;
+    while owner.preparation_wake_count() == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "real owner dependency release did not wake preparation"
+        );
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(owner.preparation_wake_count(), 1);
 }
 
 #[test]

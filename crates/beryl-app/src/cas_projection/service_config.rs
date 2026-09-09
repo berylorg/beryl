@@ -10,6 +10,8 @@ use beryl_backend::ForegroundSessionConfig;
 use beryl_home_store::{MinimumTurnCaptureReserve, TurnStartAdmissionRequirement};
 use thiserror::Error;
 
+mod preparation;
+
 pub(super) const CONNECTION_WORKER_PERMITS: usize = 2;
 pub(super) const SCHEDULED_ORDINARY_WORKER_PERMITS: usize = 1;
 pub(super) const STEERING_CRITICAL_WORKER_RESERVE: usize = 1;
@@ -190,6 +192,8 @@ struct ProjectionWorkerPoolState {
 struct ProjectionWorkerReleaseWaiter {
     steering: bool,
     scheduled_ordinary: bool,
+    cold_preparation: bool,
+    warm_preparation: bool,
 }
 
 pub(super) struct ProjectionWorkerPermitPair {
@@ -422,6 +426,13 @@ impl Drop for ProjectionWorkerAdmission {
         debug_assert!(state.available <= state.capacity);
         let next_capacity_released = state.noncritical_role_fits(SCHEDULED_ORDINARY_WORKER_PERMITS)
             && std::mem::take(&mut state.release_waiter.scheduled_ordinary);
+        let cold_preparation_ready =
+            state.noncritical_role_fits(
+                SCHEDULED_ORDINARY_WORKER_PERMITS + 2 * CONNECTION_WORKER_PERMITS,
+            ) && std::mem::take(&mut state.release_waiter.cold_preparation);
+        let warm_preparation_ready = state
+            .noncritical_role_fits(SCHEDULED_ORDINARY_WORKER_PERMITS + CONNECTION_WORKER_PERMITS)
+            && std::mem::take(&mut state.release_waiter.warm_preparation);
         let steering_capacity_released = std::mem::take(&mut state.release_waiter.steering);
         let steering_released =
             self.committed_steering_worker.load(Ordering::Acquire) || steering_capacity_released;
@@ -429,6 +440,11 @@ impl Drop for ProjectionWorkerAdmission {
         self.pool
             .scheduler_signal
             .wake_worker_release(steering_released, next_capacity_released);
+        if cold_preparation_ready || warm_preparation_ready {
+            self.pool
+                .scheduler_signal
+                .wake(super::accepted_input_scheduler::AcceptedInputWakeReason::ExecutionReady);
+        }
     }
 }
 

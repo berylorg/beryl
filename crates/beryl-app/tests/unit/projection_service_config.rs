@@ -37,8 +37,8 @@ fn service_config_rejects_invalid_capacity_boundaries() {
 #[test]
 fn service_config_preserves_valid_fixed_counts() {
     let reserve = MinimumTurnCaptureReserve::try_new(23).unwrap();
-    let config = ProjectionServiceConfig::try_new(17, MINIMUM_WORKER_CAPACITY as u64, reserve)
-        .unwrap();
+    let config =
+        ProjectionServiceConfig::try_new(17, MINIMUM_WORKER_CAPACITY as u64, reserve).unwrap();
 
     assert_eq!(config.foreground().pre_bind_control_capacity().get(), 17);
     assert_eq!(config.worker_capacity().get(), MINIMUM_WORKER_CAPACITY);
@@ -371,7 +371,7 @@ fn role_denials_share_one_coalesced_worker_release_waiter() {
 }
 
 #[test]
-fn scheduled_release_cannot_satisfy_its_own_capacity_waiter() {
+fn scheduled_release_wakes_waiting_role_after_steering_reserve_is_available() {
     let signal =
         crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new();
     let pool = ProjectionWorkerPool::new_with_scheduler(
@@ -386,7 +386,7 @@ fn scheduled_release_cannot_satisfy_its_own_capacity_waiter() {
         Some(ProjectionWorkerPermitError::CapacityFull { available: 1 })
     );
     drop(scheduled);
-    assert_eq!(signal.diagnostics().wake_count(), 0);
+    assert_eq!(signal.diagnostics().wake_count(), 1);
 
     drop(pair);
     assert_eq!(signal.diagnostics().wake_count(), 1);
@@ -394,7 +394,7 @@ fn scheduled_release_cannot_satisfy_its_own_capacity_waiter() {
 }
 
 #[test]
-fn provisional_steering_scan_cannot_satisfy_scheduled_capacity_demand() {
+fn provisional_steering_release_does_not_wake_a_role_that_still_lacks_capacity() {
     let signal =
         crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new();
     let pool = ProjectionWorkerPool::new_with_scheduler(
@@ -413,7 +413,7 @@ fn provisional_steering_scan_cannot_satisfy_scheduled_capacity_demand() {
     assert_eq!(signal.diagnostics().wake_count(), 0);
 
     drop(scheduled);
-    assert_eq!(signal.diagnostics().wake_count(), 0);
+    assert_eq!(signal.diagnostics().wake_count(), 1);
     drop(pair);
     assert_eq!(signal.diagnostics().wake_count(), 1);
     assert_eq!(pool.diagnostics().available(), MINIMUM_WORKER_CAPACITY);
@@ -455,14 +455,18 @@ fn durable_start_budget_is_exact_and_covers_the_owner_composed_maximum() {
     .unwrap();
     let queued = beryl_home_store::DurableStartFootprint::compose(
         syndic_storage::accepted_input_promotion_max_footprint().unwrap(),
-        Some(
-            beryl_state::accepted_input_to_submitted_item_owner_transfer_max_footprint().unwrap(),
-        ),
+        Some(beryl_state::accepted_input_to_submitted_item_owner_transfer_max_footprint().unwrap()),
     )
     .unwrap();
 
-    assert_eq!(direct.logical().encoded_key_value_bytes().unwrap(), 1_328_750);
-    assert_eq!(queued.logical().encoded_key_value_bytes().unwrap(), 1_328_212);
+    assert_eq!(
+        direct.logical().encoded_key_value_bytes().unwrap(),
+        1_328_750
+    );
+    assert_eq!(
+        queued.logical().encoded_key_value_bytes().unwrap(),
+        1_328_212
+    );
     assert_eq!(queued.journal_append_bytes(), 1_328_763);
     assert!(direct.journal_append_bytes() <= DURABLE_START_ADMISSION_BUDGET_BYTES);
     assert!(queued.journal_append_bytes() <= DURABLE_START_ADMISSION_BUDGET_BYTES);

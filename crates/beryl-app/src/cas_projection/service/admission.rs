@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Clone)]
 pub(in crate::cas_projection) struct ProjectionAdmissionContext {
     home: Option<Arc<HomeStore>>,
     home_id: BerylHomeId,
@@ -135,6 +136,52 @@ impl ProjectionAdmissionContext {
         config_cwd: &Path,
         timeout: Duration,
     ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
+        self.admit_candidate(
+            connector,
+            runtime_id,
+            process_generation,
+            config_cwd,
+            timeout,
+            None,
+        )
+    }
+
+    pub(in crate::cas_projection) fn reserve_runtime_workers(
+        &self,
+    ) -> Result<ProjectionWorkerPermitPair, super::super::RuntimeInterestError> {
+        self.workers
+            .try_acquire_pair()
+            .map_err(|_| super::super::RuntimeInterestError::WorkerCapacity)
+    }
+
+    pub(in crate::cas_projection) fn admit_with_reserved_workers(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+        workers: ProjectionWorkerPermitPair,
+    ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
+        self.admit_candidate(
+            connector,
+            runtime_id,
+            process_generation,
+            config_cwd,
+            timeout,
+            Some(workers),
+        )
+    }
+
+    fn admit_candidate(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+        workers: Option<ProjectionWorkerPermitPair>,
+    ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
         if connector.launch_identity().is_some_and(|identity| {
             identity.runtime_id() != runtime_id
                 || identity.process_generation() != process_generation
@@ -146,7 +193,8 @@ impl ProjectionAdmissionContext {
                 ManagedBackendError::ManagedLaunchIdentityMismatch,
             ));
         }
-        let prepared = self.prepare_session_admission(runtime_id, process_generation)?;
+        let prepared =
+            self.prepare_session_admission_with_workers(runtime_id, process_generation, workers)?;
         let mut backend = self.connect_and_initialize_candidate(
             connector,
             runtime_id,
@@ -222,6 +270,15 @@ impl ProjectionAdmissionContext {
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
     ) -> Result<PreparedProjectionSessionAdmission, ProjectionSessionAdmissionError> {
+        self.prepare_session_admission_with_workers(runtime_id, process_generation, None)
+    }
+
+    fn prepare_session_admission_with_workers(
+        &self,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        workers: Option<ProjectionWorkerPermitPair>,
+    ) -> Result<PreparedProjectionSessionAdmission, ProjectionSessionAdmissionError> {
         let command = self.command_authorizer.authorize().map_err(|_| {
             ProjectionSessionAdmissionError::service_closed(runtime_id, process_generation)
         })?;
@@ -233,21 +290,23 @@ impl ProjectionAdmissionContext {
             )
         })?;
         self.connections.reap_finished_ordinary_retirements();
-        let worker_permits = self.workers.try_acquire_pair().map_err(|error| {
-            let source = match error {
-                ProjectionWorkerPermitError::CapacityFull { available } => {
-                    ProjectionCoordinatorError::ProjectionWorkerCapacityFull { available }
-                }
-                ProjectionWorkerPermitError::Poisoned => {
-                    ProjectionCoordinatorError::ProjectionWorkerPoolPoisoned
-                }
-            };
-            ProjectionSessionAdmissionError::connection_ownership(
-                runtime_id,
-                process_generation,
-                source,
-            )
-        })?;
+        let worker_permits = workers
+            .map_or_else(|| self.workers.try_acquire_pair(), Ok)
+            .map_err(|error| {
+                let source = match error {
+                    ProjectionWorkerPermitError::CapacityFull { available } => {
+                        ProjectionCoordinatorError::ProjectionWorkerCapacityFull { available }
+                    }
+                    ProjectionWorkerPermitError::Poisoned => {
+                        ProjectionCoordinatorError::ProjectionWorkerPoolPoisoned
+                    }
+                };
+                ProjectionSessionAdmissionError::connection_ownership(
+                    runtime_id,
+                    process_generation,
+                    source,
+                )
+            })?;
         Ok(PreparedProjectionSessionAdmission {
             command,
             home: Arc::clone(self.home.as_ref().expect("open service owns its home")),

@@ -301,6 +301,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
                         ));
                     }
                 };
+                drop(command);
                 let admission = runtime.context.issue_scheduled_ordinary_execution(
                     candidate.thread_id(),
                     execution.execution().clone(),

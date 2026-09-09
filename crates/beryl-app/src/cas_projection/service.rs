@@ -61,6 +61,7 @@ mod commands;
 mod construction;
 mod flight_registry;
 mod runtime_interest;
+mod runtime_preparation;
 mod scheduling;
 mod shutdown;
 
@@ -93,7 +94,7 @@ pub struct ProjectionConnectionService {
     scheduler_signal: AcceptedInputSchedulerSignal,
     native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
-    runtime_interest: Option<super::runtime_interest::RuntimeInterestOwner>,
+    runtime_interest: Option<Arc<super::runtime_interest::RuntimeInterestOwner>>,
     settled: bool,
 }
 

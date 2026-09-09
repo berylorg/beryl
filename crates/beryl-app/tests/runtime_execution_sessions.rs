@@ -212,7 +212,7 @@ fn registry_rejects_an_admitted_session_for_another_root_without_provider_effect
 }
 
 #[test]
-fn contradictory_session_configuration_ends_the_runtime_period_and_requires_a_fresh_process() {
+fn contradictory_session_configuration_ends_the_runtime_period_and_blocks_automatic_relaunch() {
     let mut fixture = Fixture::new();
     let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
     let initial = ready(&view);
@@ -245,12 +245,9 @@ fn contradictory_session_configuration_ends_the_runtime_period_and_requires_a_fr
         RuntimeInterestStatus::Unavailable(RuntimeFailure::Admission)
     );
     fs::write(fixture.root(1).join("fixture-mode"), "").unwrap();
-    let work = fixture
-        .acquire(2, RuntimeInterestKind::RequiredWork)
-        .unwrap();
     assert!(matches!(
-        fixture.service().admit_runtime_session(work, TIMEOUT),
-        Err(RuntimeSessionAdmissionError::RuntimeUnavailable)
+        fixture.acquire(2, RuntimeInterestKind::RequiredWork),
+        Err(RuntimeInterestError::Unavailable(RuntimeFailure::Admission))
     ));
     wait_until(|| {
         fixture.token_count() == 0 && fixture.service().worker_pool_diagnostics().active() == 0
@@ -258,20 +255,10 @@ fn contradictory_session_configuration_ends_the_runtime_period_and_requires_a_fr
     process.assert_exited();
     drop(view);
     drop(existing);
-    let mut replacement = None;
-    wait_until(|| match fixture.acquire(2, RuntimeInterestKind::View) {
-        Ok(view) => {
-            replacement = Some(view);
-            true
-        }
-        Err(RuntimeInterestError::Retiring) => false,
-        Err(error) => panic!("fresh runtime admission failed: {error}"),
-    });
-    let replacement = replacement.unwrap();
-    let current = ready(&replacement);
-    assert_ne!(current.process_generation(), initial.process_generation());
-    assert_ne!(current.activity_period(), initial.activity_period());
-    drop(replacement);
+    assert!(matches!(
+        fixture.acquire(2, RuntimeInterestKind::View),
+        Err(RuntimeInterestError::Unavailable(RuntimeFailure::Admission))
+    ));
     close(&mut fixture);
 }
 

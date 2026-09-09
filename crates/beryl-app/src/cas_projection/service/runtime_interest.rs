@@ -8,6 +8,14 @@ use crate::cas_projection::runtime_interest::{
 
 impl ProjectionConnectionService {
     #[cfg(feature = "test-faults")]
+    pub fn runtime_preparation_waits_for_test(&self, runtime_id: RuntimeId) -> (bool, bool, bool) {
+        self.runtime_interest
+            .as_ref()
+            .expect("test service owns runtime interest")
+            .preparation_waits(runtime_id)
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn checkout_scheduled_session_for_test(
         &self,
         thread_id: SyndicThreadId,
@@ -89,10 +97,11 @@ impl ProjectionConnectionService {
         if self.runtime_interest.is_some() {
             return Err(RuntimeInterestError::AlreadyConfigured);
         }
-        self.runtime_interest = Some(RuntimeInterestOwner::new(
+        self.runtime_interest = Some(Arc::new(RuntimeInterestOwner::new(
             config,
             self.command_authorizer.clone(),
-        ));
+            self.scheduler_signal.clone(),
+        )));
         Ok(())
     }
 

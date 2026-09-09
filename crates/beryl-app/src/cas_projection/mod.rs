@@ -114,16 +114,17 @@ pub use persistent_failure::{
     ProjectionServiceGeneration,
 };
 pub use process_sessions::{
-    ProcessScheduledExecutionProvider, ScheduledExecutionProviderContext,
+    ProcessScheduledExecutionProvider, RuntimeSessionPreparationConfig,
+    RuntimeSessionPreparationError, RuntimeTokenDirectories, ScheduledExecutionProviderContext,
     ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionRegistration,
     ScheduledSessionRegistrationError,
 };
 pub use process_tools::ProcessOrdinaryDynamicToolAuthority;
 pub use runtime::AdmittedProjectionSession;
 pub use runtime_interest::{
-    RuntimeActivityPeriod, RuntimeFailure, RuntimeInterest, RuntimeInterestConfig,
-    RuntimeInterestError, RuntimeInterestKind, RuntimeInterestStatus, RuntimeReadiness,
-    RuntimeSessionAdmissionError,
+    RuntimeActivityPeriod, RuntimeFailure, RuntimeFailureSnapshot, RuntimeInterest,
+    RuntimeInterestConfig, RuntimeInterestError, RuntimeInterestKind, RuntimeInterestStatus,
+    RuntimeReadiness, RuntimeSessionAdmissionError,
 };
 #[cfg(feature = "test-faults")]
 pub use runtime_interest::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};

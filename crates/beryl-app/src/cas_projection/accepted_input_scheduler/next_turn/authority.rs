@@ -86,6 +86,7 @@ impl AcceptedInputSchedulerContext {
         };
         let validator = self.lease_validator(command);
         validator.ensure_current()?;
+        drop(validator);
         let expected_binding = execution_binding.clone();
         let admission = ScheduledOrdinaryAdmission::new(
             self.home_id,
@@ -110,6 +111,12 @@ impl AcceptedInputSchedulerContext {
         {
             return Err(ScheduledOrdinaryAdmissionError::LeaseMismatch { thread_id });
         }
+        let Ok(command) = self.command_gate.authorizer().authorize() else {
+            return Ok(ScheduledOrdinaryAdmissionResult::Unavailable(
+                crate::cas_projection::ScheduledOrdinaryExecutionUnavailable::ShuttingDown,
+            ));
+        };
+        let validator = self.lease_validator(command);
         if let ScheduledOrdinaryAdmissionResult::Issued(lease) = &mut result {
             validator.validate(lease)?;
         }

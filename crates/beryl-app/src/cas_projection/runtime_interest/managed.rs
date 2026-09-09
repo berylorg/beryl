@@ -3,6 +3,7 @@ use std::path::Path;
 use beryl_backend::ManagedBackendServer;
 
 use super::*;
+use crate::cas_projection::service_config::ProjectionWorkerPermitPair;
 use crate::cas_projection::{AdmittedProjectionSession, service::ProjectionAdmissionContext};
 
 impl RuntimeInterestOwner {
@@ -17,11 +18,41 @@ impl RuntimeInterestOwner {
         let timeout = self.shared.config.admission_timeout;
         self.acquire(spec, binding, kind, || {
             let admission = prepare()?;
+            let workers = admission.reserve_runtime_workers()?;
             Ok(Box::new(move || {
-                ManagedRuntime::launch(launch_spec, admission, timeout)
+                ManagedRuntime::launch(launch_spec, admission, workers, timeout)
                     .map(|runtime| Box::new(runtime) as Box<dyn RunningRuntime>)
             }))
         })
+    }
+
+    pub(in crate::cas_projection) fn acquire_prepared_managed(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        thread_id: SyndicThreadId,
+        prepare: impl FnOnce() -> Result<
+            (ProjectionAdmissionContext, ProjectionWorkerPermitPair),
+            RuntimeInterestError,
+        >,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        let launch_spec = spec.clone();
+        let timeout = self.shared.config.admission_timeout;
+        let retry = self.scheduled_retry(thread_id, &binding);
+        self.acquire_with_retry(
+            spec,
+            binding,
+            RuntimeInterestKind::RequiredWork,
+            retry,
+            true,
+            || {
+                let (admission, workers) = prepare()?;
+                Ok(Box::new(move || {
+                    ManagedRuntime::launch(launch_spec, admission, workers, timeout)
+                        .map(|runtime| Box::new(runtime) as Box<dyn RunningRuntime>)
+                }))
+            },
+        )
     }
 }
 
@@ -36,6 +67,7 @@ impl ManagedRuntime {
     fn launch(
         spec: ManagedBackendLaunchSpec,
         admission: ProjectionAdmissionContext,
+        workers: ProjectionWorkerPermitPair,
         timeout: Duration,
     ) -> Result<Self, RuntimeFailure> {
         let server = ManagedBackendServer::launch(spec).map_err(|_| RuntimeFailure::Launch)?;
@@ -50,12 +82,13 @@ impl ManagedRuntime {
             session: None,
             retirement: None,
         };
-        let session = match admission.admit(
+        let session = match admission.admit_with_reserved_workers(
             &connector,
             identity.runtime_id(),
             identity.process_generation(),
             Path::new(identity.working_directory().as_str()),
             timeout,
+            workers,
         ) {
             Ok(session) => session,
             Err(_) => {

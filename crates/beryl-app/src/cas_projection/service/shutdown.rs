@@ -24,7 +24,7 @@ impl ProjectionConnectionService {
         let runtime_failed = self
             .runtime_interest
             .take()
-            .is_some_and(|mut owner| !owner.shutdown());
+            .is_some_and(|owner| !owner.shutdown());
         let outcome = match election {
             MasterCommandGateCloseOwner::OrdinaryShutdown => {
                 self.ordinary_shutdown_inner()?;
@@ -245,7 +245,9 @@ impl ProjectionConnectionService {
 
     fn request_implicit_ordinary_shutdown(&mut self) {
         self.settled = true;
-        drop(self.runtime_interest.take());
+        if let Some(owner) = self.runtime_interest.take() {
+            owner.request_shutdown();
+        }
         if let Some(persistent_failure) = self.persistent_failure.as_ref() {
             persistent_failure.request_shutdown();
         }
@@ -278,7 +280,7 @@ impl Drop for ProjectionConnectionService {
                 self.request_implicit_ordinary_shutdown();
             }
             MasterCommandGateCloseOwner::PersistentFailure(failure_generation) => {
-                if let Some(mut owner) = self.runtime_interest.take() {
+                if let Some(owner) = self.runtime_interest.take() {
                     let _ = owner.shutdown();
                 }
                 let _ = self.persistent_failure_shutdown_inner(failure_generation);

@@ -135,7 +135,7 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     if mode == "drop-config" {
         return;
     }
-    if mode == "pause-config" {
+    if mode == "pause-config" || (mode == "pause-session-config" && index > 0) {
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !std::path::Path::new("release-config").exists() {
             assert!(
@@ -160,6 +160,32 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             }
         }),
     );
+    if mode == "pause-projection" && index > 0 {
+        let projection = read_json(&mut socket);
+        assert_eq!(projection["method"], "thread/start");
+        fs::write("runtime-projection-evidence.json", serde_json::to_vec(&json!({
+            "pid": std::process::id(), "method": projection["method"], "cwd": projection["params"]["cwd"]
+        })).unwrap()).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !std::path::Path::new("release-projection").exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "fixture projection release timed out"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let response = json!({"id": projection["id"], "result": {
+            "thread": {"id": "prepared-thread", "extra": null, "sessionId": "prepared-session", "forkedFromId": null,
+                "parentThreadId": null, "preview": "", "ephemeral": false, "historyMode": "legacy", "modelProvider": "openai",
+                "createdAt": 1, "updatedAt": 2, "recencyAt": null, "status": {"type": "idle"}, "path": null,
+                "cwd": projection["params"]["cwd"], "cliVersion": "0.146.0", "source": "appServer", "threadSource": null,
+                "agentNickname": null, "agentRole": null, "gitInfo": null, "name": null, "turns": []},
+            "model": "fixture-model", "modelProvider": "openai", "serviceTier": null, "cwd": projection["params"]["cwd"],
+            "runtimeWorkspaceRoots": [], "instructionSources": [], "approvalPolicy": "never", "approvalsReviewer": "user",
+            "sandbox": {}, "activePermissionProfile": null, "reasoningEffort": null, "multiAgentMode": "explicitRequestOnly"
+        }});
+        let _ = socket.send(Message::Text(response.to_string().into()));
+    }
     while let Ok(message) = socket.read() {
         if message.is_close() {
             break;

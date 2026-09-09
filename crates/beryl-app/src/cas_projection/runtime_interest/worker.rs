@@ -22,6 +22,8 @@ pub(super) fn run(
         Err(_) => (false, Some(RuntimeFailure::WorkerPanicked)),
     };
     let mut state = shared.lock();
+    let mut reclaimable = false;
+    let mut retirement_released = false;
     if let Some(entry) = state.runtimes.get_mut(&runtime_id)
         && entry.attempt == attempt
     {
@@ -31,6 +33,13 @@ pub(super) fn run(
             RuntimeInterestStatus::Retired,
             RuntimeInterestStatus::Unavailable,
         );
+        reclaimable = clean && failure.is_none() && entry.interests.is_empty();
+        retirement_released = reclaimable && std::mem::take(&mut entry.retirement_waiter);
+    }
+    let runtime_capacity_released =
+        reclaimable && std::mem::take(&mut state.runtime_capacity_waiter);
+    if retirement_released || runtime_capacity_released {
+        shared.wake_preparation();
     }
     shared.changed.notify_all();
     clean

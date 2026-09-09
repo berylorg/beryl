@@ -323,6 +323,8 @@
   settlement, preserving proven admission and cancellation; independent review and 92 checks passed.
 - [x] Accepted the process-owned ordinary tool dispatcher with bounded deferred-branch refusal,
   canonical registry preservation and exact lifecycle authority; review and 27 checks passed.
+- [x] Accepted bounded managed session preparation for durable scheduler candidates with explicit
+  runtime recovery, dependency-release re-entry and joined cleanup.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

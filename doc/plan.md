@@ -38,13 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 354: Own Production Execution Tool Dispatch (finished)
+# Phase 355: Prepare Runtime Sessions For Eligible Process Work (finished)
 
-Accepted the process-owned tool authority through real direct and scheduled dispatch, exact-origin
-rejection and retirement. Deferred branch resolution returns bounded unavailability without mutation
-or payload echo; the canonical registry remains intact. Independent review, production compilation,
-formatting and 27 selected checks passed with a 2.02 GiB job peak and no remaining child processes.
-Full branch handoff and process/window assembly remain separate acceptance boundaries.
+Accepted bounded managed runtime/session preparation for durable scheduler candidates, exact explicit
+retry after latched failure, dependency-release wakeups and joined shutdown/home-failure cleanup.
+Independent review, production compilation, formatting and 80 selected regression checks passed;
+peak job memory was 2.02 GiB with no remaining children. The
+[capacity re-entry lesson](failures/cas-accepted-next-own-capacity-retry.md#runtime-preparation-re-entry)
+records the durable correction. Work inventory and direct-view integration remain subsequent work.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

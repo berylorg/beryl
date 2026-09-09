@@ -7,13 +7,14 @@ use std::{
 };
 
 use beryl_backend::{ManagedBackendClientConnector, ManagedBackendLaunchSpec};
-use beryl_model::{CasProcessGeneration, ExecutionBinding, RuntimeId};
+use beryl_model::{CasProcessGeneration, ExecutionBinding, RuntimeId, SyndicThreadId};
 use thiserror::Error;
 
 use super::persistent_failure::LiveCommandAuthorizer;
 
 mod managed;
 mod owner;
+mod retry;
 mod session;
 mod worker;
 
@@ -32,6 +33,13 @@ pub struct RuntimeInterestConfig {
 }
 
 impl RuntimeInterestConfig {
+    pub(in crate::cas_projection) fn runtime_capacity(self) -> usize {
+        self.runtime_capacity.get()
+    }
+
+    pub(in crate::cas_projection) fn admission_timeout(self) -> Duration {
+        self.admission_timeout
+    }
     pub fn new(
         runtime_capacity: NonZeroUsize,
         interest_capacity: NonZeroUsize,
@@ -61,6 +69,29 @@ pub struct RuntimeActivityPeriod(u64);
 pub struct RuntimeReadiness {
     process_generation: CasProcessGeneration,
     activity_period: RuntimeActivityPeriod,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeFailureSnapshot {
+    runtime_id: RuntimeId,
+    service_generation: super::ProjectionServiceGeneration,
+    attempt: u64,
+    failure: RuntimeFailure,
+    retry_ready: bool,
+}
+
+impl RuntimeFailureSnapshot {
+    pub fn runtime_id(self) -> RuntimeId {
+        self.runtime_id
+    }
+
+    pub fn failure(self) -> RuntimeFailure {
+        self.failure
+    }
+
+    pub fn retry_ready(self) -> bool {
+        self.retry_ready
+    }
 }
 
 impl RuntimeReadiness {
@@ -110,6 +141,12 @@ pub enum RuntimeInterestError {
     InterestCapacity,
     #[error("this runtime is still retiring")]
     Retiring,
+    #[error("this runtime requires explicit recovery after {0:?}")]
+    Unavailable(RuntimeFailure),
+    #[error("the runtime failure no longer matches this recovery attempt")]
+    RetryMismatch,
+    #[error("runtime connection worker capacity is unavailable")]
+    WorkerCapacity,
     #[error("runtime launch configuration does not match the exact demand")]
     ConfigurationMismatch,
     #[error("runtime interest identity is exhausted")]
@@ -190,6 +227,7 @@ impl RuntimeInterest {
 impl Drop for RuntimeInterest {
     fn drop(&mut self) {
         let mut state = self.shared.lock();
+        let mut wake = false;
         if let Some(entry) = state.runtimes.get_mut(&self.runtime_id)
             && entry.attempt == self.attempt
             && entry.interests.remove(&self.interest).is_some()
@@ -203,7 +241,12 @@ impl Drop for RuntimeInterest {
                 entry.status = RuntimeInterestStatus::Retiring;
             }
             state.interest_count -= 1;
+            wake = std::mem::take(&mut state.interest_capacity_waiter);
             self.shared.changed.notify_all();
+        }
+        drop(state);
+        if wake {
+            self.shared.wake_preparation();
         }
     }
 }
@@ -217,9 +260,17 @@ struct RuntimeInterestShared {
     changed: Condvar,
     commands: LiveCommandAuthorizer,
     config: RuntimeInterestConfig,
+    scheduler_signal: super::accepted_input_scheduler::AcceptedInputSchedulerSignal,
 }
 
 impl RuntimeInterestShared {
+    fn wake_preparation(&self) {
+        if self.commands.is_open() {
+            self.scheduler_signal
+                .wake(super::accepted_input_scheduler::AcceptedInputWakeReason::ExecutionReady);
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, RuntimeInterestState> {
         match self.state.lock() {
             Ok(state) => state,
@@ -238,6 +289,8 @@ struct RuntimeInterestState {
     next_identity: u64,
     interest_count: usize,
     runtimes: HashMap<RuntimeId, RuntimeEntry>,
+    interest_capacity_waiter: bool,
+    runtime_capacity_waiter: bool,
 }
 
 struct RuntimeEntry {
@@ -248,6 +301,13 @@ struct RuntimeEntry {
     worker: Option<JoinHandle<bool>>,
     cleanup_complete: bool,
     connector: Option<ManagedBackendClientConnector>,
+    retry: Option<RuntimeRetryTarget>,
+    retirement_waiter: bool,
+}
+
+struct RuntimeRetryTarget {
+    thread_id: SyndicThreadId,
+    binding: ExecutionBinding,
 }
 
 trait RunningRuntime: Send {

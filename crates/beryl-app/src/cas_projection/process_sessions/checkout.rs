@@ -53,9 +53,8 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
                 return Ok(admission.decline(ScheduledOrdinaryExecutionUnavailable::ShuttingDown));
             }
             let Some(slot) = state.slots.get_mut(&admission.thread_id()) else {
-                return Ok(
-                    admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady)
-                );
+                drop(state);
+                return Ok(self.sessions.prepare(admission));
             };
             if slot.retiring
                 || slot.connection.is_retired()
@@ -115,7 +114,7 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
 
 impl Drop for ProcessScheduledExecutionProvider {
     fn drop(&mut self) {
-        self.sessions.close();
+        self.sessions.request_close();
     }
 }
 

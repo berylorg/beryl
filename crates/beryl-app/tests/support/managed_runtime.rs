@@ -46,6 +46,7 @@ pub(crate) struct Fixture {
     pub(crate) service: Option<ProjectionConnectionService>,
     directory: tempfile::TempDir,
     pub(crate) state: BerylState,
+    pub(crate) storage: SyndicStorage,
     faults: beryl_home_store::test_faults::FaultController,
 }
 
@@ -55,6 +56,13 @@ impl Fixture {
     }
 
     pub(crate) fn with_provider(provider: Box<dyn ScheduledOrdinaryExecutionProvider>) -> Self {
+        Self::with_capacity(provider, 8)
+    }
+
+    pub(crate) fn with_capacity(
+        provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+        worker_capacity: u64,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         fs::create_dir(directory.path().join("root-1")).unwrap();
         fs::create_dir(directory.path().join("root-2")).unwrap();
@@ -69,9 +77,13 @@ impl Fixture {
         let state = BerylState::register(&mut home).unwrap();
         let mut service = ProjectionConnectionService::new(
             home,
-            storage,
-            ProjectionServiceConfig::try_new(8, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
-                .unwrap(),
+            storage.clone(),
+            ProjectionServiceConfig::try_new(
+                8,
+                worker_capacity,
+                MinimumTurnCaptureReserve::try_new(1).unwrap(),
+            )
+            .unwrap(),
             provider,
         )
         .unwrap();
@@ -89,6 +101,7 @@ impl Fixture {
             service: Some(service),
             directory,
             state,
+            storage,
             faults,
         }
     }
@@ -99,6 +112,54 @@ impl Fixture {
 
     pub(crate) fn root(&self, root: u8) -> PathBuf {
         self.directory.path().join(format!("root-{root}"))
+    }
+
+    pub(crate) fn tokens(&self) -> PathBuf {
+        self.directory.path().join("tokens")
+    }
+
+    pub(crate) fn reopen(
+        &mut self,
+        provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+        worker_capacity: u64,
+    ) {
+        assert!(matches!(
+            self.service.take().unwrap().close().unwrap(),
+            beryl_app::cas_projection::ProjectionConnectionServiceCloseOutcome::Closed
+        ));
+        let mut home = HomeStore::open_with_faults(
+            HomeOpenOptions::new(
+                self.directory.path().join("home"),
+                HomeSchemaVersion::CURRENT,
+            ),
+            self.faults.clone(),
+        )
+        .unwrap();
+        self.storage = SyndicStorage::register(&mut home).unwrap();
+        self.state = BerylState::register(&mut home).unwrap();
+        let mut service = ProjectionConnectionService::new(
+            home,
+            self.storage.clone(),
+            ProjectionServiceConfig::try_new(
+                8,
+                worker_capacity,
+                MinimumTurnCaptureReserve::try_new(1).unwrap(),
+            )
+            .unwrap(),
+            provider,
+        )
+        .unwrap();
+        service
+            .configure_runtime_interest(
+                RuntimeInterestConfig::new(
+                    NonZeroUsize::new(1).unwrap(),
+                    NonZeroUsize::new(4).unwrap(),
+                    TIMEOUT,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        self.service = Some(service);
     }
 
     pub(crate) fn acquire(

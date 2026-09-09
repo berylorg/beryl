@@ -7,6 +7,7 @@ use crate::{
     lifecycle_attention::{LifecycleAttentionAttempt, ProcessLifecycleAttentionPool},
 };
 
+#[derive(Clone)]
 pub struct ProcessLifecycleYieldHandler {
     stop: Weak<StopCoordinator>,
     attention: Weak<ProcessLifecycleAttentionPool>,

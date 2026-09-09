@@ -12,6 +12,7 @@ use super::{
     ProcessLifecycleYieldHandler, ProjectionConnectionService,
 };
 
+#[derive(Clone)]
 pub struct ProcessOrdinaryDynamicToolAuthority {
     lifecycle: ProcessLifecycleYieldHandler,
     branch: UnavailableBranchResolution,
@@ -35,6 +36,7 @@ impl OrdinaryDynamicToolAuthority for ProcessOrdinaryDynamicToolAuthority {
     }
 }
 
+#[derive(Clone)]
 struct UnavailableBranchResolution;
 
 impl BranchDiscussionResolutionRequestHandler for UnavailableBranchResolution {

@@ -46,6 +46,15 @@ impl ProjectionConnectionService {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn reserve_scheduled_ordinary_worker_for_test(&self) -> impl FnOnce() + use<> {
+        let worker = self
+            .workers
+            .try_acquire_scheduled_ordinary_or_arm()
+            .expect("test reservation has worker capacity");
+        move || drop(worker)
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn saturate_scheduled_ordinary_capacity_for_test(&self) -> impl FnOnce() + use<> {
         let steering = self
             .workers
@@ -215,6 +224,7 @@ impl ProjectionConnectionService {
         };
         self.ensure_current()?;
         let expected_binding = execution_binding.clone();
+        drop(command);
         let admission = ScheduledOrdinaryAdmission::new(
             self.home_id,
             self.home_generation,
@@ -235,6 +245,11 @@ impl ProjectionConnectionService {
             .lock()
             .map_err(|_| ScheduledOrdinaryAdmissionError::ProviderPoisoned)?
             .try_issue(admission)?;
+        let Ok(command) = self.command_authorizer.authorize() else {
+            return Ok(ScheduledOrdinaryAdmissionResult::Unavailable(
+                ScheduledOrdinaryExecutionUnavailable::ShuttingDown,
+            ));
+        };
         if let ScheduledOrdinaryAdmissionResult::Issued(lease) = &result
             && (lease.home_id() != self.home_id
                 || lease.home_generation() != self.home_generation

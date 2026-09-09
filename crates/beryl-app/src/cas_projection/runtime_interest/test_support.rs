@@ -11,7 +11,12 @@ impl RuntimeInterestTestHarness {
     pub fn new(config: RuntimeInterestConfig) -> Self {
         let gate = MasterCommandGate::new(ProjectionServiceGeneration::allocate().unwrap(), None);
         Self {
-            owner: RuntimeInterestOwner::new(config, gate.authorizer()),
+            owner: RuntimeInterestOwner::new(
+                config,
+                gate.authorizer(),
+                crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(
+                ),
+            ),
             gate,
         }
     }
@@ -29,6 +34,30 @@ impl RuntimeInterestTestHarness {
 
     pub fn lose_generation(&self) {
         self.gate.close_for_shutdown();
+    }
+
+    pub fn acquire_scheduled(
+        &self,
+        spec: ManagedBackendLaunchSpec,
+        binding: ExecutionBinding,
+        probe: RuntimeInterestTestProbe,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        self.owner.acquire_with_retry(
+            spec,
+            binding,
+            RuntimeInterestKind::RequiredWork,
+            None,
+            true,
+            || Ok(Box::new(move || probe.launch())),
+        )
+    }
+
+    pub fn preparation_wake_count(&self) -> u64 {
+        self.owner
+            .shared
+            .scheduler_signal
+            .diagnostics()
+            .wake_count()
     }
 
     pub fn shutdown(&mut self) -> bool {

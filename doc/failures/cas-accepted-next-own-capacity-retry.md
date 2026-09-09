@@ -67,3 +67,33 @@ provisional steering scan permit cannot satisfy scheduled capacity demand: only 
 permits and steering permits committed to spawned workers carry that authority. A real release
 that satisfies both lane waiters publishes both typed bits atomically instead of discarding one
 through precedence.
+
+## Runtime Preparation Re-entry
+
+Phase 355 exposed the same distinction between a released resource and authority to re-enter a
+specific waiting path. Managed preparation reserves one scheduled worker plus four connection
+workers for a cold runtime, or two connection workers for a running runtime. Waiting on connection
+capacity alone lets the attempt's own preparation-permit release start a futile retry. The fixed
+readiness thresholds include the next preparation permit (five cold, three warm), while preserving
+the steering reserve. A real recovered durable submission verified both quiet saturation and
+automatic scheduler checkout after an external release.
+
+Preparation refusal occurs after candidate admission, so ordinary-lane capacity-wait flags do not
+necessarily exist. Publishing only `NextWorkerCapacityReleased` loses the only relevant release;
+preparation readiness uses `ExecutionReady`. Runtime-interest capacity, runtime-slot capacity and
+exact retiring-runtime refusals likewise retain bounded reason-specific demand under the owner
+lock and wake only when their dependency becomes available. Failed runtimes remain latched and
+require exact retry authority; a release never clears that failure.
+
+Publish preparation completion before exposing its final wake under the session lock. Publish
+runtime cleanup completion only after resource disposal and as the worker's final owner-lock
+operation. Reaping may then join a published terminal worker even before the operating-system
+handle reports finished, preventing the sole wake from observing an unreclaimable old attempt.
+Implicit owner drop requests cancellation without waiting on backend admission; explicit close
+and home failure still join cleanup.
+
+Evidence is retained in `runtime_session_preparation`, `runtime_interest`, and
+`managed_runtime_interest` tests. The final 80-test selected scheduler/session regression run and
+production library check passed with independent review. The earlier phase-specific release rules
+above describe their historical correction; current lane-release behavior remains controlled by
+the live scheduler authority and its parked-attempt regressions.

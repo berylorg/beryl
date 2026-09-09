@@ -80,18 +80,27 @@ impl ScheduledExecutionSessions {
     }
 
     pub fn close(&self) {
-        let resources: Vec<_> = {
+        self.request_close();
+        self.close_preparation();
+        self.reap();
+    }
+
+    pub(super) fn request_close(&self) {
+        let (context, resources) = {
             let mut state = self.lock();
             state.closed = true;
-            state
+            let context = state.preparation.take();
+            let resources: Vec<_> = state
                 .slots
                 .values_mut()
                 .filter_map(|slot| {
                     slot.retiring = true;
                     slot.resources.take()
                 })
-                .collect()
+                .collect();
+            (context, resources)
         };
+        drop(context);
         drop(resources);
         self.reap();
     }
