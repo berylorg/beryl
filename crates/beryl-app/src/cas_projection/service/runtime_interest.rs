@@ -8,6 +8,18 @@ use crate::cas_projection::runtime_interest::{
 
 impl ProjectionConnectionService {
     #[cfg(feature = "test-faults")]
+    pub fn poll_runtime_retirements_for_test(
+        &self,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+    ) -> Result<(), crate::cas_projection::RuntimeFailure> {
+        self.admission_context()
+            .map_err(|_| crate::cas_projection::RuntimeFailure::AppRetirement)?
+            .runtime_retirement(runtime_id, process_generation)
+            .poll_retirements()
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn runtime_preparation_waits_for_test(&self, runtime_id: RuntimeId) -> (bool, bool, bool) {
         self.runtime_interest
             .as_ref()

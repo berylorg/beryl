@@ -250,7 +250,9 @@ impl ScheduledExecutionSessions {
             .map(|slot| (slot.registration, Arc::clone(&slot.connection)))
             .collect();
         for (registration, connection) in candidates {
-            if !connection.try_reap_ordinary_retirement() && !connection.is_detached() {
+            if !connection.try_reap_ordinary_retirement().unwrap_or(false)
+                && !connection.is_detached()
+            {
                 continue;
             }
             let ready = {

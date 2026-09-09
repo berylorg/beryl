@@ -347,6 +347,8 @@
 - [x] Accepted revision-bound process work inventory with streaming durable deduplication, exact
   counts, bounded recent-first pages and current metadata without publication. Control custody
   and attention revisions preserve handoffs; independent review and 128 regressions passed.
+- [x] Accepted autonomous runtime-owned connection disposal through exact terminal completion,
+  poisoned cleanup and the persistent-failure fence; independent review and 118 regressions passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

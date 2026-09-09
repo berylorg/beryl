@@ -106,6 +106,20 @@ impl ConnectionAttachment {
         })
     }
 
+    pub(super) fn try_ingester_is_finished(&self) -> Result<bool, ProjectionCoordinatorError> {
+        match self.ingester.try_lock() {
+            Ok(ingester) => Ok(ingester
+                .as_ref()
+                .is_none_or(|ingester| ingester.is_finished())),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(false),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(ProjectionCoordinatorError::RegistryPoisoned {
+                    registry: ProjectionRegistryKind::ProjectionConnection,
+                })
+            }
+        }
+    }
+
     pub(super) fn stop_and_join_ingester(
         &self,
     ) -> Result<super::provider_broker::ProviderBrokerStopped, ProjectionCoordinatorError> {
@@ -145,6 +159,16 @@ impl ConnectionAttachment {
             });
         }
         receipt_result
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(super) fn poison_worker_disposition_for_test(&self) {
+        self.ingester
+            .lock()
+            .expect("ingester handle starts healthy")
+            .as_ref()
+            .expect("exact ingester remains present")
+            .poison_worker_disposition_for_test();
     }
 
     #[cfg(feature = "test-faults")]

@@ -132,11 +132,16 @@ impl ConnectionRegistryAuthority {
         self.retired.load(Ordering::Acquire)
     }
 
-    pub(super) fn retirement_complete(&self) -> bool {
-        self.gate
-            .lock()
-            .map(|state| state.retirement_complete)
-            .unwrap_or(false)
+    pub(super) fn try_retirement_complete(&self) -> Result<bool, ProjectionCoordinatorError> {
+        match self.gate.try_lock() {
+            Ok(state) => Ok(state.retirement_complete),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(false),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(ProjectionCoordinatorError::RegistryPoisoned {
+                    registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
+                })
+            }
+        }
     }
 
     pub(in crate::cas_projection) fn release_session_owner(

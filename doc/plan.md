@@ -38,18 +38,29 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 358: Project Revision-Bound Process Work Inventory (finished)
+# Phase 370: Complete Connection Disposal Without Later Activity (finished)
 
-Accepted borrowed five-source revisions, bounded recent-first pages and an exact deduplicated
-thread count. Durable sources stream without catalog accumulation; current canonical metadata is
-copied without publication. Idle/completed bookkeeping is excluded, while unresolved work,
-cleanup and attention survive their handoffs. Foreign, stale, closed, unavailable and cancelled
-queries fail without execution or acknowledgement effects.
+Accepted exact runtime/process disposal through the existing health worker, independent of later
+activity. Active connections survive; contention defers maintenance, poisoned cleanup releases
+resources with an unclean result, and the persistent-failure fence remains intact.
 
-Independent semantic review, 128 lifecycle/source/session regressions, production compilation,
-formatting and diff checks passed. The [routing-barrier test correction](failures/cas-work-query-routing-barrier.md)
-preserves the real cleanup cuts. All twelve guarded jobs and temporary directories were reclaimed.
-Production ownership, view integration and shutdown remain separate acceptance boundaries.
+Independent semantic review, 118 lifecycle/runtime regressions, production compilation, formatting
+and diff checks passed. The [disposal correction](failures/cas-runtime-demand-terminal-disposal.md)
+records the lifetime counterexample and verification. All six guarded jobs and temporary
+directories were reclaimed. Runtime-demand retention and idle-session retirement remain separate.
+
+# Phase 371: Retain Runtime Demand Through Execution Cleanup (pending)
+
+Keep the existing required-work demand through loaded-projection, compaction and request custody
+using the admitted connection's existing worker ownership. Preserve exact runtime publication and
+the unguarded managed-runtime startup session. Extend driver custody through its retirement guard;
+verify last-interest release after real cleanup and all failure/replacement handoffs.
+
+# Phase 372: Retire Idle Process Execution Sessions (pending)
+
+Linearize exact idle-session retirement with execution checkout and other projection/compaction
+ownership. Release healthy idle resources without dropping required work, creating a second run
+owner, or using view/catalog membership as execution authority. Verify racing new work and reattach.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
@@ -60,6 +71,9 @@ without mounting a GUI per thread. Verify view-interest release and immediate
 reattachment preserve the same live execution and capture, and all terminal/replacement paths
 release required resources. Split any independently missing composition prerequisite before
 activation; production runtime/provider composition remains explicit rather than inferred.
+
+Composition resumes after the separate terminal-disposal, runtime-demand and idle-retirement
+prerequisites above pass acceptance.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

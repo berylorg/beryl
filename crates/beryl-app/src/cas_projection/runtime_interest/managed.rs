@@ -135,7 +135,7 @@ impl RunningRuntime for ManagedRuntime {
         {
             return Err(RuntimeFailure::ConnectionLost);
         }
-        Ok(())
+        self.app_resources.poll_retirements()
     }
 
     fn retire(&mut self) -> Result<(), RuntimeFailure> {

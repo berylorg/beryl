@@ -103,6 +103,28 @@ impl ForwardingHub {
         })
     }
 
+    pub(super) fn try_lock_attachment(
+        &self,
+    ) -> Result<Option<ForwardingHubAttachmentGuard<'_>>, ProjectionCoordinatorError> {
+        match self.state.try_lock() {
+            Ok(state) => Ok(Some(ForwardingHubAttachmentGuard { state })),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(ProjectionCoordinatorError::RegistryPoisoned {
+                    registry: ProjectionRegistryKind::ProjectionConnection,
+                })
+            }
+        }
+    }
+
+    pub(super) fn lock_attachment_for_disposal(&self) -> (ForwardingHubAttachmentGuard<'_>, bool) {
+        let (state, poisoned) = match self.state.lock() {
+            Ok(state) => (state, false),
+            Err(poison) => (poison.into_inner(), true),
+        };
+        (ForwardingHubAttachmentGuard { state }, poisoned)
+    }
+
     pub(super) fn record_thread_closed(
         &self,
         thread_id: &CasThreadId,

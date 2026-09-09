@@ -288,6 +288,19 @@ impl StartBlockedProviderBrokerIngester {
 }
 
 impl RunningProviderBrokerIngester {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection::connection) fn poison_worker_disposition_for_test(&self) {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _owner = self
+                .worker
+                .state
+                .lock()
+                .expect("worker disposition starts healthy");
+            panic!("poison exact ingester worker disposition");
+        }));
+        assert!(result.is_err());
+    }
+
     pub(in crate::cas_projection::connection) fn arm_ordinary_worker_release(
         &self,
     ) -> Result<(), ProviderBrokerWorkerDispositionArmError> {

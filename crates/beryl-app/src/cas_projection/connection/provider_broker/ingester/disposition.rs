@@ -4,7 +4,10 @@ impl ProviderBrokerStopped {
     pub(in crate::cas_projection::connection) const fn receipt(
         &self,
     ) -> ProviderBrokerTerminalReceipt {
-        self.receipt
+        ProviderBrokerTerminalReceipt {
+            clean: self.receipt.clean && self.worker_disposition.is_some(),
+            ..self.receipt
+        }
     }
 
     pub(in crate::cas_projection::connection) fn into_worker(
@@ -22,7 +25,7 @@ impl ProviderBrokerStopped {
         service_generation: crate::cas_projection::ProjectionServiceGeneration,
         home_generation: HomeGeneration,
     ) -> Result<(), ProviderBrokerIngesterJoinError> {
-        self.receipt
+        self.receipt()
             .validate_exact(service_generation, home_generation)
     }
 }

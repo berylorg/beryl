@@ -54,12 +54,56 @@ impl ProjectionRuntimeRetirement {
             .collect::<Vec<_>>();
         drop(connections);
         for connection in matching {
-            clean &= connection.shutdown().is_ok();
-            clean &= connection.shutdown_after_ordinary_retirement().is_ok();
+            clean &= connection.shutdown_for_runtime_retirement().is_ok();
         }
         self.connections.reap_finished_ordinary_retirements();
         drop(command);
         clean
+    }
+
+    pub(super) fn poll_retirements(&self) -> Result<(), super::RuntimeFailure> {
+        let Ok(_command) = self.commands.authorize() else {
+            return Ok(());
+        };
+        let matching = match self.connections.connections.try_lock() {
+            Ok(connections) => connections
+                .entries
+                .iter()
+                .filter(|connection| {
+                    connection.runtime_id() == self.runtime_id
+                        && connection.process_generation() == self.process_generation
+                })
+                .cloned()
+                .collect::<Vec<_>>(),
+            Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Err(super::RuntimeFailure::AppRetirement);
+            }
+        };
+        let mut reaped = Vec::new();
+        for connection in matching {
+            if connection
+                .try_reap_ordinary_retirement()
+                .map_err(|_| super::RuntimeFailure::AppRetirement)?
+            {
+                reaped.push(connection);
+            }
+        }
+        if !reaped.is_empty() {
+            match self.connections.connections.try_lock() {
+                Ok(state) => {
+                    let mut connections = ConnectionRegistryGuard { state };
+                    connections.retain(|connection| {
+                        !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped))
+                    });
+                }
+                Err(std::sync::TryLockError::WouldBlock) => {}
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    return Err(super::RuntimeFailure::AppRetirement);
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -146,13 +190,17 @@ impl ProjectionServiceConnectionRegistry {
             .clone();
         let mut reaped = Vec::new();
         for connection in snapshot {
-            if connection.try_reap_ordinary_retirement() {
+            if connection.try_reap_ordinary_retirement().unwrap_or(false) {
                 reaped.push(connection);
             }
         }
         if reaped.is_empty() {
             return;
         }
+        self.remove_reaped(&reaped);
+    }
+
+    fn remove_reaped(&self, reaped: &[Arc<ProjectionConnection>]) {
         self.lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .retain(|connection| !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped)));

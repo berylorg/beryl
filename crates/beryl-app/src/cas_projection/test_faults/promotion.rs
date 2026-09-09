@@ -183,6 +183,18 @@ impl ProjectionConnectionRetirementHandle {
         self.connection.poison_ingester_handle_for_test();
     }
 
+    pub fn poison_worker_disposition(&self) {
+        self.connection.poison_worker_disposition_for_test();
+    }
+
+    pub fn poison_shutdown_settlement(&self) {
+        self.connection.poison_shutdown_settlement_for_test();
+    }
+
+    pub fn with_shutdown_settlement<T>(&self, inspect: impl FnOnce() -> T) -> T {
+        self.connection.with_shutdown_settlement_for_test(inspect)
+    }
+
     /// Forces the exact provider ingester's next terminal receipt to be unclean.
     pub fn fail_next_ingester_join(&self) {
         self.connection.fail_next_ingester_join_for_test();

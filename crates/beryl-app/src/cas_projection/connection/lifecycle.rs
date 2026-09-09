@@ -1,5 +1,7 @@
 use super::*;
 
+mod retirement;
+
 /// Stable content-free identity facts for one exact projection connection.
 ///
 /// This observation is deliberately non-authorizing. A caller that needs to keep the connection
@@ -658,34 +660,6 @@ impl ProjectionConnection {
         }
     }
 
-    pub(in crate::cas_projection) fn try_reap_ordinary_retirement(&self) -> bool {
-        if !self.authority.is_retired() || !self.authority.retirement_complete() {
-            return false;
-        }
-        let Ok(mut settlement) = self.shutdown_settlement.lock() else {
-            return false;
-        };
-        match *settlement {
-            ConnectionShutdownSettlement::Clean => return self.is_detached(),
-            ConnectionShutdownSettlement::Failed => return false,
-            ConnectionShutdownSettlement::Unsettled => {}
-        }
-        let broker_finished = self
-            .current_attachment()
-            .map_or(true, |attachment| attachment.ingester_is_finished());
-        let driver_finished = self
-            .runtime
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .as_ref()
-            .is_none_or(|runtime| runtime.driver.is_finished());
-        if !broker_finished || !driver_finished {
-            return false;
-        }
-        let _ = self.settle_ordinary_shutdown_locked(&mut settlement);
-        *settlement == ConnectionShutdownSettlement::Clean && self.is_detached()
-    }
-
     pub(in crate::cas_projection) fn shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
         let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
             ProjectionCoordinatorError::RegistryPoisoned {
@@ -837,7 +811,12 @@ impl ProjectionConnection {
     }
 
     fn execute_terminal_shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
-        let attachment = self.current_attachment()?;
+        let (hub, hub_poisoned) = self.forwarding_hub.lock_attachment_for_disposal();
+        let attachment = hub
+            .attachment()
+            .cloned()
+            .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)?;
+        drop(hub);
         self.process_fact
             .retire(LiveEventTargetCloseReason::ConnectionRetired);
         attachment
@@ -849,9 +828,10 @@ impl ProjectionConnection {
             Ok(mut runtime) => (runtime.take(), false),
             Err(poison) => (poison.into_inner().take(), true),
         };
-        let mut first_error = poisoned.then_some(ProjectionCoordinatorError::RegistryPoisoned {
-            registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
-        });
+        let mut first_error =
+            (poisoned || hub_poisoned).then_some(ProjectionCoordinatorError::RegistryPoisoned {
+                registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
+            });
         if let Some(runtime) = runtime {
             runtime.driver.request_stop();
             if let Err(error) = runtime.driver.join()
@@ -874,12 +854,14 @@ impl ProjectionConnection {
             .provider_pages
             .lock()
             .unwrap_or_else(|poison| poison.into_inner()) = attachment.broker.page_diagnostics();
-        match self.forwarding_hub.lock_attachment() {
-            Ok(mut hub) => {
-                drop(hub.mark_inert());
-            }
-            Err(error) if first_error.is_none() => first_error = Some(error),
-            Err(_) => {}
+        let (mut hub, poisoned) = self.forwarding_hub.lock_attachment_for_disposal();
+        let endpoint = hub.mark_inert();
+        drop(hub);
+        drop(endpoint);
+        if poisoned && first_error.is_none() {
+            first_error = Some(ProjectionCoordinatorError::RegistryPoisoned {
+                registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
+            });
         }
         first_error.map_or(Ok(()), Err)
     }
@@ -895,6 +877,25 @@ impl ProjectionConnection {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner())
                 .is_none()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn poison_worker_disposition_for_test(&self) {
+        self.current_attachment()
+            .expect("exact attachment remains present")
+            .poison_worker_disposition_for_test();
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn poison_shutdown_settlement_for_test(&self) {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _owner = self
+                .shutdown_settlement
+                .lock()
+                .expect("settlement starts healthy");
+            panic!("poison exact connection shutdown settlement");
+        }));
+        assert!(result.is_err());
     }
 
     #[cfg(feature = "test-faults")]

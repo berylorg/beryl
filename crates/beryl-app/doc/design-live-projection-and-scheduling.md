@@ -20,6 +20,15 @@ topology and typed execution surfaces.
   current bounded operation. Only the driver polls and sends serialized provider requests.
 - The service acquires the configured driver-and-ingester permit pair atomically before either
   starts. Construction failure, retirement, and shutdown release the pair.
+- The runtime owner consumes completed connection retirement independently of later admission,
+  capacity waiters, view activity, or explicit shutdown. Its bounded maintenance leaves active
+  connections intact, uses exact runtime/process authority, and preserves the persistent-failure
+  disposal fence. Contention defers inspection; poisoned cleanup ownership remains a typed failure
+  while the consuming owner joins and releases the retained resources. Disposal-only recovery of
+  poisoned locks never restores execution authority or reports clean completion.
+- Required runtime demand survives admitted-session handoff through loaded projections and exact
+  request/worker cleanup. Its final release follows actual disposal, including driver retirement
+  cleanup; it cannot depend on the runtime retirement that the same demand prevents.
 - Workers receive only typed admitted capabilities. They cannot poll the stream, inspect backend
   storage, parse raw JSON, or retain GPUI, home-store, repository, or window handles.
 - A connection retains at most 256 retired remote-thread lane fences. Overflow retires the
