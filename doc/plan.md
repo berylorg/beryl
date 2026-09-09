@@ -38,14 +38,21 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 349: Resolve Timeout Policy At Compaction Admission (finished)
+# Phase 351: Retain Bounded Process Lifecycle Attention (finished)
 
-Accepted latest applied timeout resolution at manual and lifecycle compaction admission with one
-immutable operation deadline, typed absent/rejected/default provenance, and preserved settings-read
-failures. Real mid-turn Apply, deadline retention and existing-operation joins passed after the
-accepted distinct-proof handoff correction. Independent review, production check, formatting and
-diff checks passed; 79/79 selected regression tests passed with a 2.01 GiB job peak and no remaining
-child processes. Settings presentation remains its separate integration boundary.
+Accepted the bounded process lifecycle attention pool with exact attempt identity, FIFO admission,
+one-shot omission, stale acknowledgement rejection and joined close fencing. Compact records retain
+no execution or view authority. Independent semantic review, production check and formatting passed;
+24/24 pool and notice-arbiter tests passed with a 1.56 GiB job peak and no remaining child processes.
+Production producers and GUI routing remain separate boundaries.
+
+# Phase 352: Connect Production Lifecycle Acceptance To Attention (pending)
+
+Implement the production lifecycle-tool handler using exact winning acceptance and one attempt
+identity. Connect terminal review, operator-attention and completion outcomes, and bounded automatic
+continuation failures, to the accepted process pool. Preserve first-winner outcomes, user-input and
+stop/shutdown cancellation precedence, and release terminal lifecycle bookkeeping. Verify real
+ordinary dynamic-tool dispatch and terminal/continuation delivery before process assembly.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

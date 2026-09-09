@@ -185,8 +185,10 @@ pub mod composer_marker_seal;
 pub mod conversation_tools;
 mod dynamic_tool_namespace;
 pub mod input_admission;
+pub mod lifecycle_attention;
 mod lifecycle_dynamic_tools;
 pub mod main_window;
+mod notice_limits;
 pub mod theme_runtime;
 pub mod window_acquisition;
 
