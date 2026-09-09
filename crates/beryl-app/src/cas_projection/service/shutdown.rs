@@ -20,7 +20,12 @@ impl ProjectionConnectionService {
         if self.settled {
             return Ok(ProjectionConnectionServiceCloseOutcome::Closed);
         }
-        match self.command_gate.close_for_shutdown() {
+        let election = self.command_gate.close_for_shutdown();
+        let runtime_failed = self
+            .runtime_interest
+            .take()
+            .is_some_and(|mut owner| !owner.shutdown());
+        let outcome = match election {
             MasterCommandGateCloseOwner::OrdinaryShutdown => {
                 self.ordinary_shutdown_inner()?;
                 Ok(ProjectionConnectionServiceCloseOutcome::Closed)
@@ -31,7 +36,11 @@ impl ProjectionConnectionService {
                     evidence,
                 ))
             }
+        };
+        if runtime_failed {
+            return Err(ProjectionConnectionServiceCloseError::RuntimeRetirement);
         }
+        outcome
     }
 
     fn persistent_failure_shutdown_inner(
@@ -236,6 +245,7 @@ impl ProjectionConnectionService {
 
     fn request_implicit_ordinary_shutdown(&mut self) {
         self.settled = true;
+        drop(self.runtime_interest.take());
         if let Some(persistent_failure) = self.persistent_failure.as_ref() {
             persistent_failure.request_shutdown();
         }
@@ -247,10 +257,11 @@ impl ProjectionConnectionService {
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }
-        let connections = match self.connections.lock() {
-            Ok(mut connections) => std::mem::take(&mut *connections),
-            Err(poison) => std::mem::take(&mut *poison.into_inner()),
-        };
+        let connections = self
+            .connections
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone();
         for connection in connections {
             connection.request_ordinary_retirement_after_service_shutdown();
         }
@@ -267,6 +278,9 @@ impl Drop for ProjectionConnectionService {
                 self.request_implicit_ordinary_shutdown();
             }
             MasterCommandGateCloseOwner::PersistentFailure(failure_generation) => {
+                if let Some(mut owner) = self.runtime_interest.take() {
+                    let _ = owner.shutdown();
+                }
                 let _ = self.persistent_failure_shutdown_inner(failure_generation);
             }
         }

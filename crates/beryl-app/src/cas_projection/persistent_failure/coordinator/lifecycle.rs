@@ -48,6 +48,9 @@ impl PersistentFailureCoordinator {
         let state = Arc::new((
             Mutex::new(CoordinatorState {
                 phase: PersistentFailureCutState::Armed,
+                worker_exited: false,
+                #[cfg(feature = "test-faults")]
+                runtime_retirement_waiters: 0,
                 failure_generation: None,
                 target_count: 0,
                 proven_nondispatch_count: 0,
@@ -71,6 +74,7 @@ impl PersistentFailureCoordinator {
         let handle = std::thread::Builder::new()
             .name("beryl-persistent-failure-cut".to_owned())
             .spawn(move || {
+                let _exit = super::worker::WorkerExitSignal(Arc::clone(&context.state));
                 if initial_start.wait() {
                     super::worker::run_worker(receiver, context);
                 }
@@ -86,6 +90,15 @@ impl PersistentFailureCoordinator {
 
     pub(in crate::cas_projection) fn notification(&self) -> PersistentFailureNotification {
         self.notification.clone()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn runtime_retirement_waiters_for_test(&self) -> usize {
+        self.state
+            .0
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .runtime_retirement_waiters
     }
 
     pub(in crate::cas_projection) fn snapshot(&self) -> PersistentFailureCutSnapshot {

@@ -60,9 +60,11 @@ mod admission;
 mod commands;
 mod construction;
 mod flight_registry;
+mod runtime_interest;
 mod scheduling;
 mod shutdown;
 
+pub(super) use admission::ProjectionAdmissionContext;
 pub(super) use flight_registry::ProjectionFlight;
 
 struct PreparedProjectionSessionAdmission {
@@ -91,6 +93,7 @@ pub struct ProjectionConnectionService {
     scheduler_signal: AcceptedInputSchedulerSignal,
     native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
+    runtime_interest: Option<super::runtime_interest::RuntimeInterestOwner>,
     settled: bool,
 }
 
@@ -124,6 +127,8 @@ impl LiveHomeCommand<'_> {
 
 #[derive(Debug, Error)]
 pub enum ProjectionConnectionServiceCloseError {
+    #[error("one or more managed runtimes failed joined retirement")]
+    RuntimeRetirement,
     #[error("one or more projection connection workers failed during shutdown")]
     ConnectionShutdown,
     #[error("the active-steering scheduler failed or panicked before shutdown")]

@@ -8,11 +8,17 @@ version.workspace = true
 [features]
 default = []
 test-faults = [
+    "dep:tungstenite",
     "beryl-backend/lifecycle-test-support",
     "beryl-home-store/test-faults",
     "beryl-state/test-faults",
     "syndic-storage/test-faults",
 ]
+
+[[bin]]
+name = "managed-runtime-fixture"
+path = "tests/support/managed_runtime_fixture.rs"
+required-features = ["test-faults"]
 
 [dependencies]
 beryl-backend.workspace = true
@@ -36,6 +42,7 @@ taplo.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
+tungstenite = { workspace = true, optional = true }
 unicode-segmentation.workspace = true
 
 [dev-dependencies]

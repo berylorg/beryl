@@ -56,6 +56,14 @@ An ordinary session, cleanup owner, or promotion reservation could validate a li
 lose a race to typed failed-health observation, and still elect destructive connection retirement
 through a different synchronization boundary.
 
+Managed-runtime composition exposed the same distinction between lost admission and owned cleanup.
+`finish_session_admission` can register a connection and then return a closed-generation error;
+the absence of a returned session does not prove that no app workers remain. Likewise, a runtime
+worker reacting to gate closure can detach a router after the persistent-failure worker snapshots
+it but before freeze. That one unavailable router aborts the freeze pass before unrelated targets
+receive their stop obligations. Ordinary service Drop also cannot erase registry membership before
+the runtime worker obtains cleanup custody of an already-ready connection.
+
 Public pre-activation loaded projections were not counted by the worker pool. More projections
 could therefore reach failure than the coordinator's later vector capacity accepted. Forgetting the
 overflow avoided destructive drop but also made the exact authority unreachable and converted a
@@ -130,6 +138,14 @@ Failed-health observation, gate epoch invalidation, ordinary shutdown, persisten
 and short permit-authorized retirement commits share one master gate mutex. The only closed orders
 are ordinary commit first or failure observation first; no backend, storage, wait, or join occurs
 under that gate.
+
+The managed-process guard owns exact runtime/process registry retirement before admission starts.
+It joins matching app connections before backend disposal on both admission error and normal
+retirement. A pre-cut command permit stays held through detachment; an already-winning cut instead
+finishes its stop-obligation worker before resource retirement proceeds. An exit signal covers
+normal, incomplete and panic outcomes without retaining a command or registry lock while waiting.
+Ordinary Drop only fences and wakes; it preserves registered cleanup custody for the off-thread
+runtime owner. Explicit close remains the joined disposal barrier.
 
 Pre-activation loaded projections and ordinary quarantine anchors own non-cloneable surrender
 children derived from their actual admitted workers. The child and worker share one counted
@@ -248,6 +264,8 @@ target result must fail before registry mutation.
 
 ## Affected Authority
 
-- `doc/plan.md`, Phase 77.
+- `doc/plan.md`, Phases 77 and 345.
 - `doc/systems/cas-live-syndic-transcript/design.md`.
+- `doc/systems/backend-runtime/design.md`.
 - `crates/beryl-app/doc/design.md` and the CAS projection crate documentation.
+- Managed-runtime regression coverage: `crates/beryl-app/tests/managed_runtime_interest.rs`.

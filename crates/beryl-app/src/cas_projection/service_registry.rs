@@ -1,6 +1,64 @@
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
+use beryl_model::{CasProcessGeneration, RuntimeId};
+
+use super::persistent_failure::{LiveCommandAuthorizer, PersistentFailureTerminalDisposer};
 use super::{ProjectionServiceGeneration, connection::ProjectionConnection};
+
+pub(super) struct ProjectionRuntimeRetirement {
+    connections: Arc<ProjectionServiceConnectionRegistry>,
+    commands: LiveCommandAuthorizer,
+    terminal_disposer: PersistentFailureTerminalDisposer,
+    runtime_id: RuntimeId,
+    process_generation: CasProcessGeneration,
+}
+
+impl ProjectionRuntimeRetirement {
+    pub(super) fn new(
+        connections: Arc<ProjectionServiceConnectionRegistry>,
+        commands: LiveCommandAuthorizer,
+        terminal_disposer: PersistentFailureTerminalDisposer,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+    ) -> Self {
+        Self {
+            connections,
+            commands,
+            terminal_disposer,
+            runtime_id,
+            process_generation,
+        }
+    }
+
+    pub(super) fn retire(&self) -> bool {
+        // A pre-cut permit keeps the cut behind this retirement. A winning cut must finish
+        // assigning its stop obligations before any of its snapshotted routers can detach.
+        let command = self.commands.authorize().ok();
+        if command.is_none() && self.commands.is_persistent_failure_cut() {
+            self.terminal_disposer.wait_for_cut_worker_exit();
+        }
+        let (connections, mut clean) = match self.connections.lock() {
+            Ok(connections) => (connections, true),
+            Err(poison) => (poison.into_inner(), false),
+        };
+        let matching = connections
+            .iter()
+            .filter(|connection| {
+                connection.runtime_id() == self.runtime_id
+                    && connection.process_generation() == self.process_generation
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        drop(connections);
+        for connection in matching {
+            clean &= connection.shutdown().is_ok();
+            clean &= connection.shutdown_after_ordinary_retirement().is_ok();
+        }
+        self.connections.reap_finished_ordinary_retirements();
+        drop(command);
+        clean
+    }
+}
 
 /// Exact connection membership owned by one projection-service generation.
 ///

@@ -1,6 +1,127 @@
 use super::*;
 
+pub(in crate::cas_projection) struct ProjectionAdmissionContext {
+    home: Option<Arc<HomeStore>>,
+    home_id: BerylHomeId,
+    home_generation: HomeGeneration,
+    storage: SyndicStorage,
+    config: ProjectionServiceConfig,
+    workers: ProjectionWorkerPool,
+    command_authorizer: LiveCommandAuthorizer,
+    connections: Arc<ProjectionServiceConnectionRegistry>,
+    stop_coordinator: Arc<StopCoordinator>,
+    context_compaction: Arc<super::super::context_compaction::ContextCompactionCoordinator>,
+    scheduler_signal: AcceptedInputSchedulerSignal,
+    failure_notification: PersistentFailureNotification,
+    terminal_disposer: super::super::persistent_failure::PersistentFailureTerminalDisposer,
+}
+
 impl ProjectionConnectionService {
+    pub fn admit(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+    ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
+        self.admission_context()
+            .map_err(|source| {
+                ProjectionSessionAdmissionError::connection_ownership(
+                    runtime_id,
+                    process_generation,
+                    source,
+                )
+            })?
+            .admit(
+                connector,
+                runtime_id,
+                process_generation,
+                config_cwd,
+                timeout,
+            )
+    }
+
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn admit_lifecycle_test_candidate(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+    ) -> Result<AdmittedProjectionSession, ProjectionSessionAdmissionError> {
+        self.admission_context()
+            .map_err(|source| {
+                ProjectionSessionAdmissionError::connection_ownership(
+                    runtime_id,
+                    process_generation,
+                    source,
+                )
+            })?
+            .admit_lifecycle_test_candidate(
+                connector,
+                runtime_id,
+                process_generation,
+                config_cwd,
+                timeout,
+            )
+    }
+
+    pub(in crate::cas_projection) fn admission_context(
+        &self,
+    ) -> Result<ProjectionAdmissionContext, ProjectionCoordinatorError> {
+        let persistent_failure = self
+            .persistent_failure
+            .as_ref()
+            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+        Ok(ProjectionAdmissionContext {
+            home: self.home.clone(),
+            home_id: self.home_id,
+            home_generation: self.home_generation,
+            storage: self.storage.clone(),
+            config: self.config,
+            workers: self.workers.clone(),
+            command_authorizer: self.command_authorizer.clone(),
+            connections: Arc::clone(&self.connections),
+            stop_coordinator: Arc::clone(&self.stop_coordinator),
+            context_compaction: Arc::clone(
+                self.context_compaction
+                    .as_ref()
+                    .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?,
+            ),
+            scheduler_signal: self.scheduler_signal.clone(),
+            failure_notification: persistent_failure.notification(),
+            terminal_disposer: persistent_failure
+                .terminal_disposer(self.home_id, self.home_generation),
+        })
+    }
+
+    pub(super) fn ensure_current(&self) -> Result<(), ProjectionCoordinatorError> {
+        ensure_current_home(
+            self.home.as_deref(),
+            self.home_id,
+            self.home_generation,
+            &self.storage,
+        )
+    }
+}
+
+impl ProjectionAdmissionContext {
+    pub(in crate::cas_projection) fn runtime_retirement(
+        &self,
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+    ) -> super::super::service_registry::ProjectionRuntimeRetirement {
+        super::super::service_registry::ProjectionRuntimeRetirement::new(
+            Arc::clone(&self.connections),
+            self.command_authorizer.clone(),
+            self.terminal_disposer.clone(),
+            runtime_id,
+            process_generation,
+        )
+    }
+
     /// Creates, initializes, and release-admits one exact foreground candidate.
     ///
     /// The service selects the candidate's home, healthy generation, registered
@@ -174,20 +295,10 @@ impl ProjectionConnectionService {
             prepared.worker_permits,
             self.scheduler_signal.clone(),
             Arc::clone(&self.stop_coordinator),
-            Arc::clone(
-                self.context_compaction
-                    .as_ref()
-                    .expect("open service retains its context-compaction coordinator"),
-            ),
+            Arc::clone(&self.context_compaction),
             self.command_authorizer.clone(),
-            self.persistent_failure
-                .as_ref()
-                .expect("open service retains its persistent-failure coordinator")
-                .notification(),
-            self.persistent_failure
-                .as_ref()
-                .expect("open service retains its persistent-failure coordinator")
-                .terminal_disposer(self.home_id, self.home_generation),
+            self.failure_notification.clone(),
+            self.terminal_disposer.clone(),
         )
         .map_err(|source| {
             ProjectionSessionAdmissionError::connection_ownership(
@@ -208,30 +319,12 @@ impl ProjectionConnectionService {
     }
 
     pub(super) fn ensure_current(&self) -> Result<(), ProjectionCoordinatorError> {
-        let home = self
-            .home
-            .as_deref()
-            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
-        if home.home_id() != self.home_id {
-            return Err(ProjectionCoordinatorError::HomeIdentityMismatch {
-                expected: self.home_id,
-                actual: home.home_id(),
-            });
-        }
-        let health = home.health();
-        if health.state() != HomeHealthState::Healthy
-            || health.generation() != Some(self.home_generation)
-        {
-            return Err(ProjectionCoordinatorError::HomeGenerationMismatch {
-                expected: self.home_generation,
-                actual: health.generation(),
-                state: health.state(),
-            });
-        }
-        self.storage
-            .revision(home)
-            .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
-        Ok(())
+        ensure_current_home(
+            self.home.as_deref(),
+            self.home_id,
+            self.home_generation,
+            &self.storage,
+        )
     }
 
     fn register_connection(&self, connection: &Arc<ProjectionConnection>) {
@@ -247,4 +340,31 @@ impl ProjectionConnectionService {
             active.push(Arc::clone(connection));
         }
     }
+}
+
+fn ensure_current_home(
+    home: Option<&HomeStore>,
+    home_id: BerylHomeId,
+    home_generation: HomeGeneration,
+    storage: &SyndicStorage,
+) -> Result<(), ProjectionCoordinatorError> {
+    let home = home.ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+    if home.home_id() != home_id {
+        return Err(ProjectionCoordinatorError::HomeIdentityMismatch {
+            expected: home_id,
+            actual: home.home_id(),
+        });
+    }
+    let health = home.health();
+    if health.state() != HomeHealthState::Healthy || health.generation() != Some(home_generation) {
+        return Err(ProjectionCoordinatorError::HomeGenerationMismatch {
+            expected: home_generation,
+            actual: health.generation(),
+            state: health.state(),
+        });
+    }
+    storage
+        .revision(home)
+        .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
+    Ok(())
 }

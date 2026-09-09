@@ -1,5 +1,25 @@
 use super::*;
 
+pub(super) struct WorkerExitSignal(pub(super) Arc<(Mutex<CoordinatorState>, Condvar)>);
+
+impl Drop for WorkerExitSignal {
+    fn drop(&mut self) {
+        let mut state = self.0.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        state.worker_exited = true;
+        if matches!(
+            state.phase,
+            PersistentFailureCutState::Armed | PersistentFailureCutState::Cutting
+        ) {
+            state.phase = if std::thread::panicking() {
+                PersistentFailureCutState::Incomplete
+            } else {
+                PersistentFailureCutState::Stopped
+            };
+        }
+        self.0.1.notify_all();
+    }
+}
+
 impl Drop for PersistentFailureCoordinator {
     fn drop(&mut self) {
         self.stop_requested.store(true, Ordering::Release);

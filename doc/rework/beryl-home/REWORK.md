@@ -305,6 +305,8 @@
   single dispatch/capture and durable accepted input through joined shutdown.
 - [x] Accepted the bounded scheduled session checkout provider with exclusive custody and exact
   retirement; independent semantic review and 20 focused provider/scheduler/lease checks passed.
+- [x] Accepted bounded runtime-interest ownership with coalesced managed launch, foreground admission,
+  independent view/work interest and joined retirement; independent review and 74 focused checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

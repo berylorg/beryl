@@ -46,6 +46,7 @@ mod provider_frame;
 mod provider_identity;
 mod publication;
 mod runtime;
+mod runtime_interest;
 mod scheduled_ordinary;
 mod service;
 mod service_config;
@@ -116,6 +117,12 @@ pub use process_sessions::{
     ScheduledSessionRegistrationError,
 };
 pub use runtime::AdmittedProjectionSession;
+pub use runtime_interest::{
+    RuntimeActivityPeriod, RuntimeFailure, RuntimeInterest, RuntimeInterestConfig,
+    RuntimeInterestError, RuntimeInterestKind, RuntimeInterestStatus, RuntimeReadiness,
+};
+#[cfg(feature = "test-faults")]
+pub use runtime_interest::{RuntimeInterestTestHarness, RuntimeInterestTestProbe};
 pub use scheduled_ordinary::{
     OrdinaryDynamicToolAuthority, ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
     ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionLease,

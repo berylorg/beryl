@@ -38,15 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 324: Own Scheduled Execution Sessions In The Process (finished)
+# Phase 345: Own Managed Runtime Interest And Retirement (finished)
 
-Accepted the bounded provider for already-admitted sessions, with exclusive paired session/tool
-checkout, exact generation and binding validation, retiring-slot accounting and typed return wakes.
-Focused nextest verification passed 20/20 across provider, accepted-next scheduler and lease tests;
-independent semantic review found no blocking custody, privilege or dispatch issues. Two unviewed
-threads dispatch and capture terminal history, successor wakes resume queued work, and shutdown
-joins winning promotion. The guarded run peaked at 2.00 GiB and left no worker processes; formatting
-and diff checks passed. Production runtime composition and wider execution ownership remain below.
+Accepted bounded process-owned runtime interest with coalesced managed launch, foreground admission,
+fresh activity periods and exact joined retirement. View and required-work interests have independent
+lifetimes; saturation and uncertain disposal fail closed. All 74 focused nextest checks passed,
+including six real managed-process cases and scheduler/persistent-failure regressions. Independent
+semantic review, formatting, diff checks and canonical locked metadata passed; the lockfile is
+unchanged. The guarded run peaked at 2.00 GiB and left no child processes. Full execution composition
+and application shutdown remain below.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

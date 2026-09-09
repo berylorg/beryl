@@ -1,6 +1,30 @@
 use super::*;
 
 impl PersistentFailureTerminalDisposer {
+    pub(in crate::cas_projection) fn wait_for_cut_worker_exit(&self) {
+        self.notification.wake_worker();
+        let mut state = self
+            .state
+            .0
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        #[cfg(feature = "test-faults")]
+        {
+            state.runtime_retirement_waiters += 1;
+        }
+        while !state.worker_exited {
+            state = self
+                .state
+                .1
+                .wait(state)
+                .unwrap_or_else(|poison| poison.into_inner());
+        }
+        #[cfg(feature = "test-faults")]
+        {
+            state.runtime_retirement_waiters -= 1;
+        }
+    }
+
     pub(in crate::cas_projection) fn service_generation(&self) -> ProjectionServiceGeneration {
         self.notification.service_generation()
     }

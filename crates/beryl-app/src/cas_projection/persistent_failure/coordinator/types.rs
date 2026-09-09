@@ -132,6 +132,9 @@ impl PersistentFailureCutSnapshot {
 
 pub(super) struct CoordinatorState {
     pub(super) phase: PersistentFailureCutState,
+    pub(super) worker_exited: bool,
+    #[cfg(feature = "test-faults")]
+    pub(super) runtime_retirement_waiters: usize,
     pub(super) failure_generation: Option<PersistentFailureGeneration>,
     pub(super) target_count: usize,
     pub(super) proven_nondispatch_count: usize,

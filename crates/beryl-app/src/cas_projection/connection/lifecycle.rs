@@ -720,7 +720,7 @@ impl ProjectionConnection {
             .is_ok_and(|attachment| attachment.begin_ordinary_retirement())
     }
 
-    pub(super) fn shutdown_after_ordinary_retirement(
+    pub(in crate::cas_projection) fn shutdown_after_ordinary_retirement(
         &self,
     ) -> Result<(), ProjectionCoordinatorError> {
         let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
