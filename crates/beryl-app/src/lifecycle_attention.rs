@@ -7,6 +7,11 @@ use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 
 use crate::{LifecycleYieldOutcome, notice_limits::NOTICE_RECORD_CAPACITY};
 
+mod work;
+pub use work::{
+    LifecycleAttentionWorkError, LifecycleAttentionWorkRevision, LifecycleAttentionWorkSnapshot,
+};
+
 struct Owner {
     closed: AtomicBool,
 }
@@ -48,7 +53,7 @@ pub enum LifecycleAttentionKind {
     ContinuationFailed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LifecycleAttentionRecord {
     token: LifecycleAttentionToken,
     kind: LifecycleAttentionKind,
@@ -111,6 +116,13 @@ pub enum LifecycleAttentionAdmission {
 struct State {
     records: Vec<LifecycleAttentionRecord>,
     diagnostics: LifecycleAttentionDiagnostics,
+    revision: Option<u64>,
+}
+
+impl State {
+    fn changed(&mut self) {
+        self.revision = self.revision.and_then(|revision| revision.checked_add(1));
+    }
 }
 
 pub struct ProcessLifecycleAttentionPool {
@@ -127,6 +139,7 @@ impl ProcessLifecycleAttentionPool {
             state: Mutex::new(State {
                 records: Vec::with_capacity(NOTICE_RECORD_CAPACITY),
                 diagnostics: LifecycleAttentionDiagnostics::default(),
+                revision: Some(0),
             }),
         }
     }
@@ -200,12 +213,15 @@ impl ProcessLifecycleAttentionPool {
             return false;
         };
         state.records.remove(index);
+        state.changed();
         true
     }
 
     pub fn close(&self) {
         let mut state = self.lock();
-        self.owner.closed.store(true, Ordering::Release);
+        if !self.owner.closed.swap(true, Ordering::AcqRel) {
+            state.changed();
+        }
         state.records.clear();
     }
 
@@ -237,7 +253,9 @@ impl ProcessLifecycleAttentionPool {
                 .find(|record| Arc::ptr_eq(&record.token.0.0, &attempt.0))
             {
                 record.report_count = record.report_count.saturating_add(1);
-                return LifecycleAttentionAdmission::Updated(record.token.clone());
+                let token = record.token.clone();
+                state.changed();
+                return LifecycleAttentionAdmission::Updated(token);
             }
             return LifecycleAttentionAdmission::AlreadyReported;
         }
@@ -251,6 +269,7 @@ impl ProcessLifecycleAttentionPool {
             kind,
             report_count: 1,
         });
+        state.changed();
         LifecycleAttentionAdmission::Admitted(token)
     }
 

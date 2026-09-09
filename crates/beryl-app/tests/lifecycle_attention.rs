@@ -11,6 +11,9 @@ use beryl_app::{
 };
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 
+#[path = "lifecycle_attention/work.rs"]
+mod work;
+
 fn attempt(
     pool: &ProcessLifecycleAttentionPool,
     turn: u8,

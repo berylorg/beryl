@@ -38,13 +38,13 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 361: Compose Revision-Bound Control Work Facts (finished)
+# Phase 369: Publish Revision-Bound Attention Observations (finished)
 
-Accepted one exact revision pair and shared count/byte budget over stop/interruption and
-compaction/continuation pages, with source-boundary cursors and final validation of both sources.
-Independent review, 103 regressions, three final boundary tests, production compilation,
-formatting and diff checks passed. Copied pages retain no execution capacity. Five guarded
-verification runs left no owned children or temporary directories.
+Accepted exact-owner checked attention revisions and fixed-capacity snapshots. Record updates,
+acknowledgement and close invalidate old cuts; strict poison/overflow failures preserve existing
+attention operations. Independent review, 39 attention/lifecycle regressions, production
+compilation, formatting and diff checks passed. All three guarded jobs and temporary directories
+were reclaimed. Inventory composition now has its attention revision prerequisite.
 
 # Phase 358: Project Revision-Bound Process Work Inventory (pending)
 
