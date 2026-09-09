@@ -1,11 +1,35 @@
 use super::ProjectionConnectionService;
+use super::work_sources::ProcessWorkRead;
+
+impl ProjectionConnectionService {
+    pub fn control_work_revision(&self) -> Result<ControlWorkRevision, ControlWorkError> {
+        self.work_read().control_work_revision()
+    }
+
+    pub fn validate_control_work_revision(
+        &self,
+        revision: &ControlWorkRevision,
+    ) -> Result<(), ControlWorkError> {
+        self.work_read().validate_control_work_revision(revision)
+    }
+
+    pub fn control_work_page(
+        &self,
+        revision: &ControlWorkRevision,
+        cursor: Option<&ControlWorkCursor>,
+        limits: ControlWorkPageLimits,
+    ) -> Result<ControlWorkPage, ControlWorkError> {
+        self.work_read().control_work_page(revision, cursor, limits)
+    }
+}
+
 use crate::cas_projection::{
     CompactionWorkError, CompactionWorkPageLimits, ControlWorkCursor, ControlWorkError,
     ControlWorkPage, ControlWorkPageLimits, ControlWorkRevision, StopWorkPageLimits,
     control_work::ControlWorkPosition,
 };
 
-impl ProjectionConnectionService {
+impl ProcessWorkRead {
     pub fn control_work_revision(&self) -> Result<ControlWorkRevision, ControlWorkError> {
         let revision = ControlWorkRevision {
             stop: self.stop_work_revision()?,

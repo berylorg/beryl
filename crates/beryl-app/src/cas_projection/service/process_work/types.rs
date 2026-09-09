@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 
-use beryl_model::{DomainRevision, ExecutionBinding, SyndicThreadId};
+use beryl_model::{ExecutionBinding, SyndicThreadId};
 use syndic_storage::{SyndicReadError, SyndicTimestamp, ThreadCatalogTitle};
 use thiserror::Error;
 
@@ -13,10 +13,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessWorkRevision {
-    pub(super) durable: DomainRevision,
-    pub(super) sessions: ScheduledSessionWorkRevision,
-    pub(super) connections: ConnectionWorkRevision,
-    pub(super) controls: ControlWorkRevision,
+    pub(super) work: super::required::RequiredWorkRevision,
     pub(super) attention: LifecycleAttentionWorkRevision,
 }
 
@@ -139,6 +136,8 @@ pub enum ProcessWorkError {
     Cancelled,
     #[error("process work page limits must be nonzero")]
     InvalidLimits,
+    #[error("the process work source exceeds the configured session capacity")]
+    SourceBoundExceeded,
     #[error("one process work row exceeds the page byte limit")]
     ByteLimit,
     #[error("the logical process work count overflowed")]

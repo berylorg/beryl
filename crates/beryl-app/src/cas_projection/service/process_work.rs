@@ -10,6 +10,8 @@ use syndic_storage::ThreadCatalogSummaryPreparation;
 
 mod durable;
 mod live;
+mod required;
+pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
 mod types;
 pub use types::*;
@@ -21,7 +23,7 @@ struct LiveFacts {
 }
 
 pub struct ProcessWorkInventory<'a> {
-    service: &'a ProjectionConnectionService,
+    service: super::work_sources::ProcessWorkRead,
     sessions: &'a ScheduledExecutionSessions,
     attention: &'a ProcessLifecycleAttentionPool,
 }
@@ -33,7 +35,7 @@ impl ProjectionConnectionService {
         attention: &'a ProcessLifecycleAttentionPool,
     ) -> ProcessWorkInventory<'a> {
         ProcessWorkInventory {
-            service: self,
+            service: self.work_read(),
             sessions,
             attention,
         }
@@ -47,14 +49,7 @@ impl ProcessWorkInventory<'_> {
 
     pub fn revision(&self) -> Result<ProcessWorkRevision, ProcessWorkError> {
         let revision = ProcessWorkRevision {
-            durable: self
-                .service
-                .storage
-                .revision(self.home()?)
-                .map_err(syndic_storage::SyndicReadError::from)?,
-            sessions: self.sessions.work_revision()?,
-            connections: self.service.connection_work_revision()?,
-            controls: self.service.control_work_revision()?,
+            work: self.service.required_work_revision(self.sessions)?,
             attention: self.attention.work_revision()?,
         };
         self.validate_revision(&revision)?;
@@ -65,26 +60,8 @@ impl ProcessWorkInventory<'_> {
         &self,
         revision: &ProcessWorkRevision,
     ) -> Result<(), ProcessWorkError> {
-        if revision.sessions.home_id() != self.service.home_id
-            || revision.sessions.home_generation() != self.service.home_generation
-            || revision.sessions.service_generation() != self.service.service_generation
-        {
-            return Err(ProcessWorkError::ForeignSources);
-        }
-        if self
-            .service
-            .storage
-            .revision(self.home()?)
-            .map_err(syndic_storage::SyndicReadError::from)?
-            != revision.durable
-            || self.sessions.work_revision()? != revision.sessions
-        {
-            return Err(ProcessWorkError::StaleRevision);
-        }
         self.service
-            .validate_connection_work_revision(&revision.connections)?;
-        self.service
-            .validate_control_work_revision(&revision.controls)?;
+            .validate_required_work_revision(self.sessions, &revision.work)?;
         self.attention.validate_work_revision(&revision.attention)?;
         Ok(())
     }

@@ -1,4 +1,7 @@
 use super::*;
+
+#[path = "process_work_sources.rs"]
+mod sources;
 use crate::{
     LifecycleYieldOutcome,
     cas_projection::{

@@ -74,6 +74,16 @@ topology and typed execution surfaces.
   excludes new acquisition before signaling and disposal outside the ownership gates. These local
   checks do not establish complete process idleness: the process owner supplies required-work and
   view eligibility, and existing request/stop custody survives through joined cleanup.
+- Process owners share the inventory's revision-checked work readers through non-owning source
+  handles scoped to the exact home and service generation. A read may retain its sources only for
+  the bounded observation; retaining the handle creates no home, session or runtime demand.
+  Closed, unavailable, foreign or changing sources cannot establish idle eligibility.
+- An idle-eligibility observation examines only the configured bounded admitted-session set,
+  existing bounded local work and each named thread's point input gate. It does not enumerate
+  durable backlog or prepare presentation metadata. Pending turns, preparation, execution,
+  requests, stop, compaction, continuation and terminal cleanup retain required work; attention
+  alone and unadmitted queued input do not retain an idle execution session. These shared read
+  facts neither acquire execution nor replace the final conditional-retirement ownership checks.
 - Native continuation, resume, inclusive fork, fresh lineage, or one-time recovery injection is
   selected from bounded typed proofs. The app never dispatches rollback, summarizes a prefix,
   assembles recovery history, or silently selects injection after unclassified native failure.

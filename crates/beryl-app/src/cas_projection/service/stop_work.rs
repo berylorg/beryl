@@ -1,14 +1,38 @@
 use std::sync::Arc;
 
 use super::ProjectionConnectionService;
+use super::work_sources::ProcessWorkRead;
+
+impl ProjectionConnectionService {
+    pub fn stop_work_revision(&self) -> Result<StopWorkRevision, StopWorkError> {
+        self.work_read().stop_work_revision()
+    }
+
+    pub fn validate_stop_work_revision(
+        &self,
+        revision: &StopWorkRevision,
+    ) -> Result<(), StopWorkError> {
+        self.work_read().validate_stop_work_revision(revision)
+    }
+
+    pub fn stop_work_page(
+        &self,
+        revision: &StopWorkRevision,
+        cursor: Option<&StopWorkCursor>,
+        limits: StopWorkPageLimits,
+    ) -> Result<StopWorkPage, StopWorkError> {
+        self.work_read().stop_work_page(revision, cursor, limits)
+    }
+}
+
 use crate::cas_projection::stop_work::{
     StopWorkCursor, StopWorkError, StopWorkPage, StopWorkPageBuilder, StopWorkPageLimits,
     StopWorkRevision,
 };
 
-impl ProjectionConnectionService {
+impl ProcessWorkRead {
     fn check_stop_work_open(&self) -> Result<(), StopWorkError> {
-        if self.settled || !self.command_authorizer.is_open() {
+        if !self.command_authorizer.is_open() {
             Err(StopWorkError::Closed)
         } else {
             Ok(())

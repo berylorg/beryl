@@ -8,6 +8,9 @@ use beryl_app::{
 };
 use beryl_model::SyndicTurnId;
 
+#[path = "required_work.rs"]
+mod required;
+
 fn page(
     fixture: &syndic::Fixture,
     sessions: &ScheduledExecutionSessions,

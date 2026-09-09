@@ -1,6 +1,31 @@
 use std::sync::Arc;
 
 use super::ProjectionConnectionService;
+use super::work_sources::ProcessWorkRead;
+
+impl ProjectionConnectionService {
+    pub fn connection_work_revision(&self) -> Result<ConnectionWorkRevision, ConnectionWorkError> {
+        self.work_read().connection_work_revision()
+    }
+
+    pub fn validate_connection_work_revision(
+        &self,
+        revision: &ConnectionWorkRevision,
+    ) -> Result<(), ConnectionWorkError> {
+        self.work_read().validate_connection_work_revision(revision)
+    }
+
+    pub fn connection_work_page(
+        &self,
+        revision: &ConnectionWorkRevision,
+        cursor: Option<&ConnectionWorkCursor>,
+        limits: ConnectionWorkPageLimits,
+    ) -> Result<ConnectionWorkPage, ConnectionWorkError> {
+        self.work_read()
+            .connection_work_page(revision, cursor, limits)
+    }
+}
+
 use crate::cas_projection::{
     connection_work::{
         ConnectionWorkCursor, ConnectionWorkError, ConnectionWorkPage, ConnectionWorkPageBuilder,
@@ -9,9 +34,9 @@ use crate::cas_projection::{
     service_registry::ConnectionRegistryGuard,
 };
 
-impl ProjectionConnectionService {
+impl ProcessWorkRead {
     fn check_work_open(&self) -> Result<(), ConnectionWorkError> {
-        if self.settled || !self.command_authorizer.is_open() {
+        if !self.command_authorizer.is_open() {
             Err(ConnectionWorkError::Closed)
         } else {
             Ok(())

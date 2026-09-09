@@ -75,41 +75,31 @@ impl ProcessWorkInventory<'_> {
         let point_limit = SyndicPointReadLimit::new(65_536).expect("fixed nonzero limit");
         let mut gates = Source::new(|cursor| {
             check_cancelled(cancellation)?;
-            let page = storage.non_idle_gate_source_page(home, revision.durable, cursor, limits)?;
+            let page =
+                storage.non_idle_gate_source_page(home, revision.work.durable, cursor, limits)?;
             let mut rows = Vec::new();
             for source in page.records() {
                 check_cancelled(cancellation)?;
                 let gate = storage.resolve_non_idle_gate_source(
                     home,
-                    revision.durable,
+                    revision.work.durable,
                     *source,
                     point_limit,
                 )?;
-                let mut facts = ProcessWorkFacts::default();
-                match gate.state() {
-                    InputGateState::Idle => {
-                        return Err(syndic_storage::SyndicReadError::Invariant(
-                            "non-idle source resolved an idle gate",
-                        )
-                        .into());
-                    }
-                    InputGateState::PendingTurn(_) => facts.pending = true,
-                    InputGateState::AwaitingSteering(_) | InputGateState::Steerable(_) => {
-                        facts.executing = true
-                    }
-                    InputGateState::AwaitingTerminal(_) | InputGateState::FinalizingHistory(_) => {
-                        facts.terminal_settlement = true
-                    }
-                    InputGateState::Compacting { .. } => facts.compacting = true,
-                    InputGateState::Stopping { .. } => facts.stopping = true,
+                if matches!(gate.state(), InputGateState::Idle) {
+                    return Err(syndic_storage::SyndicReadError::Invariant(
+                        "non-idle source resolved an idle gate",
+                    )
+                    .into());
                 }
-                rows.push((source.thread_id(), facts));
+                rows.push((source.thread_id(), required::gate_work_facts(gate.state())));
             }
             Ok((rows, page.next_cursor()))
         });
         let mut next = Source::new(|cursor| {
             check_cancelled(cancellation)?;
-            let page = storage.accepted_next_source_page(home, revision.durable, cursor, limits)?;
+            let page =
+                storage.accepted_next_source_page(home, revision.work.durable, cursor, limits)?;
             Ok((
                 page.records()
                     .iter()
@@ -129,7 +119,7 @@ impl ProcessWorkInventory<'_> {
         let mut ready = Source::new(|cursor| {
             check_cancelled(cancellation)?;
             let page =
-                storage.accepted_ready_source_page(home, revision.durable, cursor, limits)?;
+                storage.accepted_ready_source_page(home, revision.work.durable, cursor, limits)?;
             Ok((
                 page.records()
                     .iter()

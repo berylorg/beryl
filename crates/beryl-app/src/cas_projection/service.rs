@@ -70,6 +70,8 @@ mod scheduling;
 mod shutdown;
 mod stop_work;
 mod work_facts;
+mod work_sources;
+pub(in crate::cas_projection) use work_sources::ProcessWorkSources;
 
 pub(super) use admission::ProjectionAdmissionContext;
 pub(super) use flight_registry::ProjectionFlight;

@@ -38,18 +38,23 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 372: Retire Idle Process Execution Sessions (finished)
+# Phase 373: Share Bounded Process Work Observations (finished)
 
-Accepted conditional retirement of one exact available registration through the existing checkout
-and connection gates. Busy attempts preserve ownership; successful election excludes acquisition
-before signaling and disposal. Required-work/view eligibility and production wiring remain the
-process composition boundary below.
+Accepted non-owning exact service source handles and shared revision-checked work readers.
+The targeted admitted-session query reads bounded local work and point input gates without
+catalog/backlog traversal or presentation preparation. Closed, foreign and changing sources fail
+closed; retained handles create no home, control or runtime ownership.
 
-Independent semantic review, 99 registry/runtime/lease/compaction/stop regressions, production
-compilation, formatting and diff checks passed. Evidence includes both checkout orders, stale
-registration, loaded/promotion/cleanup refusal, failure-cut preservation, same-runtime reattachment
-and real final cleanup. All seven guarded jobs and temporary directories were reclaimed. The
-[lifetime correction](failures/cas-runtime-demand-terminal-disposal.md) records acceptance.
+Independent semantic review, 24 focused tests, 120 broader work/control/session/preparation
+regressions, production compilation, formatting and diff checks passed. All eight guarded jobs
+and temporary directories were reclaimed. Idle wakes and production composition remain below.
+
+# Phase 374: Recheck Idle Sessions On Ownership Release (pending)
+
+Feed bounded idle observations and conditional retirement through a distinct coalesced scheduler
+maintenance wake. Relevant final view, preparation and live/control cleanup releases request another
+inspection after their state becomes observable. Preserve dispatch/retry lane masks, exact runtime
+binding, busy/stale refusal and generation fences; add no polling worker or retry loop.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
@@ -62,7 +67,7 @@ release required resources. Split any independently missing composition prerequi
 activation; production runtime/provider composition remains explicit rather than inferred.
 
 Composition resumes after the separate terminal-disposal, runtime-demand and idle-retirement
-prerequisites above pass acceptance.
+prerequisites and shared observation/idle-wake integration above pass acceptance.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

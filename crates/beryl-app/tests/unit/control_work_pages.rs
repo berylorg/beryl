@@ -198,21 +198,29 @@ fn composed_pages_revalidate_both_sources_across_every_cursor_stage() {
     let continuation = pool.reserve_continuation(thread(3), turn(3)).unwrap();
     for count in [1, 2, 256] {
         let revision = service.control_work_revision().unwrap();
-        let result =
-            service.collect_control_work_page(&revision, None, limits(count, 65_536), || {
+        let result = service.work_read().collect_control_work_page(
+            &revision,
+            None,
+            limits(count, 65_536),
+            || {
                 permissions[0].set_stage(PermissionInterruptionWorkStage::Driver);
-            });
+            },
+        );
         assert_eq!(
             result,
             Err(ControlWorkError::Stop(StopWorkError::StaleRevision))
         );
         permissions[0].set_stage(PermissionInterruptionWorkStage::Reserved);
         let revision = service.control_work_revision().unwrap();
-        let result =
-            service.collect_control_work_page(&revision, None, limits(count, 65_536), || {
+        let result = service.work_read().collect_control_work_page(
+            &revision,
+            None,
+            limits(count, 65_536),
+            || {
                 let transient = pool.reserve_continuation(thread(4), turn(4)).unwrap();
                 drop(transient);
-            });
+            },
+        );
         assert_eq!(
             result,
             Err(ControlWorkError::Compaction(
@@ -271,15 +279,18 @@ fn composed_pages_reject_foreign_owners_and_unavailable_successors() {
         Err(ControlWorkError::InvalidLimits)
     );
     assert_eq!(limits(usize::MAX, usize::MAX), limits(256, 65_536));
-    let failed = first.collect_control_work_page(&revision, None, limits(1, 65_536), || {
-        for seed in 10..91 {
-            first
-                .stop_coordinator
-                .compaction_custody
-                .source
-                .begin(thread(seed), Some(turn(seed)));
-        }
-    });
+    let failed =
+        first
+            .work_read()
+            .collect_control_work_page(&revision, None, limits(1, 65_536), || {
+                for seed in 10..91 {
+                    first
+                        .stop_coordinator
+                        .compaction_custody
+                        .source
+                        .begin(thread(seed), Some(turn(seed)));
+                }
+            });
     assert_eq!(
         failed,
         Err(ControlWorkError::Compaction(

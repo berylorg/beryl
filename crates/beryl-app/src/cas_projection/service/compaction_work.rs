@@ -1,14 +1,39 @@
 use std::sync::Arc;
 
 use super::ProjectionConnectionService;
+use super::work_sources::ProcessWorkRead;
+
+impl ProjectionConnectionService {
+    pub fn compaction_work_revision(&self) -> Result<CompactionWorkRevision, CompactionWorkError> {
+        self.work_read().compaction_work_revision()
+    }
+
+    pub fn validate_compaction_work_revision(
+        &self,
+        revision: &CompactionWorkRevision,
+    ) -> Result<(), CompactionWorkError> {
+        self.work_read().validate_compaction_work_revision(revision)
+    }
+
+    pub fn compaction_work_page(
+        &self,
+        revision: &CompactionWorkRevision,
+        cursor: Option<&CompactionWorkCursor>,
+        limits: CompactionWorkPageLimits,
+    ) -> Result<CompactionWorkPage, CompactionWorkError> {
+        self.work_read()
+            .compaction_work_page(revision, cursor, limits)
+    }
+}
+
 use crate::cas_projection::compaction_work::{
     CompactionWorkCursor, CompactionWorkError, CompactionWorkPage, CompactionWorkPageLimits,
     CompactionWorkRevision,
 };
 
-impl ProjectionConnectionService {
+impl ProcessWorkRead {
     fn check_compaction_work_open(&self) -> Result<(), CompactionWorkError> {
-        if self.settled || !self.command_authorizer.is_open() {
+        if !self.command_authorizer.is_open() {
             Err(CompactionWorkError::Closed)
         } else {
             Ok(())

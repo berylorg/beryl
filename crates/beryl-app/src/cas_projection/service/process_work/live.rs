@@ -1,3 +1,5 @@
+use super::super::work_sources::ProcessWorkRead;
+use super::required::RequiredWorkRevision;
 use super::*;
 use crate::cas_projection::{
     CompactionCommandWorkStage, ConnectionTargetWorkState, ConnectionWorkPageLimits,
@@ -11,11 +13,34 @@ impl ProcessWorkInventory<'_> {
         revision: &ProcessWorkRevision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LiveMap, ProcessWorkError> {
+        let mut facts = self
+            .service
+            .live_facts(self.sessions, &revision.work, cancellation)?;
+        for record in self.attention.work_snapshot(&revision.attention)?.records() {
+            if record.home_id() == self.service.home_id {
+                facts
+                    .entry(record.thread_id())
+                    .or_default()
+                    .attention
+                    .push(record.clone());
+            }
+        }
+        Ok(facts)
+    }
+}
+
+impl ProcessWorkRead {
+    pub(super) fn live_facts(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        revision: &RequiredWorkRevision,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<LiveMap, ProcessWorkError> {
         let mut facts = LiveMap::new();
         let mut cursor = None;
         loop {
             check_cancelled(cancellation)?;
-            let page = self.sessions.work_page(
+            let page = sessions.work_page(
                 &revision.sessions,
                 cursor.as_ref(),
                 ScheduledSessionWorkPageLimits::new(256, 65_536)?,
@@ -42,7 +67,7 @@ impl ProcessWorkInventory<'_> {
         let mut cursor = None;
         loop {
             check_cancelled(cancellation)?;
-            let page = self.service.connection_work_page(
+            let page = self.connection_work_page(
                 &revision.connections,
                 cursor.as_ref(),
                 ConnectionWorkPageLimits::new(256, 65_536)?,
@@ -75,7 +100,7 @@ impl ProcessWorkInventory<'_> {
         let mut cursor = None;
         loop {
             check_cancelled(cancellation)?;
-            let page = self.service.control_work_page(
+            let page = self.control_work_page(
                 &revision.controls,
                 cursor.as_ref(),
                 ControlWorkPageLimits::new(256, 65_536)?,
@@ -118,15 +143,6 @@ impl ProcessWorkInventory<'_> {
             }
         }
         check_cancelled(cancellation)?;
-        for record in self.attention.work_snapshot(&revision.attention)?.records() {
-            if record.home_id() == self.service.home_id {
-                facts
-                    .entry(record.thread_id())
-                    .or_default()
-                    .attention
-                    .push(record.clone());
-            }
-        }
         Ok(facts)
     }
 }
