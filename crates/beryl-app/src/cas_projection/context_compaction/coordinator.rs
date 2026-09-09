@@ -34,6 +34,8 @@ use super::ContextCompactionTargetAuthority;
 use super::{ContextCompactionTimeoutPolicy, ResolvedContextCompactionTimeout};
 
 mod admission;
+mod custody;
+use custody::{CompactionCommandCustody, CompactionCustodyPool};
 pub(in crate::cas_projection) mod dispatch;
 #[cfg(test)]
 #[path = "../../../tests/unit/context_compaction_driver.rs"]
@@ -79,6 +81,7 @@ fn require_committed_command(outcome: CommandOutcome) -> Result<(), ContextCompa
 }
 #[cfg(feature = "test-faults")]
 pub use test_faults::{
+    CompactionCustodyPauseController, CompactionCustodyPressureGuard, CompactionCustodyTestStage,
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
     ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
     ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,
@@ -100,6 +103,9 @@ pub(in crate::cas_projection) struct ContextCompactionCoordinator {
     scheduler_signal: AcceptedInputSchedulerSignal,
     closing: AtomicBool,
     settlement_fence: Mutex<()>,
+    custody: Arc<CompactionCustodyPool>,
+    #[cfg(feature = "test-faults")]
+    custody_pauses: Mutex<test_faults::CompactionCustodyPauses>,
     operations: Mutex<HashMap<SyndicThreadId, Arc<LocalCompaction>>>,
     work: Mutex<Option<mpsc::SyncSender<CompactionWork>>>,
     workers: Mutex<Vec<std::thread::JoinHandle<()>>>,
@@ -133,7 +139,7 @@ struct LocalCompaction {
     attempt: CompactionAttemptNonce,
     origin: CompactionOrigin,
     completion_timeout: ResolvedContextCompactionTimeout,
-    command: Mutex<Option<LiveCommandPermit>>,
+    command: Mutex<Option<CompactionCommandCustody>>,
     mutation: Mutex<()>,
     wait: Mutex<CompactionWait>,
     changed: Condvar,
@@ -215,6 +221,9 @@ impl ContextCompactionCoordinator {
             scheduler_signal,
             closing: AtomicBool::new(false),
             settlement_fence: Mutex::new(()),
+            custody: CompactionCustodyPool::new(),
+            #[cfg(feature = "test-faults")]
+            custody_pauses: Mutex::new(test_faults::CompactionCustodyPauses::default()),
             operations: Mutex::new(HashMap::new()),
             work: Mutex::new(Some(work)),
             workers: Mutex::new(Vec::with_capacity(COMPACTION_WORKER_CAPACITY)),
@@ -534,7 +543,7 @@ impl LocalCompaction {
         attempt: CompactionAttemptNonce,
         origin: CompactionOrigin,
         completion_timeout: ResolvedContextCompactionTimeout,
-        command: LiveCommandPermit,
+        command: CompactionCommandCustody,
     ) -> Self {
         Self {
             operation_id,
@@ -589,7 +598,11 @@ impl LocalCompaction {
     fn command_is_current(&self) -> bool {
         self.command
             .lock()
-            .map(|command| command.as_ref().is_some_and(LiveCommandPermit::is_current))
+            .map(|command| {
+                command
+                    .as_ref()
+                    .is_some_and(|custody| custody.command.is_current())
+            })
             .unwrap_or(false)
     }
 
@@ -597,8 +610,8 @@ impl LocalCompaction {
         let command = self
             .command
             .lock()
-            .map(|mut command| command.take())
-            .unwrap_or(None);
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take();
         drop(command);
     }
 

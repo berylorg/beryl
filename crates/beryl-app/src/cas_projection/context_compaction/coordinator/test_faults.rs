@@ -1,5 +1,11 @@
 use super::*;
 
+mod custody;
+pub(super) use custody::CompactionCustodyPauses;
+pub use custody::{
+    CompactionCustodyPauseController, CompactionCustodyPressureGuard, CompactionCustodyTestStage,
+};
+
 const TEST_WAIT_LIMIT: Duration = Duration::from_secs(5);
 
 pub(super) struct LifecycleStagingPause {
@@ -182,10 +188,12 @@ impl ContextCompactionLifecycleTestHarness {
             attempt,
             CompactionOrigin::Lifecycle { yielding_turn_id },
             ResolvedContextCompactionTimeout::fixed(completion_timeout),
-            coordinator
-                .commands
-                .authorize()
-                .map_err(|_| ContextCompactionError::Unavailable)?,
+            coordinator.reserve_command(
+                coordinator
+                    .commands
+                    .authorize()
+                    .map_err(|_| ContextCompactionError::Unavailable)?,
+            )?,
         ));
         coordinator.install_local(Arc::clone(&local))?;
         *driver = Some(dispatch::CompactionDriverGuard(local));
@@ -400,7 +408,10 @@ impl ContextCompactionWaitTestHarness {
             CompactionAttemptNonce::from_bytes([203; 16]),
             CompactionOrigin::Manual,
             ResolvedContextCompactionTimeout::fixed(completion_timeout),
-            test_live_command(),
+            CompactionCommandCustody {
+                command: test_live_command(),
+                _reservation: CompactionCustodyPool::new().reserve().unwrap(),
+            },
         )))
     }
 

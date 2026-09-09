@@ -24,6 +24,7 @@ impl ContextCompactionCoordinator {
         timeout_policy: &ContextCompactionTimeoutPolicy,
         command: LiveCommandPermit,
     ) -> Result<Arc<LocalCompaction>, ContextCompactionError> {
+        let command = self.reserve_command(command)?;
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;
         let (connection, projection) = self.projection_for(candidate)?;
@@ -42,7 +43,11 @@ impl ContextCompactionCoordinator {
             completion_timeout,
             command,
         ));
+        let mut custody = custody::CompactionAdmissionCustody::new(self, &local);
+        // Dispose the projection before releasing command custody, including on unwind.
+        let projection = projection;
         self.install_local(Arc::clone(&local))?;
+        custody.installed();
         if let Err(error) = require_committed_command(
             self.home.execute_current(
                 self.storage
@@ -69,11 +74,15 @@ impl ContextCompactionCoordinator {
         }
         let authority =
             ContextCompactionTargetAuthority::new(operation_id, operation.target().turn_id());
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionReady);
         let target = match projection.into_context_compaction_live_event_target(authority) {
             Ok(target) => target,
             Err(_) => {
                 let _ = self.settle(&local, CompactionSettlement::CancelledBeforeDispatch);
                 self.fail_local(&local);
+                #[cfg(feature = "test-faults")]
+                self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionFailed);
                 return Err(ContextCompactionError::AuthorityMismatch);
             }
         };
@@ -86,6 +95,7 @@ impl ContextCompactionCoordinator {
             }
             return Err(ContextCompactionError::Unavailable);
         }
+        custody.handoff();
         Ok(local)
     }
 
@@ -97,6 +107,9 @@ impl ContextCompactionCoordinator {
         completion_timeout: ResolvedContextCompactionTimeout,
         command: LiveCommandPermit,
     ) -> Result<(), ContextCompactionError> {
+        let command = self.reserve_command(command)?;
+        // Move the argument into local drop order before fallible preparation.
+        let projection = projection;
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;
         let admission = candidate.admission(
@@ -113,7 +126,11 @@ impl ContextCompactionCoordinator {
             completion_timeout,
             command,
         ));
+        let mut custody = custody::CompactionAdmissionCustody::new(self, &local);
+        // Dispose the projection before releasing command custody, including on unwind.
+        let projection = projection;
         self.install_local(Arc::clone(&local))?;
+        custody.installed();
         if self
             .stop
             .bind_lifecycle_compaction(
@@ -168,6 +185,7 @@ impl ContextCompactionCoordinator {
             }
             return Err(ContextCompactionError::Unavailable);
         }
+        custody.handoff();
         Ok(())
     }
 

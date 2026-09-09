@@ -88,6 +88,7 @@ pub use connection_work::{
 #[cfg(feature = "test-faults")]
 #[doc(hidden)]
 pub use context_compaction::{
+    CompactionCustodyPauseController, CompactionCustodyPressureGuard, CompactionCustodyTestStage,
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
     ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
     ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,

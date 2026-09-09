@@ -22,6 +22,8 @@ mod submission_fixture {
     ));
 }
 
+#[path = "normal_terminal/compaction_custody.rs"]
+mod compaction_custody;
 #[path = "normal_terminal/loss.rs"]
 mod loss;
 #[path = "normal_terminal/permission_work.rs"]

@@ -33,16 +33,16 @@ Do not substitute an unproven autonomous-loss schedule: ordinary connection reti
 been shown to invoke compaction settlement while the sole target consumer is paused before enqueue.
 The target-registration failure and paused return suffice.
 
-## Proposed Correction Awaiting Operator Direction
+## Accepted Course Correction
 
-Reserve compaction operation capacity before local installation and durable admission, and retain
-that reservation through failed-admission disposal, queue handoff, driver execution, settlement and
-target cleanup. Use the existing queue-plus-worker envelope, 72 operations, as the proposed total
+The Operator approved reserving compaction operation capacity before local installation and durable
+admission, retaining that reservation through failed-admission disposal, queue handoff, driver
+execution, settlement and target cleanup. The existing queue-plus-worker envelope, 72 operations, is the total
 custody budget. Completed result-only waiters need no reservation after exact command disposal.
 Capacity denial must precede durable admission and preserve existing exact dispatch and settlement
-rules. This changes execution admission and requires an explicit decision in the
+rules. This changes execution admission and is now specified in the
 [app live-control authority](../../crates/beryl-app/doc/design-live-control.md#custody-and-release)
-before planning its implementation.
+and its separate implementation prerequisite is accepted.
 
 Connection-worker retention alone is not a demonstrated replacement: multiple compaction admissions
 per connection would also need a bound. An arbitrary observation cutoff or silent omission of
@@ -54,3 +54,28 @@ already remains within the eight synchronous compaction workers. Successful life
 holds `settlement_fence` through intent removal, durable settlement, reconciliation and disposal,
 bounding that moved-out continuation interval to one. This does not establish every remaining
 continuation-source bound; that readiness review remains with the observation phase.
+
+## Verification
+
+The reservation now shares a disposal owner with the command permit. A separate admission guard
+removes installed local custody and releases the command after projection cleanup on failure or
+unwind, independently of retained result waiters. Successful enqueue transfers cleanup to the driver.
+The guard distinguishes failed installation from an installed operation, preserving existing intent.
+
+Independent review caught a Rust drop-order trap in the first implementation: local guards unwind
+before function parameters, and later locals before earlier locals. Explicit projection/target
+rebindings place disposal ahead of command release, including early lifecycle preparation failure.
+Poisoned command cleanup recovers the mutex contents to release the exact reservation.
+
+Three real protocol tests perform ordinary execution, compaction admission, connection retirement,
+failed target registration or admission unwind, and disposal with a retained result waiter. Pressure
+holds the other 71 slots; capacity denial precedes another durable admission despite connection
+worker reuse. Driver tests preserve custody through terminal handoff, epoch loss and poisoned unwind.
+The existing queue, continuation, settlement and shutdown checks remain passing.
+
+Independent semantic review, production compilation and 37 regressions passed. A final six-case
+custody run passed after adding retained-waiter assertions. Changed-file formatting and diff checks
+passed. Guarded job memory peaked at 2.10 GiB; owned processes exited and six exact task temporary
+directories were removed. The first protocol run was aborted after a test assertion left a pause
+controller outside its thread scope; controllers now release during scope unwind. The corrected
+bounded run exposed and fixed an unconsumed fixture admission event.

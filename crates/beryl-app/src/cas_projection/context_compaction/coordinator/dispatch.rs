@@ -116,8 +116,10 @@ impl ContextCompactionCoordinator {
         self.drive_operation(local, target);
     }
 
-    fn drive_operation(&self, local: Arc<LocalCompaction>, mut target: LiveEventTarget) {
+    fn drive_operation(&self, local: Arc<LocalCompaction>, target: LiveEventTarget) {
         let _driver = CompactionDriverGuard(Arc::clone(&local));
+        // A parameter would outlive the guard during unwind.
+        let mut target = target;
         if !local.command_is_current() {
             self.fail_local(&local);
             drop(target);

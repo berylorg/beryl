@@ -342,6 +342,8 @@
   worker reuse; independent semantic review, production compilation and 49 selected checks passed.
 - [x] Accepted bounded revision-bound stop and permission facts through removed-owner custody,
   ordered broker handoff and disposal; independent review, production check and 62 tests passed.
+- [x] Bounded compaction command custody from admission through disposal with 72 reservations;
+  independent review, production check, 37 regressions and final six-case verification passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

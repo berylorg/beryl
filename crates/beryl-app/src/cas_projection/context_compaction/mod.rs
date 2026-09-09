@@ -11,6 +11,7 @@ pub use timeout::{
 
 #[cfg(feature = "test-faults")]
 pub use coordinator::{
+    CompactionCustodyPauseController, CompactionCustodyPressureGuard, CompactionCustodyTestStage,
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
     ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
     ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,

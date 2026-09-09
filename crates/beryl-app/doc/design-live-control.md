@@ -74,6 +74,17 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 
 - Approval, stop, compaction, and continuation state uses explicit count, byte, and concurrency
   bounds. Each non-cloneable capability has one coordinator or driver owner.
+- Compaction reserves one of 72 process-local operation slots before installing local operation
+  state or publishing durable admission. This custody budget derives from the 64 queued operations
+  and eight execution workers; those queue and worker limits continue to apply independently.
+  Exhaustion rejects admission before durable mutation. Joining an existing operation consumes no
+  additional slot.
+- A compaction reservation follows exact command custody through preparation, failed admission,
+  queue handoff, execution, settlement and target cleanup. Local removal, response completion,
+  connection retirement and worker reuse cannot release it while that custody remains. Final
+  disposal, including cancellation and unwind, releases the slot; result-only waiters retain none
+  after command disposal. Verify paused failed admission and replacement pressure, queue/driver
+  handoff and post-settlement target cleanup without changing exact dispatch or settlement rules.
 - An admitted primary stop retains the exact connection's existing two-worker reservation through
   caller custody, queue handoff, driver dispatch, settlement and backend unbind or disposal. The
   reservation is shared with its already-admitted workers; it consumes no additional capacity and

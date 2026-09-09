@@ -23,6 +23,7 @@ struct DriverFixture {
     cas_turn: CasTurnId,
     local: Arc<LocalCompaction>,
     driver: dispatch::CompactionDriverGuard,
+    custody: Arc<CompactionCustodyPool>,
 }
 
 impl DriverFixture {
@@ -69,12 +70,16 @@ impl DriverFixture {
                 )),
             )
             .unwrap();
+        let custody = CompactionCustodyPool::new();
         let local = Arc::new(LocalCompaction::new(
             operation_id,
             CompactionAttemptNonce::from_bytes([seed.wrapping_add(2); 16]),
             CompactionOrigin::Manual,
             ResolvedContextCompactionTimeout::fixed(Duration::from_secs(1)),
-            command,
+            CompactionCommandCustody {
+                command,
+                _reservation: custody.reserve().unwrap(),
+            },
         ));
         let driver = dispatch::CompactionDriverGuard(Arc::clone(&local));
         router
@@ -98,6 +103,7 @@ impl DriverFixture {
             cas_turn,
             local,
             driver,
+            custody,
         }
     }
 }
@@ -105,6 +111,10 @@ impl DriverFixture {
 #[test]
 fn original_driver_permit_survives_local_completion_until_router_terminal_handoff() {
     let fixture = DriverFixture::new(211);
+    let pressure: Vec<_> = (0..71)
+        .map(|_| fixture.custody.reserve().unwrap())
+        .collect();
+    assert!(fixture.custody.reserve().is_none());
     let terminal = fixture
         .router
         .acquire_source_publication(&fixture.cas_thread, &fixture.cas_turn)
@@ -112,6 +122,7 @@ fn original_driver_permit_survives_local_completion_until_router_terminal_handof
     fixture.local.mark_accepted();
     fixture.local.complete(ContextCompactionOutcome::Succeeded);
     assert!(fixture.local.is_finished());
+    assert_eq!(fixture.custody.in_use(), 72);
     assert!(fixture.local.command_is_current());
     assert!(matches!(
         fixture.registration.poll_for_test(),
@@ -144,6 +155,11 @@ fn original_driver_permit_survives_local_completion_until_router_terminal_handof
         .unwrap();
     assert!(fixture.local.command_is_current());
     drop(fixture.driver);
+    assert_eq!(fixture.custody.in_use(), 71);
+    let replacement = fixture.custody.reserve().unwrap();
+    drop(replacement);
+    drop(pressure);
+    assert_eq!(fixture.custody.in_use(), 0);
     assert!(!fixture.local.command_is_current());
     assert!(fixture.local.command.lock().unwrap().is_none());
     assert_eq!(fixture.local.wait(), ContextCompactionOutcome::Succeeded);
@@ -163,6 +179,7 @@ fn original_driver_epoch_loss_while_router_terminal_is_pending_forbids_handoff()
         LiveEventPoll::Quiet
     ));
     let _ = fixture.gate.close_for_shutdown();
+    assert_eq!(fixture.custody.in_use(), 1);
     assert!(!fixture.local.command_is_current());
     assert!(matches!(
         fixture.router.handoff_target(
@@ -175,4 +192,31 @@ fn original_driver_epoch_loss_while_router_terminal_is_pending_forbids_handoff()
     drop(terminal);
     drop(fixture.driver);
     assert!(fixture.local.command.lock().unwrap().is_none());
+}
+
+#[test]
+fn compaction_driver_unwind_releases_poisoned_custody_with_result_waiter_retained() {
+    let fixture = DriverFixture::new(213);
+    fixture.local.complete(ContextCompactionOutcome::Failed);
+    let local = Arc::clone(&fixture.local);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _locked = local.command.lock().unwrap();
+            panic!("poison command custody");
+        }))
+        .is_err()
+    );
+    assert_eq!(fixture.custody.in_use(), 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _driver = fixture.driver;
+            panic!("unwind driver cleanup");
+        }))
+        .is_err()
+    );
+    assert_eq!(fixture.custody.in_use(), 0);
+    assert_eq!(fixture.local.wait(), ContextCompactionOutcome::Failed);
+    let replacement = fixture.custody.reserve().unwrap();
+    assert_eq!(fixture.custody.in_use(), 1);
+    drop(replacement);
 }

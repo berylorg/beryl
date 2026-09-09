@@ -38,16 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 363: Publish Revision-Bound Stop And Interruption Custody Facts (finished)
+# Phase 367: Bound Compaction Admission Custody Through Disposal (finished)
 
-Accepted bounded revision-bound stop and permission facts through registry removal, driver cleanup,
-joined admission, broker handoff and disposal. Foreign/stale revisions, exhaustion, poisoned state
-and closed generations reject observation. Independent semantic review, production compilation and
-62 selected checks passed; changed-file formatting passed. Package formatting reports existing
-differences in unrelated composer/projection files. Peak guarded job memory was 2.08 GiB; all owned
-children exited and temporary directories were removed. The
-[custody evidence](failures/cas-stop-custody-worker-reservation.md#accepted-observation)
-records acceptance and the corrected permission-disposal lock order.
+Accepted 72-operation custody reservation before compaction admission through failure, queue/driver
+handoff and final disposal. Result waiters retain no reservation after command release. Independent
+semantic review, production compilation, 37 regressions and final six-case custody verification
+passed. Changed-file formatting passed; guarded job memory peaked at 2.10 GiB. Owned children and
+six test temporary directories were reclaimed. The
+[custody evidence](failures/cas-compaction-admission-custody-bound.md#verification)
+records acceptance and the required unwind/drop ordering.
 
 # Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (pending)
 
@@ -57,15 +56,8 @@ continuation identity and pending/cancelled state when the accepted intent moves
 registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
 not queue/worker counts alone; observe without retaining capabilities or changing execution.
 
-Readiness is blocked before implementation: failed target registration removes a local compaction
-before its caller releases command custody, and connection retirement can reuse worker capacity
-while that caller remains paused. Independent source review confirms that the existing queue and
-worker limits do not bound this interval. The
-[compaction custody finding](failures/cas-compaction-admission-custody-bound.md)
-proposes reserving capacity before admission through final disposal using the existing 64+8 envelope.
-Await Operator direction for that execution-lifetime prerequisite; update the owning live-control
-authority and split its acceptance phase before resuming observation. Stop/permission acceptance
-remains complete.
+The compaction admission custody prerequisite is accepted. Stop/permission acceptance remains
+complete; finish the remaining continuation-source bound review before activation.
 
 # Phase 361: Compose Revision-Bound Control Work Facts (pending)
 
