@@ -99,6 +99,12 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
     let (home, store, storage, fixture) =
         seeded_fixture("promote-exact", promotion_fixture(90, id(90)));
     let request = promotion(&store, &storage);
+    assert_eq!(
+        storage
+            .non_idle_gate_source(&store, fixture.thread, limit())
+            .unwrap(),
+        None
+    );
     let draft_before = storage
         .draft(&store, fixture.current_draft, limit())
         .unwrap()
@@ -135,6 +141,19 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
         .unwrap();
     assert_eq!(thread.committed_tail(), Some(request.successor_turn_id()));
     assert_eq!(thread.current_draft_id(), fixture.current_draft);
+    let gate = storage
+        .input_gate(&store, fixture.thread, limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        storage
+            .non_idle_gate_source(&store, fixture.thread, limit())
+            .unwrap(),
+        Some(NonIdleGateSourceRecord::new(
+            fixture.thread,
+            gate.revision()
+        ))
+    );
     let parent = fixture
         .records
         .iter()

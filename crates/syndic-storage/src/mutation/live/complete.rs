@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainReader, MutationBuilder};
 
 use super::*;
@@ -17,7 +19,7 @@ impl CompleteTerminalHistoryMutation {
         let thread = required::<ThreadsFamily>(reader, &request.thread_id)?;
         let turn = required::<TurnsFamily>(reader, &request.turn_id)?;
         let state = required::<TurnStatesFamily>(reader, &request.turn_id)?;
-        let gate = required::<InputGatesFamily>(reader, &request.thread_id)?;
+        let gate = required_input_gate(reader, &request.thread_id)?;
         if turn.origin_thread_id() != thread.id()
             || thread.committed_tail() != Some(request.turn_id)
             || state.turn_id() != request.turn_id
@@ -73,7 +75,7 @@ impl TerminalHistoryCompletionRecords {
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         Ok(())
     }
 }

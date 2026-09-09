@@ -10,21 +10,19 @@ use beryl_home_store::{
     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     WholeHomeScrubTrigger,
 };
-use beryl_model::{
-    AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
-};
+use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId};
 use syndic_storage::{
     DRAFT_MARKER_ADMISSION_PAGE_MAX_ASSOCIATIONS, DraftEditorCandidateSessionIdV1,
     DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionAssignmentGroupV1,
-    DraftMarkerAdmissionChildV1,
-    DraftMarkerAdmissionCleanupCursorV1, DraftMarkerAdmissionCodecFixtureV1,
-    DraftMarkerAdmissionCommandIdV1, DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionEvidenceV1,
-    DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodeIdV1,
-    DraftMarkerAdmissionNodeKeyV1, DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodeV1,
-    DraftMarkerAdmissionOperationIdV1, DraftMarkerAdmissionOwnerV1,
-    DraftMarkerAdmissionPageIdentityV1, DraftMarkerAdmissionReceiptTransitionV1,
-    DraftMarkerAdmissionReplayReceiptV1, DraftMarkerAdmissionRetainedChargeV1,
-    DraftMarkerAdmissionRootV1, DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
+    DraftMarkerAdmissionChildV1, DraftMarkerAdmissionCleanupCursorV1,
+    DraftMarkerAdmissionCodecFixtureV1, DraftMarkerAdmissionCommandIdV1,
+    DraftMarkerAdmissionDigestV1, DraftMarkerAdmissionEvidenceV1, DraftMarkerAdmissionHeadV1,
+    DraftMarkerAdmissionLifecycleV1, DraftMarkerAdmissionNodeIdV1, DraftMarkerAdmissionNodeKeyV1,
+    DraftMarkerAdmissionNodeKindV1, DraftMarkerAdmissionNodeV1, DraftMarkerAdmissionOperationIdV1,
+    DraftMarkerAdmissionOwnerV1, DraftMarkerAdmissionPageIdentityV1,
+    DraftMarkerAdmissionReceiptTransitionV1, DraftMarkerAdmissionReplayReceiptV1,
+    DraftMarkerAdmissionRetainedChargeV1, DraftMarkerAdmissionRootV1,
+    DraftMarkerAdmissionSchemaErrorV1, DraftMarkerAdmissionSourceKeyV1,
     DraftMarkerAdmissionTargetDispositionV1, DraftMarkerAdmissionTreeV1,
     DraftMarkerLabelAllocationRangeV1, SyndicStorage,
     canonical_empty_draft_marker_admission_root_v1, draft_marker_admission_codec_accepts,
@@ -260,7 +258,11 @@ fn allocation_continuation(
     first: ImageLabelOrdinal,
     last: ImageLabelOrdinal,
     next: ImageLabelOrdinal,
-    prior: Option<(DraftMarkerAdmissionAssignmentGroupV1, AssetId, ImageLabelOrdinal)>,
+    prior: Option<(
+        DraftMarkerAdmissionAssignmentGroupV1,
+        AssetId,
+        ImageLabelOrdinal,
+    )>,
 ) -> Result<DraftMarkerAdmissionAssignmentContinuationV1, DraftMarkerAdmissionSchemaErrorV1> {
     DraftMarkerAdmissionAssignmentContinuationV1::allocate(
         DraftMarkerLabelAllocationRangeV1::new_for_test(first, last)?,
@@ -784,7 +786,7 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
 #[test]
 fn four_admission_families_are_appended_without_reordering_prior_families() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 87);
+    assert_eq!(names.len(), 88);
     assert_eq!(names[86], "draft-piece-build-mapping");
     assert_eq!(
         &names[81..86],

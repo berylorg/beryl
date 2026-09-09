@@ -129,42 +129,46 @@ impl SyndicStorage {
         request: TransitionRequest<'_>,
         limit: SyndicPointReadLimit,
     ) -> Result<AcceptedInputDeliveryTransitionStatus, SyndicReadError> {
-        let input = self.point::<AcceptedInputsFamily>(store, request.input, limit)?;
-        let leaf = self.point::<AcceptedRouteLeavesFamily>(store, request.input, limit)?;
-        let (Some(input), Some(leaf)) = (input, leaf) else {
-            return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
-        };
-        if input.thread_id() != request.thread || !input_leaf_identity_agrees(&input, &leaf) {
-            return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
-        }
+        self.with_current_gate_source(store, request.thread, limit, || {
+            let input = self.point::<AcceptedInputsFamily>(store, request.input, limit)?;
+            let leaf = self.point::<AcceptedRouteLeavesFamily>(store, request.input, limit)?;
+            let (Some(input), Some(leaf)) = (input, leaf) else {
+                return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
+            };
+            if input.thread_id() != request.thread || !input_leaf_identity_agrees(&input, &leaf) {
+                return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
+            }
 
-        let next_revision = request
-            .expected_input_revision
-            .checked_next()
-            .map_err(|_| {
-                SyndicReadError::Invariant(
-                    "accepted-input delivery reconciliation revision frontier is exhausted",
-                )
-            })?;
-        let (next_state, next_lifecycle) = request.kind.successor();
-        let direct_successor = leaf.revision() == next_revision
-            && leaf.state() == next_state
-            && leaf.lifecycle() == next_lifecycle;
-        let promoted_successor = leaf.promotion().is_some_and(|promotion| {
-            leaf.lifecycle() == AcceptedInputLifecycle::Promoted
-                && promotion.expected_input_revision() == next_revision
-        });
-        if let Some(proof) = leaf.last_transition()
-            && (direct_successor || promoted_successor)
-            && request.matches_transition_proof(proof)
-        {
-            return self.classify_stable_exact_authority(store, request, &input, proof, limit);
-        }
-        if leaf.revision() != request.expected_input_revision || !request.kind.admits_prior(&leaf) {
-            return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
-        }
+            let next_revision = request
+                .expected_input_revision
+                .checked_next()
+                .map_err(|_| {
+                    SyndicReadError::Invariant(
+                        "accepted-input delivery reconciliation revision frontier is exhausted",
+                    )
+                })?;
+            let (next_state, next_lifecycle) = request.kind.successor();
+            let direct_successor = leaf.revision() == next_revision
+                && leaf.state() == next_state
+                && leaf.lifecycle() == next_lifecycle;
+            let promoted_successor = leaf.promotion().is_some_and(|promotion| {
+                leaf.lifecycle() == AcceptedInputLifecycle::Promoted
+                    && promotion.expected_input_revision() == next_revision
+            });
+            if let Some(proof) = leaf.last_transition()
+                && (direct_successor || promoted_successor)
+                && request.matches_transition_proof(proof)
+            {
+                return self.classify_stable_exact_authority(store, request, &input, proof, limit);
+            }
+            if leaf.revision() != request.expected_input_revision
+                || !request.kind.admits_prior(&leaf)
+            {
+                return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
+            }
 
-        self.classify_stable_prior_authority(store, request, &input, limit)
+            self.classify_stable_prior_authority(store, request, &input, limit)
+        })
     }
 
     fn classify_stable_exact_authority(

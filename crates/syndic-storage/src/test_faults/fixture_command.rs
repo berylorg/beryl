@@ -49,6 +49,7 @@ impl FixtureOperation {
                 FixtureDelete::Turn(_) => super::PhysicalFamily::Turns,
                 FixtureDelete::TurnState(_) => super::PhysicalFamily::TurnStates,
                 FixtureDelete::InputGate(_) => super::PhysicalFamily::InputGates,
+                FixtureDelete::NonIdleGateSource(_) => super::PhysicalFamily::NonIdleGateSources,
                 FixtureDelete::AcceptedInput(_) => super::PhysicalFamily::AcceptedInputs,
                 FixtureDelete::StopOperation(_) => super::PhysicalFamily::StopOperations,
                 FixtureDelete::CompactionOperation(_) => {
@@ -212,15 +213,19 @@ impl DomainMutation<SyndicDomain> for FixtureBatch {
         let mut quotas = Vec::<(super::PhysicalFamily, usize)>::new();
         for operation in &self.operations {
             let family = operation.family();
-            if let Some((_, count)) = quotas.iter_mut().find(|(known, _)| *known == family) {
-                *count = count.checked_add(1).ok_or(
-                    MutationBuildError::ReconciliationReservationOverflow {
-                        domain: "syndic",
-                        family: family.name(),
-                    },
-                )?;
-            } else {
-                quotas.push((family, 1));
+            let source_family = (family == super::PhysicalFamily::InputGates)
+                .then_some(super::PhysicalFamily::NonIdleGateSources);
+            for family in [Some(family), source_family].into_iter().flatten() {
+                if let Some((_, count)) = quotas.iter_mut().find(|(known, _)| *known == family) {
+                    *count = count.checked_add(1).ok_or(
+                        MutationBuildError::ReconciliationReservationOverflow {
+                            domain: "syndic",
+                            family: family.name(),
+                        },
+                    )?;
+                } else {
+                    quotas.push((family, 1));
+                }
             }
         }
         for (family, count) in quotas {
@@ -284,6 +289,7 @@ fn reserve_fixture_family(
         super::PhysicalFamily::Turns => reserve!(TurnsCodec),
         super::PhysicalFamily::TurnStates => reserve!(TurnStatesCodec),
         super::PhysicalFamily::InputGates => reserve!(InputGatesCodec),
+        super::PhysicalFamily::NonIdleGateSources => reserve!(NonIdleGateSourcesCodec),
         super::PhysicalFamily::AcceptedInputs => reserve!(AcceptedInputsCodec),
         super::PhysicalFamily::StopOperations => reserve!(StopOperationsCodec),
         super::PhysicalFamily::CompactionOperations => reserve!(CompactionOperationsCodec),

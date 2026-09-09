@@ -39,6 +39,7 @@ fn idle_submission_mutation_footprint() -> Result<CheckedBatchFootprint, Durable
         put::<TranscriptBuildsCodec>()?,
         put::<HistorySummariesCodec>()?,
         put::<InputGatesCodec>()?,
+        put::<NonIdleGateSourcesCodec>()?,
         put::<ActivityQueryHeadsCodec>()?,
         put::<ActivityQuerySourcesCodec>()?,
         put::<BindingsCodec>()?,
@@ -70,6 +71,7 @@ fn accepted_input_promotion_mutation_footprint()
         put::<TranscriptBuildsCodec>()?,
         put::<HistorySummariesCodec>()?,
         put::<InputGatesCodec>()?,
+        put::<NonIdleGateSourcesCodec>()?,
         put::<ActivityQueryHeadsCodec>()?,
         put::<ActivityQuerySourcesCodec>()?,
         put::<BindingsCodec>()?,
@@ -114,9 +116,9 @@ mod tests {
     #[test]
     fn idle_submission_max_includes_every_optional_write_branch() {
         let footprint = idle_submission_mutation_footprint().expect("checked footprint");
-        assert_eq!(22, footprint.records());
-        assert_eq!(458, footprint.encoded_key_bytes());
-        assert_eq!(1_311_312, footprint.encoded_value_bytes());
+        assert_eq!(23, footprint.records());
+        assert_eq!(474, footprint.encoded_key_bytes());
+        assert_eq!(1_311_340, footprint.encoded_value_bytes());
 
         let head = put::<ImageLabelAuthorityHeadsCodec>().expect("head footprint");
         assert_eq!(1, head.records());
@@ -128,8 +130,8 @@ mod tests {
     #[test]
     fn accepted_input_promotion_max_includes_every_optional_write_branch() {
         let footprint = accepted_input_promotion_mutation_footprint().expect("checked footprint");
-        assert_eq!(20, footprint.records());
-        assert_eq!(432, footprint.encoded_key_bytes());
-        assert_eq!(1_310_800, footprint.encoded_value_bytes());
+        assert_eq!(21, footprint.records());
+        assert_eq!(448, footprint.encoded_key_bytes());
+        assert_eq!(1_310_828, footprint.encoded_value_bytes());
     }
 }

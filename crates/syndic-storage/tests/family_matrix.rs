@@ -154,7 +154,7 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 #[test]
 fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let records = populated_records();
-    assert_eq!(PhysicalFamily::ALL.len(), 63);
+    assert_eq!(PhysicalFamily::ALL.len(), 64);
     // Provider staging, stop-operation, and compaction families are covered by their dedicated
     // phase fixtures rather than this legacy populated aggregate. Resource families are
     // intentionally unrepresented because the fixture's plain provider text produces no typed
@@ -184,6 +184,7 @@ fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
                 | PhysicalFamily::ActivityQueryEntries
                 | PhysicalFamily::ActivityQuerySources
                 | PhysicalFamily::InputGates
+                | PhysicalFamily::NonIdleGateSources
                 | PhysicalFamily::AcceptedInputs
                 | PhysicalFamily::AcceptedRouteGenerationHeads
                 | PhysicalFamily::AcceptedRouteLeaves
@@ -343,7 +344,7 @@ fn rejection_families() -> Vec<PhysicalFamily> {
 fn exercise_deletion_partition(modulus: usize, remainder: usize) {
     let cases = deletion_cases();
     let rejection_families = rejection_families();
-    assert_eq!(cases.len(), 54);
+    assert_eq!(cases.len(), 55);
     assert_eq!(cases.len(), rejection_families.len());
     for family in rejection_families {
         assert_eq!(

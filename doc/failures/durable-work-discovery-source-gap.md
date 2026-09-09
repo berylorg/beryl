@@ -18,8 +18,8 @@ assuming the pending-turn reader already supplies authority-compliant discovery.
   `crates/syndic-storage/src/read/delivery_recovery/pages.rs` scan `InputGatesFamily` across the
   complete thread-key range, then filter rows. The app's recovered-pending scheduler and startup
   recovery call these readers.
-- The [sole V7 schema authority](../../crates/syndic-storage/doc/design-schema-v7.md#v7-domain-schema)
-  closes the complete inventory at 91 families. Its accepted-ready and accepted-next sources name
+- Before correction, the [sole V7 schema authority](../../crates/syndic-storage/doc/design-schema-v7.md#v7-domain-schema)
+  closed the complete inventory at 91 families. Its accepted-ready and accepted-next sources name
   accepted-route generations; they do not represent a route-free directly submitted pending turn.
 - `thread-executions` records immutable runtime/root binding rather than work membership. No
   declared compact source can replace the pending reader merely by implementing a missing codec.
@@ -28,23 +28,37 @@ Independent readiness review confirmed the missing persisted-source prerequisite
 inventory contract is otherwise sufficient; composite revisions, merge mechanics and locking need
 no additional architectural prescription if they satisfy its observable guarantees.
 
-## Required Resolution
+## Accepted Course Correction
 
-The Operator must resolve the owning storage contract before implementation. Membership, atomic
-maintenance, revision-bound discovery and validation belong to storage authority; the exact new
-family, natural key, value encoding, record version and revised inventory belong exclusively to
-`design-schema-v7.md`.
+The Operator approved one shared non-idle gate source for pending-turn and startup discovery.
+Independent architecture review accepted the owning
+[storage contract](../../crates/syndic-storage/doc/design-history-storage.md#non-idle-gate-discovery)
+and [canonical schema](../../crates/syndic-storage/doc/design-schema-v7.md#non-idle-gate-source-canonical-encoding).
+Those documents now control membership, atomic maintenance, revision-bound discovery, validation,
+encoding and the revised closed inventory; this record does not duplicate their authority.
 
-Recommended proposal for review: one compact source per non-idle input gate, keyed by exact thread
-and carrying the selected gate revision. Every gate transition atomically inserts, updates or
-removes its source. Source pages discover candidates; bounded exact gate/turn/binding reads retain
-existing eligibility and recovery checks. The source grants no execution capability and contains
-no content or request payload. Existing accepted-route sources continue to own queued work whose
-gate is idle. This shared non-idle source would replace both pending-turn and startup gate sweeps.
-This paragraph is a proposal, not accepted schema or implementation authority.
+Source maintenance is independently accepted; replacing discovery readers and composing complete
+inventory remain subsequent work. Do not omit pre-session pending work, repurpose accepted-route
+records, or treat the current broad scan as an approved exception. Accepted managed preparation
+did not establish acceptance of that pre-existing discovery path.
 
-After authority is resolved, implement and independently accept the compact source and its atomic
-maintenance before replacing discovery readers and composing complete inventory. Do not omit
-pre-session pending work, repurpose accepted-route records, add an undeclared family, or treat the
-current broad scan as an approved exception. Phase 325 remains pending; phase 355's accepted managed
-preparation does not establish acceptance of this pre-existing discovery path.
+## Reconciliation Closure
+
+Paired mutation writes and reserved rollback effects alone do not complete a new index boundary.
+Independent review found that `first_acceptance_status` and other natural reconciliation readers
+could still classify exact success from an observation that omitted the new source. A removed
+same-command index would therefore leave a false exact result.
+
+Stabilize the current gate/source pair around the affected status read, classify scoped changes
+before stable disagreement, and validate the source against the current gate. Historical receipt
+gates remain evidence of their own transition and must not select today's source revision.
+Direct acceptance, delivery and late compaction reconciliation now have focused corruption cases;
+their verification passed with the source-maintenance acceptance boundary.
+
+## Verification
+
+Production storage/app compilation and 175 selected lifecycle, reconciliation, schema, corruption
+and footprint checks passed with the configured LLVM and one-build-job settings. Independent
+persistence review accepted the current-source correction and preserved registration order.
+Peak guarded job memory was 1.45 GiB; owned test processes exited and temporary directories were
+removed. Discovery replacement and full process inventory were not claimed by those checks.

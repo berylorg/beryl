@@ -38,30 +38,38 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 355: Prepare Runtime Sessions For Eligible Process Work (finished)
+# Phase 356: Maintain Compact Non-Idle Gate Sources (finished)
 
-Accepted bounded managed runtime/session preparation for durable scheduler candidates, exact explicit
-retry after latched failure, dependency-release wakeups and joined shutdown/home-failure cleanup.
-Independent review, production compilation, formatting and 80 selected regression checks passed;
-peak job memory was 2.02 GiB with no remaining children. The
-[capacity re-entry lesson](failures/cas-accepted-next-own-capacity-retry.md#runtime-preparation-re-entry)
-records the durable correction. Work inventory and direct-view integration remain subsequent work.
+Accepted atomic non-idle gate source maintenance, bounded reservations, canonical encoding and
+current-source validation in mutations, natural reconciliation and explicit schema checks.
+Independent review, storage/app production compilation, formatting and 175 selected checks passed;
+peak job memory was 1.45 GiB with no remaining children. The
+[reconciliation lesson](failures/durable-work-discovery-source-gap.md#reconciliation-closure)
+records the correction. Discovery readers and process inventory remain subsequent work.
+
+# Phase 357: Discover Durable Work Through Compact Sources (pending)
+
+Expose bounded generation/revision-bound non-idle source pages and replace pending-turn/startup
+input-gate sweeps. Preserve exact eligibility, source-anchor validation, typed drift/corruption,
+explicit forward rebase and required fresh scans. Verify idle-thread exclusion, pagination,
+source changes during recovery, shutdown and real scheduler dispatch without broad gate discovery.
+
+# Phase 358: Project Revision-Bound Process Work Inventory (pending)
+
+Combine compact durable sources, exact process execution facts and the accepted attention pool into
+bounded recent-first pages and a consistent logical thread count. Cover all declared work states,
+deduplication, source drift, generation loss and observation without execution or acknowledgement
+effects. Keep authority custody, view integration, picker mounting and shutdown admission separate.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
 Compose process-owned execution interest across direct submission, scheduled input, compaction,
 continuation and terminal-history work. Keep exact request routing and background attention under
-their owning policies. Establish the bounded revision-bound work inventory for shutdown and
-Running threads without mounting a GUI per thread. Verify view-interest release and immediate
+their owning policies. Consume the accepted work inventory for shutdown and Running threads
+without mounting a GUI per thread. Verify view-interest release and immediate
 reattachment preserve the same live execution and capture, and all terminal/replacement paths
 release required resources. Split any independently missing composition prerequisite before
 activation; production runtime/provider composition remains explicit rather than inferred.
-
-Readiness is blocked by [missing compact durable-work discovery authority](
-failures/durable-work-discovery-source-gap.md). The existing pending-turn/startup readers sweep
-input gates, which the storage contract prohibits; the closed V7 schema declares no replacement
-source for route-free pending work. Operator resolution of the owning storage/schema contract is
-required before deriving a source implementation prerequisite or activating inventory composition.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
@@ -37,7 +39,7 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
         reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
         reservation.reserve_records::<CasThreadIndexCodec>(1)?;
@@ -93,7 +95,7 @@ impl ActivateBindingMutation {
         {
             return Err(SyndicMutationError::TurnLifecycleConflict);
         }
-        let current_gate = required::<InputGatesFamily>(reader, &request.thread_id)?;
+        let current_gate = required_input_gate(reader, &request.thread_id)?;
         if current_gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
                 expected: request.expected_gate_revision,
@@ -239,7 +241,7 @@ impl ActivateBindingRecords {
         )?;
         mutations.put::<BindingHeadsCodec>(&self.binding.thread_id(), &self.head)?;
         mutations.put::<ExecutionSnapshotsCodec>(&self.snapshot.id(), &self.snapshot)?;
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations.put::<AcceptedRouteGenerationHeadsCodec>(
             &self.route_head.thread_id(),
             &self.route_head,
@@ -291,7 +293,7 @@ impl DomainMutation<SyndicDomain> for PublishActiveCasTurnMutation {
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
         reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
         reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         Ok(())
     }
 
@@ -353,7 +355,7 @@ impl PublishActiveCasTurnMutation {
             return Err(SyndicMutationError::TimestampRegressed);
         }
 
-        let current_gate = required::<InputGatesFamily>(reader, &request.thread_id)?;
+        let current_gate = required_input_gate(reader, &request.thread_id)?;
         if current_gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
                 expected: request.expected_gate_revision,
@@ -532,7 +534,7 @@ impl PublishActiveCasTurnRecords {
                 source,
             )?;
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         Ok(())
     }
 }

@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 use beryl_home_store::{DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::{DiscussionContextOwnerId, DraftRevision};
@@ -77,7 +79,7 @@ pub(super) fn reserve_acceptance_records(
     reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
     reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
     reservation.reserve_records::<HistorySummariesCodec>(1)?;
-    reservation.reserve_records::<InputGatesCodec>(1)?;
+    reserve_input_gate(reservation)?;
     reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
     reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
     reservation.reserve_records::<BindingsCodec>(1)?;
@@ -192,7 +194,7 @@ pub(super) fn load_base(
     }
     validate_asset_proof(acceptance)?;
 
-    let gate = required::<InputGatesFamily>(reader, &acceptance.thread_id())?;
+    let gate = required_input_gate(reader, &acceptance.thread_id())?;
     if gate.revision() != acceptance.expected_gate_revision() {
         return Err(SyndicMutationError::InputGateRevisionConflict {
             expected: acceptance.expected_gate_revision(),
@@ -324,7 +326,7 @@ impl CommonRecords {
             mutations.put::<ImageLabelAuthorityHeadsCodec>(&head.thread_id(), head)?;
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
-        mutations.put::<InputGatesCodec>(&self.thread.id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         if let Some(index) = &self.thread_parent_index {
             mutations.put::<ThreadParentCodec>(
                 &ThreadPairKey {

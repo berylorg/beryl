@@ -65,7 +65,10 @@ pub(super) fn put_record(
         }
         FixtureRecord::Turn(v) => builder.put::<TurnsCodec>(&v.id(), v)?,
         FixtureRecord::TurnState(v) => builder.put::<TurnStatesCodec>(&v.turn_id(), v)?,
-        FixtureRecord::InputGate(v) => builder.put::<InputGatesCodec>(&v.thread_id(), v)?,
+        FixtureRecord::InputGate(v) => crate::mutation::input_gate::put_input_gate(builder, v)?,
+        FixtureRecord::NonIdleGateSource { thread_id, source } => {
+            builder.put::<NonIdleGateSourcesCodec>(thread_id, source)?
+        }
         FixtureRecord::AcceptedInput(v) => builder.put::<AcceptedInputsCodec>(&v.id(), v)?,
         FixtureRecord::StopOperation(v) => builder.put::<StopOperationsCodec>(&v.id(), v)?,
         FixtureRecord::CompactionOperation(v) => {

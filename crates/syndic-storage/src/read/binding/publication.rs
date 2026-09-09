@@ -103,20 +103,22 @@ impl SyndicStorage {
         request: &AbandonActiveBinding,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let binding_status = self.stale_binding_publication_status(
-            store,
-            &PublishStaleBinding::new(
-                request.thread_id(),
-                request.expected_binding_revision(),
-                request.selected_path(),
-                request.stale().clone(),
-            ),
-            limit,
-        )?;
-        if binding_status == BindingPublicationStatus::Collision {
-            return Ok(BindingPublicationStatus::Collision);
-        }
-        self.classify_abandoned_active_route(store, request, binding_status, limit)
+        self.with_current_gate_source(store, request.thread_id(), limit, || {
+            let binding_status = self.stale_binding_publication_status(
+                store,
+                &PublishStaleBinding::new(
+                    request.thread_id(),
+                    request.expected_binding_revision(),
+                    request.selected_path(),
+                    request.stale().clone(),
+                ),
+                limit,
+            )?;
+            if binding_status == BindingPublicationStatus::Collision {
+                return Ok(BindingPublicationStatus::Collision);
+            }
+            self.classify_abandoned_active_route(store, request, binding_status, limit)
+        })
     }
 
     /// Reconciles one unbound-binding publication through its immutable next revision.

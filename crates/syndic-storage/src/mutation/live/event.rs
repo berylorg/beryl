@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 use crate::mutation::{point, required};
 use crate::{
@@ -45,7 +47,7 @@ impl LiveSourceEventMutation {
         let thread = required::<ThreadsFamily>(reader, &request.thread_id)?;
         let turn = required::<TurnsFamily>(reader, &request.turn_id)?;
         let current = required::<TurnStatesFamily>(reader, &request.turn_id)?;
-        let gate = required::<InputGatesFamily>(reader, &request.thread_id)?;
+        let gate = required_input_gate(reader, &request.thread_id)?;
         let summary = required::<HistorySummariesFamily>(reader, &request.thread_id)?;
 
         if turn.origin_thread_id() != thread.id()

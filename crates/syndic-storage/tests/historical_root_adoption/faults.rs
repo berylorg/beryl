@@ -230,7 +230,7 @@ fn adoption_reuses_immutable_roots_and_preserves_canonical_records_and_current_p
     );
     assert_eq!(current(&storage, &store, thread), durable);
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 87);
+    assert_eq!(names.len(), 88);
     assert_eq!(names[86], "draft-piece-build-mapping");
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");

@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::DomainReader;
 use beryl_model::InputGateRevision;
 
@@ -159,7 +161,7 @@ pub(super) fn load_live_stop_authority(
     } else {
         Some(validate_execution_target(reader, target)?)
     };
-    let gate = required::<InputGatesFamily>(reader, &target.thread_id())?;
+    let gate = required_input_gate(reader, &target.thread_id())?;
     if gate.revision() != expected_gate_revision {
         return Err(SyndicMutationError::InputGateRevisionConflict {
             expected: expected_gate_revision,

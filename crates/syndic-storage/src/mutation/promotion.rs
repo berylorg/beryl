@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
 };
@@ -164,7 +166,7 @@ impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
         reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
         reservation.reserve_records::<BindingsCodec>(1)?;

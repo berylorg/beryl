@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
@@ -40,7 +42,7 @@ impl DomainMutation<SyndicDomain> for AcceptedInputDeliveryMutation {
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
         reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
         reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         Ok(())
     }
 
@@ -58,7 +60,7 @@ impl AcceptedInputDeliveryMutation {
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<AcceptedInputDeliveryRecords, SyndicMutationError> {
         let transition = &self.transition;
-        let gate = required::<InputGatesFamily>(reader, &transition.thread_id)?;
+        let gate = required_input_gate(reader, &transition.thread_id)?;
         let input = required::<AcceptedInputsFamily>(reader, &transition.input_id)?;
         let leaf = required::<AcceptedRouteLeavesFamily>(reader, &transition.input_id)?;
         if input.thread_id() != transition.thread_id
@@ -347,7 +349,7 @@ impl AcceptedInputDeliveryRecords {
                 source,
             )?;
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         Ok(())
     }
 }

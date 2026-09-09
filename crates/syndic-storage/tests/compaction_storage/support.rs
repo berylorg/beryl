@@ -178,10 +178,20 @@ impl CompactionFixture {
     }
 
     pub fn gate(&self) -> InputGateRecord {
-        self.storage
+        let gate = self
+            .storage
             .input_gate(&self.store, self.thread, point_limit())
             .unwrap()
-            .unwrap()
+            .unwrap();
+        let expected = (!matches!(gate.state(), syndic_storage::InputGateState::Idle))
+            .then(|| syndic_storage::NonIdleGateSourceRecord::new(self.thread, gate.revision()));
+        assert_eq!(
+            self.storage
+                .non_idle_gate_source(&self.store, self.thread, point_limit())
+                .unwrap(),
+            expected
+        );
+        gate
     }
 
     pub fn binding_state(&self) -> BindingState {

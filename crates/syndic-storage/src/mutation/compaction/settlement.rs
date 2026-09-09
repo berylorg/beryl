@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 pub(super) struct SettlementRecords {
@@ -33,7 +35,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<CompactionOperationsCodec>(1)?;
         reservation.reserve_records::<CompactionSettlementReceiptsCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<SourceEventsCodec>(1)?;
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<BindingsCodec>(1)?;
@@ -53,7 +55,7 @@ impl DomainMutation<SyndicDomain> for SettleMutation {
             &records.receipt.operation_id(),
             &records.receipt,
         )?;
-        mutations.put::<InputGatesCodec>(&records.gate.thread_id(), &records.gate)?;
+        put_input_gate(mutations, &records.gate)?;
         if let Some(event) = &records.event {
             mutations.put::<SourceEventsCodec>(
                 &TurnEventKey {

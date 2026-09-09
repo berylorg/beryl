@@ -29,32 +29,32 @@ impl SyndicStorage {
         request: &ActivateBinding,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let Some(prior) = self.binding(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            limit,
-        )?
-        else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        let BindingState::Valid(usable) = prior.state() else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        if !request
-            .selected_path()
-            .is_compatible_descendant_of(prior.selected_path())
-        {
-            return Ok(BindingPublicationStatus::Collision);
-        }
-        let Some(usable) =
-            usable.advance_represented_source_revision(request.selected_path().thread_revision())
-        else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        let revision = next_binding_revision(request.expected_binding_revision())?;
-        let activation_gate_revision =
-            request
+        self.with_current_gate_source(store, request.thread_id(), limit, || {
+            let Some(prior) = self.binding(
+                store,
+                request.thread_id(),
+                request.expected_binding_revision(),
+                limit,
+            )?
+            else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            let BindingState::Valid(usable) = prior.state() else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            if !request
+                .selected_path()
+                .is_compatible_descendant_of(prior.selected_path())
+            {
+                return Ok(BindingPublicationStatus::Collision);
+            }
+            let Some(usable) = usable
+                .advance_represented_source_revision(request.selected_path().thread_revision())
+            else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            let revision = next_binding_revision(request.expected_binding_revision())?;
+            let activation_gate_revision = request
                 .expected_gate_revision()
                 .checked_next()
                 .map_err(|_| {
@@ -62,99 +62,101 @@ impl SyndicStorage {
                         "activation reconciliation gate frontier is exhausted",
                     )
                 })?;
-        let active = ActiveCasBinding::new(
-            usable.clone(),
-            request.snapshot_id(),
-            request.turn_id(),
-            activation_gate_revision,
-            request.started_at(),
-        );
-        let expected_binding = BindingRecord::new(
-            request.thread_id(),
-            revision,
-            request.selected_path(),
-            BindingState::active(active),
-        );
-        let expected_snapshot = ExecutionSnapshotRecord::new(
-            request.snapshot_id(),
-            request.thread_id(),
-            revision,
-            activation_gate_revision,
-            request.turn_id(),
-            usable.cas_thread_id().clone(),
-            request.selected_path(),
-            usable.represented_prefix(),
-            usable.native_turn_count(),
-            usable.tool_profile(),
-            usable.lineage(),
-            usable.execution().clone(),
-            request.loaded_generation(),
-            request.started_at(),
-        );
-        let owner = self.cas_thread_owner(store, usable.cas_thread_id().clone(), limit)?;
-        let membership =
-            self.cas_thread_binding_membership(store, usable.cas_thread_id(), revision, limit)?;
-        match self.classify_binding_publication(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            expected_binding,
-            limit,
-        )? {
-            BindingPublicationStatus::Exact => {
-                let snapshot = self.execution_snapshot(store, request.snapshot_id(), limit)?;
-                Ok(
-                    if snapshot
-                        .as_ref()
-                        .is_some_and(|stored| stored == &expected_snapshot)
-                        && membership.as_ref().is_some_and(|stored| {
-                            stored
-                                == &expected_membership(
-                                    usable.cas_thread_id(),
-                                    request.thread_id(),
-                                    revision,
-                                )
-                        })
-                        && owner.as_ref().is_some_and(|owner| {
-                            owner.thread_id() == request.thread_id()
-                                && owner.first_binding_revision() <= revision
-                                && owner.latest_binding_revision() >= revision
-                                && owner
-                                    .retired_binding_revision()
-                                    .is_none_or(|retired| retired > revision)
-                        })
-                    {
-                        BindingPublicationStatus::Exact
-                    } else {
-                        BindingPublicationStatus::Collision
-                    },
-                )
+            let active = ActiveCasBinding::new(
+                usable.clone(),
+                request.snapshot_id(),
+                request.turn_id(),
+                activation_gate_revision,
+                request.started_at(),
+            );
+            let expected_binding = BindingRecord::new(
+                request.thread_id(),
+                revision,
+                request.selected_path(),
+                BindingState::active(active),
+            );
+            let expected_snapshot = ExecutionSnapshotRecord::new(
+                request.snapshot_id(),
+                request.thread_id(),
+                revision,
+                activation_gate_revision,
+                request.turn_id(),
+                usable.cas_thread_id().clone(),
+                request.selected_path(),
+                usable.represented_prefix(),
+                usable.native_turn_count(),
+                usable.tool_profile(),
+                usable.lineage(),
+                usable.execution().clone(),
+                request.loaded_generation(),
+                request.started_at(),
+            );
+            let owner = self.cas_thread_owner(store, usable.cas_thread_id().clone(), limit)?;
+            let membership =
+                self.cas_thread_binding_membership(store, usable.cas_thread_id(), revision, limit)?;
+            match self.classify_binding_publication(
+                store,
+                request.thread_id(),
+                request.expected_binding_revision(),
+                expected_binding,
+                limit,
+            )? {
+                BindingPublicationStatus::Exact => {
+                    let snapshot = self.execution_snapshot(store, request.snapshot_id(), limit)?;
+                    Ok(
+                        if snapshot
+                            .as_ref()
+                            .is_some_and(|stored| stored == &expected_snapshot)
+                            && membership.as_ref().is_some_and(|stored| {
+                                stored
+                                    == &expected_membership(
+                                        usable.cas_thread_id(),
+                                        request.thread_id(),
+                                        revision,
+                                    )
+                            })
+                            && owner.as_ref().is_some_and(|owner| {
+                                owner.thread_id() == request.thread_id()
+                                    && owner.first_binding_revision() <= revision
+                                    && owner.latest_binding_revision() >= revision
+                                    && owner
+                                        .retired_binding_revision()
+                                        .is_none_or(|retired| retired > revision)
+                            })
+                        {
+                            BindingPublicationStatus::Exact
+                        } else {
+                            BindingPublicationStatus::Collision
+                        },
+                    )
+                }
+                BindingPublicationStatus::Prior => {
+                    let snapshot = self.execution_snapshot(store, request.snapshot_id(), limit)?;
+                    let gate = self.input_gate(store, request.thread_id(), limit)?;
+                    Ok(
+                        if snapshot.is_none()
+                            && membership.is_none()
+                            && owner.as_ref().is_some_and(|owner| {
+                                owner.thread_id() == request.thread_id()
+                                    && owner.latest_binding_revision()
+                                        == request.expected_binding_revision()
+                                    && owner.retired_binding_revision().is_none()
+                            })
+                            && gate.as_ref().is_some_and(|stored| {
+                                stored.revision() == request.expected_gate_revision()
+                                    && stored.state()
+                                        == &InputGateState::PendingTurn(request.turn_id())
+                            })
+                        {
+                            BindingPublicationStatus::Prior
+                        } else {
+                            BindingPublicationStatus::Collision
+                        },
+                    )
+                }
+                BindingPublicationStatus::Collision => Ok(BindingPublicationStatus::Collision),
             }
-            BindingPublicationStatus::Prior => {
-                let snapshot = self.execution_snapshot(store, request.snapshot_id(), limit)?;
-                let gate = self.input_gate(store, request.thread_id(), limit)?;
-                Ok(
-                    if snapshot.is_none()
-                        && membership.is_none()
-                        && owner.as_ref().is_some_and(|owner| {
-                            owner.thread_id() == request.thread_id()
-                                && owner.latest_binding_revision()
-                                    == request.expected_binding_revision()
-                                && owner.retired_binding_revision().is_none()
-                        })
-                        && gate.as_ref().is_some_and(|stored| {
-                            stored.revision() == request.expected_gate_revision()
-                                && stored.state() == &InputGateState::PendingTurn(request.turn_id())
-                        })
-                    {
-                        BindingPublicationStatus::Prior
-                    } else {
-                        BindingPublicationStatus::Collision
-                    },
-                )
-            }
-            BindingPublicationStatus::Collision => Ok(BindingPublicationStatus::Collision),
-        }
+        })
     }
 
     /// Reconciles one activation cancellation through its immutable valid successor.
@@ -164,96 +166,102 @@ impl SyndicStorage {
         request: &CancelBindingActivation,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let Some(prior) = self.binding(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            limit,
-        )?
-        else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        let BindingState::Active(active) = prior.state() else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        if prior.selected_path() != request.selected_path()
-            || active.snapshot_id() != request.snapshot_id()
-            || active.turn_id() != request.turn_id()
-        {
-            return Ok(BindingPublicationStatus::Collision);
-        }
-        let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)? else {
-            return Ok(BindingPublicationStatus::Collision);
-        };
-        if snapshot.thread_id() != request.thread_id()
-            || snapshot.binding_revision() != request.expected_binding_revision()
-            || snapshot.activation_gate_revision() != request.expected_gate_revision()
-            || snapshot.active_turn_id() != request.turn_id()
-            || self
-                .active_cas_turn(store, request.snapshot_id(), limit)?
-                .is_some()
-        {
-            return Ok(BindingPublicationStatus::Collision);
-        }
-
-        let revision = next_binding_revision(request.expected_binding_revision())?;
-        let status = self.classify_binding_publication(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            BindingRecord::new(
+        self.with_current_gate_source(store, request.thread_id(), limit, || {
+            let Some(prior) = self.binding(
+                store,
                 request.thread_id(),
-                revision,
-                request.selected_path(),
-                BindingState::valid(active.usable().clone()),
-            ),
-            limit,
-        )?;
-        let status = self.classify_cas_thread_reservation(
-            store,
-            CasThreadReservationPublication {
-                status,
-                thread: request.thread_id(),
-                cas_thread: active.usable().cas_thread_id(),
-                revision,
-                stale: false,
-            },
-            limit,
-        )?;
-        let gate = self.input_gate(store, request.thread_id(), limit)?;
-        let expected_next_gate = request
-            .expected_gate_revision()
-            .checked_next()
-            .map_err(|_| {
-                SyndicReadError::Invariant("activation-cancellation gate frontier is exhausted")
-            })?;
-        Ok(match status {
-            BindingPublicationStatus::Exact
-                if gate.as_ref().is_some_and(|stored| {
-                    stored.revision() == expected_next_gate
-                        && stored.state() == &InputGateState::PendingTurn(request.turn_id())
-                        && stored.live_count() == 0
-                        && stored.live_logical_utf8_bytes() == 0
-                }) =>
+                request.expected_binding_revision(),
+                limit,
+            )?
+            else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            let BindingState::Active(active) = prior.state() else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            if prior.selected_path() != request.selected_path()
+                || active.snapshot_id() != request.snapshot_id()
+                || active.turn_id() != request.turn_id()
             {
-                BindingPublicationStatus::Exact
+                return Ok(BindingPublicationStatus::Collision);
             }
-            BindingPublicationStatus::Prior
-                if gate.as_ref().is_some_and(|stored| {
-                    stored.revision() == request.expected_gate_revision()
-                        && matches!(
-                            stored.state(),
-                            InputGateState::AwaitingSteering(turn)
-                                if *turn == request.turn_id()
+            let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)?
+            else {
+                return Ok(BindingPublicationStatus::Collision);
+            };
+            if snapshot.thread_id() != request.thread_id()
+                || snapshot.binding_revision() != request.expected_binding_revision()
+                || snapshot.activation_gate_revision() != request.expected_gate_revision()
+                || snapshot.active_turn_id() != request.turn_id()
+                || self
+                    .active_cas_turn(store, request.snapshot_id(), limit)?
+                    .is_some()
+            {
+                return Ok(BindingPublicationStatus::Collision);
+            }
+
+            let revision = next_binding_revision(request.expected_binding_revision())?;
+            let status = self.classify_binding_publication(
+                store,
+                request.thread_id(),
+                request.expected_binding_revision(),
+                BindingRecord::new(
+                    request.thread_id(),
+                    revision,
+                    request.selected_path(),
+                    BindingState::valid(active.usable().clone()),
+                ),
+                limit,
+            )?;
+            let status = self.classify_cas_thread_reservation(
+                store,
+                CasThreadReservationPublication {
+                    status,
+                    thread: request.thread_id(),
+                    cas_thread: active.usable().cas_thread_id(),
+                    revision,
+                    stale: false,
+                },
+                limit,
+            )?;
+            let gate = self.input_gate(store, request.thread_id(), limit)?;
+            let expected_next_gate =
+                request
+                    .expected_gate_revision()
+                    .checked_next()
+                    .map_err(|_| {
+                        SyndicReadError::Invariant(
+                            "activation-cancellation gate frontier is exhausted",
                         )
-                        && stored.selected_route().is_some()
-                        && stored.live_count() == 0
-                        && stored.live_logical_utf8_bytes() == 0
-                }) =>
-            {
+                    })?;
+            Ok(match status {
+                BindingPublicationStatus::Exact
+                    if gate.as_ref().is_some_and(|stored| {
+                        stored.revision() == expected_next_gate
+                            && stored.state() == &InputGateState::PendingTurn(request.turn_id())
+                            && stored.live_count() == 0
+                            && stored.live_logical_utf8_bytes() == 0
+                    }) =>
+                {
+                    BindingPublicationStatus::Exact
+                }
                 BindingPublicationStatus::Prior
-            }
-            _ => BindingPublicationStatus::Collision,
+                    if gate.as_ref().is_some_and(|stored| {
+                        stored.revision() == request.expected_gate_revision()
+                            && matches!(
+                                stored.state(),
+                                InputGateState::AwaitingSteering(turn)
+                                    if *turn == request.turn_id()
+                            )
+                            && stored.selected_route().is_some()
+                            && stored.live_count() == 0
+                            && stored.live_logical_utf8_bytes() == 0
+                    }) =>
+                {
+                    BindingPublicationStatus::Prior
+                }
+                _ => BindingPublicationStatus::Collision,
+            })
         })
     }
 
@@ -264,61 +272,64 @@ impl SyndicStorage {
         request: &PublishActiveCasTurn,
         limit: SyndicPointReadLimit,
     ) -> Result<ActiveCasTurnPublicationStatus, SyndicReadError> {
-        let primary = self.active_cas_turn(store, request.snapshot_id(), limit)?;
-        let reverse = self.cas_turn_owner(
-            store,
-            request.cas_thread_id().clone(),
-            request.cas_turn_id().clone(),
-            limit,
-        )?;
-        let Some(primary) = primary else {
-            return Ok(if reverse.is_none() {
-                ActiveCasTurnPublicationStatus::Absent
-            } else {
-                ActiveCasTurnPublicationStatus::Collision
-            });
-        };
-        let stored = primary;
-        let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)? else {
-            return Ok(ActiveCasTurnPublicationStatus::Collision);
-        };
-        let post_turn_native_count = snapshot
-            .represented_base_native_turn_count()
-            .checked_next()
-            .map_err(|_| {
-                SyndicReadError::Invariant(
-                    "active CAS-turn reconciliation native count is exhausted",
-                )
-            })?;
-        let expected_primary = ActiveCasTurnRecord::new(
-            request.snapshot_id(),
-            request.thread_id(),
-            stored.turn_id(),
-            request.binding_revision(),
-            request.cas_thread_id().clone(),
-            request.cas_turn_id().clone(),
-            request.published_at(),
-        );
-        let expected_reverse = CasTurnIndexRecord::new(
-            request.cas_thread_id().clone(),
-            request.cas_turn_id().clone(),
-            request.thread_id(),
-            stored.turn_id(),
-            request.binding_revision(),
-            request.snapshot_id(),
-            post_turn_native_count,
-        );
-        Ok(
-            if stored == expected_primary
-                && reverse
-                    .as_ref()
-                    .is_some_and(|record| record == &expected_reverse)
-            {
-                ActiveCasTurnPublicationStatus::Exact
-            } else {
-                ActiveCasTurnPublicationStatus::Collision
-            },
-        )
+        self.with_current_gate_source(store, request.thread_id(), limit, || {
+            let primary = self.active_cas_turn(store, request.snapshot_id(), limit)?;
+            let reverse = self.cas_turn_owner(
+                store,
+                request.cas_thread_id().clone(),
+                request.cas_turn_id().clone(),
+                limit,
+            )?;
+            let Some(primary) = primary else {
+                return Ok(if reverse.is_none() {
+                    ActiveCasTurnPublicationStatus::Absent
+                } else {
+                    ActiveCasTurnPublicationStatus::Collision
+                });
+            };
+            let stored = primary;
+            let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)?
+            else {
+                return Ok(ActiveCasTurnPublicationStatus::Collision);
+            };
+            let post_turn_native_count = snapshot
+                .represented_base_native_turn_count()
+                .checked_next()
+                .map_err(|_| {
+                    SyndicReadError::Invariant(
+                        "active CAS-turn reconciliation native count is exhausted",
+                    )
+                })?;
+            let expected_primary = ActiveCasTurnRecord::new(
+                request.snapshot_id(),
+                request.thread_id(),
+                stored.turn_id(),
+                request.binding_revision(),
+                request.cas_thread_id().clone(),
+                request.cas_turn_id().clone(),
+                request.published_at(),
+            );
+            let expected_reverse = CasTurnIndexRecord::new(
+                request.cas_thread_id().clone(),
+                request.cas_turn_id().clone(),
+                request.thread_id(),
+                stored.turn_id(),
+                request.binding_revision(),
+                request.snapshot_id(),
+                post_turn_native_count,
+            );
+            Ok(
+                if stored == expected_primary
+                    && reverse
+                        .as_ref()
+                        .is_some_and(|record| record == &expected_reverse)
+                {
+                    ActiveCasTurnPublicationStatus::Exact
+                } else {
+                    ActiveCasTurnPublicationStatus::Collision
+                },
+            )
+        })
     }
 
     fn classify_binding_publication(

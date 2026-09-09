@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
@@ -39,7 +41,7 @@ impl DomainMutation<SyndicDomain> for AdmitStopOperationMutation {
         reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
         reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
         reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<StopOperationsCodec>(1)?;
         reservation.reserve_records::<CompactionOperationsCodec>(1)?;
         Ok(())
@@ -75,7 +77,7 @@ impl AdmitStopOperationMutation {
             .expected_route
             .ok_or(SyndicMutationError::ActiveSteeringRouteConflict)?;
         let steering_target = validate_execution_target(reader, &request.target)?;
-        let current_gate = required::<InputGatesFamily>(reader, &request.target.thread_id())?;
+        let current_gate = required_input_gate(reader, &request.target.thread_id())?;
         if current_gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
                 expected: request.expected_gate_revision,
@@ -212,7 +214,7 @@ impl AdmitStopOperationMutation {
             crate::CompactionOperationNonce::from_bytes(*request.target.turn_id().as_bytes()),
         );
         let operation = required::<CompactionOperationsFamily>(reader, &operation_id)?;
-        let gate = required::<InputGatesFamily>(reader, &request.target.thread_id())?;
+        let gate = required_input_gate(reader, &request.target.thread_id())?;
         if gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
                 expected: request.expected_gate_revision,
@@ -361,7 +363,7 @@ impl AdmissionRecords {
                 }
             }
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations.put::<StopOperationsCodec>(&self.stop.id(), &self.stop)?;
         if let Some(compaction) = &self.compaction {
             mutations.put::<CompactionOperationsCodec>(&compaction.id(), compaction)?;

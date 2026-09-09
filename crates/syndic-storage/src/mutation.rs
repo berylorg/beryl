@@ -23,6 +23,8 @@ mod binding;
 mod compaction;
 mod content;
 mod error;
+pub(crate) mod input_gate;
+use input_gate::{current_input_gate, put_input_gate, reserve_input_gate};
 mod live;
 pub(crate) mod projection;
 mod promotion;
@@ -484,7 +486,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             || point::<TranscriptHeadsFamily>(reader, &records.thread.id())?.is_some()
             || transcript_build_collision
             || point::<HistorySummariesFamily>(reader, &records.thread.id())?.is_some()
-            || point::<InputGatesFamily>(reader, &records.thread.id())?.is_some()
+            || current_input_gate(reader, &records.thread.id())?.is_some()
             || point::<ActivityQueryHeadsFamily>(reader, &records.thread.id())?.is_some()
             || point::<BindingHeadsFamily>(reader, &records.thread.id())?.is_some()
             || point::<BindingsFamily>(
@@ -532,7 +534,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
         }
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
@@ -578,7 +580,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             )?;
         }
         mutations.put::<HistorySummariesCodec>(&records.thread.id(), &records.summary)?;
-        mutations.put::<InputGatesCodec>(&records.thread.id(), &records.input_gate)?;
+        put_input_gate(mutations, &records.input_gate)?;
         mutations.put::<ActivityQueryHeadsCodec>(&records.thread.id(), &records.activity_head)?;
         mutations.put::<BindingsCodec>(
             &BindingKey {

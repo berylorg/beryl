@@ -22,6 +22,7 @@ pub enum PhysicalFamily {
     Turns,
     TurnStates,
     InputGates,
+    NonIdleGateSources,
     AcceptedInputs,
     StopOperations,
     CompactionOperations,
@@ -67,7 +68,7 @@ pub enum PhysicalFamily {
 }
 
 impl PhysicalFamily {
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 64] = [
         Self::Threads,
         Self::ImageLabelAuthorityHeads,
         Self::DraftImageLabelProtectionHeads,
@@ -89,6 +90,7 @@ impl PhysicalFamily {
         Self::Turns,
         Self::TurnStates,
         Self::InputGates,
+        Self::NonIdleGateSources,
         Self::AcceptedInputs,
         Self::StopOperations,
         Self::CompactionOperations,
@@ -157,6 +159,7 @@ impl PhysicalFamily {
             Self::Turns => "turns",
             Self::TurnStates => "turn-states",
             Self::InputGates => "input-gates",
+            Self::NonIdleGateSources => "non-idle-gate-sources",
             Self::AcceptedInputs => "accepted-inputs",
             Self::StopOperations => "stop-operations",
             Self::CompactionOperations => "compaction-operations",

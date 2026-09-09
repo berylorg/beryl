@@ -49,20 +49,22 @@ impl SyndicStorage {
         acceptance: &FirstAcceptance,
         limit: SyndicPointReadLimit,
     ) -> Result<FirstAcceptanceStatus, SyndicReadError> {
-        let observed = FirstAcceptanceObservation::read(self, store, acceptance, limit)?;
-        let confirmed = FirstAcceptanceObservation::read(self, store, acceptance, limit)?;
-        if observed != confirmed {
-            return Err(SyndicReadError::ConcurrentChange {
-                operation: "first-acceptance reconciliation",
-            });
-        }
-        if confirmed.is_exact_old(acceptance) {
-            return Ok(FirstAcceptanceStatus::ExactOld);
-        }
-        if confirmed.is_exact_new(acceptance)? {
-            return Ok(FirstAcceptanceStatus::ExactNew(expected_kind(acceptance)));
-        }
-        Ok(FirstAcceptanceStatus::Collision)
+        self.with_current_gate_source(store, acceptance.thread_id(), limit, || {
+            let observed = FirstAcceptanceObservation::read(self, store, acceptance, limit)?;
+            let confirmed = FirstAcceptanceObservation::read(self, store, acceptance, limit)?;
+            if observed != confirmed {
+                return Err(SyndicReadError::ConcurrentChange {
+                    operation: "first-acceptance reconciliation",
+                });
+            }
+            if confirmed.is_exact_old(acceptance) {
+                return Ok(FirstAcceptanceStatus::ExactOld);
+            }
+            if confirmed.is_exact_new(acceptance)? {
+                return Ok(FirstAcceptanceStatus::ExactNew(expected_kind(acceptance)));
+            }
+            Ok(FirstAcceptanceStatus::Collision)
+        })
     }
 }
 

@@ -109,6 +109,7 @@ pub enum SyndicMutationError {
     TranscriptIdentityCollision,
     AssistantPhaseConflict,
     InputGateStateConflict,
+    NonIdleGateSourceMismatch,
     AcceptedInputDeliveryConflict,
     AcceptedInputPromotionConflict,
     BindingStateConflict,
@@ -306,6 +307,9 @@ impl fmt::Display for SyndicMutationError {
             }
             Self::AssistantPhaseConflict => {
                 formatter.write_str("assistant message phase metadata disagrees")
+            }
+            Self::NonIdleGateSourceMismatch => {
+                formatter.write_str("current input gate and non-idle source disagree")
             }
             Self::InputGateStateConflict => {
                 formatter.write_str("input-gate state does not admit the requested mutation")

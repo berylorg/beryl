@@ -44,6 +44,19 @@ pub(super) fn assert_exact_acceptance(fixture: &Fixture) -> DraftEditorCandidate
         queued,
         ..
     } = fixture;
+    let gate = storage
+        .input_gate(store, *thread, read_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        storage
+            .non_idle_gate_source(store, *thread, read_limit())
+            .unwrap(),
+        Some(syndic_storage::NonIdleGateSourceRecord::new(
+            *thread,
+            gate.revision()
+        ))
+    );
     assert_eq!(
         storage
             .first_acceptance_status(store, acceptance, read_limit())
@@ -88,6 +101,32 @@ pub(super) fn assert_exact_acceptance(fixture: &Fixture) -> DraftEditorCandidate
         !*queued
     );
     terminal
+}
+
+#[test]
+fn acceptance_reconciliation_requires_its_current_non_idle_source() {
+    let fixture = Fixture::new("acceptance-source", 31, false);
+    committed(fixture.accept());
+    assert_exact_acceptance(&fixture);
+    let mut corruption = syndic_storage::test_faults::FixtureBatch::new();
+    corruption
+        .delete(syndic_storage::test_faults::FixtureDelete::NonIdleGateSource(fixture.thread))
+        .unwrap();
+    committed(execute(
+        &fixture.store,
+        fixture.storage.fixture_contribution(
+            fixture.storage.revision(&fixture.store).unwrap(),
+            corruption,
+        ),
+    ));
+    assert!(matches!(
+        fixture
+            .storage
+            .first_acceptance_status(&fixture.store, &fixture.acceptance, read_limit()),
+        Err(syndic_storage::SyndicReadError::Invariant(
+            "current input gate and non-idle source disagree"
+        ))
+    ));
 }
 
 pub(super) fn assert_exact_receipt_replay(

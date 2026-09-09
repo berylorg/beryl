@@ -37,6 +37,11 @@ mod fixture_command;
 mod fixture_delete;
 mod fixture_put;
 mod lifecycle_content;
+mod non_idle_gate;
+pub use non_idle_gate::{
+    decode_non_idle_gate_source_for_test, non_idle_gate_source_codec_bytes,
+    non_idle_gate_source_codec_limits,
+};
 pub(crate) mod metrics;
 mod physical;
 mod provider;
@@ -582,6 +587,10 @@ pub enum FixtureRecord {
     Turn(TurnRecord),
     TurnState(TurnStateRecord),
     InputGate(InputGateRecord),
+    NonIdleGateSource {
+        thread_id: beryl_model::SyndicThreadId,
+        source: NonIdleGateSourceRecord,
+    },
     AcceptedInput(AcceptedInputRecord),
     StopOperation(StopOperationRecord),
     CompactionOperation(CompactionOperationRecord),
@@ -688,6 +697,7 @@ impl FixtureRecord {
             Self::Turn(_) => PhysicalFamily::Turns,
             Self::TurnState(_) => PhysicalFamily::TurnStates,
             Self::InputGate(_) => PhysicalFamily::InputGates,
+            Self::NonIdleGateSource { .. } => PhysicalFamily::NonIdleGateSources,
             Self::AcceptedInput(_) => PhysicalFamily::AcceptedInputs,
             Self::StopOperation(_) => PhysicalFamily::StopOperations,
             Self::CompactionOperation(_) => PhysicalFamily::CompactionOperations,
@@ -771,6 +781,7 @@ pub enum FixtureDelete {
     Turn(beryl_model::SyndicTurnId),
     TurnState(beryl_model::SyndicTurnId),
     InputGate(beryl_model::SyndicThreadId),
+    NonIdleGateSource(beryl_model::SyndicThreadId),
     AcceptedInput(beryl_model::SyndicAcceptedInputId),
     StopOperation(StopOperationId),
     CompactionOperation(CompactionOperationId),

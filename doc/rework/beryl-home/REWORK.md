@@ -109,6 +109,8 @@
   presentation boundaries; declared individual-operation limits do not authorize such a path.
 - During the active cutover, Syndic V7 registers only implemented families; deferred materializer
   and repair families join in their owning phases rather than existing as empty placeholders.
+- Broad gate discovery remains an unaccepted implementation gap until compact source maintenance
+  and reader replacement pass; it cannot supply authority for new inventory composition.
 - Marker-seal construction retains its current shared registry until validated-home bootstrap
   enforces single construction and injects shared clones; that slice removes discovery without
   permitting duplicate home-level flight capacity.
@@ -325,8 +327,8 @@
   canonical registry preservation and exact lifecycle authority; review and 27 checks passed.
 - [x] Accepted bounded managed session preparation for durable scheduler candidates with explicit
   runtime recovery, dependency-release re-entry and joined cleanup.
-- [ ] Resolve the [compact durable-work discovery target-doc gap](../../failures/durable-work-discovery-source-gap.md)
-  in Syndic storage/schema authority before process inventory composition.
+- [x] Accepted compact non-idle sources with atomic gate maintenance and exact reconciliation.
+- [ ] Replace broad recovery discovery with compact sources before process inventory composition.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

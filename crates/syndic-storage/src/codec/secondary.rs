@@ -1,6 +1,7 @@
 mod cas;
 mod cas_family;
 mod content;
+mod non_idle_gate;
 mod provider;
 mod query;
 mod route;
@@ -9,6 +10,7 @@ use beryl_model::*;
 use cas::*;
 pub(crate) use cas_family::*;
 pub(crate) use content::*;
+pub(crate) use non_idle_gate::*;
 pub(crate) use provider::*;
 pub(crate) use query::*;
 pub(crate) use route::*;

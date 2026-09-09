@@ -30,7 +30,7 @@ This entry point defines the package boundary and governs the following normativ
 - [`design-history-storage.md`](design-history-storage.md) owns durable thread, conversation-history,
   capture, projection, resource, recovery, and privacy record semantics.
 - [`design-schema-v7.md`](design-schema-v7.md) is the sole persisted byte-format authority for the V7
-  domain, all 91 families, codecs, canonical encodings, bounds, and structural proofs.
+  domain, all 92 families, codecs, canonical encodings, bounds, and structural proofs.
 - [`design-mutation-protocols.md`](design-mutation-protocols.md) owns package-generic revision,
   publication, replay, custody, cancellation, reconciliation, and acknowledgement-loss rules.
 

@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 use beryl_model::InputGateRevision;
 
@@ -125,7 +127,7 @@ impl DomainMutation<SyndicDomain> for AbandonStopOperationMutation {
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
         reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
         reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<StopOperationsCodec>(1)?;
         reservation.reserve_records::<CompactionOperationsCodec>(1)?;
         reservation.reserve_records::<CompactionSettlementReceiptsCodec>(1)?;
@@ -493,7 +495,7 @@ impl AbandonmentRecords {
         if let Some(source) = &self.next_source {
             mutations.put::<AcceptedNextSourcesCodec>(&route_key, source)?;
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations.put::<StopOperationsCodec>(&self.stop.id(), &self.stop)?;
         mutations.put::<SourceEventsCodec>(
             &TurnEventKey {

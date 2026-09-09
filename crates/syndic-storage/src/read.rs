@@ -11,6 +11,7 @@ mod content_text;
 mod current;
 mod delivering_steering;
 mod delivery_recovery;
+mod non_idle_gate;
 mod pages;
 mod promotion;
 mod queries;
@@ -527,43 +528,46 @@ impl SyndicStorage {
         request: &crate::LiveSourceEvent,
         limit: SyndicPointReadLimit,
     ) -> Result<crate::LiveSourceEventStatus, SyndicReadError> {
-        let stored = self.source_event(store, request.turn_id(), request.sequence(), limit)?;
-        let state = self.turn_state(store, request.turn_id(), limit)?;
-        let gate = self.input_gate(store, request.thread_id(), limit)?;
-        let confirmed_state = self.turn_state(store, request.turn_id(), limit)?;
-        let confirmed_gate = self.input_gate(store, request.thread_id(), limit)?;
-        if confirmed_state != state || confirmed_gate != gate {
-            return Err(SyndicReadError::ConcurrentChange {
-                operation: "live-source-event reconciliation",
-            });
-        }
-        let expected = SourceEventRecord::new(
-            request.turn_id(),
-            request.sequence(),
-            request.source().cloned(),
-            request.payload().clone(),
-        )
-        .expect("LiveSourceEvent construction already validates its source record");
-        Ok(match stored {
-            Some(stored)
-                if stored == expected
-                    && state.as_ref().is_some_and(|state| {
-                        state.source_event_count() >= request.sequence().get()
-                    }) =>
-            {
-                crate::LiveSourceEventStatus::Exact
+        self.with_current_gate_source(store, request.thread_id(), limit, || {
+            let stored = self.source_event(store, request.turn_id(), request.sequence(), limit)?;
+            let state = self.turn_state(store, request.turn_id(), limit)?;
+            let gate = self.input_gate(store, request.thread_id(), limit)?;
+            let confirmed_state = self.turn_state(store, request.turn_id(), limit)?;
+            let confirmed_gate = self.input_gate(store, request.thread_id(), limit)?;
+            if confirmed_state != state || confirmed_gate != gate {
+                return Err(SyndicReadError::ConcurrentChange {
+                    operation: "live-source-event reconciliation",
+                });
             }
-            Some(_) => crate::LiveSourceEventStatus::Collision,
-            None if state.as_ref().is_some_and(|state| {
-                state.revision() == request.expected_state_revision()
-                    && state.source_event_count().checked_add(1) == Some(request.sequence().get())
-            }) && gate
-                .as_ref()
-                .is_some_and(|gate| gate.revision() == request.expected_gate_revision()) =>
-            {
-                crate::LiveSourceEventStatus::Absent
-            }
-            None => crate::LiveSourceEventStatus::Collision,
+            let expected = SourceEventRecord::new(
+                request.turn_id(),
+                request.sequence(),
+                request.source().cloned(),
+                request.payload().clone(),
+            )
+            .expect("LiveSourceEvent construction already validates its source record");
+            Ok(match stored {
+                Some(stored)
+                    if stored == expected
+                        && state.as_ref().is_some_and(|state| {
+                            state.source_event_count() >= request.sequence().get()
+                        }) =>
+                {
+                    crate::LiveSourceEventStatus::Exact
+                }
+                Some(_) => crate::LiveSourceEventStatus::Collision,
+                None if state.as_ref().is_some_and(|state| {
+                    state.revision() == request.expected_state_revision()
+                        && state.source_event_count().checked_add(1)
+                            == Some(request.sequence().get())
+                }) && gate
+                    .as_ref()
+                    .is_some_and(|gate| gate.revision() == request.expected_gate_revision()) =>
+                {
+                    crate::LiveSourceEventStatus::Absent
+                }
+                None => crate::LiveSourceEventStatus::Collision,
+            })
         })
     }
 

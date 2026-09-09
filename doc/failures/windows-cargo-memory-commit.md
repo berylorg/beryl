@@ -97,3 +97,17 @@ no configurable eviction for its symbol dictionaries. Project-scoped Cargo concu
 settings are saved for the next full Serena service launch; they do not cap semantic heap use.
 Removing the pagefile returns the system to a smaller commitment budget, so future verification
 must check current headroom even though the completed bounded runs passed.
+
+## Interrupted Guard Ownership
+
+During later storage verification, interrupting the outer tool session ended the monitor without
+writing its final summary, while the sampled Cargo, nextest and active test processes continued.
+An exited controller therefore did not prove that its guarded work had stopped, despite the
+configured job cleanup policy. The reason the job remained live was not established.
+
+The sampled identities and live parent/creation/path checks identified the exact surviving nextest
+tree; stopping that runner ended its tests and Cargo ancestors. Process checks then confirmed no
+survivors before the exact run-owned temporary directory was removed. Future cancellation must
+keep the monitor alive through child termination and wait for its final reaping evidence, or
+independently verify the complete owned tree before cleanup. Do not treat controller exit or an
+empty summary as successful resource release.

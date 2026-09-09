@@ -234,46 +234,49 @@ impl SyndicStorage {
         operation_id: CompactionOperationId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<(CompactionOperationRecord, Option<InputGateRecord>)>, SyndicReadError> {
-        let Some(operation) = self.compaction_operation(store, operation_id, limit)? else {
-            return Ok(None);
-        };
-        let gate = self.input_gate(store, operation_id.thread_id(), limit)?;
-        let receipt = self.compaction_settlement_receipt(store, operation_id, limit)?;
-        let turn = self.turn(store, operation.target().turn_id(), limit)?;
-        let state = self.turn_state(store, operation.target().turn_id(), limit)?;
-        let snapshot = self.execution_snapshot(store, operation.target().snapshot_id(), limit)?;
-        if turn.as_ref().is_none_or(|turn| {
-            turn.id() != operation.target().turn_id()
-                || turn.origin_thread_id() != operation.target().thread_id()
-        }) || state
-            .as_ref()
-            .is_none_or(|state| state.turn_id() != operation.target().turn_id())
-            || snapshot.as_ref().is_none_or(|snapshot| {
-                snapshot.id() != operation.target().snapshot_id()
-                    || snapshot.active_turn_id() != operation.target().turn_id()
-            })
-        {
-            return Err(SyndicReadError::Invariant(
-                "compaction recovery operation authority is incomplete",
-            ));
-        }
-        if matches!(operation.state(), CompactionOperationState::Consumed(_)) {
-            if receipt.as_ref().is_none_or(|receipt| {
-                !operation.consumed_receipt_is_exact(receipt)
-                    || gate
-                        .as_ref()
-                        .is_none_or(|gate| !receipt.current_gate_is_descendant(gate))
-            }) {
+        self.with_current_gate_source(store, operation_id.thread_id(), limit, || {
+            let Some(operation) = self.compaction_operation(store, operation_id, limit)? else {
+                return Ok(None);
+            };
+            let gate = self.input_gate(store, operation_id.thread_id(), limit)?;
+            let receipt = self.compaction_settlement_receipt(store, operation_id, limit)?;
+            let turn = self.turn(store, operation.target().turn_id(), limit)?;
+            let state = self.turn_state(store, operation.target().turn_id(), limit)?;
+            let snapshot =
+                self.execution_snapshot(store, operation.target().snapshot_id(), limit)?;
+            if turn.as_ref().is_none_or(|turn| {
+                turn.id() != operation.target().turn_id()
+                    || turn.origin_thread_id() != operation.target().thread_id()
+            }) || state
+                .as_ref()
+                .is_none_or(|state| state.turn_id() != operation.target().turn_id())
+                || snapshot.as_ref().is_none_or(|snapshot| {
+                    snapshot.id() != operation.target().snapshot_id()
+                        || snapshot.active_turn_id() != operation.target().turn_id()
+                })
+            {
                 return Err(SyndicReadError::Invariant(
-                    "consumed compaction witness and durable successor disagree",
+                    "compaction recovery operation authority is incomplete",
                 ));
             }
-        } else if receipt.is_some() {
-            return Err(SyndicReadError::Invariant(
-                "live compaction has a consumed settlement receipt",
-            ));
-        }
-        Ok(Some((operation, gate)))
+            if matches!(operation.state(), CompactionOperationState::Consumed(_)) {
+                if receipt.as_ref().is_none_or(|receipt| {
+                    !operation.consumed_receipt_is_exact(receipt)
+                        || gate
+                            .as_ref()
+                            .is_none_or(|gate| !receipt.current_gate_is_descendant(gate))
+                }) {
+                    return Err(SyndicReadError::Invariant(
+                        "consumed compaction witness and durable successor disagree",
+                    ));
+                }
+            } else if receipt.is_some() {
+                return Err(SyndicReadError::Invariant(
+                    "live compaction has a consumed settlement receipt",
+                ));
+            }
+            Ok(Some((operation, gate)))
+        })
     }
 
     fn compaction_admission_pass(

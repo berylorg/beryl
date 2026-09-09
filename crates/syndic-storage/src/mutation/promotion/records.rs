@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainReader, MutationBuilder};
 use beryl_model::{ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId};
 
@@ -194,7 +196,7 @@ impl PromotionRecords {
             )?;
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
-        mutations.put::<InputGatesCodec>(&self.thread.id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations
             .put::<ActivityQueryHeadsCodec>(&self.activity_head.thread_id(), &self.activity_head)?;
         mutations.put::<ActivityQuerySourcesCodec>(

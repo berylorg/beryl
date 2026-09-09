@@ -2,6 +2,33 @@ use beryl_home_store::CommandOutcome;
 
 use super::*;
 
+#[test]
+fn late_terminal_reconciliation_rejects_missing_continuation_source() {
+    let (fixture, _operation, late_ack, _turn) =
+        continuation_successor_fixture("late-source-corruption", 201);
+    assert!(
+        fixture
+            .storage
+            .compaction_request_disposition_status(&fixture.store, &late_ack, point_limit())
+            .is_ok()
+    );
+    let mut batch = FixtureBatch::new();
+    batch
+        .delete(FixtureDelete::NonIdleGateSource(fixture.thread))
+        .unwrap();
+    crate::support::commit(&fixture.store, fixture.storage.clone(), batch);
+    assert!(matches!(
+        fixture.storage.compaction_request_disposition_status(
+            &fixture.store,
+            &late_ack,
+            point_limit()
+        ),
+        Err(syndic_storage::SyndicReadError::Invariant(
+            "current input gate and non-idle source disagree"
+        ))
+    ));
+}
+
 fn continuation_successor_fixture(
     name: &str,
     seed: u8,

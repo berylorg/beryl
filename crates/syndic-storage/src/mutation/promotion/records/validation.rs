@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 pub(super) fn validate_current_basis(
@@ -18,8 +20,7 @@ pub(super) fn validate_current_basis(
     };
     let exact = point::<AcceptedNextSourcesFamily>(reader, &route_key)?.as_ref()
         == Some(basis.source())
-        && point::<InputGatesFamily>(reader, &basis.gate().thread_id())?.as_ref()
-            == Some(basis.gate())
+        && current_input_gate(reader, &basis.gate().thread_id())?.as_ref() == Some(basis.gate())
         && point::<ThreadsFamily>(reader, &basis.thread().id())?.as_ref() == Some(basis.thread())
         && point::<DraftByThreadFamily>(reader, &basis.thread().id())?.as_ref()
             == Some(basis.draft_by_thread())

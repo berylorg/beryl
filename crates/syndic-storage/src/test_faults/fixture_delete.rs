@@ -62,7 +62,8 @@ pub(super) fn delete_record(
         }
         FixtureDelete::Turn(v) => builder.delete::<TurnsCodec>(v)?,
         FixtureDelete::TurnState(v) => builder.delete::<TurnStatesCodec>(v)?,
-        FixtureDelete::InputGate(v) => builder.delete::<InputGatesCodec>(v)?,
+        FixtureDelete::InputGate(v) => crate::mutation::input_gate::delete_input_gate(builder, v)?,
+        FixtureDelete::NonIdleGateSource(v) => builder.delete::<NonIdleGateSourcesCodec>(v)?,
         FixtureDelete::AcceptedInput(v) => builder.delete::<AcceptedInputsCodec>(v)?,
         FixtureDelete::StopOperation(v) => builder.delete::<StopOperationsCodec>(v)?,
         FixtureDelete::CompactionOperation(v) => builder.delete::<CompactionOperationsCodec>(v)?,

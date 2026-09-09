@@ -445,6 +445,12 @@ fn created_pristine_thread_deletes_the_exact_complete_closure_and_audits_removed
     execute(&store, storage.delete_pristine_thread(candidate.clone()));
     assert_eq!(
         storage
+            .non_idle_gate_source(&store, creation.thread_id(), point_limit())
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        storage
             .audit_pristine_thread_removal(&store, &candidate)
             .unwrap(),
         PristineThreadRemovalAudit::Removed
@@ -469,6 +475,57 @@ fn created_pristine_thread_deletes_the_exact_complete_closure_and_audits_removed
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn orphan_source_blocks_pristine_deletion_without_implicit_repair() {
+    let home = TestHome::new("pristine-orphan-source");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let binding = execution(100);
+    let creation = create(&store, &storage, 101, binding.clone());
+    let candidate = storage
+        .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+        .unwrap()
+        .unwrap();
+    let mut corruption = FixtureBatch::new();
+    corruption
+        .put(FixtureRecord::NonIdleGateSource {
+            thread_id: creation.thread_id(),
+            source: syndic_storage::NonIdleGateSourceRecord::new(
+                creation.thread_id(),
+                InputGateRevision::new(1).unwrap(),
+            ),
+        })
+        .unwrap();
+    commit(&store, storage.clone(), corruption);
+    assert!(
+        storage
+            .inspect_pristine_thread(&store, creation.thread_id(), &binding)
+            .is_err()
+    );
+    let revision = storage.revision(&store).unwrap();
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(storage.delete_pristine_thread(candidate.clone()))
+        .unwrap();
+    assert!(matches!(
+        store.execute(command),
+        CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(storage.revision(&store).unwrap(), revision);
+    assert_eq!(
+        storage
+            .audit_pristine_thread_removal(&store, &candidate)
+            .unwrap(),
+        PristineThreadRemovalAudit::Collision
+    );
+    assert!(
+        storage
+            .non_idle_gate_source(&store, creation.thread_id(), point_limit())
+            .is_err()
+    );
+    store.close().unwrap();
 }
 
 #[test]

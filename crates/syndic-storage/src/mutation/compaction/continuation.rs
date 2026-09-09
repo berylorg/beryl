@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 pub struct LifecycleSettlementRecords {
@@ -46,7 +48,7 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<CompactionOperationsCodec>(1)?;
         reservation.reserve_records::<CompactionSettlementReceiptsCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<SourceEventsCodec>(1)?;
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<BindingsCodec>(1)?;
@@ -81,7 +83,7 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
                     &records.receipt.operation_id(),
                     &records.receipt,
                 )?;
-                mutations.put::<InputGatesCodec>(&records.gate.thread_id(), &records.gate)?;
+                put_input_gate(mutations, &records.gate)?;
             }
             LifecycleSettlementState::Continuation(records) => {
                 records.contribute(mutations)?;
@@ -443,7 +445,7 @@ impl ContinuationRecords {
             )?;
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
-        mutations.put::<InputGatesCodec>(&self.thread.id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations.put::<ActivityQueryHeadsCodec>(&self.thread.id(), &self.activity_head)?;
         mutations.put::<ActivityQuerySourcesCodec>(
             &ActivityQuerySourceKey {

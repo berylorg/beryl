@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{
     CurrentDomainCommand, DomainMutation, DomainReader, MutationBuilder, MutationContribution,
     ReconciliationReservation,
@@ -332,7 +334,7 @@ impl DomainMutation<SyndicDomain> for LiveSourceEventMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<SourceEventsCodec>(1)?;
         reservation.reserve_records::<TurnStatesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
@@ -452,7 +454,7 @@ impl DomainMutation<SyndicDomain> for CompleteTerminalHistoryMutation {
         &self,
         reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
     ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         Ok(())
     }
 

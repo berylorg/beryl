@@ -1,7 +1,7 @@
 # V7 Persisted Schema
 
 This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
-the complete 68-primary plus 23-index family inventory, family and record versions, natural keys,
+the complete 68-primary plus 24-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
 change persisted bytes.
@@ -70,17 +70,38 @@ change persisted bytes.
   receipt records. Marker-order commitments use tagged immutable internal-node and leaf records;
   marker seals use compact durable cursor/lifecycle records. Build progress instead requires its own append-only family so canonical proposal
   fragments remain the only values in `draft-piece-build-fragments`.
-- The 23 index V7 families are `draft-by-thread`, `thread-parent-index`,
+- The 24 index V7 families are `draft-by-thread`, `thread-parent-index`,
   `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
-  `accepted-ready-sources`, `accepted-next-sources`, `turn-items`, `activity-query-entries`,
+  `accepted-ready-sources`, `accepted-next-sources`, `non-idle-gate-sources`, `turn-items`, `activity-query-entries`,
   `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V7 inventory is exactly 68 primary plus 23 index families, or 91 total. Family names,
+- The complete V7 inventory is exactly 68 primary plus 24 index families, or 92 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
+
+### Non-Idle Gate Source Canonical Encoding
+
+`non-idle-gate-sources` is an index family at keyspace schema V1 and record V1. Its key is exactly
+the 16-byte `SyndicThreadId` payload. Its value payload is exactly 24 bytes: the same 16-byte thread
+identity followed by the current nonzero `InputGateRevision` as an unsigned big-endian `u64`.
+It contains no state tag, turn identity, timestamp, content, or provider capability. There is no
+independent source revision; the value names the selected input-gate revision.
+
+Exactly one source exists for each non-idle current input gate; an idle or absent gate has none.
+Source identity and revision must equal the current gate. Every gate insertion, update or deletion
+maintains this membership in the same atomic contribution, including a revision change that leaves
+the gate's state variant unchanged. A historical gate embedded in a receipt does not select this
+current-state index.
+
+Decode rejects any key length other than 16, payload length other than 24, zero revision, unknown
+record version or trailing bytes. Typed source reads and explicit validation reject key/value
+identity disagreement. A stable orphan, missing required source, idle-gate source or revision
+disagreement is corruption. Source maintenance cannot repair such disagreement as a side effect of
+an ordinary mutation. The package's existing canonical accounting adds the exact source key and
+value bytes, or deletion key, to the gate mutation's bounded footprint.
 
 ### Draft Root Canonical Encodings
 

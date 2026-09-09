@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 pub struct AdmissionRecords {
@@ -27,7 +29,7 @@ impl DomainMutation<SyndicDomain> for AdmitMutation {
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
         reservation.reserve_records::<CompactionOperationsCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         Ok(())
     }
 
@@ -40,7 +42,7 @@ impl DomainMutation<SyndicDomain> for AdmitMutation {
         mutations.put::<TurnStatesCodec>(&records.state.turn_id(), &records.state)?;
         mutations.put::<ExecutionSnapshotsCodec>(&records.snapshot.id(), &records.snapshot)?;
         mutations.put::<CompactionOperationsCodec>(&records.operation.id(), &records.operation)?;
-        mutations.put::<InputGatesCodec>(&records.gate.thread_id(), &records.gate)?;
+        put_input_gate(mutations, &records.gate)?;
         Ok(())
     }
 }
@@ -64,7 +66,7 @@ impl AdmitMutation {
         }
 
         let thread = required::<ThreadsFamily>(reader, &target.thread_id())?;
-        let gate = required::<InputGatesFamily>(reader, &target.thread_id())?;
+        let gate = required_input_gate(reader, &target.thread_id())?;
         if gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
                 expected: request.expected_gate_revision,
@@ -229,7 +231,7 @@ pub(super) fn live_operation(
     if operation.id() != operation_id || operation.revision() != expected_revision {
         return Err(SyndicMutationError::InputGateStateConflict);
     }
-    let gate = required::<InputGatesFamily>(reader, &operation_id.thread_id())?;
+    let gate = required_input_gate(reader, &operation_id.thread_id())?;
     if gate.state()
         != &InputGateState::compacting(operation.target().turn_id(), operation_id.nonce())
         || gate.live_steering_count() != 0
@@ -252,7 +254,7 @@ pub(super) fn provider_event_operation(
     {
         return Err(SyndicMutationError::InputGateStateConflict);
     }
-    let gate = required::<InputGatesFamily>(reader, &operation_id.thread_id())?;
+    let gate = required_input_gate(reader, &operation_id.thread_id())?;
     let selected = match operation.state() {
         CompactionOperationState::Stopping(stop_nonce) => {
             gate.state() == &InputGateState::stopping(operation.target().turn_id(), *stop_nonce)

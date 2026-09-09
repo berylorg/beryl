@@ -177,6 +177,14 @@ impl AcceptedOperation {
         store: &HomeStore,
         storage: &SyndicStorage,
     ) -> AcceptedInputDeliveryTransitionStatus {
+        self.status_result(store, storage).unwrap()
+    }
+
+    pub fn status_result(
+        self,
+        store: &HomeStore,
+        storage: &SyndicStorage,
+    ) -> Result<AcceptedInputDeliveryTransitionStatus, SyndicReadError> {
         match self {
             Self::Begin => {
                 storage.begin_accepted_input_delivery_status(store, &self.begin_request(), limit())
@@ -193,7 +201,6 @@ impl AcceptedOperation {
                 storage.steering_rejection_status(store, &self.rejection_request(), limit())
             }
         }
-        .unwrap()
     }
 
     pub fn expected_leaf(
@@ -279,6 +286,15 @@ pub fn assert_operation_committed(
     operation: AcceptedOperation,
 ) {
     let (gate, entry) = route_entry(store, storage, operation.input());
+    assert_eq!(
+        storage
+            .non_idle_gate_source(store, operation.thread(), limit())
+            .unwrap(),
+        Some(NonIdleGateSourceRecord::new(
+            operation.thread(),
+            gate.revision()
+        )),
+    );
     let (state, lifecycle, effective) = operation.expected_leaf();
     assert_eq!(
         entry.leaf().revision(),

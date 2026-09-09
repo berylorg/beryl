@@ -59,7 +59,7 @@ fn policy_and_family_bounds_remain_exact() {
     assert!(DraftEditHistoryPolicyV1::new(1, 0).is_none());
     assert!(DraftEditHistoryPolicyV1::new(1, 1).is_some());
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 87);
+    assert_eq!(names.len(), 88);
     assert_eq!(names[86], "draft-piece-build-mapping");
     assert_eq!(names[0], "threads");
     assert_eq!(names[1], "image-label-authority-heads");

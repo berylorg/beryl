@@ -198,120 +198,128 @@ impl SyndicStorage {
         creation: &CreateThread,
         limit: SyndicPointReadLimit,
     ) -> Result<ThreadCreationStatus, SyndicReadError> {
-        let before = self.revision(store)?;
-        let expected = creation.records();
-        let thread = self.point::<ThreadsFamily>(store, creation.thread_id(), limit)?;
-        let draft_image_label_protection =
-            self.point::<DraftImageLabelProtectionHeadsFamily>(store, creation.thread_id(), limit)?;
-        let execution = self.point::<ThreadExecutionsFamily>(store, creation.thread_id(), limit)?;
-        let attributes =
-            self.point::<ThreadAttributesFamily>(store, creation.thread_id(), limit)?;
-        let usage = self.point::<ThreadUsageFamily>(store, creation.thread_id(), limit)?;
-        let catalog_summary =
-            self.point::<ThreadCatalogSummariesFamily>(store, creation.thread_id(), limit)?;
-        let draft = self.point::<DraftsFamily>(store, creation.draft_id(), limit)?;
-        let root = self.point::<DraftPieceRootsFamily>(
-            store,
-            expected.draft_piece_root.reference().key(),
-            limit,
-        )?;
-        let draft_edit_history = self.point::<DraftEditHistoryFrontiersFamily>(
-            store,
-            expected.draft_edit_history.reference().key(),
-            limit,
-        )?;
-        let index = self.point::<DraftByThreadFamily>(store, creation.thread_id(), limit)?;
-        let head = self.point::<TranscriptHeadsFamily>(store, creation.thread_id(), limit)?;
-        let transcript_build = match &expected.transcript_build {
-            Some(build) => self.point::<TranscriptBuildsFamily>(
+        self.with_current_gate_source(store, creation.thread_id(), limit, || {
+            let before = self.revision(store)?;
+            let expected = creation.records();
+            let thread = self.point::<ThreadsFamily>(store, creation.thread_id(), limit)?;
+            let draft_image_label_protection = self.point::<DraftImageLabelProtectionHeadsFamily>(
                 store,
-                ThreadTranscriptBuildKey {
-                    thread: build.thread_id(),
-                    generation: build.generation(),
+                creation.thread_id(),
+                limit,
+            )?;
+            let execution =
+                self.point::<ThreadExecutionsFamily>(store, creation.thread_id(), limit)?;
+            let attributes =
+                self.point::<ThreadAttributesFamily>(store, creation.thread_id(), limit)?;
+            let usage = self.point::<ThreadUsageFamily>(store, creation.thread_id(), limit)?;
+            let catalog_summary =
+                self.point::<ThreadCatalogSummariesFamily>(store, creation.thread_id(), limit)?;
+            let draft = self.point::<DraftsFamily>(store, creation.draft_id(), limit)?;
+            let root = self.point::<DraftPieceRootsFamily>(
+                store,
+                expected.draft_piece_root.reference().key(),
+                limit,
+            )?;
+            let draft_edit_history = self.point::<DraftEditHistoryFrontiersFamily>(
+                store,
+                expected.draft_edit_history.reference().key(),
+                limit,
+            )?;
+            let index = self.point::<DraftByThreadFamily>(store, creation.thread_id(), limit)?;
+            let head = self.point::<TranscriptHeadsFamily>(store, creation.thread_id(), limit)?;
+            let transcript_build = match &expected.transcript_build {
+                Some(build) => self.point::<TranscriptBuildsFamily>(
+                    store,
+                    ThreadTranscriptBuildKey {
+                        thread: build.thread_id(),
+                        generation: build.generation(),
+                    },
+                    limit,
+                )?,
+                None => None,
+            };
+            let summary =
+                self.point::<HistorySummariesFamily>(store, creation.thread_id(), limit)?;
+            let input_gate = self.point::<InputGatesFamily>(store, creation.thread_id(), limit)?;
+            let activity_head =
+                self.point::<ActivityQueryHeadsFamily>(store, creation.thread_id(), limit)?;
+            let binding = self.point::<BindingsFamily>(
+                store,
+                BindingKey {
+                    thread: creation.thread_id(),
+                    revision: expected.binding.revision(),
                 },
                 limit,
-            )?,
-            None => None,
-        };
-        let summary = self.point::<HistorySummariesFamily>(store, creation.thread_id(), limit)?;
-        let input_gate = self.point::<InputGatesFamily>(store, creation.thread_id(), limit)?;
-        let activity_head =
-            self.point::<ActivityQueryHeadsFamily>(store, creation.thread_id(), limit)?;
-        let binding = self.point::<BindingsFamily>(
-            store,
-            BindingKey {
-                thread: creation.thread_id(),
-                revision: expected.binding.revision(),
-            },
-            limit,
-        )?;
-        let binding_head = self.point::<BindingHeadsFamily>(store, creation.thread_id(), limit)?;
-        let consumed = self.point::<TurnsFamily>(
-            store,
-            SyndicTurnId::from_bytes(*creation.draft_id().as_bytes()),
-            limit,
-        )?;
-        let accepted = self.point::<AcceptedInputsFamily>(
-            store,
-            creation.draft_id().accepted_input_id(),
-            limit,
-        )?;
-        let after = self.revision(store)?;
-        if before != after {
-            return Err(concurrent("thread-creation reconciliation"));
-        }
-        let absent = thread.is_none()
-            && draft_image_label_protection.is_none()
-            && execution.is_none()
-            && attributes.is_none()
-            && usage.is_none()
-            && catalog_summary.is_none()
-            && draft.is_none()
-            && root.is_none()
-            && draft_edit_history.is_none()
-            && index.is_none()
-            && head.is_none()
-            && transcript_build.is_none()
-            && summary.is_none()
-            && input_gate.is_none()
-            && activity_head.is_none()
-            && binding.is_none()
-            && binding_head.is_none()
-            && consumed.is_none()
-            && accepted.is_none();
-        if absent {
-            return Ok(ThreadCreationStatus::Absent);
-        }
-        let exact = matches_record(thread, &expected.thread)
-            && matches_record(
-                draft_image_label_protection,
-                &expected.draft_image_label_protection_head,
-            )
-            && matches_record(execution, &expected.execution)
-            && matches_record(attributes, &expected.attributes)
-            && matches_record(usage, &expected.usage)
-            && matches_record(catalog_summary, &expected.catalog_summary)
-            && matches_record(draft, &expected.draft)
-            && matches_record(root, &expected.draft_piece_root)
-            && matches_record(draft_edit_history, &expected.draft_edit_history)
-            && matches_record(index, &expected.draft_index)
-            && matches_record(head, &expected.transcript_head)
-            && match (&expected.transcript_build, transcript_build) {
-                (Some(expected), Some(stored)) => &stored == expected,
-                (None, None) => true,
-                (Some(_), None) | (None, Some(_)) => false,
+            )?;
+            let binding_head =
+                self.point::<BindingHeadsFamily>(store, creation.thread_id(), limit)?;
+            let consumed = self.point::<TurnsFamily>(
+                store,
+                SyndicTurnId::from_bytes(*creation.draft_id().as_bytes()),
+                limit,
+            )?;
+            let accepted = self.point::<AcceptedInputsFamily>(
+                store,
+                creation.draft_id().accepted_input_id(),
+                limit,
+            )?;
+            let after = self.revision(store)?;
+            if before != after {
+                return Err(concurrent("thread-creation reconciliation"));
             }
-            && matches_record(summary, &expected.summary)
-            && matches_record(input_gate, &expected.input_gate)
-            && matches_record(activity_head, &expected.activity_head)
-            && matches_record(binding, &expected.binding)
-            && matches_record(binding_head, &expected.binding_head)
-            && consumed.is_none()
-            && accepted.is_none();
-        Ok(if exact {
-            ThreadCreationStatus::Exact
-        } else {
-            ThreadCreationStatus::Collision
+            let absent = thread.is_none()
+                && draft_image_label_protection.is_none()
+                && execution.is_none()
+                && attributes.is_none()
+                && usage.is_none()
+                && catalog_summary.is_none()
+                && draft.is_none()
+                && root.is_none()
+                && draft_edit_history.is_none()
+                && index.is_none()
+                && head.is_none()
+                && transcript_build.is_none()
+                && summary.is_none()
+                && input_gate.is_none()
+                && activity_head.is_none()
+                && binding.is_none()
+                && binding_head.is_none()
+                && consumed.is_none()
+                && accepted.is_none();
+            if absent {
+                return Ok(ThreadCreationStatus::Absent);
+            }
+            let exact = matches_record(thread, &expected.thread)
+                && matches_record(
+                    draft_image_label_protection,
+                    &expected.draft_image_label_protection_head,
+                )
+                && matches_record(execution, &expected.execution)
+                && matches_record(attributes, &expected.attributes)
+                && matches_record(usage, &expected.usage)
+                && matches_record(catalog_summary, &expected.catalog_summary)
+                && matches_record(draft, &expected.draft)
+                && matches_record(root, &expected.draft_piece_root)
+                && matches_record(draft_edit_history, &expected.draft_edit_history)
+                && matches_record(index, &expected.draft_index)
+                && matches_record(head, &expected.transcript_head)
+                && match (&expected.transcript_build, transcript_build) {
+                    (Some(expected), Some(stored)) => &stored == expected,
+                    (None, None) => true,
+                    (Some(_), None) | (None, Some(_)) => false,
+                }
+                && matches_record(summary, &expected.summary)
+                && matches_record(input_gate, &expected.input_gate)
+                && matches_record(activity_head, &expected.activity_head)
+                && matches_record(binding, &expected.binding)
+                && matches_record(binding_head, &expected.binding_head)
+                && consumed.is_none()
+                && accepted.is_none();
+            Ok(if exact {
+                ThreadCreationStatus::Exact
+            } else {
+                ThreadCreationStatus::Collision
+            })
         })
     }
 }

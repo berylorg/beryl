@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, ReconciliationReservation};
 
 use crate::{
@@ -56,7 +58,7 @@ impl DomainMutation<SyndicDomain> for AbandonActiveBindingMutation {
         reservation.reserve_records::<AcceptedReadySourcesCodec>(1)?;
         reservation.reserve_records::<AcceptedNextSourcesCodec>(1)?;
         reservation.reserve_records::<AcceptedRouteLeavesCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         Ok(())
     }
 
@@ -107,7 +109,7 @@ impl AbandonActiveBindingMutation {
         }
         validate_stale(reader, request.selected_path, &request.stale)?;
 
-        let gate = required::<InputGatesFamily>(reader, &request.thread_id)?;
+        let gate = required_input_gate(reader, &request.thread_id)?;
         validate_active_gate(&gate, base.current.revision(), active)?;
         let route_proof = gate
             .selected_route()
@@ -497,7 +499,7 @@ impl AbandonActiveBindingRecords {
         if let Some(leaf) = &self.exact_rejected_leaf {
             mutations.put::<AcceptedRouteLeavesCodec>(&leaf.input_id(), leaf)?;
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         Ok(())
     }
 }

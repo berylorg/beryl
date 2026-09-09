@@ -133,160 +133,169 @@ impl StopObservation {
         target: &StopOperationTarget,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, SyndicReadError> {
-        let stop = operation_id
-            .map(|id| storage.point::<StopOperationsFamily>(store, id, limit))
-            .transpose()?
-            .flatten();
-        let gate = storage.point::<InputGatesFamily>(store, thread_id, limit)?;
-        let route_head =
-            storage.point::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?;
-        let route = gate
-            .as_ref()
-            .and_then(InputGateRecord::selected_route)
-            .map(|proof| {
-                storage.point::<AcceptedRouteGenerationsFamily>(
-                    store,
-                    ThreadRouteKey {
-                        thread: thread_id,
-                        generation: proof.generation(),
-                    },
-                    limit,
-                )
-            })
-            .transpose()?
-            .flatten();
-        let admission_route = stop
-            .as_ref()
-            .and_then(|record| record.admission().successor_stopped_route_option())
-            .map(|proof| {
-                storage.point::<AcceptedRouteGenerationsFamily>(
-                    store,
-                    ThreadRouteKey {
-                        thread: thread_id,
-                        generation: proof.generation(),
-                    },
-                    limit,
-                )
-            })
-            .transpose()?
-            .flatten();
-        let selected_route_key =
-            gate.as_ref()
+        storage.with_current_gate_source(store, thread_id, limit, || {
+            let stop = operation_id
+                .map(|id| storage.point::<StopOperationsFamily>(store, id, limit))
+                .transpose()?
+                .flatten();
+            let gate = storage.point::<InputGatesFamily>(store, thread_id, limit)?;
+            let route_head =
+                storage.point::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?;
+            let route = gate
+                .as_ref()
                 .and_then(InputGateRecord::selected_route)
-                .map(|proof| ThreadRouteKey {
-                    thread: thread_id,
-                    generation: proof.generation(),
-                });
-        let ready_source = selected_route_key
-            .map(|key| storage.point::<AcceptedReadySourcesFamily>(store, key, limit))
-            .transpose()?
-            .flatten();
-        let next_source = selected_route_key
-            .map(|key| storage.point::<AcceptedNextSourcesFamily>(store, key, limit))
-            .transpose()?
-            .flatten();
-        let successor_revision = stop
-            .as_ref()
-            .and_then(|_| target.binding_revision().checked_next().ok());
-        let turn_state = storage.point::<TurnStatesFamily>(store, target.turn_id(), limit)?;
-        let latest_event = turn_state
-            .as_ref()
-            .filter(|state| state.source_event_count() > 0)
-            .and_then(|state| crate::SourceEventSequence::new(state.source_event_count()).ok())
-            .map(|sequence| {
-                storage.point::<SourceEventsFamily>(
-                    store,
-                    TurnEventKey {
-                        owner: target.turn_id(),
-                        ordinal: sequence,
-                    },
-                    limit,
-                )
-            })
-            .transpose()?
-            .flatten();
-        let compaction_id = crate::CompactionOperationId::new(
-            target.thread_id(),
-            crate::CompactionOperationNonce::from_bytes(*target.turn_id().as_bytes()),
-        );
-        Ok(Self {
-            stop,
-            gate,
-            route_head,
-            route,
-            admission_route,
-            ready_source,
-            next_source,
-            thread: storage.point::<ThreadsFamily>(store, thread_id, limit)?,
-            binding_head: storage.point::<BindingHeadsFamily>(store, thread_id, limit)?,
-            binding: storage.point::<BindingsFamily>(
-                store,
-                BindingKey {
-                    thread: thread_id,
-                    revision: target.binding_revision(),
-                },
-                limit,
-            )?,
-            successor_binding: successor_revision
-                .map(|revision| {
-                    storage.point::<BindingsFamily>(
+                .map(|proof| {
+                    storage.point::<AcceptedRouteGenerationsFamily>(
                         store,
-                        BindingKey {
+                        ThreadRouteKey {
                             thread: thread_id,
-                            revision,
+                            generation: proof.generation(),
                         },
                         limit,
                     )
                 })
                 .transpose()?
-                .flatten(),
-            reservation: storage.point::<CasThreadIndexFamily>(
-                store,
-                CasThreadKey::Record(target.cas_thread_id().clone()),
-                limit,
-            )?,
-            membership: storage.point::<CasThreadBindingIndexFamily>(
-                store,
-                CasThreadBindingKey::Record(
-                    target.cas_thread_id().clone(),
-                    target.binding_revision(),
-                ),
-                limit,
-            )?,
-            successor_membership: successor_revision
-                .map(|revision| {
-                    storage.point::<CasThreadBindingIndexFamily>(
+                .flatten();
+            let admission_route = stop
+                .as_ref()
+                .and_then(|record| record.admission().successor_stopped_route_option())
+                .map(|proof| {
+                    storage.point::<AcceptedRouteGenerationsFamily>(
                         store,
-                        CasThreadBindingKey::Record(target.cas_thread_id().clone(), revision),
+                        ThreadRouteKey {
+                            thread: thread_id,
+                            generation: proof.generation(),
+                        },
                         limit,
                     )
                 })
                 .transpose()?
-                .flatten(),
-            cas_turn: storage.point::<CasTurnIndexFamily>(
-                store,
-                CasTurnKey::Record(target.cas_thread_id().clone(), target.cas_turn_id().clone()),
-                limit,
-            )?,
-            snapshot: storage.point::<ExecutionSnapshotsFamily>(
-                store,
-                target.snapshot_id(),
-                limit,
-            )?,
-            active_turn: storage.point::<ActiveCasTurnsFamily>(
-                store,
-                target.snapshot_id(),
-                limit,
-            )?,
-            turn: storage.point::<TurnsFamily>(store, target.turn_id(), limit)?,
-            turn_state,
-            latest_event,
-            compaction: storage.point::<CompactionOperationsFamily>(store, compaction_id, limit)?,
-            compaction_receipt: storage.point::<CompactionSettlementReceiptsFamily>(
-                store,
-                compaction_id,
-                limit,
-            )?,
+                .flatten();
+            let selected_route_key =
+                gate.as_ref()
+                    .and_then(InputGateRecord::selected_route)
+                    .map(|proof| ThreadRouteKey {
+                        thread: thread_id,
+                        generation: proof.generation(),
+                    });
+            let ready_source = selected_route_key
+                .map(|key| storage.point::<AcceptedReadySourcesFamily>(store, key, limit))
+                .transpose()?
+                .flatten();
+            let next_source = selected_route_key
+                .map(|key| storage.point::<AcceptedNextSourcesFamily>(store, key, limit))
+                .transpose()?
+                .flatten();
+            let successor_revision = stop
+                .as_ref()
+                .and_then(|_| target.binding_revision().checked_next().ok());
+            let turn_state = storage.point::<TurnStatesFamily>(store, target.turn_id(), limit)?;
+            let latest_event = turn_state
+                .as_ref()
+                .filter(|state| state.source_event_count() > 0)
+                .and_then(|state| crate::SourceEventSequence::new(state.source_event_count()).ok())
+                .map(|sequence| {
+                    storage.point::<SourceEventsFamily>(
+                        store,
+                        TurnEventKey {
+                            owner: target.turn_id(),
+                            ordinal: sequence,
+                        },
+                        limit,
+                    )
+                })
+                .transpose()?
+                .flatten();
+            let compaction_id = crate::CompactionOperationId::new(
+                target.thread_id(),
+                crate::CompactionOperationNonce::from_bytes(*target.turn_id().as_bytes()),
+            );
+            Ok(Self {
+                stop,
+                gate,
+                route_head,
+                route,
+                admission_route,
+                ready_source,
+                next_source,
+                thread: storage.point::<ThreadsFamily>(store, thread_id, limit)?,
+                binding_head: storage.point::<BindingHeadsFamily>(store, thread_id, limit)?,
+                binding: storage.point::<BindingsFamily>(
+                    store,
+                    BindingKey {
+                        thread: thread_id,
+                        revision: target.binding_revision(),
+                    },
+                    limit,
+                )?,
+                successor_binding: successor_revision
+                    .map(|revision| {
+                        storage.point::<BindingsFamily>(
+                            store,
+                            BindingKey {
+                                thread: thread_id,
+                                revision,
+                            },
+                            limit,
+                        )
+                    })
+                    .transpose()?
+                    .flatten(),
+                reservation: storage.point::<CasThreadIndexFamily>(
+                    store,
+                    CasThreadKey::Record(target.cas_thread_id().clone()),
+                    limit,
+                )?,
+                membership: storage.point::<CasThreadBindingIndexFamily>(
+                    store,
+                    CasThreadBindingKey::Record(
+                        target.cas_thread_id().clone(),
+                        target.binding_revision(),
+                    ),
+                    limit,
+                )?,
+                successor_membership: successor_revision
+                    .map(|revision| {
+                        storage.point::<CasThreadBindingIndexFamily>(
+                            store,
+                            CasThreadBindingKey::Record(target.cas_thread_id().clone(), revision),
+                            limit,
+                        )
+                    })
+                    .transpose()?
+                    .flatten(),
+                cas_turn: storage.point::<CasTurnIndexFamily>(
+                    store,
+                    CasTurnKey::Record(
+                        target.cas_thread_id().clone(),
+                        target.cas_turn_id().clone(),
+                    ),
+                    limit,
+                )?,
+                snapshot: storage.point::<ExecutionSnapshotsFamily>(
+                    store,
+                    target.snapshot_id(),
+                    limit,
+                )?,
+                active_turn: storage.point::<ActiveCasTurnsFamily>(
+                    store,
+                    target.snapshot_id(),
+                    limit,
+                )?,
+                turn: storage.point::<TurnsFamily>(store, target.turn_id(), limit)?,
+                turn_state,
+                latest_event,
+                compaction: storage.point::<CompactionOperationsFamily>(
+                    store,
+                    compaction_id,
+                    limit,
+                )?,
+                compaction_receipt: storage.point::<CompactionSettlementReceiptsFamily>(
+                    store,
+                    compaction_id,
+                    limit,
+                )?,
+            })
         })
     }
 }

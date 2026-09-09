@@ -14,67 +14,69 @@ impl SyndicStorage {
         operation: &CompactionOperationRecord,
         limit: SyndicPointReadLimit,
     ) -> Result<bool, SyndicReadError> {
-        let CompactionOperationState::Consumed(witness) = operation.state() else {
-            return Ok(false);
-        };
-        let Some(receipt) =
-            self.point::<CompactionSettlementReceiptsFamily>(store, operation.id(), limit)?
-        else {
-            return Ok(false);
-        };
-        let Some(gate) =
-            self.point::<InputGatesFamily>(store, operation.target().thread_id(), limit)?
-        else {
-            return Ok(false);
-        };
-        let Some(state) =
-            self.point::<TurnStatesFamily>(store, operation.target().turn_id(), limit)?
-        else {
-            return Ok(false);
-        };
-        if !operation.consumed_receipt_is_exact(&receipt)
-            || !receipt.current_gate_is_descendant(&gate)
-            || !provider_lifecycle_matches(operation, witness.settlement(), &state)
-            || !self.stop_source_is_exact(store, operation, &receipt, limit)?
-        {
-            return Ok(false);
-        }
-        match witness.settlement() {
-            CompactionSettlement::CancelledBeforeDispatch
-            | CompactionSettlement::LocalNondispatch
-            | CompactionSettlement::ManualSuccess => {
-                self.preserved_binding_is_exact(store, operation, limit)
+        self.with_current_gate_source(store, operation.target().thread_id(), limit, || {
+            let CompactionOperationState::Consumed(witness) = operation.state() else {
+                return Ok(false);
+            };
+            let Some(receipt) =
+                self.point::<CompactionSettlementReceiptsFamily>(store, operation.id(), limit)?
+            else {
+                return Ok(false);
+            };
+            let Some(gate) =
+                self.point::<InputGatesFamily>(store, operation.target().thread_id(), limit)?
+            else {
+                return Ok(false);
+            };
+            let Some(state) =
+                self.point::<TurnStatesFamily>(store, operation.target().turn_id(), limit)?
+            else {
+                return Ok(false);
+            };
+            if !operation.consumed_receipt_is_exact(&receipt)
+                || !receipt.current_gate_is_descendant(&gate)
+                || !provider_lifecycle_matches(operation, witness.settlement(), &state)
+                || !self.stop_source_is_exact(store, operation, &receipt, limit)?
+            {
+                return Ok(false);
             }
-            CompactionSettlement::Abandoned(_) => {
-                self.retired_binding_is_exact(store, operation, limit)
-            }
-            CompactionSettlement::ManualFailure => {
-                if manual_failure_preserves_binding(operation) {
+            match witness.settlement() {
+                CompactionSettlement::CancelledBeforeDispatch
+                | CompactionSettlement::LocalNondispatch
+                | CompactionSettlement::ManualSuccess => {
                     self.preserved_binding_is_exact(store, operation, limit)
-                } else {
+                }
+                CompactionSettlement::Abandoned(_) => {
                     self.retired_binding_is_exact(store, operation, limit)
                 }
-            }
-            CompactionSettlement::LifecycleUserWorkWon => {
-                if !self.preserved_binding_is_exact(store, operation, limit)? {
-                    return Ok(false);
+                CompactionSettlement::ManualFailure => {
+                    if manual_failure_preserves_binding(operation) {
+                        self.preserved_binding_is_exact(store, operation, limit)
+                    } else {
+                        self.retired_binding_is_exact(store, operation, limit)
+                    }
                 }
-                self.accepted_work_witness_is_exact(store, operation, &receipt, limit)
+                CompactionSettlement::LifecycleUserWorkWon => {
+                    if !self.preserved_binding_is_exact(store, operation, limit)? {
+                        return Ok(false);
+                    }
+                    self.accepted_work_witness_is_exact(store, operation, &receipt, limit)
+                }
+                CompactionSettlement::LifecycleContinuation {
+                    turn_id,
+                    item_id,
+                    content_id,
+                } => self.continuation_successor_is_exact(
+                    store,
+                    operation,
+                    &receipt,
+                    *turn_id,
+                    *item_id,
+                    *content_id,
+                    limit,
+                ),
             }
-            CompactionSettlement::LifecycleContinuation {
-                turn_id,
-                item_id,
-                content_id,
-            } => self.continuation_successor_is_exact(
-                store,
-                operation,
-                &receipt,
-                *turn_id,
-                *item_id,
-                *content_id,
-                limit,
-            ),
-        }
+        })
     }
 
     fn stop_source_is_exact(

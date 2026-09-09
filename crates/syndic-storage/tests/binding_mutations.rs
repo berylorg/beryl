@@ -102,11 +102,19 @@ fn current_gate_revision(
     storage: &SyndicStorage,
     thread: SyndicThreadId,
 ) -> InputGateRevision {
-    storage
+    let gate = storage
         .input_gate(store, thread, point_limit())
         .unwrap()
-        .unwrap()
-        .revision()
+        .unwrap();
+    let expected = (!matches!(gate.state(), InputGateState::Idle))
+        .then(|| NonIdleGateSourceRecord::new(thread, gate.revision()));
+    assert_eq!(
+        storage
+            .non_idle_gate_source(store, thread, point_limit())
+            .unwrap(),
+        expected
+    );
+    gate.revision()
 }
 
 fn loaded_generation(process: u64, thread: u64) -> CasLoadedSessionGeneration {

@@ -20,12 +20,12 @@ use crate::{
         BindingKey, BindingsCodec, BindingsFamily, DraftByThreadCodec, DraftByThreadFamily,
         DraftImageLabelProtectionHeadsCodec, DraftImageLabelProtectionHeadsFamily, DraftsCodec,
         DraftsFamily, Family, HistorySummariesCodec, HistorySummariesFamily,
-        ImageLabelAuthorityHeadsCodec, ImageLabelAuthorityHeadsFamily, InputGatesCodec,
-        InputGatesFamily, ThreadAttributesCodec, ThreadAttributesFamily,
-        ThreadCatalogSummariesCodec, ThreadCatalogSummariesFamily, ThreadExecutionsCodec,
-        ThreadExecutionsFamily, ThreadTranscriptBuildKey, ThreadUsageCodec, ThreadUsageFamily,
-        ThreadsCodec, ThreadsFamily, TranscriptBuildsCodec, TranscriptBuildsFamily,
-        TranscriptHeadsCodec, TranscriptHeadsFamily, family_point_limit,
+        ImageLabelAuthorityHeadsCodec, ImageLabelAuthorityHeadsFamily, InputGatesFamily,
+        ThreadAttributesCodec, ThreadAttributesFamily, ThreadCatalogSummariesCodec,
+        ThreadCatalogSummariesFamily, ThreadExecutionsCodec, ThreadExecutionsFamily,
+        ThreadTranscriptBuildKey, ThreadUsageCodec, ThreadUsageFamily, ThreadsCodec, ThreadsFamily,
+        TranscriptBuildsCodec, TranscriptBuildsFamily, TranscriptHeadsCodec, TranscriptHeadsFamily,
+        family_point_limit,
     },
     domain::SyndicDomain,
     draft_piece::{
@@ -287,6 +287,23 @@ impl SyndicStorage {
                 PristineThreadInspection::Conflict("pristine-thread input gate is missing"),
             );
         };
+        let non_idle_source = self.point::<crate::codec::NonIdleGateSourcesFamily>(
+            store,
+            thread_id,
+            limit::<crate::codec::NonIdleGateSourcesFamily>(),
+        )?;
+        if !crate::record::non_idle_gate_source_matches(
+            thread_id,
+            Some(&input_gate),
+            non_idle_source.as_ref(),
+        ) {
+            return stable_inspection(
+                self,
+                store,
+                source_revision,
+                PristineThreadInspection::Conflict("pristine-thread non-idle source disagrees"),
+            );
+        }
         let Some(image_label_authority) = self.point::<ImageLabelAuthorityHeadsFamily>(
             store,
             thread_id,
@@ -586,7 +603,8 @@ fn facts_match(
             && point_matches::<ThreadAttributesFamily>(reader, &thread_id, &facts.attributes)?
             && point_matches::<HistorySummariesFamily>(reader, &thread_id, &facts.summary)?
             && point_matches::<ThreadCatalogSummariesFamily>(reader, &thread_id, &facts.catalog)?
-            && point_matches::<InputGatesFamily>(reader, &thread_id, &facts.input_gate)?
+            && crate::mutation::input_gate::current_input_gate(reader, &thread_id)?.as_ref()
+                == Some(&facts.input_gate)
             && point_matches::<ImageLabelAuthorityHeadsFamily>(
                 reader,
                 &thread_id,
@@ -674,6 +692,17 @@ fn removal_audit(
     inspect!(HistorySummariesFamily, thread_id, &facts.summary);
     inspect!(ThreadCatalogSummariesFamily, thread_id, &facts.catalog);
     inspect!(InputGatesFamily, thread_id, &facts.input_gate);
+    if storage
+        .point::<crate::codec::NonIdleGateSourcesFamily>(
+            store,
+            thread_id,
+            limit::<crate::codec::NonIdleGateSourcesFamily>(),
+        )?
+        .is_some()
+    {
+        all_absent = false;
+        exact = false;
+    }
     inspect!(
         ImageLabelAuthorityHeadsFamily,
         thread_id,
@@ -769,7 +798,7 @@ fn reserve_pristine_thread_records(
     reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
     reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
     reservation.reserve_records::<HistorySummariesCodec>(1)?;
-    reservation.reserve_records::<InputGatesCodec>(1)?;
+    crate::mutation::input_gate::reserve_input_gate(reservation)?;
     reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
     reservation.reserve_records::<BindingsCodec>(1)?;
     reservation.reserve_records::<BindingHeadsCodec>(1)?;
@@ -798,7 +827,7 @@ fn delete_pristine_thread_records(
         generation: facts.transcript_build.generation(),
     })?;
     mutations.delete::<HistorySummariesCodec>(&thread_id)?;
-    mutations.delete::<InputGatesCodec>(&thread_id)?;
+    crate::mutation::input_gate::delete_input_gate(mutations, &thread_id)?;
     mutations.delete::<ActivityQueryHeadsCodec>(&thread_id)?;
     mutations.delete::<BindingsCodec>(&BindingKey {
         thread: thread_id,

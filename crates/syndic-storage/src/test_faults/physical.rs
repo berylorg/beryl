@@ -157,6 +157,9 @@ pub fn inject_physical_corruption(
         PhysicalFamily::InputGates => {
             inject::<InputGatesFamily>(store, storage, thread, corruption)
         }
+        PhysicalFamily::NonIdleGateSources => {
+            inject::<NonIdleGateSourcesFamily>(store, storage, thread, corruption)
+        }
         PhysicalFamily::AcceptedInputs => {
             inject::<AcceptedInputsFamily>(store, storage, accepted, corruption)
         }

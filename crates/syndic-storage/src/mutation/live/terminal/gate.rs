@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use beryl_home_store::DomainReader;
 use beryl_model::SyndicTurnId;
 
@@ -61,7 +63,7 @@ impl LiveGateEffect {
             }
             None => {}
         }
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         Ok(())
     }
 }

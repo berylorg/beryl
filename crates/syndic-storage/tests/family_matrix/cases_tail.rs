@@ -3,6 +3,11 @@ use super::*;
 pub(super) fn deletion_cases() -> Vec<DeletionCase> {
     vec![
         DeletionCase {
+            family: PhysicalFamily::NonIdleGateSources,
+            delete: FixtureDelete::NonIdleGateSource(id(40)),
+            expected: "input gate and non-idle source disagree",
+        },
+        DeletionCase {
             family: PhysicalFamily::TurnItems,
             delete: FixtureDelete::TurnItem {
                 turn: source_turn(),

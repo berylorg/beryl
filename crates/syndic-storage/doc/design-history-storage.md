@@ -173,6 +173,10 @@ impossible lifecycle combination fails closed.
 
 ## Recovery And Package-Local Repair
 
+Routine non-idle work discovery starts from the compact source below and then follows exact
+candidate anchors. Source membership alone does not authorize dispatch, recovery or a provider
+effect.
+
 Routine recovery starts from an exact thread, turn, item, projection, resource, or operation anchor
 supplied by the owning service. It follows only the anchor's bounded natural closure, double-observes
 mutable heads, and reports concurrent drift separately from stable corruption. It does not enumerate
@@ -206,6 +210,38 @@ publication witness. It selects snapshot-backed item/resource authority without 
 copying all resource records, or doing sidecar I/O. The final command and its reconciliation closure
 remain fixed-size in media count. Fresh recovery can seal or select a fully staged durable candidate
 through fresh handles but cannot fill missing stages or authorize another historical request.
+
+## Non-Idle Gate Discovery
+
+The package owns one compact current source for each non-idle input gate. Direct pending turns,
+active turns, stopping, compaction, awaiting-terminal and repair-required gates participate under
+their existing lifecycle rules. Idle gates have no source, including idle threads with accepted
+next-turn work; the accepted-route source families continue to represent that queued work.
+
+Gate and source membership/revision change in one atomic mutation and one reconciliation closure.
+Creation of an idle thread leaves no source; terminal settlement or exact gate deletion removes
+it when the gate becomes idle or absent. Mutation preparation validates the source belonging to
+the exact current gate before changing it. Missing or disagreeing current authority is not repaired
+implicitly. Explicit schema validation checks both directions of the gate/source relationship in
+bounded pages; routine discovery does not enumerate gates to prove absence of an omitted source.
+
+Public source pages are ordered by exact thread identity and bounded to at most 256 records and
+65,536 stored encoded bytes. Smaller caller limits are honored; larger limits clamp. Their opaque
+cursors carry the home identity, home generation, Syndic domain revision and last scanned thread.
+Reads check the selected domain revision before and after the page. Foreign or stale-generation
+cursors and mismatched revisions produce typed failure without publishing a partial page.
+
+Consumers resolve a returned source through bounded exact current-gate and required turn/binding
+reads under the applicable revision or source-anchor checks. Stable key, identity, revision or
+membership disagreement is corruption; concurrent domain or selected-gate change remains drift.
+Pages and point resolution contain compact facts only and retain no live execution authority.
+
+A mutating recovery/scheduler traversal may explicitly rebase its existing forward bookmark to a
+fresh domain revision in the same healthy home generation. Rebase grants no carried candidate
+authority or consistent whole-scan snapshot. The owning traversal must restart from the beginning
+when a change can create eligible work behind that bookmark. Startup convergence fences new
+execution admission while it consumes its sources; live scheduling retains its existing typed
+fresh-scan wakes. Neither traversal uses broad input-gate or history-family scans.
 
 ## Privacy And Diagnostics
 

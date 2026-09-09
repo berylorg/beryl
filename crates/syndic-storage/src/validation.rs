@@ -8,6 +8,7 @@ mod content;
 mod draft_marker_admission;
 pub(crate) use content::{read_encoded_range, read_projection_text_range};
 mod graph;
+mod non_idle_gate;
 mod ordering;
 mod projections;
 mod provider_frame;
@@ -30,6 +31,7 @@ pub(crate) fn validate(
 ) -> Result<(), SyndicValidationError> {
     content::validate(reader)?;
     draft_marker_admission::validate(reader)?;
+    non_idle_gate::validate(reader)?;
     compaction::validate(reader)?;
     graph::validate(reader)?;
     ordering::validate(reader)?;

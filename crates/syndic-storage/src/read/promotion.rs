@@ -65,20 +65,27 @@ impl SyndicStorage {
         promotion: &PromoteAcceptedInput,
         limit: SyndicPointReadLimit,
     ) -> Result<AcceptedInputPromotionStatus, SyndicReadError> {
-        let observed = PromotionObservation::read(self, store, promotion, limit)?;
-        let confirmed = PromotionObservation::read(self, store, promotion, limit)?;
-        if observed != confirmed {
-            return Err(SyndicReadError::ConcurrentChange {
-                operation: "accepted-input promotion reconciliation",
-            });
-        }
-        if observed.is_exact(promotion)? {
-            Ok(AcceptedInputPromotionStatus::Exact)
-        } else if observed.is_prior(promotion) {
-            Ok(AcceptedInputPromotionStatus::Prior)
-        } else {
-            Ok(AcceptedInputPromotionStatus::Collision)
-        }
+        self.with_current_gate_source(
+            store,
+            promotion.candidate().basis().thread().id(),
+            limit,
+            || {
+                let observed = PromotionObservation::read(self, store, promotion, limit)?;
+                let confirmed = PromotionObservation::read(self, store, promotion, limit)?;
+                if observed != confirmed {
+                    return Err(SyndicReadError::ConcurrentChange {
+                        operation: "accepted-input promotion reconciliation",
+                    });
+                }
+                if observed.is_exact(promotion)? {
+                    Ok(AcceptedInputPromotionStatus::Exact)
+                } else if observed.is_prior(promotion) {
+                    Ok(AcceptedInputPromotionStatus::Prior)
+                } else {
+                    Ok(AcceptedInputPromotionStatus::Collision)
+                }
+            },
+        )
     }
 }
 

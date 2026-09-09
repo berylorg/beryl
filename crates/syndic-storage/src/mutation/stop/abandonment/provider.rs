@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 pub(super) struct AbandonmentRecords {
@@ -304,7 +306,7 @@ impl ProviderAbandonmentRecords {
             ),
             &self.membership,
         )?;
-        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
+        put_input_gate(mutations, &self.gate)?;
         mutations.put::<StopOperationsCodec>(&self.stop.id(), &self.stop)?;
         mutations.put::<CompactionOperationsCodec>(&self.compaction.id(), &self.compaction)?;
         mutations.put::<CompactionSettlementReceiptsCodec>(

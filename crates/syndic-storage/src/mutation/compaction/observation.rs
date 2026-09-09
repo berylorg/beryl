@@ -1,3 +1,5 @@
+use crate::mutation::input_gate::*;
+
 use super::*;
 
 impl DomainMutation<SyndicDomain> for ClaimMutation {
@@ -121,7 +123,7 @@ impl DomainMutation<SyndicDomain> for ProviderMutation {
         reservation.reserve_records::<TurnStatesCodec>(1)?;
         reservation.reserve_records::<ActiveCasTurnsCodec>(1)?;
         reservation.reserve_records::<CasTurnIndexCodec>(1)?;
-        reservation.reserve_records::<InputGatesCodec>(1)?;
+        reserve_input_gate(reservation)?;
         reservation.reserve_records::<StopOperationsCodec>(1)?;
         Ok(())
     }
@@ -145,7 +147,7 @@ impl DomainMutation<SyndicDomain> for ProviderMutation {
             )?;
         }
         if let Some(gate) = records.gate {
-            mutations.put::<InputGatesCodec>(&gate.thread_id(), &gate)?;
+            put_input_gate(mutations, &gate)?;
         }
         if let Some(stop) = records.stop {
             mutations.put::<StopOperationsCodec>(&stop.id(), &stop)?;
