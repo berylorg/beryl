@@ -21,3 +21,10 @@ mod work_facts {
         "/tests/unit/stop_coordinator/work_facts.rs"
     ));
 }
+
+mod continuation_custody {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/stop_coordinator/continuation_custody.rs"
+    ));
+}

@@ -2,6 +2,8 @@
 
 #[path = "lifecycle_yield/continuation_attention.rs"]
 mod continuation_attention;
+#[path = "lifecycle_yield/custody.rs"]
+mod custody;
 #[path = "lifecycle_yield/server.rs"]
 mod server;
 #[path = "lifecycle_yield/support.rs"]

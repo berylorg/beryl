@@ -2,12 +2,14 @@ use super::*;
 
 #[derive(Clone, Copy)]
 pub enum CompactionCustodyTestStage {
+    LifecyclePreparation,
     AdmissionReady,
     AdmissionFailed,
 }
 
 #[derive(Default)]
 pub(in crate::cas_projection::context_compaction::coordinator) struct CompactionCustodyPauses {
+    lifecycle_preparation: Option<Arc<CustodyPause>>,
     ready: Option<Arc<CustodyPause>>,
     failed: Option<Arc<CustodyPause>>,
 }
@@ -49,6 +51,13 @@ impl Drop for CompactionCustodyPauseController {
 
 pub struct CompactionCustodyPressureGuard {
     _reservations: Vec<super::super::custody::CompactionCustodyReservation>,
+    pool: Arc<CompactionCustodyPool>,
+}
+
+impl CompactionCustodyPressureGuard {
+    pub fn in_use(&self) -> usize {
+        self.pool.in_use()
+    }
 }
 
 impl ContextCompactionLifecycleTestHarness {
@@ -63,6 +72,7 @@ impl ContextCompactionLifecycleTestHarness {
         });
         let mut pauses = coordinator.custody_pauses.lock().unwrap();
         let slot = match stage {
+            CompactionCustodyTestStage::LifecyclePreparation => &mut pauses.lifecycle_preparation,
             CompactionCustodyTestStage::AdmissionReady => &mut pauses.ready,
             CompactionCustodyTestStage::AdmissionFailed => &mut pauses.failed,
         };
@@ -75,6 +85,7 @@ impl ContextCompactionLifecycleTestHarness {
         assert!(count <= COMPACTION_QUEUE_CAPACITY + COMPACTION_WORKER_CAPACITY);
         let coordinator = self.coordinator().unwrap();
         CompactionCustodyPressureGuard {
+            pool: Arc::clone(&coordinator.custody),
             _reservations: (0..count)
                 .map(|_| coordinator.custody.reserve().unwrap())
                 .collect(),
@@ -112,6 +123,9 @@ impl ContextCompactionCoordinator {
         let pause = {
             let mut pauses = self.custody_pauses.lock().unwrap();
             match stage {
+                CompactionCustodyTestStage::LifecyclePreparation => {
+                    pauses.lifecycle_preparation.take()
+                }
                 CompactionCustodyTestStage::AdmissionReady => pauses.ready.take(),
                 CompactionCustodyTestStage::AdmissionFailed => pauses.failed.take(),
             }

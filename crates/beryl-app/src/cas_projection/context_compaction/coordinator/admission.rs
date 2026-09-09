@@ -105,10 +105,9 @@ impl ContextCompactionCoordinator {
         candidate: &syndic_storage::CompactionAdmissionCandidate,
         yielding_turn_id: SyndicTurnId,
         completion_timeout: ResolvedContextCompactionTimeout,
-        command: LiveCommandPermit,
+        command: CompactionCommandCustody,
     ) -> Result<(), ContextCompactionError> {
-        let command = self.reserve_command(command)?;
-        // Move the argument into local drop order before fallible preparation.
+        // Dispose the projection before the command argument on preparation errors.
         let projection = projection;
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;

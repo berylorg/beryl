@@ -4,6 +4,7 @@ include!("../normal_terminal/server.rs");
 
 enum YieldCommand {
     Call(&'static str),
+    CallUntilConnectionClose(&'static str),
     ResolveBranch,
     Complete,
     Compact,
@@ -85,7 +86,8 @@ impl YieldServer {
             let mut request_id = 900;
             while let Ok(command) = commands_rx.recv_timeout(TIMEOUT) {
                 match command {
-                    YieldCommand::Call(outcome) => {
+                    YieldCommand::Call(outcome)
+                    | YieldCommand::CallUntilConnectionClose(outcome) => {
                         request_id += 1;
                         send_json(
                             &mut socket,
@@ -93,6 +95,10 @@ impl YieldServer {
                                 r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{cas_thread_id}","turnId":"{CAS_TURN_ID}","callId":"yield-{request_id}","namespace":"beryl","tool":"yield","arguments":{{"outcome":"{outcome}"}}}}}}"#,
                             ),
                         );
+                        if matches!(command, YieldCommand::CallUntilConnectionClose(_)) {
+                            read_until_close(&mut socket).unwrap();
+                            return;
+                        }
                         let response = read_json(&mut socket).unwrap();
                         assert_eq!(response["id"], request_id);
                         responses_tx.send(response).unwrap();
@@ -186,6 +192,12 @@ impl YieldServer {
     pub fn call(&self, outcome: &'static str) -> Value {
         self.commands.send(YieldCommand::Call(outcome)).unwrap();
         self.responses.recv_timeout(TIMEOUT).unwrap()
+    }
+
+    pub fn call_until_connection_close(&self, outcome: &'static str) {
+        self.commands
+            .send(YieldCommand::CallUntilConnectionClose(outcome))
+            .unwrap();
     }
 
     pub fn resolve_branch(&self) -> Value {

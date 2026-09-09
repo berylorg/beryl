@@ -85,10 +85,16 @@ fn run_settlement(case: SettlementCase) {
     let (session, projection) = support::obtain(&fixture, &server);
     let pool = Arc::new(ProcessLifecycleAttentionPool::new());
     let mut lifecycle = fixture.store.lifecycle_yield_handler(&pool);
+    let custody = fixture
+        .store
+        .context_compaction_lifecycle_test_harness()
+        .unwrap();
+    let pressure = custody.occupy_compaction_custody(71);
     let result = thread::scope(|scope| {
         let worker = scope.spawn(|| support::execute(&fixture, projection, &mut lifecycle));
         server.wait_started();
         assert_eq!(server.call("phase_continue")["result"]["success"], true);
+        assert_eq!(pressure.in_use(), 72);
         if matches!(case, SettlementCase::LiveCompactionStop) {
             server.live_compaction();
         } else {
@@ -101,6 +107,7 @@ fn run_settlement(case: SettlementCase) {
         OrdinaryTurnExecutionOutcome::LifecycleContinuationScheduled { .. }
     ));
     assert!(pool.snapshot().is_empty());
+    assert_eq!(pressure.in_use(), 72);
     let operation = match fixture
         .storage
         .compaction_admission_read(&fixture.home(), fixture.thread, point_limit())
@@ -160,6 +167,7 @@ fn run_settlement(case: SettlementCase) {
         assert!(pool.snapshot().is_empty());
         let (directory, service) = fixture.into_service();
         let _ = service.close().unwrap();
+        assert_eq!(pressure.in_use(), 71);
         assert!(pool.snapshot().is_empty());
         drop(directory);
         return;
@@ -327,6 +335,7 @@ fn run_settlement(case: SettlementCase) {
     let (directory, service) = fixture.into_service();
     let _ = service.close().unwrap();
     assert!(pool.snapshot().is_empty(), "retirement duplicated {case:?}");
+    assert_eq!(pressure.in_use(), 71);
     drop(directory);
 }
 
@@ -354,6 +363,74 @@ fn force_home_failure(fixture: &Fixture, faults: &FaultController) {
         home.health().state(),
         beryl_home_store::HomeHealthState::Failed
     );
+}
+
+#[test]
+fn persistent_failure_retains_continuation_preparation_capacity_until_disposal() {
+    run_failed_preparation_custody(false);
+}
+
+#[test]
+fn persistent_failure_retains_continuation_preparation_capacity_through_unwind() {
+    run_failed_preparation_custody(true);
+}
+
+fn run_failed_preparation_custody(unwind: bool) {
+    use beryl_app::cas_projection::CompactionCustodyTestStage;
+
+    let faults = FaultController::new();
+    let mut fixture = Fixture::with_faults(242, faults.clone());
+    fixture.submit_text(SUBMITTED_TEXT);
+    let server = YieldServer::spawn();
+    let (session, projection) = support::obtain(&fixture, &server);
+    let pool = Arc::new(ProcessLifecycleAttentionPool::new());
+    let mut lifecycle = fixture.store.lifecycle_yield_handler(&pool);
+    let custody = fixture
+        .store
+        .context_compaction_lifecycle_test_harness()
+        .unwrap();
+    let pressure = custody.occupy_compaction_custody(71);
+    thread::scope(|scope| {
+        let pause =
+            custody.pause_compaction_custody(CompactionCustodyTestStage::LifecyclePreparation);
+        let worker = scope.spawn(|| support::execute(&fixture, projection, &mut lifecycle));
+        server.wait_started();
+        assert_eq!(server.call("phase_continue")["result"]["success"], true);
+        server.finish(false);
+        pause.wait_until_paused();
+        assert_eq!(pressure.in_use(), 72);
+        assert!(!custody.has_local_compaction(fixture.thread));
+        force_home_failure(&fixture, &faults);
+        let deadline = std::time::Instant::now() + server::TIMEOUT;
+        while pool.snapshot().is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "accepted intent was not removed by failure freeze"
+            );
+            thread::yield_now();
+        }
+        assert_eq!(pressure.in_use(), 72);
+        assert_ne!(
+            fixture.store.persistent_failure_cut_snapshot().state(),
+            beryl_app::cas_projection::PersistentFailureCutState::Finished
+        );
+        if unwind {
+            pause.unwind();
+            assert!(worker.join().is_err());
+        } else {
+            pause.release();
+            assert!(worker.join().unwrap().is_err());
+        }
+        assert_eq!(pressure.in_use(), 71);
+    });
+    session.invalidate_connection();
+    drop(session);
+    server.join();
+    let (directory, service) = fixture.into_service();
+    let _ = service.close().unwrap();
+    assert_eq!(pressure.in_use(), 71);
+    assert_eq!(pool.snapshot().len(), 1);
+    drop(directory);
 }
 
 #[test]

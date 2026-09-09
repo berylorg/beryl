@@ -30,6 +30,7 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
                 fixture.turn,
                 crate::LifecycleYieldOutcome::PhaseContinue,
                 Weak::new(),
+                fixture.coordinator.compaction_custody.reserve(),
             ),
         );
 
@@ -109,6 +110,7 @@ fn persistent_failure_preserves_terminal_notice_until_exact_capture_finishes() {
                     fixture.turn,
                     LifecycleYieldOutcome::PlanComplete,
                     Arc::downgrade(&pool),
+                    None,
                 ),
             );
         let identity = failure_identity(&fixture);
@@ -437,6 +439,7 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
                 fixture.turn,
                 crate::LifecycleYieldOutcome::PhaseContinue,
                 Weak::new(),
+                fixture.coordinator.compaction_custody.reserve(),
             ),
         );
     let pause = fixture

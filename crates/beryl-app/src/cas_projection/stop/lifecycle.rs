@@ -1,3 +1,4 @@
+use crate::cas_projection::context_compaction::coordinator::custody::CompactionCustodyReservation;
 use beryl_backend::DynamicToolCallResponse;
 
 use super::*;
@@ -65,6 +66,7 @@ pub(in crate::cas_projection) struct AcceptedLifecycleYield {
     compaction_turn_id: Option<SyndicTurnId>,
     attention: Weak<ProcessLifecycleAttentionPool>,
     attempt: Option<LifecycleAttentionAttempt>,
+    reservation: Option<CompactionCustodyReservation>,
 }
 
 impl AcceptedLifecycleYield {
@@ -74,6 +76,7 @@ impl AcceptedLifecycleYield {
         turn_id: SyndicTurnId,
         outcome: LifecycleYieldOutcome,
         attention: Weak<ProcessLifecycleAttentionPool>,
+        reservation: Option<CompactionCustodyReservation>,
     ) -> Self {
         let attempt = attention
             .upgrade()
@@ -84,6 +87,7 @@ impl AcceptedLifecycleYield {
             compaction_turn_id: None,
             attention,
             attempt,
+            reservation,
         }
     }
 
@@ -119,6 +123,38 @@ impl Drop for AcceptedLifecycleYield {
 }
 
 impl StopCoordinator {
+    #[cfg(any(test, feature = "test-faults"))]
+    pub(in crate::cas_projection) fn share_continuation_custody(
+        &self,
+        thread_id: SyndicThreadId,
+        yielding_turn_id: SyndicTurnId,
+        compaction_turn_id: SyndicTurnId,
+    ) -> Result<CompactionCustodyReservation, StopCoordinationError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
+        let accepted = state
+            .lifecycle_yields
+            .get(&LifecycleYieldKey {
+                thread_id,
+                turn_id: yielding_turn_id,
+            })
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)?;
+        if !accepted.is_continuation()
+            || accepted
+                .compaction_turn_id
+                .is_some_and(|existing| existing != compaction_turn_id)
+        {
+            return Err(StopCoordinationError::LocalAuthorityMismatch);
+        }
+        accepted
+            .reservation
+            .as_ref()
+            .map(CompactionCustodyReservation::share)
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)
+    }
+
     pub(in crate::cas_projection) fn bind_lifecycle_compaction(
         &self,
         thread_id: SyndicThreadId,
@@ -195,6 +231,14 @@ impl StopCoordinator {
         if !command.is_current() || state.persistent_failure.is_some() {
             return Err(StopCoordinationError::HomeAuthorityLost);
         }
+        let reservation = if outcome == LifecycleYieldOutcome::PhaseContinue {
+            let Some(reservation) = self.compaction_custody.reserve() else {
+                return Ok(false);
+            };
+            Some(reservation)
+        } else {
+            None
+        };
         state.lifecycle_yields.insert(
             key,
             AcceptedLifecycleYield::new(
@@ -203,6 +247,7 @@ impl StopCoordinator {
                 turn_id,
                 outcome,
                 attention.clone(),
+                reservation,
             ),
         );
         Ok(true)
@@ -320,11 +365,11 @@ impl StopCoordinator {
             }))
     }
 
-    pub(in crate::cas_projection) fn has_terminal_phase_continue(
+    pub(in crate::cas_projection) fn share_terminal_continuation_custody(
         &self,
         thread_id: SyndicThreadId,
         turn_id: SyndicTurnId,
-    ) -> Result<bool, StopCoordinationError> {
+    ) -> Result<Option<CompactionCustodyReservation>, StopCoordinationError> {
         let command = self
             .commands
             .authorize()
@@ -340,6 +385,8 @@ impl StopCoordinator {
         Ok(state
             .lifecycle_yields
             .get(&LifecycleYieldKey { thread_id, turn_id })
-            .is_some_and(|accepted| accepted.continuation_pending))
+            .filter(|accepted| accepted.continuation_pending)
+            .and_then(|accepted| accepted.reservation.as_ref())
+            .map(CompactionCustodyReservation::share))
     }
 }

@@ -34,7 +34,7 @@ use super::ContextCompactionTargetAuthority;
 use super::{ContextCompactionTimeoutPolicy, ResolvedContextCompactionTimeout};
 
 mod admission;
-mod custody;
+pub(in crate::cas_projection) mod custody;
 use custody::{CompactionCommandCustody, CompactionCustodyPool};
 pub(in crate::cas_projection) mod dispatch;
 #[cfg(test)]
@@ -210,6 +210,7 @@ impl ContextCompactionCoordinator {
     ) -> Result<Arc<Self>, ContextCompactionError> {
         let (work, receiver) = mpsc::sync_channel(COMPACTION_QUEUE_CAPACITY);
         let receiver = Arc::new(Mutex::new(receiver));
+        let custody = Arc::clone(&stop.compaction_custody);
         let coordinator = Arc::new(Self {
             home,
             home_id,
@@ -221,7 +222,7 @@ impl ContextCompactionCoordinator {
             scheduler_signal,
             closing: AtomicBool::new(false),
             settlement_fence: Mutex::new(()),
-            custody: CompactionCustodyPool::new(),
+            custody,
             #[cfg(feature = "test-faults")]
             custody_pauses: Mutex::new(test_faults::CompactionCustodyPauses::default()),
             operations: Mutex::new(HashMap::new()),
@@ -305,15 +306,25 @@ impl ContextCompactionCoordinator {
             .commands
             .authorize()
             .map_err(|_| ContextCompactionError::Unavailable)?;
+        let Some(reservation) = self
+            .stop
+            .share_terminal_continuation_custody(projection.syndic_thread_id(), yielding_turn_id)
+            .map_err(|_| ContextCompactionError::Unavailable)?
+        else {
+            timeout_policy.validate()?;
+            self.ensure_current()?;
+            return Ok(LifecycleCompactionAdmission::NotLaunched(projection));
+        };
+        let command = CompactionCommandCustody {
+            command,
+            _reservation: reservation,
+        };
+        // Keep preparation custody until the projection has disposed, including on unwind.
+        let projection = projection;
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::LifecyclePreparation);
         timeout_policy.validate()?;
         self.ensure_current()?;
-        if !self
-            .stop
-            .has_terminal_phase_continue(projection.syndic_thread_id(), yielding_turn_id)
-            .map_err(|_| ContextCompactionError::Unavailable)?
-        {
-            return Ok(LifecycleCompactionAdmission::NotLaunched(projection));
-        }
         let read = self
             .storage
             .compaction_admission_read(&self.home, projection.syndic_thread_id(), point_limit())

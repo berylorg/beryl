@@ -1,35 +1,47 @@
 use super::*;
 
-pub(super) struct CompactionCustodyPool {
+pub(in crate::cas_projection) struct CompactionCustodyPool {
     occupied: AtomicUsize,
 }
 
 impl CompactionCustodyPool {
     #[cfg(any(test, feature = "test-faults"))]
-    pub(super) fn in_use(&self) -> usize {
+    pub(in crate::cas_projection) fn in_use(&self) -> usize {
         self.occupied.load(Ordering::Acquire)
     }
 
-    pub(super) fn new() -> Arc<Self> {
+    pub(in crate::cas_projection) fn new() -> Arc<Self> {
         Arc::new(Self {
             occupied: AtomicUsize::new(0),
         })
     }
 
-    pub(super) fn reserve(self: &Arc<Self>) -> Option<CompactionCustodyReservation> {
+    pub(in crate::cas_projection) fn reserve(
+        self: &Arc<Self>,
+    ) -> Option<CompactionCustodyReservation> {
         self.occupied
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |occupied| {
                 (occupied < COMPACTION_QUEUE_CAPACITY + COMPACTION_WORKER_CAPACITY)
                     .then_some(occupied + 1)
             })
             .ok()?;
-        Some(CompactionCustodyReservation(Arc::clone(self)))
+        Some(CompactionCustodyReservation(Arc::new(
+            CompactionCustodySlot(Arc::clone(self)),
+        )))
     }
 }
 
-pub(super) struct CompactionCustodyReservation(Arc<CompactionCustodyPool>);
+pub(in crate::cas_projection) struct CompactionCustodyReservation(Arc<CompactionCustodySlot>);
 
-impl Drop for CompactionCustodyReservation {
+impl CompactionCustodyReservation {
+    pub(in crate::cas_projection) fn share(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+struct CompactionCustodySlot(Arc<CompactionCustodyPool>);
+
+impl Drop for CompactionCustodySlot {
     fn drop(&mut self) {
         self.0.occupied.fetch_sub(1, Ordering::AcqRel);
     }

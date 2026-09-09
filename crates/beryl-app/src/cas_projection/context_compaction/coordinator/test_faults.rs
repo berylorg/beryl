@@ -188,14 +188,30 @@ impl ContextCompactionLifecycleTestHarness {
             attempt,
             CompactionOrigin::Lifecycle { yielding_turn_id },
             ResolvedContextCompactionTimeout::fixed(completion_timeout),
-            coordinator.reserve_command(
-                coordinator
+            CompactionCommandCustody {
+                command: coordinator
                     .commands
                     .authorize()
                     .map_err(|_| ContextCompactionError::Unavailable)?,
-            )?,
+                _reservation: coordinator
+                    .stop
+                    .share_continuation_custody(
+                        operation_id.thread_id(),
+                        yielding_turn_id,
+                        operation_id.provider_turn_id(),
+                    )
+                    .map_err(|_| ContextCompactionError::AuthorityMismatch)?,
+            },
         ));
         coordinator.install_local(Arc::clone(&local))?;
+        coordinator
+            .stop
+            .bind_lifecycle_compaction(
+                operation_id.thread_id(),
+                yielding_turn_id,
+                operation_id.provider_turn_id(),
+            )
+            .map_err(|_| ContextCompactionError::AuthorityMismatch)?;
         *driver = Some(dispatch::CompactionDriverGuard(local));
         Ok(())
     }

@@ -89,6 +89,8 @@ pub(in crate::cas_projection) struct StopCoordinator {
     storage: SyndicStorage,
     commands: super::persistent_failure::LiveCommandAuthorizer,
     state: state::StopState,
+    pub(super) compaction_custody:
+        Arc<super::context_compaction::coordinator::custody::CompactionCustodyPool>,
     #[cfg(test)]
     race_pauses: StopRacePauses,
 }
@@ -382,6 +384,8 @@ impl StopCoordinator {
             storage,
             commands,
             state: state::StopState::new(StopCoordinatorState::default()),
+            compaction_custody:
+                super::context_compaction::coordinator::custody::CompactionCustodyPool::new(),
             #[cfg(test)]
             race_pauses: StopRacePauses::default(),
         }

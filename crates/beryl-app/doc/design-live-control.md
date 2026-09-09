@@ -74,15 +74,24 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 
 - Approval, stop, compaction, and continuation state uses explicit count, byte, and concurrency
   bounds. Each non-cloneable capability has one coordinator or driver owner.
-- Compaction reserves one of 72 process-local operation slots before installing local operation
+- Manual compaction reserves one of 72 process-local operation slots before installing local operation
   state or publishing durable admission. This custody budget derives from the 64 queued operations
   and eight execution workers; those queue and worker limits continue to apply independently.
   Exhaustion rejects admission before durable mutation. Joining an existing operation consumes no
   additional slot.
+- Accepting `PhaseContinue` reserves from that same budget before creating accepted intent or
+  attention state. Exhaustion leaves the yield unaccepted. Other lifecycle-yield outcomes retain
+  their existing acceptance policy and do not consume this reservation.
+- The exact yielding thread/turn shares its counted reservation with its later compaction; the
+  transition never acquires a second slot. This share grants no dispatch authority and cannot bind
+  another intent or compaction. Retain the reservation until both intent disposal and compaction
+  command/target cleanup finish. Cancellation, registry removal and response completion do not
+  release it while either owner remains. Verify direct-caller suspension and connection reuse,
+  cancellation and removed cleanup, and admission/settlement handoff with the full budget occupied.
 - A compaction reservation follows exact command custody through preparation, failed admission,
   queue handoff, execution, settlement and target cleanup. Local removal, response completion,
   connection retirement and worker reuse cannot release it while that custody remains. Final
-  disposal, including cancellation and unwind, releases the slot; result-only waiters retain none
+  disposal of the last custody owner, including cancellation and unwind, releases the slot; result-only waiters retain none
   after command disposal. Verify paused failed admission and replacement pressure, queue/driver
   handoff and post-settlement target cleanup without changing exact dispatch or settlement rules.
 - An admitted primary stop retains the exact connection's existing two-worker reservation through

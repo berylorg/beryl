@@ -38,15 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 367: Bound Compaction Admission Custody Through Disposal (finished)
+# Phase 368: Retain Shared Capacity From Continuation Acceptance Through Disposal (finished)
 
-Accepted 72-operation custody reservation before compaction admission through failure, queue/driver
-handoff and final disposal. Result waiters retain no reservation after command release. Independent
-semantic review, production compilation, 37 regressions and final six-case custody verification
-passed. Changed-file formatting passed; guarded job memory peaked at 2.10 GiB. Owned children and
-six test temporary directories were reclaimed. The
-[custody evidence](failures/cas-compaction-admission-custody-bound.md#verification)
-records acceptance and the required unwind/drop ordering.
+Accepted the shared 72-slot reservation before `PhaseContinue` acceptance through exact intent and
+compaction cleanup. Full-budget handoff shares rather than reacquires capacity. Independent review,
+93 regressions and production compilation passed, including direct-caller connection reuse and
+persistent failure during preparation with normal disposal or unwind. Formatting and diff checks
+passed; guarded job memory peaked at 2.10 GiB. Owned children and eight temporary directories were
+reclaimed. The [continuation evidence](failures/cas-compaction-admission-custody-bound.md#continuation-verification)
+records acceptance and the preparation lifetime correction.
 
 # Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (pending)
 
@@ -56,16 +56,10 @@ continuation identity and pending/cancelled state when the accepted intent moves
 registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
 not queue/worker counts alone; observe without retaining capabilities or changing execution.
 
-The compaction admission custody prerequisite is accepted. Readiness remains blocked before
-observation implementation: direct ordinary callers can retain accepted continuation intents before
-compaction admission while connection workers become reusable. Independent source review confirms
-that neither the per-thread flight map nor cancellation/attention limits bound those owners.
-The [continuation prerequisite](failures/cas-compaction-admission-custody-bound.md#continuation-admission-prerequisite)
-recommends reserving from the existing 72-slot budget at `PhaseContinue` acceptance and sharing that
-reservation with later compaction through both owners' disposal. Await Operator direction; update
-live-control authority and split its acceptance phase before implementation. Other lifecycle-yield
-outcomes are outside that proposed change. Stop/permission and compaction reservation acceptance
-remain complete.
+Compaction and shared continuation reservation prerequisites are accepted. Independent readiness
+review derives at most 72 command and 72 continuation owners, with no additional execution-policy
+change required. Other lifecycle-yield outcomes remain outside this source. Stop/permission
+acceptance remains complete.
 
 # Phase 361: Compose Revision-Bound Control Work Facts (pending)
 

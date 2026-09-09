@@ -103,7 +103,7 @@ is claimed. The compaction reservation acceptance above remains valid.
   Observation must therefore follow removed cleanup custody as well as registry membership.
   Successful compaction settlement's moved-out intent remains bounded by its settlement fence.
 
-The recommended correction, awaiting Operator direction, is to reserve from the existing 72-slot
+The Operator approved reserving from the existing 72-slot
 budget when a `PhaseContinue` intent is accepted. Share that same counted reservation with its
 later compaction, retaining it until both intent disposal and command/target cleanup finish.
 Reacquisition at compaction admission could strand a budget already occupied by 72 accepted intents.
@@ -111,8 +111,37 @@ Exhaustion must leave the new continuation unaccepted, without new attention or 
 Cancellation retains the reservation through actual disposal; it does not make a retained cancelled
 value invisible or prematurely reusable.
 
-This proposal bounds continuation-classified yields, including their later cancelled state. It
+This correction bounds continuation-classified yields, including their later cancelled state. It
 does not claim to bound every other lifecycle-yield outcome or change their acceptance policy.
 Verify direct-caller suspension, connection reuse, admission pressure, cancellation and removed
 cleanup, and shared reservation transfer into compaction before resuming observation. The owning
-live-control authority must record this acceptance-lifetime change before its implementation plan.
+live-control authority records this acceptance-lifetime change; its implementation prerequisite
+is accepted.
+
+## Continuation Verification
+
+Acceptance now reserves before intent and attention creation. The accepted intent and exact later
+compaction share one counted slot; pending cancellation and registry removal preserve it until the
+last owner disposes. Full-budget compaction preparation and handoff never reacquire capacity.
+
+Independent review found that sharing only inside lifecycle admission left earlier preparation
+uncovered: persistent failure removes registered intents before draining command permits. The
+pending-intent check now acquires the share atomically under its registry lock, before storage,
+timeout resolution or identity preparation. Projection disposal precedes command release on error
+and unwind. Preserve the closed-coordinator and timeout checks on the no-pending branch as well;
+the shutdown regression caught an early return that had bypassed them.
+
+Real protocol tests pause direct acceptance through connection retirement and replacement-worker
+admission, with and without prior cancellation. A denied continuation leaves attention empty and
+still permits another lifecycle outcome. Compaction success, user-input precedence, preparation,
+settlement, shutdown and home-failure cases run with the other 71 slots occupied. Two further tests
+pause before lifecycle preparation, force persistent failure to remove the intent, and prove the
+slot remains held through normal cleanup or unwind. Unit tests cover duplicate and wrong-target
+rejection, removed cancelled ownership, shared last-owner release and unwind.
+
+All 93 focused stop, compaction, lifecycle-content, yield and ordinary-terminal regressions passed,
+as did production compilation without test features, changed-file formatting, diff checks and
+independent semantic review. Guarded job memory peaked at 2.10 GiB; all owned children exited and
+eight exact temporary directories were reclaimed. The first preparation-pause test incorrectly
+requested connection loss instead of successful ordinary terminal; the corrected fixture reaches
+the intended preparation cut before forcing home failure.
