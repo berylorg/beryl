@@ -144,6 +144,21 @@ impl LoadedProjectionLease {
         )
     }
 
+    pub(in crate::cas_projection) fn invalidate_observed_metadata(
+        &self,
+    ) -> Result<(), ProjectionCoordinatorError> {
+        if !self.active || self.connection.authority.is_retired() {
+            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
+        }
+        registry::invalidate_metadata(
+            &self.key,
+            self.connection.authority.generation,
+            self.owner,
+            self.generation,
+            self.token,
+        )
+    }
+
     pub(in crate::cas_projection) fn register_event_target(
         &mut self,
         home_generation: u64,

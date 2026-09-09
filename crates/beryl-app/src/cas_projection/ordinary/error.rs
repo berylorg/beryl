@@ -16,6 +16,8 @@ pub enum OrdinaryTurnExecutionError {
     Coordinator(#[from] ProjectionCoordinatorError),
     #[error("Beryl-home state could not be read while preparing ordinary execution")]
     HomeRead(#[from] beryl_home_store::ReadError),
+    #[error("exact backend model defaults are unavailable for ordinary execution")]
+    BackendDefaultPolicyUnavailable,
     #[error("ordinary history convergence command could not be built")]
     HomeCommandBuild(#[from] beryl_home_store::CommandBuildError),
     #[error("ordinary history convergence command was proven not committed")]

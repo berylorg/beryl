@@ -120,6 +120,7 @@ pub(super) fn execute_in_flight(
     ));
     let started_at = retain_projection!(system_timestamp_at_least(pending.minimum_observed_at));
     retain_projection!(check_cancelled(cancellation));
+    let start_options = retain_projection!(request.resolve_start_options(store, &projection));
     let snapshot_id = execution_snapshot_id(coordinator, &projection, &pending);
     let activation = ActivateBinding::new(
         pending.thread_id,
@@ -165,7 +166,7 @@ pub(super) fn execute_in_flight(
     };
     let mut replay = prepared.fresh_source();
     let start = match target.start_streamed_turn(
-        request.start_options().clone(),
+        start_options,
         request.request_timeout(),
         replay.service(store, storage, cancellation),
     ) {

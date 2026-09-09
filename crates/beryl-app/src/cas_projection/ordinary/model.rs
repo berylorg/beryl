@@ -14,10 +14,13 @@ use crate::{
     LifecycleYieldRequest, LifecycleYieldRequestHandler,
 };
 
-/// Caller-selected provider options for one already admitted ordinary turn.
+mod policy;
+use policy::BackendDefaultSettings;
+
 #[derive(Clone, Debug)]
 pub struct OrdinaryTurnExecutionRequest {
     start_options: TurnStartOptions,
+    backend_default_settings: Option<BackendDefaultSettings>,
     request_timeout: Duration,
     context_compaction_timeout: Duration,
     #[cfg(feature = "test-faults")]
@@ -29,6 +32,7 @@ impl OrdinaryTurnExecutionRequest {
     pub fn new(start_options: TurnStartOptions, request_timeout: Duration) -> Self {
         Self {
             start_options,
+            backend_default_settings: None,
             request_timeout,
             context_compaction_timeout: Duration::from_secs(180),
             #[cfg(feature = "test-faults")]
@@ -70,6 +74,7 @@ impl OrdinaryTurnExecutionRequest {
 impl PartialEq for OrdinaryTurnExecutionRequest {
     fn eq(&self, other: &Self) -> bool {
         self.start_options == other.start_options
+            && self.backend_default_settings == other.backend_default_settings
             && self.request_timeout == other.request_timeout
             && self.context_compaction_timeout == other.context_compaction_timeout
     }

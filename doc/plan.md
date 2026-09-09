@@ -38,24 +38,21 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 347: Retain Exact Loaded-Thread Policy Metadata (finished)
+# Phase 348: Resolve Backend-Default Policy For Each Start Attempt (finished)
 
-Accepted exact backend model/reasoning observations retained by the existing loaded-session
-registry through fresh, resumed, forked, recovered and reused projections, with retirement and
-replacement fencing and no additional requests. Independent semantic review, production check,
-formatting and diff checks passed. All 25 selected regression cases passed across the broad run
-and focused correction of obsolete fixture/disposal assertions. Guarded runs stayed below 1.5 GiB
-of job memory and left no child processes. Attempt-time policy resolution remains below.
+Accepted backend-default ordinary policy with typed settings read before each start attempt,
+explicit hidden-context clearing, exact model provenance and shared invalidation before fixed
+overrides can dispatch. Direct retry, replacement and actual scheduled checkout passed wire tests;
+continuation reaches the same resolver through the verified pending-turn path. Independent review,
+production check, formatting and diff checks passed; the final regression run passed 42/42, peaked
+at 2.01 GiB of job memory and left no child processes. Explicit model/reasoning selection remains
+unavailable pending its owning custody, consumption and restart contract.
 
-# Phase 348: Resolve Backend-Default Policy For Each Start Attempt (pending)
+# Phase 349: Resolve Timeout Policy At Compaction Admission (pending)
 
-Compose production request policy from exact backend root/thread defaults and the latest applied
-developer instructions for each ordinary start, retry, replacement and continuation. Preserve
-hidden-context exclusions and typed unavailability when required policy is unknown. Do not freeze
-instructions at session registration. Verify the actual execution path and independent review.
-Explicit model/reasoning controls remain unavailable: their ownership, accepted-input custody,
-consumption and restart contract require owning design authority before that separate feature
-slice can be implemented.
+Resolve the latest valid applied timeout when manual or lifecycle compaction is admitted, preserving
+that value for the admitted operation and typed settings failure. Verify settings changes during a
+preceding ordinary turn affect only subsequently admitted compaction, under the status-line contract.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

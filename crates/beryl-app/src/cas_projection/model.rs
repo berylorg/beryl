@@ -386,6 +386,15 @@ impl LoadedCasProjection {
         }
     }
 
+    pub(in crate::cas_projection) fn invalidate_observed_thread_metadata(
+        &self,
+    ) -> Result<(), super::ProjectionCoordinatorError> {
+        self.lease
+            .as_ref()
+            .ok_or(super::ProjectionCoordinatorError::ProjectionWorkerStopped)?
+            .invalidate_observed_metadata()
+    }
+
     /// Consumes this projection into the sole provisional target registered before `turn/start`.
     pub fn into_pending_live_event_target(
         self,

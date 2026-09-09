@@ -22,7 +22,20 @@ pub struct ScheduledOrdinaryRequestPolicy {
 }
 
 impl ScheduledOrdinaryRequestPolicy {
-    /// Creates one complete policy snapshot. There is deliberately no default policy.
+    pub fn backend_defaults(
+        settings: beryl_state::SettingsState,
+        model_context_window_tokens: Option<u64>,
+        projection_timeout: Duration,
+        request_timeout: Duration,
+    ) -> Self {
+        Self::new(
+            ThreadStartOptions::persistent(),
+            model_context_window_tokens,
+            projection_timeout,
+            OrdinaryTurnExecutionRequest::backend_defaults(settings, request_timeout),
+        )
+    }
+
     #[must_use]
     pub const fn new(
         thread_options: ThreadStartOptions,

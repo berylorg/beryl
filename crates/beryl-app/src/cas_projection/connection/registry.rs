@@ -245,6 +245,31 @@ pub(in crate::cas_projection) fn observed_metadata(
         .map(|entry| entry.metadata.clone()))
 }
 
+pub(in crate::cas_projection) fn invalidate_metadata(
+    key: &LoadedThreadKey,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+    generation: CasLoadedSessionGeneration,
+    token: LeaseToken,
+) -> Result<(), ProjectionCoordinatorError> {
+    if generation.process() != key.process_generation {
+        return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
+    }
+    let mut state = lock()?;
+    let entry = state
+        .entries
+        .get_mut(key)
+        .filter(|entry| {
+            entry.connection == connection
+                && entry.owner == owner
+                && entry.generation == generation.thread()
+                && entry.leases.contains(&token)
+        })
+        .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)?;
+    entry.metadata = Default::default();
+    Ok(())
+}
+
 pub(in crate::cas_projection) fn connection_has_authority(
     connection: ConnectionGeneration,
 ) -> Result<bool, ProjectionCoordinatorError> {
