@@ -56,6 +56,12 @@ maintenance wake. Relevant final view, preparation and live/control cleanup rele
 inspection after their state becomes observable. Preserve dispatch/retry lane masks, exact runtime
 binding, busy/stale refusal and generation fences; add no polling worker or retry loop.
 
+Readiness is blocked by [completed response custody](failures/process-idle-response-custody.md).
+The shared reader currently treats retained completed request observations as required work, and
+the backend response source has no final-release/write-completion notification. App-only release
+wakes cannot establish autonomous idle progress. Implementation is stopped under the Operator's
+technical-plan-failure rule; establish the separate response-lifecycle correction before activation.
+
 # Phase 325: Own Running Work Independently Of Views (pending)
 
 Compose process-owned execution interest across direct submission, scheduled input, compaction,
