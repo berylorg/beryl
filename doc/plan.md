@@ -56,8 +56,16 @@ continuation identity and pending/cancelled state when the accepted intent moves
 registry into durable settlement and reconciliation. Derive bounds from all existing owner stages,
 not queue/worker counts alone; observe without retaining capabilities or changing execution.
 
-The compaction admission custody prerequisite is accepted. Stop/permission acceptance remains
-complete; finish the remaining continuation-source bound review before activation.
+The compaction admission custody prerequisite is accepted. Readiness remains blocked before
+observation implementation: direct ordinary callers can retain accepted continuation intents before
+compaction admission while connection workers become reusable. Independent source review confirms
+that neither the per-thread flight map nor cancellation/attention limits bound those owners.
+The [continuation prerequisite](failures/cas-compaction-admission-custody-bound.md#continuation-admission-prerequisite)
+recommends reserving from the existing 72-slot budget at `PhaseContinue` acceptance and sharing that
+reservation with later compaction through both owners' disposal. Await Operator direction; update
+live-control authority and split its acceptance phase before implementation. Other lifecycle-yield
+outcomes are outside that proposed change. Stop/permission and compaction reservation acceptance
+remain complete.
 
 # Phase 361: Compose Revision-Bound Control Work Facts (pending)
 

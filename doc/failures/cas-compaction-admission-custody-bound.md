@@ -79,3 +79,40 @@ passed. Guarded job memory peaked at 2.10 GiB; owned processes exited and six ex
 directories were removed. The first protocol run was aborted after a test assertion left a pause
 controller outside its thread scope; controllers now release during scope unwind. The corrected
 bounded run exposed and fixed an unconsumed fixture admission event.
+
+## Continuation Admission Prerequisite
+
+The accepted compaction correction starts too late to bound continuation intent before compaction
+admission. Independent source review confirms this separate earlier interval; no live reproduction
+is claimed. The compaction reservation acceptance above remains valid.
+
+- `stop/lifecycle.rs::accept_lifecycle_yield` validates exact turn identity and duplicate admission,
+  then inserts an `AcceptedLifecycleYield` without a capacity reservation. Its bounded attention
+  pool and the separate 256 cancellation markers do not bound accepted continuation owners.
+- A public direct ordinary execution can pause after accepting `PhaseContinue`, before
+  `ordinary/execute/capture_loop.rs::handle_dynamic_tool` calls `respond_dynamic_tool_call`.
+  The callback holds no connection runtime lock. Its `OrdinaryLifecycleGuard` preserves the
+  registered intent until the caller progresses or disposes it.
+- Connection retirement independently takes the runtime and joins its workers. Repeated direct
+  executions on fresh eligible thread identities can retain more intents while reusing connection
+  capacity. Direct execution's `ProjectionFlight` is per-thread exclusion in an uncapped map,
+  rather than a global capacity reservation.
+- Scheduled execution's `ScheduledOrdinaryExecutionLease` does retain a worker permit through
+  execution; that separate path cannot establish the direct caller's bound.
+- `release_ordinary_lifecycle_yield` removes the accepted value before cancellation and disposal.
+  Observation must therefore follow removed cleanup custody as well as registry membership.
+  Successful compaction settlement's moved-out intent remains bounded by its settlement fence.
+
+The recommended correction, awaiting Operator direction, is to reserve from the existing 72-slot
+budget when a `PhaseContinue` intent is accepted. Share that same counted reservation with its
+later compaction, retaining it until both intent disposal and command/target cleanup finish.
+Reacquisition at compaction admission could strand a budget already occupied by 72 accepted intents.
+Exhaustion must leave the new continuation unaccepted, without new attention or continuation state.
+Cancellation retains the reservation through actual disposal; it does not make a retained cancelled
+value invisible or prematurely reusable.
+
+This proposal bounds continuation-classified yields, including their later cancelled state. It
+does not claim to bound every other lifecycle-yield outcome or change their acceptance policy.
+Verify direct-caller suspension, connection reuse, admission pressure, cancellation and removed
+cleanup, and shared reservation transfer into compaction before resuming observation. The owning
+live-control authority must record this acceptance-lifetime change before its implementation plan.
