@@ -160,14 +160,14 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             }
         }),
     );
-    if mode == "pause-projection" && index > 0 {
+    if matches!(mode.as_str(), "pause-projection" | "projection-lifetime") && index > 0 {
         let projection = read_json(&mut socket);
         assert_eq!(projection["method"], "thread/start");
         fs::write("runtime-projection-evidence.json", serde_json::to_vec(&json!({
             "pid": std::process::id(), "method": projection["method"], "cwd": projection["params"]["cwd"]
         })).unwrap()).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while !std::path::Path::new("release-projection").exists() {
+        while mode == "pause-projection" && !std::path::Path::new("release-projection").exists() {
             assert!(
                 std::time::Instant::now() < deadline,
                 "fixture projection release timed out"
@@ -189,6 +189,15 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     while let Ok(message) = socket.read() {
         if message.is_close() {
             break;
+        }
+        if mode == "projection-lifetime" && message.is_text() {
+            let request: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            assert_eq!(request["method"], "thread/unsubscribe");
+            send_json(
+                &mut socket,
+                json!({"id": request["id"], "result": {"status": "unsubscribed"}}),
+            );
+            continue;
         }
         assert!(
             !message.is_text(),

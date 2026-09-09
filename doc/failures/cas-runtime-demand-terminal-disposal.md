@@ -3,8 +3,8 @@
 ## Scope
 
 Process-owned execution composition in Phase 325. This is an independently reviewed source
-counterexample at revision `35b5b5f4`, not a reproduced production incident. No retention change
-was implemented.
+counterexample at revision `35b5b5f4`, not a reproduced production incident. Retention was deferred
+until autonomous terminal disposal passed acceptance; both corrections are now accepted.
 
 ## Invalidated Approach
 
@@ -59,8 +59,18 @@ receipt or reauthorized execution.
 
 All 118 selected lifecycle/runtime regressions, production compilation, changed-file formatting
 and diff checks passed. All six guarded jobs and temporary directories were reclaimed. Required
-runtime-demand retention through worker custody and idle-session retirement remain subsequent
-acceptance boundaries. This record does not replace the controlling lifetime authority.
+runtime-demand retention through worker custody was subsequently accepted with the same admitted
+interest shared across the existing connection worker pair. Publication retains an outer owner
+until runtime locks are released, locators remain weak, and driver custody extends through all
+retirement cleanup. The managed-runtime startup session remains unguarded.
+
+Two real managed-process tests prove loaded-projection and retained-stop-custody survival after
+session/view release, same-period reattachment and eventual process/token/worker release. All 169
+selected runtime, stop, compaction and lifecycle regressions, production compilation, formatting
+and diff checks passed. Independent review found no remaining publication, release-order or
+ownership-cycle blocker. All five guarded jobs and temporary directories were reclaimed.
+Exact idle-session retirement remains a separate acceptance boundary. This record does not
+replace the controlling lifetime authority.
 
 The controlling lifetime requirements remain in
 [app projection and scheduling](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md)

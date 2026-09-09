@@ -45,6 +45,7 @@ pub(in crate::cas_projection) struct ProjectionConnection {
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
     process_fact: ConnectionProcessFact,
+    runtime_interest_source: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
     forwarding_hub: Arc<ForwardingHub>,
     shutdown_settlement: Mutex<ConnectionShutdownSettlement>,
     runtime: Mutex<Option<ConnectionRuntime>>,
@@ -183,6 +184,7 @@ impl ProjectionConnection {
         )?);
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
         let persistent_failure = Arc::new(persistent_failure::PersistentFailureDriverSlot::new());
+        let runtime_interest_source = worker_permits.runtime_interest_source();
         let ingester_permit = worker_permits.take_ingester();
         let (sink, broker, ingester) = match ProviderBroker::start(
             Arc::clone(&home),
@@ -259,6 +261,7 @@ impl ProjectionConnection {
             runtime_id,
             process_generation,
             process_fact,
+            runtime_interest_source,
             forwarding_hub,
             shutdown_settlement: Mutex::new(ConnectionShutdownSettlement::Unsettled),
             runtime: Mutex::new(Some(ConnectionRuntime { driver })),
@@ -474,6 +477,13 @@ impl ProjectionConnection {
         drop(command);
     }
 
+    pub(in crate::cas_projection) fn retain_runtime_interest(
+        &self,
+        interest: Arc<crate::cas_projection::RuntimeInterest>,
+    ) -> Result<(), crate::cas_projection::RuntimeSessionAdmissionError> {
+        self.runtime_interest_source.retain(interest)
+    }
+
     pub(in crate::cas_projection) fn call<T>(
         &self,
         operation: impl FnOnce(&mut ConnectionRequestSession<'_>) -> Result<T, ManagedBackendError>
@@ -578,6 +588,16 @@ impl ProjectionConnection {
     pub(in crate::cas_projection) fn ingester_finished_for_test(&self) -> bool {
         self.current_attachment()
             .is_ok_and(|attachment| attachment.ingester_is_finished())
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn retain_worker_custody_for_test(
+        &self,
+    ) -> crate::cas_projection::service_config::ConnectionWorkerRetention {
+        self.current_attachment()
+            .expect("exact attachment remains present")
+            .router
+            .retain_worker_custody_for_test()
     }
 
     #[cfg(feature = "test-faults")]

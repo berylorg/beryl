@@ -45,15 +45,18 @@ impl ProjectionWorkerPool {
         Ok(())
     }
 
-    fn reserved_connection_pair(&self) -> ProjectionWorkerPermitPair {
+    pub(super) fn reserved_connection_pair(&self) -> ProjectionWorkerPermitPair {
+        let runtime_interest = ConnectionRuntimeInterestCustody::new();
         ProjectionWorkerPermitPair {
             driver: Some(ProjectionWorkerPermit::new(
                 self.clone(),
                 ProjectionWorkerRole::Connection,
+                Some(Arc::clone(&runtime_interest)),
             )),
             ingester: Some(ProjectionWorkerPermit::new(
                 self.clone(),
                 ProjectionWorkerRole::Connection,
+                Some(runtime_interest),
             )),
         }
     }

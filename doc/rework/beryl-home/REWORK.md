@@ -349,6 +349,9 @@
   and attention revisions preserve handoffs; independent review and 128 regressions passed.
 - [x] Accepted autonomous runtime-owned connection disposal through exact terminal completion,
   poisoned cleanup and the persistent-failure fence; independent review and 118 regressions passed.
+- [x] Retained the same admitted runtime demand through loaded projection, compaction, stop custody
+  and final driver cleanup; independent review and 169 regressions passed, including real managed
+  survival, same-period reattachment and final resource release without session/view ownership.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

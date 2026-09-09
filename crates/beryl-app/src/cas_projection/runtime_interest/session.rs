@@ -61,12 +61,11 @@ impl RuntimeInterest {
         ready: RuntimeReadiness,
         mut session: AdmittedProjectionSession,
     ) -> Result<AdmittedProjectionSession, RuntimeSessionAdmissionError> {
-        let shared = Arc::clone(&self.shared);
-        let mut interest = Some(self);
+        let interest = Arc::new(self);
+        let shared = Arc::clone(&interest.shared);
         let state = shared.lock();
-        let retained = interest.as_ref().expect("unpublished interest");
-        if retained.status_locked(&state) != RuntimeInterestStatus::Ready(ready)
-            || session.runtime_id() != retained.runtime_id
+        if interest.status_locked(&state) != RuntimeInterestStatus::Ready(ready)
+            || session.runtime_id() != interest.runtime_id
             || session.process_generation() != ready.process_generation
         {
             return Err(RuntimeSessionAdmissionError::RuntimeUnavailable);
@@ -77,12 +76,9 @@ impl RuntimeInterest {
             .map_err(|_| RuntimeSessionAdmissionError::ServiceUnavailable)?;
         command
             .commit_if_current(|| {
-                session.retain_runtime_interest(
-                    interest.take().expect("unpublished interest"),
-                    ready.activity_period,
-                )
+                session.retain_runtime_interest(Arc::clone(&interest), ready.activity_period)
             })
-            .map_err(|_| RuntimeSessionAdmissionError::ServiceUnavailable)?;
+            .map_err(|_| RuntimeSessionAdmissionError::ServiceUnavailable)??;
         Ok(session)
     }
 }

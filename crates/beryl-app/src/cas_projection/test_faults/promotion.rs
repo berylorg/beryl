@@ -195,6 +195,10 @@ impl ProjectionConnectionRetirementHandle {
         self.connection.with_shutdown_settlement_for_test(inspect)
     }
 
+    pub fn retain_worker_custody(&self) -> impl Send + use<> {
+        self.connection.retain_worker_custody_for_test()
+    }
+
     /// Forces the exact provider ingester's next terminal receipt to be unclean.
     pub fn fail_next_ingester_join(&self) {
         self.connection.fail_next_ingester_join_for_test();

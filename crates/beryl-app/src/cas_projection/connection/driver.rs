@@ -1220,13 +1220,17 @@ impl Drop for DriverWorkGuardPauseController {
 }
 
 fn run_driver(
-    mut backend: ManagedBackendSession,
+    backend: ManagedBackendSession,
     receiver: FixedChannelReceiver<DriverCommand>,
     context: DriverContext,
     worker: ProjectionWorkerPermit,
 ) {
-    let _retirement = DriverRetirementGuard { context: &context };
+    // Worker custody outlives retirement and disposal of the driver inputs, including unwind.
     let _worker = worker;
+    let mut backend = backend;
+    let receiver = receiver;
+    let context = context;
+    let _retirement = DriverRetirementGuard { context: &context };
     let mut initial_approval_drain_pending = true;
     'driver: loop {
         #[cfg(test)]

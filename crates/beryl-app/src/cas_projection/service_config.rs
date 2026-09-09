@@ -13,7 +13,10 @@ use thiserror::Error;
 mod connection_retention;
 mod preparation;
 
-pub(super) use connection_retention::{ConnectionWorkerRetention, ConnectionWorkerRetentionSource};
+use connection_retention::ConnectionRuntimeInterestCustody;
+pub(super) use connection_retention::{
+    ConnectionRuntimeInterestSource, ConnectionWorkerRetention, ConnectionWorkerRetentionSource,
+};
 
 pub(super) const CONNECTION_WORKER_PERMITS: usize = 2;
 pub(super) const SCHEDULED_ORDINARY_WORKER_PERMITS: usize = 1;
@@ -212,6 +215,7 @@ struct ProjectionWorkerAdmission {
     pool: ProjectionWorkerPool,
     role: ProjectionWorkerRole,
     committed_steering_worker: AtomicBool,
+    runtime_interest: Option<Arc<ConnectionRuntimeInterestCustody>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -305,16 +309,7 @@ impl ProjectionWorkerPool {
         }
         state.record_acquisition(CONNECTION_WORKER_PERMITS);
         drop(state);
-        Ok(ProjectionWorkerPermitPair {
-            driver: Some(ProjectionWorkerPermit::new(
-                self.clone(),
-                ProjectionWorkerRole::Connection,
-            )),
-            ingester: Some(ProjectionWorkerPermit::new(
-                self.clone(),
-                ProjectionWorkerRole::Connection,
-            )),
-        })
+        Ok(self.reserved_connection_pair())
     }
 
     /// Reserves one scheduled ordinary worker without retaining candidate work.
@@ -372,7 +367,7 @@ impl ProjectionWorkerPool {
                 .expect("steering-critical acquisitions retain exact permit accounting");
         }
         drop(state);
-        Ok(ProjectionWorkerPermit::new(self.clone(), role))
+        Ok(ProjectionWorkerPermit::new(self.clone(), role, None))
     }
 
     pub(super) fn diagnostics(&self) -> ProjectionWorkerPoolDiagnostics {
@@ -452,12 +447,17 @@ impl Drop for ProjectionWorkerAdmission {
 }
 
 impl ProjectionWorkerPermit {
-    fn new(pool: ProjectionWorkerPool, role: ProjectionWorkerRole) -> Self {
+    fn new(
+        pool: ProjectionWorkerPool,
+        role: ProjectionWorkerRole,
+        runtime_interest: Option<Arc<ConnectionRuntimeInterestCustody>>,
+    ) -> Self {
         Self {
             admission: Arc::new(ProjectionWorkerAdmission {
                 pool,
                 role,
                 committed_steering_worker: AtomicBool::new(false),
+                runtime_interest,
             }),
         }
     }

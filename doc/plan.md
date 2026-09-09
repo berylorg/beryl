@@ -38,23 +38,18 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 370: Complete Connection Disposal Without Later Activity (finished)
+# Phase 371: Retain Runtime Demand Through Execution Cleanup (finished)
 
-Accepted exact runtime/process disposal through the existing health worker, independent of later
-activity. Active connections survive; contention defers maintenance, poisoned cleanup releases
-resources with an unclean result, and the persistent-failure fence remains intact.
+Accepted retention of the same admitted required-work interest through the existing connection
+worker pair, loaded projection, compaction and stop custody. Publication precedes session return,
+weak locators add no demand, and driver custody extends through retirement cleanup. Managed
+startup remains unguarded; the autonomous disposal owner prevents failed-cleanup self-retention.
 
-Independent semantic review, 118 lifecycle/runtime regressions, production compilation, formatting
-and diff checks passed. The [disposal correction](failures/cas-runtime-demand-terminal-disposal.md)
-records the lifetime counterexample and verification. All six guarded jobs and temporary
-directories were reclaimed. Runtime-demand retention and idle-session retirement remain separate.
-
-# Phase 371: Retain Runtime Demand Through Execution Cleanup (pending)
-
-Keep the existing required-work demand through loaded-projection, compaction and request custody
-using the admitted connection's existing worker ownership. Preserve exact runtime publication and
-the unguarded managed-runtime startup session. Extend driver custody through its retirement guard;
-verify last-interest release after real cleanup and all failure/replacement handoffs.
+Independent semantic review, 169 runtime, stop, compaction and lifecycle regressions, production
+compilation, formatting and diff checks passed. Two real managed-process tests prove survival
+without session/view ownership, same-period reattachment and final resource release. The
+[disposal correction](failures/cas-runtime-demand-terminal-disposal.md) records acceptance.
+All five guarded jobs and temporary directories were reclaimed. Idle-session retirement follows.
 
 # Phase 372: Retire Idle Process Execution Sessions (pending)
 

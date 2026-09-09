@@ -3,6 +3,25 @@ use std::thread;
 use super::*;
 
 impl RuntimeInterestOwner {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn interest_count_for_test(
+        &self,
+        runtime_id: RuntimeId,
+        kind: RuntimeInterestKind,
+    ) -> usize {
+        self.shared
+            .lock()
+            .runtimes
+            .get(&runtime_id)
+            .map_or(0, |entry| {
+                entry
+                    .interests
+                    .values()
+                    .filter(|current| **current == kind)
+                    .count()
+            })
+    }
+
     pub(in crate::cas_projection) fn configuration(&self) -> RuntimeInterestConfig {
         self.shared.config
     }

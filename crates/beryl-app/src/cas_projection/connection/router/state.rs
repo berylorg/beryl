@@ -17,6 +17,15 @@ pub(in crate::cas_projection::connection) enum TargetProjectionDropSettlement {
 
 impl EventRouter {
     #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn retain_worker_custody_for_test(
+        &self,
+    ) -> crate::cas_projection::service_config::ConnectionWorkerRetention {
+        self.worker_retention
+            .retain()
+            .expect("exact connection workers remain present")
+    }
+
+    #[cfg(feature = "test-faults")]
     pub(in crate::cas_projection) fn retained_worker_units_for_test(&self) -> (bool, bool) {
         self.worker_retention.retained_units_for_test()
     }

@@ -8,6 +8,17 @@ use crate::cas_projection::runtime_interest::{
 
 impl ProjectionConnectionService {
     #[cfg(feature = "test-faults")]
+    pub fn runtime_interest_count_for_test(
+        &self,
+        runtime_id: RuntimeId,
+        kind: RuntimeInterestKind,
+    ) -> usize {
+        self.runtime_interest
+            .as_ref()
+            .map_or(0, |owner| owner.interest_count_for_test(runtime_id, kind))
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn poll_runtime_retirements_for_test(
         &self,
         runtime_id: RuntimeId,

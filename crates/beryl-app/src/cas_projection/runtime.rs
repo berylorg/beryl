@@ -15,7 +15,7 @@ use super::{
 #[derive(Debug)]
 pub struct AdmittedProjectionSession {
     connection: Arc<ProjectionConnection>,
-    runtime_interest: Option<(super::RuntimeInterest, super::RuntimeActivityPeriod)>,
+    runtime_interest: Option<(Arc<super::RuntimeInterest>, super::RuntimeActivityPeriod)>,
 }
 
 impl AdmittedProjectionSession {
@@ -28,10 +28,13 @@ impl AdmittedProjectionSession {
 
     pub(in crate::cas_projection) fn retain_runtime_interest(
         &mut self,
-        interest: super::RuntimeInterest,
+        interest: Arc<super::RuntimeInterest>,
         period: super::RuntimeActivityPeriod,
-    ) {
+    ) -> Result<(), super::RuntimeSessionAdmissionError> {
+        self.connection
+            .retain_runtime_interest(Arc::clone(&interest))?;
         self.runtime_interest = Some((interest, period));
+        Ok(())
     }
 
     pub(in crate::cas_projection) fn permits_execution_binding(
