@@ -90,6 +90,7 @@ impl AcceptedInputSchedulerContext {
         let admission = ScheduledOrdinaryAdmission::new(
             self.home_id,
             self.home_generation,
+            self.command_gate.service_generation(),
             thread_id,
             execution_binding,
             worker,

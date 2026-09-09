@@ -92,6 +92,8 @@ pub enum ScheduledOrdinaryExecutionUnavailable {
 
 /// Synchronous process-shell provider for scheduled ordinary execution.
 pub trait ScheduledOrdinaryExecutionProvider: Send + 'static {
+    fn attach(&mut self, _context: super::ScheduledExecutionProviderContext) {}
+
     /// Consumes the service-issued admission token into one complete lease or a typed decline.
     fn try_issue(
         &mut self,
@@ -110,6 +112,7 @@ pub trait ScheduledOrdinaryExecutionProvider: Send + 'static {
 pub struct ScheduledOrdinaryAdmission {
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
+    service_generation: super::ProjectionServiceGeneration,
     thread_id: SyndicThreadId,
     execution_binding: ExecutionBinding,
     worker: ProjectionWorkerPermit,
@@ -121,6 +124,7 @@ impl ScheduledOrdinaryAdmission {
     pub(super) fn new(
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
+        service_generation: super::ProjectionServiceGeneration,
         thread_id: SyndicThreadId,
         execution_binding: ExecutionBinding,
         worker: ProjectionWorkerPermit,
@@ -130,6 +134,7 @@ impl ScheduledOrdinaryAdmission {
         Self {
             home_id,
             home_generation,
+            service_generation,
             thread_id,
             execution_binding,
             worker,
@@ -148,6 +153,10 @@ impl ScheduledOrdinaryAdmission {
     #[must_use]
     pub const fn home_generation(&self) -> HomeGeneration {
         self.home_generation
+    }
+
+    pub const fn service_generation(&self) -> super::ProjectionServiceGeneration {
+        self.service_generation
     }
 
     /// Returns the Syndic thread selected for this admission.
@@ -237,10 +246,10 @@ pub struct ScheduledOrdinaryExecutionLease {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
-    session: Box<dyn ScheduledProjectionSessionAuthority>,
-    tools: Box<dyn OrdinaryDynamicToolAuthority>,
     _worker: ProjectionWorkerPermit,
     flight: ProjectionFlight,
+    session: Box<dyn ScheduledProjectionSessionAuthority>,
+    tools: Box<dyn OrdinaryDynamicToolAuthority>,
 }
 
 pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
@@ -252,9 +261,9 @@ pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
+    flight: ProjectionFlight,
     session: Box<dyn ScheduledProjectionSessionAuthority>,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
-    flight: ProjectionFlight,
 }
 
 /// Result of one synchronous provider call.

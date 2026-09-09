@@ -41,6 +41,7 @@ mod model;
 mod native_lineage_recovery;
 mod ordinary;
 mod persistent_failure;
+mod process_sessions;
 mod provider_frame;
 mod provider_identity;
 mod publication;
@@ -108,6 +109,11 @@ pub use persistent_failure::{
     PersistentFailureGeneration, PersistentFailureNotification,
     PersistentFailureNotificationStatus, PersistentFailureTerminalEvidence,
     ProjectionServiceGeneration,
+};
+pub use process_sessions::{
+    ProcessScheduledExecutionProvider, ScheduledExecutionProviderContext,
+    ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionRegistration,
+    ScheduledSessionRegistrationError,
 };
 pub use runtime::AdmittedProjectionSession;
 pub use scheduled_ordinary::{

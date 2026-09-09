@@ -37,6 +37,13 @@ mod server {
 
 use server::{AUTHORIZATION, NormalTerminalServer, TIMEOUT};
 
+mod process_sessions {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/process_scheduled_sessions.rs"
+    ));
+}
+
 struct ReturningSession {
     session: Option<AdmittedProjectionSession>,
     slot: Arc<Mutex<Option<AdmittedProjectionSession>>>,
@@ -437,8 +444,8 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     assert!(new_wakes >= 1);
     assert_eq!(
         new_wakes + newly_coalesced,
-        1,
-        "the earlier steering release consumed the armed capacity waiter, so lease release only wakes the retained same-thread flight waiter"
+        2,
+        "lease release restores ordinary capacity beyond the steering reserve and wakes the same-thread flight waiter"
     );
     assert!(slot.lock().unwrap().is_some());
     wait_for_worker_availability(&service, 2);

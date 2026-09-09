@@ -170,7 +170,7 @@ fn commit_atoms(
                     .checked_add(text.bytes().filter(|byte| *byte == b'\n').count() as u64)
                     .unwrap();
             }
-            Atom::Image(label, asset) => {
+            Atom::Image(_label, asset) => {
                 let ordinal = u64::try_from(metadata.len() + 1).unwrap();
                 let marker = marker_id(binding.candidate().draft_id(), ordinal);
                 let object = InlineObjectId::new(u128::from_be_bytes(*marker.as_bytes()));
@@ -186,7 +186,7 @@ fn commit_atoms(
                         ),
                     },
                 ));
-                metadata.push(ComposerHostImageMarkerMetadata::new(object, *label, *asset));
+                metadata.push(ComposerHostImageMarkerMetadata::new(object, *asset));
                 last_neighbor = Some(InlineObjectNeighbor::new(object, order));
             }
         }

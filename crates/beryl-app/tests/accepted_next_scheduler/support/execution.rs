@@ -159,11 +159,18 @@ pub fn ready_provider(slot: SessionSlot, assets: AssetState) -> CheckoutProvider
     }
 }
 
-fn request_policy() -> ScheduledOrdinaryRequestPolicy {
+pub fn request_policy() -> ScheduledOrdinaryRequestPolicy {
     ScheduledOrdinaryRequestPolicy::new(
         ThreadStartOptions::persistent(),
         Some(2_000_000),
         TIMEOUT,
         OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
     )
+}
+
+pub fn tool_authority() -> Box<dyn OrdinaryDynamicToolAuthority> {
+    Box::new(ToolAuthority {
+        lifecycle: LifecycleHandler,
+        branch: BranchHandler,
+    })
 }

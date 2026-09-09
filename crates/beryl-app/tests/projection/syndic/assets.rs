@@ -317,7 +317,7 @@ fn commit_atoms(
                     )
                     .unwrap();
             }
-            Err((label, asset_index)) => {
+            Err((_label, asset_index)) => {
                 let ordinal = u64::try_from(metadata.len() + 1).unwrap();
                 let marker = marker_id(binding.candidate().draft_id(), ordinal);
                 let object = InlineObjectId::new(u128::from_be_bytes(*marker.as_bytes()));
@@ -338,7 +338,7 @@ fn commit_atoms(
                 ));
                 metadata.push(
                     beryl_app::composer_host::ComposerHostImageMarkerMetadata::new(
-                        object, label, asset,
+                        object, asset,
                     ),
                 );
                 last_neighbor = Some(InlineObjectNeighbor::new(object, order));

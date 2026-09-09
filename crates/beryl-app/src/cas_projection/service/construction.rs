@@ -42,7 +42,7 @@ impl ProjectionConnectionService {
         home: Arc<HomeStore>,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
-        scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+        mut scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
         initial_start: Arc<InitialStartGate>,
         startup_storage_revision: DomainRevision,
         recovery: StartupRecoveryDiagnostics,
@@ -114,6 +114,17 @@ impl ProjectionConnectionService {
                 Arc::clone(&initial_start),
             )
             .map_err(|_| ProjectionCoordinatorError::ContextCompactionCoordinatorUnavailable)?;
+        scheduled_ordinary_provider.attach(
+            super::super::process_sessions::ScheduledExecutionProviderContext::new(
+                home.home_id(),
+                home_generation,
+                service_generation,
+                config,
+                command_authorizer.clone(),
+                Arc::downgrade(&connections),
+                scheduler_signal.clone(),
+            ),
+        );
         let scheduled_ordinary_provider = Arc::new(Mutex::new(scheduled_ordinary_provider));
         let workers = ProjectionWorkerPool::new_with_scheduler(
             config.worker_capacity(),

@@ -218,6 +218,7 @@ impl ProjectionConnectionService {
         let admission = ScheduledOrdinaryAdmission::new(
             self.home_id,
             self.home_generation,
+            self.service_generation,
             thread_id,
             execution_binding,
             worker,

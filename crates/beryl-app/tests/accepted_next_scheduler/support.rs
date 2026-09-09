@@ -17,7 +17,7 @@ pub use server::{AUTHORIZATION, NormalTerminalServer, SUBMITTED_TEXT, TIMEOUT};
 
 #[path = "support/execution.rs"]
 mod execution;
-pub use execution::{SessionSlot, ready_provider};
+pub use execution::{SessionSlot, ready_provider, request_policy, tool_authority};
 
 pub const EXECUTION_ROOT: &str = r"C:\work\beryl";
 

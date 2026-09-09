@@ -303,8 +303,10 @@
   existing fresh scheduling, preserving shutdown and failure precedence; independently reviewed
   [evidence](../../failures/cas-phase13-global-revision-publication.md) covers repeated conflicts,
   single dispatch/capture and durable accepted input through joined shutdown.
-- [ ] Implement the bounded production session checkout provider and process work ownership across
-  direct submission, accepted input, compaction, continuation and terminal-history convergence.
+- [x] Accepted the bounded scheduled session checkout provider with exclusive custody and exact
+  retirement; independent semantic review and 20 focused provider/scheduler/lease checks passed.
+- [ ] Compose production runtime admission and process work ownership across direct submission,
+  accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
   with process-owned lifecycle attention independent of the originating window.
 - [ ] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window

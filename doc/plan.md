@@ -7,8 +7,8 @@ this work, including the accepted widget revision and Beryl changes. Preserve re
 checks and independent review while using conditional delegation and bounded evidence.
 
 Keep GUI thread switching clean without overengineering. The two authorized non-GUI corrections,
-marker admission and healthy scheduler-conflict handling, are accepted. Broader process-provider composition
-and other deferred work remain outside this authorization.
+marker admission and healthy scheduler-conflict handling, are accepted. The Operator's instruction to
+continue implementation resumes process-provider composition and the remaining phases below.
 The controlling contracts are [conversation threads](features/conversation-threads/design.md),
 [backend recovery](features/backend-runtime-recovery/design.md), and the
 [app package](../crates/beryl-app/doc/design.md). Complete process composition, Running threads,
@@ -38,23 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 344: Finalize Canonical Marker Dependency Revision (finished)
+# Phase 324: Own Scheduled Execution Sessions In The Process (finished)
 
-Published text-input `5f2f272` and settings-window `8a9e1cd`, and aligned Beryl's formal pins and
-canonical lockfile. Locked canonical metadata resolves one GPUI and one of each widget. The
-isolated production app check passed in 172 seconds; the settings library check and scoped
-completion review passed. Semantic navigation restarted successfully after validation and a symbol
-query passed. [Publication evidence](failures/composer-marker-admission.md#canonical-dependency-publication)
-records the corrected canonical-versus-local workflow. The broader phases below remain deferred.
-
-# Phase 324: Own Scheduled Execution Sessions In The Process (pending)
-
-Deferred independent scheduler composition work. The uncommitted provider has no production GUI
-switching caller and is not a prerequisite for Phase 327. Preserve its unaccepted source separately;
-do not include it in the GUI phase's commit or infer it is required merely to detach a view.
-Its concurrency test exposed [existing healthy-conflict fatalization](failures/cas-phase13-global-revision-publication.md).
-The narrow scheduler correction is authorized separately in Phase 330; that authorization does not
-activate this provider work. Re-establish readiness before resuming this phase.
+Accepted the bounded provider for already-admitted sessions, with exclusive paired session/tool
+checkout, exact generation and binding validation, retiring-slot accounting and typed return wakes.
+Focused nextest verification passed 20/20 across provider, accepted-next scheduler and lease tests;
+independent semantic review found no blocking custody, privilege or dispatch issues. Two unviewed
+threads dispatch and capture terminal history, successor wakes resume queued work, and shutdown
+joins winning promotion. The guarded run peaked at 2.00 GiB and left no worker processes; formatting
+and diff checks passed. Production runtime composition and wider execution ownership remain below.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
