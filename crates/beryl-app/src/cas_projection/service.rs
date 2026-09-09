@@ -64,6 +64,7 @@ mod runtime_interest;
 mod runtime_preparation;
 mod scheduling;
 mod shutdown;
+mod stop_work;
 mod work_facts;
 
 pub(super) use admission::ProjectionAdmissionContext;

@@ -29,18 +29,27 @@ impl ApprovalInterruptionSlot {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn reserve(&self) -> bool {
+        self.reserve_observed(|| None).is_ok()
+    }
+
+    pub(super) fn reserve_observed(
+        &self,
+        observe: impl FnOnce() -> Option<crate::cas_projection::stop::PermissionCustodyToken>,
+    ) -> Result<Option<crate::cas_projection::stop::PermissionCustodyToken>, ()> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         if !matches!(*state, SlotState::Empty) {
-            return false;
+            return Err(());
         }
+        let custody = observe();
         *state = SlotState::Reserved {
             close_after_install: false,
         };
-        true
+        Ok(custody)
     }
 
     pub(super) fn install(&self, obligation: ApprovalInterruptionObligation) -> bool {
@@ -52,6 +61,8 @@ impl ApprovalInterruptionSlot {
             SlotState::Reserved {
                 close_after_install: false,
             } => {
+                obligation
+                    .observe_stage(crate::cas_projection::PermissionInterruptionWorkStage::Pending);
                 *state = SlotState::Pending(PendingApprovalInterruption { obligation });
                 true
             }
@@ -98,7 +109,12 @@ impl ApprovalInterruptionSlot {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         match std::mem::replace(&mut *state, SlotState::Empty) {
-            SlotState::Pending(pending) => Some(pending),
+            SlotState::Pending(pending) => {
+                pending
+                    .obligation
+                    .observe_stage(crate::cas_projection::PermissionInterruptionWorkStage::Driver);
+                Some(pending)
+            }
             other => {
                 *state = other;
                 None

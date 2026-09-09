@@ -28,8 +28,13 @@ use super::connection::{
 };
 
 mod close_continuation;
+mod custody;
 mod lifecycle;
 mod persistent_failure;
+mod state;
+mod work_facts;
+
+pub(in crate::cas_projection) use custody::PermissionCustodyToken;
 
 use lifecycle::AcceptedLifecycleYield;
 pub use lifecycle::ProcessLifecycleYieldHandler;
@@ -37,7 +42,7 @@ pub use lifecycle::ProcessLifecycleYieldHandler;
 const STOP_POINT_READ_BYTES: usize = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LocalDispatchState {
+pub enum StopDispatchWorkState {
     AdmittedNotClaimed,
     ClaimUnresolved,
     ClaimedNotDispatched,
@@ -48,6 +53,8 @@ enum LocalDispatchState {
     DurablyAbandoned,
     FailureFrozenNondispatch,
 }
+
+use StopDispatchWorkState as LocalDispatchState;
 
 #[derive(Clone, Debug)]
 struct LocalStop {
@@ -66,7 +73,10 @@ struct LifecycleYieldKey {
 
 #[derive(Default)]
 struct StopCoordinatorState {
-    stops: HashMap<SyndicThreadId, LocalStop>,
+    stops: std::collections::BTreeMap<SyndicThreadId, LocalStop>,
+    live_custody: std::collections::BTreeMap<StopOperationId, custody::LiveStopCustody>,
+    permissions: std::collections::BTreeMap<u64, super::stop_work::PermissionInterruptionWorkFact>,
+    next_permission: u64,
     lifecycle_yields: HashMap<LifecycleYieldKey, AcceptedLifecycleYield>,
     cancelled_continuations: HashMap<SyndicThreadId, SyndicTurnId>,
     persistent_failure: Option<super::persistent_failure::PersistentFailureCutIdentity>,
@@ -78,7 +88,7 @@ pub(in crate::cas_projection) struct StopCoordinator {
     home_generation: HomeGeneration,
     storage: SyndicStorage,
     commands: super::persistent_failure::LiveCommandAuthorizer,
-    state: Mutex<StopCoordinatorState>,
+    state: state::StopState,
     #[cfg(test)]
     race_pauses: StopRacePauses,
 }
@@ -91,6 +101,7 @@ enum StopRaceStage {
     ClaimFenceHeld,
     BeforeBeginDispatchFence,
     BeginDispatchFenceHeld,
+    PermissionCustodyDrop,
 }
 
 #[cfg(test)]
@@ -338,6 +349,7 @@ pub(in crate::cas_projection) struct StopDispatchOwner {
     timeout: std::time::Duration,
     _command: super::persistent_failure::LiveCommandPermit,
     settled: bool,
+    custody: custody::StopCustodyToken,
     worker_retention: super::service_config::ConnectionWorkerRetention,
 }
 
@@ -369,7 +381,7 @@ impl StopCoordinator {
             home_generation,
             storage,
             commands,
-            state: Mutex::new(StopCoordinatorState::default()),
+            state: state::StopState::new(StopCoordinatorState::default()),
             #[cfg(test)]
             race_pauses: StopRacePauses::default(),
         }
@@ -617,6 +629,14 @@ impl StopCoordinator {
             return Err(StopCoordinationError::LocalAuthorityMismatch);
         }
         let worker_retention = permit.take_worker_retention();
+        state.live_custody.insert(
+            live.operation_id(),
+            custody::LiveStopCustody {
+                target: live.target().clone(),
+                primary: true,
+                driver: false,
+            },
+        );
         Ok(StopOwnership::Primary(StopDispatchOwner {
             coordinator: Arc::clone(self),
             operation_id: live.operation_id(),
@@ -626,6 +646,7 @@ impl StopCoordinator {
             timeout: proof.request_timeout(),
             _command,
             settled: false,
+            custody: custody::StopCustodyToken::primary(self, live.operation_id()),
             worker_retention,
         }))
     }
@@ -908,10 +929,8 @@ impl StopDispatchOwner {
         self.target.thread_id()
     }
 
-    pub(in crate::cas_projection) fn retain_workers(
-        &self,
-    ) -> super::service_config::ConnectionWorkerRetention {
-        self.worker_retention.retain()
+    pub(in crate::cas_projection) fn retain_driver_custody(&self) -> custody::StopDriverCustody {
+        self.custody.driver(self.worker_retention.retain())
     }
 
     pub(in crate::cas_projection) const fn operation_id(&self) -> StopOperationId {

@@ -16,16 +16,19 @@ use crate::cas_projection::stop::StopDispatchOwner;
 pub(in crate::cas_projection) struct PreparedApprovalInterruption {
     interruption: ApprovalInterruption,
     primary: Option<StopDispatchOwner>,
+    custody: Option<crate::cas_projection::stop::PermissionCustodyToken>,
 }
 
 impl PreparedApprovalInterruption {
     pub(in crate::cas_projection) const fn new(
         interruption: ApprovalInterruption,
         primary: Option<StopDispatchOwner>,
+        custody: Option<crate::cas_projection::stop::PermissionCustodyToken>,
     ) -> Self {
         Self {
             interruption,
             primary,
+            custody,
         }
     }
 }
@@ -60,9 +63,19 @@ pub(in crate::cas_projection) struct ApprovalInterruptionObligation {
     turn_id: CasTurnId,
     item_id: Option<CasItemId>,
     primary: Option<StopDispatchOwner>,
+    custody: Option<crate::cas_projection::stop::PermissionCustodyToken>,
 }
 
 impl ApprovalInterruptionObligation {
+    pub(in crate::cas_projection) fn observe_stage(
+        &self,
+        stage: crate::cas_projection::PermissionInterruptionWorkStage,
+    ) {
+        if let Some(custody) = &self.custody {
+            custody.set_stage(stage);
+        }
+    }
+
     pub(in crate::cas_projection) fn thread_id(&self) -> &CasThreadId {
         &self.key.cas_thread_id
     }
@@ -93,7 +106,7 @@ impl EventRouter {
         let thread_id = request.thread_id().cloned();
         let turn_id = request.turn_id().cloned();
         let request = std::cell::RefCell::new(Some(request));
-        let prepared = std::cell::RefCell::new(Some(prepared));
+        let mut prepared = prepared;
         let mut state = match self.state.lock() {
             Ok(state) => state,
             Err(_) => {
@@ -112,10 +125,6 @@ impl EventRouter {
                 .borrow_mut()
                 .take()
                 .expect("one exact gate branch consumes the approval request");
-            let prepared = prepared
-                .borrow_mut()
-                .take()
-                .expect("one exact gate branch consumes prepared approval authority");
             let (Some(thread_id), Some(turn_id)) = (thread_id, turn_id) else {
                 state.rejected_operation_count = state.rejected_operation_count.saturating_add(1);
                 advance_revision(&mut state);
@@ -146,8 +155,12 @@ impl EventRouter {
                 };
             };
             if target.loss_requested {
-                let obligation =
-                    approval_obligation(self.connection_generation, target, &request, prepared);
+                let obligation = approval_obligation(
+                    self.connection_generation,
+                    target,
+                    &request,
+                    prepared.as_ref(),
+                );
                 return target_failed(
                     &mut state,
                     &thread_id,
@@ -161,8 +174,12 @@ impl EventRouter {
                 let reason = target
                     .publication_closing
                     .unwrap_or(LiveEventTargetCloseReason::WorkerStopped);
-                let obligation =
-                    approval_obligation(self.connection_generation, target, &request, prepared);
+                let obligation = approval_obligation(
+                    self.connection_generation,
+                    target,
+                    &request,
+                    prepared.as_ref(),
+                );
                 return target_failed(
                     &mut state,
                     &thread_id,
@@ -183,8 +200,12 @@ impl EventRouter {
                 (TargetTurn::Exact, _) => Some(LiveEventTargetCloseReason::ConflictingTurnIdentity),
             };
             if let Some(reason) = route_failure {
-                let obligation =
-                    approval_obligation(self.connection_generation, target, &request, prepared);
+                let obligation = approval_obligation(
+                    self.connection_generation,
+                    target,
+                    &request,
+                    prepared.as_ref(),
+                );
                 return target_failed(
                     &mut state,
                     &thread_id,
@@ -202,8 +223,12 @@ impl EventRouter {
                 .map_or(ApprovalInterruption::NotRequired, |prepared| {
                     prepared.interruption.clone()
                 });
-            let obligation =
-                approval_obligation(self.connection_generation, target, &request, prepared);
+            let obligation = approval_obligation(
+                self.connection_generation,
+                target,
+                &request,
+                prepared.as_ref(),
+            );
             let work_serial = self.observe_request(
                 &mut state,
                 &thread_id,
@@ -279,14 +304,30 @@ impl EventRouter {
                 }
             }
         });
-        committed.unwrap_or_else(|_| ApprovalRouteOutcome::Rejected {
+        let mut outcome = committed.unwrap_or_else(|_| ApprovalRouteOutcome::Rejected {
             request: request
                 .borrow_mut()
                 .take()
                 .expect("cut approval request was not consumed"),
             cause: OrderedTurnStreamSubmitCause::Unavailable,
             reason: LiveEventTargetCloseReason::StreamFailure,
-        })
+        });
+        drop(state);
+        // Rejection and unwind dispose coordinator custody after both routing fences release.
+        if let ApprovalRouteOutcome::Routed {
+            obligation: Some(obligation),
+            ..
+        }
+        | ApprovalRouteOutcome::TargetFailed {
+            obligation: Some(obligation),
+            ..
+        } = &mut outcome
+            && let Some(prepared) = &mut prepared
+        {
+            obligation.primary = prepared.primary.take();
+            obligation.custody = prepared.custody.take();
+        }
+        outcome
     }
 
     pub(in crate::cas_projection) fn fail_approval_interruption(
@@ -371,12 +412,12 @@ fn approval_obligation(
     connection_generation: u64,
     target: &super::TargetEntry,
     request: &ApprovalRequest,
-    prepared: Option<PreparedApprovalInterruption>,
+    prepared: Option<&PreparedApprovalInterruption>,
 ) -> Option<ApprovalInterruptionObligation> {
     if !request.kind().separate_interruption_required() {
         return None;
     }
-    let prepared = prepared.expect("permission approval retains durable stop ownership");
+    prepared.expect("permission approval retains durable stop ownership");
     Some(ApprovalInterruptionObligation {
         connection_generation,
         target_registration: target.registration,
@@ -388,7 +429,8 @@ fn approval_obligation(
             .expect("validated permission approval retains its turn identity")
             .clone(),
         item_id: request.item_id().cloned(),
-        primary: prepared.primary,
+        primary: None,
+        custody: None,
     })
 }
 

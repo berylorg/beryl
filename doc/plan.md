@@ -38,47 +38,16 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 366: Dispose Permission Slots Before Ingester Completion (finished)
+# Phase 363: Publish Revision-Bound Stop And Interruption Custody Facts (finished)
 
-Accepted approval-slot disposal before caught-panic ingester completion and worker release.
-Joined pending and reserved slot tests prove closure before later cancellation and capacity reuse.
-Independent semantic review, production compilation and 49 selected stop, approval, worker and
-terminal checks passed. Peak guarded job memory was 2.07 GiB; all children exited and temporary
-directories were removed. The [custody evidence](failures/cas-stop-custody-worker-reservation.md#permission-disposal-prerequisite)
-records the accepted prerequisite.
-
-# Phase 363: Publish Revision-Bound Stop And Interruption Custody Facts (wip)
-
-Expose bounded healthy-generation stop and permission-interruption facts from their existing
-coordinator, broker and driver owners. Distinguish durable settlement, registry membership and
-remaining driver custody; map removal or response completion alone does not prove work release.
-
-- Page existing retained stop records without another historical catalog; distinguish abandoned
-  records from live work. Observe removed-but-owned stop identities until exact settlement and
-  release, including terminal consumption during backend interruption and nondispatch settlement.
-- Preserve compact exact permission-obligation identity through preparation, broker installation,
-  driver transfer, joined admission without a primary owner, invalidation and disposal. Reuse the
-  existing app obligation custody; retain no backend payload or usable capability in observations.
-- Derive removed-owner bookkeeping from the accepted stop reservation lifetime, covering one
-  election-owning stop and one post-election driver tail per retained connection reservation.
-  Permission observation still requires the driver-held and reserved/pending obligation intervals.
-- Publish owner/home/service-bound revisions and count/byte-bounded pages; fence every exposed
-  mutation and reject foreign/stale cursors, counter exhaustion and closed/unavailable generations.
-  Queries never prune, admit, acknowledge, settle, dispatch or acquire operation authority.
-- Verify exact handoff and terminal-before-driver-release intervals, joined permission handling,
-  disposal, stable repeated reads, page limits and stale/foreign rejection; run focused stop and
-  approval regressions, production compilation and independent semantic review with bounded cleanup.
-
-Reservation-lifetime acceptance establishes the stop custody prerequisite. Include the driver's
-post-settlement unbind interval as well as the primary owner itself. Do not omit tails, introduce
-an unbounded observer catalog, or substitute an arbitrary observation cutoff for a derived bound.
-
-Accepted permission-slot completion ordering establishes the worker-derived permission bound.
-Stop and permission observation can now resume from the accepted custody prerequisites.
-
-Existing volatile-stop fallback begins only after persistent failure closes the healthy generation;
-these source pages reject that generation and do not claim to inventory post-failure cleanup.
-Compaction/continuation observation and complete control-page composition remain separate boundaries.
+Accepted bounded revision-bound stop and permission facts through registry removal, driver cleanup,
+joined admission, broker handoff and disposal. Foreign/stale revisions, exhaustion, poisoned state
+and closed generations reject observation. Independent semantic review, production compilation and
+62 selected checks passed; changed-file formatting passed. Package formatting reports existing
+differences in unrelated composer/projection files. Peak guarded job memory was 2.08 GiB; all owned
+children exited and temporary directories were removed. The
+[custody evidence](failures/cas-stop-custody-worker-reservation.md#accepted-observation)
+records acceptance and the corrected permission-disposal lock order.
 
 # Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (pending)
 

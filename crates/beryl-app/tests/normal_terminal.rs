@@ -24,6 +24,8 @@ mod submission_fixture {
 
 #[path = "normal_terminal/loss.rs"]
 mod loss;
+#[path = "normal_terminal/permission_work.rs"]
+mod permission_work;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "normal_terminal/steering_loss.rs"]

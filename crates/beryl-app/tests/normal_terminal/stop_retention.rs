@@ -3,8 +3,8 @@ use std::{io::ErrorKind, net::TcpListener, path::Path, time::Instant};
 use beryl_app::cas_projection::{
     CasProjectionCoordinator, CasProjectionRequest, OrdinaryDynamicToolHandlers,
     OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest, ProjectionCoordinatorError,
-    ProjectionSessionAdmissionError, StopCoordinationOutcome,
-    test_faults::install_stop_handoff_barrier,
+    ProjectionSessionAdmissionError, StopCoordinationOutcome, StopWorkError, StopWorkPageLimits,
+    StopWorkRecord, test_faults::install_stop_handoff_barrier,
 };
 use beryl_backend::{
     BackendWebSocketEndpoint, ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions,
@@ -96,6 +96,19 @@ fn run(unwind: bool, cleanup: bool) {
                 .unwrap()
         });
         wait_for_active(fixture, submitted.turn);
+        let idle_revision = fixture.store.stop_work_revision().unwrap();
+        assert!(
+            fixture
+                .store
+                .stop_work_page(
+                    &idle_revision,
+                    None,
+                    StopWorkPageLimits::new(10, 65_536).unwrap()
+                )
+                .unwrap()
+                .records()
+                .is_empty()
+        );
         let barrier = if cleanup {
             beryl_app::cas_projection::test_faults::install_stop_cleanup_barrier(fixture.thread)
         } else {
@@ -103,6 +116,11 @@ fn run(unwind: bool, cleanup: bool) {
         };
         let stop = scope.spawn(|| fixture.store.stop_selected_operation(fixture.thread));
         barrier.wait();
+        assert_eq!(
+            fixture.store.validate_stop_work_revision(&idle_revision),
+            Err(StopWorkError::StaleRevision)
+        );
+        assert_stop_custody(fixture, cleanup, true);
         assert!(fixture.store.has_local_stop_for_test(fixture.thread));
         assert!(matches!(
             fixture
@@ -128,6 +146,7 @@ fn run(unwind: bool, cleanup: bool) {
             OrdinaryTurnExecutionOutcome::Incomplete { .. }
         ));
         assert!(!fixture.store.has_local_stop_for_test(fixture.thread));
+        let owned_revision = assert_stop_custody(fixture, cleanup, false);
         assert!(
             !stop.is_finished(),
             "loss must converge while the admitted caller is paused"
@@ -186,6 +205,23 @@ fn run(unwind: bool, cleanup: bool) {
         wait_for_available(fixture, 4);
         assert_eq!(fixture.store.worker_pool_diagnostics().active(), 0);
         assert_eq!(fixture.store.worker_pool_diagnostics().available(), 4);
+        assert_eq!(
+            fixture.store.validate_stop_work_revision(&owned_revision),
+            Err(StopWorkError::StaleRevision)
+        );
+        let revision = fixture.store.stop_work_revision().unwrap();
+        assert!(
+            fixture
+                .store
+                .stop_work_page(
+                    &revision,
+                    None,
+                    StopWorkPageLimits::new(10, 65_536).unwrap()
+                )
+                .unwrap()
+                .records()
+                .is_empty()
+        );
     });
     drop(session);
     server.join();
@@ -215,7 +251,36 @@ fn run(unwind: bool, cleanup: bool) {
     drop(directory);
 }
 
-fn wait_for_active(fixture: &Fixture, turn: SyndicTurnId) {
+fn assert_stop_custody(
+    fixture: &Fixture,
+    driver: bool,
+    local: bool,
+) -> beryl_app::cas_projection::StopWorkRevision {
+    let revision = fixture.store.stop_work_revision().unwrap();
+    let limits = StopWorkPageLimits::new(10, 65_536).unwrap();
+    let page = fixture
+        .store
+        .stop_work_page(&revision, None, limits)
+        .unwrap();
+    assert_eq!(
+        page,
+        fixture
+            .store
+            .stop_work_page(&revision, None, limits)
+            .unwrap()
+    );
+    assert!(page.next_cursor().is_none());
+    let [StopWorkRecord::Stop(fact)] = page.records() else {
+        panic!("one exact stop custody must remain visible");
+    };
+    assert_eq!(fact.target.thread_id(), fixture.thread);
+    assert_eq!(fact.primary_custody, !driver);
+    assert_eq!(fact.driver_custody, driver);
+    assert_eq!(fact.local_dispatch.is_some(), local);
+    revision
+}
+
+pub(super) fn wait_for_active(fixture: &Fixture, turn: SyndicTurnId) {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let gate = fixture

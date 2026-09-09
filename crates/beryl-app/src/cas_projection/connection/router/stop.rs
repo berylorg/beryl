@@ -24,6 +24,25 @@ pub(in crate::cas_projection) struct StopTargetProof {
 }
 
 impl StopTargetProof {
+    pub(in crate::cas_projection) fn permission_work_fact(
+        &self,
+        item_id: Option<beryl_model::CasItemId>,
+    ) -> crate::cas_projection::PermissionInterruptionWorkFact {
+        crate::cas_projection::PermissionInterruptionWorkFact {
+            serial: 0,
+            operation_id: None,
+            runtime_id: self.runtime_id,
+            connection_generation: self.connection_generation,
+            registration_serial: self.registration,
+            thread_id: self.syndic_thread_id,
+            loaded_generation: self.loaded_generation,
+            cas_thread_id: self.cas_thread_id.clone(),
+            cas_turn_id: self.cas_turn_id.clone(),
+            cas_item_id: item_id,
+            stage: crate::cas_projection::PermissionInterruptionWorkStage::Reserved,
+        }
+    }
+
     pub(in crate::cas_projection) const fn syndic_thread_id(&self) -> SyndicThreadId {
         self.syndic_thread_id
     }

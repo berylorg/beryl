@@ -38,6 +38,7 @@ enum ServerScenario {
     ConnectionLoss,
     ControlledConnectionLoss,
     AcceptedStop,
+    PermissionStop,
     SteeringCorrelationLoss,
 }
 
@@ -45,6 +46,7 @@ enum ServerCommand {
     CloseConnection,
     AssertQuietAndClose,
     ReleaseTurnStartRejection,
+    SendPermission,
     SendSteeringCorrelationLoss(String),
 }
 
@@ -95,6 +97,14 @@ impl NormalTerminalServer {
 
     pub fn spawn_accepted_stop() -> Self {
         Self::spawn_scenario(ServerScenario::AcceptedStop)
+    }
+
+    pub fn spawn_permission_stop() -> Self {
+        Self::spawn_scenario(ServerScenario::PermissionStop)
+    }
+
+    pub fn send_permission(&self) {
+        self.commands.send(ServerCommand::SendPermission).unwrap();
     }
 
     pub fn close_connection(&self) {
@@ -266,6 +276,31 @@ fn run_server(
             assert_eq!(interrupt["method"], "turn/interrupt");
             assert_eq!(interrupt["params"]["threadId"], CAS_THREAD_ID);
             assert_eq!(interrupt["params"]["turnId"], CAS_TURN_ID);
+            send_json(
+                &mut socket,
+                &json!({"id": interrupt["id"], "result": {}}).to_string(),
+            );
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::PermissionStop => {
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            begin_connection_loss_turn(&mut socket, CAS_THREAD_ID);
+            assert!(matches!(
+                commands.recv_timeout(TIMEOUT).unwrap(),
+                ServerCommand::SendPermission
+            ));
+            send_json(
+                &mut socket,
+                &format!(
+                    r#"{{"method":"item/permissions/requestApproval","id":"permission-observation","params":{{"threadId":"{CAS_THREAD_ID}","turnId":"{CAS_TURN_ID}","permissions":{{"network":{{"enabled":true}}}}}}}}"#
+                ),
+            );
+            let denial = read_json(&mut socket).expect("permission denial precedes interruption");
+            assert_eq!(denial["id"], "permission-observation");
+            assert!(denial.get("result").is_some());
+            let interrupt = read_json(&mut socket).expect("sole permission stop interrupt");
+            assert_eq!(interrupt["method"], "turn/interrupt");
             send_json(
                 &mut socket,
                 &json!({"id": interrupt["id"], "result": {}}).to_string(),
@@ -485,7 +520,8 @@ fn complete_steering_correlation_loss(
         ServerCommand::SendSteeringCorrelationLoss(correlation) => correlation,
         ServerCommand::AssertQuietAndClose
         | ServerCommand::ReleaseTurnStartRejection
-        | ServerCommand::CloseConnection => {
+        | ServerCommand::CloseConnection
+        | ServerCommand::SendPermission => {
             panic!("steering-loss server received an unrelated control command")
         }
     };

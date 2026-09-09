@@ -55,6 +55,13 @@ mod service_config;
 mod service_registry;
 mod service_supervisor;
 mod stop;
+mod stop_work;
+
+pub use stop_work::{
+    PermissionInterruptionWorkFact, PermissionInterruptionWorkStage, StopDispatchWorkState,
+    StopWorkCursor, StopWorkError, StopWorkFact, StopWorkPage, StopWorkPageLimits, StopWorkRecord,
+    StopWorkRevision,
+};
 #[cfg(feature = "test-faults")]
 pub mod test_faults;
 mod turn_activation;

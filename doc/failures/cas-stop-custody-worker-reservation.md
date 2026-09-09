@@ -109,3 +109,26 @@ the slot is fully closed while its worker is still reserved, then prove exact or
 replacement admission. The failure receipt remains unclean. Independent review, production
 compilation and 49 selected broker, approval, worker, stop and terminal tests passed; peak guarded
 job memory was 2.07 GiB and all owned processes and test temporary directories were reclaimed.
+
+## Accepted Observation
+
+Stop pages merge the existing local registry with compact live custody derived from the retained
+worker reservation. Permission identity follows reservation, preparation, pending slot, driver and
+disposal, including joined admission without a primary stop owner. Neither source retains payloads
+or execution authority. Closed healthy generations reject observation; these pages do not inventory
+the separately owned persistent-failure cleanup.
+
+The initial routing implementation moved prepared custody inside `commit_if_current`. Rejection
+could then drop its coordinator token while holding the command gate, reversing the existing
+coordinator-to-command-gate order. Routing now borrows preparation to construct metadata under the
+gate and transfers custody after releasing the gate and router lock. Rejected preparation also
+drops after both locks. The deterministic gate regression pauses disposal while the coordinator
+is held and proves command authorization remains available; independent review checks router-lock
+release and unwind ordering as well.
+
+Independent semantic review, production compilation and 62 selected stop, approval, worker,
+terminal, page and persistent-failure tests passed. Exact protocol tests cover local removal while
+driver cleanup remains, permission handoff and final disappearance; unit checks cover bounded
+pagination, revision exhaustion and poisoning. Changed-file formatting passed; package formatting
+has existing unrelated composer/projection differences. Peak guarded job memory was 2.08 GiB.
+All owned children exited and 13 task temporary directories were removed.

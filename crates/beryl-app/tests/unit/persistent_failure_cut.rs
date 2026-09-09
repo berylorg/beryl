@@ -111,10 +111,27 @@ fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers(
     let home_id = service.home_id();
     let home_generation = service.home_generation();
     let service_generation = service.service_generation();
+    let stop_revision = service.stop_work_revision().unwrap();
     fail_home(&service, state, &faults);
     wait_until("the persistent-failure cut to finish", || {
         service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
     });
+    assert_eq!(
+        service.stop_work_revision(),
+        Err(crate::cas_projection::StopWorkError::Closed)
+    );
+    assert_eq!(
+        service.validate_stop_work_revision(&stop_revision),
+        Err(crate::cas_projection::StopWorkError::Closed)
+    );
+    assert_eq!(
+        service.stop_work_page(
+            &stop_revision,
+            None,
+            crate::cas_projection::StopWorkPageLimits::new(1, 65_536).unwrap()
+        ),
+        Err(crate::cas_projection::StopWorkError::Closed)
+    );
 
     let evidence = match service.close().unwrap() {
         ProjectionConnectionServiceCloseOutcome::PersistentFailure(evidence) => evidence,

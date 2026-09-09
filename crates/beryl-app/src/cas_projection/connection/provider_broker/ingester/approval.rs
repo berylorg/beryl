@@ -21,24 +21,10 @@ impl Ingester {
         if needs_interruption && let Some(thread_id) = approval_thread.as_ref() {
             crate::cas_projection::test_faults::pause_approval_slot_admission(thread_id);
         }
-        if needs_interruption && !self.approval.reserve() {
-            self.retire_for(
-                WholeConnectionRoutingFailure::Router,
-                crate::cas_projection::connection::router::LiveEventTargetCloseReason::StreamFailure,
-            );
-            return (
-                BrokerReply::Rejected(
-                    OrderedTurnStreamOperation::Approval(request),
-                    OrderedTurnStreamSubmitCause::CapacityFull,
-                ),
-                true,
-            );
-        }
         let prepared = if needs_interruption {
             let proof = match self.router.approval_stop_target(&request) {
                 Ok(proof) => proof,
                 Err(_) => {
-                    self.approval.cancel_reservation();
                     self.retire();
                     return (
                         BrokerReply::Rejected(
@@ -49,19 +35,53 @@ impl Ingester {
                     );
                 }
             };
+            let custody = match self.approval.reserve_observed(|| {
+                self.stop_coordinator
+                    .observe_permission(proof.permission_work_fact(request.item_id().cloned()))
+            }) {
+                Ok(custody) => custody,
+                Err(()) => {
+                    self.retire_for(
+                        WholeConnectionRoutingFailure::Router,
+                        crate::cas_projection::connection::router::LiveEventTargetCloseReason::StreamFailure,
+                    );
+                    return (
+                        BrokerReply::Rejected(
+                            OrderedTurnStreamOperation::Approval(request),
+                            OrderedTurnStreamSubmitCause::CapacityFull,
+                        ),
+                        true,
+                    );
+                }
+            };
             match self.stop_coordinator.coordinate(
                 &self.router,
                 proof,
                 syndic_storage::StopCause::InterruptingApproval,
             ) {
-                Ok(StopOwnership::Primary(owner)) => Some(PreparedApprovalInterruption::new(
-                    owner.interruption(),
-                    Some(owner),
-                )),
+                Ok(StopOwnership::Primary(owner)) => {
+                    if let Some(custody) = &custody {
+                        custody.prepared(owner.operation_id());
+                    }
+                    Some(PreparedApprovalInterruption::new(
+                        owner.interruption(),
+                        Some(owner),
+                        custody,
+                    ))
+                }
                 Ok(StopOwnership::Joined {
                     interruption,
-                    operation_id: _,
-                }) => Some(PreparedApprovalInterruption::new(interruption, None)),
+                    operation_id,
+                }) => {
+                    if let Some(custody) = &custody {
+                        custody.prepared(operation_id);
+                    }
+                    Some(PreparedApprovalInterruption::new(
+                        interruption,
+                        None,
+                        custody,
+                    ))
+                }
                 Err(_) => {
                     self.approval.cancel_reservation();
                     self.retire();

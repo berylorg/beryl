@@ -194,6 +194,10 @@ pub fn abandon_live_event_receiver(target: &mut super::LiveEventTarget) {
 }
 
 impl ApprovalInstallBarrierController {
+    pub fn wait_for_route_timeout(&self, timeout: std::time::Duration) -> bool {
+        self.arrived.recv_timeout(timeout).is_ok()
+    }
+
     /// Waits until the request is queued before its interruption obligation enters the slot.
     pub fn wait_for_route(&self) {
         self.arrived

@@ -947,7 +947,7 @@ fn dispatch_stop_owner(
     owner: StopDispatchOwner,
 ) -> StopDriverOutcome {
     // Settlement consumes the owner before backend unbind; both paths must retain capacity.
-    let _worker_retention = owner.retain_workers();
+    let _stop_custody = owner.retain_driver_custody();
     #[cfg(feature = "test-faults")]
     let stop_thread = owner.thread_id_for_test();
     if let Err(error) = owner.begin_dispatch() {

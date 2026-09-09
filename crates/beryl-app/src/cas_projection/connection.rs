@@ -39,6 +39,8 @@ mod provider_broker;
 mod recovery_source_broker;
 pub(super) mod registry;
 mod router;
+#[cfg(test)]
+pub(in crate::cas_projection) use router::{ApprovalRouteOutcome, PreparedApprovalInterruption};
 mod source_broker;
 mod target_command;
 mod thread_closed;

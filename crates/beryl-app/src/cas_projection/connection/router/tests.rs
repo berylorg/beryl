@@ -204,6 +204,7 @@ fn approval_ownership_survives_queue_and_poll_until_consumer_release() {
             Some(PreparedApprovalInterruption::new(
                 interruption.clone(),
                 None,
+                None,
             )),
         ),
         ApprovalRouteOutcome::Routed {

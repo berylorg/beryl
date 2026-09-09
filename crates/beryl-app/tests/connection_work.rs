@@ -256,6 +256,37 @@ fn connection_work_revisions_reject_foreign_owners_and_zero_limits() {
         Err(ConnectionWorkError::InvalidLimits)
     );
     assert!(page(&first.store).records().is_empty());
+    let stop_revision = first.store.stop_work_revision().unwrap();
+    assert_eq!(
+        second.store.validate_stop_work_revision(&stop_revision),
+        Err(StopWorkError::ForeignRevision)
+    );
+    assert_eq!(
+        second
+            .store
+            .stop_work_page(&stop_revision, None, StopWorkPageLimits::new(1, 1).unwrap()),
+        Err(StopWorkError::ForeignRevision)
+    );
+    assert_eq!(
+        StopWorkPageLimits::new(0, 1),
+        Err(StopWorkError::InvalidLimits)
+    );
+    assert_eq!(
+        StopWorkPageLimits::new(1, 0),
+        Err(StopWorkError::InvalidLimits)
+    );
+    assert!(
+        first
+            .store
+            .stop_work_page(
+                &stop_revision,
+                None,
+                StopWorkPageLimits::new(256, 65_536).unwrap()
+            )
+            .unwrap()
+            .records()
+            .is_empty()
+    );
 }
 
 #[test]

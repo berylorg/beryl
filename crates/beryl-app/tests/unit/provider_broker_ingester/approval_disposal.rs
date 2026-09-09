@@ -62,10 +62,23 @@ fn verify_failed_ingester_slot_disposal(pending: bool) {
                 StopAttemptCorrelation::from_bytes([203; 16]),
             ),
         };
+        let proof = fixture.router.approval_stop_target(&request).unwrap();
+        let custody = fixture
+            .stop
+            .observe_permission(proof.permission_work_fact(None))
+            .unwrap();
+        custody.prepared(syndic_storage::StopOperationId::new(
+            proof.syndic_thread_id(),
+            syndic_storage::StopOperationNonce::from_bytes([202; 16]),
+        ));
         let outcome = fixture.router.route_approval(
             &command,
             request,
-            Some(PreparedApprovalInterruption::new(interruption, None)),
+            Some(PreparedApprovalInterruption::new(
+                interruption,
+                None,
+                Some(custody),
+            )),
         );
         let ApprovalRouteOutcome::Routed {
             obligation: Some(mut obligation),
@@ -76,6 +89,10 @@ fn verify_failed_ingester_slot_disposal(pending: bool) {
         };
         assert!(obligation.take_primary().is_none());
         assert!(slot.install(obligation));
+        assert_eq!(
+            permission_facts(&fixture)[0].stage,
+            crate::cas_projection::PermissionInterruptionWorkStage::Pending
+        );
         Some(registration)
     } else {
         None
@@ -90,6 +107,7 @@ fn verify_failed_ingester_slot_disposal(pending: bool) {
         thread::yield_now();
     }
     assert!(!control.cancelled.load(Ordering::Acquire));
+    assert!(permission_facts(&fixture).is_empty());
     assert!(
         slot.is_closed_for_test(),
         "completion must dispose the slot before later cancellation"
@@ -111,6 +129,33 @@ fn verify_failed_ingester_slot_disposal(pending: bool) {
     drop(registration);
     drop(sink);
     drop(control);
+}
+
+fn permission_facts(
+    fixture: &BrokerBuildFixture,
+) -> Vec<crate::cas_projection::PermissionInterruptionWorkFact> {
+    use crate::cas_projection::stop_work::*;
+    let stamp = fixture.stop.work_revision().unwrap();
+    let mut builder = StopWorkPageBuilder::new(None, StopWorkPageLimits::new(8, 65_536).unwrap());
+    fixture
+        .stop
+        .collect_work_records(stamp, &mut builder)
+        .unwrap();
+    builder
+        .finish(StopWorkRevision {
+            owner: Arc::new(()),
+            home_id: fixture.home_id,
+            home_generation: fixture.home_generation,
+            service_generation: fixture.commands.service_generation(),
+            stamp,
+        })
+        .records()
+        .iter()
+        .filter_map(|record| match record {
+            StopWorkRecord::Permission(fact) => Some(fact.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
