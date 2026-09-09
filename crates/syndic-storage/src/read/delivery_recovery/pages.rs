@@ -1,74 +1,59 @@
-use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore};
-use beryl_model::SyndicThreadId;
+use beryl_home_store::{CursorReadLimits, HomeStore};
 
 use crate::{
-    BindingState, InputGateState, SyndicPointReadLimit, SyndicReadError,
-    codec::{ExactCodec, InputGatesFamily},
-    domain::{SyndicDomain, SyndicStorage},
+    BindingState, InputGateState, SyndicPointReadLimit, SyndicReadError, domain::SyndicStorage,
 };
 
 use super::*;
 
 impl SyndicStorage {
-    /// Scans one bounded physical input-gate page and returns only non-idle startup sources.
-    ///
-    /// The cursor is bound to the home identity but deliberately not to its domain revision.
-    /// Limits are clamped to the public delivery-recovery maxima.
     pub fn delivery_recovery_startup_page(
         &self,
         store: &HomeStore,
         cursor: Option<DeliveryRecoveryStartupCursor>,
         limits: CursorReadLimits,
     ) -> Result<DeliveryRecoveryStartupPage, SyndicReadError> {
-        let home_id = store.home_id();
-        let range = match cursor {
-            Some(cursor) if cursor.home_id == home_id => CursorRange::after(
-                cursor.after_thread_id,
-                SyndicThreadId::from_bytes([u8::MAX; 16]),
-            ),
-            Some(_) => return Err(SyndicReadError::InvalidDeliveryRecoveryStartupCursor),
-            None => CursorRange::closed(
-                SyndicThreadId::from_bytes([0; 16]),
-                SyndicThreadId::from_bytes([u8::MAX; 16]),
-            ),
+        let revision = match cursor {
+            Some(cursor) => cursor.source.source_revision(),
+            None => self.revision(store)?,
         };
-        let page = store.read_cursor::<SyndicDomain, ExactCodec<InputGatesFamily>>(
-            &self.handle,
-            &range,
-            CursorDirection::Forward,
-            recovery_gate_limits(limits),
-        )?;
-        let stored_bytes = page.stored_bytes();
-        let decoded_bytes = page.decoded_bytes();
-        let has_more = page.has_more();
-        let mut last_scanned = None;
+        let page = self
+            .non_idle_gate_source_page(store, revision, cursor.map(|c| c.source), limits)
+            .map_err(startup_error)?;
+        let point_limit = SyndicPointReadLimit::new(DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES)
+            .expect("fixed startup point limit is nonzero");
         let mut records = Vec::with_capacity(page.records().len());
-        for record in page.into_records() {
-            let (thread_id, gate) = record.into_parts();
-            last_scanned = Some(thread_id);
-            if gate.thread_id() != thread_id {
-                return Err(SyndicReadError::Invariant(
-                    "delivery-recovery input-gate key and identity disagree",
-                ));
-            }
-            if !matches!(gate.state(), InputGateState::Idle) {
-                records.push(DeliveryRecoverySource { home_id, gate });
-            }
+        for source in page.records() {
+            let gate = self.resolve_non_idle_gate_source(store, revision, *source, point_limit)?;
+            records.push(DeliveryRecoverySource {
+                home_id: store.home_id(),
+                home_generation: self.home_generation,
+                gate,
+            });
         }
-        let next_cursor = continuation(home_id, last_scanned, has_more)?;
+        if self.revision(store)? != revision {
+            return Err(SyndicReadError::StaleNonIdleGateSourceScan);
+        }
         Ok(DeliveryRecoveryStartupPage {
             records,
-            stored_bytes,
-            decoded_bytes,
-            next_cursor,
+            stored_bytes: page.stored_bytes(),
+            decoded_bytes: page.decoded_bytes(),
+            next_cursor: page
+                .next_cursor()
+                .map(|source| DeliveryRecoveryStartupCursor { source }),
         })
     }
 
-    /// Scans one revision-bound physical input-gate page for proven safe pending turns.
-    ///
-    /// Filtering requires `PendingTurn`, no selected route, a pending source-free turn state, and
-    /// a non-active current binding. The continuation advances by the last physical gate row even
-    /// when every row was filtered out.
+    pub fn rebase_delivery_recovery_startup_cursor(
+        &self,
+        store: &HomeStore,
+        cursor: DeliveryRecoveryStartupCursor,
+    ) -> Result<DeliveryRecoveryStartupCursor, SyndicReadError> {
+        self.rebase_non_idle_gate_source_cursor(store, cursor.source)
+            .map(|source| DeliveryRecoveryStartupCursor { source })
+            .map_err(startup_error)
+    }
+
     pub fn recovered_pending_page(
         &self,
         store: &HomeStore,
@@ -80,45 +65,16 @@ impl SyndicStorage {
         if self.revision(store)? != expected_revision {
             return Err(SyndicReadError::StaleRecoveredPendingScan);
         }
-        let range = match cursor {
-            Some(cursor)
-                if cursor.home_id == store.home_id()
-                    && cursor.source_revision == expected_revision =>
-            {
-                CursorRange::after(
-                    cursor.after_thread_id,
-                    SyndicThreadId::from_bytes([u8::MAX; 16]),
-                )
-            }
-            Some(_) => return Err(SyndicReadError::InvalidRecoveredPendingCursor),
-            None => CursorRange::closed(
-                SyndicThreadId::from_bytes([0; 16]),
-                SyndicThreadId::from_bytes([u8::MAX; 16]),
-            ),
-        };
-        let page = store.read_cursor::<SyndicDomain, ExactCodec<InputGatesFamily>>(
-            &self.handle,
-            &range,
-            CursorDirection::Forward,
-            recovery_gate_limits(limits),
-        )?;
+        let page = self
+            .non_idle_gate_source_page(store, expected_revision, cursor.map(|c| c.source), limits)
+            .map_err(pending_error)?;
         let stored_bytes = page.stored_bytes();
         let decoded_bytes = page.decoded_bytes();
-        let has_more = page.has_more();
-        let mut last_scanned = None;
         let mut records = Vec::with_capacity(page.records().len());
-        for record in page.into_records() {
-            let (thread_id, gate) = record.into_parts();
-            last_scanned = Some(thread_id);
-            if gate.thread_id() != thread_id {
-                return self.pending_error_or_stale(
-                    store,
-                    expected_revision,
-                    SyndicReadError::Invariant(
-                        "recovered-pending input-gate key and identity disagree",
-                    ),
-                );
-            }
+        for source in page.records() {
+            let gate = self
+                .resolve_non_idle_gate_source(store, expected_revision, *source, point_limit)
+                .map_err(pending_error)?;
             let InputGateState::PendingTurn(turn_id) = gate.state() else {
                 continue;
             };
@@ -142,8 +98,9 @@ impl SyndicStorage {
         if self.revision(store)? != expected_revision {
             return Err(SyndicReadError::StaleRecoveredPendingScan);
         }
-        let next_cursor =
-            pending_continuation(store.home_id(), expected_revision, last_scanned, has_more)?;
+        let next_cursor = page
+            .next_cursor()
+            .map(|source| RecoveredPendingCursor { source });
         Ok(RecoveredPendingPage {
             source_revision: expected_revision,
             records,
@@ -153,26 +110,14 @@ impl SyndicStorage {
         })
     }
 
-    /// Rebinds an existing physical pending-scan continuation to the home's current revision.
-    ///
-    /// This preserves the caller-owned forward scan floor after an already-scanned candidate
-    /// mutates Syndic. The caller must separately guarantee that any mutation capable of making
-    /// work eligible behind that floor opens a fresh scan from the beginning. This method does not
-    /// reauthenticate or carry authority for any returned source and is not a generic response to
-    /// arbitrary concurrent drift.
     pub fn rebase_recovered_pending_cursor(
         &self,
         store: &HomeStore,
         cursor: RecoveredPendingCursor,
     ) -> Result<RecoveredPendingCursor, SyndicReadError> {
-        if cursor.home_id != store.home_id() {
-            return Err(SyndicReadError::InvalidRecoveredPendingCursor);
-        }
-        Ok(RecoveredPendingCursor {
-            home_id: cursor.home_id,
-            source_revision: self.revision(store)?,
-            after_thread_id: cursor.after_thread_id,
-        })
+        self.rebase_non_idle_gate_source_cursor(store, cursor.source)
+            .map(|source| RecoveredPendingCursor { source })
+            .map_err(pending_error)
     }
 }
 
@@ -238,50 +183,21 @@ impl SyndicStorage {
     }
 }
 
-fn recovery_gate_limits(limits: CursorReadLimits) -> CursorReadLimits {
-    CursorReadLimits::new(
-        limits
-            .max_items()
-            .min(DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS),
-        limits
-            .max_bytes()
-            .min(DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES),
-    )
-    .expect("clamped nonzero delivery-recovery gate limits remain nonzero")
+fn startup_error(error: SyndicReadError) -> SyndicReadError {
+    match error {
+        SyndicReadError::InvalidNonIdleGateSourceCursor => {
+            SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+        }
+        error => error,
+    }
 }
 
-fn continuation(
-    home_id: BerylHomeId,
-    last_scanned: Option<SyndicThreadId>,
-    has_more: bool,
-) -> Result<Option<DeliveryRecoveryStartupCursor>, SyndicReadError> {
-    if !has_more {
-        return Ok(None);
+fn pending_error(error: SyndicReadError) -> SyndicReadError {
+    match error {
+        SyndicReadError::InvalidNonIdleGateSourceCursor => {
+            SyndicReadError::InvalidRecoveredPendingCursor
+        }
+        SyndicReadError::StaleNonIdleGateSourceScan => SyndicReadError::StaleRecoveredPendingScan,
+        error => error,
     }
-    let after_thread_id = last_scanned.ok_or(SyndicReadError::Invariant(
-        "delivery-recovery startup page reported more without scanning a gate",
-    ))?;
-    Ok(Some(DeliveryRecoveryStartupCursor {
-        home_id,
-        after_thread_id,
-    }))
-}
-
-fn pending_continuation(
-    home_id: BerylHomeId,
-    source_revision: DomainRevision,
-    last_scanned: Option<SyndicThreadId>,
-    has_more: bool,
-) -> Result<Option<RecoveredPendingCursor>, SyndicReadError> {
-    if !has_more {
-        return Ok(None);
-    }
-    let after_thread_id = last_scanned.ok_or(SyndicReadError::Invariant(
-        "recovered-pending page reported more without scanning a gate",
-    ))?;
-    Ok(Some(RecoveredPendingCursor {
-        home_id,
-        source_revision,
-        after_thread_id,
-    }))
 }

@@ -155,6 +155,8 @@ pub enum SyndicReadError {
     InvalidAcceptedNextCandidateSource,
     InvalidAcceptedNextCandidateCursor,
     InvalidDeliveryRecoveryStartupCursor,
+    InvalidNonIdleGateSourceCursor,
+    StaleNonIdleGateSourceScan,
     StaleRecoveredPendingScan,
     InvalidRecoveredPendingCursor,
 }
@@ -267,6 +269,12 @@ impl fmt::Display for SyndicReadError {
             Self::InvalidDeliveryRecoveryStartupCursor => {
                 formatter.write_str("delivery-recovery startup cursor belongs to another home")
             }
+            Self::InvalidNonIdleGateSourceCursor => formatter.write_str(
+                "non-idle source cursor does not belong to this home generation and revision",
+            ),
+            Self::StaleNonIdleGateSourceScan => {
+                formatter.write_str("non-idle source revision is stale")
+            }
             Self::StaleRecoveredPendingScan => {
                 formatter.write_str("recovered-pending scan revision is stale")
             }
@@ -311,6 +319,8 @@ impl Error for SyndicReadError {
             | Self::InvalidAcceptedNextCandidateSource
             | Self::InvalidAcceptedNextCandidateCursor
             | Self::InvalidDeliveryRecoveryStartupCursor
+            | Self::InvalidNonIdleGateSourceCursor
+            | Self::StaleNonIdleGateSourceScan
             | Self::StaleRecoveredPendingScan
             | Self::InvalidRecoveredPendingCursor => None,
         }
@@ -418,6 +428,8 @@ impl From<SyndicReadError> for RecoveryProjectionError {
             | SyndicReadError::InvalidAcceptedNextCandidateSource
             | SyndicReadError::InvalidAcceptedNextCandidateCursor
             | SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+            | SyndicReadError::InvalidNonIdleGateSourceCursor
+            | SyndicReadError::StaleNonIdleGateSourceScan
             | SyndicReadError::StaleRecoveredPendingScan
             | SyndicReadError::InvalidRecoveredPendingCursor => Self::Invariant(
                 "a recovery read unexpectedly used a public content/resource range boundary",

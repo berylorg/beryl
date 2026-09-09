@@ -443,8 +443,6 @@
 //!
 //! # Delivery restart discovery
 //!
-//! [`SyndicStorage::delivery_recovery_startup_page`] advances over physical input-gate keys without
-//! a domain-revision fence, allowing an exclusive startup owner to mutate already visited threads.
 //! Each compact [`DeliveryRecoverySource`] is reopened through
 //! [`SyndicStorage::classify_delivery_recovery`] into one fixed-work [`DeliveryRecoveryCase`].
 //! `FinalizingHistory` cases remain discoverable until bounded canonical-item and selected-
@@ -867,7 +865,8 @@ pub use read::{
     CompactionRequestTransitionStatus, DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
     DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS, DeliveryRecoveryCase,
     DeliveryRecoveryClassificationError, DeliveryRecoverySource, DeliveryRecoveryStartupCursor,
-    DeliveryRecoveryStartupPage, ExactThreadCatalogSummary,
+    DeliveryRecoveryStartupPage, ExactThreadCatalogSummary, NON_IDLE_GATE_PAGE_MAX_BYTES,
+    NON_IDLE_GATE_PAGE_MAX_RECORDS, NonIdleGateSourceCursor, NonIdleGateSourcePage,
     PreparedThreadCatalogSummaryReplacement, QUERY_PAGE_MAX_RECORDS, QUERY_PAGE_MAX_STORED_BYTES,
     RecoveredPendingCursor, RecoveredPendingPage, RecoveredPendingSource, StopAdmissionCandidate,
     StopAdmissionIneligibility, StopAdmissionRead, StopOperationTransitionStatus,

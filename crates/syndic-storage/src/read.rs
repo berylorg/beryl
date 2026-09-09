@@ -55,6 +55,10 @@ pub use delivery_recovery::{
     DeliveryRecoveryStartupPage, RecoveredPendingCursor, RecoveredPendingPage,
     RecoveredPendingSource, SyndicLiveStopOperation,
 };
+pub use non_idle_gate::{
+    NON_IDLE_GATE_PAGE_MAX_BYTES, NON_IDLE_GATE_PAGE_MAX_RECORDS, NonIdleGateSourceCursor,
+    NonIdleGateSourcePage,
+};
 pub use queries::*;
 pub use range::SyndicResourceRangeRead;
 pub use routes::*;

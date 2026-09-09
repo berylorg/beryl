@@ -16,3 +16,5 @@ mod pages;
 mod projection_support;
 #[path = "delivery_recovery/support.rs"]
 mod recovery_support;
+#[path = "delivery_recovery/source_pages.rs"]
+mod source_pages;

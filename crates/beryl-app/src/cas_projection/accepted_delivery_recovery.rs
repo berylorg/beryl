@@ -33,9 +33,22 @@ pub(super) fn recover_startup(
     let mut cursor = None;
     let mut source_restart_used = false;
     'scan: loop {
-        let page = storage
-            .delivery_recovery_startup_page(home, cursor, startup_page_limits())
-            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?;
+        let page = match storage.delivery_recovery_startup_page(home, cursor, startup_page_limits())
+        {
+            Ok(page) => page,
+            Err(
+                syndic_storage::SyndicReadError::StaleNonIdleGateSourceScan
+                | syndic_storage::SyndicReadError::ConcurrentChange { .. },
+            ) if !source_restart_used => {
+                source_restart_used = true;
+                cursor = None;
+                continue 'scan;
+            }
+            Err(syndic_storage::SyndicReadError::Invariant(_)) => {
+                return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant);
+            }
+            Err(_) => return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead),
+        };
         diagnostics.page_reads = diagnostics.page_reads.saturating_add(1);
         for source in page.records() {
             diagnostics.cases = diagnostics.cases.saturating_add(1);
@@ -66,7 +79,13 @@ pub(super) fn recover_startup(
             )?;
         }
         match page.next_cursor() {
-            Some(next) => cursor = Some(next),
+            Some(next) => {
+                cursor = Some(
+                    storage
+                        .rebase_delivery_recovery_startup_cursor(home, next)
+                        .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?,
+                );
+            }
             None => return Ok(diagnostics),
         }
     }

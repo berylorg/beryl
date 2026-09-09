@@ -7,6 +7,8 @@ mod syndic;
 
 #[path = "accepted_next_scheduler/conflicts.rs"]
 mod conflicts;
+#[path = "accepted_next_scheduler/recovered_pending.rs"]
+mod recovered_pending;
 #[path = "accepted_next_scheduler/shutdown.rs"]
 mod shutdown;
 #[path = "accepted_next_scheduler/support.rs"]

@@ -18,26 +18,20 @@ use crate::{
     SyndicRecordError, SyndicTimestamp, TurnStateRevision,
 };
 
-/// Maximum physical input-gate rows scanned by one delivery-recovery page.
 pub const DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS: usize = 256;
 
-/// Maximum stored or practical decoded input-gate bytes scanned by one recovery page.
 pub const DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES: usize = 65_536;
 
-/// Same-home continuation after the last physical input-gate thread key scanned at startup.
-///
-/// This cursor deliberately carries no domain revision. The exclusive startup owner may mutate
-/// already visited gates without invalidating forward progress.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DeliveryRecoveryStartupCursor {
-    home_id: BerylHomeId,
-    after_thread_id: SyndicThreadId,
+    source: crate::NonIdleGateSourceCursor,
 }
 
 /// One compact non-idle input-gate row discovered by startup recovery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeliveryRecoverySource {
     home_id: BerylHomeId,
+    home_generation: beryl_home_store::HomeGeneration,
     gate: InputGateRecord,
 }
 
@@ -70,7 +64,6 @@ impl DeliveryRecoverySource {
     }
 }
 
-/// One bounded startup page over physical input-gate order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeliveryRecoveryStartupPage {
     records: Vec<DeliveryRecoverySource>,
@@ -86,38 +79,32 @@ impl DeliveryRecoveryStartupPage {
         &self.records
     }
 
-    /// Returns aggregate stored bytes for all physical gate rows scanned by this page.
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
 
-    /// Returns aggregate practical decoded bytes for all physical gate rows scanned by this page.
     #[must_use]
     pub const fn decoded_bytes(&self) -> usize {
         self.decoded_bytes
     }
 
-    /// Returns the continuation after the last physical row, even when filtering returned no rows.
     #[must_use]
     pub const fn next_cursor(&self) -> Option<DeliveryRecoveryStartupCursor> {
         self.next_cursor
     }
 }
 
-/// Domain-revision-bound continuation after the last physical gate row scanned for pending work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecoveredPendingCursor {
-    home_id: BerylHomeId,
-    source_revision: DomainRevision,
-    after_thread_id: SyndicThreadId,
+    source: crate::NonIdleGateSourceCursor,
 }
 
 impl RecoveredPendingCursor {
     /// Returns the domain revision fencing this continuation.
     #[must_use]
     pub const fn source_revision(self) -> DomainRevision {
-        self.source_revision
+        self.source.source_revision()
     }
 }
 
@@ -193,13 +180,11 @@ impl RecoveredPendingPage {
         &self.records
     }
 
-    /// Returns stored bytes for every physical gate row scanned, including filtered rows.
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
 
-    /// Returns practical decoded bytes for every physical gate row scanned.
     #[must_use]
     pub const fn decoded_bytes(&self) -> usize {
         self.decoded_bytes

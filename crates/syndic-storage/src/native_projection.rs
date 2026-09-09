@@ -234,6 +234,8 @@ impl From<SyndicReadError> for NativeProjectionError {
             | SyndicReadError::InvalidAcceptedNextCandidateSource
             | SyndicReadError::InvalidAcceptedNextCandidateCursor
             | SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+            | SyndicReadError::InvalidNonIdleGateSourceCursor
+            | SyndicReadError::StaleNonIdleGateSourceScan
             | SyndicReadError::StaleRecoveredPendingScan
             | SyndicReadError::InvalidRecoveredPendingCursor => Self::Invariant(
                 "native planning unexpectedly used a public content/resource range boundary",

@@ -24,11 +24,16 @@ impl SyndicStorage {
         source: &DeliveryRecoverySource,
         limit: SyndicPointReadLimit,
     ) -> Result<DeliveryRecoveryCase, DeliveryRecoveryClassificationError> {
-        if source.home_id != store.home_id() {
+        if source.home_id != store.home_id() || source.home_generation != self.home_generation {
             return Err(DeliveryRecoveryClassificationError::SourceDrift);
         }
-        let first = facts::read(self, store, source.thread_id(), limit)?;
-        let second = facts::read(self, store, source.thread_id(), limit)?;
+        let (first, second) =
+            self.with_current_gate_source(store, source.thread_id(), limit, || {
+                Ok((
+                    facts::read(self, store, source.thread_id(), limit)?,
+                    facts::read(self, store, source.thread_id(), limit)?,
+                ))
+            })?;
         if first != second {
             return Err(DeliveryRecoveryClassificationError::SourceDrift);
         }

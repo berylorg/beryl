@@ -1,3 +1,6 @@
+mod pages;
+pub use pages::*;
+
 use super::*;
 use crate::{NonIdleGateSourceRecord, record::non_idle_gate_source_matches};
 

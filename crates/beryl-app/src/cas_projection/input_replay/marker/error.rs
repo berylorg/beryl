@@ -142,6 +142,8 @@ fn map_syndic_read_error(error: SyndicReadError) -> StreamedInputSourceError {
         | SyndicReadError::InvalidAcceptedNextCandidateSource
         | SyndicReadError::InvalidAcceptedNextCandidateCursor
         | SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+        | SyndicReadError::InvalidNonIdleGateSourceCursor
+        | SyndicReadError::StaleNonIdleGateSourceScan
         | SyndicReadError::StaleRecoveredPendingScan
         | SyndicReadError::InvalidRecoveredPendingCursor
         | SyndicReadError::CatalogSummaryRevisionExhausted => {

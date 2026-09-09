@@ -1,8 +1,8 @@
 use beryl_home_store::CursorReadLimits;
 use beryl_model::SyndicItemId;
 use syndic_storage::{
-    DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES, DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS,
-    DeliveryRecoveryCase, InputGateState, SyndicReadError, SyndicStorage,
+    DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES, DeliveryRecoveryCase, InputGateState, SyndicReadError,
+    SyndicStorage,
 };
 
 use crate::{
@@ -15,7 +15,7 @@ fn limits(items: usize) -> CursorReadLimits {
 }
 
 #[test]
-fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
+fn startup_cursor_requires_explicit_rebase_after_earlier_gate_mutation() {
     let home = TestHome::new("startup-key-cursor");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -46,26 +46,28 @@ fn startup_cursor_progress_survives_earlier_gate_mutation_and_filtered_pages() {
         .unwrap();
     assert_eq!(first.records().len(), 1);
     assert_eq!(first.records()[0].thread_id(), threads[0]);
-    let first_cursor = first.next_cursor().expect("two physical gates remain");
+    let first_cursor = first
+        .next_cursor()
+        .expect("another non-idle source remains");
 
     replace_gate_state(&store, storage.clone(), threads[0], InputGateState::Idle);
+    assert!(matches!(
+        storage.delivery_recovery_startup_page(&store, Some(first_cursor), limits(1)),
+        Err(SyndicReadError::StaleNonIdleGateSourceScan)
+    ));
+    let rebased = storage
+        .rebase_delivery_recovery_startup_cursor(&store, first_cursor)
+        .unwrap();
     let second = storage
-        .delivery_recovery_startup_page(&store, Some(first_cursor), limits(1))
+        .delivery_recovery_startup_page(&store, Some(rebased), limits(1))
         .unwrap();
-    assert!(second.records().is_empty());
-    let second_cursor = second
-        .next_cursor()
-        .expect("filtered idle row still advances");
-    let third = storage
-        .delivery_recovery_startup_page(&store, Some(second_cursor), limits(1))
-        .unwrap();
-    assert_eq!(third.records().len(), 1);
-    assert_eq!(third.records()[0].thread_id(), threads[2]);
-    assert!(third.next_cursor().is_none());
+    assert_eq!(second.records().len(), 1);
+    assert_eq!(second.records()[0].thread_id(), threads[2]);
+    assert!(second.next_cursor().is_none());
 }
 
 #[test]
-fn terminal_heavy_gate_pages_clamp_and_advance_while_filtered_empty() {
+fn idle_threads_contribute_no_recovery_page_work() {
     let home = TestHome::new("terminal-heavy-pages");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -83,31 +85,18 @@ fn terminal_heavy_gate_pages_clamp_and_advance_while_filtered_empty() {
         .delivery_recovery_startup_page(&store, None, oversized)
         .unwrap();
     assert!(first.records().is_empty());
-    assert_eq!(
-        first.next_cursor().is_some(),
-        300 > DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS
-    );
-    assert!(first.stored_bytes() <= DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES);
-    assert!(first.decoded_bytes() <= DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES);
-    let second = storage
-        .delivery_recovery_startup_page(&store, first.next_cursor(), oversized)
-        .unwrap();
-    assert!(second.records().is_empty());
-    assert!(second.next_cursor().is_none());
+    assert!(first.next_cursor().is_none());
+    assert_eq!(first.stored_bytes(), 0);
+    assert_eq!(first.decoded_bytes(), 0);
 
     let revision = storage.revision(&store).unwrap();
     let first = storage
         .recovered_pending_page(&store, revision, None, oversized, point_limit())
         .unwrap();
     assert!(first.records().is_empty());
-    let cursor = first
-        .next_cursor()
-        .expect("physical recovered-pending scan is clamped");
-    let second = storage
-        .recovered_pending_page(&store, revision, Some(cursor), oversized, point_limit())
-        .unwrap();
-    assert!(second.records().is_empty());
-    assert!(second.next_cursor().is_none());
+    assert!(first.next_cursor().is_none());
+    assert_eq!(first.stored_bytes(), 0);
+    assert_eq!(first.decoded_bytes(), 0);
 }
 
 #[test]
@@ -203,6 +192,14 @@ fn startup_cursor_from_another_home_is_rejected() {
                 ordered_id(value),
                 ordered_draft(10_000 + value),
             );
+            replace_gate_state(
+                &store,
+                storage.clone(),
+                ordered_id(value),
+                InputGateState::PendingTurn(beryl_model::SyndicTurnId::from_bytes(
+                    *ordered_id(value).as_bytes(),
+                )),
+            );
         }
         (home, store, storage)
     }
@@ -210,7 +207,7 @@ fn startup_cursor_from_another_home_is_rejected() {
     let first = first_storage
         .delivery_recovery_startup_page(&first_store, None, limits(1))
         .unwrap();
-    let cursor = first.next_cursor().expect("second physical gate remains");
+    let cursor = first.next_cursor().expect("second non-idle source remains");
 
     let (_second_home, second_store, second_storage) = two_gate_home("startup-cursor-home-b", 200);
     assert!(matches!(

@@ -38,21 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 356: Maintain Compact Non-Idle Gate Sources (finished)
+# Phase 357: Discover Durable Work Through Compact Sources (finished)
 
-Accepted atomic non-idle gate source maintenance, bounded reservations, canonical encoding and
-current-source validation in mutations, natural reconciliation and explicit schema checks.
-Independent review, storage/app production compilation, formatting and 175 selected checks passed;
-peak job memory was 1.45 GiB with no remaining children. The
-[reconciliation lesson](failures/durable-work-discovery-source-gap.md#reconciliation-closure)
-records the correction. Discovery readers and process inventory remain subsequent work.
-
-# Phase 357: Discover Durable Work Through Compact Sources (pending)
-
-Expose bounded generation/revision-bound non-idle source pages and replace pending-turn/startup
-input-gate sweeps. Preserve exact eligibility, source-anchor validation, typed drift/corruption,
-explicit forward rebase and required fresh scans. Verify idle-thread exclusion, pagination,
-source changes during recovery, shutdown and real scheduler dispatch without broad gate discovery.
+Accepted bounded generation/revision-bound source pages, exact gate resolution and replacement
+of broad startup/pending gate scans. Explicit startup rebase and existing fresh-scan wakes preserve
+recovery and dispatch. Independent review, production compilation, formatting and 173 selected
+storage/app checks passed, including idle exclusion, corruption, cursor fences and real dispatch.
+Peak guarded job memory was 1.65 GiB; processes exited and temporary directories were removed.
+The [discovery evidence](failures/durable-work-discovery-source-gap.md#discovery-replacement)
+records acceptance. Process inventory remains the next boundary.
 
 # Phase 358: Project Revision-Bound Process Work Inventory (pending)
 
