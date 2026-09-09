@@ -28,9 +28,27 @@ fn page(fixture: &LifecycleFixture) -> CompactionWorkPage {
 
 #[test]
 fn terminal_compaction_work_survives_local_removal_until_driver_disposal_without_waiter_custody() {
-    let fixture = LifecycleFixture::new(245, 180);
+    let (fixture, sessions) = LifecycleFixture::with_process_sessions(245, 180);
+    let attention = beryl_app::lifecycle_attention::ProcessLifecycleAttentionPool::new();
+    let inventory_page = || {
+        let inventory = fixture
+            .service
+            .process_work_inventory(&sessions, &attention);
+        let revision = inventory.revision().unwrap();
+        inventory
+            .page(
+                &revision,
+                None,
+                beryl_app::cas_projection::ProcessWorkPageLimits::new(256, 65_536).unwrap(),
+                &beryl_app::cas_projection::ProjectionCancellationToken::new(),
+            )
+            .unwrap()
+    };
     let waiter = fixture.harness.retain_compaction_result(fixture.thread_id);
     let initial = page(&fixture);
+    let running = inventory_page();
+    assert_eq!(running.total_threads(), 1);
+    assert!(running.records()[0].facts.compacting && running.records()[0].facts.continuation);
     assert_eq!(initial.records().len(), 1);
     assert_eq!(
         initial.records()[0].continuation.as_ref().unwrap().stage,
@@ -60,6 +78,10 @@ fn terminal_compaction_work_survives_local_removal_until_driver_disposal_without
     fixture.publish_success_prefix();
     fixture.publish_success_terminal();
     let cleanup = page(&fixture);
+    let running = inventory_page();
+    assert_eq!(running.total_threads(), 1);
+    assert!(running.records()[0].facts.compacting && running.records()[0].facts.cleanup);
+    assert!(!running.records()[0].facts.continuation);
     assert_eq!(cleanup.records().len(), 1);
     assert!(cleanup.records()[0].continuation.is_none());
     let compaction = cleanup.records()[0].compaction.as_ref().unwrap();
@@ -73,6 +95,10 @@ fn terminal_compaction_work_survives_local_removal_until_driver_disposal_without
     fixture.harness.release_compaction_driver();
     assert_eq!(waiter.wait(), ContextCompactionOutcome::Succeeded);
     assert!(page(&fixture).records().is_empty());
+    let successor = inventory_page();
+    assert_eq!(successor.total_threads(), 1);
+    assert!(!successor.records()[0].facts.compacting && !successor.records()[0].facts.cleanup);
+    assert!(successor.records()[0].facts.pending || successor.records()[0].facts.queued);
     assert_eq!(fixture.harness.compaction_custody_in_use(), 0);
     assert_eq!(cleanup.records().len(), 1);
     fixture.close();

@@ -62,6 +62,8 @@ mod compaction_work;
 mod construction;
 mod control_work;
 mod flight_registry;
+mod process_work;
+pub use process_work::*;
 mod runtime_interest;
 mod runtime_preparation;
 mod scheduling;

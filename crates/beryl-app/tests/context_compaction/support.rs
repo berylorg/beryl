@@ -26,6 +26,17 @@ pub struct LifecycleFixture {
 }
 
 impl LifecycleFixture {
+    pub fn with_process_sessions(
+        seed: u8,
+        operation_byte: u8,
+    ) -> (Self, beryl_app::cas_projection::ScheduledExecutionSessions) {
+        let (provider, sessions) =
+            beryl_app::cas_projection::ProcessScheduledExecutionProvider::new();
+        let source =
+            crate::syndic::Fixture::new_with_scheduled_provider(seed, move |_| Box::new(provider));
+        (Self::from_source(source, operation_byte, false), sessions)
+    }
+
     pub fn new(seed: u8, operation_byte: u8) -> Self {
         Self::new_with_accepted_next(seed, operation_byte, false)
     }

@@ -2,6 +2,8 @@
 
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 
+#[path = "process_scheduled_sessions/process_work.rs"]
+mod process_work;
 #[path = "process_scheduled_sessions/server.rs"]
 mod server;
 #[path = "accepted_next_scheduler/support.rs"]

@@ -164,7 +164,9 @@ pub use scheduled_ordinary::{
     ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
 };
 pub use service::{
-    CasProjectionCoordinator, LiveHomeCommand, ProjectionConnectionService,
+    CasProjectionCoordinator, LiveHomeCommand, ProcessWorkCursor, ProcessWorkError,
+    ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage, ProcessWorkPageLimits,
+    ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
 };
 pub use service_config::{

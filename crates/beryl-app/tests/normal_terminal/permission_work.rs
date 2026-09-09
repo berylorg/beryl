@@ -49,7 +49,14 @@ fn permission(page: &StopWorkPage) -> &PermissionInterruptionWorkFact {
 #[test]
 fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
     let _lock = TEST_LOCK.lock().unwrap();
-    let mut fixture = Fixture::new_with_worker_capacity(161, 4);
+    let (provider, sessions) = ProcessScheduledExecutionProvider::new();
+    let mut fixture = Fixture::new_with_scheduled_provider_faults_and_capacity(
+        161,
+        beryl_home_store::test_faults::FaultController::new(),
+        4,
+        move |_| Box::new(provider),
+    );
+    let attention = beryl_app::lifecycle_attention::ProcessLifecycleAttentionPool::new();
     let submitted = fixture.submit_text(SUBMITTED_TEXT);
     let server = NormalTerminalServer::spawn_permission_stop();
     let connector =
@@ -112,6 +119,18 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
             );
         }
         let prepared = page(fixture);
+        let inventory = fixture.store.process_work_inventory(&sessions, &attention);
+        let inventory_page = || {
+            let revision = inventory.revision().unwrap();
+            inventory
+                .page(
+                    &revision,
+                    None,
+                    ProcessWorkPageLimits::new(256, 65_536).unwrap(),
+                    &ProjectionCancellationToken::new(),
+                )
+                .unwrap()
+        };
         let fact = permission(&prepared);
         assert_eq!(fact.stage, PermissionInterruptionWorkStage::Prepared);
         assert_eq!(fact.thread_id, fixture.thread);
@@ -147,6 +166,9 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
             Err(StopWorkError::StaleRevision)
         );
         let driver = page(fixture);
+        let running = inventory_page();
+        assert_eq!(running.total_threads(), 1);
+        assert!(running.records()[0].facts.stopping && running.records()[0].facts.request_handling);
         let fact = permission(&driver);
         assert_eq!(fact.stage, PermissionInterruptionWorkStage::Driver);
         assert_eq!((fact.serial, fact.operation_id), (serial, Some(operation)));
@@ -158,6 +180,9 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
             OrdinaryTurnExecutionOutcome::Incomplete { .. }
         ));
         let lost = page(fixture);
+        let running = inventory_page();
+        assert_eq!(running.total_threads(), 1);
+        assert!(running.records()[0].facts.stopping);
         assert_eq!(permission(&lost).serial, serial);
         let StopWorkRecord::Stop(stop) = &lost.records()[0] else {
             panic!("driver stop cleanup remains");

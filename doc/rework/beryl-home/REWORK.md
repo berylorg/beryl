@@ -344,6 +344,9 @@
   ordered broker handoff and disposal; independent review, production check and 62 tests passed.
 - [x] Bounded compaction command custody from admission through disposal with 72 reservations;
   independent review, production check, 37 regressions and final six-case verification passed.
+- [x] Accepted revision-bound process work inventory with streaming durable deduplication, exact
+  counts, bounded recent-first pages and current metadata without publication. Control custody
+  and attention revisions preserve handoffs; independent review and 128 regressions passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

@@ -38,20 +38,18 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 369: Publish Revision-Bound Attention Observations (finished)
+# Phase 358: Project Revision-Bound Process Work Inventory (finished)
 
-Accepted exact-owner checked attention revisions and fixed-capacity snapshots. Record updates,
-acknowledgement and close invalidate old cuts; strict poison/overflow failures preserve existing
-attention operations. Independent review, 39 attention/lifecycle regressions, production
-compilation, formatting and diff checks passed. All three guarded jobs and temporary directories
-were reclaimed. Inventory composition now has its attention revision prerequisite.
+Accepted borrowed five-source revisions, bounded recent-first pages and an exact deduplicated
+thread count. Durable sources stream without catalog accumulation; current canonical metadata is
+copied without publication. Idle/completed bookkeeping is excluded, while unresolved work,
+cleanup and attention survive their handoffs. Foreign, stale, closed, unavailable and cancelled
+queries fail without execution or acknowledgement effects.
 
-# Phase 358: Project Revision-Bound Process Work Inventory (pending)
-
-Combine compact durable sources, exact process execution facts and the accepted attention pool into
-bounded recent-first pages and a consistent logical thread count. Cover all declared work states,
-deduplication, source drift, generation loss and observation without execution or acknowledgement
-effects. Keep authority custody, view integration, picker mounting and shutdown admission separate.
+Independent semantic review, 128 lifecycle/source/session regressions, production compilation,
+formatting and diff checks passed. The [routing-barrier test correction](failures/cas-work-query-routing-barrier.md)
+preserves the real cleanup cuts. All twelve guarded jobs and temporary directories were reclaimed.
+Production ownership, view integration and shutdown remain separate acceptance boundaries.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
