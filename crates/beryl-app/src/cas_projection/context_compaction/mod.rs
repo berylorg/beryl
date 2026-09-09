@@ -12,8 +12,8 @@ pub use timeout::{
 #[cfg(feature = "test-faults")]
 pub use coordinator::{
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
-    ContextCompactionStagingPauseController, ContextCompactionTerminalResponseTestOutcome,
-    ContextCompactionWaitTestHarness,
+    ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
+    ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,
 };
 pub(in crate::cas_projection) use coordinator::{
     ContextCompactionCoordinator, LifecycleCompactionAdmission,

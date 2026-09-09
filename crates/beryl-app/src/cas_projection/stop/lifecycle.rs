@@ -58,9 +58,10 @@ fn unavailable_response() -> DynamicToolCallResponse {
     DynamicToolCallResponse::failure_text("Lifecycle yield authority is unavailable.")
 }
 
-pub(super) struct AcceptedLifecycleYield {
+pub(in crate::cas_projection) struct AcceptedLifecycleYield {
     outcome: LifecycleYieldOutcome,
     continuation_pending: bool,
+    compaction_turn_id: Option<SyndicTurnId>,
     attention: Weak<ProcessLifecycleAttentionPool>,
     attempt: Option<LifecycleAttentionAttempt>,
 }
@@ -79,12 +80,13 @@ impl AcceptedLifecycleYield {
         Self {
             outcome,
             continuation_pending: outcome == LifecycleYieldOutcome::PhaseContinue,
+            compaction_turn_id: None,
             attention,
             attempt,
         }
     }
 
-    pub(super) fn cancel_continuation(&mut self) {
+    pub(in crate::cas_projection) fn cancel_continuation(&mut self) {
         self.continuation_pending = false;
     }
 
@@ -92,7 +94,11 @@ impl AcceptedLifecycleYield {
         self.outcome == LifecycleYieldOutcome::PhaseContinue
     }
 
-    pub(super) fn effective_outcome(&self) -> Option<LifecycleYieldOutcome> {
+    pub(super) fn owns_compaction_turn(&self, turn_id: SyndicTurnId) -> bool {
+        self.compaction_turn_id == Some(turn_id)
+    }
+
+    pub(in crate::cas_projection) fn effective_outcome(&self) -> Option<LifecycleYieldOutcome> {
         if self.outcome == LifecycleYieldOutcome::PhaseContinue && !self.continuation_pending {
             None
         } else {
@@ -101,7 +107,45 @@ impl AcceptedLifecycleYield {
     }
 }
 
+impl Drop for AcceptedLifecycleYield {
+    fn drop(&mut self) {
+        if self.continuation_pending {
+            if let (Some(pool), Some(attempt)) = (self.attention.upgrade(), self.attempt.as_ref()) {
+                let _ = pool.report_continuation_failure(attempt);
+            }
+        }
+    }
+}
+
 impl StopCoordinator {
+    pub(in crate::cas_projection) fn bind_lifecycle_compaction(
+        &self,
+        thread_id: SyndicThreadId,
+        yielding_turn_id: SyndicTurnId,
+        compaction_turn_id: SyndicTurnId,
+    ) -> Result<(), StopCoordinationError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
+        let accepted = state
+            .lifecycle_yields
+            .get_mut(&LifecycleYieldKey {
+                thread_id,
+                turn_id: yielding_turn_id,
+            })
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)?;
+        if !accepted.is_continuation()
+            || accepted
+                .compaction_turn_id
+                .is_some_and(|existing| existing != compaction_turn_id)
+        {
+            return Err(StopCoordinationError::LocalAuthorityMismatch);
+        }
+        accepted.compaction_turn_id = Some(compaction_turn_id);
+        Ok(())
+    }
+
     pub(in crate::cas_projection) fn dynamic_tool_context(
         &self,
         thread_id: SyndicThreadId,
@@ -191,8 +235,10 @@ impl StopCoordinator {
             return;
         }
         if let Some(accepted) = state.lifecycle_yields.remove(&key) {
-            if let (Some(pool), Some(attempt)) = (accepted.attention.upgrade(), accepted.attempt) {
-                let _ = pool.report_terminal(&attempt);
+            if let (Some(pool), Some(attempt)) =
+                (accepted.attention.upgrade(), accepted.attempt.as_ref())
+            {
+                let _ = pool.report_terminal(attempt);
             }
         }
     }
@@ -202,11 +248,48 @@ impl StopCoordinator {
         thread_id: SyndicThreadId,
         turn_id: SyndicTurnId,
     ) {
-        self.state
+        let accepted = self
+            .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .lifecycle_yields
             .remove(&LifecycleYieldKey { thread_id, turn_id });
+        if let Some(mut accepted) = accepted {
+            if self.ordinary_shutdown_won() {
+                accepted.cancel_continuation();
+            }
+        }
+    }
+
+    pub(in crate::cas_projection) fn ordinary_shutdown_won(&self) -> bool {
+        matches!(
+            self.commands.status_exact(),
+            Ok(super::super::persistent_failure::LiveCommandGateStatus::OrdinaryShutdown)
+        )
+    }
+
+    pub(in crate::cas_projection) fn cancel_all_lifecycle_continuations(&self) {
+        for accepted in self
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .lifecycle_yields
+            .values_mut()
+        {
+            accepted.cancel_continuation();
+        }
+    }
+
+    pub(in crate::cas_projection) fn take_lifecycle_continuation(
+        &self,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+    ) -> Option<AcceptedLifecycleYield> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .lifecycle_yields
+            .remove(&LifecycleYieldKey { thread_id, turn_id })
     }
 
     pub(in crate::cas_projection) fn take_terminal_lifecycle_yield(
@@ -229,7 +312,11 @@ impl StopCoordinator {
         Ok(state
             .lifecycle_yields
             .remove(&LifecycleYieldKey { thread_id, turn_id })
-            .and_then(|accepted| accepted.effective_outcome()))
+            .and_then(|mut accepted| {
+                let outcome = accepted.effective_outcome();
+                accepted.cancel_continuation();
+                outcome
+            }))
     }
 
     pub(in crate::cas_projection) fn has_terminal_phase_continue(

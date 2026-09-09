@@ -337,8 +337,8 @@ impl ProjectionConnectionService {
         self.command_authorizer.is_open()
     }
 
-    #[cfg(test)]
-    pub(in crate::cas_projection) fn home_for_shutdown_test(&self) -> &HomeStore {
+    #[cfg(any(test, feature = "test-faults"))]
+    pub fn home_for_shutdown_test(&self) -> &HomeStore {
         self.home
             .as_deref()
             .expect("unsettled test service owns its opened home")

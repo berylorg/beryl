@@ -43,12 +43,15 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        require_committed_command(
+        if let Err(error) = require_committed_command(
             self.home.execute_current(
                 self.storage
                     .current_admit_compaction_operation(admission.clone()),
             ),
-        )?;
+        ) {
+            self.fail_local(&local);
+            return Err(error);
+        }
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {
@@ -111,12 +114,27 @@ impl ContextCompactionCoordinator {
             command,
         ));
         self.install_local(Arc::clone(&local))?;
-        require_committed_command(
+        if self
+            .stop
+            .bind_lifecycle_compaction(
+                operation_id.thread_id(),
+                yielding_turn_id,
+                admission.target().turn_id(),
+            )
+            .is_err()
+        {
+            self.fail_local(&local);
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        if let Err(error) = require_committed_command(
             self.home.execute_current(
                 self.storage
                     .current_admit_compaction_operation(admission.clone()),
             ),
-        )?;
+        ) {
+            self.fail_local(&local);
+            return Err(error);
+        }
         let operation = match self.read_operation(operation_id) {
             Ok(operation) => operation,
             Err(error) => {

@@ -298,7 +298,7 @@ pub(super) fn converge_target_loss(
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
     lifecycle_stop: Option<&Arc<StopCoordinator>>,
 ) -> Result<Option<OrdinaryTurnExecutionOutcome>, OrdinaryTurnExecutionError> {
-    let accepted_next_ready = target.accepted_next_ready_notifier();
+    let accepted_next_ready = target.accepted_next_ready_notifier()?;
     match target.converge_source_loss(cause)? {
         LiveEventTargetLossOutcome::Incomplete => {
             converge_terminal_history(
@@ -359,7 +359,7 @@ fn finish_proven_terminal(
             "terminal outcome disagreed with the durable valid binding",
         ));
     }
-    let accepted_next_ready = target.accepted_next_ready_notifier();
+    let accepted_next_ready = target.accepted_next_ready_notifier()?;
     let stop_coordinator = match lifecycle_stop {
         Some(stop) => Arc::clone(stop),
         None => target.stop_coordinator()?,
@@ -401,8 +401,7 @@ fn finish_proven_terminal(
             });
         }
         Err(error) => {
-            let _ =
-                stop_coordinator.take_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
+            stop_coordinator.release_ordinary_lifecycle_yield(pending.thread_id, pending.turn_id);
             return Err(error.into());
         }
     }

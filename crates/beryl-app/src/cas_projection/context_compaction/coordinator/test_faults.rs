@@ -68,6 +68,33 @@ impl Drop for ContextCompactionStagingPauseController {
     }
 }
 
+pub struct ContextCompactionSettlementPauseController {
+    gate: Arc<LifecycleStagingPause>,
+}
+
+impl ContextCompactionSettlementPauseController {
+    pub fn wait_until_settled(&self) {
+        let deadline = Instant::now() + TEST_WAIT_LIMIT;
+        while !self.gate.arrived.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "context compaction did not reach settlement"
+            );
+            std::thread::yield_now();
+        }
+    }
+
+    pub fn release(&self) {
+        self.gate.release();
+    }
+}
+
+impl Drop for ContextCompactionSettlementPauseController {
+    fn drop(&mut self) {
+        self.gate.release();
+    }
+}
+
 #[derive(Clone)]
 #[doc(hidden)]
 pub struct ContextCompactionLifecycleTestHarness {
@@ -294,6 +321,22 @@ impl ContextCompactionLifecycleTestHarness {
         Ok(())
     }
 
+    pub fn pause_after_lifecycle_settlement(
+        &self,
+    ) -> Result<ContextCompactionSettlementPauseController, ContextCompactionError> {
+        let coordinator = self.coordinator()?;
+        let gate = Arc::new(LifecycleStagingPause::new());
+        let mut pause = coordinator
+            .lifecycle_settlement_pause
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        if pause.is_some() {
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        *pause = Some(Arc::clone(&gate));
+        Ok(ContextCompactionSettlementPauseController { gate })
+    }
+
     pub fn shutdown_requested(&self) -> Result<bool, ContextCompactionError> {
         Ok(self.coordinator()?.closing.load(Ordering::Acquire))
     }
@@ -401,6 +444,17 @@ impl ContextCompactionCoordinator {
     pub(super) fn pause_after_lifecycle_staging_for_test(&self) {
         let pause = self
             .lifecycle_staging_pause
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take();
+        if let Some(pause) = pause {
+            pause.wait(&self.closing);
+        }
+    }
+
+    pub(super) fn pause_after_lifecycle_settlement_for_test(&self) {
+        let pause = self
+            .lifecycle_settlement_pause
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .take();

@@ -277,6 +277,9 @@ impl ContextCompactionCoordinator {
                 let observation =
                     self.observe_request(&local, CompactionRequestDisposition::RejectedBeforeCore);
                 if observation.is_err() || local.is_finished() {
+                    if !local.is_finished() {
+                        self.fail_local(&local);
+                    }
                     target.retire_context_compaction_connection();
                     return;
                 }
@@ -326,14 +329,17 @@ impl ContextCompactionCoordinator {
             match target.poll(Duration::from_millis(100)) {
                 crate::cas_projection::LiveEventPoll::Quiet => {}
                 crate::cas_projection::LiveEventPoll::ProvenTerminal(_) => {
-                    if !local.is_finished()
-                        && let Ok(operation) = self.read_operation(local.operation_id)
-                    {
-                        let _mutation = local
-                            .mutation
-                            .lock()
-                            .unwrap_or_else(|poison| poison.into_inner());
-                        let _ = self.finalize_terminal_locked(local, &operation);
+                    if !local.is_finished() {
+                        match self.read_operation(local.operation_id) {
+                            Ok(operation) => {
+                                let _mutation = local
+                                    .mutation
+                                    .lock()
+                                    .unwrap_or_else(|poison| poison.into_inner());
+                                let _ = self.finalize_terminal_locked(local, &operation);
+                            }
+                            Err(_) => self.fail_local(local),
+                        }
                     }
                     let _ = target.into_proven_terminal_projection();
                     return;

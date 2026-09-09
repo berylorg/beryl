@@ -800,11 +800,12 @@ fn cancel_automatic_continuation_by_identity(
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
 ) {
-    if let Some(accepted) = state
-        .lifecycle_yields
-        .get_mut(&LifecycleYieldKey { thread_id, turn_id })
-    {
-        accepted.cancel_continuation();
+    for (key, accepted) in &mut state.lifecycle_yields {
+        if key.thread_id == thread_id
+            && (key.turn_id == turn_id || accepted.owns_compaction_turn(turn_id))
+        {
+            accepted.cancel_continuation();
+        }
     }
 }
 

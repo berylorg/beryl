@@ -359,6 +359,12 @@ struct ProviderMutation(PublishCompactionProviderEvent);
 struct SettleMutation(SettleCompactionOperation);
 struct SettleLifecycleMutation(SettleLifecycleCompaction);
 
+#[cfg(feature = "test-faults")]
+pub(crate) fn lifecycle_compaction_settlement_fault_scope()
+-> beryl_home_store::test_faults::FaultScope {
+    beryl_home_store::test_faults::FaultScope::of::<SettleLifecycleMutation>()
+}
+
 mod admission;
 mod api;
 mod continuation;

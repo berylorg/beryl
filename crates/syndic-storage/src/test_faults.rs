@@ -6,8 +6,12 @@ use crate::{
     *,
 };
 
-mod content_text;
+pub fn lifecycle_compaction_settlement_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    crate::mutation::lifecycle_compaction_settlement_fault_scope()
+}
+
 mod build_mapping_custody;
+mod content_text;
 pub use build_mapping_custody::*;
 mod draft_build_mapping_codec;
 pub use draft_build_mapping_codec::*;
@@ -19,15 +23,16 @@ mod draft_marker_admission;
 mod draft_marker_continuation;
 mod draft_marker_continuation_bounds;
 pub use crate::draft_piece::build_mapping::fixture::{
-    BuildMappingForTest, MappingWorkForTest, mapping_node_codec_roundtrip, mapping_root_codec_roundtrip,
+    BuildMappingForTest, MappingWorkForTest, mapping_node_codec_roundtrip,
+    mapping_root_codec_roundtrip,
 };
 pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
-mod draft_staged_outcomes;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
 mod draft_piece_encoding;
 mod draft_piece_staging;
+mod draft_staged_outcomes;
 mod fixture_command;
 mod fixture_delete;
 mod fixture_put;
@@ -79,7 +84,6 @@ pub use draft_marker_admission::{
 };
 pub use draft_marker_continuation::*;
 pub use draft_marker_continuation_bounds::*;
-pub use draft_staged_outcomes::*;
 pub use draft_piece_candidate_drift::arm_draft_piece_candidate_read_fault;
 pub(crate) use draft_piece_candidate_drift::run_draft_piece_candidate_read_fault;
 pub use draft_piece_corruption::{
@@ -115,6 +119,7 @@ pub use draft_piece_staging::{
     inject_draft_mutation_staging_receipt_digest_corruption,
     inject_draft_mutation_terminal_same_operation_custody,
 };
+pub use draft_staged_outcomes::*;
 pub use fixture_command::{FixtureBatch, FixtureBuildError, FixtureMutationError};
 pub use lifecycle_content::{
     lifecycle_content_canonical_records, lifecycle_content_manifest_with_owner,

@@ -74,9 +74,10 @@ pub fn execute(
     projection: LoadedCasProjection,
     lifecycle: &mut dyn LifecycleYieldRequestHandler,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
-    let coordinator = CasProjectionCoordinator::for_healthy_home(&fixture.home()).unwrap();
+    let home = fixture.store.home_for_shutdown_test();
+    let coordinator = CasProjectionCoordinator::for_healthy_home(home).unwrap();
     coordinator.execute_ordinary_turn(
-        &fixture.home(),
+        home,
         &fixture.storage,
         &fixture.state.assets(),
         projection,

@@ -45,6 +45,8 @@ pub use binding::{
     BindingPublicationStatus, CancelBindingActivation, ExactRejectedInputDelivery,
     PublishActiveCasTurn, PublishStaleBinding, PublishUnboundBinding, PublishValidBinding,
 };
+#[cfg(feature = "test-faults")]
+pub(crate) use compaction::lifecycle_compaction_settlement_fault_scope;
 pub use compaction::{
     AbandonCompactionOperation, AdmitCompactionOperation, ClaimCompactionDispatch,
     CompactionProviderEvent, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,

@@ -62,14 +62,16 @@ impl ContextCompactionCoordinator {
         authority: ContextCompactionTargetAuthority,
     ) -> Result<(), ContextCompactionError> {
         let local = self.local_for(authority.operation_id())?;
-        self.ensure_local_current(&local)?;
-        let operation = self.read_operation(authority.operation_id())?;
-        if operation.target().turn_id() != authority.provider_turn_id() {
-            return Err(ContextCompactionError::AuthorityMismatch);
-        }
-        self.abandon(&local, CompactionAbandonmentReason::TargetAuthorityLost)?;
+        let result = (|| {
+            self.ensure_local_current(&local)?;
+            let operation = self.read_operation(authority.operation_id())?;
+            if operation.target().turn_id() != authority.provider_turn_id() {
+                return Err(ContextCompactionError::AuthorityMismatch);
+            }
+            self.abandon(&local, CompactionAbandonmentReason::TargetAuthorityLost)
+        })();
         self.fail_local(&local);
-        Ok(())
+        result
     }
 
     fn local_for(
@@ -92,8 +94,9 @@ impl ContextCompactionCoordinator {
         local: &LocalCompaction,
         operation: &CompactionOperationRecord,
     ) -> Result<(), ContextCompactionError> {
-        self.ensure_local_current(local)?;
-        let result = self.finalize_terminal_inner(local, operation);
+        let result = self
+            .ensure_local_current(local)
+            .and_then(|()| self.finalize_terminal_inner(local, operation));
         if result.is_err() {
             self.fail_local(local);
         }
@@ -119,16 +122,16 @@ impl ContextCompactionCoordinator {
                         .settlement_fence
                         .lock()
                         .map_err(|_| ContextCompactionError::Unavailable)?;
-                    self.cancel_lifecycle_intent(local);
+                    self.fail_lifecycle_intent(local);
                     self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
                     return self.finish_settlement(local, successful);
                 }
                 Err(LifecycleContentFailure::Home) => {
-                    self.cancel_lifecycle_intent(local);
+                    self.fail_lifecycle_intent(local);
                     return Err(ContextCompactionError::Storage);
                 }
                 Err(LifecycleContentFailure::Command(error)) => {
-                    self.cancel_lifecycle_intent(local);
+                    self.fail_lifecycle_intent(local);
                     return Err(error);
                 }
             };
@@ -137,7 +140,7 @@ impl ContextCompactionCoordinator {
             let settled_at = match timestamp_now() {
                 Ok(settled_at) => settled_at,
                 Err(error) => {
-                    self.cancel_lifecycle_intent(local);
+                    self.fail_lifecycle_intent(local);
                     return Err(error);
                 }
             };
@@ -145,26 +148,61 @@ impl ContextCompactionCoordinator {
                 .settlement_fence
                 .lock()
                 .map_err(|_| ContextCompactionError::Unavailable)?;
-            let phase_continue = if self.closing.load(Ordering::Acquire) {
+            let mut accepted = if self.closing.load(Ordering::Acquire) {
                 self.cancel_lifecycle_intent(local);
-                false
+                None
             } else {
-                self.stop
-                    .take_terminal_lifecycle_yield(
-                        local.operation_id.thread_id(),
-                        local
-                            .yielding_turn_id()
-                            .ok_or(ContextCompactionError::AuthorityMismatch)?,
-                    )
-                    .map_err(|_| ContextCompactionError::Unavailable)?
-                    .is_some_and(|outcome| outcome == crate::LifecycleYieldOutcome::PhaseContinue)
+                self.stop.take_lifecycle_continuation(
+                    local.operation_id.thread_id(),
+                    local
+                        .yielding_turn_id()
+                        .ok_or(ContextCompactionError::AuthorityMismatch)?,
+                )
             };
+            let phase_continue = accepted.as_ref().is_some_and(|accepted| {
+                accepted.effective_outcome() == Some(crate::LifecycleYieldOutcome::PhaseContinue)
+            });
             if phase_continue {
-                require_committed_command(self.home.execute_current(
-                    self.storage.current_settle_lifecycle_compaction(
-                        SettleLifecycleCompaction::new(operation, content, settled_at),
-                    ),
-                ))?;
+                let outcome =
+                    self.home
+                        .execute_current(self.storage.current_settle_lifecycle_compaction(
+                            SettleLifecycleCompaction::new(operation, content, settled_at),
+                        ));
+                #[cfg(feature = "test-faults")]
+                self.pause_after_lifecycle_settlement_for_test();
+                let (result, proven_settlement) = match outcome {
+                    CommandOutcome::Indeterminate {
+                        failure,
+                        reconciliation,
+                    } => {
+                        let handle = reconciliation.install_and_handle();
+                        let proven = match self.home.reconcile(&handle) {
+                            Ok(beryl_home_store::ReconciliationResolution::ExactNew { .. }) => true,
+                            Ok(beryl_home_store::ReconciliationResolution::ExactSuccessor { .. }) => {
+                                self.read_operation(operation.id()).is_ok_and(|operation| {
+                                    matches!(operation.state(), CompactionOperationState::Consumed(witness) if matches!(witness.settlement(), CompactionSettlement::LifecycleContinuation { .. } | CompactionSettlement::LifecycleUserWorkWon))
+                                })
+                            }
+                            _ => false,
+                        };
+                        let result = if proven {
+                            Ok(())
+                        } else {
+                            Err(ContextCompactionError::CommandIndeterminate { failure })
+                        };
+                        (result, proven)
+                    }
+                    outcome => {
+                        let proven = matches!(outcome, CommandOutcome::Committed { .. });
+                        (require_committed_command(outcome), proven)
+                    }
+                };
+                if proven_settlement || self.stop.ordinary_shutdown_won() {
+                    if let Some(accepted) = accepted.as_mut() {
+                        accepted.cancel_continuation();
+                    }
+                }
+                result?;
             } else {
                 self.execute_manual_settlement(operation, CompactionSettlement::ManualSuccess)?;
             }
@@ -205,11 +243,11 @@ impl ContextCompactionCoordinator {
     ) -> Result<(), ContextCompactionError> {
         let settled = self.read_operation(local.operation_id)?;
         if !matches!(settled.state(), CompactionOperationState::Consumed(_)) {
-            self.cancel_lifecycle_intent(local);
+            self.fail_lifecycle_intent(local);
             return Err(ContextCompactionError::Storage);
         }
         if matches!(local.origin, CompactionOrigin::Lifecycle { .. }) {
-            self.cancel_lifecycle_intent(local);
+            self.fail_lifecycle_intent(local);
             self.scheduler_signal
                 .wake(AcceptedInputWakeReason::ExecutionReady);
         }
@@ -263,14 +301,24 @@ impl ContextCompactionCoordinator {
 
     pub(super) fn cancel_lifecycle_intent(&self, local: &LocalCompaction) {
         if let CompactionOrigin::Lifecycle { yielding_turn_id } = local.origin {
-            let _ = self
+            if let Some(mut accepted) = self
                 .stop
-                .take_terminal_lifecycle_yield(local.operation_id.thread_id(), yielding_turn_id);
+                .take_lifecycle_continuation(local.operation_id.thread_id(), yielding_turn_id)
+            {
+                accepted.cancel_continuation();
+            }
+        }
+    }
+
+    fn fail_lifecycle_intent(&self, local: &LocalCompaction) {
+        if let CompactionOrigin::Lifecycle { yielding_turn_id } = local.origin {
+            self.stop
+                .release_ordinary_lifecycle_yield(local.operation_id.thread_id(), yielding_turn_id);
         }
     }
 
     pub(super) fn fail_local(&self, local: &LocalCompaction) {
-        self.cancel_lifecycle_intent(local);
+        self.fail_lifecycle_intent(local);
         self.complete_local(local, ContextCompactionOutcome::Failed);
     }
 

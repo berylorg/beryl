@@ -162,6 +162,10 @@ impl ProjectionConnectionRetirementHandle {
         self.connection.retire();
     }
 
+    pub fn shutdown(&self) -> bool {
+        self.connection.shutdown().is_ok()
+    }
+
     /// Returns whether retirement has fenced this connection.
     #[must_use]
     pub fn is_retired(&self) -> bool {

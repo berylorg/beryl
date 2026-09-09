@@ -74,8 +74,8 @@ pub use connection::{
 #[doc(hidden)]
 pub use context_compaction::{
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
-    ContextCompactionStagingPauseController, ContextCompactionTerminalResponseTestOutcome,
-    ContextCompactionWaitTestHarness,
+    ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
+    ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,
 };
 pub use context_compaction::{
     ContextCompactionDiagnostics, ContextCompactionError, ContextCompactionOutcome,

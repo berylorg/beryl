@@ -122,7 +122,7 @@ fn compaction_queue_workers_and_close_cancellation_are_bounded() {
     assert!(settlement.contains("LifecycleContentFailure::DefinitivePreparation"));
     assert!(settlement.contains("CompactionSettlement::ManualSuccess"));
     assert!(settlement.contains("LifecycleContentFailure::Home"));
-    assert!(settlement.contains("take_terminal_lifecycle_yield"));
+    assert!(settlement.contains("take_lifecycle_continuation"));
     assert!(settlement.contains("self.remove_local(local)"));
     assert!(service.contains("context_compaction.request_shutdown()"));
 }

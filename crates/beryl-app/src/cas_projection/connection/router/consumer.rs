@@ -136,11 +136,11 @@ impl LiveEventTarget {
 
     pub(in crate::cas_projection) fn accepted_next_ready_notifier(
         &self,
-    ) -> super::AcceptedNextReadyNotifier {
-        self.connection
-            .current_router()
-            .expect("a live event target retains its service attachment")
-            .accepted_next_ready_notifier()
+    ) -> Result<super::AcceptedNextReadyNotifier, ProjectionCoordinatorError> {
+        Ok(self
+            .connection
+            .current_router()?
+            .accepted_next_ready_notifier())
     }
 
     pub(in crate::cas_projection) fn start_streamed_turn(

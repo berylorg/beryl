@@ -80,8 +80,8 @@ fn require_committed_command(outcome: CommandOutcome) -> Result<(), ContextCompa
 #[cfg(feature = "test-faults")]
 pub use test_faults::{
     ContextCompactionCapacityTestGuard, ContextCompactionLifecycleTestHarness,
-    ContextCompactionStagingPauseController, ContextCompactionTerminalResponseTestOutcome,
-    ContextCompactionWaitTestHarness,
+    ContextCompactionSettlementPauseController, ContextCompactionStagingPauseController,
+    ContextCompactionTerminalResponseTestOutcome, ContextCompactionWaitTestHarness,
 };
 
 const COMPACTION_POINT_READ_BYTES: usize = 1_000_000;
@@ -113,6 +113,8 @@ pub(in crate::cas_projection) struct ContextCompactionCoordinator {
     fail_next_lifecycle_staging: AtomicBool,
     #[cfg(feature = "test-faults")]
     lifecycle_staging_pause: Mutex<Option<Arc<test_faults::LifecycleStagingPause>>>,
+    #[cfg(feature = "test-faults")]
+    lifecycle_settlement_pause: Mutex<Option<Arc<test_faults::LifecycleStagingPause>>>,
 }
 
 pub(in crate::cas_projection) enum LifecycleCompactionAdmission {
@@ -226,6 +228,8 @@ impl ContextCompactionCoordinator {
             fail_next_lifecycle_staging: AtomicBool::new(false),
             #[cfg(feature = "test-faults")]
             lifecycle_staging_pause: Mutex::new(None),
+            #[cfg(feature = "test-faults")]
+            lifecycle_settlement_pause: Mutex::new(None),
         });
         let mut workers = Vec::with_capacity(COMPACTION_WORKER_CAPACITY);
         for index in 0..COMPACTION_WORKER_CAPACITY {
@@ -319,9 +323,6 @@ impl ContextCompactionCoordinator {
                 return Err(ContextCompactionError::AuthorityMismatch);
             }
             CompactionAdmissionRead::Ineligible(reason) => {
-                let _ = self
-                    .stop
-                    .take_terminal_lifecycle_yield(projection.syndic_thread_id(), yielding_turn_id);
                 return Err(ContextCompactionError::Ineligible(reason));
             }
         };
@@ -366,6 +367,9 @@ impl ContextCompactionCoordinator {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner());
             self.closing.store(true, Ordering::Release);
+            if !self.commands.is_persistent_failure_cut() {
+                self.stop.cancel_all_lifecycle_continuations();
+            }
             self.work
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner())

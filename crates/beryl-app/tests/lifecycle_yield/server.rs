@@ -5,6 +5,8 @@ include!("../normal_terminal/server.rs");
 enum YieldCommand {
     Call(&'static str),
     Complete,
+    Compact,
+    LiveCompaction,
     Lose,
 }
 
@@ -78,9 +80,45 @@ impl YieldServer {
                         assert_eq!(response["id"], request_id);
                         responses_tx.send(response).unwrap();
                     }
-                    YieldCommand::Complete => {
+                    YieldCommand::Complete
+                    | YieldCommand::Compact
+                    | YieldCommand::LiveCompaction => {
                         send_json(&mut socket, &terminal_wire());
+                        if matches!(
+                            command,
+                            YieldCommand::Compact | YieldCommand::LiveCompaction
+                        ) {
+                            let compact = read_json(&mut socket).unwrap();
+                            assert_eq!(compact["method"], "thread/compact/start");
+                            send_json(
+                                &mut socket,
+                                &json!({"id":compact["id"],"result":{}}).to_string(),
+                            );
+                            if matches!(command, YieldCommand::LiveCompaction) {
+                                send_json(
+                                    &mut socket,
+                                    &format!(
+                                        r#"{{"method":"thread/status/changed","params":{{"threadId":"{CAS_THREAD_ID}","status":{{"type":"active","activeFlags":[]}}}}}}"#
+                                    ),
+                                );
+                                send_json(
+                                    &mut socket,
+                                    &format!(
+                                        r#"{{"method":"turn/started","params":{{"threadId":"{CAS_THREAD_ID}","turn":{{"id":"continuation-compaction","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":1,"completedAt":null,"durationMs":null}}}}}}"#
+                                    ),
+                                );
+                            }
+                            responses_tx.send(compact).unwrap();
+                        }
                         while let Some(request) = read_json(&mut socket) {
+                            if request["method"] == "turn/interrupt" {
+                                assert_eq!(request["params"]["turnId"], "continuation-compaction");
+                                send_json(
+                                    &mut socket,
+                                    &json!({"id":request["id"],"result":{}}).to_string(),
+                                );
+                                continue;
+                            }
                             assert_eq!(request["method"], "thread/unsubscribe");
                             send_json(
                                 &mut socket,
@@ -133,5 +171,15 @@ impl YieldServer {
 
     pub fn join(self) {
         self.handle.join().unwrap();
+    }
+
+    pub fn compact(&self) {
+        self.commands.send(YieldCommand::Compact).unwrap();
+        self.responses.recv_timeout(TIMEOUT).unwrap();
+    }
+
+    pub fn live_compaction(&self) {
+        self.commands.send(YieldCommand::LiveCompaction).unwrap();
+        self.responses.recv_timeout(TIMEOUT).unwrap();
     }
 }

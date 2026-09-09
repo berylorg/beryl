@@ -38,24 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 352: Connect Production Lifecycle Acceptance And Terminal Attention (finished)
+# Phase 353: Publish Exact Continuation Failure Attention (finished)
 
-Accepted production lifecycle-yield handling with exact execution-origin proof, first-winner
-preservation across cancellation, and terminal/incomplete attention delivery through the process
-pool. Capture custody preserves eligible attention across home failure and releases unfinished
-bookkeeping. Independent review, production compilation and formatting passed; 72 selected checks
-passed with a 2.01 GiB job peak and no remaining child processes. The
-[execution-origin correction](failures/lifecycle-yield-execution-origin.md) records the durable lesson.
-Continuation failure settlement and process/window composition remain separate boundaries.
-
-# Phase 353: Publish Exact Continuation Failure Attention (pending)
-
-Carry the accepted attempt through compaction failure and uncertain continuation settlement.
-Distinguish successful admission and user-input/soft-stop/shutdown cancellation from backend, home
-and fixed-content failures. Report one bounded failure only for the winning failed disposition,
-preserve an already-admitted continuation and queued user input, and release exact attempt state.
-Verify preparation failure, source/home loss, cancellation races and ambiguous settlement through
-the production producer and accepted pool before process assembly.
+Accepted exact continuation completion custody through preparation, backend/home loss and ambiguous
+settlement. Proven admission and prior user-input, stop or shutdown cancellation suppress failure;
+pending failures publish bounded attention and release their attempt. Independent review, production
+compilation, formatting and 92 selected checks passed with a 2.02 GiB job peak and no remaining child
+processes. The [custody correction](failures/lifecycle-continuation-attention-custody.md) records the
+settlement and verification lessons. Process/window composition remains a separate boundary.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
