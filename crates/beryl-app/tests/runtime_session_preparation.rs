@@ -1,4 +1,6 @@
 #![cfg(all(feature = "test-faults", target_os = "windows"))]
+#[path = "runtime_session_preparation/work_facts.rs"]
+mod work_facts;
 
 #[allow(dead_code)]
 #[path = "runtime_session_preparation/submission.rs"]

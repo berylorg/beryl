@@ -8,6 +8,8 @@ mod server;
 mod support;
 #[path = "projection/syndic.rs"]
 mod syndic;
+#[path = "process_scheduled_sessions/work_facts.rs"]
+mod work_facts;
 
 use std::{path::Path, thread};
 
@@ -38,7 +40,7 @@ fn install_session(
     thread_id: SyndicThreadId,
     endpoint: BackendWebSocketEndpoint,
     generation: u64,
-) {
+) -> beryl_app::cas_projection::ScheduledSessionRegistration {
     let binding = syndic::execution_binding();
     let connector = ManagedBackendClientConnector::for_lifecycle_test(endpoint, AUTHORIZATION);
     let session = fixture
@@ -60,7 +62,7 @@ fn install_session(
             fixture.state.assets(),
             tool_authority(),
         )
-        .unwrap();
+        .unwrap()
 }
 
 fn resume_server(fixture: &syndic::Fixture, thread: SyndicThreadId) -> NormalTerminalServer {

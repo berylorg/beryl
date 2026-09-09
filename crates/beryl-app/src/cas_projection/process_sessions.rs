@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     sync::{Arc, Mutex, MutexGuard, Weak},
 };
 
@@ -19,6 +19,12 @@ use super::{
 
 mod checkout;
 mod control;
+mod work_facts;
+pub use work_facts::{
+    ScheduledSessionFact, ScheduledSessionPreparationFact, ScheduledSessionWorkCursor,
+    ScheduledSessionWorkError, ScheduledSessionWorkPage, ScheduledSessionWorkPageLimits,
+    ScheduledSessionWorkRecord, ScheduledSessionWorkRevision, ScheduledSessionWorkState,
+};
 pub(in crate::cas_projection) mod preparation;
 pub use preparation::{
     RuntimeSessionPreparationConfig, RuntimeSessionPreparationError, RuntimeTokenDirectories,
@@ -92,6 +98,7 @@ pub struct ProcessScheduledExecutionProvider {
 #[derive(Clone)]
 pub struct ScheduledExecutionSessions {
     state: Arc<Mutex<SessionState>>,
+    work_identity: Arc<()>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,9 +142,18 @@ struct SessionState {
     closed: bool,
     next_serial: u64,
     high_water: usize,
-    slots: HashMap<SyndicThreadId, SessionSlot>,
+    work_revision: Option<u64>,
+    slots: BTreeMap<SyndicThreadId, SessionSlot>,
     preparation: Option<Arc<preparation::PreparationContext>>,
-    preparing: HashMap<SyndicThreadId, preparation::PreparationWorker>,
+    preparing: BTreeMap<SyndicThreadId, preparation::PreparationWorker>,
+}
+
+impl SessionState {
+    fn work_changed(&mut self) {
+        self.work_revision = self
+            .work_revision
+            .and_then(|revision| revision.checked_add(1));
+    }
 }
 
 struct SessionSlot {
@@ -159,14 +175,16 @@ struct SessionResources {
 impl ProcessScheduledExecutionProvider {
     pub fn new() -> (Self, ScheduledExecutionSessions) {
         let sessions = ScheduledExecutionSessions {
+            work_identity: Arc::new(()),
             state: Arc::new(Mutex::new(SessionState {
                 context: None,
                 closed: false,
                 next_serial: 0,
                 high_water: 0,
-                slots: HashMap::new(),
+                work_revision: Some(1),
+                slots: BTreeMap::new(),
                 preparation: None,
-                preparing: HashMap::new(),
+                preparing: BTreeMap::new(),
             })),
         };
         (
@@ -184,6 +202,9 @@ impl ScheduledExecutionSessions {
             Ok(state) => state,
             Err(poison) => {
                 let mut state = poison.into_inner();
+                if !state.closed {
+                    state.work_changed();
+                }
                 state.closed = true;
                 state
             }
@@ -194,6 +215,7 @@ impl ScheduledExecutionSessions {
         self.reap_preparation();
         let resources: Vec<_> = {
             let mut state = self.lock();
+            let was_closed = state.closed;
             if state
                 .context
                 .as_ref()
@@ -202,16 +224,22 @@ impl ScheduledExecutionSessions {
                 state.closed = true;
             }
             let closed = state.closed;
-            state
+            let mut changed = was_closed != closed;
+            let resources = state
                 .slots
                 .values_mut()
                 .filter_map(|slot| {
                     if closed || slot.connection.is_retired() || slot.connection.is_detached() {
+                        changed |= !slot.retiring;
                         slot.retiring = true;
                     }
                     slot.retiring.then(|| slot.resources.take()).flatten()
                 })
-                .collect()
+                .collect();
+            if changed {
+                state.work_changed();
+            }
+            resources
         };
         drop(resources);
         let candidates: Vec<_> = self
@@ -238,6 +266,7 @@ impl ScheduledExecutionSessions {
                     })
                 {
                     state.slots.remove(&registration.thread_id);
+                    state.work_changed();
                     state.context.as_ref().map(|context| context.ready.clone())
                 } else {
                     None

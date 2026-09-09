@@ -56,7 +56,8 @@ pub(in crate::cas_projection) struct PreparationContext {
 
 pub(super) struct PreparationWorker {
     handle: thread::JoinHandle<()>,
-    complete: bool,
+    pub(super) complete: bool,
+    pub(super) binding: ExecutionBinding,
 }
 
 impl ScheduledExecutionSessions {
@@ -149,6 +150,7 @@ impl ScheduledExecutionSessions {
             return admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady);
         }
         let sessions = self.clone();
+        let binding = admission.execution_binding().clone();
         let worker = thread::Builder::new()
             .name("beryl-session-preparation".to_owned())
             .spawn(move || {
@@ -158,6 +160,7 @@ impl ScheduledExecutionSessions {
                 drop(admission);
                 if let Some(worker) = state.preparing.get_mut(&thread_id) {
                     worker.complete = true;
+                    state.work_changed();
                 }
                 if state.slots.contains_key(&thread_id)
                     && let Some(context) = state.context.as_ref()
@@ -171,8 +174,10 @@ impl ScheduledExecutionSessions {
                 PreparationWorker {
                     handle: worker,
                     complete: false,
+                    binding,
                 },
             );
+            state.work_changed();
         }
         ScheduledOrdinaryAdmissionResult::Unavailable(
             ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady,
@@ -189,6 +194,9 @@ impl ScheduledExecutionSessions {
                     (worker.complete || worker.handle.is_finished()).then_some(*id)
                 })
                 .collect();
+            if !threads.is_empty() {
+                state.work_changed();
+            }
             threads
                 .into_iter()
                 .filter_map(|id| state.preparing.remove(&id))
@@ -202,6 +210,9 @@ impl ScheduledExecutionSessions {
     pub(super) fn close_preparation(&self) {
         let (context, workers) = {
             let mut state = self.lock();
+            if !state.closed || !state.preparing.is_empty() {
+                state.work_changed();
+            }
             state.closed = true;
             (
                 state.preparation.take(),

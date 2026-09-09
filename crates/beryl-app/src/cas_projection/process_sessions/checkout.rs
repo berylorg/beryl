@@ -30,6 +30,7 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
         } else {
             state.context = Some(context);
         }
+        state.work_changed();
     }
 
     fn try_issue(
@@ -69,12 +70,14 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
                 return Ok(admission.decline(ScheduledOrdinaryExecutionUnavailable::SessionBusy));
             };
             slot.checked_out = true;
-            (
+            let checkout = (
                 slot.registration,
                 resources,
                 slot.policy.clone(),
                 slot.assets.clone(),
-            )
+            );
+            state.work_changed();
+            checkout
         };
         let returned = Arc::new(CheckoutReturn {
             owner: self.sessions.clone(),

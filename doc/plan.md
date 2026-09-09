@@ -38,15 +38,26 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 357: Discover Durable Work Through Compact Sources (finished)
+# Phase 359: Publish Revision-Bound Session Work Facts (finished)
 
-Accepted bounded generation/revision-bound source pages, exact gate resolution and replacement
-of broad startup/pending gate scans. Explicit startup rebase and existing fresh-scan wakes preserve
-recovery and dispatch. Independent review, production compilation, formatting and 173 selected
-storage/app checks passed, including idle exclusion, corruption, cursor fences and real dispatch.
-Peak guarded job memory was 1.65 GiB; processes exited and temporary directories were removed.
-The [discovery evidence](failures/durable-work-discovery-source-gap.md#discovery-replacement)
-records acceptance. Process inventory remains the next boundary.
+Accepted bounded, owner/generation/revision-bound session and preparation pages with mutation
+coverage through registration, checkout, return and retirement. Observation carries no execution
+capability and performs no reaping or dispatch; closed owners are unavailable. Independent review,
+production compilation, formatting and 26 focused lifecycle checks passed. Peak guarded job memory
+was 1.65 GiB; all children exited and temporary directories were removed. Connection/control facts
+and complete work inventory remain subsequent boundaries.
+
+# Phase 360: Publish Revision-Bound Connection Work Facts (pending)
+
+Expose exact bounded thread/request facts from existing connection/router owners, including queued
+and in-flight request handling and disposal. Fence every contributing transition, including queue
+consumption outside the router state lock, without copying request payloads or capabilities.
+
+# Phase 361: Publish Revision-Bound Control Work Facts (pending)
+
+Expose exact bounded stop, compaction and continuation facts from their existing owners. Preserve
+observation through continuation handoff and terminal settlement without creating another owner,
+admitting work or changing cancellation, response or shutdown authority.
 
 # Phase 358: Project Revision-Bound Process Work Inventory (pending)
 

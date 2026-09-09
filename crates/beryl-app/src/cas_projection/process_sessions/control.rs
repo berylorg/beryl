@@ -56,6 +56,7 @@ impl ScheduledExecutionSessions {
                 },
             );
             state.high_water = state.high_water.max(state.slots.len());
+            state.work_changed();
             (registration, ready)
         };
         ready.notify();
@@ -71,8 +72,13 @@ impl ScheduledExecutionSessions {
             if slot.registration != registration {
                 return false;
             }
+            let changed = !slot.retiring || slot.resources.is_some();
             slot.retiring = true;
-            slot.resources.take()
+            let resources = slot.resources.take();
+            if changed {
+                state.work_changed();
+            }
+            resources
         };
         drop(resources);
         self.reap();
@@ -88,6 +94,11 @@ impl ScheduledExecutionSessions {
     pub(super) fn request_close(&self) {
         let (context, resources) = {
             let mut state = self.lock();
+            let changed = !state.closed
+                || state
+                    .slots
+                    .values()
+                    .any(|slot| !slot.retiring || slot.resources.is_some());
             state.closed = true;
             let context = state.preparation.take();
             let resources: Vec<_> = state
@@ -98,6 +109,9 @@ impl ScheduledExecutionSessions {
                     slot.resources.take()
                 })
                 .collect();
+            if changed {
+                state.work_changed();
+            }
             (context, resources)
         };
         drop(context);
@@ -148,12 +162,14 @@ impl ScheduledExecutionSessions {
                 if !current || slot.connection.is_retired() || slot.connection.is_detached() {
                     slot.retiring = true;
                 }
-                if !slot.retiring {
+                let ready = if !slot.retiring {
                     slot.resources = resources.take();
                     state.context.as_ref().map(|context| context.ready.clone())
                 } else {
                     None
-                }
+                };
+                state.work_changed();
+                ready
             } else {
                 None
             }

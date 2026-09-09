@@ -116,8 +116,11 @@ pub use persistent_failure::{
 pub use process_sessions::{
     ProcessScheduledExecutionProvider, RuntimeSessionPreparationConfig,
     RuntimeSessionPreparationError, RuntimeTokenDirectories, ScheduledExecutionProviderContext,
-    ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionRegistration,
-    ScheduledSessionRegistrationError,
+    ScheduledExecutionSessions, ScheduledSessionDiagnostics, ScheduledSessionFact,
+    ScheduledSessionPreparationFact, ScheduledSessionRegistration,
+    ScheduledSessionRegistrationError, ScheduledSessionWorkCursor, ScheduledSessionWorkError,
+    ScheduledSessionWorkPage, ScheduledSessionWorkPageLimits, ScheduledSessionWorkRecord,
+    ScheduledSessionWorkRevision, ScheduledSessionWorkState,
 };
 pub use process_tools::ProcessOrdinaryDynamicToolAuthority;
 pub use runtime::AdmittedProjectionSession;

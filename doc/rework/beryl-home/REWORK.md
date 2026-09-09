@@ -330,6 +330,8 @@
 - [x] Accepted compact non-idle sources with atomic gate maintenance and exact reconciliation.
 - [x] Replaced broad startup/pending discovery with bounded generation/revision-bound compact
   sources and exact resolution; independent review and 173 storage/app checks passed.
+- [x] Accepted bounded revision-bound session/preparation facts without observation side effects;
+  independent review and 26 session, managed-preparation and scheduler checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
