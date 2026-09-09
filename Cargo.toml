@@ -47,8 +47,8 @@ getrandom = "0.4.2"
 hex = "0.4.3"
 gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "b6939aa0a2d78be59facd12a909a4ada3b6f6a64", default-features = false, features = ["windows-manifest"] }
 gpui-scrollbar = { git = "https://github.com/berylorg/gpui-scrollbar.git", rev = "d2c7b90ba54f9d7cfa858469c62b4b1338dd47a4" }
-gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "e587fa78e151e80f03a1d18504ef804e3b53c20d" }
-gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "fc17c5738c35350e58e32437cdae74e28ebc31af" }
+gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "8a9e1cd83eb8b837c1f9cdb51aad80a8a1446bd8" }
+gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "5f2f272b71666b56f990a1d2ee15e83219a05c9e" }
 gpui_sum_tree = "0.2.2"
 image = "0.25.1"
 jsonc-parser = { version = "0.32.4", default-features = false }

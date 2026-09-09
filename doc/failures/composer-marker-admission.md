@@ -164,13 +164,24 @@ is tested as invalid input, with retained custody, authenticated cancellation, u
 authority and a subsequent successful edit. No production filtering or storage-rule exception was
 introduced. Mounted clipboard image decoding and large/rich paste remain a separate checkpoint.
 
-## Remaining Canonical Dependency Boundary
+## Canonical Dependency Publication
 
-Local app verification depends on the accepted widget checkout
-`5f2f272b71666b56f990a1d2ee15e83219a05c9e`. Beryl's formal widget pin and the observed remote main
-remain `fc17c5738c35350e58e32437cdae74e28ebc31af`. A canonical check therefore reports the expected
-missing widget evidence/restart APIs and is not credited as passing. After local acceptance and
-Operator authorization to publish the accepted dependency commit, update Beryl's formal revision
-and canonical lockfile, run locked canonical metadata and the focused production check, then
-refresh semantic navigation for the validated Cargo model. Keep this gate separate from deferred
-process-provider work.
+With Operator authorization, text-input `5f2f272b71666b56f990a1d2ee15e83219a05c9e` and
+settings-window `8a9e1cd83eb8b837c1f9cdb51aad80a8a1446bd8` were published to their origin/main
+branches. Beryl's formal pins and canonical lockfile now select those revisions. Updating only
+Beryl's text-input pin left settings-window on the old widget and resolved two versions; the
+dependent pin update preserves one canonical widget graph. No widget source changed during
+publication, and the canonical lockfile changes only those two Git sources.
+
+The development checkout automatically includes `.cargo/local.toml`; plain Cargo commands there
+still use local patches and the ignored lockfile. The earlier ENV.md statement that plain commands
+were canonical was incorrect. Canonical resolution and validation used isolated checkouts with
+tracked Cargo configuration and no ignored local configuration. Only their verified canonical
+lockfiles were transferred back. The Beryl ignored local lockfile retained its prior hash.
+
+Locked canonical metadata verified one GPUI, one text-input and one settings-window package from
+their published Git sources. The settings library check passed, followed by the isolated locked
+production app check without default features in 172 seconds. The latter peaked at 3.31 GiB of
+guarded commitment and reaped all children. Scoped completion review passed; semantic navigation
+restarted only after successful validation, and a subsequent symbol query passed. The publication
+boundary is accepted independently of deferred process-provider composition.

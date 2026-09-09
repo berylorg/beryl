@@ -1,14 +1,13 @@
 # Scope
 
-Production marker admission has passed local acceptance with the accepted LLVM, one-job,
+Production marker admission and canonical widget publication have passed acceptance with the LLVM, one-job,
 no-normal-debug and nonincremental settings under the root
-[technology decisions](design.md#implementation-technology). The next boundary is canonical widget
-publication and pinning, which requires explicit Operator authorization below. Preserve required
+[technology decisions](design.md#implementation-technology). The Operator authorizes pushing projects and owned forks as needed for
+this work, including the accepted widget revision and Beryl changes. Preserve required
 checks and independent review while using conditional delegation and bounded evidence.
 
-Keep GUI thread switching clean without overengineering. The Operator now authorizes the two
-reported non-GUI corrections: marker admission and healthy scheduler-conflict handling. Keep each
-in its own acceptance boundary and reuse existing mechanisms. Broader process-provider composition
+Keep GUI thread switching clean without overengineering. The two authorized non-GUI corrections,
+marker admission and healthy scheduler-conflict handling, are accepted. Broader process-provider composition
 and other deferred work remain outside this authorization.
 The controlling contracts are [conversation threads](features/conversation-threads/design.md),
 [backend recovery](features/backend-runtime-recovery/design.md), and the
@@ -39,27 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 329: Connect Production Marker Admission (finished)
+# Phase 344: Finalize Canonical Marker Dependency Revision (finished)
 
-Accepted the production evidence/admission composition, exact retained mutation custody and
-Notifications feedback, including unavailable build and committed-presentation failures. All 156
-distinct focused cases passed on ordinary stacks, and the isolated 30-file production app check
-passed with the accepted storage correction and local dependencies. Independent review found no
-remaining blocking issue. The [admission record](failures/composer-marker-admission.md#evidence-and-status)
-preserves evidence and structural-coverage limits; canonical publication remains below.
-
-# Phase 344: Finalize Canonical Marker Dependency Revision (pending)
-
-After local app acceptance and Operator authorization for dependency publication, publish the
-accepted widget revision, update Beryl's formal pin and canonical lockfile, and verify locked
-canonical metadata plus the focused production app check. Refresh semantic navigation only after
-the validated Cargo model passes. This boundary follows the local-development workflow in
-[ENV.md](../ENV.md); it does not activate deferred process-provider work.
-
-Blocked on explicit publication authorization: accepted widget commit
-`5f2f272b71666b56f990a1d2ee15e83219a05c9e` is ready for `gpui-text-input` origin/main. Read-only
-remote verification still reports `fc17c5738c35350e58e32437cdae74e28ebc31af`, matching Beryl's
-formal pin. No dependency push or canonical pin change has been performed.
+Published text-input `5f2f272` and settings-window `8a9e1cd`, and aligned Beryl's formal pins and
+canonical lockfile. Locked canonical metadata resolves one GPUI and one of each widget. The
+isolated production app check passed in 172 seconds; the settings library check and scoped
+completion review passed. Semantic navigation restarted successfully after validation and a symbol
+query passed. [Publication evidence](failures/composer-marker-admission.md#canonical-dependency-publication)
+records the corrected canonical-versus-local workflow. The broader phases below remain deferred.
 
 # Phase 324: Own Scheduled Execution Sessions In The Process (pending)
 
