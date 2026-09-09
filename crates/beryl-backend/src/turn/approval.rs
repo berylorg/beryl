@@ -131,27 +131,31 @@ pub enum ApprovalResponseDisposition {
 struct ApprovalResponseState {
     authority_generation: AtomicU64,
     disposition: AtomicU8,
+    work: crate::response_work::ResponseWorkTracker,
 }
 
 impl ApprovalResponseState {
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
             authority_generation: AtomicU64::new(UNBOUND_RESPONSE_AUTHORITY),
             disposition: AtomicU8::new(ApprovalResponseDisposition::ResponseRequired as u8),
+            work: crate::response_work::ResponseWorkTracker::new(2, None),
         }
     }
 
     fn bind(&self, generation: u64) -> Result<(), ApprovalRequestSchemaError> {
         debug_assert_ne!(generation, UNBOUND_RESPONSE_AUTHORITY);
-        self.authority_generation
-            .compare_exchange(
-                UNBOUND_RESPONSE_AUTHORITY,
-                generation,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .map(|_| ())
-            .map_err(|_| ApprovalRequestSchemaError::ResponseAuthorityAlreadyBound)
+        self.work.bind(generation, || {
+            self.authority_generation
+                .compare_exchange(
+                    UNBOUND_RESPONSE_AUTHORITY,
+                    generation,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .map(|_| ())
+                .map_err(|_| ApprovalRequestSchemaError::ResponseAuthorityAlreadyBound)
+        })
     }
 
     fn authority_generation(&self) -> u64 {
@@ -168,7 +172,12 @@ impl ApprovalResponseState {
     }
 
     fn store(&self, disposition: ApprovalResponseDisposition) {
-        self.disposition.store(disposition as u8, Ordering::Release);
+        self.work.record_response(
+            disposition != ApprovalResponseDisposition::ResponseRequired,
+            || {
+                self.disposition.store(disposition as u8, Ordering::Release);
+            },
+        );
     }
 }
 
@@ -245,6 +254,10 @@ impl fmt::Display for ApprovalRequestKind {
 }
 
 impl ApprovalRequest {
+    pub fn response_work(&self) -> crate::ResponseWorkObserver {
+        self.shared.response_state.work.observe()
+    }
+
     pub(crate) fn decoded(
         request_id: ApprovalRequestId,
         kind: ApprovalRequestKind,
@@ -310,6 +323,18 @@ impl ApprovalRequest {
     /// Returns the optional exact item route retained from the request.
     pub fn item_id(&self) -> Option<&CasItemId> {
         self.shared.item_id.as_ref()
+    }
+}
+
+impl Drop for ApprovalRequest {
+    fn drop(&mut self) {
+        self.shared.response_state.work.release_capability();
+    }
+}
+
+impl Drop for ApprovalResponder {
+    fn drop(&mut self) {
+        self.shared.response_state.work.release_capability();
     }
 }
 

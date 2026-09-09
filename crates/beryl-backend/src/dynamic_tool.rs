@@ -61,6 +61,7 @@ struct DynamicToolCallShared {
     response_authority_generation: u64,
     ingress_state: AtomicU8,
     response_disposition: AtomicU8,
+    work: crate::response_work::ResponseWorkTracker,
 }
 
 /// One non-cloneable compact dynamic-tool call with exact-session response authority.
@@ -231,6 +232,10 @@ impl Serialize for DynamicToolCallRequestId {
 }
 
 impl DynamicToolCall {
+    pub fn response_work(&self) -> crate::ResponseWorkObserver {
+        self.shared.work.observe()
+    }
+
     pub(crate) fn decoded(
         request_id: DynamicToolCallRequestId,
         thread_id: CasThreadId,
@@ -252,6 +257,10 @@ impl DynamicToolCall {
             ingress_state: AtomicU8::new(DynamicToolCallIngressState::Building as u8),
             response_disposition: AtomicU8::new(
                 DynamicToolCallResponseDisposition::ResponseRequired as u8,
+            ),
+            work: crate::response_work::ResponseWorkTracker::new(
+                1,
+                Some(response_authority_generation),
             ),
         });
         (
@@ -321,10 +330,18 @@ impl DynamicToolCall {
     }
 
     pub(crate) fn mark_responded(&self) {
-        self.shared.response_disposition.store(
-            DynamicToolCallResponseDisposition::Responded as u8,
-            Ordering::Release,
-        );
+        self.shared.work.record_response(true, || {
+            self.shared.response_disposition.store(
+                DynamicToolCallResponseDisposition::Responded as u8,
+                Ordering::Release,
+            );
+        });
+    }
+}
+
+impl Drop for DynamicToolCall {
+    fn drop(&mut self) {
+        self.shared.work.release_capability();
     }
 }
 

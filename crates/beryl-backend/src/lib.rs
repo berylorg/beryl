@@ -399,6 +399,7 @@ mod managed_process;
 mod ordered_turn_stream;
 mod protocol;
 mod provider_observation;
+mod response_work;
 mod server;
 mod session;
 mod thread_injection;
@@ -411,6 +412,9 @@ mod websocket_transport;
 #[doc(hidden)]
 pub mod lifecycle_test_support;
 
+pub use response_work::{
+    ResponseWorkError, ResponseWorkObserver, ResponseWorkRevision, ResponseWorkSnapshot,
+};
 #[cfg(feature = "lifecycle-test-support")]
 #[doc(hidden)]
 pub use websocket_transport::diagnostics::{WebSocketDiagnostics, WebSocketDiagnosticsSnapshot};

@@ -24,6 +24,14 @@ This supplement is normative only for its bounded backend live-control role and 
 
 - Foreground approvals normalize to compact non-cloneable events with bounded request identity, closed kind, thread/turn/item route, exact-session response capability, and required deny/interrupt facts. Command text, cwd, reason, permission bodies, raw parameters, and pretty payloads are discarded.
 - One shared response state belongs to its exact originating session: response-required, automatically denied, or caller-denied. A foreign session or second response is rejected locally. Protocol-specific denial exists for command-execution, file-change, and permission-expansion approvals without deciding product policy.
+- Read-only approval and dynamic-tool response observations expose an opaque exact-request revision,
+  originating session correlation, successful response-write fact and retained response-handle count.
+  They add constant state per existing request, retain no response capability or payload, and create
+  no request catalog. Approval custody includes both its request and backend responder; dynamic-tool
+  custody follows its call. A write remains pending until ordinary successful completion, while
+  release of all response handles is independently observable even when no response was written.
+  These local retained facts do not certify session liveness or usable response authority; app
+  composition must also validate the exact connection and service generation.
 - The ordered full profile offers compact approvals directly to its sink. Its bounded pre-bind prefix may automatically deny command/file-change but cannot deny permission without exact durable stop ownership; absent that authority retires the session. A failed automatic denial leaves response authority unexercised and retires exact connection authority rather than fabricating a response.
 - A routed approval completion is `NotRequired` for command/file-change denial, or `DurableStopOwned(operation, target, attempt_disposition)` for permission denial. Permission admission must return the exact durable operation/target with interrupting-approval cause and whether its sole stop attempt has crossed a request byte; only then may denial be sent, and response state advances only after that write succeeds.
 - A full pre-bind prefix returns typed capacity rejection after closing and releasing its retained prefix; an approval rejected before retention receives no denial. Target-local presentation failure may auto-deny command/file-change without invalidating the connection, but permission failure without proven target closure or durable stop ownership leaves response authority unexercised and retires the exact connection. Generic sink failure returns exact approval ownership, attempts no permission denial without that ownership, and retires connection authority.

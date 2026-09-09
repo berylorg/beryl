@@ -38,14 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 359: Publish Revision-Bound Session Work Facts (finished)
+# Phase 362: Observe Backend Response Custody (finished)
 
-Accepted bounded, owner/generation/revision-bound session and preparation pages with mutation
-coverage through registration, checkout, return and retirement. Observation carries no execution
-capability and performs no reaping or dispatch; closed owners are unavailable. Independent review,
-production compilation, formatting and 26 focused lifecycle checks passed. Peak guarded job memory
-was 1.65 GiB; all children exited and temporary directories were removed. Connection/control facts
-and complete work inventory remain subsequent boundaries.
+Accepted exact-request revision-bound observations of approval and dynamic-tool response custody,
+including backend responders after presentation handoff, successful writes and disposal without
+response. Observers retain no payload or usable capability; local facts do not certify session
+currency. Independent review, production backend/app compilation, formatting and 46 focused checks
+passed. Peak guarded job memory was 1.11 GiB; all children exited and temporary directories were
+removed. Connection/control pages and complete work inventory remain subsequent boundaries.
 
 # Phase 360: Publish Revision-Bound Connection Work Facts (pending)
 
