@@ -38,21 +38,13 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 364: Publish Revision-Bound Compaction And Continuation Custody Facts (finished)
+# Phase 361: Compose Revision-Bound Control Work Facts (finished)
 
-Accepted bounded metadata-only custody pages with exact service/generation revisions, checked
-identities and revision exhaustion, independent local membership and cleanup visibility after
-registry removal. Independent review, 100 regressions, production compilation, formatting and
-diff checks passed. Seven guarded verification runs left no owned children or temporary
-directories. The [membership evidence](failures/cas-compaction-work-membership-cut.md) records
-the atomic replacement correction and acceptance.
-
-# Phase 361: Compose Revision-Bound Control Work Facts (pending)
-
-Compose the accepted stop/interruption and compaction/continuation sources into bounded exact
-control pages. Revalidate every contributing source and preserve handoff/settlement visibility
-without creating another owner, admitting work or changing cancellation, response or shutdown
-authority.
+Accepted one exact revision pair and shared count/byte budget over stop/interruption and
+compaction/continuation pages, with source-boundary cursors and final validation of both sources.
+Independent review, 103 regressions, three final boundary tests, production compilation,
+formatting and diff checks passed. Copied pages retain no execution capacity. Five guarded
+verification runs left no owned children or temporary directories.
 
 # Phase 358: Project Revision-Bound Process Work Inventory (pending)
 

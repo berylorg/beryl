@@ -30,6 +30,11 @@ mod accepted_input_scheduler;
 mod active_steering;
 mod cancellation;
 mod compaction_work;
+mod control_work;
+pub use control_work::{
+    ControlWorkCursor, ControlWorkError, ControlWorkPage, ControlWorkPageLimits,
+    ControlWorkRevision,
+};
 mod connection;
 mod connection_work;
 mod context_compaction;

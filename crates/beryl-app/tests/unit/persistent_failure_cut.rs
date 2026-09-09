@@ -112,6 +112,7 @@ fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers(
     let home_generation = service.home_generation();
     let service_generation = service.service_generation();
     let stop_revision = service.stop_work_revision().unwrap();
+    let control_revision = service.control_work_revision().unwrap();
     let compaction_revision = service.compaction_work_revision().unwrap();
     let mut foreign_compaction_revision = compaction_revision.clone();
     foreign_compaction_revision.owner = Arc::new(());
@@ -151,6 +152,28 @@ fn persistent_failure_close_returns_only_terminal_evidence_and_disposes_workers(
     wait_until("the persistent-failure cut to finish", || {
         service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
     });
+    assert_eq!(
+        service.control_work_revision(),
+        Err(crate::cas_projection::ControlWorkError::Stop(
+            crate::cas_projection::StopWorkError::Closed
+        ))
+    );
+    assert_eq!(
+        service.validate_control_work_revision(&control_revision),
+        Err(crate::cas_projection::ControlWorkError::Stop(
+            crate::cas_projection::StopWorkError::Closed
+        ))
+    );
+    assert_eq!(
+        service.control_work_page(
+            &control_revision,
+            None,
+            crate::cas_projection::ControlWorkPageLimits::new(1, 65_536).unwrap()
+        ),
+        Err(crate::cas_projection::ControlWorkError::Stop(
+            crate::cas_projection::StopWorkError::Closed
+        ))
+    );
     assert_eq!(
         service.compaction_work_revision(),
         Err(crate::cas_projection::CompactionWorkError::Closed)

@@ -5,14 +5,25 @@ use beryl_app::cas_projection::{
 
 fn page(fixture: &LifecycleFixture) -> CompactionWorkPage {
     let revision = fixture.service.compaction_work_revision().unwrap();
-    fixture
+    let page = fixture
         .service
         .compaction_work_page(
             &revision,
             None,
             CompactionWorkPageLimits::new(80, 65_536).unwrap(),
         )
-        .unwrap()
+        .unwrap();
+    let control_revision = fixture.service.control_work_revision().unwrap();
+    let control = fixture
+        .service
+        .control_work_page(
+            &control_revision,
+            None,
+            beryl_app::cas_projection::ControlWorkPageLimits::new(256, 65_536).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(control.compaction_records(), page.records());
+    page
 }
 
 #[test]

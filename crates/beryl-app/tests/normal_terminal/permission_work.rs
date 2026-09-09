@@ -14,14 +14,26 @@ use super::{
 
 fn page(fixture: &Fixture) -> StopWorkPage {
     let revision = fixture.store.stop_work_revision().unwrap();
-    fixture
+    let page = fixture
         .store
         .stop_work_page(
             &revision,
             None,
             StopWorkPageLimits::new(256, 65_536).unwrap(),
         )
-        .unwrap()
+        .unwrap();
+    let control_revision = fixture.store.control_work_revision().unwrap();
+    let control = fixture
+        .store
+        .control_work_page(
+            &control_revision,
+            None,
+            ControlWorkPageLimits::new(256, 65_536).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(control.stop_records(), page.records());
+    assert!(control.compaction_records().is_empty());
+    page
 }
 
 fn permission(page: &StopWorkPage) -> &PermissionInterruptionWorkFact {

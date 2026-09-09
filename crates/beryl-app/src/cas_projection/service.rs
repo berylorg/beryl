@@ -60,6 +60,7 @@ mod admission;
 mod commands;
 mod compaction_work;
 mod construction;
+mod control_work;
 mod flight_registry;
 mod runtime_interest;
 mod runtime_preparation;

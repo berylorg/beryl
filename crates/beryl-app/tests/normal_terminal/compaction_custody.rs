@@ -229,12 +229,23 @@ fn run(unwind: bool, before_registration: bool) {
 
 fn work_page(fixture: &Fixture) -> beryl_app::cas_projection::CompactionWorkPage {
     let revision = fixture.store.compaction_work_revision().unwrap();
-    fixture
+    let page = fixture
         .store
         .compaction_work_page(
             &revision,
             None,
             beryl_app::cas_projection::CompactionWorkPageLimits::new(256, 65_536).unwrap(),
         )
-        .unwrap()
+        .unwrap();
+    let control_revision = fixture.store.control_work_revision().unwrap();
+    let control = fixture
+        .store
+        .control_work_page(
+            &control_revision,
+            None,
+            beryl_app::cas_projection::ControlWorkPageLimits::new(256, 65_536).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(control.compaction_records(), page.records());
+    page
 }
