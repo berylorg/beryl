@@ -21,12 +21,13 @@ impl ContextCompactionCoordinator {
     pub(super) fn admit_manual(
         self: &Arc<Self>,
         candidate: &syndic_storage::CompactionAdmissionCandidate,
-        completion_timeout: Duration,
+        timeout_policy: &ContextCompactionTimeoutPolicy,
         command: LiveCommandPermit,
     ) -> Result<Arc<LocalCompaction>, ContextCompactionError> {
         let operation_nonce = random_operation_nonce()?;
         let attempt = random_attempt_nonce()?;
         let (connection, projection) = self.projection_for(candidate)?;
+        let completion_timeout = timeout_policy.resolve(&self.home)?;
         let admission = candidate.admission(
             operation_nonce,
             attempt,
@@ -90,7 +91,7 @@ impl ContextCompactionCoordinator {
         projection: LoadedCasProjection,
         candidate: &syndic_storage::CompactionAdmissionCandidate,
         yielding_turn_id: SyndicTurnId,
-        completion_timeout: Duration,
+        completion_timeout: ResolvedContextCompactionTimeout,
         command: LiveCommandPermit,
     ) -> Result<(), ContextCompactionError> {
         let operation_nonce = random_operation_nonce()?;

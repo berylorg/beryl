@@ -18,6 +18,8 @@ pub enum OrdinaryTurnExecutionError {
     HomeRead(#[from] beryl_home_store::ReadError),
     #[error("exact backend model defaults are unavailable for ordinary execution")]
     BackendDefaultPolicyUnavailable,
+    #[error("automatic context compaction failed after exact terminal history: {0}")]
+    ContextCompaction(#[from] crate::cas_projection::ContextCompactionError),
     #[error("ordinary history convergence command could not be built")]
     HomeCommandBuild(#[from] beryl_home_store::CommandBuildError),
     #[error("ordinary history convergence command was proven not committed")]

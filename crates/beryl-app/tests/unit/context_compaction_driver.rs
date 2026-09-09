@@ -73,7 +73,7 @@ impl DriverFixture {
             operation_id,
             CompactionAttemptNonce::from_bytes([seed.wrapping_add(2); 16]),
             CompactionOrigin::Manual,
-            Duration::from_secs(1),
+            ResolvedContextCompactionTimeout::fixed(Duration::from_secs(1)),
             command,
         ));
         let driver = dispatch::CompactionDriverGuard(Arc::clone(&local));

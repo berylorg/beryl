@@ -15,6 +15,7 @@ use crate::{
 };
 
 mod policy;
+use crate::cas_projection::ContextCompactionTimeoutPolicy;
 use policy::BackendDefaultSettings;
 
 #[derive(Clone, Debug)]
@@ -22,7 +23,7 @@ pub struct OrdinaryTurnExecutionRequest {
     start_options: TurnStartOptions,
     backend_default_settings: Option<BackendDefaultSettings>,
     request_timeout: Duration,
-    context_compaction_timeout: Duration,
+    context_compaction_timeout: ContextCompactionTimeoutPolicy,
     #[cfg(feature = "test-faults")]
     input_replay_diagnostics: OrdinaryInputReplayDiagnostics,
 }
@@ -34,7 +35,7 @@ impl OrdinaryTurnExecutionRequest {
             start_options,
             backend_default_settings: None,
             request_timeout,
-            context_compaction_timeout: Duration::from_secs(180),
+            context_compaction_timeout: ContextCompactionTimeoutPolicy::default(),
             #[cfg(feature = "test-faults")]
             input_replay_diagnostics: OrdinaryInputReplayDiagnostics::new(),
         }
@@ -50,16 +51,23 @@ impl OrdinaryTurnExecutionRequest {
         self.request_timeout
     }
 
-    /// Overrides the completion deadline snapshotted for an automatic lifecycle compaction.
     #[must_use]
-    pub const fn with_context_compaction_timeout(mut self, timeout: Duration) -> Self {
-        self.context_compaction_timeout = timeout;
+    pub fn with_context_compaction_timeout(mut self, timeout: Duration) -> Self {
+        self.context_compaction_timeout = ContextCompactionTimeoutPolicy::fixed(timeout);
+        self
+    }
+
+    pub fn with_context_compaction_timeout_policy(
+        mut self,
+        policy: ContextCompactionTimeoutPolicy,
+    ) -> Self {
+        self.context_compaction_timeout = policy;
         self
     }
 
     #[must_use]
-    pub const fn context_compaction_timeout(&self) -> Duration {
-        self.context_compaction_timeout
+    pub const fn context_compaction_timeout(&self) -> &ContextCompactionTimeoutPolicy {
+        &self.context_compaction_timeout
     }
 
     #[cfg(feature = "test-faults")]

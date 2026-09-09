@@ -27,6 +27,10 @@ impl Eq for BackendDefaultSettings {}
 impl OrdinaryTurnExecutionRequest {
     pub fn backend_defaults(settings: SettingsState, request_timeout: Duration) -> Self {
         let mut request = Self::new(TurnStartOptions::default(), request_timeout);
+        request.context_compaction_timeout =
+            crate::cas_projection::ContextCompactionTimeoutPolicy::applied_settings(
+                settings.clone(),
+            );
         request.backend_default_settings = Some(BackendDefaultSettings(Arc::new(settings)));
         request
     }

@@ -13,7 +13,7 @@ use crate::cas_projection::ordinary::{
     OrdinaryTurnExecutionError, OrdinaryTurnExecutionOutcome, converge::converge_terminal_history,
     preflight::PendingOrdinaryExecution,
 };
-use crate::cas_projection::{LiveEventPoll, LiveEventTarget};
+use crate::cas_projection::{ContextCompactionTimeoutPolicy, LiveEventPoll, LiveEventTarget};
 
 const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -28,7 +28,7 @@ pub(super) fn begin_capture(
     cas_turn_id: beryl_model::CasTurnId,
     tools: &mut OrdinaryDynamicToolHandlers<'_>,
     limit: SyndicPointReadLimit,
-    context_compaction_timeout: Duration,
+    context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     if let Some(failure) = start.response_activation_failure().cloned() {
         let (cause, reason) = match failure {
@@ -55,6 +55,7 @@ pub(super) fn begin_capture(
             active_binding_revision,
             cause,
             limit,
+            context_compaction_timeout,
         )? {
             return Ok(outcome);
         }
@@ -95,6 +96,7 @@ pub(super) fn converge_completion_unknown_start(
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
     limit: SyndicPointReadLimit,
+    context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     let (outcome, _) = start.into_parts();
     let NonIdempotentRequestOutcome::CompletionUnknown { error } = outcome else {
@@ -110,6 +112,7 @@ pub(super) fn converge_completion_unknown_start(
         active_binding_revision,
         TurnIncompleteReason::StreamLost,
         limit,
+        context_compaction_timeout,
     )? {
         return Ok(outcome);
     }
@@ -130,7 +133,7 @@ fn run_capture(
     completion_unknown: Option<Box<beryl_backend::ManagedBackendError>>,
     tools: &mut OrdinaryDynamicToolHandlers<'_>,
     limit: SyndicPointReadLimit,
-    context_compaction_timeout: Duration,
+    context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     loop {
         match target.poll(LIVE_POLL_INTERVAL) {
@@ -146,6 +149,7 @@ fn run_capture(
                         active_binding_revision,
                         TurnIncompleteReason::CompletionMismatch,
                         limit,
+                        context_compaction_timeout,
                     )? {
                         return Ok(outcome);
                     }
@@ -164,6 +168,7 @@ fn run_capture(
                         active_binding_revision,
                         TurnIncompleteReason::CompletionMismatch,
                         limit,
+                        context_compaction_timeout,
                     )? {
                         return Ok(outcome);
                     }
@@ -180,6 +185,7 @@ fn run_capture(
                         active_binding_revision,
                         TurnIncompleteReason::WorkerStopped,
                         limit,
+                        context_compaction_timeout,
                     )? {
                         return Ok(outcome);
                     }
@@ -208,6 +214,7 @@ fn run_capture(
                     active_binding_revision,
                     TurnIncompleteReason::StreamLost,
                     limit,
+                    context_compaction_timeout,
                 )? {
                     return Ok(outcome);
                 }
@@ -244,6 +251,7 @@ fn handle_dynamic_tool(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn converge_target_loss(
     store: &HomeStore,
     storage: &SyndicStorage,
@@ -252,6 +260,7 @@ pub(super) fn converge_target_loss(
     active_binding_revision: BindingRevision,
     cause: TurnIncompleteReason,
     limit: SyndicPointReadLimit,
+    context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<Option<OrdinaryTurnExecutionOutcome>, OrdinaryTurnExecutionError> {
     let accepted_next_ready = target.accepted_next_ready_notifier();
     match target.converge_source_loss(cause)? {
@@ -275,7 +284,7 @@ pub(super) fn converge_target_loss(
             active_binding_revision,
             outcome,
             limit,
-            Duration::from_secs(180),
+            context_compaction_timeout,
         )
         .map(Some),
     }
@@ -289,7 +298,7 @@ fn finish_proven_terminal(
     active_binding_revision: BindingRevision,
     outcome: crate::cas_projection::connection::ProvenTerminalOutcome,
     limit: SyndicPointReadLimit,
-    context_compaction_timeout: Duration,
+    context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     let binding = storage
         .current_binding(store, pending.thread_id, limit)?
@@ -346,12 +355,10 @@ fn finish_proven_terminal(
                 status: outcome.status(),
             });
         }
-        Err(_) => {
+        Err(error) => {
             let _ =
                 stop_coordinator.take_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "automatic context compaction failed after exact terminal history",
-            ));
+            return Err(error.into());
         }
     }
 }

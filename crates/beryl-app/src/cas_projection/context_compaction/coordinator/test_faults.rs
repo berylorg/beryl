@@ -84,6 +84,20 @@ pub enum ContextCompactionTerminalResponseTestOutcome {
 }
 
 impl ContextCompactionLifecycleTestHarness {
+    pub fn timeout_resolution(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<Option<ResolvedContextCompactionTimeout>, ContextCompactionError> {
+        let coordinator = self.coordinator()?;
+        let operations = coordinator
+            .operations
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        Ok(operations
+            .get(&thread_id)
+            .map(|operation| operation.completion_timeout))
+    }
+
     pub fn cancel_window_close_continuation_with_capacity(
         &self,
         thread_id: SyndicThreadId,
@@ -140,7 +154,7 @@ impl ContextCompactionLifecycleTestHarness {
             operation_id,
             attempt,
             CompactionOrigin::Lifecycle { yielding_turn_id },
-            completion_timeout,
+            ResolvedContextCompactionTimeout::fixed(completion_timeout),
             coordinator
                 .commands
                 .authorize()
@@ -342,7 +356,7 @@ impl ContextCompactionWaitTestHarness {
             CompactionOperationId::new(thread_id, CompactionOperationNonce::from_bytes([202; 16])),
             CompactionAttemptNonce::from_bytes([203; 16]),
             CompactionOrigin::Manual,
-            completion_timeout,
+            ResolvedContextCompactionTimeout::fixed(completion_timeout),
             test_live_command(),
         )))
     }

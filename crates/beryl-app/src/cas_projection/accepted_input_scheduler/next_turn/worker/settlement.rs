@@ -82,9 +82,10 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn ordinary_error_cut_co
         OrdinaryTurnExecutionError::Coordinator(source) => {
             failure::is_cut_correlated_coordinator(source, home_generation)
         }
-        OrdinaryTurnExecutionError::HomeRead(source) => {
-            failure::is_cut_correlated_read(source, home_generation)
-        }
+        OrdinaryTurnExecutionError::HomeRead(source)
+        | OrdinaryTurnExecutionError::ContextCompaction(
+            crate::cas_projection::ContextCompactionError::HomeRead(source),
+        ) => failure::is_cut_correlated_read(source, home_generation),
         OrdinaryTurnExecutionError::HomeCommandNotCommitted(source) => {
             failure::is_cut_correlated_command(source, home_generation)
         }

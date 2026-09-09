@@ -79,7 +79,8 @@ pub use context_compaction::{
 };
 pub use context_compaction::{
     ContextCompactionDiagnostics, ContextCompactionError, ContextCompactionOutcome,
-    ContextCompactionRequest,
+    ContextCompactionRequest, ContextCompactionTimeoutPolicy, ContextCompactionTimeoutSource,
+    ResolvedContextCompactionTimeout,
 };
 pub use error::{
     ProjectionCoordinatorError, ProjectionRegistryKind, ProjectionSessionAdmissionError,

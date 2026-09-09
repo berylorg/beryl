@@ -38,40 +38,14 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 350: Preserve Distinct Proofs At Lifecycle Compaction Handoff (finished)
+# Phase 349: Resolve Timeout Policy At Compaction Admission (finished)
 
-Accepted like-for-like lineage validation at lifecycle compaction admission, preserving independent
-current-prefix and revision checks in storage. Real ordinary-terminal-to-compaction verification
-passed with unchanged lineage and history; stale candidate admission proved no second operation.
-Storage compaction passed 45/45 and app terminal/compaction regression passed 35/35. Independent
-semantic review, formatting and diff checks passed; all test processes were reaped. The pending
-timeout changes were preserved separately during prerequisite verification.
-
-# Phase 349: Resolve Timeout Policy At Compaction Admission (pending)
-
-Resolve the latest valid applied timeout when manual or lifecycle compaction is admitted, preserving
-that value for the admitted operation and typed settings failure. Verify settings changes during a
-preceding ordinary turn affect only subsequently admitted compaction, under the status-line contract.
-
-Authority readiness and independent review passed against status-line, Settings startup availability,
-typed settings reads and the app lifecycle contracts. Carry a narrow applied-settings capability to
-admission; resolve whole seconds in `1..=86400`, distinguish absent and rejected saved values using
-the default of 180 seconds, and preserve typed schema/home/read failure before admission. Retain
-one resolved timeout per operation, including callers joining it. Fixed caller policy remains
-available. Verify manual and lifecycle admission, mid-turn Apply, retained deadlines, invalid-value
-feedback and settings failures with focused integration tests and independent completion review.
-
-Blocked during real lifecycle verification: ordinary terminal publication advances the durable
-represented prefix, but the returned projection retains its establishment lineage. Lifecycle
-compaction compares those different proofs and returns `AuthorityMismatch` before timeout
-resolution. Independent review confirmed this existing production contradiction; a focused probe
-observed an empty establishment tail versus the completed turn's represented tail. See the
-[binding-prefix failure record](failures/syndic-phase9-binding-prefix.md). The Operator authorized
-the separate Phase 350 prerequisite; resume this timeout phase after its acceptance.
-
-The timeout implementation remains unaccepted and uncommitted. Production checking passed; the
-corrected real manual-admission/retained-deadline test and settings scalar matrix passed 2/2.
-Lifecycle timing and typed-settings-failure acceptance remain blocked by the earlier proof check.
+Accepted latest applied timeout resolution at manual and lifecycle compaction admission with one
+immutable operation deadline, typed absent/rejected/default provenance, and preserved settings-read
+failures. Real mid-turn Apply, deadline retention and existing-operation joins passed after the
+accepted distinct-proof handoff correction. Independent review, production check, formatting and
+diff checks passed; 79/79 selected regression tests passed with a 2.01 GiB job peak and no remaining
+child processes. Settings presentation remains its separate integration boundary.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

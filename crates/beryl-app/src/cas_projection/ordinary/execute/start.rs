@@ -180,6 +180,7 @@ pub(super) fn execute_in_flight(
                 active_binding_revision,
                 TurnIncompleteReason::AuthorityLost,
                 limit,
+                request.context_compaction_timeout(),
             )
             .map_err(after_activation)?
             {
@@ -228,6 +229,7 @@ pub(super) fn execute_in_flight(
             pending,
             active_binding_revision,
             limit,
+            request.context_compaction_timeout(),
         )
         .map_err(after_activation),
     }

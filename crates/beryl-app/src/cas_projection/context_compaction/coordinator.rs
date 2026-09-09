@@ -31,17 +31,19 @@ use syndic_storage::{
 };
 
 use super::ContextCompactionTargetAuthority;
+use super::{ContextCompactionTimeoutPolicy, ResolvedContextCompactionTimeout};
 
 mod admission;
 pub(in crate::cas_projection) mod dispatch;
 #[cfg(test)]
 #[path = "../../../tests/unit/context_compaction_driver.rs"]
 mod driver_tests;
-mod model;
+pub(super) mod model;
 mod settlement;
 #[cfg(feature = "test-faults")]
 mod test_faults;
 
+#[cfg(feature = "test-faults")]
 use model::validate_completion_timeout;
 pub use model::{
     ContextCompactionDiagnostics, ContextCompactionError, ContextCompactionOutcome,
@@ -128,7 +130,7 @@ struct LocalCompaction {
     operation_id: CompactionOperationId,
     attempt: CompactionAttemptNonce,
     origin: CompactionOrigin,
-    completion_timeout: Duration,
+    completion_timeout: ResolvedContextCompactionTimeout,
     command: Mutex<Option<LiveCommandPermit>>,
     mutation: Mutex<()>,
     wait: Mutex<CompactionWait>,
@@ -270,7 +272,7 @@ impl ContextCompactionCoordinator {
                 return Err(ContextCompactionError::Ineligible(reason));
             }
             CompactionAdmissionRead::Admissible(candidate) => {
-                self.admit_manual(candidate.as_ref(), request.completion_timeout(), command)?
+                self.admit_manual(candidate.as_ref(), request.timeout_policy(), command)?
             }
         };
         Ok(local.wait())
@@ -280,7 +282,7 @@ impl ContextCompactionCoordinator {
         self: &Arc<Self>,
         projection: LoadedCasProjection,
         yielding_turn_id: SyndicTurnId,
-        completion_timeout: Duration,
+        timeout_policy: &ContextCompactionTimeoutPolicy,
     ) -> Result<LifecycleCompactionAdmission, ContextCompactionError> {
         let _fence = self
             .settlement_fence
@@ -290,7 +292,7 @@ impl ContextCompactionCoordinator {
             .commands
             .authorize()
             .map_err(|_| ContextCompactionError::Unavailable)?;
-        validate_completion_timeout(completion_timeout)?;
+        timeout_policy.validate()?;
         self.ensure_current()?;
         if !self
             .stop
@@ -331,6 +333,7 @@ impl ContextCompactionCoordinator {
         {
             return Err(ContextCompactionError::AuthorityMismatch);
         }
+        let completion_timeout = timeout_policy.resolve(&self.home)?;
         self.admit_lifecycle(
             projection,
             candidate.as_ref(),
@@ -526,7 +529,7 @@ impl LocalCompaction {
         operation_id: CompactionOperationId,
         attempt: CompactionAttemptNonce,
         origin: CompactionOrigin,
-        completion_timeout: Duration,
+        completion_timeout: ResolvedContextCompactionTimeout,
         command: LiveCommandPermit,
     ) -> Self {
         Self {
@@ -547,7 +550,7 @@ impl LocalCompaction {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         if wait.result.is_none() && wait.deadline.is_none() {
-            wait.deadline = Some(Instant::now() + self.completion_timeout);
+            wait.deadline = Some(Instant::now() + self.completion_timeout.duration());
         }
         drop(wait);
         self.changed.notify_all();

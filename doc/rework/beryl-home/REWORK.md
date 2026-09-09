@@ -313,6 +313,8 @@
   projection paths, reuse and retirement; independent review and 25 selected regression checks passed.
 - [x] Resolved backend-default ordinary policy and latest applied hidden instructions per attempt,
   including shared invalidation, retries and scheduled checkout; independent review and 42 checks passed.
+- [x] Resolved latest applied compaction timeouts at manual and lifecycle admission with retained
+  deadlines and typed settings outcomes; corrected distinct-proof handoff and 79 regression checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

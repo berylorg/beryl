@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use super::super::ContextCompactionTimeoutPolicy;
 use beryl_home_store::{CommandError, CommitReceipt};
 use beryl_model::SyndicThreadId;
 use syndic_storage::CompactionAdmissionIneligibility;
@@ -7,11 +8,10 @@ use thiserror::Error;
 
 const MAX_COMPLETION_TIMEOUT_SECONDS: u64 = 86_400;
 
-/// Caller-selected wait policy for one manual compaction admission.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContextCompactionRequest {
     thread_id: SyndicThreadId,
-    completion_timeout: Duration,
+    timeout_policy: ContextCompactionTimeoutPolicy,
 }
 
 impl ContextCompactionRequest {
@@ -19,24 +19,32 @@ impl ContextCompactionRequest {
     pub const fn new(thread_id: SyndicThreadId, completion_timeout: Duration) -> Self {
         Self {
             thread_id,
-            completion_timeout,
+            timeout_policy: ContextCompactionTimeoutPolicy::fixed(completion_timeout),
         }
     }
 
     #[must_use]
-    pub const fn thread_id(self) -> SyndicThreadId {
+    pub const fn thread_id(&self) -> SyndicThreadId {
         self.thread_id
     }
 
     #[must_use]
-    pub const fn completion_timeout(self) -> Duration {
-        self.completion_timeout
+    pub const fn timeout_policy(&self) -> &ContextCompactionTimeoutPolicy {
+        &self.timeout_policy
     }
 
-    /// Validates the exact process wait policy without admitting provider work.
-    pub fn validate(self) -> Result<Self, ContextCompactionError> {
-        validate_completion_timeout(self.completion_timeout)?;
-        Ok(self)
+    pub fn applied_settings(
+        thread_id: SyndicThreadId,
+        settings: beryl_state::SettingsState,
+    ) -> Self {
+        Self {
+            thread_id,
+            timeout_policy: ContextCompactionTimeoutPolicy::applied_settings(settings),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ContextCompactionError> {
+        self.timeout_policy.validate()
     }
 }
 
@@ -54,6 +62,8 @@ pub enum ContextCompactionOutcome {
 /// Failure to admit, dispatch, correlate, or settle exact context compaction.
 #[derive(Debug, Error)]
 pub enum ContextCompactionError {
+    #[error("the context-compaction settings read failed: {0}")]
+    HomeRead(#[from] beryl_home_store::ReadError),
     #[error("the context-compaction coordinator is unavailable")]
     Unavailable,
     #[error(
@@ -144,7 +154,9 @@ impl ContextCompactionDiagnostics {
     }
 }
 
-pub(super) fn validate_completion_timeout(timeout: Duration) -> Result<(), ContextCompactionError> {
+pub(in crate::cas_projection::context_compaction) fn validate_completion_timeout(
+    timeout: Duration,
+) -> Result<(), ContextCompactionError> {
     if timeout.subsec_nanos() != 0
         || !(1..=MAX_COMPLETION_TIMEOUT_SECONDS).contains(&timeout.as_secs())
     {

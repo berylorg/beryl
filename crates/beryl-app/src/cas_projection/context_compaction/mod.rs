@@ -2,6 +2,12 @@
 
 pub(super) mod coordinator;
 mod target;
+mod timeout;
+
+pub use timeout::{
+    ContextCompactionTimeoutPolicy, ContextCompactionTimeoutSource,
+    ResolvedContextCompactionTimeout,
+};
 
 #[cfg(feature = "test-faults")]
 pub use coordinator::{
