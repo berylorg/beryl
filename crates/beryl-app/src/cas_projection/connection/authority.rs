@@ -1,5 +1,7 @@
 use super::*;
 
+mod idle_retirement;
+
 #[derive(Debug)]
 pub(in crate::cas_projection) struct ConnectionRegistryAuthority {
     pub(super) generation: ConnectionGeneration,

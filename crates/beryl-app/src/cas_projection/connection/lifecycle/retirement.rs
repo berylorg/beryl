@@ -1,6 +1,21 @@
 use super::*;
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn elect_idle_session_retirement(
+        &self,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let attachment = self.current_attachment()?;
+        let Ok(command) = attachment.commands.authorize() else {
+            return Ok(false);
+        };
+        self.authority
+            .try_retire_session_owner(|| self.elect_ordinary_retirement(&command))
+    }
+
+    pub(in crate::cas_projection) fn signal_idle_session_retirement(&self) {
+        self.signal_ordinary_retirement();
+    }
+
     pub(in crate::cas_projection) fn try_reap_ordinary_retirement(
         &self,
     ) -> Result<bool, ProjectionCoordinatorError> {

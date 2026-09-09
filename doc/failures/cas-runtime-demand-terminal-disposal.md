@@ -69,8 +69,21 @@ session/view release, same-period reattachment and eventual process/token/worker
 selected runtime, stop, compaction and lifecycle regressions, production compilation, formatting
 and diff checks passed. Independent review found no remaining publication, release-order or
 ownership-cycle blocker. All five guarded jobs and temporary directories were reclaimed.
-Exact idle-session retirement remains a separate acceptance boundary. This record does not
-replace the controlling lifetime authority.
+Conditional exact idle-session retirement was subsequently accepted through the existing registry
+checkout and connection authority gates. A refused attempt preserves session ownership; a successful
+attempt uses the exact zero-live-lease count, excludes new acquisition, and signals disposal after
+unlocking. Process composition still supplies required-work/view eligibility and the production
+caller. The primitive does not classify complete process idleness.
+
+Five new tests cover checkout races and both ordered outcomes, stale registration, promotion and
+cleanup ownership, healthy loaded-lease release with same-runtime reattachment, and a winning
+persistent-failure cut before disposal. The managed fixture must use explicit loaded-lease release:
+implicit drop intentionally abandons and retires the connection. Its existing scheduled flight is
+held after projection establishment and before registry insertion to exclude real pending-turn
+dispatch during this primitive test. Holding it before establishment blocks projection itself.
+All 99 selected regressions, production compilation, formatting and diff checks passed; independent
+semantic review accepted the source and final tests. All seven guarded jobs and temporary directories
+were reclaimed. This record does not replace the controlling lifetime authority.
 
 The controlling lifetime requirements remain in
 [app projection and scheduling](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md)

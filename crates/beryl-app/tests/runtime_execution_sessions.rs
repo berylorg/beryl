@@ -146,6 +146,51 @@ fn provider_checkout_and_return_keep_the_exact_runtime_interest_until_retirement
 }
 
 #[test]
+fn idle_session_retirement_cannot_bypass_a_winning_persistent_failure_cut() {
+    let (provider, sessions) = ProcessScheduledExecutionProvider::new();
+    let mut fixture = Fixture::with_provider(Box::new(provider));
+    let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
+    ready(&view);
+    let process = process(&fixture);
+    let work = fixture
+        .acquire(2, RuntimeInterestKind::RequiredWork)
+        .unwrap();
+    let binding = work.binding().clone();
+    let session = fixture
+        .service()
+        .admit_runtime_session(work, TIMEOUT)
+        .unwrap();
+    let retired = session.connection_retirement_handle_for_test();
+    let registration = sessions
+        .register(
+            SyndicThreadId::from_bytes([124; 16]),
+            binding,
+            session,
+            policy(),
+            fixture.state.assets(),
+            Box::new(NoToolInvocation),
+        )
+        .unwrap();
+    let admitted = fixture.service().live_home_command().unwrap();
+    fixture.fail_home();
+    assert!(!sessions.retire_if_idle(registration).unwrap());
+    wait_until(|| fixture.service().runtime_retirement_waiters_for_test() == 1);
+    assert!(!retired.is_detached());
+    assert!(process.running());
+    assert_eq!(fixture.service().worker_pool_diagnostics().active(), 4);
+    drop(admitted);
+    wait_until(|| {
+        fixture.token_count() == 0 && fixture.service().worker_pool_diagnostics().active() == 0
+    });
+    process.assert_exited();
+    assert!(retired.is_detached());
+    assert!(!sessions.retire_if_idle(registration).unwrap());
+    drop(view);
+    let _ = fixture.service.take().unwrap().close();
+    assert_eq!(sessions.diagnostics().retained, 0);
+}
+
+#[test]
 fn view_and_foreign_owner_interests_cannot_create_execution_sessions() {
     let mut fixture = Fixture::new();
     let mut foreign = Fixture::new();

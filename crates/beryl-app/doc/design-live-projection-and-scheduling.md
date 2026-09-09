@@ -69,6 +69,11 @@ topology and typed execution surfaces.
   disposal revokes, joins, and reclaims all exact entries before generation loss completes.
 - Retirement linearizes with registry acquisition through one bounded in-memory gate containing no
   backend or storage work. Connection or process loss revokes matching leases and registrations.
+- Conditional idle-session retirement names one exact available registration and preserves it when
+  checkout, loaded projection, promotion or cleanup ownership prevents release. Successful election
+  excludes new acquisition before signaling and disposal outside the ownership gates. These local
+  checks do not establish complete process idleness: the process owner supplies required-work and
+  view eligibility, and existing request/stop custody survives through joined cleanup.
 - Native continuation, resume, inclusive fork, fresh lineage, or one-time recovery injection is
   selected from bounded typed proofs. The app never dispatches rollback, summarizes a prefix,
   assembles recovery history, or silently selects injection after unclassified native failure.

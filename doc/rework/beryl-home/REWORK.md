@@ -352,6 +352,8 @@
 - [x] Retained the same admitted runtime demand through loaded projection, compaction, stop custody
   and final driver cleanup; independent review and 169 regressions passed, including real managed
   survival, same-period reattachment and final resource release without session/view ownership.
+- [x] Accepted conditional exact idle-session retirement against checkout and loaded/promotion/cleanup
+  ownership, preserving failure cuts and final runtime disposal; independent review and 99 regressions passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

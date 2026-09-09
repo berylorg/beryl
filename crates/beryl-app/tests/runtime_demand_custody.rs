@@ -12,9 +12,11 @@ use std::fs;
 
 use beryl_app::cas_projection::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
-    ProjectionCancellationToken, ProjectionConnectionServiceCloseOutcome, RuntimeInterestKind,
+    OrdinaryDynamicToolAuthority, OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionRequest,
+    ProcessScheduledExecutionProvider, ProjectionCancellationToken,
+    ProjectionConnectionServiceCloseOutcome, RuntimeInterestKind, ScheduledOrdinaryRequestPolicy,
 };
-use beryl_backend::ThreadStartOptions;
+use beryl_backend::{ThreadStartOptions, TurnStartOptions};
 use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::{ExecutionBinding, RuntimeId, SyndicDraftId, SyndicThreadId};
 use support::{Fixture, ProcessWitness, TIMEOUT, ready, wait_until};
@@ -141,6 +143,69 @@ fn loaded_projection_preserves_the_same_runtime_after_session_and_view_release()
     drop(loaded);
     finish(fixture, process);
     assert!(retired.is_detached());
+}
+
+struct NoToolInvocation;
+
+impl OrdinaryDynamicToolAuthority for NoToolInvocation {
+    fn handlers(&mut self) -> OrdinaryDynamicToolHandlers<'_> {
+        panic!("runtime custody verification does not dispatch tools")
+    }
+}
+
+#[test]
+fn idle_retirement_preserves_a_loaded_projection_and_reclaims_the_final_runtime() {
+    let (provider, sessions) = ProcessScheduledExecutionProvider::new();
+    let fixture = Fixture::with_provider(Box::new(provider));
+    fs::write(fixture.root(1).join("fixture-mode"), "projection-lifetime").unwrap();
+    let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
+    let initial = ready(&view);
+    let process = ProcessWitness::open(fixture.evidence(1)["pid"].as_u64().unwrap() as u32);
+    let work = fixture
+        .acquire(2, RuntimeInterestKind::RequiredWork)
+        .unwrap();
+    let binding = work.binding().clone();
+    let mut session = fixture
+        .service()
+        .admit_runtime_session(work, TIMEOUT)
+        .unwrap();
+    let retired = session.connection_retirement_handle_for_test();
+    let thread = SyndicThreadId::from_bytes([177; 16]);
+    let loaded = projection(&fixture, &mut session, binding.clone());
+    let flight = fixture
+        .service()
+        .hold_scheduled_flight_for_test(thread)
+        .unwrap();
+    let registration = sessions
+        .register(
+            thread,
+            binding.clone(),
+            session,
+            ScheduledOrdinaryRequestPolicy::new(
+                ThreadStartOptions::persistent(),
+                Some(2_000_000),
+                TIMEOUT,
+                OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),
+            ),
+            fixture.state.assets(),
+            Box::new(NoToolInvocation),
+        )
+        .unwrap();
+    drop(view);
+    assert!(!sessions.retire_if_idle(registration).unwrap());
+    assert_eq!(sessions.diagnostics().available, 1);
+    assert!(loaded.is_live().unwrap());
+    let reattached = fixture.acquire(2, RuntimeInterestKind::View).unwrap();
+    assert_eq!(ready(&reattached), initial);
+    drop(reattached);
+    loaded.release().unwrap();
+    assert!(!retired.is_retired());
+    assert_eq!(sessions.diagnostics().available, 1);
+    wait_until(|| sessions.retire_if_idle(registration).unwrap());
+    drop(flight);
+    finish(fixture, process);
+    assert!(retired.is_detached());
+    assert_eq!(sessions.diagnostics().retained, 0);
 }
 
 #[test]

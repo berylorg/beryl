@@ -19,6 +19,7 @@ use super::{
 
 mod checkout;
 mod control;
+mod retirement;
 mod work_facts;
 pub use work_facts::{
     ScheduledSessionFact, ScheduledSessionPreparationFact, ScheduledSessionWorkCursor,

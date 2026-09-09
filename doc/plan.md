@@ -38,24 +38,18 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 371: Retain Runtime Demand Through Execution Cleanup (finished)
+# Phase 372: Retire Idle Process Execution Sessions (finished)
 
-Accepted retention of the same admitted required-work interest through the existing connection
-worker pair, loaded projection, compaction and stop custody. Publication precedes session return,
-weak locators add no demand, and driver custody extends through retirement cleanup. Managed
-startup remains unguarded; the autonomous disposal owner prevents failed-cleanup self-retention.
+Accepted conditional retirement of one exact available registration through the existing checkout
+and connection gates. Busy attempts preserve ownership; successful election excludes acquisition
+before signaling and disposal. Required-work/view eligibility and production wiring remain the
+process composition boundary below.
 
-Independent semantic review, 169 runtime, stop, compaction and lifecycle regressions, production
-compilation, formatting and diff checks passed. Two real managed-process tests prove survival
-without session/view ownership, same-period reattachment and final resource release. The
-[disposal correction](failures/cas-runtime-demand-terminal-disposal.md) records acceptance.
-All five guarded jobs and temporary directories were reclaimed. Idle-session retirement follows.
-
-# Phase 372: Retire Idle Process Execution Sessions (pending)
-
-Linearize exact idle-session retirement with execution checkout and other projection/compaction
-ownership. Release healthy idle resources without dropping required work, creating a second run
-owner, or using view/catalog membership as execution authority. Verify racing new work and reattach.
+Independent semantic review, 99 registry/runtime/lease/compaction/stop regressions, production
+compilation, formatting and diff checks passed. Evidence includes both checkout orders, stale
+registration, loaded/promotion/cleanup refusal, failure-cut preservation, same-runtime reattachment
+and real final cleanup. All seven guarded jobs and temporary directories were reclaimed. The
+[lifetime correction](failures/cas-runtime-demand-terminal-disposal.md) records acceptance.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

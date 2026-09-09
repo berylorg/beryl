@@ -39,6 +39,14 @@ impl ProjectionConnectionService {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn hold_scheduled_flight_for_test(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<impl Send + use<>, ProjectionCoordinatorError> {
+        self.begin_scheduled_ordinary_flight(thread_id)
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn checkout_scheduled_session_for_test(
         &self,
         thread_id: SyndicThreadId,

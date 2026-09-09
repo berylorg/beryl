@@ -1,4 +1,7 @@
 use super::*;
+
+#[path = "process_session_idle_retirement.rs"]
+mod idle_retirement;
 use crate::cas_projection::{
     ProcessScheduledExecutionProvider, ScheduledExecutionSessions,
     ScheduledSessionRegistrationError,
