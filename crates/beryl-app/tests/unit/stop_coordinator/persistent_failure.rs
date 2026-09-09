@@ -24,7 +24,13 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
                 thread_id: fixture.thread,
                 turn_id: fixture.turn,
             },
-            crate::LifecycleYieldOutcome::PhaseContinue,
+            AcceptedLifecycleYield::new(
+                fixture.home.home_id(),
+                fixture.thread,
+                fixture.turn,
+                crate::LifecycleYieldOutcome::PhaseContinue,
+                Weak::new(),
+            ),
         );
 
     assert!(
@@ -79,6 +85,73 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
             .stops
             .contains_key(&fixture.thread)
     );
+}
+
+#[test]
+fn persistent_failure_preserves_terminal_notice_until_exact_capture_finishes() {
+    for terminal in [true, false] {
+        let fixture = StopFixture::new(if terminal { 230 } else { 231 });
+        let pool = Arc::new(crate::lifecycle_attention::ProcessLifecycleAttentionPool::new());
+        fixture
+            .coordinator
+            .state
+            .lock()
+            .unwrap()
+            .lifecycle_yields
+            .insert(
+                LifecycleYieldKey {
+                    thread_id: fixture.thread,
+                    turn_id: fixture.turn,
+                },
+                AcceptedLifecycleYield::new(
+                    fixture.home.home_id(),
+                    fixture.thread,
+                    fixture.turn,
+                    LifecycleYieldOutcome::PlanComplete,
+                    Arc::downgrade(&pool),
+                ),
+            );
+        let identity = failure_identity(&fixture);
+        assert!(
+            fixture
+                .command_gate
+                .elect_persistent_failure_for_test(identity.failure_generation)
+                .unwrap()
+        );
+        fixture
+            .coordinator
+            .freeze_for_persistent_failure(identity)
+            .unwrap();
+        assert!(pool.snapshot().is_empty());
+        if terminal {
+            fixture
+                .coordinator
+                .observe_terminal_lifecycle_yield(fixture.thread, fixture.turn);
+        } else {
+            fixture
+                .coordinator
+                .release_ordinary_lifecycle_yield(fixture.thread, fixture.turn);
+        }
+        assert!(
+            fixture
+                .coordinator
+                .state
+                .lock()
+                .unwrap()
+                .lifecycle_yields
+                .is_empty()
+        );
+        fixture
+            .coordinator
+            .observe_terminal_lifecycle_yield(fixture.thread, fixture.turn);
+        let records = pool.snapshot();
+        assert_eq!(records.len(), usize::from(terminal));
+        if terminal {
+            assert_eq!(records[0].turn_id(), fixture.turn);
+            assert_eq!(records[0].outcome(), LifecycleYieldOutcome::PlanComplete);
+            assert_eq!(records[0].report_count(), 1);
+        }
+    }
 }
 #[test]
 fn persistent_failure_cut_and_stop_claim_have_deterministic_two_order_linearization() {
@@ -358,7 +431,13 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
                 thread_id: fixture.thread,
                 turn_id: fixture.turn,
             },
-            crate::LifecycleYieldOutcome::PhaseContinue,
+            AcceptedLifecycleYield::new(
+                fixture.home.home_id(),
+                fixture.thread,
+                fixture.turn,
+                crate::LifecycleYieldOutcome::PhaseContinue,
+                Weak::new(),
+            ),
         );
     let pause = fixture
         .coordinator
@@ -386,6 +465,25 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
     ));
     assert_eq!(fixture.home.home_revision().unwrap(), revision);
     assert!(fixture.coordinator.state.lock().unwrap().stops.is_empty());
+    assert_eq!(
+        fixture
+            .coordinator
+            .state
+            .lock()
+            .unwrap()
+            .lifecycle_yields
+            .get(&LifecycleYieldKey {
+                thread_id: fixture.thread,
+                turn_id: fixture.turn
+            })
+            .map(AcceptedLifecycleYield::effective_outcome),
+        Some(None),
+    );
+
+    fixture
+        .coordinator
+        .freeze_for_persistent_failure(identity)
+        .unwrap();
     assert!(
         fixture
             .coordinator
@@ -395,11 +493,6 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
             .lifecycle_yields
             .is_empty()
     );
-
-    fixture
-        .coordinator
-        .freeze_for_persistent_failure(identity)
-        .unwrap();
     let mut candidates = fixture
         .router
         .freeze_persistent_failure_targets(identity)

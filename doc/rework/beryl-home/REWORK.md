@@ -317,6 +317,8 @@
   deadlines and typed settings outcomes; corrected distinct-proof handoff and 79 regression checks passed.
 - [x] Accepted the bounded process lifecycle attention pool with exact attempt acknowledgement,
   omission and disposal fences; independent review and 24 pool/notice-arbiter checks passed.
+- [x] Connected production yield acceptance and terminal/incomplete attention with exact service
+  origin and capture-owned failure handoff; independent review and 72 selected checks passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

@@ -50,9 +50,11 @@ impl StopCoordinator {
         if let Some(turn_id) = current_turn {
             state.cancelled_continuations.insert(thread_id, turn_id);
         }
-        state.lifecycle_yields.retain(|key, outcome| {
-            key.thread_id != thread_id || *outcome != crate::LifecycleYieldOutcome::PhaseContinue
-        });
+        for (key, accepted) in &mut state.lifecycle_yields {
+            if key.thread_id == thread_id {
+                accepted.cancel_continuation();
+            }
+        }
         Ok(())
     }
 

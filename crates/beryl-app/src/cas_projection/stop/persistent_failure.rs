@@ -30,7 +30,7 @@ impl StopCoordinator {
         }
         state
             .lifecycle_yields
-            .retain(|_, outcome| *outcome != crate::LifecycleYieldOutcome::PhaseContinue);
+            .retain(|_, accepted| !accepted.is_continuation());
         state.persistent_failure = Some(identity);
         drop(state);
         Ok(())

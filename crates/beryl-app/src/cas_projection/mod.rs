@@ -139,8 +139,8 @@ pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,
 };
 pub use stop::{
-    StopCoordinationError, StopCoordinationOutcome, WindowCloseStopBarrier,
-    WindowCloseStopBarrierStatus, WindowCloseStopOutcome,
+    ProcessLifecycleYieldHandler, StopCoordinationError, StopCoordinationOutcome,
+    WindowCloseStopBarrier, WindowCloseStopBarrierStatus, WindowCloseStopOutcome,
 };
 pub use turn_activation::PendingTurnActivation;
 

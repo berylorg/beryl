@@ -38,21 +38,24 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 351: Retain Bounded Process Lifecycle Attention (finished)
+# Phase 352: Connect Production Lifecycle Acceptance And Terminal Attention (finished)
 
-Accepted the bounded process lifecycle attention pool with exact attempt identity, FIFO admission,
-one-shot omission, stale acknowledgement rejection and joined close fencing. Compact records retain
-no execution or view authority. Independent semantic review, production check and formatting passed;
-24/24 pool and notice-arbiter tests passed with a 1.56 GiB job peak and no remaining child processes.
-Production producers and GUI routing remain separate boundaries.
+Accepted production lifecycle-yield handling with exact execution-origin proof, first-winner
+preservation across cancellation, and terminal/incomplete attention delivery through the process
+pool. Capture custody preserves eligible attention across home failure and releases unfinished
+bookkeeping. Independent review, production compilation and formatting passed; 72 selected checks
+passed with a 2.01 GiB job peak and no remaining child processes. The
+[execution-origin correction](failures/lifecycle-yield-execution-origin.md) records the durable lesson.
+Continuation failure settlement and process/window composition remain separate boundaries.
 
-# Phase 352: Connect Production Lifecycle Acceptance To Attention (pending)
+# Phase 353: Publish Exact Continuation Failure Attention (pending)
 
-Implement the production lifecycle-tool handler using exact winning acceptance and one attempt
-identity. Connect terminal review, operator-attention and completion outcomes, and bounded automatic
-continuation failures, to the accepted process pool. Preserve first-winner outcomes, user-input and
-stop/shutdown cancellation precedence, and release terminal lifecycle bookkeeping. Verify real
-ordinary dynamic-tool dispatch and terminal/continuation delivery before process assembly.
+Carry the accepted attempt through compaction failure and uncertain continuation settlement.
+Distinguish successful admission and user-input/soft-stop/shutdown cancellation from backend, home
+and fixed-content failures. Report one bounded failure only for the winning failed disposition,
+preserve an already-admitted continuation and queued user input, and release exact attempt state.
+Verify preparation failure, source/home loss, cancellation races and ambiguous settlement through
+the production producer and accepted pool before process assembly.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

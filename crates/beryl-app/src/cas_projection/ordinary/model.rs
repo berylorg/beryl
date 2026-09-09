@@ -93,13 +93,39 @@ impl Eq for OrdinaryTurnExecutionRequest {}
 /// Exact durable context supplied to Beryl's dynamic-tool implementation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OrdinaryDynamicToolContext {
+    home_id: beryl_model::BerylHomeId,
+    home_generation: beryl_home_store::HomeGeneration,
+    service_generation: crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
 }
 
 impl OrdinaryDynamicToolContext {
-    pub(super) const fn new(thread_id: SyndicThreadId, turn_id: SyndicTurnId) -> Self {
-        Self { thread_id, turn_id }
+    pub(in crate::cas_projection) const fn new(
+        home_id: beryl_model::BerylHomeId,
+        home_generation: beryl_home_store::HomeGeneration,
+        service_generation: crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+    ) -> Self {
+        Self {
+            home_id,
+            home_generation,
+            service_generation,
+            thread_id,
+            turn_id,
+        }
+    }
+
+    pub(in crate::cas_projection) fn belongs_to(
+        self,
+        home_id: beryl_model::BerylHomeId,
+        home_generation: beryl_home_store::HomeGeneration,
+        service_generation: crate::cas_projection::persistent_failure::ProjectionServiceGeneration,
+    ) -> bool {
+        self.home_id == home_id
+            && self.home_generation == home_generation
+            && self.service_generation == service_generation
     }
 
     #[must_use]

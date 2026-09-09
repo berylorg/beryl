@@ -28,7 +28,11 @@ use super::connection::{
 };
 
 mod close_continuation;
+mod lifecycle;
 mod persistent_failure;
+
+use lifecycle::AcceptedLifecycleYield;
+pub use lifecycle::ProcessLifecycleYieldHandler;
 
 const STOP_POINT_READ_BYTES: usize = 1_000_000;
 
@@ -63,7 +67,7 @@ struct LifecycleYieldKey {
 #[derive(Default)]
 struct StopCoordinatorState {
     stops: HashMap<SyndicThreadId, LocalStop>,
-    lifecycle_yields: HashMap<LifecycleYieldKey, crate::LifecycleYieldOutcome>,
+    lifecycle_yields: HashMap<LifecycleYieldKey, AcceptedLifecycleYield>,
     cancelled_continuations: HashMap<SyndicThreadId, SyndicTurnId>,
     persistent_failure: Option<super::persistent_failure::PersistentFailureCutIdentity>,
 }
@@ -748,93 +752,6 @@ impl StopCoordinator {
         Ok(home)
     }
 
-    pub(in crate::cas_projection) fn record_lifecycle_yield(
-        &self,
-        thread_id: SyndicThreadId,
-        turn_id: beryl_model::SyndicTurnId,
-        outcome: crate::LifecycleYieldOutcome,
-    ) -> Result<bool, StopCoordinationError> {
-        let command = self
-            .commands
-            .authorize()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        self.ensure_current()?;
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
-        let key = LifecycleYieldKey { thread_id, turn_id };
-        if self.lifecycle_registration_turn(&*self.current_home()?, thread_id)? != Some(turn_id) {
-            return Ok(false);
-        }
-        if state.lifecycle_yields.contains_key(&key) {
-            return Ok(false);
-        }
-        if outcome == crate::LifecycleYieldOutcome::PhaseContinue
-            && state.cancelled_continuations.get(&thread_id) == Some(&turn_id)
-        {
-            return Ok(false);
-        }
-        if outcome == crate::LifecycleYieldOutcome::PhaseContinue
-            && match self.read(thread_id)? {
-                StopAdmissionRead::Stopping(live) => live.target().turn_id() == turn_id,
-                StopAdmissionRead::Admissible(_) | StopAdmissionRead::Ineligible(_) => false,
-            }
-        {
-            return Ok(false);
-        }
-        if !command.is_current() {
-            return Err(StopCoordinationError::HomeAuthorityLost);
-        }
-        state.lifecycle_yields.insert(key, outcome);
-        Ok(true)
-    }
-
-    pub(in crate::cas_projection) fn take_terminal_lifecycle_yield(
-        &self,
-        thread_id: SyndicThreadId,
-        turn_id: beryl_model::SyndicTurnId,
-    ) -> Result<Option<crate::LifecycleYieldOutcome>, StopCoordinationError> {
-        let command = self
-            .commands
-            .authorize()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        self.ensure_current()?;
-        if !command.is_current() {
-            return Err(StopCoordinationError::HomeAuthorityLost);
-        }
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
-        Ok(state
-            .lifecycle_yields
-            .remove(&LifecycleYieldKey { thread_id, turn_id }))
-    }
-
-    pub(in crate::cas_projection) fn has_terminal_phase_continue(
-        &self,
-        thread_id: SyndicThreadId,
-        turn_id: SyndicTurnId,
-    ) -> Result<bool, StopCoordinationError> {
-        let command = self
-            .commands
-            .authorize()
-            .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
-        self.ensure_current()?;
-        if !command.is_current() {
-            return Err(StopCoordinationError::HomeAuthorityLost);
-        }
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?;
-        Ok(state
-            .lifecycle_yields
-            .get(&LifecycleYieldKey { thread_id, turn_id })
-            .is_some_and(|outcome| *outcome == crate::LifecycleYieldOutcome::PhaseContinue))
-    }
-
     fn window_close_status(
         &self,
         operation_id: StopOperationId,
@@ -883,11 +800,12 @@ fn cancel_automatic_continuation_by_identity(
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
 ) {
-    state.lifecycle_yields.retain(|key, outcome| {
-        key.thread_id != thread_id
-            || key.turn_id != turn_id
-            || *outcome != crate::LifecycleYieldOutcome::PhaseContinue
-    });
+    if let Some(accepted) = state
+        .lifecycle_yields
+        .get_mut(&LifecycleYieldKey { thread_id, turn_id })
+    {
+        accepted.cancel_continuation();
+    }
 }
 
 fn window_close_ineligible_status(

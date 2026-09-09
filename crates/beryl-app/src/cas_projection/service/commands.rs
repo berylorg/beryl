@@ -12,6 +12,16 @@ enum PreparedStop {
 }
 
 impl ProjectionConnectionService {
+    pub fn lifecycle_yield_handler(
+        &self,
+        attention: &Arc<crate::lifecycle_attention::ProcessLifecycleAttentionPool>,
+    ) -> super::super::stop::ProcessLifecycleYieldHandler {
+        super::super::stop::ProcessLifecycleYieldHandler::new(
+            Arc::downgrade(&self.stop_coordinator),
+            Arc::downgrade(attention),
+        )
+    }
+
     /// Runs one bounded exact steering-delivery attempt on the caller's non-GPUI worker.
     #[cfg(test)]
     pub(in crate::cas_projection) fn deliver_active_steering_input(
@@ -47,6 +57,7 @@ impl ProjectionConnectionService {
     ///
     /// The state is owned by the healthy-home process service rather than a window. A phase-
     /// continuation outcome is refused when the same exact turn is already durably stopping.
+    #[cfg(any(test, feature = "test-faults"))]
     pub fn record_lifecycle_yield_outcome(
         &self,
         thread_id: SyndicThreadId,
@@ -79,6 +90,7 @@ impl ProjectionConnectionService {
     ///
     /// Stop admission removes only a matching automatic phase continuation. Other terminal
     /// notification outcomes remain available to the later GUI integration phase.
+    #[cfg(any(test, feature = "test-faults"))]
     pub fn take_terminal_lifecycle_yield_outcome(
         &self,
         thread_id: SyndicThreadId,

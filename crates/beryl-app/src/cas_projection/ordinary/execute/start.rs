@@ -181,6 +181,7 @@ pub(super) fn execute_in_flight(
                 TurnIncompleteReason::AuthorityLost,
                 limit,
                 request.context_compaction_timeout(),
+                None,
             )
             .map_err(after_activation)?
             {

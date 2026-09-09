@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use beryl_backend::NonIdempotentRequestOutcome;
 use beryl_home_store::HomeStore;
@@ -13,9 +13,26 @@ use crate::cas_projection::ordinary::{
     OrdinaryTurnExecutionError, OrdinaryTurnExecutionOutcome, converge::converge_terminal_history,
     preflight::PendingOrdinaryExecution,
 };
+use crate::cas_projection::stop::StopCoordinator;
 use crate::cas_projection::{ContextCompactionTimeoutPolicy, LiveEventPoll, LiveEventTarget};
 
 const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+struct OrdinaryLifecycleGuard {
+    stop: Arc<StopCoordinator>,
+    thread_id: beryl_model::SyndicThreadId,
+    turn_id: beryl_model::SyndicTurnId,
+    transferred: bool,
+}
+
+impl Drop for OrdinaryLifecycleGuard {
+    fn drop(&mut self) {
+        if !self.transferred {
+            self.stop
+                .release_ordinary_lifecycle_yield(self.thread_id, self.turn_id);
+        }
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn begin_capture(
@@ -56,12 +73,12 @@ pub(super) fn begin_capture(
             cause,
             limit,
             context_compaction_timeout,
+            None,
         )? {
             return Ok(outcome);
         }
         return Ok(OrdinaryTurnExecutionOutcome::Incomplete { reason });
     }
-    let context = OrdinaryDynamicToolContext::new(pending.thread_id, pending.turn_id);
     let completion_unknown = match start.into_parts().0 {
         NonIdempotentRequestOutcome::CompletionUnknown { error } => Some(error),
         NonIdempotentRequestOutcome::ExactResponse { .. } => None,
@@ -76,7 +93,6 @@ pub(super) fn begin_capture(
         store,
         storage,
         target,
-        context,
         cas_turn_id,
         pending,
         active_binding_revision,
@@ -113,6 +129,7 @@ pub(super) fn converge_completion_unknown_start(
         TurnIncompleteReason::StreamLost,
         limit,
         context_compaction_timeout,
+        None,
     )? {
         return Ok(outcome);
     }
@@ -126,7 +143,6 @@ fn run_capture(
     store: &HomeStore,
     storage: &SyndicStorage,
     target: LiveEventTarget,
-    context: OrdinaryDynamicToolContext,
     cas_turn_id: beryl_model::CasTurnId,
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
@@ -135,7 +151,16 @@ fn run_capture(
     limit: SyndicPointReadLimit,
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
-    loop {
+    let mut lifecycle = OrdinaryLifecycleGuard {
+        stop: target.stop_coordinator()?,
+        thread_id: pending.thread_id,
+        turn_id: pending.turn_id,
+        transferred: false,
+    };
+    let context = lifecycle
+        .stop
+        .dynamic_tool_context(pending.thread_id, pending.turn_id);
+    let result = (|| loop {
         match target.poll(LIVE_POLL_INTERVAL) {
             LiveEventPoll::Approval(approval) => {
                 if approval.thread_id() != target.cas_thread_id()
@@ -150,6 +175,7 @@ fn run_capture(
                         TurnIncompleteReason::CompletionMismatch,
                         limit,
                         context_compaction_timeout,
+                        Some(&lifecycle.stop),
                     )? {
                         return Ok(outcome);
                     }
@@ -169,6 +195,7 @@ fn run_capture(
                         TurnIncompleteReason::CompletionMismatch,
                         limit,
                         context_compaction_timeout,
+                        Some(&lifecycle.stop),
                     )? {
                         return Ok(outcome);
                     }
@@ -186,6 +213,7 @@ fn run_capture(
                         TurnIncompleteReason::WorkerStopped,
                         limit,
                         context_compaction_timeout,
+                        Some(&lifecycle.stop),
                     )? {
                         return Ok(outcome);
                     }
@@ -202,6 +230,7 @@ fn run_capture(
                     outcome,
                     limit,
                     context_compaction_timeout,
+                    Some(&lifecycle.stop),
                 );
             }
             LiveEventPoll::Quiet => {}
@@ -215,6 +244,7 @@ fn run_capture(
                     TurnIncompleteReason::StreamLost,
                     limit,
                     context_compaction_timeout,
+                    Some(&lifecycle.stop),
                 )? {
                     return Ok(outcome);
                 }
@@ -226,7 +256,12 @@ fn run_capture(
                 });
             }
         }
-    }
+    })();
+    lifecycle.transferred = matches!(
+        &result,
+        Ok(OrdinaryTurnExecutionOutcome::LifecycleContinuationScheduled { .. })
+    );
+    result
 }
 
 fn handle_dynamic_tool(
@@ -261,6 +296,7 @@ pub(super) fn converge_target_loss(
     cause: TurnIncompleteReason,
     limit: SyndicPointReadLimit,
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
+    lifecycle_stop: Option<&Arc<StopCoordinator>>,
 ) -> Result<Option<OrdinaryTurnExecutionOutcome>, OrdinaryTurnExecutionError> {
     let accepted_next_ready = target.accepted_next_ready_notifier();
     match target.converge_source_loss(cause)? {
@@ -273,6 +309,9 @@ pub(super) fn converge_target_loss(
                 pending.minimum_observed_at,
                 limit,
             )?;
+            if let Some(stop) = lifecycle_stop {
+                stop.observe_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
+            }
             accepted_next_ready.notify();
             Ok(None)
         }
@@ -285,6 +324,7 @@ pub(super) fn converge_target_loss(
             outcome,
             limit,
             context_compaction_timeout,
+            lifecycle_stop,
         )
         .map(Some),
     }
@@ -299,6 +339,7 @@ fn finish_proven_terminal(
     outcome: crate::cas_projection::connection::ProvenTerminalOutcome,
     limit: SyndicPointReadLimit,
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
+    lifecycle_stop: Option<&Arc<StopCoordinator>>,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     let binding = storage
         .current_binding(store, pending.thread_id, limit)?
@@ -319,7 +360,10 @@ fn finish_proven_terminal(
         ));
     }
     let accepted_next_ready = target.accepted_next_ready_notifier();
-    let stop_coordinator = target.stop_coordinator()?;
+    let stop_coordinator = match lifecycle_stop {
+        Some(stop) => Arc::clone(stop),
+        None => target.stop_coordinator()?,
+    };
     let context_compaction = target.context_compaction_coordinator()?;
     let projection = target
         .into_proven_terminal_projection()?
@@ -332,6 +376,7 @@ fn finish_proven_terminal(
         outcome.observed_at(),
         limit,
     )?;
+    stop_coordinator.observe_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
     accepted_next_ready.notify();
     match context_compaction.begin_lifecycle_continuation(
         projection,
