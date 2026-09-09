@@ -57,6 +57,12 @@ reattachment preserve the same live execution and capture, and all terminal/repl
 release required resources. Split any independently missing composition prerequisite before
 activation; production runtime/provider composition remains explicit rather than inferred.
 
+Readiness is blocked by [missing compact durable-work discovery authority](
+failures/durable-work-discovery-source-gap.md). The existing pending-turn/startup readers sweep
+input gates, which the storage contract prohibits; the closed V7 schema declares no replacement
+source for route-free pending work. Operator resolution of the owning storage/schema contract is
+required before deriving a source implementation prerequisite or activating inventory composition.
+
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
 Implement one admission fence and exact all-work convergence boundary shared by final-window close

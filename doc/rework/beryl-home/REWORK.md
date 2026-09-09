@@ -325,6 +325,8 @@
   canonical registry preservation and exact lifecycle authority; review and 27 checks passed.
 - [x] Accepted bounded managed session preparation for durable scheduler candidates with explicit
   runtime recovery, dependency-release re-entry and joined cleanup.
+- [ ] Resolve the [compact durable-work discovery target-doc gap](../../failures/durable-work-discovery-source-gap.md)
+  in Syndic storage/schema authority before process inventory composition.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
