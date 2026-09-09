@@ -376,7 +376,23 @@ impl TargetRegistration {
     pub(super) fn poll(&self, timeout: Duration) -> LiveEventPoll {
         match self.receiver.recv_timeout(timeout) {
             Ok(queued) => {
-                self.queued_operations.fetch_sub(1, Ordering::AcqRel);
+                if let Some(work_state) = self.work_state.upgrade() {
+                    match work_state.lock() {
+                        Ok(mut state) => {
+                            self.queued_operations.fetch_sub(1, Ordering::AcqRel);
+                            state.request_work_stage(
+                                queued.work_serial,
+                                crate::cas_projection::ConnectionRequestWorkStage::Handling,
+                            );
+                            super::state::advance_revision(&mut state);
+                        }
+                        Err(_) => {
+                            self.queued_operations.fetch_sub(1, Ordering::AcqRel);
+                        }
+                    }
+                } else {
+                    self.queued_operations.fetch_sub(1, Ordering::AcqRel);
+                }
                 match queued.operation {
                     RoutedTargetOperation::Approval(approval) => LiveEventPoll::Approval(approval),
                     RoutedTargetOperation::DynamicTool(call) => LiveEventPoll::DynamicTool(call),

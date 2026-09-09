@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, AtomicUsize},
@@ -40,6 +40,7 @@ mod stop;
 mod target;
 #[cfg(test)]
 mod tests;
+mod work_facts;
 
 pub(in crate::cas_projection::connection) use activation::ResponseActivationProofError;
 pub(in crate::cas_projection) use activation::TargetTurnRegistration;
@@ -448,6 +449,7 @@ pub enum LiveEventTargetRegistrationError {
 #[derive(Debug)]
 struct QueuedTargetOperation {
     operation: RoutedTargetOperation,
+    work_serial: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -525,6 +527,9 @@ struct TargetEntry {
 #[derive(Debug)]
 struct RouterState {
     revision: u64,
+    work_revision: Option<u64>,
+    next_work_request: Option<u64>,
+    work_requests: BTreeMap<u64, work_facts::RequestObservation>,
     next_registration: u64,
     next_steering_attempt: u64,
     active_steering_attempt: Option<ActiveSteeringAttemptKey>,
@@ -534,7 +539,7 @@ struct RouterState {
     volatile_stop_admission: Option<stop::VolatileStopAdmissionProof>,
     persistent_failure: Option<persistent_failure::PersistentFailureRouterCut>,
     retired: Option<LiveEventTargetCloseReason>,
-    targets: HashMap<CasThreadId, TargetEntry>,
+    targets: BTreeMap<CasThreadId, TargetEntry>,
     retired_thread_lanes: HashSet<CasThreadId>,
     routed_operation_count: u64,
     unmatched_operation_count: u64,
@@ -575,7 +580,7 @@ pub(in crate::cas_projection) struct EventRouter {
     commands: LiveCommandAuthorizer,
     terminal_disposer:
         Option<crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer>,
-    state: Mutex<RouterState>,
+    state: Arc<Mutex<RouterState>>,
     publication_changed: Condvar,
     scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     #[cfg(test)]
@@ -631,6 +636,7 @@ pub(in crate::cas_projection) struct TargetRegistration {
     loaded_generation: CasLoadedSessionGeneration,
     receiver: Receiver<QueuedTargetOperation>,
     queued_operations: Arc<AtomicUsize>,
+    work_state: std::sync::Weak<Mutex<RouterState>>,
     terminal: Arc<Mutex<TargetTerminalSignal>>,
     loss_receipt: Arc<AtomicBool>,
     compaction: Option<crate::cas_projection::context_compaction::ContextCompactionTargetAuthority>,

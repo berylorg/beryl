@@ -242,7 +242,7 @@ fn run_server(
     events.send(ServerEvent::Closed).unwrap();
 }
 
-fn complete_admission(socket: &mut WebSocket<TcpStream>) {
+pub(crate) fn complete_admission(socket: &mut WebSocket<TcpStream>) {
     let initialize = read_json(socket).unwrap();
     assert_eq!(initialize["method"], "initialize");
     let initialize_id = initialize["id"].as_u64().unwrap();
@@ -266,7 +266,7 @@ fn complete_admission(socket: &mut WebSocket<TcpStream>) {
     );
 }
 
-fn complete_projection(socket: &mut WebSocket<TcpStream>) {
+pub(crate) fn complete_projection(socket: &mut WebSocket<TcpStream>) {
     let request = read_json(socket).unwrap();
     assert_eq!(request["jsonrpc"], "2.0");
     assert_eq!(request["method"], "thread/start");

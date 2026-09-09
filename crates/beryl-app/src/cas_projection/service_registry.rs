@@ -1,4 +1,7 @@
-use std::sync::{Arc, LockResult, Mutex, MutexGuard};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::{Arc, LockResult, Mutex, MutexGuard, PoisonError},
+};
 
 use beryl_model::{CasProcessGeneration, RuntimeId};
 
@@ -66,14 +69,52 @@ impl ProjectionRuntimeRetirement {
 /// service ownership through an untyped shared vector.
 pub(super) struct ProjectionServiceConnectionRegistry {
     service_generation: ProjectionServiceGeneration,
-    connections: Mutex<Vec<Arc<ProjectionConnection>>>,
+    work_owner: Arc<()>,
+    connections: Mutex<ConnectionRegistryState>,
+}
+
+struct ConnectionRegistryState {
+    revision: Option<u64>,
+    entries: Vec<Arc<ProjectionConnection>>,
+}
+
+pub(super) struct ConnectionRegistryGuard<'a> {
+    state: MutexGuard<'a, ConnectionRegistryState>,
+}
+
+impl ConnectionRegistryGuard<'_> {
+    pub(super) fn revision(&self) -> Option<u64> {
+        self.state.revision
+    }
+}
+
+impl Deref for ConnectionRegistryGuard<'_> {
+    type Target = Vec<Arc<ProjectionConnection>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state.entries
+    }
+}
+
+impl DerefMut for ConnectionRegistryGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.state.revision = self
+            .state
+            .revision
+            .and_then(|revision| revision.checked_add(1));
+        &mut self.state.entries
+    }
 }
 
 impl ProjectionServiceConnectionRegistry {
     pub(super) fn new(service_generation: ProjectionServiceGeneration) -> Arc<Self> {
         Arc::new(Self {
             service_generation,
-            connections: Mutex::new(Vec::new()),
+            work_owner: Arc::new(()),
+            connections: Mutex::new(ConnectionRegistryState {
+                revision: Some(0),
+                entries: Vec::new(),
+            }),
         })
     }
 
@@ -81,15 +122,25 @@ impl ProjectionServiceConnectionRegistry {
         self.service_generation
     }
 
-    pub(super) fn lock(&self) -> LockResult<MutexGuard<'_, Vec<Arc<ProjectionConnection>>>> {
-        self.connections.lock()
+    pub(super) fn work_owner(&self) -> &Arc<()> {
+        &self.work_owner
+    }
+
+    pub(super) fn lock(&self) -> LockResult<ConnectionRegistryGuard<'_>> {
+        self.connections
+            .lock()
+            .map(|state| ConnectionRegistryGuard { state })
+            .map_err(|poison| {
+                PoisonError::new(ConnectionRegistryGuard {
+                    state: poison.into_inner(),
+                })
+            })
     }
 
     /// Reaps only completed ordinary retirements without holding the service registry across a
     /// connection lifecycle boundary.
     pub(super) fn reap_finished_ordinary_retirements(&self) {
         let snapshot = self
-            .connections
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .clone();
@@ -102,8 +153,7 @@ impl ProjectionServiceConnectionRegistry {
         if reaped.is_empty() {
             return;
         }
-        self.connections
-            .lock()
+        self.lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .retain(|connection| !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped)));
     }
@@ -128,7 +178,7 @@ impl std::fmt::Debug for ProjectionServiceConnectionRegistry {
             .field("service_generation", &self.service_generation)
             .field(
                 "connection_count",
-                &self.connections.lock().map(|connections| connections.len()),
+                &self.lock().map(|connections| connections.len()),
             )
             .finish_non_exhaustive()
     }

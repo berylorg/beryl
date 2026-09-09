@@ -530,8 +530,8 @@ fn validate_frozen_target(
     Ok(())
 }
 
-fn sorted_target_keys(targets: &HashMap<CasThreadId, super::TargetEntry>) -> Vec<CasThreadId> {
-    let mut keys = targets.keys().cloned().collect::<Vec<_>>();
-    keys.sort();
-    keys
+fn sorted_target_keys(
+    targets: &std::collections::BTreeMap<CasThreadId, super::TargetEntry>,
+) -> Vec<CasThreadId> {
+    targets.keys().cloned().collect()
 }

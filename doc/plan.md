@@ -38,20 +38,15 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 362: Observe Backend Response Custody (finished)
+# Phase 360: Publish Revision-Bound Connection Work Facts (finished)
 
-Accepted exact-request revision-bound observations of approval and dynamic-tool response custody,
-including backend responders after presentation handoff, successful writes and disposal without
-response. Observers retain no payload or usable capability; local facts do not certify session
-currency. Independent review, production backend/app compilation, formatting and 46 focused checks
-passed. Peak guarded job memory was 1.11 GiB; all children exited and temporary directories were
-removed. Connection/control pages and complete work inventory remain subsequent boundaries.
-
-# Phase 360: Publish Revision-Bound Connection Work Facts (pending)
-
-Expose exact bounded thread/request facts from existing connection/router owners, including queued
-and in-flight request handling and disposal. Fence every contributing transition, including queue
-consumption outside the router state lock, without copying request payloads or capabilities.
+Accepted bounded owner/home/service-revision pages for exact connection targets and response
+requests. Checked aggregate revisions fence membership, detachment, router state, queue handoff
+and backend custody without retaining capabilities or a full version vector. Independent review,
+production compilation, formatting and 34 distinct focused lifecycle checks passed, including a
+paused admitted writer, automatic approval response custody and full-queue paging. Peak guarded
+job memory was 1.52 GiB; all children exited and temporary directories were removed. Control-owner
+facts and complete work inventory remain subsequent boundaries.
 
 # Phase 361: Publish Revision-Bound Control Work Facts (pending)
 

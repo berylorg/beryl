@@ -204,6 +204,13 @@ impl EventRouter {
                 });
             let obligation =
                 approval_obligation(self.connection_generation, target, &request, prepared);
+            let work_serial = self.observe_request(
+                &mut state,
+                &thread_id,
+                &turn_id,
+                crate::cas_projection::ConnectionRequestWorkKind::Approval(request.kind()),
+                request.response_work(),
+            );
             let delivery = {
                 let target = state
                     .targets
@@ -217,6 +224,7 @@ impl EventRouter {
                     .as_ref()
                     .expect("validated approval target retains its sender")
                     .try_send(QueuedTargetOperation {
+                        work_serial,
                         operation: RoutedTargetOperation::Approval(RoutedApproval {
                             request,
                             interruption: interruption.clone(),
@@ -225,6 +233,10 @@ impl EventRouter {
             };
             match delivery {
                 Ok(()) => {
+                    state.request_work_stage(
+                        work_serial,
+                        crate::cas_projection::ConnectionRequestWorkStage::Queued,
+                    );
                     state.routed_operation_count = state.routed_operation_count.saturating_add(1);
                     advance_revision(&mut state);
                     ApprovalRouteOutcome::Routed {
@@ -233,6 +245,10 @@ impl EventRouter {
                     }
                 }
                 Err(TrySendError::Full(queued)) => {
+                    state.request_work_stage(
+                        work_serial,
+                        crate::cas_projection::ConnectionRequestWorkStage::Rejected,
+                    );
                     release_queue_count(&state, &thread_id);
                     state.queue_pressure_count = state.queue_pressure_count.saturating_add(1);
                     let request = approval_request(queued);
@@ -246,6 +262,10 @@ impl EventRouter {
                     )
                 }
                 Err(TrySendError::Disconnected(queued)) => {
+                    state.request_work_stage(
+                        work_serial,
+                        crate::cas_projection::ConnectionRequestWorkStage::Rejected,
+                    );
                     release_queue_count(&state, &thread_id);
                     let request = approval_request(queued);
                     target_failed(

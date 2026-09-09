@@ -217,12 +217,18 @@ impl ProjectionConnection {
     ) -> Result<(), ProjectionExecutionError> {
         let proof = registration.proof();
         let (authorization, write) = routed.into_parts();
+        #[cfg(feature = "test-faults")]
+        let response_thread = registration.owner();
         let command = self.with_runtime(|runtime| {
             runtime.driver.call_classified_checked(
                 move |router, command| {
                     router.authorize_dynamic_tool_response(command, &proof, &authorization)
                 },
-                move |session| session.respond_dynamic_tool_call(write.call(), &response),
+                move |session| {
+                    #[cfg(feature = "test-faults")]
+                    crate::cas_projection::test_faults::pause_response_write(response_thread);
+                    session.respond_dynamic_tool_call(write.call(), &response)
+                },
                 |result| {
                     result
                         .as_ref()

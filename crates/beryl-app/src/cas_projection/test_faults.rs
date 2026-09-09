@@ -7,9 +7,22 @@ use std::sync::{
 mod promotion;
 mod provider;
 mod recovery;
+mod response;
 mod scheduler;
 mod target;
 mod terminal_history;
+
+pub(crate) use response::pause_response_write;
+pub use response::{ResponseWriteBarrierController, install_response_write_barrier};
+
+pub fn respond_routed_dynamic_tool(
+    target: &super::LiveEventTarget,
+    call: super::RoutedDynamicToolCall,
+    response: beryl_backend::DynamicToolCallResponse,
+) -> Result<(), super::ProjectionExecutionError> {
+    let (response_target, _) = call.into_parts();
+    target.respond_dynamic_tool_call(response_target, response)
+}
 
 pub use promotion::{
     ProjectionConnectionRetirementHandle, ScheduledPromotionBarrierController,

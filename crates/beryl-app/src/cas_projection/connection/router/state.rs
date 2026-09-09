@@ -122,8 +122,11 @@ impl EventRouter {
             process,
             commands,
             terminal_disposer,
-            state: std::sync::Mutex::new(RouterState {
+            state: std::sync::Arc::new(std::sync::Mutex::new(RouterState {
                 revision: 0,
+                work_revision: Some(0),
+                next_work_request: Some(0),
+                work_requests: std::collections::BTreeMap::new(),
                 next_registration: 0,
                 next_steering_attempt: 0,
                 active_steering_attempt: None,
@@ -133,14 +136,14 @@ impl EventRouter {
                 volatile_stop_admission: None,
                 persistent_failure: None,
                 retired: None,
-                targets: std::collections::HashMap::new(),
+                targets: std::collections::BTreeMap::new(),
                 retired_thread_lanes: std::collections::HashSet::new(),
                 routed_operation_count: 0,
                 unmatched_operation_count: 0,
                 rejected_operation_count: 0,
                 queue_pressure_count: 0,
                 quiet_poll_count: 0,
-            }),
+            })),
             publication_changed: std::sync::Condvar::new(),
             scheduler_signal,
             #[cfg(test)]
@@ -410,4 +413,7 @@ fn retire_locked(
 
 pub(super) fn advance_revision(state: &mut RouterState) {
     state.revision = state.revision.saturating_add(1);
+    state.work_revision = state
+        .work_revision
+        .and_then(|revision| revision.checked_add(1));
 }

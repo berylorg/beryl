@@ -85,6 +85,12 @@ impl ProjectionConnection {
         self.forwarding_hub.current_attachment()
     }
 
+    pub(super) fn work_attachment(
+        &self,
+    ) -> Result<Option<Arc<ConnectionAttachment>>, ProjectionCoordinatorError> {
+        self.forwarding_hub.work_attachment()
+    }
+
     pub(super) fn current_router(&self) -> Result<Arc<EventRouter>, ProjectionCoordinatorError> {
         self.current_attachment()
             .map(|attachment| Arc::clone(&attachment.router))

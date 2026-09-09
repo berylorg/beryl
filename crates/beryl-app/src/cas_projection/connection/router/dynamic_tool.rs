@@ -15,6 +15,7 @@ use crate::conversation_tools::RoutedDynamicToolRequest;
 pub(super) struct DynamicToolResponseAdmission {
     connection_generation: u64,
     registration: u64,
+    work_serial: Option<u64>,
 }
 
 impl std::fmt::Debug for DynamicToolResponseAdmission {
@@ -106,6 +107,13 @@ impl EventRouter {
                     }
                     return Err(DynamicToolTargetError::Target(invalidation));
                 }
+                let work_serial = self.observe_request(
+                    &mut state,
+                    thread_id,
+                    call.turn_id(),
+                    crate::cas_projection::ConnectionRequestWorkKind::DynamicTool,
+                    call.response_work(),
+                );
                 let target = state
                     .targets
                     .get_mut(thread_id)
@@ -113,6 +121,7 @@ impl EventRouter {
                 let admission = Arc::new(DynamicToolResponseAdmission {
                     connection_generation: self.connection_generation,
                     registration: target.registration,
+                    work_serial,
                 });
                 target
                     .dynamic_tool_responses
@@ -253,15 +262,24 @@ impl EventRouter {
                     .expect("validated dynamic-tool target retains its sender")
                     .try_send(QueuedTargetOperation {
                         operation: RoutedTargetOperation::DynamicTool(routed),
+                        work_serial: permit.admission.work_serial,
                     });
                 match delivery {
                     Ok(()) => {
+                        state.request_work_stage(
+                            permit.admission.work_serial,
+                            crate::cas_projection::ConnectionRequestWorkStage::Queued,
+                        );
                         state.routed_operation_count =
                             state.routed_operation_count.saturating_add(1);
                         advance_revision(&mut state);
                         Ok(())
                     }
                     Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                        state.request_work_stage(
+                            permit.admission.work_serial,
+                            crate::cas_projection::ConnectionRequestWorkStage::Rejected,
+                        );
                         let target = state
                             .targets
                             .get_mut(&permit.thread_id)
@@ -275,6 +293,10 @@ impl EventRouter {
                         ))
                     }
                     Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                        state.request_work_stage(
+                            permit.admission.work_serial,
+                            crate::cas_projection::ConnectionRequestWorkStage::Rejected,
+                        );
                         let target = state
                             .targets
                             .get_mut(&permit.thread_id)
@@ -343,6 +365,10 @@ impl EventRouter {
                     .expect("authorized dynamic-tool target remains registered")
                     .dynamic_tool_responses
                     .remove(&authorization.call_id);
+                state.request_work_stage(
+                    authorization.admission.work_serial,
+                    crate::cas_projection::ConnectionRequestWorkStage::ResponseAdmitted,
+                );
                 advance_revision(&mut state);
                 Ok(())
             })

@@ -16,6 +16,12 @@ impl PartialEq for ResponseWorkRevision {
 
 impl Eq for ResponseWorkRevision {}
 
+impl ResponseWorkRevision {
+    pub const fn change_count(&self) -> u64 {
+        self.serial
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResponseWorkSnapshot {
     revision: ResponseWorkRevision,

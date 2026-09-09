@@ -64,6 +64,7 @@ mod runtime_interest;
 mod runtime_preparation;
 mod scheduling;
 mod shutdown;
+mod work_facts;
 
 pub(super) use admission::ProjectionAdmissionContext;
 pub(super) use flight_registry::ProjectionFlight;

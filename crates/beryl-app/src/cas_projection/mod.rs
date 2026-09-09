@@ -30,6 +30,7 @@ mod accepted_input_scheduler;
 mod active_steering;
 mod cancellation;
 mod connection;
+mod connection_work;
 mod context_compaction;
 mod error;
 mod execute;
@@ -70,6 +71,12 @@ pub use connection::{
     LiveEventTargetRegistrationError, LoadedProjectionReleaseError, LoadedProjectionReleaseOutcome,
     RecoveryReplayCapacityDiagnostics, RecoveryReplayDiagnosticsObserver,
     RecoveryReplayDiagnosticsSnapshot, RoutedApproval, RoutedDynamicToolCall,
+};
+pub use connection_work::{
+    ConnectionRequestWorkFact, ConnectionRequestWorkKind, ConnectionRequestWorkStage,
+    ConnectionTargetWorkFact, ConnectionTargetWorkState, ConnectionWorkCursor, ConnectionWorkError,
+    ConnectionWorkPage, ConnectionWorkPageLimits, ConnectionWorkRecord, ConnectionWorkRevision,
+    ConnectionWorkTargetIdentity,
 };
 #[cfg(feature = "test-faults")]
 #[doc(hidden)]

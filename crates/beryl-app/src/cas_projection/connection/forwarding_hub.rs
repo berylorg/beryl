@@ -136,6 +136,17 @@ impl ForwardingHub {
             .ok_or(ProjectionCoordinatorError::ProjectionWorkerStopped)
     }
 
+    pub(super) fn work_attachment(
+        &self,
+    ) -> Result<Option<Arc<ConnectionAttachment>>, ProjectionCoordinatorError> {
+        let state = self.lock_state()?;
+        Ok(state
+            .endpoint
+            .as_ref()
+            .filter(|_| !state.inert)
+            .map(|endpoint| Arc::clone(&endpoint.attachment)))
+    }
+
     pub(super) fn is_detached(&self) -> bool {
         self.state
             .lock()

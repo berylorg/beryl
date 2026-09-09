@@ -124,6 +124,7 @@ impl EventRouter {
                     loaded_generation,
                     receiver,
                     queued_operations,
+                    work_state: Arc::downgrade(&self.state),
                     terminal,
                     loss_receipt,
                     compaction,

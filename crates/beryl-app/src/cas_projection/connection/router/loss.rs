@@ -309,6 +309,7 @@ impl EventRouter {
                 }
                 if let Some(terminal) = terminal {
                     target.loss_requested = false;
+                    advance_revision(&mut state);
                     return match terminal {
                         TargetTerminalSignal::Proven(outcome) => {
                             Ok(TargetLossAcquisition::ProvenTerminal(outcome))
