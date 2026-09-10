@@ -74,9 +74,12 @@ small independent diagnostic surface when the operating environment permits it.
 ## Acceptance And Complexity Boundary
 
 - Use process tests for real panic-to-abort delivery, silent normal exit, setup refusal/timeout,
-  exact inherited handles, job-breakaway refusal, incomplete/oversized records, repeated panic,
+  exact inherited handles, job-breakaway refusal, oversized panic capture, repeated panic,
   reporter failure and release of waiting children. Verify capture performs bounded app-owned work
   and the reporter releases transport before presentation.
+- Exercise incomplete, incompatible, oversized-length and invalid UTF-8 record rejection directly
+  against the same record validator used by the receiver. Combine those checks with real process
+  delivery and silent normal-exit evidence; do not add a test-only wire-mutation protocol.
 - Verify the GUI and final executable mount separately. The final mount must exercise ordinary
   startup hook ordering and a real isolated GUI report after application process death; helper
   tests alone do not establish that production integration.

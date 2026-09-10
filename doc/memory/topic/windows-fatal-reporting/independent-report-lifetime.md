@@ -11,6 +11,11 @@ real synchronization-only process handle identifies that exact process object wi
 Reading only after exit avoids simultaneous application writes during report validation. The
 record still needs aligned ordered completion publication, a fixed extent and bounded length.
 
+The receiver's logical read is not sufficient reason to map the page OS-read-only: Rust does not
+guarantee acquire atomic loads on such pages. Use a writable receiver view for ordinary acquire
+loads, or the specifically documented small relaxed load followed by an acquire fence. Review
+caught this distinction before runtime acceptance.
+
 Explicit inherited handles do not prevent inherited job membership. Breakaway may stop at an
 ancestor job; the reporter must check that it is outside jobs before accepting readiness if it must
 survive parent-owned kill-on-close containment. Environments that deny escape can decline reporting
@@ -74,6 +79,13 @@ Local use sites inspected at Beryl prerequisite `f46bcb78b71618e671e656d410f3166
 - `Cargo.lock`: resolved Windows binding version.
 
 # Refresh Triggers
+
+The installed nextest 0.9.129 (commit `1358a22964df2595d30d830ad669b37093e4a732`)
+[Windows runner](https://raw.githubusercontent.com/nextest-rs/nextest/1358a22964df2595d30d830ad669b37093e4a732/nextest-runner/src/runner/windows.rs)
+permits breakaway from its own test job. Launching it through Cargo can still leave another job
+in the inherited chain. Direct `cargo-nextest.exe nextest run` passed all 17 channel tests where
+`cargo nextest` refused reporter readiness. Preserve the production membership check; see the
+[containment lesson](../../../failures/crash-report-test-containment.md).
 
 Recheck when the target platform, process containment, inherited-handle implementation, Rust
 toolchain or Windows binding version changes, or when runtime qualification contradicts a claim.

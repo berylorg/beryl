@@ -44,24 +44,16 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 379: Establish Fatal Crash Reporting Authority (finished)
+# Phase 380: Deliver Fatal Reports Across Process Exit (finished)
 
-Accepted the bounded independent reporter contract with direct application termination, two GUI
-commands and abort-only fallback. Independent semantic review found no blocking authority or
-complexity issue. [Windows/Rust evidence](memory/topic/windows-fatal-reporting/independent-report-lifetime.md)
-records process, job and panic limits; final executable mounting remains a separate boundary.
+Accepted the bounded fatal-reporting authority and app-owned Windows channel with aborting hook.
+Focused production/fixture checks and all 17 record/process tests passed; independent semantic
+review accepted handle/mapping ownership, hook bounds and exact timeout-child cleanup. Production
+adds four focused source files, 445 nonblank lines, within existing packages and dependencies.
+The [containment lesson](failures/crash-report-test-containment.md) records direct nextest invocation.
+GUI presentation and ordinary executable bootstrap remain separate acceptance boundaries.
 
-# Phase 380: Deliver Fatal Reports Across Process Exit (pending)
-
-Implement the app-owned Windows reporter startup, one bounded mapped record, exact inherited
-handles and aborting panic hook under the crash-reporting system. Verify real child-process panic
-delivery, normal exit, malformed/incomplete/truncated records, setup refusal and timeout, inherited
-capability restriction, job-breakaway refusal, repeated panic and reporter termination. Use the
-existing package's isolated test executable boundary, never the Operator's running Beryl. Review
-unsafe handle/mapping ownership and hook work independently; keep normal application startup an
-explicit integration dependency. Record actual module/source growth against the small-system goal.
-
-# Phase 381: Present The Isolated Crash Report (pending)
+# Phase 381: Present The Isolated Crash Report (wip)
 
 Implement the declared report-only GPUI surface with its bounded preview, Copy feedback, keyboard
 focus and terminal Exit/close behavior. Verify only the two commands exist, text remains inert,

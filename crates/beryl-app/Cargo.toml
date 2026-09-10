@@ -20,6 +20,11 @@ name = "managed-runtime-fixture"
 path = "tests/support/managed_runtime_fixture.rs"
 required-features = ["test-faults"]
 
+[[bin]]
+name = "crash-report-fixture"
+path = "tests/support/crash_report_fixture.rs"
+required-features = ["test-faults"]
+
 [dependencies]
 beryl-backend.workspace = true
 beryl-home-store.workspace = true
@@ -59,6 +64,7 @@ windows = { workspace = true, features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Power",
     "Win32_System_RemoteDesktop",
