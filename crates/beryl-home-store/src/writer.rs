@@ -1,4 +1,4 @@
-use std::{cell::RefCell, sync::MutexGuard};
+use std::cell::RefCell;
 
 use fjall::PersistMode;
 
@@ -257,7 +257,7 @@ impl HomeStore {
     fn execute_serialized(
         &self,
         cancellation: crate::CommandCancellation,
-        mut reservation: CommandReservation,
+        reservation: CommandReservation,
         operation: impl FnOnce(
             &StoreGeneration,
             crate::HomeGeneration,
@@ -279,10 +279,14 @@ impl HomeStore {
         };
         // Acquiring the mutex ends the wait; this terminal cancellation observation is the
         // admission handshake. No cancellation state is consulted after `ActiveWriter::enter`.
-        if cancellation.is_cancelled() {
+        let cancelled = cancellation.is_cancelled();
+        let _active = ActiveWriter::enter(self.writer_id);
+        // Drop unconsumed command state inside both writer and reentry guards on early returns.
+        let operation = operation;
+        let mut reservation = reservation;
+        if cancelled {
             return not_committed(CommandError::CancelledBeforeAdmission);
         }
-        let _active = ActiveWriter::enter(self.writer_id);
         let admission = match self.health.admit() {
             Ok(admission) => admission,
             Err(error) => return not_committed(CommandError::HealthGate(error)),
@@ -412,8 +416,17 @@ impl HomeStore {
         )
     }
 
-    pub(crate) fn acquire_writer(&self) -> Result<MutexGuard<'_, ()>, CommandError> {
-        self.writer.lock().map_err(|_| CommandError::WriterPoisoned)
+    pub(crate) fn acquire_writer(
+        &self,
+    ) -> Result<crate::mutation_observation::ObservedWriter<'_>, CommandError> {
+        let writer = self
+            .writer
+            .lock()
+            .map_err(|_| CommandError::WriterPoisoned)?;
+        Ok(crate::mutation_observation::ObservedWriter::new(
+            writer,
+            &self.mutation_boundary,
+        ))
     }
 
     fn execute_admitted(

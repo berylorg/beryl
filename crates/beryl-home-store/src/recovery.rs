@@ -320,6 +320,7 @@ impl HomeStore {
             .clone();
         let old_writer = std::mem::replace(&mut self.writer, std::sync::Mutex::new(()));
         drop(old_writer);
+        self.mutation_boundary.close();
         let mut generation_slot = self
             .generation
             .write()
@@ -368,6 +369,9 @@ impl HomeStore {
             generation: std::sync::RwLock::new(Some(generation)),
             registrations: std::sync::Mutex::new(registrations),
             writer: std::sync::Mutex::new(()),
+            mutation_boundary: std::sync::Arc::new(
+                crate::mutation_observation::MutationBoundary::default(),
+            ),
             theme_mutation: std::sync::Mutex::new(()),
             theme_watcher: crate::theme::ThemeWatcherCoordinator::default(),
             writer_id,

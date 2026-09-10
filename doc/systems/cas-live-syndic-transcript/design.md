@@ -84,6 +84,15 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   required execution interest remains, it releases expensive session and runtime resources through
   exact retirement. Idle catalog membership retains no connection or worker. All entries and
   capabilities are revoked and joined on generation retirement; none survives process restart.
+- Required-work admission and idle-retirement election share the home store's mutation-observation
+  boundary. The process owner captures a current token before its bounded required-work read and
+  consumes it in the final in-memory retirement election, together with exact service, session,
+  connection and view authority. A mutation that starts first invalidates retirement's old facts;
+  retirement that wins first excludes reuse of its old session, while later admitted work follows
+  ordinary preparation and dispatch. No independently sampled revision check closes this boundary.
+  Writer settlement requests a coalesced idle recheck after publication, including when an earlier
+  inspection encountered an active mutation. Storage reads, provider effects and disposal remain
+  outside the final ownership gates; writer observation alone proves neither idle work nor health.
 
 ## Request Custody And Running-Thread Projection
 

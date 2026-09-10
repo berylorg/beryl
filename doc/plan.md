@@ -38,27 +38,43 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 376: Notify Exact Response Completion Without Polling (finished)
+# Phase 377: Serialize Mutation Observation With In-Memory Election (finished)
 
-Accepted one completion-wake registration per backend response source. Successful write or final
-capability release consumes it after facts publish and the observation lock releases. Late and
-racing registration cannot miss completion; repeated registration is refused without replacement.
-Response revisions, capabilities and dispatch authority remain unchanged by registration.
+Accepted the weak home mutation observer and exact interval tokens. Mutation entry invalidates
+prior reads; final in-memory election excludes mutation entry, and settlement wakes only after
+command custody and locks release. Replacement, last-owner drop and generation disposal revoke
+old tokens. The [early-return custody correction](failures/home-writer-early-settlement.md) is accepted.
 
-Independent semantic review, 12 focused response tests, 64 backend regressions, backend/app
-production compilation, formatting and diff checks passed. All three guarded jobs and temporary
-directories were reclaimed. App scheduler adoption remains below.
+Independent semantic review, 11 focused tests within 111 writer/proof/recovery regressions,
+home-store/app production compilation, formatting and diff checks passed. All eight guarded jobs
+and temporary directories were reclaimed. Scheduler adoption follows below.
 
-# Phase 374: Recheck Idle Sessions On Ownership Release (pending)
+# Phase 374: Recheck Idle Sessions On Ownership Release (wip)
+
+The mutation-observation prerequisite has passed acceptance. Integrate its exact token
+around required-work observation and final retirement election, and its writer-settlement wake
+through the service-owned maintenance signal. Keep the previously failing real composer-admission
+race as an acceptance requirement, including both orderings and exact original registration.
+Existing idle-maintenance source and tests remain uncommitted and unaccepted until this boundary.
 
 Feed bounded idle observations and conditional retirement through a distinct coalesced scheduler
 maintenance wake. Relevant final view, preparation and live/control cleanup releases request another
 inspection after their state becomes observable. Preserve dispatch/retry lane masks, exact runtime
 binding, busy/stale refusal and generation fences; add no polling worker or retry loop.
 
-The Operator authorized the [response-custody correction](failures/process-idle-response-custody.md).
-Resume this integration after the separate classification and notification prerequisites above
-pass acceptance.
+The Operator-authorized [response-custody correction](failures/process-idle-response-custody.md)
+has passed both prerequisite boundaries. Integrate the maintenance callback into the existing
+process provider and scheduler signal, using non-owning work sources and the configured runtime
+owner. Keep the full binding in the existing bounded interest entries and serialize the final
+view check with acquisition. Separate in-memory retirement election from signaling and disposal.
+
+Wire available-session, preparation, view, response and live/control release cuts after fact
+publication. Verify idle disposal without later requests, required/loaded/checked-out survival,
+same-binding view preservation and reacquisition races, retained completed response records,
+unwritten final release, stop/compaction cleanup, stale sources and service-generation loss.
+Prove maintenance-only wakes leave dispatch and retry masks closed. Run focused managed-runtime
+and scheduler integration tests, required work/control regressions, production compilation and
+independent semantic review. Production composition and graceful shutdown remain below.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

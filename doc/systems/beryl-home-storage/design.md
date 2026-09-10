@@ -235,6 +235,19 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 - One process-wide home-store writer serializes every Fjall mutation while bounded point and cursor reads may execute concurrently through typed read APIs.
 - Serializing commits is an internal atomicity mechanism, not a durable database lock and not a restriction on simultaneous CAS turns for different Syndic threads.
+- The home store exposes one bounded process-local mutation-observation owner for coordinating
+  in-memory resource election with durable admission. Its opaque tokens identify that live owner
+  and one unchanged writer interval; they do not expose a writer guard, authorize a command, or
+  replace durable record revisions. Required reads occur outside its short synchronization gate.
+  Every mutation invalidates preceding tokens before it can change durable state and remains busy
+  until its storage work and outcome settlement end. Election checks the token and excludes new
+  mutation entry atomically while executing only a bounded in-memory callback. Busy, changed,
+  revoked, closed or unavailable observations cannot justify election.
+- That owner and its tokens retain no home, database or lifecycle ownership. Replacing the single
+  owner revokes the previous owner and its tokens; dropping the owner or closing/replacing the
+  store invalidates outstanding tokens. Mutation settlement notifies only the current owner after
+  releasing storage and observation locks. The owner supplies a bounded, nonblocking, nonpanicking
+  wake callback; notifications grant no storage or execution authority and create no polling loop.
 - Every correctness-sensitive mutation carries the expected revisions of the records it read, including thread, draft, window claim, session, job, or binding revisions as applicable.
 - A typed operation that mutates exactly one domain from exact logical record revisions may use a
   writer-admitted current-domain command. That opaque command captures only the physical home and

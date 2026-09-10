@@ -36,6 +36,7 @@ impl HomeStore {
         &mut self,
         validate_schema: bool,
     ) -> Result<DomainHandle<D>, DomainRegistrationError> {
+        let _mutation = self.mutation_boundary.begin();
         let definition = DomainBlueprint::for_domain::<D>()?;
         let sidecars = crate::SidecarVerifier::new(self);
         let admission = self.health.admit()?;

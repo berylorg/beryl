@@ -31,6 +31,34 @@ is governed by [the package design](design.md), including that design's engineer
   fit the configured Fjall `BatchCapacity`. Oversize fails before commit. Callers cannot hold a
   transaction or writer guard across asynchronous or external work.
 
+## Mutation Observation And In-Memory Election
+
+- `HomeStore::observe_mutations` installs one current `HomeMutationObserver` with a supplied
+  `Waker`. Replacing the observer revokes the prior registration and its tokens atomically.
+  Observer clones share that registration; only the last owner drop revokes it. The store retains
+  it weakly, and observers and tokens retain no store, physical generation or home lifecycle.
+- `HomeMutationObserver::observe` captures an opaque `HomeMutationObservation` only while no
+  mutation is active. Its `try_elect` checks the exact still-live registration and unchanged
+  mutation interval, and runs the caller's bounded in-memory election atomically against mutation
+  entry. The callback must not perform storage/backend I/O, wait, join, or acquire another
+  ownership lock. Required reads and ownership acquisition precede this callback.
+- All runtime mutation entry paths, including typed commands, domain registration and supported
+  persisted-corruption fault injection, invalidate earlier observations before storage work.
+  Cancellation or rejection may conservatively invalidate a token without committing anything.
+  Mutation completion publishes quiescence only after operation-owned storage and outcome work
+  ends, and wakes the current observer outside storage and observation locks. Observation and
+  election themselves emit no wakes. Wake implementations must be bounded, nonblocking and
+  nonpanicking; the store creates no worker or callback queue.
+  A wake selected before observer revocation may finish afterward; it cannot validate revoked
+  observations or grant fresh authority.
+- Busy, stale, revoked, closed, poisoned or exhausted observation state returns a typed refusal
+  without invoking the callback. Observation bookkeeping failure cannot acknowledge a durable
+  command incorrectly or restore a revoked token. Existing command outcome and health contracts
+  remain authoritative; an observation is not a health, record-validity or idle-work proof.
+- Store close and same-home generation replacement revoke old observation authority before
+  disposing the physical generation. Tokens cannot keep a dropped observer or store usable, and a
+  new store or observer cannot adopt an old token even when durable home identifiers match.
+
 ## Writer, Cancellation, And Durability
 
 - Exactly one command holds the writer-admission permit. The package owns no writer wait queue;

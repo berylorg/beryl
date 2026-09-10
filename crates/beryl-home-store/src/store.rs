@@ -150,6 +150,7 @@ pub struct HomeStore {
     pub(crate) generation: RwLock<Option<StoreGeneration>>,
     pub(crate) registrations: Mutex<Vec<DomainBlueprint>>,
     pub(crate) writer: Mutex<()>,
+    pub(crate) mutation_boundary: Arc<crate::mutation_observation::MutationBoundary>,
     pub(crate) theme_mutation: Mutex<()>,
     pub(crate) theme_watcher: crate::theme::ThemeWatcherCoordinator,
     pub(crate) writer_id: StoreInstanceId,
@@ -263,6 +264,7 @@ impl HomeStore {
             })),
             registrations: Mutex::new(Vec::new()),
             writer: Mutex::new(()),
+            mutation_boundary: Arc::new(crate::mutation_observation::MutationBoundary::default()),
             theme_mutation: Mutex::new(()),
             theme_watcher: crate::theme::ThemeWatcherCoordinator::default(),
             writer_id,
@@ -364,6 +366,7 @@ impl HomeStore {
     }
 
     pub(crate) fn retire_generation(&mut self) {
+        self.mutation_boundary.close();
         let generation = self
             .generation
             .get_mut()

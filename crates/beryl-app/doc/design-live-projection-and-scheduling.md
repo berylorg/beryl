@@ -57,7 +57,7 @@ topology and typed execution surfaces.
   and matching scheduler flight; it creates no parallel execution lease or second run owner.
   The wider process registry composes this custody with other execution paths and work inventory.
   One session is either available or checked out, never usable by both. Return settles exact
-  custody and emits only the existing typed execution/capacity wake; it cannot revive a retired
+  custody and emits the typed execution/capacity wake plus an idle-maintenance recheck; it cannot revive a retired
   slot or cross a service-generation boundary.
 - Registry admission reserves one slot before insertion from the system-defined
   `worker_capacity / CONNECTION_WORKER_PERMITS` bound, sharing it across available, checked-out,
@@ -84,6 +84,23 @@ topology and typed execution surfaces.
   requests, stop, compaction, continuation and terminal cleanup retain required work; attention
   alone and unadmitted queued input do not retain an idle execution session. These shared read
   facts neither acquire execution nor replace the final conditional-retirement ownership checks.
+- The process scheduler rechecks idle eligibility on a distinct coalesced maintenance wake.
+  Final view-interest release, available-session publication or return, preparation settlement,
+  response completion and relevant live/control cleanup releases notify after their facts become
+  observable. Notifications retain only the existing generation-scoped wake owner. They add no
+  polling worker, retry loop, dispatch authority or cross-lane retry eligibility.
+  When execution readiness shares the batch, its existing authorized dispatch passes precede
+  idle maintenance so a newly prepared session can fulfill the work that requested it.
+- Idle retirement preserves the exact service, registration, runtime/process and full execution
+  binding. One service-owned home mutation observer supplies non-owning work sources with the
+  shared admission fence and directs writer-settlement wakes to the existing generation-scoped
+  maintenance signal. Capture its token before reading required work and consume it at the final
+  retirement cut; a busy or changed token preserves the session. The final absence-of-view check
+  is serialized with view-interest acquisition through the existing runtime-interest owner;
+  election contains no storage or backend work, and signals
+  and resource disposal follow outside ownership gates. Required work, unavailable or changing
+  observations, checkout, loaded leases, promotion and cleanup ownership all prevent retirement.
+  A declined maintenance pass waits for a relevant later release rather than waking itself.
 - Native continuation, resume, inclusive fork, fresh lineage, or one-time recovery injection is
   selected from bounded typed proofs. The app never dispatches rollback, summarizes a prefix,
   assembles recovery history, or silently selects injection after unclassified native failure.

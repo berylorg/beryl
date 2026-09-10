@@ -137,7 +137,7 @@ impl HomeStore {
         if ActiveWriter::already_active(self.writer_id) {
             return Err(PersistedCorruptionError::ReentrantWriter);
         }
-        let _writer = self.writer.lock().map_err(|_| {
+        let _writer = self.acquire_writer().map_err(|_| {
             self.health.signal_failure(FailureSeverity::Structural);
             PersistedCorruptionError::WriterPoisoned
         })?;

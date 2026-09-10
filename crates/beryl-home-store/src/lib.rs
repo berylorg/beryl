@@ -254,6 +254,7 @@ mod header;
 mod health;
 mod layout;
 mod metadata;
+mod mutation_observation;
 mod ownership;
 mod proof;
 mod read;
@@ -298,6 +299,9 @@ pub use free_space::FreeSpaceOutcome;
 pub use header::HomeSchemaVersion;
 pub use health::{
     HealthGateError, HomeGeneration, HomeHealthSnapshot, HomeHealthState, RecoveryRetrySchedule,
+};
+pub use mutation_observation::{
+    HomeMutationObservation, HomeMutationObservationError, HomeMutationObserver,
 };
 pub use proof::{
     ExecutableHomeProofCommand, FixedDigestHomeProofProtocol, HomeProofCommand, HomeProofProtocol,
