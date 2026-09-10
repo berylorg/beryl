@@ -90,6 +90,10 @@ Preserve the user's current window layout and last coherent work surfaces when d
 
 ## Recovery Boundary
 
+- These recovery rules apply to ordinary returned storage failures. An internal panic follows
+  [fatal crash reporting](../crash-reporting/design.md), terminates the application and cannot
+  enter in-process home recovery.
+
 - Recovery must validate the same configured home and state store before any gated operation resumes.
 - A retry never substitutes a new home, clears the existing home, drops records, or selects another thread merely to make the shell interactive.
 - If recovery cannot prove a healthy store, the application remains in the preserved fail-closed state.

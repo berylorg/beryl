@@ -36,6 +36,10 @@ Preserve each window's visible identity and placement without requiring auxiliar
 
 ## Ordinary Window Close
 
+- These ordinary close and Exit rules do not govern
+  [fatal crash reporting](../crash-reporting/design.md). A panic terminates the application without
+  another session write; its independent report has no main-window restore identity.
+
 - Closing one main conversation window normally removes that window from the next restored session.
 - Closing a window does not close or rearrange other main windows.
 - Activating close shows one close-in-progress state and keeps the window visible until its dirty

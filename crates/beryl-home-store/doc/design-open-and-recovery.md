@@ -56,8 +56,10 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
   bounded-policy denial remains nonstructural; corruption, integrity, keyspace-identity, poison,
   invalid registry, and other structural disagreement fail the generation. Exact dependency class,
   commit state, I/O kind, and original failure are retained before dependency types are erased.
-- An unwind from admitted writer work fails the generation before writer admission drains.
-  Recovery discards the poisoned writer and constructs a fresh writer.
+- If a caller permits unwinding from admitted writer work, the generation fails before writer
+  admission drains and the old writer cannot be reused. This library safeguard does not promise
+  safe application recovery; Beryl consumes the fatal process policy from the
+  [crash-reporting system](../../../doc/systems/crash-reporting/design.md).
 - Clean close drops Fjall ownership and then releases `home.lock`. Ordinary drop does so only when
   no reconciliation custody remains. Reserved or installed custody may drop disposable Fjall state,
   but its self-retained registry core and lock custodian deny same-process reopen until terminal

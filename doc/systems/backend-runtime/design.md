@@ -147,6 +147,10 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 
 ## Store And Connection Recovery
 
+- These are ordinary returned-error recovery rules. An application panic follows
+  [fatal crash reporting](../crash-reporting/design.md), not runtime convergence or replay. Existing
+  OS-owned managed-process lifetime containment remains responsible for parent-death cleanup.
+
 - A failed Beryl-home generation fences new runtime commands that require durable publication.
 - During the bounded outage interval, foreground capture may retain only the hard-limited process-local facts defined by the CAS-live system. The runtime layer adds no second buffer or durable authority.
 - Fresh-service recovery runs in this order: fence new durable commands; close and dispose the failed

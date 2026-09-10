@@ -60,6 +60,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Window Detachment And Process Shutdown
 
+- [Fatal crash reporting](../../../doc/systems/crash-reporting/design.md) bypasses this ordinary
+  shutdown coordinator. Its separate process initializes only a report surface with fixed
+  presentation resources, never the process service graph, persisted theme, home or backend.
+
 - Ordinary close and application Exit are coordinated with process window construction through
   one bounded admission gate. The app revalidates whether a closing window is final before
   admitting shutdown or durably removing it; overlapping closes cannot each assume another

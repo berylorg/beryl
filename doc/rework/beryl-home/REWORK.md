@@ -16,6 +16,9 @@
 - [Theming](../../features/theming/design.md)
 - [Lifecycle yield](../../features/lifecycle-yield/design.md)
 - [Diagnostics](../../features/diagnostics/design.md)
+- [Crash reporting](../../features/crash-reporting/design.md)
+- [Crash-report GUI](../../features/crash-reporting/gui.md)
+- [Crash-reporting system](../../systems/crash-reporting/design.md)
 - [Activity-panel GUI](../../features/activity-panel/gui.md)
 - [Backend-recovery GUI](../../features/backend-runtime-recovery/gui.md)
 - [Beryl-home GUI](../../features/beryl-home/gui.md)
@@ -363,6 +366,10 @@
 - [x] Accepted the home mutation-observation boundary for the [idle-retirement admission correction](../../failures/process-idle-admission-race.md).
 - [x] Accepted scheduler maintenance and autonomous idle-session release with required-work admission serialized against election.
 - [ ] Reconcile the [confirmed CAS regression baseline failures](../../failures/cas-regression-baseline.md) before process composition resumes.
+- [ ] Implement the independent fatal report handoff and direct process termination.
+- [x] Established the independently reviewed bounded fatal-reporting authority.
+- [ ] Implement the isolated report window and its two terminal commands.
+- [ ] Mount fatal handling and reporter mode when executable bootstrap is reconstructed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

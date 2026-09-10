@@ -45,8 +45,11 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Main-window notices and attention sounds are defined in `doc/features/notifications/design.md`.
 - AI lifecycle yield behavior is defined in `doc/features/lifecycle-yield/design.md`.
 - Supervisor and isolated-child diagnostics are defined in `doc/features/diagnostics/design.md`.
+- Fatal panic presentation is defined in [crash reporting](features/crash-reporting/design.md).
 
 ## System Design Entry Points
+
+- Independent fatal reporting is defined in [crash reporting](systems/crash-reporting/design.md).
 
 - The physical Beryl-home database, typed domains, lock, durability, sessions, claims, catalog, and health gate are defined in `doc/systems/beryl-home-storage/design.md`.
 - Syndic threads, drafts, turn DAG, transcript views, projections, references, resources, and replay are defined in `doc/systems/syndic-conversation-history/design.md`.

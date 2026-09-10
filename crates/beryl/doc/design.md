@@ -16,6 +16,11 @@ Provide the Beryl executable entry point and composition root.
 - This crate wires together `beryl-app`, `beryl-backend`, `beryl-home-store`, `beryl-model`, and the
   registered Beryl and Syndic storage domains.
 - This crate owns process entry, bootstrap logging setup, and top-level startup failure propagation.
+- Before ordinary bootstrap it selects the reserved same-executable crash-reporter mode or installs
+  fatal handling through `beryl-app`, as defined by the
+  [crash-reporting system](../../../doc/systems/crash-reporting/design.md). Reporter mode returns
+  only through report exit or setup failure, never through ordinary startup; ordinary mode starts
+  at most one reporter and cannot replace its fatal hook later.
 - This crate supplies service configuration for bounded pages, channels, worker counts, caches, and
   concurrency before content-dependent services start. It does not construct a universal process
   resource runtime or require unrelated services to share one accounting currency.

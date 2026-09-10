@@ -258,6 +258,10 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Durable-Store Outage Buffer
 
+- This outage and recovery boundary handles ordinary returned failures. An application panic uses
+  [fatal crash reporting](../crash-reporting/design.md), with no further capture, settlement,
+  acknowledgement or in-process repair required before termination.
+
 - When a Beryl-home write fails after a CAS turn may be active, Beryl immediately fences new durable admissions and same-thread successor operations.
 - One process-local outage buffer may retain only Beryl-relevant normalized facts for already active exact targets. Its item count, encoded bytes, per-field bytes, and target count have hard local limits independent of CAS memory.
 - Retention priority is exact identity and correlation, terminal outcome, assistant final output, transcript-visible narrative, user-message correlation, generated-media handoff metadata, then operational content. Operational content may be evicted first when the hard limit is reached.

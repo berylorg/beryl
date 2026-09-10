@@ -530,9 +530,11 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
   durable bounded local custody on the exact matching old generation while generation-lifetime
   synchronization still proves its attachment live; recovery and teardown remain authoritative
   once that generation no longer matches.
-- A panic unwinding through an admitted writer fails the store closed immediately. Recovery does not
-  reuse that poisoned writer; it creates a fresh store service and fresh writer after the physical
-  database and required schema are reopened successfully.
+- A Beryl application panic follows [fatal crash reporting](../crash-reporting/design.md), which
+  terminates before ordinary unwind or in-process recovery. A lower-level caller that permits
+  writer unwinding still fails that generation closed; this is not proof that an application can
+  safely recover from the panic. Ordinary returned-error recovery creates a fresh store service
+  and writer only after the physical database and required schema reopen successfully.
 - Ambiguous-outcome verification is targeted: it drains affected admission, verifies or reopens the
   physical Fjall database as needed, and invokes only the descriptor's domain-owned natural-record
   hooks. A physical or hook error keeps that gate closed unless its independent evidence also

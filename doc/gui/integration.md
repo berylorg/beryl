@@ -114,6 +114,20 @@ Its body remains fully visible at the window's minimum size and does not own scr
 
 This slot fills the home failure window. It is for the bounded startup failure explanation and exact same-home Retry and Exit commands.
 
+## Crash Report Window
+
+The crash report window belongs to the independent reporting process. It is a compact,
+non-resizable auxiliary window with a heading, bounded text region, reserved feedback line and
+bottom command row. It has no main-window chrome, menus, restore identity or application slots.
+Its minimum size keeps the command row reachable. The body has no scrolling; text beyond the
+bounded preview is explicitly omitted. Native close maps to the report's exit action.
+
+### Slots
+
+#### Slot: crash-report-window.body
+
+This slot fills the report window and holds its explanation, bounded preview and terminal commands.
+
 ## Settings Window
 
 The external `settings-window` widget directly owns Beryl's top-level auxiliary OS window for application preferences. Beryl configures that window with its section identities, routed pages, settings content, and feature commands; it does not place the external window inside another Beryl-owned window body.

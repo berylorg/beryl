@@ -43,6 +43,9 @@ internal contract.
 - `beryl-app` is the only Beryl package that composes the GPUI process shell, OS-window
   controllers, and feature mounts. It correlates typed services but creates no second durable
   authority.
+- Its isolated crash-report module exposes reporter startup, fatal-hook installation and the
+  report-only GPUI entry required by the [crash-reporting system](../../../doc/systems/crash-reporting/design.md).
+  That entry constructs no ordinary service graph or Beryl-home state.
 - The process service graph owns admitted thread-execution sessions, scheduler flights, pending
   request routing, runtime interest, and coordinated shutdown. Main-window controllers own view
   claims, editors, and subscriptions; removing a controller cannot revoke required execution.
@@ -68,6 +71,10 @@ internal contract.
   path. Logical durable content is paged or streamed rather than truncated to meet resident bounds.
 
 ## Cross-Cutting Guarantees
+
+- Resource settlement below governs ordinary operation and returned failures. Fatal application
+  panics follow the crash-reporting process boundary and require no shared-state teardown or
+  ordinary acknowledgement before direct termination.
 
 - Background work is fenced by exact durable identity, revision, and home/service generation.
   Cancellation, supersession, terminal failure, disposal, and same-home replacement cannot make an
