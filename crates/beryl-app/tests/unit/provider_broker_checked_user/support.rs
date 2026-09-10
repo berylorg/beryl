@@ -68,6 +68,7 @@ pub(super) struct CheckedUserFixture {
     pub(super) broker: Option<Arc<ProviderBrokerControl>>,
     ingester: Option<RunningProviderBrokerIngester>,
     pub(super) commands: crate::cas_projection::persistent_failure::LiveCommandAuthorizer,
+    pub(super) command_gate: crate::cas_projection::persistent_failure::MasterCommandGate,
     pub(super) failure_notification:
         crate::cas_projection::persistent_failure::PersistentFailureNotification,
     authority: Arc<ConnectionRegistryAuthority>,
@@ -256,11 +257,11 @@ impl CheckedUserFixture {
                 home_id,
                 home_generation,
             );
-        let commands = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+        let command_gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
             failure_notification.service_generation(),
             Some(failure_notification.clone()),
-        )
-        .authorizer();
+        );
+        let commands = command_gate.authorizer();
         let scheduler_signal =
             crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new();
         let router = Arc::new(
@@ -338,6 +339,7 @@ impl CheckedUserFixture {
             broker: Some(broker),
             ingester: Some(ingester),
             commands,
+            command_gate,
             failure_notification,
             authority,
             router,
@@ -457,6 +459,7 @@ impl CheckedUserFixture {
             broker,
             ingester,
             commands: _,
+            command_gate: _,
             failure_notification: _,
             authority,
             router,

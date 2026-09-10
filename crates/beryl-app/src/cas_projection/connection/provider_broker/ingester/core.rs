@@ -49,6 +49,7 @@ impl Ingester {
             };
             self.command = Some(command);
             let (reply, terminal) = self.apply(operation);
+            persistent_failure = self.exact_persistent_failure();
             if self.authority_lost {
                 self.command
                     .take()
@@ -58,7 +59,6 @@ impl Ingester {
                 self.cancelled.store(true, Ordering::Release);
                 break;
             }
-            persistent_failure = self.exact_persistent_failure();
             if terminal || persistent_failure {
                 // The terminal acknowledgement may unblock an owner that immediately waits for
                 // the persistent-failure cut. Release this operation's outer drain-counted permit

@@ -56,15 +56,40 @@ boundary. The active plan tracks this work before process composition resumes.
 
 ## Reconciliation Blocker
 
-On 2026-09-10, reconciliation established a production defect in
+After accepting independent fatal reporting, a scoped ordinary returned-error test reproduced the
+same activation-path classification problem. On 2026-09-10,
+`activation_storage_failure_fences_commands_before_acknowledgement` injected `BeforeCommit` through
+`active_cas_turn_fault_scope`, without a writer panic. Home health became failed, but
+`commands.failure_observed()` was false after the checked submission returned. The focused run
+`cas-activation-returned-failure-20260910` failed its sole selected case; its log is retained in the
+evidence directory above. The preserved regression now passes after the correction below.
+Independent read-only review confirms the scoped returned-error test preserves current authority
+and that the later gate/custody assertions were not reached in this failing run.
+
+`publish_active_turn_once` settles its health fence before returning the publication error.
+`LiveCommandHealthFence::settle_after_operation` classifies failed health as generic closed
+authority; `Ingester::run_loop` previously acknowledged its authority-lost branch before exact persistent
+failure notification. Ordinary returned failures still require that notification and fencing
+before acknowledgement. Fatal reporting does not cover this path.
+
+After Operator authorization, the accepted correction moved the existing exact failure check
+before the authority-loss branch. It retains home/generation guards and releases the command
+before acknowledgement. Seven focused failure/stop cases and 27 gate/broker cases passed, followed
+by the added healthy-authority-loss negative. That negative pauses real publication, elects
+ordinary shutdown, and verifies healthy home, no failure notification and zero counted commands
+after acknowledgement. Production compilation and independent semantic review passed. Evidence
+prefixes are `cas-failure-ack-order-20260910`, `cas-failure-ack-controls-20260910`,
+`cas-failure-ack-healthy-20260910` and `cas-failure-ack-check-20260910`.
+
+The earlier panic-based investigation found the same classification path in
 `persistent_activation_publication_panic_cuts_cleanup_and_drains_before_acknowledgement`.
 An activation-publication panic fails the home, but `publish_active_turn_once` settles its permit
 before returning the publication failure. `LiveCommandHealthFence::settle_after_operation`
 classifies the failed home as generic closed authority. `Ingester::run_loop` then disposes
 authority-lost work and acknowledges it before reaching exact persistent-failure notification.
-The assertion observes drained permits but command admission still open. It remains unchanged.
+The assertion observed drained permits but command admission still open.
 
-This violates the CAS-live failed-write fencing contract and the activation-panic consequence
+Under the then-current panic-recovery policy this violated the activation-panic consequence
 already recorded in [retention and retirement authority](cas-phase77-retention-and-retirement-authority.md).
 The test-only reconciliation approach cannot repair this path. Production changes stopped under
 the repository technical-plan-failure rule. The initial proposed correction was exact failed-home
@@ -78,8 +103,8 @@ closed command admission, zero active permits, retained target custody and no te
 proof. Both pass and independent read-only review accepts these corrections. The adjacent terminal
 publication-panic test also passes.
 
-The latest bounded selection, `cas-fixture-corrections-20260910`, ran 19 cases: nine passed and ten
-failed. The remaining failures are the production activation-panic defect, four image-bearing cases
+The earlier bounded selection, `cas-fixture-corrections-20260910`, ran 19 cases: nine passed and ten
+failed. Those failures included the now-corrected activation path, four image-bearing cases
 with `MutationBuildPreparation(Build(InvalidRoot))`, and five compaction-marker cases whose attempted
 lifecycle-yield setup is not accepted. The active-steering observation-delta correction and bounded
 large marker-free replay now pass. Image and compaction fixture edits remain unaccepted working
@@ -88,8 +113,9 @@ material; the selection does not establish phase completion or a green regressio
 Logs and process summaries use the retained evidence directory above, with prefixes
 `cas-fixture-reconciliation-20260910` and `cas-fixture-corrections-20260910`. The final guarded job
 reports `root_exit=100`, `root_reaped=true` and `remaining_job_pids=[]`; its verified temporary
-directory was removed. No production fix was made and these partial test corrections remain
-uncommitted while the separately authorized fatal-reporting boundary is implemented.
+directory was removed. Image/compaction fixture corrections remain uncommitted. The fatal-reporting
+channel and GUI have since passed 23 focused tests and independent
+review; ordinary executable mounting remains its separately tracked bootstrap dependency.
 
 ## Fatal Panic Reporting Direction
 

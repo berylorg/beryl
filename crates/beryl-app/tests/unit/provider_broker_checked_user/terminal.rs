@@ -120,7 +120,7 @@ fn normal_completed_terminal_preserves_outcome_when_item_audit_is_incomplete() {
 }
 
 #[test]
-fn before_commit_terminal_failure_enters_verification_and_closes_without_terminal_proof() {
+fn before_commit_terminal_storage_failure_fences_commands_without_terminal_proof() {
     let faults = FaultController::new();
     let mut fixture = CheckedUserFixture::with_faults(181, faults.clone());
     let cas_item_id = CasItemId::new("checked-user-item-181").unwrap();
@@ -134,20 +134,69 @@ fn before_commit_terminal_failure_enters_verification_and_closes_without_termina
 
     assert_eq!(
         fixture.home.health().state(),
+        beryl_home_store::HomeHealthState::Failed
+    );
+    assert!(fixture.commands.failure_observed());
+    assert!(!fixture.commands.is_open());
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+    assert_eq!(fixture.router_target_count(), 1);
+    assert!(fixture.registration.terminal_reason().is_none());
+    assert!(fixture.registration.proven_terminal().is_none());
+
+    fixture.close();
+}
+
+#[test]
+fn healthy_authority_loss_drains_before_acknowledgement_without_storage_failure() {
+    let mut fixture = CheckedUserFixture::new(193);
+    fixture.submit_checked_while_publication_paused(
+        UserMessageEchoLifecycle::Started,
+        CasItemId::new("checked-user-item-193").unwrap(),
+        |fixture| {
+            assert!(fixture.commands.active_command_count_for_test() > 0);
+            assert_eq!(
+                fixture.command_gate.close_for_shutdown(),
+                crate::cas_projection::persistent_failure::MasterCommandGateCloseOwner::OrdinaryShutdown,
+            );
+        },
+    );
+    assert_eq!(
+        fixture.home.health().state(),
         beryl_home_store::HomeHealthState::Healthy
     );
     assert!(!fixture.commands.failure_observed());
-    assert!(fixture.commands.is_open());
     assert_eq!(fixture.commands.active_command_count_for_test(), 0);
     assert_eq!(fixture.router_target_count(), 1);
-    assert_eq!(
-        fixture.registration.terminal_reason(),
-        Some(
-            crate::cas_projection::connection::router::LiveEventTargetCloseReason::SourcePublicationFailed
-        )
-    );
+    assert!(fixture.registration.terminal_reason().is_none());
     assert!(fixture.registration.proven_terminal().is_none());
+    fixture.close();
+}
 
+#[test]
+fn activation_storage_failure_fences_commands_before_acknowledgement() {
+    let faults = FaultController::new();
+    let mut fixture = CheckedUserFixture::with_faults(192, faults.clone());
+    faults.fail_next_in_scope(
+        FaultPoint::BeforeCommit,
+        syndic_storage::test_faults::active_cas_turn_fault_scope(),
+    );
+    fixture.submit_checked(
+        UserMessageEchoLifecycle::Started,
+        CasItemId::new("checked-user-item-192").unwrap(),
+    );
+    assert_eq!(
+        fixture.home.health().state(),
+        beryl_home_store::HomeHealthState::Failed
+    );
+    assert!(
+        fixture.commands.failure_observed(),
+        "returned storage failure was not observed before acknowledgement"
+    );
+    assert!(!fixture.commands.is_open());
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+    assert_eq!(fixture.router_target_count(), 1);
+    assert!(fixture.registration.terminal_reason().is_none());
+    assert!(fixture.registration.proven_terminal().is_none());
     fixture.close();
 }
 
@@ -206,7 +255,7 @@ fn persistent_terminal_publication_panic_cuts_cleanup_and_drains_before_acknowle
 }
 
 #[test]
-fn after_persist_terminal_enters_verification_and_closes_without_terminal_proof() {
+fn after_persist_terminal_storage_failure_fences_commands_without_terminal_proof() {
     let faults = FaultController::new();
     let mut fixture = CheckedUserFixture::with_faults(182, faults.clone());
     let cas_item_id = CasItemId::new("checked-user-item-182").unwrap();
@@ -221,18 +270,13 @@ fn after_persist_terminal_enters_verification_and_closes_without_terminal_proof(
 
     assert_eq!(
         fixture.home.health().state(),
-        beryl_home_store::HomeHealthState::Healthy
+        beryl_home_store::HomeHealthState::Failed
     );
-    assert!(!fixture.commands.failure_observed());
-    assert!(fixture.commands.is_open());
+    assert!(fixture.commands.failure_observed());
+    assert!(!fixture.commands.is_open());
     assert_eq!(fixture.commands.active_command_count_for_test(), 0);
     assert_eq!(fixture.router_target_count(), 1);
-    assert_eq!(
-        fixture.registration.terminal_reason(),
-        Some(
-            crate::cas_projection::connection::router::LiveEventTargetCloseReason::SourcePublicationFailed
-        )
-    );
+    assert!(fixture.registration.terminal_reason().is_none());
     assert!(fixture.registration.proven_terminal().is_none());
 
     fixture.close();

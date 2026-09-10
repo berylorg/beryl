@@ -44,15 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 381: Present The Isolated Crash Report (finished)
+# Phase 383: Fence Exact Storage Failure Before Broker Acknowledgement (finished)
 
-Accepted the report-only GPUI surface and checked Windows clipboard path. All 23 reporting tests
-passed, including real parent abort followed by a native report window and native-close exit.
-Independent review accepted the two-command, focus, bounded preview and export boundaries. Actual
-OS clipboard success was not exercised; injected export tests and native API review are explicit
-in [the evidence](memory/topic/windows-fatal-reporting/independent-report-lifetime.md).
-Presentation adds two focused modules, 305 nonblank lines, using existing dependencies. The channel
-and presentation are ready for the separately tracked executable mount below.
+The broker now observes exact storage failure before authority-loss acknowledgement. The scoped
+activation regression, terminal-storage cuts, healthy authority-loss negative, gate/stop checks and
+production compilation passed. Independent review accepted notification ordering, generation
+isolation and permit draining. The two terminal-storage assertion corrections are accepted with
+this boundary; [failure evidence](failures/cas-regression-baseline.md#reconciliation-blocker) records
+the original defect and its correction.
 
 # Phase 378: Reconcile Existing CAS Regression Evidence (wip)
 
@@ -67,13 +66,13 @@ Verify the 18-case baseline selection and affected fixture consumers, then the a
 suite; document any independently remaining failure instead of treating a partial run as green.
 Use focused independent review for changes to fault-injection expectations or custody assertions.
 
-Paused after the [activation-panic diagnosis](failures/cas-regression-baseline.md#reconciliation-blocker):
-the Operator replaced the proposed in-process correction with independent fatal reporting.
-Reconcile panic cases against that policy without treating library-unwind tests as proof of
-application recovery; retain the ordinary returned-error assertions.
-The current test corrections remain uncommitted and this phase remains unaccepted: the latest
-19-case selection has nine passes and ten failures, including unresolved image and compaction
-fixture setup. Independent review accepts only the two terminal-storage assertion corrections.
+The returned activation-write correction is accepted. Resume the image and compaction fixtures.
+Reconcile panic cases against fatal policy without treating library-unwind tests as proof of
+application recovery; preserve the ordinary returned-error regression.
+The remaining fixture corrections are uncommitted and this phase remains unaccepted: the prior
+19-case selection had nine passes and ten failures, including unresolved image and compaction
+fixture setup. The activation fault cases now pass under the accepted correction; rerun the
+complete baseline selection after the remaining fixture repairs.
 
 The [fatal reporting assessment](failures/cas-regression-baseline.md#fatal-panic-reporting-direction)
 preserves the rejected same-process assumption and the selected replacement.
