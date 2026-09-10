@@ -6,8 +6,11 @@ use std::{
 };
 
 mod record;
+mod surface;
 #[cfg(target_os = "windows")]
 mod windows;
+
+pub use surface::present;
 
 pub const REPORTER_ARGUMENT: &str = "--beryl-crash-reporter";
 

@@ -44,24 +44,17 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 380: Deliver Fatal Reports Across Process Exit (finished)
+# Phase 381: Present The Isolated Crash Report (finished)
 
-Accepted the bounded fatal-reporting authority and app-owned Windows channel with aborting hook.
-Focused production/fixture checks and all 17 record/process tests passed; independent semantic
-review accepted handle/mapping ownership, hook bounds and exact timeout-child cleanup. Production
-adds four focused source files, 445 nonblank lines, within existing packages and dependencies.
-The [containment lesson](failures/crash-report-test-containment.md) records direct nextest invocation.
-GUI presentation and ordinary executable bootstrap remain separate acceptance boundaries.
+Accepted the report-only GPUI surface and checked Windows clipboard path. All 23 reporting tests
+passed, including real parent abort followed by a native report window and native-close exit.
+Independent review accepted the two-command, focus, bounded preview and export boundaries. Actual
+OS clipboard success was not exercised; injected export tests and native API review are explicit
+in [the evidence](memory/topic/windows-fatal-reporting/independent-report-lifetime.md).
+Presentation adds two focused modules, 305 nonblank lines, using existing dependencies. The channel
+and presentation are ready for the separately tracked executable mount below.
 
-# Phase 381: Present The Isolated Crash Report (wip)
-
-Implement the declared report-only GPUI surface with its bounded preview, Copy feedback, keyboard
-focus and terminal Exit/close behavior. Verify only the two commands exist, text remains inert,
-clipboard export is explicit and presentation opens no home, settings, backend or recovery path.
-Exercise the accepted report handoff with an isolated GUI fixture and independently review the
-presentation and sensitive-data boundary.
-
-# Phase 378: Reconcile Existing CAS Regression Evidence (pending)
+# Phase 378: Reconcile Existing CAS Regression Evidence (wip)
 
 Restore the bounded regression evidence identified in the committed-baseline comparison before
 resuming process composition. Derive fixture and assertion corrections from the existing composer

@@ -58,6 +58,12 @@ internal contract.
 
 ## Public Boundary
 
+- `crash_reporting::install` takes the current executable path and installs fatal handling before
+  ordinary startup; setup failure retains abort-only handling. The composition root dispatches
+  `REPORTER_ARGUMENT` before ordinary bootstrap and passes its remaining arguments to the terminal
+  `run_reporter` entry with `crash_reporting::present` as the report callback. `present` accepts
+  only the system's bounded report extent, owns the independent GPUI lifetime and returns after
+  that surface exits. No ordinary application service is an input to these entries.
 - Public commands and completions carry every applicable home, service, window, thread, draft,
   session, operation, runtime, root, connection, CAS, turn, item, revision, generation, and request
   identity. A stale or ambiguous result is rejected or reconciled by its typed owner and is never

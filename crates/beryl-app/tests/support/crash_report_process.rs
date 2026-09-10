@@ -9,18 +9,21 @@ use std::{
 
 use tempfile::TempDir;
 use windows::Win32::{
-    Foundation::{FILETIME, HANDLE, WAIT_OBJECT_0},
+    Foundation::{FILETIME, HANDLE, HWND, LPARAM, WAIT_OBJECT_0, WPARAM},
     System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
         PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
     },
+    UI::WindowsAndMessaging::{FindWindowExW, GetWindowThreadProcessId, PostMessageW, WM_CLOSE},
 };
+use windows::core::w;
 
 pub struct ReportProcess {
     child: Child,
     reporter: Option<OwnedHandle>,
     installation: String,
     directory: TempDir,
+    gui: bool,
 }
 
 pub struct Outcome {
@@ -28,6 +31,7 @@ pub struct Outcome {
     pub report: Option<String>,
     pub installation: String,
     pub continued: bool,
+    pub gui_closed: bool,
 }
 
 impl ReportProcess {
@@ -45,12 +49,18 @@ impl ReportProcess {
         } else {
             command.env_remove("BERYL_CRASH_REPORT_TEST_STARTUP");
         }
+        if mode == "gui" {
+            command.env("BERYL_CRASH_REPORT_TEST_GUI", "1");
+        } else {
+            command.env_remove("BERYL_CRASH_REPORT_TEST_GUI");
+        }
         let child = command.spawn().unwrap();
         let mut process = Self {
             child,
             reporter: None,
             installation: String::new(),
             directory,
+            gui: mode == "gui",
         };
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
@@ -119,6 +129,9 @@ impl ReportProcess {
             assert!(Instant::now() < deadline, "fixture exit timed out");
             thread::sleep(Duration::from_millis(10));
         };
+        if self.gui {
+            self.close_report_window();
+        }
         if let Some(handle) = &self.reporter {
             assert_eq!(
                 unsafe { WaitForSingleObject(HANDLE(handle.as_raw_handle()), 5_000) },
@@ -131,11 +144,47 @@ impl ReportProcess {
             report: fs::read_to_string(self.directory.path().join("report")).ok(),
             installation: self.installation.clone(),
             continued: self.directory.path().join("continued").exists(),
+            gui_closed: self.directory.path().join("gui-closed").exists(),
         }
     }
 
     fn stderr(&self) -> String {
         fs::read_to_string(self.directory.path().join("stderr")).unwrap_or_default()
+    }
+
+    fn close_report_window(&self) {
+        let identity = fs::read_to_string(self.directory.path().join("reporter-pid")).unwrap();
+        let pid: u32 = identity.split_once(' ').unwrap().0.parse().unwrap();
+        assert!(
+            self.reporter.is_some(),
+            "reporter identity must remain pinned"
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let mut previous = HWND::default();
+            for _ in 0..1000 {
+                let Ok(window) = (unsafe {
+                    FindWindowExW(None, Some(previous), None, w!("Beryl — Internal error"))
+                }) else {
+                    break;
+                };
+                let mut owner = 0;
+                unsafe {
+                    GetWindowThreadProcessId(window, Some(&mut owner));
+                }
+                if owner == pid {
+                    unsafe { PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0)) }.unwrap();
+                    return;
+                }
+                previous = window;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native report window did not open: {}",
+                self.stderr()
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn open_reporter(&self) -> Option<OwnedHandle> {

@@ -75,7 +75,11 @@ pub fn run() {
             _ => {}
         }
         run_reporter(&arguments[1..], |report| {
-            fs::write(directory.join("report"), report).unwrap();
+            fs::write(directory.join("report"), &report).unwrap();
+            if env::var_os("BERYL_CRASH_REPORT_TEST_GUI").is_some() {
+                beryl_app::crash_reporting::present(report);
+                fs::write(directory.join("gui-closed"), "closed").unwrap();
+            }
         });
     }
 

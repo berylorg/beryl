@@ -41,6 +41,15 @@ features still require focused compilation when implementation selects the exact
 
 # Sources
 
+The report-only clipboard path uses checked Windows calls: GPUI's ordinary clipboard write API
+returns no success result. A non-null active owner window, movable UTF-16 allocation and explicit
+successful ownership transfer avoid falsely acknowledging a failed write. GUI tests inject copy
+success/failure and inspect full report export without replacing the Operator's clipboard;
+native API ownership is covered by compilation and independent source review, not an OS clipboard
+success test. [SetClipboardData](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata)
+and [OpenClipboard](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openclipboard)
+establish ownership transfer and null-owner/contended-clipboard failure behavior (accessed 2026-09-10).
+
 Microsoft Learn API/process documentation, accessed 2026-09-10:
 
 - [CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga):

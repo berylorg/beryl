@@ -24,6 +24,19 @@ fn normal_exit_silently_reaps_the_waiting_reporter() {
 }
 
 #[test]
+fn native_report_window_survives_parent_death_and_native_close_exits_the_reporter() {
+    let result = ReportProcess::start("gui", None).finish();
+    assert!(!result.success);
+    assert!(
+        result
+            .report
+            .unwrap()
+            .contains("storage writer invariant failed")
+    );
+    assert!(result.gui_closed);
+}
+
+#[test]
 fn an_ordinary_catch_cannot_resume_after_a_fatal_panic() {
     let result = ReportProcess::start("caught", None).finish();
     assert!(!result.success);
