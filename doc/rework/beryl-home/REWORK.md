@@ -361,7 +361,8 @@
 - [x] Added bounded one-shot backend response-completion notification through successful write or
   final capability release; independent review, production checks and 64 regressions passed.
 - [x] Accepted the home mutation-observation boundary for the [idle-retirement admission correction](../../failures/process-idle-admission-race.md).
-- [ ] Accept scheduler maintenance and autonomous idle-session release with required-work admission serialized against election.
+- [x] Accepted scheduler maintenance and autonomous idle-session release with required-work admission serialized against election.
+- [ ] Reconcile the [confirmed CAS regression baseline failures](../../failures/cas-regression-baseline.md) before process composition resumes.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

@@ -17,13 +17,35 @@ impl RuntimeInterestOwner {
                 entry
                     .interests
                     .values()
-                    .filter(|current| **current == kind)
+                    .filter(|current| current.kind == kind)
                     .count()
             })
     }
 
     pub(in crate::cas_projection) fn configuration(&self) -> RuntimeInterestConfig {
         self.shared.config
+    }
+
+    pub(in crate::cas_projection) fn with_no_view_interest<T>(
+        &self,
+        binding: &ExecutionBinding,
+        process_generation: CasProcessGeneration,
+        elect: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let state = self.shared.lock();
+        if state.closed || !self.shared.commands.is_open() {
+            return None;
+        }
+        let entry = state.runtimes.get(&binding.runtime_id())?;
+        if !matches!(entry.status, RuntimeInterestStatus::Ready(ready)
+            if ready.process_generation() == process_generation)
+            || entry.interests.values().any(|interest| {
+                interest.kind == RuntimeInterestKind::View && &interest.binding == binding
+            })
+        {
+            return None;
+        }
+        Some(elect())
     }
 
     #[cfg(feature = "test-faults")]
@@ -162,7 +184,13 @@ impl RuntimeInterestOwner {
             let attempt = entry.attempt;
             command
                 .commit_if_current(|| {
-                    entry.interests.insert(interest, kind);
+                    entry.interests.insert(
+                        interest,
+                        RuntimeInterestRecord {
+                            kind,
+                            binding: binding.clone(),
+                        },
+                    );
                 })
                 .map_err(|_| RuntimeInterestError::Closed)?;
             state.next_identity = next;
@@ -193,7 +221,13 @@ impl RuntimeInterestOwner {
                     RuntimeEntry {
                         spec,
                         attempt: interest,
-                        interests: HashMap::from([(interest, kind)]),
+                        interests: HashMap::from([(
+                            interest,
+                            RuntimeInterestRecord {
+                                kind,
+                                binding: binding.clone(),
+                            },
+                        )]),
                         status: RuntimeInterestStatus::Starting,
                         worker: None,
                         cleanup_complete: false,

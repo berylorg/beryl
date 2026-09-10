@@ -66,6 +66,7 @@ pub(in crate::cas_projection) struct ConnectionPromotionReservation {
     connection: Arc<ProjectionConnection>,
     id: PromotionAuthorityId,
     command: Option<crate::cas_projection::persistent_failure::LiveCommandPermit>,
+    scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     active: bool,
 }
 
@@ -74,6 +75,7 @@ pub(in crate::cas_projection) struct ConnectionCleanupOwner {
     connection: Arc<ProjectionConnection>,
     id: CleanupAuthorityId,
     command: Option<crate::cas_projection::persistent_failure::LiveCommandPermit>,
+    scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     active: bool,
 }
 
@@ -167,6 +169,7 @@ impl ConnectionRegistryAuthority {
         self: &Arc<Self>,
         connection: &Arc<ProjectionConnection>,
         command: crate::cas_projection::persistent_failure::LiveCommandPermit,
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     ) -> Result<Option<ConnectionCleanupOwner>, ProjectionCoordinatorError> {
         let mut state = self.lock()?;
         if self.is_retired() {
@@ -184,6 +187,7 @@ impl ConnectionRegistryAuthority {
             connection: Arc::clone(connection),
             id,
             command: Some(command),
+            scheduler_signal,
             active: true,
         }))
     }
@@ -214,6 +218,7 @@ impl ConnectionRegistryAuthority {
         self: &Arc<Self>,
         connection: &Arc<ProjectionConnection>,
         command: crate::cas_projection::persistent_failure::LiveCommandPermit,
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     ) -> Result<Option<ConnectionPromotionReservation>, ProjectionCoordinatorError> {
         let mut state = self.lock()?;
         if self.is_retired() || state.scheduled_promotion.is_some() {
@@ -233,6 +238,7 @@ impl ConnectionRegistryAuthority {
             connection: Arc::clone(connection),
             id,
             command: Some(command),
+            scheduler_signal,
             active: true,
         }))
     }
@@ -655,6 +661,9 @@ impl ConnectionPromotionReservation {
         let settlement = self.settle();
         self.active = false;
         self.command.take();
+        self.scheduler_signal.wake(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck,
+        );
         match settlement? {
             ExactSettlementOutcome::Ordinary {
                 should_detach: true,
@@ -712,6 +721,9 @@ impl ConnectionCleanupOwner {
         let settlement = self.settle();
         self.active = false;
         self.command.take();
+        self.scheduler_signal.wake(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck,
+        );
         match settlement? {
             ExactSettlementOutcome::Ordinary {
                 should_detach: true,
@@ -733,6 +745,9 @@ impl Drop for ConnectionCleanupOwner {
         let settlement = self.settle();
         self.active = false;
         self.command.take();
+        self.scheduler_signal.wake(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck,
+        );
         match settlement {
             Ok(ExactSettlementOutcome::Ordinary {
                 should_detach: true,
@@ -755,6 +770,7 @@ impl Drop for ConnectionPromotionReservation {
             let settlement = self.settle();
             self.active = false;
             self.command.take();
+            self.scheduler_signal.wake(crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck);
             match settlement {
                 Ok(ExactSettlementOutcome::Ordinary {
                     should_detach: true,

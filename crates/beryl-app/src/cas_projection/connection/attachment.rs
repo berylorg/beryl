@@ -78,15 +78,20 @@ impl std::fmt::Debug for ConnectionAttachment {
 impl ConnectionAttachment {
     /// Elects ordinary retirement and arms ingester-admission release before cancellation.
     pub(super) fn begin_ordinary_retirement(&self) -> bool {
-        if !self.persistent_failure.begin_ordinary_retirement() {
+        if !self.persistent_failure.elect_ordinary_retirement(None) {
             return false;
         }
+        self.signal_elected_ordinary_retirement();
+        true
+    }
+
+    pub(super) fn signal_elected_ordinary_retirement(&self) {
+        self.persistent_failure.signal_ordinary_retirement();
         if let Ok(ingester) = self.ingester.lock()
             && let Some(ingester) = ingester.as_ref()
         {
             let _ = ingester.arm_ordinary_worker_release();
         }
-        true
     }
 
     pub(super) fn request_ingester_cancel(&self) {

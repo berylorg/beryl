@@ -54,6 +54,7 @@ impl ProjectionConnectionService {
             home: Arc::clone(home),
             storage: self.storage.clone(),
             owner: Arc::clone(owner),
+            work_sources: self.work_sources(),
             admission: self
                 .admission_context()
                 .map_err(|_| RuntimeSessionPreparationError::ServiceUnavailable)?,

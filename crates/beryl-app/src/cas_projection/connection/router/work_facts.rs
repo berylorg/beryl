@@ -97,6 +97,13 @@ impl EventRouter {
             return None;
         }
         let target = state.targets.get(thread_id)?;
+        if response
+            .register_completion_waker(self.scheduler_signal.idle_recheck_waker())
+            .is_err()
+        {
+            state.work_revision = None;
+            return None;
+        }
         let observation = RequestObservation {
             identity: self.work_target_identity(target),
             turn_id: turn_id.clone(),

@@ -28,6 +28,8 @@ mod delayed_steering;
 mod persistent_failure;
 mod provider_publication;
 mod queue_capacity;
+#[path = "../../../../tests/unit/router_response_wake.rs"]
+mod response_wake;
 mod retirement;
 mod stop_election;
 

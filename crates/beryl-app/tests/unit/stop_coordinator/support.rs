@@ -356,6 +356,7 @@ impl StopFixture {
             home_generation,
             storage.clone(),
             command_gate.authorizer(),
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
         ));
         let router = Arc::new(
             EventRouter::new_with_scheduler(

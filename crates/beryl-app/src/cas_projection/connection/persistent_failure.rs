@@ -287,21 +287,30 @@ impl PersistentFailureDriverSlot {
         )
     }
 
-    pub(in crate::cas_projection) fn begin_ordinary_retirement(&self) -> bool {
+    pub(in crate::cas_projection) fn elect_ordinary_retirement(
+        &self,
+        observation: Option<&beryl_home_store::HomeMutationObservation>,
+    ) -> bool {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        match state.closure {
+        let mut elect = || match state.closure {
             Some(PersistentFailureDriverClosure::Failure(_)) => false,
             Some(PersistentFailureDriverClosure::OrdinaryRetirement) => true,
             None => {
                 state.closure = Some(PersistentFailureDriverClosure::OrdinaryRetirement);
-                drop(state);
-                self.changed.notify_all();
                 true
             }
+        };
+        match observation {
+            Some(observation) => observation.try_elect(elect).unwrap_or(false),
+            None => elect(),
         }
+    }
+
+    pub(in crate::cas_projection) fn signal_ordinary_retirement(&self) {
+        self.changed.notify_all();
     }
 
     pub(in crate::cas_projection) fn ordinary_retirement_won(&self) -> bool {

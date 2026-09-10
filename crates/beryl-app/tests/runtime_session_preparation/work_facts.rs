@@ -35,6 +35,9 @@ fn preparation_handoff_and_exact_checkout_invalidate_read_only_session_pages() {
     assert_eq!(sessions.work_revision().unwrap(), preparing);
     assert!(process.running());
 
+    let view = fixture
+        .acquire(1, beryl_app::cas_projection::RuntimeInterestKind::View)
+        .unwrap();
     fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
     wait_until(|| sessions.diagnostics().available == 1);
     assert!(matches!(
@@ -62,6 +65,7 @@ fn preparation_handoff_and_exact_checkout_invalidate_read_only_session_pages() {
     );
     drop(lease);
     assert_ne!(sessions.work_revision().unwrap(), checked_out);
+    drop(view);
     close(&mut fixture, &sessions);
     assert!(matches!(
         sessions.work_revision(),

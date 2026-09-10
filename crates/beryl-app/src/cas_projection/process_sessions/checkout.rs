@@ -23,6 +23,10 @@ struct CheckoutReturn {
 }
 
 impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
+    fn recheck_idle_sessions(&mut self) {
+        self.sessions.recheck_idle_sessions();
+    }
+
     fn attach(&mut self, context: ScheduledExecutionProviderContext) {
         let mut state = self.sessions.lock();
         if state.context.is_some() {

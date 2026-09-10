@@ -84,6 +84,8 @@ impl Drop for StopCustodyToken {
         if !custody.primary && !custody.driver {
             state.live_custody.remove(&self.operation_id);
         }
+        drop(state);
+        coordinator.recheck_idle_sessions();
     }
 }
 
@@ -153,6 +155,7 @@ impl Drop for PermissionCustodyToken {
                 .unwrap_or_else(|poison| poison.into_inner())
                 .permissions
                 .remove(&self.serial);
+            coordinator.recheck_idle_sessions();
         }
     }
 }

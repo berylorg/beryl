@@ -69,12 +69,15 @@ impl ProjectionConnectionService {
             MasterCommandGate::new(service_generation, Some(failure_notification.clone()));
         let command_authorizer = command_gate.authorizer();
         let connections = ProjectionServiceConnectionRegistry::new(service_generation);
+        let scheduler_signal = AcceptedInputSchedulerSignal::new();
+        let mutation_observer = home.observe_mutations(scheduler_signal.idle_recheck_waker())?;
         let stop_coordinator = Arc::new(StopCoordinator::new(
             &home,
             home.home_id(),
             home_generation,
             storage.clone(),
             command_authorizer.clone(),
+            scheduler_signal.clone(),
         ));
         let persistent_failure = PersistentFailureCoordinator::start_with_initial_start(
             Arc::clone(&home),
@@ -93,7 +96,6 @@ impl ProjectionConnectionService {
                 message: error.to_string(),
             },
         )?;
-        let scheduler_signal = AcceptedInputSchedulerSignal::new();
         let native_lineage_recovery = NativeLineageRecoveryControl::new(
             config.worker_capacity(),
             home.home_id(),
@@ -166,6 +168,7 @@ impl ProjectionConnectionService {
             context_compaction: Some(context_compaction),
             scheduler: Some(scheduler),
             scheduler_signal,
+            mutation_observer,
             native_lineage_recovery,
             scheduled_ordinary_provider: Some(scheduled_ordinary_provider),
             runtime_interest: None,

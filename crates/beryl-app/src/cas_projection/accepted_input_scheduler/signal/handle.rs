@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    task::{Wake, Waker},
+};
 
 use super::{
     AcceptedInputSchedulerDiagnostics, AcceptedInputWakeReason, StartupRecoveryDiagnostics,
@@ -20,6 +23,10 @@ impl std::fmt::Debug for AcceptedInputSchedulerSignal {
 }
 
 impl AcceptedInputSchedulerSignal {
+    pub(in crate::cas_projection) fn idle_recheck_waker(&self) -> Waker {
+        Waker::from(Arc::new(self.clone()))
+    }
+
     pub(in crate::cas_projection) fn new() -> Self {
         Self {
             inner: Arc::new(SignalInner {
@@ -50,7 +57,7 @@ impl AcceptedInputSchedulerSignal {
         }
     }
 
-    fn wake_bits(&self, bits: u16) {
+    fn wake_bits(&self, bits: u32) {
         let mut state = self
             .inner
             .state
@@ -148,6 +155,14 @@ impl AcceptedInputSchedulerSignal {
             .diagnostics
     }
 
+    #[cfg(any(test, feature = "test-faults"))]
+    pub(in crate::cas_projection) fn wake_pending_for_test(
+        &self,
+        reason: AcceptedInputWakeReason,
+    ) -> bool {
+        self.inner.state.lock().unwrap().pending & reason.bit() != 0
+    }
+
     pub(in super::super) fn update_diagnostics(
         &self,
         update: impl FnOnce(&mut AcceptedInputSchedulerDiagnostics),
@@ -158,5 +173,11 @@ impl AcceptedInputSchedulerSignal {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         update(&mut state.diagnostics);
+    }
+}
+
+impl Wake for AcceptedInputSchedulerSignal {
+    fn wake(self: Arc<Self>) {
+        Self::wake(&self, AcceptedInputWakeReason::IdleRecheck);
     }
 }

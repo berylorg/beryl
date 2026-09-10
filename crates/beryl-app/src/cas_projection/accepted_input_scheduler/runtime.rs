@@ -151,6 +151,23 @@ impl SchedulerRuntime {
                 self.fail_closed(failure);
                 break;
             }
+            if wake.rechecks_idle_sessions() {
+                let inspected = self
+                    .context
+                    .scheduled_ordinary_provider
+                    .lock()
+                    .map(|mut provider| {
+                        provider.recheck_idle_sessions();
+                    })
+                    .is_ok();
+                if !inspected {
+                    self.fail_closed(SchedulerFailure::Fatal);
+                    break;
+                }
+                self.context.signal.update_diagnostics(|diagnostics| {
+                    diagnostics.idle_pass_count = diagnostics.idle_pass_count.saturating_add(1);
+                });
+            }
         }
         self.join_all_workers();
         match failure::gate_status(&self.context) {

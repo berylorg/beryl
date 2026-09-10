@@ -5,6 +5,7 @@ use crate::cas_projection::context_compaction::ContextCompactionCoordinator;
 
 #[derive(Clone)]
 pub(in crate::cas_projection) struct ProcessWorkSources {
+    mutation_observer: beryl_home_store::HomeMutationObserver,
     home: Weak<HomeStore>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -55,6 +56,7 @@ impl ProjectionConnectionService {
 
     pub(in crate::cas_projection) fn work_sources(&self) -> ProcessWorkSources {
         ProcessWorkSources {
+            mutation_observer: self.mutation_observer.clone(),
             home: self.home.as_ref().map_or_else(Weak::new, Arc::downgrade),
             home_id: self.home_id,
             home_generation: self.home_generation,
@@ -90,6 +92,15 @@ impl ProjectionConnectionService {
 }
 
 impl ProcessWorkSources {
+    pub(in crate::cas_projection) fn mutation_observation(
+        &self,
+    ) -> Result<beryl_home_store::HomeMutationObservation, ProcessWorkError> {
+        if !self.command_authorizer.is_open() {
+            return Err(ProcessWorkError::Closed);
+        }
+        Ok(self.mutation_observer.observe()?)
+    }
+
     pub(super) fn read(&self) -> Result<ProcessWorkRead, ProcessWorkError> {
         if !self.command_authorizer.is_open() {
             return Err(ProcessWorkError::Closed);

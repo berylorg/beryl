@@ -228,10 +228,15 @@ impl Drop for RuntimeInterest {
     fn drop(&mut self) {
         let mut state = self.shared.lock();
         let mut wake = false;
+        let mut wake_idle = false;
         if let Some(entry) = state.runtimes.get_mut(&self.runtime_id)
             && entry.attempt == self.attempt
             && entry.interests.remove(&self.interest).is_some()
         {
+            wake_idle = self.kind == RuntimeInterestKind::View
+                && !entry.interests.values().any(|interest| {
+                    interest.kind == RuntimeInterestKind::View && interest.binding == self.binding
+                });
             if entry.interests.is_empty()
                 && matches!(
                     entry.status,
@@ -247,6 +252,11 @@ impl Drop for RuntimeInterest {
         drop(state);
         if wake {
             self.shared.wake_preparation();
+        }
+        if wake_idle {
+            self.shared
+                .scheduler_signal
+                .wake(super::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck);
         }
     }
 }
@@ -296,13 +306,18 @@ struct RuntimeInterestState {
 struct RuntimeEntry {
     spec: ManagedBackendLaunchSpec,
     attempt: u64,
-    interests: HashMap<u64, RuntimeInterestKind>,
+    interests: HashMap<u64, RuntimeInterestRecord>,
     status: RuntimeInterestStatus,
     worker: Option<JoinHandle<bool>>,
     cleanup_complete: bool,
     connector: Option<ManagedBackendClientConnector>,
     retry: Option<RuntimeRetryTarget>,
     retirement_waiter: bool,
+}
+
+struct RuntimeInterestRecord {
+    kind: RuntimeInterestKind,
+    binding: ExecutionBinding,
 }
 
 struct RuntimeRetryTarget {

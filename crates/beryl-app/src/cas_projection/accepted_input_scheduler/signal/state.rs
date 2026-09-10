@@ -20,6 +20,7 @@ pub struct AcceptedInputSchedulerDiagnostics {
     pub(in super::super) startup_deferred_compactions: u64,
     pub(in super::super) recovery_handed_off: bool,
     pub(in super::super) steering_pass_count: u64,
+    pub(in super::super) idle_pass_count: u64,
     pub(in super::super) recovered_pending_pass_count: u64,
     pub(in super::super) next_pass_count: u64,
     pub(in super::super) steering_source_page_reads: u64,
@@ -70,7 +71,7 @@ pub(super) struct SignalInner {
 }
 
 pub(super) struct SignalState {
-    pub(super) pending: u16,
+    pub(super) pending: u32,
     pub(super) shutdown: bool,
     pub(super) diagnostics: AcceptedInputSchedulerDiagnostics,
 }
@@ -91,6 +92,7 @@ impl SignalState {
                 startup_deferred_compactions: 0,
                 recovery_handed_off: false,
                 steering_pass_count: 0,
+                idle_pass_count: 0,
                 recovered_pending_pass_count: 0,
                 next_pass_count: 0,
                 steering_source_page_reads: 0,

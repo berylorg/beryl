@@ -17,6 +17,7 @@ pub(in crate::cas_projection) use handles::{
 pub(in crate::cas_projection) struct CompactionWorkSource {
     state: Mutex<SourceState>,
     capacity: usize,
+    scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
 }
 
 struct SourceState {
@@ -64,7 +65,10 @@ impl SourceState {
 }
 
 impl CompactionWorkSource {
-    pub(in crate::cas_projection) fn new(capacity: usize) -> Arc<Self> {
+    pub(in crate::cas_projection) fn new(
+        capacity: usize,
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+    ) -> Arc<Self> {
         Arc::new(Self {
             state: Mutex::new(SourceState {
                 revision: Some(0),
@@ -72,6 +76,7 @@ impl CompactionWorkSource {
                 records: BTreeMap::new(),
             }),
             capacity,
+            scheduler_signal,
         })
     }
 
@@ -182,6 +187,10 @@ impl CompactionWorkSource {
             .unwrap()
             .local_registered = true;
         state.changed();
+        drop(state);
+        self.scheduler_signal.wake(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck,
+        );
     }
 
     fn update_checked(&self, serial: u64, update: impl FnOnce(&mut CompactionWorkRecord) -> bool) {
@@ -210,6 +219,10 @@ impl CompactionWorkSource {
         }
         if changed {
             state.changed();
+        }
+        drop(state);
+        if changed {
+            self.scheduler_signal.wake(crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck);
         }
     }
 

@@ -15,11 +15,14 @@ impl CompactionCustodyPool {
         self.occupied.load(Ordering::Acquire)
     }
 
-    pub(in crate::cas_projection) fn new() -> Arc<Self> {
+    pub(in crate::cas_projection) fn new(
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+    ) -> Arc<Self> {
         Arc::new(Self {
             occupied: AtomicUsize::new(0),
             source: CompactionWorkSource::new(
                 COMPACTION_QUEUE_CAPACITY + 2 * COMPACTION_WORKER_CAPACITY,
+                scheduler_signal,
             ),
         })
     }

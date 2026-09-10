@@ -38,43 +38,26 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 377: Serialize Mutation Observation With In-Memory Election (finished)
+# Phase 374: Recheck Idle Sessions On Ownership Release (finished)
 
-Accepted the weak home mutation observer and exact interval tokens. Mutation entry invalidates
-prior reads; final in-memory election excludes mutation entry, and settlement wakes only after
-command custody and locks release. Replacement, last-owner drop and generation disposal revoke
-old tokens. The [early-return custody correction](failures/home-writer-early-settlement.md) is accepted.
+Accepted coalesced idle maintenance with exact mutation/view/registration election and release
+notifications. Both [admission-race orderings](failures/process-idle-admission-race.md), 44 focused
+cases across final runs, lifecycle/control regressions, production compilation and independent
+semantic review passed. Guarded jobs and temporary sources were reclaimed. The broader suite's
+14 [confirmed baseline failures](failures/cas-regression-baseline.md) remain explicit below.
 
-Independent semantic review, 11 focused tests within 111 writer/proof/recovery regressions,
-home-store/app production compilation, formatting and diff checks passed. All eight guarded jobs
-and temporary directories were reclaimed. Scheduler adoption follows below.
+# Phase 378: Reconcile Existing CAS Regression Evidence (pending)
 
-# Phase 374: Recheck Idle Sessions On Ownership Release (wip)
+Restore the bounded regression evidence identified in the committed-baseline comparison before
+resuming process composition. Derive fixture and assertion corrections from the existing composer
+marker contract, exact service/control ownership and terminal-failure authority; source and tests
+remain governed by the app package and CAS-live system design. Diagnose the four recorded failure
+families, preserve the behavior each test must distinguish, and repair obsolete test setup without
+weakening protected outcomes. A required production correction needs its own ready plan boundary.
 
-The mutation-observation prerequisite has passed acceptance. Integrate its exact token
-around required-work observation and final retirement election, and its writer-settlement wake
-through the service-owned maintenance signal. Keep the previously failing real composer-admission
-race as an acceptance requirement, including both orderings and exact original registration.
-Existing idle-maintenance source and tests remain uncommitted and unaccepted until this boundary.
-
-Feed bounded idle observations and conditional retirement through a distinct coalesced scheduler
-maintenance wake. Relevant final view, preparation and live/control cleanup releases request another
-inspection after their state becomes observable. Preserve dispatch/retry lane masks, exact runtime
-binding, busy/stale refusal and generation fences; add no polling worker or retry loop.
-
-The Operator-authorized [response-custody correction](failures/process-idle-response-custody.md)
-has passed both prerequisite boundaries. Integrate the maintenance callback into the existing
-process provider and scheduler signal, using non-owning work sources and the configured runtime
-owner. Keep the full binding in the existing bounded interest entries and serialize the final
-view check with acquisition. Separate in-memory retirement election from signaling and disposal.
-
-Wire available-session, preparation, view, response and live/control release cuts after fact
-publication. Verify idle disposal without later requests, required/loaded/checked-out survival,
-same-binding view preservation and reacquisition races, retained completed response records,
-unwritten final release, stop/compaction cleanup, stale sources and service-generation loss.
-Prove maintenance-only wakes leave dispatch and retry masks closed. Run focused managed-runtime
-and scheduler integration tests, required work/control regressions, production compilation and
-independent semantic review. Production composition and graceful shutdown remain below.
+Verify the 18-case baseline selection and affected fixture consumers, then the app lifecycle/control
+suite; document any independently remaining failure instead of treating a partial run as green.
+Use focused independent review for changes to fault-injection expectations or custody assertions.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 
@@ -86,8 +69,8 @@ reattachment preserve the same live execution and capture, and all terminal/repl
 release required resources. Split any independently missing composition prerequisite before
 activation; production runtime/provider composition remains explicit rather than inferred.
 
-Composition resumes after the separate terminal-disposal, runtime-demand and idle-retirement
-prerequisites and shared observation/idle-wake integration above pass acceptance.
+The terminal-disposal, runtime-demand and idle-retirement prerequisites are accepted. Composition
+resumes after the separate regression-evidence reconciliation above.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -2,6 +2,11 @@ use super::{AcceptedInputSchedulerDiagnostics, ActiveSteeringRetryState};
 
 impl AcceptedInputSchedulerDiagnostics {
     #[must_use]
+    pub const fn idle_pass_count(self) -> u64 {
+        self.idle_pass_count
+    }
+
+    #[must_use]
     pub const fn wake_count(self) -> u64 {
         self.wake_count
     }

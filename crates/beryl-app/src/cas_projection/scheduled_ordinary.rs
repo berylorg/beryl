@@ -107,6 +107,8 @@ pub enum ScheduledOrdinaryExecutionUnavailable {
 pub trait ScheduledOrdinaryExecutionProvider: Send + 'static {
     fn attach(&mut self, _context: super::ScheduledExecutionProviderContext) {}
 
+    fn recheck_idle_sessions(&mut self) {}
+
     /// Consumes the service-issued admission token into one complete lease or a typed decline.
     fn try_issue(
         &mut self,

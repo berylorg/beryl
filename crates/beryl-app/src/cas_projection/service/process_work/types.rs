@@ -124,6 +124,8 @@ impl ProcessWorkPage {
 
 #[derive(Debug, Error)]
 pub enum ProcessWorkError {
+    #[error(transparent)]
+    MutationObservation(#[from] beryl_home_store::HomeMutationObservationError),
     #[error("the process work service is closed")]
     Closed,
     #[error("the process work sources belong to different services")]

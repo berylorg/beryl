@@ -430,7 +430,7 @@ impl ContextCompactionWaitTestHarness {
             ResolvedContextCompactionTimeout::fixed(completion_timeout),
             CompactionCommandCustody {
                 command: test_live_command(),
-                preparation: CompactionCustodyPool::new()
+                preparation: CompactionCustodyPool::new(crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new())
                     .reserve()
                     .unwrap()
                     .prepare_command(),

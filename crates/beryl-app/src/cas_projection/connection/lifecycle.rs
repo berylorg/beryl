@@ -438,7 +438,11 @@ impl ProjectionConnection {
             Ok(command) => command,
             Err(_) => return Ok(None),
         };
-        self.authority.reserve_scheduled_promotion(self, command)
+        self.authority.reserve_scheduled_promotion(
+            self,
+            command,
+            attachment.scheduler_signal.clone(),
+        )
     }
 
     pub(in crate::cas_projection) fn acquire_cleanup_owner(
@@ -449,7 +453,8 @@ impl ProjectionConnection {
             Ok(command) => command,
             Err(_) => return Ok(None),
         };
-        self.authority.acquire_cleanup_owner(self, command)
+        self.authority
+            .acquire_cleanup_owner(self, command, attachment.scheduler_signal.clone())
     }
 
     pub(in crate::cas_projection) fn release_session_owner(self: &Arc<Self>) {

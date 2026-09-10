@@ -70,7 +70,9 @@ impl DriverFixture {
                 )),
             )
             .unwrap();
-        let custody = CompactionCustodyPool::new();
+        let custody = CompactionCustodyPool::new(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+        );
         let local = Arc::new(LocalCompaction::new(
             operation_id,
             CompactionAttemptNonce::from_bytes([seed.wrapping_add(2); 16]),

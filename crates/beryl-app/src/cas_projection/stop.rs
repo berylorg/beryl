@@ -89,6 +89,7 @@ pub(in crate::cas_projection) struct StopCoordinator {
     storage: SyndicStorage,
     commands: super::persistent_failure::LiveCommandAuthorizer,
     state: state::StopState,
+    scheduler_signal: super::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     pub(super) compaction_custody:
         Arc<super::context_compaction::coordinator::custody::CompactionCustodyPool>,
     #[cfg(test)]
@@ -376,6 +377,7 @@ impl StopCoordinator {
         home_generation: HomeGeneration,
         storage: SyndicStorage,
         commands: super::persistent_failure::LiveCommandAuthorizer,
+        scheduler_signal: super::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     ) -> Self {
         Self {
             home: Arc::downgrade(home),
@@ -385,7 +387,10 @@ impl StopCoordinator {
             commands,
             state: state::StopState::new(StopCoordinatorState::default()),
             compaction_custody:
-                super::context_compaction::coordinator::custody::CompactionCustodyPool::new(),
+                super::context_compaction::coordinator::custody::CompactionCustodyPool::new(
+                    scheduler_signal.clone(),
+                ),
+            scheduler_signal,
             #[cfg(test)]
             race_pauses: StopRacePauses::default(),
         }
@@ -403,7 +408,14 @@ impl StopCoordinator {
                 .expect("test service generation is available"),
             None,
         );
-        Self::new(home, home_id, home_generation, storage, gate.authorizer())
+        Self::new(
+            home,
+            home_id,
+            home_generation,
+            storage,
+            gate.authorizer(),
+            super::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+        )
     }
 
     #[cfg(test)]
@@ -1121,6 +1133,8 @@ impl StopCoordinator {
                 .is_some();
             if consumed {
                 state.stops.remove(&thread_id);
+                drop(state);
+                self.recheck_idle_sessions();
             }
         }
     }
@@ -1401,6 +1415,13 @@ impl StopCoordinator {
                 .is_some_and(|local| local.operation_id == operation_id)
         {
             state.stops.remove(&operation_id.thread_id());
+            drop(state);
+            self.recheck_idle_sessions();
         }
+    }
+
+    fn recheck_idle_sessions(&self) {
+        self.scheduler_signal
+            .wake(super::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck);
     }
 }

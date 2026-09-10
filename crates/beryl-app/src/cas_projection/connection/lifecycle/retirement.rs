@@ -4,15 +4,53 @@ impl ProjectionConnection {
     pub(in crate::cas_projection) fn elect_idle_session_retirement(
         &self,
     ) -> Result<bool, ProjectionCoordinatorError> {
+        self.elect_idle_retirement(None)
+    }
+
+    pub(in crate::cas_projection) fn elect_unviewed_session_retirement(
+        &self,
+        owner: &crate::cas_projection::runtime_interest::RuntimeInterestOwner,
+        binding: &beryl_model::ExecutionBinding,
+        observation: &beryl_home_store::HomeMutationObservation,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        self.elect_idle_retirement(Some((owner, binding, observation)))
+    }
+
+    fn elect_idle_retirement(
+        &self,
+        view_owner: Option<(
+            &crate::cas_projection::runtime_interest::RuntimeInterestOwner,
+            &beryl_model::ExecutionBinding,
+            &beryl_home_store::HomeMutationObservation,
+        )>,
+    ) -> Result<bool, ProjectionCoordinatorError> {
         let attachment = self.current_attachment()?;
         let Ok(command) = attachment.commands.authorize() else {
             return Ok(false);
         };
-        self.authority
-            .try_retire_session_owner(|| self.elect_ordinary_retirement(&command))
+        self.authority.try_retire_session_owner(|| {
+            let elect = || {
+                command
+                    .commit_if_current(|| {
+                        attachment.persistent_failure.elect_ordinary_retirement(
+                            view_owner.map(|(_, _, observation)| observation),
+                        )
+                    })
+                    .unwrap_or(false)
+            };
+            match view_owner {
+                Some((owner, binding, _)) => owner
+                    .with_no_view_interest(binding, self.process_generation(), elect)
+                    .unwrap_or(false),
+                None => elect(),
+            }
+        })
     }
 
     pub(in crate::cas_projection) fn signal_idle_session_retirement(&self) {
+        if let Ok(attachment) = self.current_attachment() {
+            attachment.signal_elected_ordinary_retirement();
+        }
         self.signal_ordinary_retirement();
     }
 

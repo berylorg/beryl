@@ -372,8 +372,25 @@ fn full_request_queue_pages_obey_hard_limits_and_retirement_invalidates_cursor()
 fn approval_response_completion_and_presentation_custody_are_independent() {
     let (fixture, server, session, target, sessions) = live_fixture(223);
     let registration = process_work::register(&fixture, &sessions, session);
+    let before = fixture
+        .store
+        .accepted_input_scheduler_diagnostics()
+        .idle_pass_count();
     server.send_approval();
     server.wait_for_response();
+    let deadline = Instant::now() + TIMEOUT;
+    while fixture
+        .store
+        .accepted_input_scheduler_diagnostics()
+        .idle_pass_count()
+        <= before
+    {
+        assert!(
+            Instant::now() < deadline,
+            "response completion did not wake idle maintenance"
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
     let queued = wait_page(&fixture.store, |page| {
         page.records().iter().any(|row|
         matches!(row, ConnectionWorkRecord::Request(fact)
@@ -428,7 +445,24 @@ fn removed_target_keeps_only_unwritten_response_custody_required() {
         })
     });
     process_work::assert_request_work(&fixture, &sessions, true);
+    let before = fixture
+        .store
+        .accepted_input_scheduler_diagnostics()
+        .idle_pass_count();
     drop(call);
+    let deadline = Instant::now() + TIMEOUT;
+    while fixture
+        .store
+        .accepted_input_scheduler_diagnostics()
+        .idle_pass_count()
+        <= before
+    {
+        assert!(
+            Instant::now() < deadline,
+            "final response release did not wake idle maintenance"
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
     let disposed = page(&fixture.store);
     assert_ne!(retained.revision(), disposed.revision());
     process_work::assert_request_work(&fixture, &sessions, false);

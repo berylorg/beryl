@@ -100,6 +100,7 @@ pub struct ProjectionConnectionService {
     context_compaction: Option<Arc<super::context_compaction::ContextCompactionCoordinator>>,
     scheduler: Option<AcceptedInputScheduler>,
     scheduler_signal: AcceptedInputSchedulerSignal,
+    mutation_observer: beryl_home_store::HomeMutationObserver,
     native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
     runtime_interest: Option<Arc<super::runtime_interest::RuntimeInterestOwner>>,

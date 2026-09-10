@@ -47,6 +47,7 @@ pub(in crate::cas_projection) struct PreparationContext {
     pub(in crate::cas_projection) home: Arc<HomeStore>,
     pub(in crate::cas_projection) storage: SyndicStorage,
     pub(in crate::cas_projection) owner: Arc<RuntimeInterestOwner>,
+    pub(in crate::cas_projection) work_sources: crate::cas_projection::service::ProcessWorkSources,
     pub(in crate::cas_projection) admission: ProjectionAdmissionContext,
     pub(in crate::cas_projection) workers: ProjectionWorkerPool,
     pub(in crate::cas_projection) commands: LiveCommandAuthorizer,
@@ -162,10 +163,15 @@ impl ScheduledExecutionSessions {
                     worker.complete = true;
                     state.work_changed();
                 }
-                if state.slots.contains_key(&thread_id)
-                    && let Some(context) = state.context.as_ref()
-                {
-                    context.ready.notify();
+                let ready = state.context.as_ref().map(|context| context.ready.clone());
+                let has_session = state.slots.contains_key(&thread_id);
+                drop(state);
+                if let Some(ready) = ready {
+                    if has_session {
+                        ready.notify();
+                    } else {
+                        ready.signal.wake(AcceptedInputWakeReason::IdleRecheck);
+                    }
                 }
             });
         if let Ok(worker) = worker {

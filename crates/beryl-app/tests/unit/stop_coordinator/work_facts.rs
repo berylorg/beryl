@@ -85,7 +85,10 @@ fn stop_work_pages_preserve_removed_primary_and_terminal_driver_cleanup() {
     };
     assert!(!stop.primary_custody && stop.driver_custody);
     assert_eq!(fact, page(&fixture, &driver, None, limits(8)).unwrap());
+    let signal = &fixture.coordinator.scheduler_signal;
+    let before = signal.diagnostics().coalesced_wake_count();
     drop(cleanup);
+    assert_eq!(signal.diagnostics().coalesced_wake_count(), before + 1);
     assert_eq!(
         page(&fixture, &driver, None, limits(8)),
         Err(StopWorkError::StaleRevision)

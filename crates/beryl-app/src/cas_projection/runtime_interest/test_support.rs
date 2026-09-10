@@ -52,12 +52,11 @@ impl RuntimeInterestTestHarness {
         )
     }
 
-    pub fn preparation_wake_count(&self) -> u64 {
+    pub fn preparation_wake_pending(&self) -> bool {
         self.owner
             .shared
             .scheduler_signal
-            .diagnostics()
-            .wake_count()
+            .wake_pending_for_test(crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::ExecutionReady)
     }
 
     pub fn shutdown(&mut self) -> bool {

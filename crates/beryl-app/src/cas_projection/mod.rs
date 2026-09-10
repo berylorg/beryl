@@ -139,6 +139,8 @@ pub use persistent_failure::{
     PersistentFailureNotificationStatus, PersistentFailureTerminalEvidence,
     ProjectionServiceGeneration,
 };
+#[cfg(feature = "test-faults")]
+pub use process_sessions::IdleSessionElectionPause;
 pub use process_sessions::{
     ProcessScheduledExecutionProvider, RuntimeSessionPreparationConfig,
     RuntimeSessionPreparationError, RuntimeTokenDirectories, ScheduledExecutionProviderContext,

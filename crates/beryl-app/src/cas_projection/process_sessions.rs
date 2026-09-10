@@ -20,6 +20,10 @@ use super::{
 mod checkout;
 mod control;
 mod retirement;
+#[cfg(feature = "test-faults")]
+mod test_support;
+#[cfg(feature = "test-faults")]
+pub use test_support::IdleSessionElectionPause;
 mod work_facts;
 pub use work_facts::{
     ScheduledSessionFact, ScheduledSessionPreparationFact, ScheduledSessionWorkCursor,
@@ -52,6 +56,7 @@ impl ExecutionReadyNotifier {
     fn notify(&self) {
         if self.commands.is_open() {
             self.signal.wake(AcceptedInputWakeReason::ExecutionReady);
+            self.signal.wake(AcceptedInputWakeReason::IdleRecheck);
         }
     }
 }
@@ -147,6 +152,8 @@ struct SessionState {
     slots: BTreeMap<SyndicThreadId, SessionSlot>,
     preparation: Option<Arc<preparation::PreparationContext>>,
     preparing: BTreeMap<SyndicThreadId, preparation::PreparationWorker>,
+    #[cfg(feature = "test-faults")]
+    idle_election_pause: Option<test_support::IdleSessionElectionHook>,
 }
 
 impl SessionState {
@@ -186,6 +193,8 @@ impl ProcessScheduledExecutionProvider {
                 slots: BTreeMap::new(),
                 preparation: None,
                 preparing: BTreeMap::new(),
+                #[cfg(feature = "test-faults")]
+                idle_election_pause: None,
             })),
         };
         (

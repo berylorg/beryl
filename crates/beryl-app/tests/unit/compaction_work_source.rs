@@ -42,7 +42,9 @@ fn prepare_operation(handle: &CompactionWorkHandle, seed: u8) {
 
 #[test]
 fn replacement_and_token_teardown_never_publish_two_memberships_for_one_thread() {
-    let source = CompactionWorkSource::new(80);
+    let signal =
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new();
+    let source = CompactionWorkSource::new(80, signal.clone());
     let mut current = source.begin(thread(7), None);
     prepare_operation(&current, 10);
     let mut command = current.command_observation();
@@ -100,7 +102,9 @@ fn replacement_and_token_teardown_never_publish_two_memberships_for_one_thread()
             .command
             .is_none()
     );
+    let before = signal.diagnostics().coalesced_wake_count();
     drop(membership);
+    assert_eq!(signal.diagnostics().coalesced_wake_count(), before + 1);
     assert!(
         source
             .page(source.revision().unwrap(), None, limits(80))
@@ -120,7 +124,10 @@ fn replacement_and_token_teardown_never_publish_two_memberships_for_one_thread()
 
 #[test]
 fn paged_compaction_facts_are_exact_stable_and_reject_changed_or_small_reads() {
-    let source = CompactionWorkSource::new(80);
+    let source = CompactionWorkSource::new(
+        80,
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+    );
     let first = source.begin(thread(1), Some(turn(1)));
     let second = source.begin(thread(2), Some(turn(2)));
     let revision = source.revision().unwrap();
@@ -173,7 +180,9 @@ fn paged_compaction_facts_are_exact_stable_and_reject_changed_or_small_reads() {
 #[test]
 fn observer_exhaustion_never_changes_custody_admission_or_release() {
     for serial in [false, true] {
-        let pool = CompactionCustodyPool::new();
+        let pool = CompactionCustodyPool::new(
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+        );
         if serial {
             pool.source.state.lock().unwrap().next_serial = Some(u64::MAX);
         } else {
@@ -203,7 +212,10 @@ fn observer_exhaustion_never_changes_custody_admission_or_release() {
 
 #[test]
 fn poison_and_broken_owner_bound_never_publish_a_partial_inventory() {
-    let source = CompactionWorkSource::new(80);
+    let source = CompactionWorkSource::new(
+        80,
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+    );
     for seed in 0..80 {
         source.begin(thread(seed), Some(turn(seed)));
     }
@@ -221,7 +233,9 @@ fn poison_and_broken_owner_bound_never_publish_a_partial_inventory() {
         Err(CompactionWorkError::RevisionUnavailable)
     );
     assert!(source.state.lock().unwrap().records.is_empty());
-    let pool = CompactionCustodyPool::new();
+    let pool = CompactionCustodyPool::new(
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+    );
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _lock = pool.source.state.lock().unwrap();

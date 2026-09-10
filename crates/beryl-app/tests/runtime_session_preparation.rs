@@ -1,4 +1,6 @@
 #![cfg(all(feature = "test-faults", target_os = "windows"))]
+#[path = "runtime_session_preparation/idle_maintenance.rs"]
+mod idle_maintenance;
 #[path = "runtime_session_preparation/work_facts.rs"]
 mod work_facts;
 
@@ -209,7 +211,13 @@ fn close(fixture: &mut Fixture, sessions: &ScheduledExecutionSessions) {
 fn eligible_candidate_launches_and_registers_a_real_managed_session() {
     let (mut fixture, sessions, _attention) = fixture(8);
     assert_eq!(fixture.token_count(), 0);
+    fs::write(fixture.root(1).join("fixture-mode"), "pause-config").unwrap();
     begin(&fixture, 1);
+    wait_until(|| fixture.root(1).join("runtime-evidence.json").exists());
+    let view = fixture
+        .acquire(1, beryl_app::cas_projection::RuntimeInterestKind::View)
+        .unwrap();
+    fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
     wait_until(|| sessions.diagnostics().available == 1);
     let process = ProcessWitness::open(fixture.evidence(1)["pid"].as_u64().unwrap() as u32);
     let lease = checkout(&fixture, 1);
@@ -218,6 +226,7 @@ fn eligible_candidate_launches_and_registers_a_real_managed_session() {
     assert!(process.running());
     wait_until(|| fixture.service().worker_pool_diagnostics().active() == 5);
     drop(lease);
+    drop(view);
     close(&mut fixture, &sessions);
     process.assert_exited();
 }
@@ -231,6 +240,14 @@ fn competing_exact_roots_coalesce_one_starting_runtime() {
     begin(&fixture, 2);
     wait_until(|| fixture.service().worker_pool_diagnostics().active() == 8);
     assert!(!fixture.root(2).join("runtime-evidence.json").exists());
+    let views = [
+        fixture
+            .acquire(1, beryl_app::cas_projection::RuntimeInterestKind::View)
+            .unwrap(),
+        fixture
+            .acquire(2, beryl_app::cas_projection::RuntimeInterestKind::View)
+            .unwrap(),
+    ];
     fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
     wait_until(|| sessions.diagnostics().available == 2);
     let first = checkout(&fixture, 1);
@@ -238,6 +255,7 @@ fn competing_exact_roots_coalesce_one_starting_runtime() {
     assert_eq!(first.process_generation(), second.process_generation());
     assert_eq!(second.execution_binding(), &binding(&fixture, 2));
     drop((first, second));
+    drop(views);
     close(&mut fixture, &sessions);
 }
 
@@ -282,7 +300,13 @@ fn failure_stays_unavailable_until_exact_explicit_retry() {
     begin(&fixture, 2);
     wait_until(|| fixture.service().worker_pool_diagnostics().active() == 0);
     assert!(!fixture.root(2).join("runtime-evidence.json").exists());
+    fs::write(fixture.root(1).join("fixture-mode"), "pause-config").unwrap();
     begin(&fixture, 1);
+    wait_until(|| fixture.evidence(1)["pid"] != failed_pid);
+    let view = fixture
+        .acquire(1, beryl_app::cas_projection::RuntimeInterestKind::View)
+        .unwrap();
+    fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
     wait_until(|| sessions.diagnostics().available == 1);
     drop(checkout(&fixture, 1));
     assert!(
@@ -290,6 +314,7 @@ fn failure_stays_unavailable_until_exact_explicit_retry() {
             .retry_runtime_session(failure, thread_id(1), binding(&fixture, 1))
             .is_err()
     );
+    drop(view);
     close(&mut fixture, &sessions);
 }
 

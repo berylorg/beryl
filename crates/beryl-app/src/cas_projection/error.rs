@@ -184,6 +184,8 @@ impl std::fmt::Display for ProjectionRegistryKind {
 /// Closed failures produced by the app-owned CAS projection coordinator.
 #[derive(Debug, Error)]
 pub enum ProjectionCoordinatorError {
+    #[error(transparent)]
+    MutationObservation(#[from] beryl_home_store::HomeMutationObservationError),
     #[error("a coordinator mutation was proven not committed: {0}")]
     CommandNotCommitted(#[source] CommandError),
     #[error("a coordinator mutation committed before a later failure: {later_failure}")]

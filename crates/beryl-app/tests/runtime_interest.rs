@@ -378,10 +378,10 @@ fn scheduled_interest_capacity_refusal_wakes_on_real_interest_release() {
             Err(RuntimeInterestError::InterestCapacity)
         ));
     }
-    assert_eq!(owner.preparation_wake_count(), 0);
+    assert!(!owner.preparation_wake_pending());
     assert_eq!(next.counts(), (0, 0, 0));
     drop(view);
-    assert_eq!(owner.preparation_wake_count(), 1);
+    assert!(owner.preparation_wake_pending());
     let (spec, binding) = demand(2, 1);
     let work = owner.acquire_scheduled(spec, binding, next).unwrap();
     ready(&work);
@@ -421,10 +421,10 @@ fn scheduled_runtime_capacity_wait_ignores_unrelated_interest_release() {
         Err(RuntimeInterestError::RuntimeCapacity)
     ));
     drop(extra);
-    assert_eq!(owner.preparation_wake_count(), 0);
+    assert!(!owner.preparation_wake_pending());
     drop(view);
     assert!(current_probe.wait_for_retirement(TIMEOUT));
-    assert_eq!(owner.preparation_wake_count(), 0);
+    assert!(!owner.preparation_wake_pending());
     current_probe.allow_retirement(true);
     wait_for_preparation_wake(&owner);
     let (spec, binding) = demand(2, 1);
@@ -457,7 +457,7 @@ fn scheduled_retiring_runtime_wait_wakes_after_terminal_cleanup_publication() {
         owner.acquire_scheduled(spec, binding, next.clone()),
         Err(RuntimeInterestError::Retiring)
     ));
-    assert_eq!(owner.preparation_wake_count(), 0);
+    assert!(!owner.preparation_wake_pending());
     current_probe.allow_retirement(true);
     wait_for_preparation_wake(&owner);
     let (spec, binding) = demand(1, 2);
@@ -472,14 +472,14 @@ fn scheduled_retiring_runtime_wait_wakes_after_terminal_cleanup_publication() {
 
 fn wait_for_preparation_wake(owner: &RuntimeInterestTestHarness) {
     let deadline = Instant::now() + TIMEOUT;
-    while owner.preparation_wake_count() == 0 {
+    while !owner.preparation_wake_pending() {
         assert!(
             Instant::now() < deadline,
             "real owner dependency release did not wake preparation"
         );
         thread::sleep(Duration::from_millis(1));
     }
-    assert_eq!(owner.preparation_wake_count(), 1);
+    assert!(owner.preparation_wake_pending());
 }
 
 #[test]

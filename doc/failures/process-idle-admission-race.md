@@ -50,17 +50,23 @@ The revised system and package authority selects the home store's opaque mutatio
 boundary: capture its interval before required reads, then check it atomically with final
 in-memory election. Mutation entry invalidates old tokens, and settlement wakes deferred
 maintenance. The independent home-store prerequisite has passed review and verification;
-scheduler integration must still make the failing regression pass alongside view, checkout,
-cleanup and generation-loss races.
+scheduler integration now consumes that token inside the final in-memory election, after the
+registration, connection, view and command gates. Signaling and disposal follow outside those gates.
 
 ## Status
 
-The Operator authorized the correction after the technical-plan-failure pause. The home-store
-prerequisite is accepted; idle-maintenance source and tests remain uncommitted and unaccepted
-pending integration. Before this counterexample, 21 focused existing
-tests and six new maintenance/managed-runtime tests passed. A separate preparation regression also
-needs fixture adjustment because its manually prepared idle sessions have no view or required
-work; that test issue does not explain or excuse the reproduced admission race.
+The correction is accepted. The original race now proves preservation of the exact registration
+serial, and the reverse ordering proves that submission after completed retirement prepares a fresh
+session. Managed tests also cover view reacquisition, checkout return, final release without later
+requests, and pending-work preservation across loaded-projection release. Existing preparation
+fixtures retain explicit views when they intentionally inspect an otherwise idle session.
+
+The final focused runs cover 44 passing cases. Required-work, connection, stop/compaction,
+runtime-demand, generation-loss and source-fence regressions passed, as did production compilation
+and independent semantic review. Isolated router tests distinguish actual response-completion
+notifications from earlier pending wakes; control tests verify final-custody release notifications.
+The broader suite is not fully green: 14 failures were reproduced on the exact prerequisite
+commit and are tracked separately in [the baseline evidence](cas-regression-baseline.md).
 
 Response classification was committed as `7a428a6f`, and backend completion notification as
 `16e4c24b`; both passed independent review and their own verification and were pushed.
