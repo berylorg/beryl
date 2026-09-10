@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::task::Waker;
 
 use thiserror::Error;
 
@@ -58,6 +59,8 @@ pub enum ResponseWorkError {
     RevisionUnavailable,
     #[error("the response work observation lock is poisoned")]
     Poisoned,
+    #[error("the response completion notification is already registered")]
+    CompletionAlreadyRegistered,
 }
 
 #[derive(Debug)]
@@ -66,9 +69,19 @@ struct WorkState {
     session_generation: Option<u64>,
     response_written: bool,
     retained_capabilities: u8,
+    completion_registered: bool,
+    completion_waker: Option<Waker>,
 }
 
 impl WorkState {
+    fn take_completion_waker(&mut self) -> Option<Waker> {
+        if self.response_written || self.retained_capabilities == 0 {
+            self.completion_waker.take()
+        } else {
+            None
+        }
+    }
+
     fn changed(&mut self) {
         self.revision = self.revision.and_then(|revision| revision.checked_add(1));
     }
@@ -81,6 +94,22 @@ pub struct ResponseWorkObserver {
 }
 
 impl ResponseWorkObserver {
+    pub fn register_completion_waker(&self, waker: Waker) -> Result<(), ResponseWorkError> {
+        let wake = {
+            let mut state = self.state.lock().map_err(|_| ResponseWorkError::Poisoned)?;
+            if state.completion_registered {
+                return Err(ResponseWorkError::CompletionAlreadyRegistered);
+            }
+            state.completion_registered = true;
+            state.completion_waker = Some(waker);
+            state.take_completion_waker()
+        };
+        if let Some(waker) = wake {
+            waker.wake();
+        }
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> Result<ResponseWorkSnapshot, ResponseWorkError> {
         let state = self.state.lock().map_err(|_| ResponseWorkError::Poisoned)?;
         Ok(ResponseWorkSnapshot {
@@ -130,6 +159,8 @@ impl ResponseWorkTracker {
                     session_generation,
                     response_written: false,
                     retained_capabilities,
+                    completion_registered: false,
+                    completion_waker: None,
                 })),
             },
         }
@@ -166,6 +197,11 @@ impl ResponseWorkTracker {
             state.response_written = written;
             state.changed();
         }
+        let wake = state.take_completion_waker();
+        drop(state);
+        if let Some(waker) = wake {
+            waker.wake();
+        }
     }
 
     pub(crate) fn release_capability(&self) {
@@ -179,6 +215,11 @@ impl ResponseWorkTracker {
             state.changed();
         } else {
             state.revision = None;
+        }
+        let wake = state.take_completion_waker();
+        drop(state);
+        if let Some(waker) = wake {
+            waker.wake();
         }
     }
 }

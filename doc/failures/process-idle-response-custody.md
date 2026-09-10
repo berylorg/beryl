@@ -59,5 +59,8 @@ now checks the written response and independently retained stopping work. An att
 inventory assertion hung at the approval-install barrier and was removed; the isolated paused
 response-writer case covers the pre-write obligation. The corrected regression suite passes.
 
-Backend completion notification and its scheduler integration remain unaccepted prerequisites to
-autonomous idle retirement without later requests.
+Backend completion notification is also accepted with independent review, 12 focused response
+tests, 64 backend regressions and backend/app production compilation. Its one-shot slot covers
+successful write, final capability release and racing or late registration without changing
+response authority. Scheduler integration remains required for autonomous idle retirement without
+later requests.

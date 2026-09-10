@@ -29,6 +29,7 @@ fn dynamic_response_custody_survives_ingress_and_completes_only_after_response_w
         .unwrap();
     let call = harness.dynamic_calls.try_recv().unwrap();
     let observer = harness.observations.try_recv().unwrap();
+    let completion = harness.completions.try_recv().unwrap();
     assert!(call.is_sealed());
     let before = observer.snapshot().unwrap();
     assert!(!before.response_written());
@@ -41,6 +42,7 @@ fn dynamic_response_custody_survives_ingress_and_completes_only_after_response_w
         Err(ManagedBackendError::DynamicToolResponseAuthorityMismatch)
     ));
     assert_eq!(observer.snapshot().unwrap(), before);
+    assert_eq!(completion.count(), 0);
     session.respond_dynamic_tool_call(&call, &response).unwrap();
     assert_eq!(
         call.response_disposition(),
@@ -49,6 +51,8 @@ fn dynamic_response_custody_survives_ingress_and_completes_only_after_response_w
     let written = observer.snapshot().unwrap();
     assert!(written.response_written());
     assert_eq!(written.retained_capabilities(), 1);
+    assert_eq!(completion.count(), 1);
+    assert_eq!(completion.snapshot(), written);
     assert_eq!(
         observer.validate_revision(before.revision()),
         Err(ResponseWorkError::StaleRevision)
@@ -62,6 +66,7 @@ fn dynamic_response_custody_survives_ingress_and_completes_only_after_response_w
     let released = observer.snapshot().unwrap();
     assert!(released.response_written());
     assert_eq!(released.retained_capabilities(), 0);
+    assert_eq!(completion.count(), 1);
     assert_eq!(server.join().unwrap()["id"], 81);
 }
 
@@ -80,6 +85,7 @@ fn failed_dynamic_response_write_remains_unwritten_until_capability_release() {
         .unwrap();
     let call = harness.dynamic_calls.try_recv().unwrap();
     let observer = harness.observations.try_recv().unwrap();
+    let completion = harness.completions.try_recv().unwrap();
     let before = observer.snapshot().unwrap();
     session.fail_next_write_before_dispatch_for_lifecycle_test();
     assert!(
@@ -94,9 +100,12 @@ fn failed_dynamic_response_write_remains_unwritten_until_capability_release() {
     assert_eq!(observer.snapshot().unwrap(), before);
     drop(session);
     assert_eq!(observer.snapshot().unwrap(), before);
+    assert_eq!(completion.count(), 0);
     drop(call);
     let released = observer.snapshot().unwrap();
     assert!(!released.response_written());
     assert_eq!(released.retained_capabilities(), 0);
+    assert_eq!(completion.count(), 1);
+    assert_eq!(completion.snapshot(), released);
     server.join().unwrap();
 }

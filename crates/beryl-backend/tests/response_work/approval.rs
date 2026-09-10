@@ -5,7 +5,7 @@ use beryl_backend::{
     OrderedTurnStreamProgress, ResponseWorkError,
 };
 
-use super::support::sink_harness;
+use super::support::{CompletionProbe, sink_harness};
 use super::transport_support::{
     connect_foreground, expect_close_without_text, read_denial_id, send_approval, spawn_server,
 };
@@ -28,6 +28,10 @@ fn dropping_routed_event_preserves_backend_response_custody_until_successful_den
     );
     let observer = harness.observations.try_recv().unwrap();
     let settled = observer.snapshot().unwrap();
+    let completion = harness.completions.try_recv().unwrap();
+    assert_eq!(completion.count(), 1);
+    assert!(completion.snapshot().response_written());
+    assert_eq!(completion.snapshot().retained_capabilities(), 1);
     assert!(settled.response_written());
     assert_eq!(settled.retained_capabilities(), 0);
     assert_eq!(observer.clone().snapshot().unwrap(), settled);
@@ -60,6 +64,8 @@ fn failed_automatic_denial_releases_custody_without_claiming_response_success() 
         ApprovalResponseDisposition::ResponseRequired
     );
     let retained = observer.snapshot().unwrap();
+    let completion = harness.completions.try_recv().unwrap();
+    assert_eq!(completion.count(), 0);
     assert!(!retained.response_written());
     assert_eq!(retained.retained_capabilities(), 1);
     drop(request);
@@ -70,6 +76,8 @@ fn failed_automatic_denial_releases_custody_without_claiming_response_success() 
     let released = observer.snapshot().unwrap();
     assert!(!released.response_written());
     assert_eq!(released.retained_capabilities(), 0);
+    assert_eq!(completion.count(), 1);
+    assert_eq!(completion.snapshot(), released);
     server.join().unwrap();
 }
 
@@ -89,6 +97,9 @@ fn automatic_response_completion_is_independent_of_retained_caller_capability() 
     let request = harness.approval_requests.try_recv().unwrap();
     let observer = harness.observations.try_recv().unwrap();
     let settled = observer.snapshot().unwrap();
+    let completion = harness.completions.try_recv().unwrap();
+    assert_eq!(completion.count(), 1);
+    assert!(completion.snapshot().response_written());
     assert!(settled.response_written());
     assert_eq!(settled.retained_capabilities(), 1);
     assert_eq!(
@@ -102,6 +113,7 @@ fn automatic_response_completion_is_independent_of_retained_caller_capability() 
     assert_eq!(observer.snapshot().unwrap(), settled);
     drop(request);
     assert_eq!(observer.snapshot().unwrap().retained_capabilities(), 0);
+    assert_eq!(completion.count(), 1);
     assert_eq!(server.join().unwrap(), 73);
 }
 
@@ -113,6 +125,8 @@ fn caller_denial_and_foreign_checks_preserve_exact_request_revision() {
         session.bound_approval_request_for_lifecycle_test(ApprovalRequestKind::FileChange);
     let observer = request.response_work();
     let before = observer.snapshot().unwrap();
+    let completion = CompletionProbe::new(&observer);
+    completion.register().unwrap();
     assert_eq!(before.retained_capabilities(), 1);
     assert!(!before.response_written());
     let same_ids =
@@ -130,6 +144,7 @@ fn caller_denial_and_foreign_checks_preserve_exact_request_revision() {
         Err(ManagedBackendError::ApprovalResponseAuthorityMismatch { .. })
     ));
     assert_eq!(observer.snapshot().unwrap(), before);
+    assert_eq!(completion.count(), 0);
     session.deny_approval_request(&request).unwrap();
     assert_eq!(
         request.response_disposition(),
@@ -138,6 +153,8 @@ fn caller_denial_and_foreign_checks_preserve_exact_request_revision() {
     let written = observer.snapshot().unwrap();
     assert!(written.response_written());
     assert_eq!(written.retained_capabilities(), 1);
+    assert_eq!(completion.count(), 1);
+    assert_eq!(completion.snapshot(), written);
     assert_eq!(
         observer.validate_revision(before.revision()),
         Err(ResponseWorkError::StaleRevision)
@@ -149,6 +166,7 @@ fn caller_denial_and_foreign_checks_preserve_exact_request_revision() {
     assert_eq!(observer.snapshot().unwrap(), written);
     drop(request);
     assert_eq!(observer.snapshot().unwrap().retained_capabilities(), 0);
+    assert_eq!(completion.count(), 1);
     assert_eq!(server.join().unwrap(), 1);
 }
 

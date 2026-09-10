@@ -38,23 +38,16 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 375: Exclude Completed Response Records From Required Work (finished)
+# Phase 376: Notify Exact Response Completion Without Polling (finished)
 
-Accepted the shared response predicate: written responses and unwritten records without remaining
-capabilities no longer imply required work. Read-only records remain observable; live handling,
-permission-stop and cleanup obligations retain their independent classification. Public inventory
-and targeted session reads agree through paused writes, retained presentation and target removal.
+Accepted one completion-wake registration per backend response source. Successful write or final
+capability release consumes it after facts publish and the observation lock releases. Late and
+racing registration cannot miss completion; repeated registration is refused without replacement.
+Response revisions, capabilities and dispatch authority remain unchanged by registration.
 
-Independent semantic review, focused response cases, 72 work/control regressions, production
-compilation, formatting and diff checks passed. All five guarded jobs and temporary directories
-were reclaimed. Backend notification and scheduler adoption remain below.
-
-# Phase 376: Notify Exact Response Completion Without Polling (pending)
-
-Implement the backend's [bounded one-shot response notification](../crates/beryl-backend/doc/design-live-control.md)
-through successful write or final capability release, including late registration and races.
-Verify one registration, no response capability retention, outside-lock wake delivery and unchanged
-response authority. App scheduler adoption remains the integration boundary below.
+Independent semantic review, 12 focused response tests, 64 backend regressions, backend/app
+production compilation, formatting and diff checks passed. All three guarded jobs and temporary
+directories were reclaimed. App scheduler adoption remains below.
 
 # Phase 374: Recheck Idle Sessions On Ownership Release (pending)
 
