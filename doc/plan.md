@@ -38,16 +38,23 @@ bounded implementation is accepted. Startup, restoration, Exit/close mounting, c
 transcript, Running threads, attention, approval-policy reconciliation, Settings, repair, recovery,
 branch, assets and bootstrap remain explicit rework checkpoints. Preserve their separate gates.
 
-# Phase 373: Share Bounded Process Work Observations (finished)
+# Phase 375: Exclude Completed Response Records From Required Work (finished)
 
-Accepted non-owning exact service source handles and shared revision-checked work readers.
-The targeted admitted-session query reads bounded local work and point input gates without
-catalog/backlog traversal or presentation preparation. Closed, foreign and changing sources fail
-closed; retained handles create no home, control or runtime ownership.
+Accepted the shared response predicate: written responses and unwritten records without remaining
+capabilities no longer imply required work. Read-only records remain observable; live handling,
+permission-stop and cleanup obligations retain their independent classification. Public inventory
+and targeted session reads agree through paused writes, retained presentation and target removal.
 
-Independent semantic review, 24 focused tests, 120 broader work/control/session/preparation
-regressions, production compilation, formatting and diff checks passed. All eight guarded jobs
-and temporary directories were reclaimed. Idle wakes and production composition remain below.
+Independent semantic review, focused response cases, 72 work/control regressions, production
+compilation, formatting and diff checks passed. All five guarded jobs and temporary directories
+were reclaimed. Backend notification and scheduler adoption remain below.
+
+# Phase 376: Notify Exact Response Completion Without Polling (pending)
+
+Implement the backend's [bounded one-shot response notification](../crates/beryl-backend/doc/design-live-control.md)
+through successful write or final capability release, including late registration and races.
+Verify one registration, no response capability retention, outside-lock wake delivery and unchanged
+response authority. App scheduler adoption remains the integration boundary below.
 
 # Phase 374: Recheck Idle Sessions On Ownership Release (pending)
 
@@ -56,11 +63,9 @@ maintenance wake. Relevant final view, preparation and live/control cleanup rele
 inspection after their state becomes observable. Preserve dispatch/retry lane masks, exact runtime
 binding, busy/stale refusal and generation fences; add no polling worker or retry loop.
 
-Readiness is blocked by [completed response custody](failures/process-idle-response-custody.md).
-The shared reader currently treats retained completed request observations as required work, and
-the backend response source has no final-release/write-completion notification. App-only release
-wakes cannot establish autonomous idle progress. Implementation is stopped under the Operator's
-technical-plan-failure rule; establish the separate response-lifecycle correction before activation.
+The Operator authorized the [response-custody correction](failures/process-idle-response-custody.md).
+Resume this integration after the separate classification and notification prerequisites above
+pass acceptance.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

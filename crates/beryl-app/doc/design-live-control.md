@@ -21,6 +21,11 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
   from a display fact. Authority loss and generation retirement use ordinary ordered invalidation.
 - Retained request state is ephemeral, uses no durable payload record or GUI handle, and contributes
   to process work and shutdown facts while unsettled. No request capability survives restart.
+- A retained response observation contributes request-handling work only while no successful
+  response write is recorded and at least one response capability remains. Written responses and
+  unwritten observations with no remaining capability create no response obligation, even when
+  their inspection records remain present. Live target/handler ownership, permission-stop custody,
+  and connection or worker cleanup remain independently required through their actual release.
 - Command-execution and file-change denials use provider-owned interruption and cause no second
   interrupt. Permission denial installs the driver-owned exact stop obligation before broker
   acknowledgement; denial then precedes the sole driver's required `turn/interrupt`.

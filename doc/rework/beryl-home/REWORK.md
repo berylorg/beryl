@@ -356,6 +356,8 @@
   ownership, preserving failure cuts and final runtime disposal; independent review and 99 regressions passed.
 - [x] Shared non-owning exact service work readers and bounded admitted-session gate observations
   without backlog or presentation traversal; independent review, production check and 120 regressions passed.
+- [x] Excluded completed response observations from required work while retaining independent
+  stopping and cleanup obligations; independent review, production check and 72 regressions passed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

@@ -168,7 +168,20 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
         let driver = page(fixture);
         let running = inventory_page();
         assert_eq!(running.total_threads(), 1);
-        assert!(running.records()[0].facts.stopping && running.records()[0].facts.request_handling);
+        assert!(running.records()[0].facts.stopping);
+        assert!(!running.records()[0].facts.request_handling);
+        let response_revision = fixture.store.connection_work_revision().unwrap();
+        let responses = fixture
+            .store
+            .connection_work_page(
+                &response_revision,
+                None,
+                ConnectionWorkPageLimits::new(256, 65_536).unwrap(),
+            )
+            .unwrap();
+        assert!(responses.records().iter().any(|row| matches!(row,
+            ConnectionWorkRecord::Request(fact) if fact.response().response_written()
+        )));
         let fact = permission(&driver);
         assert_eq!(fact.stage, PermissionInterruptionWorkStage::Driver);
         assert_eq!((fact.serial, fact.operation_id), (serial, Some(operation)));

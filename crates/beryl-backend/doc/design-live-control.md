@@ -32,6 +32,14 @@ This supplement is normative only for its bounded backend live-control role and 
   release of all response handles is independently observable even when no response was written.
   These local retained facts do not certify session liveness or usable response authority; app
   composition must also validate the exact connection and service generation.
+- Each response source supports one bounded, non-authorizing completion notification registration.
+  Its one-shot wake follows the first successful response write or final response-capability
+  release, after the observable state changes and outside the observation lock. Registration racing
+  completion cannot miss the wake; registering after completion also wakes. A second registration
+  is a typed refusal and cannot replace the first. The slot retains no payload or response
+  capability and is consumed at notification. App registrations refer only to their existing
+  generation-scoped wake owner without retaining a home, runtime, session or execution capability.
+  Notification creates no polling worker, retry, response replay or dispatch authority.
 - The ordered full profile offers compact approvals directly to its sink. Its bounded pre-bind prefix may automatically deny command/file-change but cannot deny permission without exact durable stop ownership; absent that authority retires the session. A failed automatic denial leaves response authority unexercised and retires exact connection authority rather than fabricating a response.
 - A routed approval completion is `NotRequired` for command/file-change denial, or `DurableStopOwned(operation, target, attempt_disposition)` for permission denial. Permission admission must return the exact durable operation/target with interrupting-approval cause and whether its sole stop attempt has crossed a request byte; only then may denial be sent, and response state advances only after that write succeeds.
 - A full pre-bind prefix returns typed capacity rejection after closing and releasing its retained prefix; an approval rejected before retention receives no denial. Target-local presentation failure may auto-deny command/file-change without invalidating the connection, but permission failure without proven target closure or durable stop ownership leaves response authority unexercised and retires the exact connection. Generic sink failure returns exact approval ownership, attempts no permission denial without that ownership, and retires connection authority.

@@ -48,8 +48,16 @@ request handling and permission-stop cleanup required until their actual owners 
 
 ## Status
 
-Implementation is stopped under the Operator's technical-plan-failure rule. The shared-reader
-commit remains published; idle-wake integration has not started. The owning contracts still apply;
-this record is diagnosis and required follow-up, not implementation authority or acceptance of a
-new notification API. Resume after the Operator directs the correction and its owning contract
-and acceptance boundaries are established.
+The Operator authorized the recommended correction. The owning app and backend live-control
+contracts distinguish completed response observations and specify one bounded completion wake.
+Response classification is accepted with independent review, real response fixtures, 72 broader
+regressions and production compilation. Both shared query paths now exclude completed response
+records while preserving independently owned stopping and cleanup work.
+
+An old permission test expected request work after the denial was already written; its assertion
+now checks the written response and independently retained stopping work. An attempted pre-install
+inventory assertion hung at the approval-install barrier and was removed; the isolated paused
+response-writer case covers the pre-write obligation. The corrected regression suite passes.
+
+Backend completion notification and its scheduler integration remain unaccepted prerequisites to
+autonomous idle retirement without later requests.

@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "connection_work/process_work.rs"]
+mod process_work;
 #[allow(dead_code)]
 #[path = "normal_terminal/server.rs"]
 mod protocol;
@@ -67,8 +69,9 @@ fn live_fixture(
     server::Server,
     AdmittedProjectionSession,
     LiveEventTarget,
+    ScheduledExecutionSessions,
 ) {
-    let mut fixture = Fixture::new(seed);
+    let (mut fixture, sessions) = process_work::fixture(seed);
     fixture.submit_text(" connection work request");
     let server = server::Server::spawn();
     let connector = ManagedBackendClientConnector::for_lifecycle_test(
@@ -107,12 +110,13 @@ fn live_fixture(
     let target = projection
         .into_active_live_event_target(CasTurnId::new(protocol::CAS_TURN_ID).unwrap())
         .unwrap();
-    (fixture, server, session, target)
+    (fixture, server, session, target, sessions)
 }
 
 #[test]
 fn connection_request_pages_track_queue_handoff_write_and_disposal() {
-    let (fixture, server, session, target) = live_fixture(219);
+    let (fixture, server, session, target, sessions) = live_fixture(219);
+    let registration = process_work::register(&fixture, &sessions, session);
     let executing = page(&fixture.store);
     let ConnectionWorkRecord::Target(fact) = &executing.records()[0] else {
         panic!("missing target")
@@ -127,6 +131,7 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         matches!(row, ConnectionWorkRecord::Request(fact) if fact.stage() == ConnectionRequestWorkStage::Queued)).count() == 2
     });
     assert_eq!(queued.records().len(), 3);
+    process_work::assert_request_work(&fixture, &sessions, true);
     let revision = queued.revision();
     let first = fixture
         .store
@@ -181,6 +186,7 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         Err(ConnectionWorkError::StaleRevision)
     );
     let handling = page(&fixture.store);
+    process_work::assert_request_work(&fixture, &sessions, true);
     assert!(handling.records().iter().any(|row| matches!(row, ConnectionWorkRecord::Request(fact)
         if fact.stage() == ConnectionRequestWorkStage::Handling && fact.response().retained_capabilities() != 0)));
     let barrier = test_faults::install_response_write_barrier(fixture.thread);
@@ -200,6 +206,7 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         if fact.stage() == ConnectionRequestWorkStage::ResponseAdmitted
             && !fact.response().response_written() && fact.response().retained_capabilities() != 0)));
     assert_eq!(page(&fixture.store), admitted);
+    process_work::assert_request_work(&fixture, &sessions, true);
     barrier.release();
     let target = writer.join().unwrap();
     server.wait_for_response();
@@ -208,6 +215,7 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         matches!(row, ConnectionWorkRecord::Request(fact) if fact.response().response_written()))
     });
     assert_ne!(written.revision(), admitted.revision());
+    process_work::assert_request_work(&fixture, &sessions, true);
     let LiveEventPoll::DynamicTool(call) = target.poll(TIMEOUT) else {
         panic!("missing second call")
     };
@@ -218,6 +226,7 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         matches!(row, ConnectionWorkRecord::Request(fact) if !fact.response().response_written() && fact.response().retained_capabilities() == 0))
     });
     assert_ne!(before_drop.revision(), disposed.revision());
+    process_work::assert_request_work(&fixture, &sessions, false);
     assert_eq!(
         fixture
             .store
@@ -225,7 +234,8 @@ fn connection_request_pages_track_queue_handoff_write_and_disposal() {
         Err(ConnectionWorkError::ForeignRevision)
     );
     drop(target);
-    drop(session);
+    process_work::assert_request_work(&fixture, &sessions, false);
+    assert!(sessions.retire(registration));
     let (directory, service) = fixture.into_service();
     let _ = service.close().unwrap();
     server.join();
@@ -291,7 +301,7 @@ fn connection_work_revisions_reject_foreign_owners_and_zero_limits() {
 
 #[test]
 fn full_request_queue_pages_obey_hard_limits_and_retirement_invalidates_cursor() {
-    let (fixture, server, session, target) = live_fixture(222);
+    let (fixture, server, session, target, _sessions) = live_fixture(222);
     let empty = page(&fixture.store);
     server.send_requests(256);
     let full = wait_page(&fixture.store, |page| {
@@ -360,7 +370,8 @@ fn full_request_queue_pages_obey_hard_limits_and_retirement_invalidates_cursor()
 
 #[test]
 fn approval_response_completion_and_presentation_custody_are_independent() {
-    let (fixture, server, session, target) = live_fixture(223);
+    let (fixture, server, session, target, sessions) = live_fixture(223);
+    let registration = process_work::register(&fixture, &sessions, session);
     server.send_approval();
     server.wait_for_response();
     let queued = wait_page(&fixture.store, |page| {
@@ -372,6 +383,7 @@ fn approval_response_completion_and_presentation_custody_are_independent() {
     let LiveEventPoll::Approval(approval) = target.poll(TIMEOUT) else {
         panic!("missing approval")
     };
+    process_work::assert_request_work(&fixture, &sessions, false);
     let handling = page(&fixture.store);
     assert_ne!(queued.revision(), handling.revision());
     let ConnectionWorkRecord::Request(fact) = &handling.records()[1] else {
@@ -388,8 +400,39 @@ fn approval_response_completion_and_presentation_custody_are_independent() {
     };
     assert!(fact.response().response_written());
     assert_eq!(fact.response().retained_capabilities(), 0);
+    process_work::assert_request_work(&fixture, &sessions, false);
     drop(target);
-    drop(session);
+    process_work::assert_request_work(&fixture, &sessions, false);
+    assert!(sessions.retire(registration));
+    let (directory, service) = fixture.into_service();
+    let _ = service.close().unwrap();
+    server.join();
+    drop(directory);
+}
+
+#[test]
+fn removed_target_keeps_only_unwritten_response_custody_required() {
+    let (fixture, server, session, target, sessions) = live_fixture(224);
+    let registration = process_work::register(&fixture, &sessions, session);
+    server.send_requests(1);
+    let LiveEventPoll::DynamicTool(call) = target.poll(TIMEOUT) else {
+        panic!("missing call");
+    };
+    process_work::assert_request_work(&fixture, &sessions, true);
+    drop(target);
+    let retained = wait_page(&fixture.store, |page| {
+        page.records().iter().any(|row| {
+            matches!(row, ConnectionWorkRecord::Request(fact)
+            if !fact.target_registered() && !fact.response().response_written()
+                && fact.response().retained_capabilities() != 0)
+        })
+    });
+    process_work::assert_request_work(&fixture, &sessions, true);
+    drop(call);
+    let disposed = page(&fixture.store);
+    assert_ne!(retained.revision(), disposed.revision());
+    process_work::assert_request_work(&fixture, &sessions, false);
+    assert!(sessions.retire(registration));
     let (directory, service) = fixture.into_service();
     let _ = service.close().unwrap();
     server.join();

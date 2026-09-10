@@ -88,7 +88,10 @@ impl ProcessWorkRead {
                             || target.loss_requested()
                             || target.connection_retired();
                     }
-                    ConnectionWorkRecord::Request(_) => work.request_handling = true,
+                    ConnectionWorkRecord::Request(request) => {
+                        work.request_handling = !request.response().response_written()
+                            && request.response().retained_capabilities() != 0;
+                    }
                 }
                 add(&mut facts, row.identity().thread_id(), work);
             }
