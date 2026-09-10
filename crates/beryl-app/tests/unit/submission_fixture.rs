@@ -29,6 +29,9 @@ use syndic_storage::{
     SyndicTimestamp,
 };
 
+#[path = "submission_fixture/marker_readiness.rs"]
+mod marker_readiness;
+
 pub enum Atom<'a> {
     Text(&'a str),
     Image(ImageLabelOrdinal, AssetId),
@@ -60,7 +63,7 @@ pub fn submit_atoms(
     else {
         panic!("submission fixture activation did not produce a binding")
     };
-    let binding = commit_atoms(&mut host, store, binding, atoms);
+    let binding = commit_atoms(&mut host, store, &assets, binding, atoms);
     let source_draft = binding.candidate().draft_id();
     let seals = DraftMarkerSealService::new(
         store,
@@ -128,19 +131,24 @@ fn submission_admission_requirement() -> beryl_home_store::TurnStartAdmissionReq
 fn commit_atoms(
     host: &mut SyndicComposerHost,
     store: &HomeStore,
-    binding: ComposerHostBinding,
+    assets: &AssetState,
+    mut binding: ComposerHostBinding,
     atoms: &[Atom<'_>],
 ) -> ComposerHostBinding {
-    let key = MutationKey::new(
-        BindingId::new(binding.host_generation().get()),
-        SourceRevision::new(binding.candidate().candidate_generation()),
-        gpui_text_input::OperationId::new(1),
-    );
-    let origin = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects);
-    host.begin_mutation(
-        store,
-        binding,
-        MutationBeginRequest::new(
+    let mut text_bytes = 0_u64;
+    let mut lines = 1_u64;
+    let mut last_neighbor = None;
+    for (atom_index, atom) in atoms.iter().enumerate() {
+        let key = MutationKey::new(
+            BindingId::new(binding.host_generation().get()),
+            SourceRevision::new(binding.candidate().candidate_generation()),
+            gpui_text_input::OperationId::new(u64::try_from(atom_index + 1).unwrap()),
+        );
+        let origin = SourcePosition::new(
+            ByteOffset::new(text_bytes),
+            last_neighbor.map_or(InlineObjectGap::NoObjects, InlineObjectGap::after),
+        );
+        let begin = MutationBeginRequest::new(
             MutationProposal::new(
                 key,
                 MutationKind::Edit,
@@ -150,33 +158,40 @@ fn commit_atoms(
             ),
             MutationCursor::new(0),
             MutationCursor::new(0),
-        ),
-    )
-    .unwrap();
-    let mut page_items = Vec::with_capacity(atoms.len());
-    let mut metadata = Vec::new();
-    let mut text_bytes = 0_u64;
-    let mut lines = 1_u64;
-    let mut last_neighbor = None;
-    for atom in atoms {
+        );
+        let mut page_items: Vec<(MutationPageItem, Box<[ComposerHostImageMarkerMetadata]>)> =
+            Vec::new();
+        let mut markers = Vec::new();
+        let initial_text_bytes = text_bytes;
         match atom {
             Atom::Text(text) => {
-                page_items.push(MutationPageItem::Utf8 {
-                    inserted_offset: text_bytes,
-                    text: (*text).into(),
-                });
-                text_bytes = text_bytes.checked_add(text.len() as u64).unwrap();
-                lines = lines
-                    .checked_add(text.bytes().filter(|byte| *byte == b'\n').count() as u64)
-                    .unwrap();
+                let mut remaining = *text;
+                while !remaining.is_empty() {
+                    let mut end = remaining.len().min(16_384);
+                    while !remaining.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    let (chunk, rest) = remaining.split_at(end);
+                    page_items.push((
+                        MutationPageItem::Utf8 {
+                            inserted_offset: text_bytes - initial_text_bytes,
+                            text: chunk.into(),
+                        },
+                        Box::new([]),
+                    ));
+                    text_bytes += chunk.len() as u64;
+                    lines += chunk.bytes().filter(|byte| *byte == b'\n').count() as u64;
+                    last_neighbor = None;
+                    remaining = rest;
+                }
             }
-            Atom::Image(_label, asset) => {
-                let ordinal = u64::try_from(metadata.len() + 1).unwrap();
+            Atom::Image(label, asset) => {
+                let ordinal = u64::try_from(atom_index + 1).unwrap();
                 let marker = marker_id(binding.candidate().draft_id(), ordinal);
                 let object = InlineObjectId::new(u128::from_be_bytes(*marker.as_bytes()));
                 let order = InlineObjectOrder::new(u128::from(ordinal));
-                page_items.push(MutationPageItem::Object(
-                    gpui_text_input::ObjectChange::Insert {
+                page_items.push((
+                    MutationPageItem::Object(gpui_text_input::ObjectChange::Insert {
                         object: SuccessorObject::new(
                             object,
                             ByteOffset::new(text_bytes),
@@ -184,69 +199,125 @@ fn commit_atoms(
                             17,
                             5,
                         ),
-                    },
+                    }),
+                    Box::new([ComposerHostImageMarkerMetadata::new(object, *asset)]),
                 ));
-                metadata.push(ComposerHostImageMarkerMetadata::new(object, *asset));
+                markers.push(syndic_storage::DraftPieceMarkerV1::new(
+                    marker, ordinal, *label, *asset,
+                ));
                 last_neighbor = Some(InlineObjectNeighbor::new(object, order));
             }
         }
-    }
-    let page = MutationPage::new(
-        MutationPageKey::new(
-            key,
-            MutationLane::Proposal,
-            MutationCursor::new(0),
-            0,
-            MutationIdentity::ROOT,
-        ),
-        MutationCursor::new(1),
-        page_items,
-    )
-    .unwrap();
-    let finish = MutationStreamFinish {
-        next_cursor: page.next_cursor(),
-        next_ordinal: 1,
-        cumulative_identity: page.cumulative_identity(),
-        totals: page.totals(),
-    };
-    host.stage_mutation_page(
-        store,
-        MutationPageRequest::new(page),
-        metadata.into_boxed_slice(),
-    )
-    .unwrap();
-    let caret = SourcePosition::new(
-        ByteOffset::new(text_bytes),
-        last_neighbor.map_or(InlineObjectGap::NoObjects, InlineObjectGap::after),
-    );
-    host.finish_mutation_input(
-        store,
-        MutationFinishInput::new(
-            key,
-            MutationStreamFinish {
-                next_cursor: MutationCursor::new(0),
-                next_ordinal: 0,
-                cumulative_identity: MutationIdentity::ROOT,
-                totals: MutationTotals::default(),
-            },
-            finish,
-            LogicalExtent::new(text_bytes, lines),
-            MutationPositions::collapsed(caret),
-        ),
-    )
-    .unwrap();
-    for _ in 0..64 {
-        match host.execute_mutation(
-            store,
-            MutationCommitRequest::new(key, MutationIdentity::ROOT),
-            &CommandCancellation::new(),
-        ) {
-            Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => return binding,
-            Err(crate::composer_host::ComposerHostError::MutationWorkPending) => {}
-            outcome => panic!("submission fixture mutation did not commit: {outcome:?}"),
+        if markers.is_empty() {
+            host.begin_mutation(store, binding, begin).unwrap();
+        } else {
+            let storage = SyndicStorage::reacquire(store).unwrap();
+            let syndic_storage::DraftEditorCandidateSessionReadOutcomeV1::Active(session) = storage
+                .draft_editor_candidate_session(
+                    store,
+                    binding.candidate().draft_id(),
+                    binding.candidate().session_id(),
+                )
+                .unwrap()
+            else {
+                panic!("submission fixture candidate is inactive")
+            };
+            let mut operation = [0; 16];
+            operation[8..].copy_from_slice(&begin.proposal().key().operation().get().to_be_bytes());
+            let owner = syndic_storage::DraftMarkerAdmissionOwnerV1::new(
+                session.draft_id(),
+                session.session_id(),
+                syndic_storage::DraftMarkerAdmissionOperationIdV1::from_bytes(operation),
+            );
+            let marker = markers[0];
+            let previous = atoms[..atom_index].iter().enumerate().find_map(|(index, atom)| {
+                matches!(atom, Atom::Image(label, asset) if *label == marker.label() && *asset == marker.asset_id())
+                    .then(|| marker_id(session.draft_id(), u64::try_from(index + 1).unwrap()))
+            });
+            let readiness =
+                marker_readiness::ready(&storage, store, assets, &session, owner, marker, previous);
+            host.test_begin_marker_mutation(store, binding, begin, readiness)
+                .unwrap();
         }
+        let mut finish = MutationStreamFinish {
+            next_cursor: MutationCursor::new(0),
+            next_ordinal: 0,
+            cumulative_identity: MutationIdentity::ROOT,
+            totals: MutationTotals::default(),
+        };
+        for (item, metadata) in page_items {
+            let next = finish.next_ordinal + 1;
+            let page = MutationPage::new(
+                MutationPageKey::new(
+                    key,
+                    MutationLane::Proposal,
+                    finish.next_cursor,
+                    finish.next_ordinal,
+                    finish.cumulative_identity,
+                ),
+                MutationCursor::new(next),
+                vec![item],
+            )
+            .unwrap();
+            let totals = page.totals();
+            finish = MutationStreamFinish {
+                next_cursor: page.next_cursor(),
+                next_ordinal: next,
+                cumulative_identity: page.cumulative_identity(),
+                totals: MutationTotals {
+                    pages: finish.totals.pages + totals.pages,
+                    items: finish.totals.items + totals.items,
+                    retained_bytes: finish.totals.retained_bytes + totals.retained_bytes,
+                    inserted_bytes: finish.totals.inserted_bytes + totals.inserted_bytes,
+                    inserted_line_breaks: finish.totals.inserted_line_breaks
+                        + totals.inserted_line_breaks,
+                    objects: finish.totals.objects + totals.objects,
+                    object_bytes: finish.totals.object_bytes + totals.object_bytes,
+                    presentation_bytes: finish.totals.presentation_bytes
+                        + totals.presentation_bytes,
+                },
+            };
+            host.stage_mutation_page(store, MutationPageRequest::new(page), metadata)
+                .unwrap();
+        }
+        let caret = SourcePosition::new(
+            ByteOffset::new(text_bytes),
+            last_neighbor.map_or(InlineObjectGap::NoObjects, InlineObjectGap::after),
+        );
+        host.finish_mutation_input(
+            store,
+            MutationFinishInput::new(
+                key,
+                MutationStreamFinish {
+                    next_cursor: MutationCursor::new(0),
+                    next_ordinal: 0,
+                    cumulative_identity: MutationIdentity::ROOT,
+                    totals: MutationTotals::default(),
+                },
+                finish,
+                LogicalExtent::new(text_bytes, lines),
+                MutationPositions::collapsed(caret),
+            ),
+        )
+        .unwrap();
+        let mut committed = None;
+        for _ in 0..64 {
+            match host.execute_mutation(
+                store,
+                MutationCommitRequest::new(key, MutationIdentity::ROOT),
+                &CommandCancellation::new(),
+            ) {
+                Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => {
+                    committed = Some(binding);
+                    break;
+                }
+                Err(crate::composer_host::ComposerHostError::MutationWorkPending) => {}
+                outcome => panic!("submission fixture mutation did not commit: {outcome:?}"),
+            }
+        }
+        binding = committed.expect("submission fixture mutation did not converge");
     }
-    panic!("submission fixture mutation did not converge")
+    binding
 }
 
 fn marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarkerId {

@@ -106,14 +106,44 @@ publication-panic test also passes.
 The earlier bounded selection, `cas-fixture-corrections-20260910`, ran 19 cases: nine passed and ten
 failed. Those failures included the now-corrected activation path, four image-bearing cases
 with `MutationBuildPreparation(Build(InvalidRoot))`, and five compaction-marker cases whose attempted
-lifecycle-yield setup is not accepted. The active-steering observation-delta correction and bounded
-large marker-free replay now pass. Image and compaction fixture edits remain unaccepted working
-material; the selection does not establish phase completion or a green regression suite.
+lifecycle-yield setup was invalid. The active-steering correction measures observations made by
+delivery after fixture construction, preserving the guarantee that active steering does not query
+new-turn free space.
+
+The compaction fixture now mounts its already-admitted manual operation with real command and
+thread-operation custody. Stop, compaction and routing share the same command gate and scheduler.
+An idle-thread manual operation cannot satisfy the lifecycle harness's accepted ordinary-turn
+yield prerequisite. Inventing that yield was invalid setup. All five original publication, schema,
+identity and frontier cases pass; independent custody review accepts the corrected manual mount.
+
+The submission fixture stages bounded UTF-8 pages and appends each atom through a valid separate
+mutation before one final submission. Its earlier combined empty-root edit placed an image's
+successor anchor at predecessor replacement `7..7` in an empty predecessor. Source proof correctly
+rejected that out-of-range position. Forcing every item to the same empty predecessor range would
+instead violate the mixed markerless/marker empty-range contract. These tests exercise submission
+and replay, not the atomicity of constructing the fixture draft. Separate fixture appends retain
+the original content, order, labels, assets and final replay assertions.
+
+Successful construction then exposed `ImageLabelAuthorityConflict` at first acceptance. The
+writer-ready seed helper creates marker admission targets but does not reserve image labels.
+The corrected fixture uses real readiness-page and assignment commands, a fresh-asset witness for
+new images and exact current candidate-marker authority for repeated labels. It checks the assigned
+target and label before mutation. All four image cases pass, and independent review accepts both
+append mechanics and readiness authority. Temporary production diagnostics were removed.
+
+The updated baseline selection, `cas-baseline-reconciled-20260910`, passes all 19 cases, including
+the ordinary returned-error regression and renamed before-commit storage-failure case. Focused
+evidence prefixes are `cas-compaction-fixture-20260910` and `cas-image-ready-fixture-20260910`.
+The broader `cas-reconciled-controls-20260910` run passes all 315 cases across the app library and
+connection-work, runtime-demand, scheduled-session, runtime-interest, managed-runtime-interest and
+runtime-execution-session targets. Scoped formatting and diff checks pass. These results and the
+independent fixture reviews accept the regression reconciliation; production panic handling
+remains covered by its separate fatal-reporting boundaries.
 
 Logs and process summaries use the retained evidence directory above, with prefixes
 `cas-fixture-reconciliation-20260910` and `cas-fixture-corrections-20260910`. The final guarded job
 reports `root_exit=100`, `root_reaped=true` and `remaining_job_pids=[]`; its verified temporary
-directory was removed. Image/compaction fixture corrections remain uncommitted. The fatal-reporting
+directory was removed. The fatal-reporting
 channel and GUI have since passed 23 focused tests and independent
 review; ordinary executable mounting remains its separately tracked bootstrap dependency.
 

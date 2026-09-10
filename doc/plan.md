@@ -44,40 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 383: Fence Exact Storage Failure Before Broker Acknowledgement (finished)
+# Phase 378: Reconcile Existing CAS Regression Evidence (finished)
 
-The broker now observes exact storage failure before authority-loss acknowledgement. The scoped
-activation regression, terminal-storage cuts, healthy authority-loss negative, gate/stop checks and
-production compilation passed. Independent review accepted notification ordering, generation
-isolation and permit draining. The two terminal-storage assertion corrections are accepted with
-this boundary; [failure evidence](failures/cas-regression-baseline.md#reconciliation-blocker) records
-the original defect and its correction.
+Corrected fixture admission, image-label readiness, manual compaction custody and the active-steering
+observation assertion preserve the original protected outcomes. All 19 baseline cases and all 315
+app lifecycle/control cases pass. Independent review accepts the custody and image-fixture changes;
+[failure evidence](failures/cas-regression-baseline.md) records causes and verification. Library
+unwind checks remain distinct from application fatal reporting.
 
-# Phase 378: Reconcile Existing CAS Regression Evidence (wip)
-
-Restore the bounded regression evidence identified in the committed-baseline comparison before
-resuming process composition. Derive fixture and assertion corrections from the existing composer
-marker contract, exact service/control ownership and terminal-failure authority; source and tests
-remain governed by the app package and CAS-live system design. Diagnose the four recorded failure
-families, preserve the behavior each test must distinguish, and repair obsolete test setup without
-weakening protected outcomes. A required production correction needs its own ready plan boundary.
-
-Verify the 18-case baseline selection and affected fixture consumers, then the app lifecycle/control
-suite; document any independently remaining failure instead of treating a partial run as green.
-Use focused independent review for changes to fault-injection expectations or custody assertions.
-
-The returned activation-write correction is accepted. Resume the image and compaction fixtures.
-Reconcile panic cases against fatal policy without treating library-unwind tests as proof of
-application recovery; preserve the ordinary returned-error regression.
-The remaining fixture corrections are uncommitted and this phase remains unaccepted: the prior
-19-case selection had nine passes and ten failures, including unresolved image and compaction
-fixture setup. The activation fault cases now pass under the accepted correction; rerun the
-complete baseline selection after the remaining fixture repairs.
-
-The [fatal reporting assessment](failures/cas-regression-baseline.md#fatal-panic-reporting-direction)
-preserves the rejected same-process assumption and the selected replacement.
-
-# Phase 325: Own Running Work Independently Of Views (pending)
+# Phase 325: Own Running Work Independently Of Views (wip)
 
 Compose process-owned execution interest across direct submission, scheduled input, compaction,
 continuation and terminal-history work. Keep exact request routing and background attention under
@@ -87,8 +62,10 @@ reattachment preserve the same live execution and capture, and all terminal/repl
 release required resources. Split any independently missing composition prerequisite before
 activation; production runtime/provider composition remains explicit rather than inferred.
 
-The terminal-disposal, runtime-demand and idle-retirement prerequisites are accepted. Composition
-resumes after the separate regression-evidence reconciliation above.
+The terminal-disposal, runtime-demand, idle-retirement and regression-evidence prerequisites are
+accepted. Resume composition from the existing process session provider, configured managed-runtime
+preparation, shared work sources and control coordinators; verify their joined execution lifetime
+without inferring complete composition from isolated component tests.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

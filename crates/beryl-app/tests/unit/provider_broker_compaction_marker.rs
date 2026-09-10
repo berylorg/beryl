@@ -191,12 +191,6 @@ impl Fixture {
         let home_generation = home.health().generation().unwrap();
         let home_id = home.home_id();
         let home = Arc::new(home);
-        let stop_coordinator = Arc::new(StopCoordinator::new_for_test(
-            &home,
-            home_id,
-            home_generation,
-            storage.clone(),
-        ));
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
                 &home,
@@ -209,6 +203,14 @@ impl Fixture {
         )
         .authorizer();
         let scheduler_signal = AcceptedInputSchedulerSignal::new();
+        let stop_coordinator = Arc::new(StopCoordinator::new(
+            &home,
+            home_id,
+            home_generation,
+            storage.clone(),
+            commands.clone(),
+            scheduler_signal.clone(),
+        ));
         let coordinator = ContextCompactionCoordinator::new(
             Arc::clone(&home),
             home_id,
@@ -224,12 +226,7 @@ impl Fixture {
         let compaction_driver = coordinator.lifecycle_test_harness();
         #[cfg(feature = "test-faults")]
         compaction_driver
-            .mount_lifecycle_operation(
-                operation_id,
-                attempt,
-                operation_id.provider_turn_id(),
-                Duration::from_secs(30),
-            )
+            .mount_manual_operation(operation_id, attempt, Duration::from_secs(30))
             .unwrap();
         let router = Arc::new(
             EventRouter::new_with_scheduler(

@@ -365,10 +365,10 @@
   final capability release; independent review, production checks and 64 regressions passed.
 - [x] Accepted the home mutation-observation boundary for the [idle-retirement admission correction](../../failures/process-idle-admission-race.md).
 - [x] Accepted scheduler maintenance and autonomous idle-session release with required-work admission serialized against election.
-- [ ] Reconcile the [confirmed CAS regression baseline failures](../../failures/cas-regression-baseline.md) before process composition resumes.
-- [ ] Implement the independent fatal report handoff and direct process termination.
+- [x] Reconciled the [confirmed CAS regression baseline failures](../../failures/cas-regression-baseline.md); 19 baseline and 315 app/control cases pass with independent fixture review.
+- [x] Implemented the independent fatal report handoff and direct process termination.
 - [x] Established the independently reviewed bounded fatal-reporting authority.
-- [ ] Implement the isolated report window and its two terminal commands.
+- [x] Implemented the isolated report window and its two terminal commands; 23 combined checks and independent review passed.
 - [ ] Mount fatal handling and reporter mode when executable bootstrap is reconstructed.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.

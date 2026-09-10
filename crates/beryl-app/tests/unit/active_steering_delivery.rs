@@ -517,6 +517,8 @@ fn exact_response_waits_for_started_then_completed_before_durable_success() {
 fn lifecycle_before_exact_response_still_completes_delivery() {
     let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
     let fixture = DeliveryFixture::new(213, 4, &server, STEERING_TEXT);
+    #[cfg(feature = "test-faults")]
+    let before = fixture.free_space_observation_count();
 
     let outcome = fixture.deliver().unwrap();
     assert!(
@@ -531,7 +533,7 @@ fn lifecycle_before_exact_response_still_completes_delivery() {
     #[cfg(feature = "test-faults")]
     assert_eq!(
         fixture.free_space_observation_count(),
-        0,
+        before,
         "active steering must not probe the new-turn free-space reserve"
     );
 

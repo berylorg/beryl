@@ -61,6 +61,45 @@ impl CompactionCustodyPressureGuard {
 }
 
 impl ContextCompactionLifecycleTestHarness {
+    pub fn mount_manual_operation(
+        &self,
+        operation_id: CompactionOperationId,
+        attempt: CompactionAttemptNonce,
+        completion_timeout: Duration,
+    ) -> Result<(), ContextCompactionError> {
+        validate_completion_timeout(completion_timeout)?;
+        let coordinator = self.coordinator()?;
+        let operation = coordinator.read_operation(operation_id)?;
+        if operation.attempt() != attempt || !operation.state().is_live() {
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        let mut driver = self
+            .driver
+            .lock()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        if driver.is_some() {
+            return Err(ContextCompactionError::AuthorityMismatch);
+        }
+        let command = coordinator
+            .commands
+            .authorize()
+            .map_err(|_| ContextCompactionError::Unavailable)?;
+        let local = Arc::new(LocalCompaction::new(
+            operation_id,
+            attempt,
+            CompactionOrigin::Manual,
+            ResolvedContextCompactionTimeout::fixed(completion_timeout),
+            coordinator.reserve_command(command, operation_id.thread_id())?,
+        ));
+        local
+            .observation
+            .operation(operation_id, attempt, operation.target());
+        coordinator.install_local(Arc::clone(&local))?;
+        local.observation.stage(CompactionCommandWorkStage::Driver);
+        *driver = Some(dispatch::CompactionDriverGuard(local));
+        Ok(())
+    }
+
     pub fn release_compaction_driver(&self) {
         self.driver.lock().unwrap().take();
     }
