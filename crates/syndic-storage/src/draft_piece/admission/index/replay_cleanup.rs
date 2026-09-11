@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
+pub(crate) fn prepare_draft_marker_admission_replay_cleanup_v1(
     reader: &DomainReader<'_, SyndicDomain>,
     head: &super::super::DraftMarkerAdmissionHeadV1,
     receipt: &super::super::DraftMarkerAdmissionReplayReceiptV1,
@@ -28,7 +28,6 @@ pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
     let prior_replay_nodes = receipt.retained_predecessor_nodes();
     authenticate_retained_predecessor_nodes(&mut ledger, owner, prior_replay_nodes)?;
     tree_edit::authenticate_receipt_transition(&mut ledger, owner, receipt, Some(head))?;
-    let mut retired_targets = Vec::new();
     let mut protected = BTreeSet::new();
     for node in prior_replay_nodes {
         if let DraftMarkerAdmissionEnvelopeV1::TargetId { first, last } = node.envelope() {
@@ -44,12 +43,11 @@ pub(crate) fn prepare_draft_marker_admission_replay_target_cleanup_v1(
                 )?
                 .ok_or(DraftMarkerAdmissionIndexPreparationErrorV1::PathAuthentication)?;
                 protected.insert(live);
-                retired_targets.push(*node);
             }
         }
     }
     let deletions =
-        authenticate_replay_deletions(&mut ledger, owner, &retired_targets, &protected)?;
+        authenticate_replay_deletions(&mut ledger, owner, prior_replay_nodes, &protected)?;
     let delete_bytes = sum_node_charges(&deletions)?;
     Ok((
         deletions

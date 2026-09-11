@@ -245,7 +245,9 @@ impl DomainMutation<SyndicDomain> for StagingMutation {
             reservation.reserve_records::<DraftMarkerAdmissionCapacityCodec>(1)?;
             reservation.reserve_records::<DraftMarkerAdmissionHeadsCodec>(1)?;
             reservation.reserve_records::<DraftMarkerAdmissionReceiptsCodec>(1)?;
-            reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(1)?;
+            reservation.reserve_records::<DraftMarkerAdmissionNodesCodec>(
+                crate::draft_piece::admission::DRAFT_MARKER_ADMISSION_MAX_RETAINED_PREDECESSORS,
+            )?;
         }
         if self.prepared.source_head.is_some()
             && self

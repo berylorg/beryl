@@ -121,6 +121,16 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Submission starts only after a flush proves one immutable candidate is the current durable draft.
   The app drives bounded materialization and reference preparation and passes opaque typed
   contributions into one atomic acceptance command.
+- Exact durable submission acceptance hands work to the process scheduler before successor-editor
+  activation or presentation completion. Committed, reconciled exact and already-accepted outcomes
+  share this handoff; cancellation, noncommit, collision and unresolved outcomes cannot signal it.
+  The handoff retains only the originating home/service generation's bounded wake capability and
+  rejects another home or generation. Retirement cannot redirect it into a replacement service.
+  Idle acceptance wakes ordinary pending execution; accepted input wakes both steering and
+  accepted-next inspection, whose existing durable gates determine current eligibility. These
+  coalesced notifications grant no dispatch, retry or duplicated provider-effect authority and do
+  not broaden the separate idle-maintenance wake. Mounted and unmounted submission settlement use
+  the same handoff independently of editor and view lifetime.
 - Submission may use the authenticated unchanged opening relationship. It materializes the durable
   root while fencing the exact captured live candidate and durable selector independently; later
   adoption, selector drift, or replacement invalidates that capture. Final ordinary session disposal

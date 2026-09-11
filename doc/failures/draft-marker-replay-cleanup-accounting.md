@@ -39,7 +39,7 @@ build cancellation, service disposal and mismatched staging-replay cancellation 
 The app uses the required public cleanup API with exact custody; it cannot discard that owner or
 claim successful cancellation. Temporary diagnostics were removed byte-exactly before correction.
 
-## Accepted Writer Handoff Correction
+## Target-Only Writer Handoff Correction
 
 Writer begin now reclaims the obsolete target while its selected readiness receipt still
 authenticates it. It exchanges the exact physical byte charge without decrementing the live
@@ -85,3 +85,29 @@ Source hashes matched before and after. Independent semantic/adversarial review 
 same production and storage-test artifacts. Task-owned temporary homes, logs, verification worktree
 and target were removed; shared build artifacts were preserved. App refusal presentation, mounted
 regressions and final app acceptance remain separate work.
+
+## Complete Retained Closure
+
+The later `promoted_image_descendant_reconciles_after_home_restart_without_re_admission` app
+regression reaches exact reconciliation but fails whole-home scrub with an orphan admission node.
+The final production assignment retains source and target predecessors in its selected receipt.
+Writer begin's target-leaf-only cleanup deletes that receipt while leaving source predecessors;
+final writer release then removes the owner head. The fixture uses the real assignment transition,
+so deleting fixture nodes or weakening scrub would conceal a production custody defect.
+
+Writer handoff and terminalization now reclaim the complete authenticated superseded set with
+the same work ledger and physical charge exchange. The composing staging command reserves 52 node
+records for captured reconciliation custody, using the same bound as receipt validation. Its former
+one-record reservation rejected the expanded deletion before commit, even for two small nodes.
+
+The complete deletion closure adds at most 811,196 bytes in place of the former 65,601-byte target
+leaf. The conservative static peak is therefore 3,162,276 bytes, below 4,194,304. Retained records
+are already in the shared cache, so the 83-point/70-acquisition inventory does not increase.
+This is an analytic bound, separate from HomeStore's reconciliation reservation.
+
+All 35 fresh-readiness and writer-admission cases pass in
+`0fa7b537-c1f3-4be4-a6e9-01493774c8c2`, including physical-byte accounting, cancellation, substituted
+receipt rejection and acknowledgement loss. All 25 exact-submission cases pass in
+`49e0158a-577f-486d-a4b8-7a686ffcd617`, including the original image restart/reconciliation and
+whole-home scrub witness. Locked production checks for Syndic storage and Beryl app and independent
+semantic/adversarial review pass. The earlier target-only acceptance did not establish this closure.

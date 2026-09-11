@@ -70,15 +70,13 @@ pub(crate) fn prepare_draft_marker_writer_begin_v1(
         return Err(SyndicMutationError::IdentityCollision);
     }
     let (node_deletions, _, replay_delete_bytes) =
-        index::prepare_draft_marker_admission_replay_target_cleanup_v1(
-            reader, &head, &receipt, work,
-        )
-        .map_err(|error| match error {
-            index::DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => {
-                SyndicMutationError::Read(error)
-            }
-            _ => SyndicMutationError::IdentityCollision,
-        })?;
+        index::prepare_draft_marker_admission_replay_cleanup_v1(reader, &head, &receipt, work)
+            .map_err(|error| match error {
+                index::DraftMarkerAdmissionIndexPreparationErrorV1::Read(error) => {
+                    SyndicMutationError::Read(error)
+                }
+                _ => SyndicMutationError::IdentityCollision,
+            })?;
     let next_revision = NonZeroU64::new(
         head.revision()
             .get()

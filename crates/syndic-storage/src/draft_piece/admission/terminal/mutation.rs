@@ -238,8 +238,8 @@ fn prepare_terminalization(
     {
         return Err(TerminalMutationError::Authority);
     }
-    let (replay_targets, replay_read_bytes, replay_delete_bytes) =
-        super::super::index::prepare_draft_marker_admission_replay_target_cleanup_v1(
+    let (replay_nodes, replay_read_bytes, replay_delete_bytes) =
+        super::super::index::prepare_draft_marker_admission_replay_cleanup_v1(
             reader,
             &prior_head,
             &prior_receipt,
@@ -346,7 +346,7 @@ fn prepare_terminalization(
         head,
         receipt_put: Some(receipt),
         receipt_delete: Some(prior_receipt_key),
-        node_deletions: replay_targets,
+        node_deletions: replay_nodes,
     })
 }
 

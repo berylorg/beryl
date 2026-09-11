@@ -294,7 +294,7 @@ mod builder_work;
 mod replay_cleanup;
 mod tree_edit;
 pub(crate) use builder_work::prepare_acquired_marker_consumption;
-pub(crate) use replay_cleanup::prepare_draft_marker_admission_replay_target_cleanup_v1;
+pub(crate) use replay_cleanup::prepare_draft_marker_admission_replay_cleanup_v1;
 
 use tree_edit::{
     NodeIdFactory, SearchKey, authenticate_fresh_put_keys, authenticate_replay_deletions,
@@ -988,7 +988,7 @@ fn authenticate_retained_predecessor_nodes<R: AdmissionNodeReader>(
     owner: DraftMarkerAdmissionOwnerV1,
     retained: &[DraftMarkerAdmissionChildV1],
 ) -> Result<(), DraftMarkerAdmissionIndexPreparationErrorV1> {
-    if retained.len() > 52 {
+    if retained.len() > super::DRAFT_MARKER_ADMISSION_MAX_RETAINED_PREDECESSORS {
         return Err(DraftMarkerAdmissionSchemaErrorV1::InvalidCount.into());
     }
     let mut seen = BTreeSet::new();

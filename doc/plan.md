@@ -44,15 +44,50 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 378: Reconcile Existing CAS Regression Evidence (finished)
+# Phase 385: Reclaim Complete Admission Replay Custody At Writer Handoff (finished)
 
-Corrected fixture admission, image-label readiness, manual compaction custody and the active-steering
-observation assertion preserve the original protected outcomes. All 19 baseline cases and all 315
-app lifecycle/control cases pass. Independent review accepts the custody and image-fixture changes;
-[failure evidence](failures/cas-regression-baseline.md) records causes and verification. Library
-unwind checks remain distinct from application fatal reporting.
+Writer handoff and terminalization reclaim the complete authenticated predecessor set with exact
+byte accounting and bounded reconciliation reservation. All 35 focused storage and 25 exact
+submission tests pass, including the original image reconciliation and whole-home scrub witness.
+Locked production checks and independent semantic/adversarial review pass; the
+[failure record](failures/draft-marker-replay-cleanup-accounting.md#complete-retained-closure) preserves evidence.
 
-# Phase 325: Own Running Work Independently Of Views (wip)
+# Phase 386: Establish Accepted Successor Progress After Session Retirement (wip)
+
+Diagnose the managed accepted-input successor stall against the
+[process scheduling contract](../crates/beryl-app/doc/design-live-projection-and-scheduling.md).
+Preserve the rule that unadmitted queued input does not retain an idle session. First establish
+whether the failure belongs to fixture protocol expectations or production scheduler readiness;
+resolve any missing design choice before implementation. Correct the identified cause, verify
+successor dispatch without synthetic wakes and bounded resource retirement, and obtain independent
+semantic review. Retain exact rejection and terminal-capture evidence from the original reproduction.
+
+The observed successor checkout meets a retiring session. Retirement later removes that session,
+but the queued input does not start. The scan/wake interaction and the fixture's process-reuse
+expectation remain to be classified. Temporary diagnostics are retained only for this investigation.
+
+# Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
+
+The Operator authorizes the correction identified by the
+[submission handoff failure](failures/process-submission-execution-handoff.md). The
+[composer package contract](../crates/beryl-app/doc/design-catalog-and-composer.md#history-publication-and-submission)
+owns exact acceptance notification; existing process-generation ownership and scheduler lane gates
+remain controlling. Add the bounded generation-scoped handoff and wire production submission
+settlement before successor-editor activation, including unmounted settlement.
+
+Verify committed, reconciled and already-accepted success, and absence of notification for
+unresolved, cancelled and proven noncommitted outcomes. Verify wrong-home/generation rejection,
+retired-service isolation and coalesced duplicate notification under existing dispatch gates.
+Use the managed-runtime reproduction without a synthetic execution wake to prove direct and
+accepted-input dispatch. Retain focused composer and scheduler regression evidence and obtain
+independent semantic review of generation fencing, lane selection and notification placement.
+Broader execution-lifetime composition remains the next separate boundary.
+
+Implementation and initial semantic review are complete but acceptance remains pending. The
+25 exact-submission cases now pass after phase 385; managed direct dispatch also passes. Complete
+the accepted successor reproduction and final focused scheduler evidence before accepting this handoff.
+
+# Phase 325: Own Running Work Independently Of Views (pending)
 
 Compose process-owned execution interest across direct submission, scheduled input, compaction,
 continuation and terminal-history work. Keep exact request routing and background attention under
@@ -66,6 +101,11 @@ The terminal-disposal, runtime-demand, idle-retirement and regression-evidence p
 accepted. Resume composition from the existing process session provider, configured managed-runtime
 preparation, shared work sources and control coordinators; verify their joined execution lifetime
 without inferring complete composition from isolated component tests.
+
+Resume after the separately authorized submission handoff correction. The managed-runtime
+composition tests preserve the original reproduction; their later detachment, capture and
+successor assertions remain unaccepted until exercised successfully. Joined terminal-history,
+lifecycle-compaction and compaction-cleanup-to-successor evidence remains required.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -84,13 +84,13 @@ fn assert_handoff(
     let mut deleted_count = 0;
     for (prior, next) in before.nodes().iter().zip(after.nodes()) {
         let prior = prior.as_ref().unwrap();
-        if matches!(
-            prior.payload(),
-            DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
-                disposition: DraftMarkerAdmissionTargetDispositionV1::Unassigned,
-                ..
-            }
-        ) {
+        if before
+            .receipt()
+            .unwrap()
+            .retained_predecessor_nodes()
+            .iter()
+            .any(|node| node.key() == prior.key())
+        {
             assert!(next.is_none());
             deleted_bytes += draft_marker_admission_node_encoded_charge_v1(prior).unwrap();
             deleted_count += 1;
@@ -98,7 +98,7 @@ fn assert_handoff(
             assert_eq!(next.as_ref(), Some(prior));
         }
     }
-    assert_eq!(deleted_count, 1);
+    assert_eq!(deleted_count, 2);
     assert!(matches!(
         after.nodes().last().unwrap().as_ref().unwrap().payload(),
         DraftMarkerAdmissionNodePayloadV1::TargetLeaf {
