@@ -832,6 +832,11 @@ impl ProjectionConnection {
             Err(error) if first_error.is_none() => first_error = Some(error),
             Err(_) => {}
         }
+        if first_error.is_none() {
+            attachment.scheduler_signal.wake(
+                crate::cas_projection::accepted_input_scheduler::AcceptedInputWakeReason::IdleRecheck,
+            );
+        }
         first_error.map_or(Ok(()), Err)
     }
 

@@ -44,29 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 385: Reclaim Complete Admission Replay Custody At Writer Handoff (finished)
+# Phase 386: Establish Accepted Successor Progress After Session Retirement (finished)
 
-Writer handoff and terminalization reclaim the complete authenticated predecessor set with exact
-byte accounting and bounded reconciliation reservation. All 35 focused storage and 25 exact
-submission tests pass, including the original image reconciliation and whole-home scrub witness.
-Locked production checks and independent semantic/adversarial review pass; the
-[failure record](failures/draft-marker-replay-cleanup-accounting.md#complete-retained-closure) preserves evidence.
+Clean joined connection disposal wakes originating idle maintenance, which reclaims the exact
+session and publishes existing execution readiness. Natural managed direct and queued-successor
+execution pass; all 48 selected scheduler/runtime/disposal checks, locked production check and
+independent semantic review pass. The [failure record](failures/process-session-retirement-completion.md)
+preserves the reproduction and generation, disposal and non-dispatch boundaries.
 
-# Phase 386: Establish Accepted Successor Progress After Session Retirement (wip)
-
-Diagnose the managed accepted-input successor stall against the
-[process scheduling contract](../crates/beryl-app/doc/design-live-projection-and-scheduling.md).
-Preserve the rule that unadmitted queued input does not retain an idle session. First establish
-whether the failure belongs to fixture protocol expectations or production scheduler readiness;
-resolve any missing design choice before implementation. Correct the identified cause, verify
-successor dispatch without synthetic wakes and bounded resource retirement, and obtain independent
-semantic review. Retain exact rejection and terminal-capture evidence from the original reproduction.
-
-The observed successor checkout meets a retiring session. Retirement later removes that session,
-but the queued input does not start. The scan/wake interaction and the fixture's process-reuse
-expectation remain to be classified. Temporary diagnostics are retained only for this investigation.
-
-# Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
+# Phase 384: Hand Exact Submission Acceptance To Process Execution (wip)
 
 The Operator authorizes the correction identified by the
 [submission handoff failure](failures/process-submission-execution-handoff.md). The
@@ -84,8 +70,10 @@ independent semantic review of generation fencing, lane selection and notificati
 Broader execution-lifetime composition remains the next separate boundary.
 
 Implementation and initial semantic review are complete but acceptance remains pending. The
-25 exact-submission cases now pass after phase 385; managed direct dispatch also passes. Complete
-the accepted successor reproduction and final focused scheduler evidence before accepting this handoff.
+25 exact-submission cases now pass after phase 385; managed direct and accepted-successor dispatch
+pass after phase 386. Final mounted/composer regression and complete test-target compilation remain
+before acceptance. Keep the composition fixtures with this handoff evidence; broader terminal-history,
+compaction and shutdown acceptance remain separate.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

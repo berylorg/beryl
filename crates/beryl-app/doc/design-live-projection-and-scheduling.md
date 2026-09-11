@@ -26,6 +26,12 @@ topology and typed execution surfaces.
   disposal fence. Contention defers inspection; poisoned cleanup ownership remains a typed failure
   while the consuming owner joins and releases the retained resources. Disposal-only recovery of
   poisoned locks never restores execution authority or reports clean completion.
+- Clean ordinary connection disposal notifies the originating scheduler after driver and ingester
+  joins and attachment detachment are observable. The existing idle-maintenance pass then reclaims
+  the exact retired session slot and publishes execution readiness. Worker exit or an earlier
+  retirement request alone is not this completion notification; progress cannot require a later
+  diagnostic read or unrelated user action. This uses existing runtime maintenance and adds no
+  polling worker or retry authority.
 - Required runtime demand survives admitted-session handoff through loaded projections and exact
   request/worker cleanup. Its final release follows actual disposal, including driver retirement
   cleanup; it cannot depend on the runtime retirement that the same demand prevents.
