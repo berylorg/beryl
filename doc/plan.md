@@ -44,15 +44,24 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 386: Establish Accepted Successor Progress After Session Retirement (finished)
+# Phase 387: Bound Window Creation Stack Layout (finished)
 
-Clean joined connection disposal wakes originating idle maintenance, which reclaims the exact
-session and publishes existing execution readiness. Natural managed direct and queued-successor
-execution pass; all 48 selected scheduler/runtime/disposal checks, locked production check and
-independent semantic review pass. The [failure record](failures/process-session-retirement-completion.md)
-preserves the reproduction and generation, disposal and non-dispatch boundaries.
+Creation advances through borrowed-self out-of-line handlers without new allocation or public API
+changes. All 12 creation regressions and locked production compilation pass; independent semantic
+review confirms transition, yield and custody preservation. The outer frame falls from about
+1.44 MiB to 56,832 bytes; measured reconciliation-entry depth is about 586 KiB. The
+[stack-layout record](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
+preserves evidence and measurement limits.
 
-# Phase 384: Hand Exact Submission Acceptance To Process Execution (wip)
+# Phase 388: Bound Candidate Transfer Stack Layout (wip)
+
+Preserve the [Syndic draft contract](../crates/syndic-storage/doc/design-draft-storage.md) while
+reducing measured transfer preparation and owned result pressure with borrowing, out-of-line
+helpers and justified bounded boxing. Verify the ordinary-stack mounted scale witness, focused
+staging/transfer and reconciliation semantics, production compilation and renewed frame attribution;
+independently review durable reads, reservations, writes and exact error/custody behavior.
+
+# Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
 
 The Operator authorizes the correction identified by the
 [submission handoff failure](failures/process-submission-execution-handoff.md). The
@@ -69,11 +78,21 @@ accepted-input dispatch. Retain focused composer and scheduler regression eviden
 independent semantic review of generation fencing, lane selection and notification placement.
 Broader execution-lifetime composition remains the next separate boundary.
 
-Implementation and initial semantic review are complete but acceptance remains pending. The
+Implementation and initial semantic review are complete but acceptance is blocked. The
 25 exact-submission cases now pass after phase 385; managed direct and accepted-successor dispatch
-pass after phase 386. Final mounted/composer regression and complete test-target compilation remain
-before acceptance. Keep the composition fixtures with this handoff evidence; broader terminal-history,
-compaction and shutdown acceptance remain separate.
+pass after phase 386. All 40 selected mounted/initial composer cases and directly affected target
+compilation pass. The final creation/scale fixture run passes four cases and aborts ten with
+ordinary-debug stack overflows. CDB attributes about 1.44 MiB to production
+`MainWindowCreation::advance` before nested reconciliation; the scale witness separately overflows
+in candidate-transfer preparation. The [stack-layout failure record](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
+preserves attribution and limits. The Operator authorized phases 387 and 388 before resuming this
+acceptance; no larger-stack run counts as acceptance. Keep the composition fixtures
+with this handoff evidence; broader terminal-history, compaction and shutdown acceptance remain
+separate.
+
+The package-wide test compilation attempt encounters pre-existing stale image-metadata arguments
+and moved storage handles in unrelated composer/seal fixtures. It is not passing evidence and
+does not expand this handoff into reconciliation of every deferred GUI/storage fixture.
 
 # Phase 325: Own Running Work Independently Of Views (pending)
 

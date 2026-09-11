@@ -179,3 +179,55 @@ The accepted five-file source fingerprint is SHA-256
 repo-relative `path=SHA256` rows joined by LF without a trailing LF.
 App marker-integration acceptance resumes separately with its final full regression and production
 checks; canonical widget publication and revision pinning remain a later boundary.
+
+## Creation And Candidate Transfer Recurrence
+
+On 2026-09-11, final submission-handoff regression selected the definite-noncommit witness,
+`main_window_creation` and `mounted_composer_scale`. Four cases passed; nine creation cases and
+the scale witness aborted with `0xc00000fd`. Directly affected test-target compilation had passed.
+Passing submission and mounted-composer checks do not establish acceptance of these paths.
+
+CDB stopped on first-chance stack overflow in the existing ordinary-debug binaries with no stack
+override. The exact creation witness was
+`indeterminate_acquisition_retains_custody_through_cancellation_and_reconciliation`.
+Its TEB shows a 2 MiB thread stack. Adjacent unwind stack pointers attribute `0x16f910` bytes
+(about 1.44 MiB) to production `MainWindowCreation::advance`. Its nested path reaches
+`RuntimeBackedWindowAcquisitionReconciliation::reconcile`, HomeStore reconciliation,
+`SyndicDomain::reconcile` and `ReconciliationReader::records` for `DraftPieceSettlementsFamily`.
+The overflow occurs in the by-value record iterator/control-flow chain. The fixture and `settle`
+frames together consume about 227 KiB; a large test fixture alone does not explain the measured
+production frame pressure.
+
+The exact scale witness was
+`mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_bounded`.
+Its trace reaches `TransferMutation::prepare` and candidate-session decoding through
+`HomeStore::execute` from fixture staging. Adjacent stack pointers attribute about 336 KiB to
+transfer preparation and 299 KiB to its typed mutation preparation wrapper. This fixture also has
+substantial caller frames, so the trace alone does not establish its minimum production stack
+requirement. Symbol folding can give misleading nearby codec names; preserve the raw trace.
+
+Evidence is retained under `C:/Users/user/AppData/Local/Temp/beryl-build-memory-20260908` in
+`submission-handoff-final-fixtures-20260911.output.log`,
+`submission-creation-stack-frames-20260911.output.log` and
+`submission-scale-stack-cut-20260911.output.log` with monitor summaries. Debugger exit zero
+reflects the explicit quit command, not a passing test. No optimized-release failure is established.
+
+The Operator authorized the correction on 2026-09-12. Creation advancement now borrows its owner
+through focused out-of-line acquisition, initial-composer and abandonment handlers. Each original
+state transition still consumes one of the same 16 loop iterations. Owned custody and public
+outcomes remain unchanged; no new heap allocation or worker is introduced.
+
+All 12 creation tests pass on ordinary stacks (`a206ba78-d208-4d03-9938-a0c1edc8ae2c`), and locked
+production compilation passes. Independent semantic review found no change to cancellation,
+publication, exact pending custody, errors or yield timing. The generated outer `advance` frame
+allocates 56,832 bytes, and `advance_state` allocates 178,712 bytes. At settlement-record
+reconciliation entry the exercised witness consumes 599,832 bytes, compared with about 1.74 MiB
+in the earlier trace. This is an observed call boundary, not the deepest point or an exhaustive
+stack bound. Evidence uses `creation-stack-{extraction,production,prologue,reconciliation-depth}-20260912`
+under the same retained monitor root. Normal dev/test profiles disable debug information;
+unoptimized value/result layout is the relevant distinction.
+
+Candidate transfer remains the next separately accepted correction, and phase 384 remains pending.
+Preserve custody, exact acceptance, reconciliation and error semantics while reducing measured
+overlap. Ordinary-stack regression and renewed frame attribution remain required before accepting
+the handoff.
