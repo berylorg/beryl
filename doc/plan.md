@@ -44,17 +44,16 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 390: Preserve Pending Boundary Navigation (finished)
+# Phase 391: Build Streaming Maps Without Repeated Scans (finished)
 
-Owned widget revision `68d516c2790f3178d53745ed703fd2981691a177` retains one movement intent,
-resolves exact directional object gaps and uses ordinary selection realization. Stale selection,
-disable, rebind and full-queue custody are fenced. All 224 selected checks and the ordinary-stack
-3 MiB single-Shift+Left witness pass; independent semantic review found no remaining blocker.
-Locked metadata and production compilation pass after pinning. The
-[verification record](failures/composer-nonresident-boundary-navigation.md#pending-boundary-movement-verification)
-preserves six reproduced baseline failures. Full scale-workflow acceptance remains separate.
+Owned GPUI revision `a674a1550992a04fe6601ebcf06ee3849564d0d1` builds maps with bounded bulk traversal
+while preserving geometry, ordered errors and retained charges. All 48 focused tests pass; the
+4,096-glyph diagnostic comparison improves from 264 ms to 2.6 ms over eight passes. Independent
+algorithm and graph reviews, locked published metadata and production compilation pass. The
+[verification record](failures/composer-scale-workflow-runtime.md#private-map-correction) preserves
+measurements and the canonical pins. Full composer-workflow acceptance remains separate.
 
-# Phase 388: Bound Candidate Transfer Stack Layout (pending)
+# Phase 388: Bound Candidate Transfer Stack Layout (wip)
 
 Preserve the [Syndic draft contract](../crates/syndic-storage/doc/design-draft-storage.md) while
 reducing measured transfer preparation and owned result pressure with borrowing, out-of-line
@@ -65,13 +64,18 @@ independently review durable reads, reservations, writes and exact error/custody
 Implementation and independent semantic review are complete; all 40 focused staging/transfer
 checks and locked production compilation pass. Transfer validation borrows its input and owns one
 bounded boxed contribution, reusing the staged-capture allocation boundary. Smaller fixture stages
-preserve all assertions and remove remaining setup-frame overlap. The
-[nonresident boundary navigation investigation](failures/composer-nonresident-boundary-navigation.md)
-led to the accepted EOF and boundary-intent corrections. The focused mounted EOF and single-key
-selection witnesses now pass on the ordinary stack, but the earlier full scale workflow reached the existing
-twenty-minute monitor limit without a test result. Its remaining editing, history, autosave and
-disposal assertions are unconfirmed. Retain this timeout as an unresolved acceptance gate after
-phase 390; phases 388 and 384 remain unaccepted.
+preserve all assertions and remove remaining setup-frame overlap. EOF and pending boundary
+navigation are accepted separately.
+
+Acceptance remains blocked by the [full scale-workflow runtime](failures/composer-scale-workflow-runtime.md).
+After phase 390, the ordinary-stack run passes EOF, single-key selection, localized editing,
+undo/redo and redo clearing, then reaches the twenty-minute monitor limit after nine of 257 marker
+insertions. No test result is produced; later marker, autosave and disposal checks remain unverified.
+All owned processes are reaped. Two stack samples reach streaming-map construction; source review
+confirms repeated glyph/wrap scans within configured segment limits, but does not attribute total
+runtime. Phase 391 now accepts the measured private performance correction and canonical pins.
+Rerun the unchanged ordinary-stack full workflow, retaining all 257 insertions and the later marker,
+autosave and disposal assertions. Phases 388 and 384 remain unaccepted until their original gates pass.
 
 # Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
 
