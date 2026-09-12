@@ -120,3 +120,42 @@ canonical lockfile pin it. Locked metadata and the focused production check pass
 the language server was restarted successfully under the repository Cargo-model rule. The
 mounted fixture remains with the pending submission/scale test changes, while the independently
 verified widget correction and dependency pin form this accepted boundary.
+
+## Pending Boundary Movement Verification
+
+The completed segmentation byte now remains in one fixed movement intent until an exact anchor
+object page proves the directional source gap. `page_proves_gap` validates the closed edge;
+text segmentation never supplies an assumed `NoObjects` position. The resulting selection uses
+ordinary bounded target realization. Binding, revision, presentation generation and originating
+selection fence the intent. Disable retires both endpoint work and movement segmentation; rebind
+and presentation replacement stage cancellation with their existing transition effects.
+
+Review caught duplicate rebind cancellation and an unreserved response-release slot in the initial
+implementation. Prepared cancellation now emits one effect and preserves atomic capacity rejection.
+Both response-service paths retain the exact page in existing custody while the request queue is
+full. Independent review of the corrected continuation, source proof and lifecycle paths found no
+remaining blocker.
+
+The selected library and widget run `b3a7e4f1-ee6b-489a-a8c7-3930f244a19c` passes 224 cases,
+including seven new boundary cases: nonresident endpoint progress, partial directional object
+proof, disable during segmentation, disable during endpoint resolution, one cancellation on rebind,
+both full-queue response paths, and rejection of a late endpoint after a newer selection.
+The three previously recorded integration failures remain excluded. Three additional library
+failures also reproduce on unchanged revision `9759488930b87ed5ee96da54f002a3c71c06e1da` in
+baseline run `0e31f403-1e6a-4137-a986-812f1acac80d`:
+
+- `committed_settlement_accepts_exact_fit_and_one_under_is_retryable`: fixed expected admission
+  components differ from current record and request sizes.
+- `history_custody_capacity_exhaustion_releases_and_reuses_exact_slots`: restoration-export state
+  differs from the expected `NotQuiescent` result.
+- `terminal_target_replacement_accepts_fixed_exact_caps_and_rejects_one_under`: retained bytes are
+  807 rather than 783.
+
+The mounted 3 MiB witness `5a0e6895-6517-4ae3-b359-929c2ad091f1` passes in 78.3 seconds on the
+ordinary stack. It reuses the full workflow setup, preserves EOF caret/filler assertions, sends one
+Shift+Left, and verifies selection from EOF to EOF minus one byte. Its separate entry returns at
+that boundary; the full workflow retains its later editing, history, autosave and disposal checks.
+That later workflow remains the phase 388 acceptance gate. The accepted fork revision is
+`68d516c2790f3178d53745ed703fd2981691a177`; Beryl pins it, locked metadata and production
+compilation pass, and the required language-server restart succeeds. This is selected passing
+evidence, not a full-suite pass or acceptance of the later scale workflow.

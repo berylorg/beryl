@@ -44,35 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 387: Bound Window Creation Stack Layout (finished)
+# Phase 390: Preserve Pending Boundary Navigation (finished)
 
-Creation advances through borrowed-self out-of-line handlers without new allocation or public API
-changes. All 12 creation regressions and locked production compilation pass; independent semantic
-review confirms transition, yield and custody preservation. The outer frame falls from about
-1.44 MiB to 56,832 bytes; measured reconciliation-entry depth is about 586 KiB. The
-[stack-layout record](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
-preserves evidence and measurement limits.
-
-# Phase 389: Retain Exact EOF Caret Geometry (finished)
-
-Owned widget revision `9759488930b87ed5ee96da54f002a3c71c06e1da` selects nonterminal EOF
-checkpoints and reconciles filler/scroll placement with exact mapped caret geometry, including
-Select All during index publication. The 3 MiB mounted EOF witness passes in 74.7 seconds;
-five focused EOF cases, the Select All restoration regression and 162 selected broader checks
-pass. Locked metadata and production compilation pass; independent semantic and fixture review
-found no blocker. The [verification record](failures/composer-nonresident-boundary-navigation.md#narrow-eof-correction-verification)
-preserves three reproduced baseline failures and the separate full-workflow timeout. Scan-only
-anchors, exact identity, realization limits and existing output-window rules remain intact.
-
-# Phase 390: Preserve Pending Boundary Navigation (pending)
-
-Preserve one bounded keyboard boundary intent when segmentation completes before endpoint geometry
-is resident. Drive required realization through existing widget continuation ownership, preserving
-exact binding/revision and selection semantics; lifecycle cancellation must retire the intent.
-Verify one Shift+Left makes progress without key retries, including the mounted scale witness,
-and stale/disabled/rebound cancellation. Independently review continuation and source-position
-fencing before accepting. Establish the exact geometry handoff before implementation; never infer
-an inline-object gap from text-only segmentation.
+Owned widget revision `68d516c2790f3178d53745ed703fd2981691a177` retains one movement intent,
+resolves exact directional object gaps and uses ordinary selection realization. Stale selection,
+disable, rebind and full-queue custody are fenced. All 224 selected checks and the ordinary-stack
+3 MiB single-Shift+Left witness pass; independent semantic review found no remaining blocker.
+Locked metadata and production compilation pass after pinning. The
+[verification record](failures/composer-nonresident-boundary-navigation.md#pending-boundary-movement-verification)
+preserves six reproduced baseline failures. Full scale-workflow acceptance remains separate.
 
 # Phase 388: Bound Candidate Transfer Stack Layout (pending)
 
@@ -87,8 +67,8 @@ checks and locked production compilation pass. Transfer validation borrows its i
 bounded boxed contribution, reusing the staged-capture allocation boundary. Smaller fixture stages
 preserve all assertions and remove remaining setup-frame overlap. The
 [nonresident boundary navigation investigation](failures/composer-nonresident-boundary-navigation.md)
-led to the accepted EOF correction and pending boundary-intent work. The focused mounted EOF
-witness now passes on the ordinary stack, but the full scale workflow reaches the existing
+led to the accepted EOF and boundary-intent corrections. The focused mounted EOF and single-key
+selection witnesses now pass on the ordinary stack, but the earlier full scale workflow reached the existing
 twenty-minute monitor limit without a test result. Its remaining editing, history, autosave and
 disposal assertions are unconfirmed. Retain this timeout as an unresolved acceptance gate after
 phase 390; phases 388 and 384 remain unaccepted.
