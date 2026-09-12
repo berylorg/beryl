@@ -94,3 +94,84 @@ unchanged canonical lock pass. Local overrides are restored. Focused production 
 for the dependent packages and Beryl; required no-deps metadata and analyzer refresh also pass.
 Independent graph review finds no remaining blocker. All measurement and build processes are reaped
 and their temporary directories removed; bounded logs remain. Phase 388 still owns the full workflow.
+
+## Full Workflow After Bulk Maps
+
+Run `f86a4aa7-51d4-4c25-83d9-0839ea8bc166` repeats the unchanged 3 MiB ordinary-stack workflow
+against the accepted bulk-map chain. EOF caret/filler geometry, single Shift+Left, localized
+editing, undo/redo, reconciliation and redo clearing pass. Forty-three marker insertions complete
+and the forty-fourth starts. The twenty-minute monitor, including about 43 seconds of compilation,
+terminates the run with `elapsed_over_configured_timeout`, `root_reaped=true` and
+`remaining_job_pids=[]`. No assertion failure or stack overflow occurs, but there is no complete
+test result. The remaining marker sequence, ordering/activation, target autosave and disposal
+assertions remain unverified. This progresses farther than the prior nine-insertion run without
+accepting phases 388 or 384.
+
+Evidence uses `transfer-full-bulk-maps-20260912.output.log`, `.samples.csv` and `.summary.txt` in the
+directory above. Two noninvasive, detached stack captures are retained as
+`transfer-full-bulk-marker-stack-20260912.log` and
+`transfer-full-bulk-marker-stack-later-20260912.log`. The first reaches SHA-256 transition decoding
+through authenticated history frontiers and candidate-session disposal validation. The second
+reaches the new map conversion through streaming admission, exact geometry scanning and resident
+index object-page delivery. Neither sample establishes dominant runtime, redundant work or a
+design violation. All owned processes are reaped and the run's temporary directory is removed.
+
+Independent read-only source review supports two next measurement targets. Fresh and replacement
+index preparation starts a scanner at byte zero; object-page processing resumes from its current
+read position and flushes capped shaping segments. Measure index starts/replacements, scanned
+bytes, segment admissions and elapsed time per edit. Candidate-session validation authenticates
+publication history and frontiers using point reads and transition decoding. Measure authentication
+calls, point reads, decoded bytes and elapsed time per edit. The inspected ancestry algorithm uses
+bounded ancestor witnesses; it is not a linear scan of every journal entry.
+
+Stop before another production correction. The map correction remains accepted on its own measured
+and reviewed boundary; the remaining workflow needs bounded attribution before selecting any
+further change. Preserve all marker and lifecycle assertions when resuming the full gate.
+
+## Mounted Marker Work Attribution
+
+Phase 392 uses temporary feature-gated, fixed-size atomic counters and inclusive timers during
+the unchanged mounted setup and eight marker edits. Run
+`ee6de8c1-d37e-45a3-bc98-b1299935ae6d` passes in 348 seconds. Each measured edit takes
+23.00–23.75 seconds, with one index preparation, 128 text regions covering 6 MiB and 1,536
+nonempty segment admissions covering 6 MiB. Region timing is about 13.4–13.8 seconds;
+segment timing is nested within it. Each edit performs 518 candidate-closure checks, 2,072
+frontier checks and no disposal checks. Closure timing is about 7.8–8.1 seconds; nested point
+reads and decoding account for substantial work, including roughly 136–140 million encoded
+bytes. These are unoptimized diagnostic observations, not release-performance measurements.
+
+Refined run `83167887-51c4-42e3-9b7e-e1e3ff99174c` also passes all eight edits, in 350 seconds.
+Each edit takes 22.57–23.40 seconds. Classification confirms 64 index regions covering 3 MiB
+and 64 target regions covering 3 MiB. Sampled budget observations account for roughly
+8.1–8.4 milliseconds across about 18,437 sampled calls per edit. Sampling every 1,024th call
+suggests substantial bookkeeping cost, but multiplying sampled time by 1,024 is an estimate:
+the deterministic cadence can align with repetitive work. Counter and timing overhead also
+affect the instrumented run. Inclusive nested timings must not be added together.
+
+All recorded active-span boundaries are zero. Global atomic snapshots are not transactional;
+index preparation counts attempts and records source extent, and segment counts record
+admission attempts. Region byte counts adjust for context replay but can overcount a failed
+region. Both studies pass without such a reported failure. The probes aggregate storage
+families and threads and do not establish reuse safety or exact request-level attribution.
+
+Source review finds that both text and marker demands use `stabilized_candidate_range`, which
+authenticates the candidate session before and after reading to detect concurrent changes.
+The fault-injection boundary explicitly exercises this protection. These checks are not
+established redundancy. Budget accounting performs bounded bookkeeping; the measurement does
+not identify an independently justified production replacement. Independent review accepts
+the evidence and finds no concrete private correction established by it.
+
+Raw output, samples and monitor summaries use prefixes `marker-work-study-20260912` and
+`marker-work-refined-20260912` in the evidence directory above. The retained
+`marker-work-probes-20260912.zip` contains original sources, both probe revisions, tracked
+diffs, relevant untracked sources and revision identities. All temporary probes are removed
+after verifying current sources against the captured instrumented copies; the thirteen
+original files are restored and both probe modules deleted. Locked no-deps metadata, focused
+mounted-fixture compilation and the required analyzer refresh pass after restoration.
+
+The former twenty-minute monitor cap is too short for this unoptimized fixture: measured
+marker timings project roughly 97–102 minutes for 257 edits before setup and later checks.
+Resume the unchanged, uninstrumented ordinary-stack workflow with a bounded three-hour cap,
+preserving the memory, process, output and cleanup limits. This is a test-budget adjustment,
+not a production correction or an acceptance result. Only completion of the original full
+workflow can accept phases 388 and 384.

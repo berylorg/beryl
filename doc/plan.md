@@ -44,14 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 391: Build Streaming Maps Without Repeated Scans (finished)
+# Phase 392: Attribute Mounted Marker Edit Work (finished)
 
-Owned GPUI revision `a674a1550992a04fe6601ebcf06ee3849564d0d1` builds maps with bounded bulk traversal
-while preserving geometry, ordered errors and retained charges. All 48 focused tests pass; the
-4,096-glyph diagnostic comparison improves from 264 ms to 2.6 ms over eight passes. Independent
-algorithm and graph reviews, locked published metadata and production compilation pass. The
-[verification record](failures/composer-scale-workflow-runtime.md#private-map-correction) preserves
-measurements and the canonical pins. Full composer-workflow acceptance remains separate.
+Both eight-edit measurements pass. Each edit scans 3 MiB for the index and 3 MiB for the target;
+authentication and sampled budget accounting contribute substantial work. Independent review
+finds no established private production correction. Probes are removed, original sources restored,
+and locked metadata, focused compilation and analyzer refresh pass. The
+[evidence record](failures/composer-scale-workflow-runtime.md#mounted-marker-work-attribution)
+preserves raw results, reproducible sources and timing limits. Full workflow acceptance remains
+with phases 388 and 384.
 
 # Phase 388: Bound Candidate Transfer Stack Layout (wip)
 
@@ -67,15 +68,19 @@ bounded boxed contribution, reusing the staged-capture allocation boundary. Smal
 preserve all assertions and remove remaining setup-frame overlap. EOF and pending boundary
 navigation are accepted separately.
 
-Acceptance remains blocked by the [full scale-workflow runtime](failures/composer-scale-workflow-runtime.md).
-After phase 390, the ordinary-stack run passes EOF, single-key selection, localized editing,
-undo/redo and redo clearing, then reaches the twenty-minute monitor limit after nine of 257 marker
-insertions. No test result is produced; later marker, autosave and disposal checks remain unverified.
-All owned processes are reaped. Two stack samples reach streaming-map construction; source review
-confirms repeated glyph/wrap scans within configured segment limits, but does not attribute total
-runtime. Phase 391 now accepts the measured private performance correction and canonical pins.
-Rerun the unchanged ordinary-stack full workflow, retaining all 257 insertions and the later marker,
-autosave and disposal assertions. Phases 388 and 384 remain unaccepted until their original gates pass.
+Acceptance remains blocked by the [full scale-workflow runtime](failures/composer-scale-workflow-runtime.md#full-workflow-after-bulk-maps).
+After phase 391, the unchanged ordinary-stack run passes EOF, single-key selection, localized
+editing, undo/redo and redo clearing, then reaches the twenty-minute monitor limit after 43 of
+257 marker insertions, compared with nine previously. No test result is produced; later marker,
+autosave and disposal checks remain unverified. All owned processes are reaped and temporary
+directories removed.
+
+Phase 392 now establishes that the self-imposed twenty-minute test cap is insufficient: observed
+marker timings project roughly 97–102 minutes before setup and later checks. Run the unchanged,
+uninstrumented ordinary-stack full workflow with a bounded three-hour monitor cap. Preserve the
+existing memory, process, output and cleanup limits and all 257-marker/lifecycle assertions.
+This test-budget adjustment does not select a production correction. Phases 388 and 384 remain
+unaccepted until their original gates pass.
 
 # Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
 
