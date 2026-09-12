@@ -53,13 +53,45 @@ review confirms transition, yield and custody preservation. The outer frame fall
 [stack-layout record](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
 preserves evidence and measurement limits.
 
-# Phase 388: Bound Candidate Transfer Stack Layout (wip)
+# Phase 389: Retain Exact EOF Caret Geometry (finished)
+
+Owned widget revision `9759488930b87ed5ee96da54f002a3c71c06e1da` selects nonterminal EOF
+checkpoints and reconciles filler/scroll placement with exact mapped caret geometry, including
+Select All during index publication. The 3 MiB mounted EOF witness passes in 74.7 seconds;
+five focused EOF cases, the Select All restoration regression and 162 selected broader checks
+pass. Locked metadata and production compilation pass; independent semantic and fixture review
+found no blocker. The [verification record](failures/composer-nonresident-boundary-navigation.md#narrow-eof-correction-verification)
+preserves three reproduced baseline failures and the separate full-workflow timeout. Scan-only
+anchors, exact identity, realization limits and existing output-window rules remain intact.
+
+# Phase 390: Preserve Pending Boundary Navigation (pending)
+
+Preserve one bounded keyboard boundary intent when segmentation completes before endpoint geometry
+is resident. Drive required realization through existing widget continuation ownership, preserving
+exact binding/revision and selection semantics; lifecycle cancellation must retire the intent.
+Verify one Shift+Left makes progress without key retries, including the mounted scale witness,
+and stale/disabled/rebound cancellation. Independently review continuation and source-position
+fencing before accepting. Establish the exact geometry handoff before implementation; never infer
+an inline-object gap from text-only segmentation.
+
+# Phase 388: Bound Candidate Transfer Stack Layout (pending)
 
 Preserve the [Syndic draft contract](../crates/syndic-storage/doc/design-draft-storage.md) while
 reducing measured transfer preparation and owned result pressure with borrowing, out-of-line
 helpers and justified bounded boxing. Verify the ordinary-stack mounted scale witness, focused
 staging/transfer and reconciliation semantics, production compilation and renewed frame attribution;
 independently review durable reads, reservations, writes and exact error/custody behavior.
+
+Implementation and independent semantic review are complete; all 40 focused staging/transfer
+checks and locked production compilation pass. Transfer validation borrows its input and owns one
+bounded boxed contribution, reusing the staged-capture allocation boundary. Smaller fixture stages
+preserve all assertions and remove remaining setup-frame overlap. The
+[nonresident boundary navigation investigation](failures/composer-nonresident-boundary-navigation.md)
+led to the accepted EOF correction and pending boundary-intent work. The focused mounted EOF
+witness now passes on the ordinary stack, but the full scale workflow reaches the existing
+twenty-minute monitor limit without a test result. Its remaining editing, history, autosave and
+disposal assertions are unconfirmed. Retain this timeout as an unresolved acceptance gate after
+phase 390; phases 388 and 384 remain unaccepted.
 
 # Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
 
