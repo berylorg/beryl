@@ -67,12 +67,21 @@ pub struct LiveCommandPermit {
     released: bool,
 }
 
+#[derive(Clone)]
 pub(crate) struct LiveExecutionCandidate {
     authorizer: LiveCommandAuthorizer,
     execution: crate::process_admission::ProcessExecutionPermit,
 }
 
 impl LiveExecutionCandidate {
+    pub(crate) fn commit<T>(
+        &self,
+        commit: impl FnOnce() -> T,
+    ) -> Result<T, crate::process_admission::ProcessExecutionAdmissionError> {
+        let permit = self.authorizer.authorize()?;
+        Ok(permit.commit_if_current(|| self.execution.commit(commit))??)
+    }
+
     pub(crate) fn reserve(
         &self,
     ) -> Result<

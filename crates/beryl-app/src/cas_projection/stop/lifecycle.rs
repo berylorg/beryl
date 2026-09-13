@@ -6,6 +6,8 @@ use crate::cas_projection::{
 };
 use beryl_backend::DynamicToolCallResponse;
 
+mod execution;
+
 use super::*;
 use crate::{
     LifecycleYieldOutcome, LifecycleYieldRequest, LifecycleYieldRequestHandler,
@@ -73,6 +75,7 @@ pub(in crate::cas_projection) struct AcceptedLifecycleYield {
     attempt: Option<LifecycleAttentionAttempt>,
     observation: Option<ContinuationObservation>,
     reservation: Option<CompactionCustodyReservation>,
+    execution: Option<crate::cas_projection::LiveExecutionCandidate>,
 }
 
 impl AcceptedLifecycleYield {
@@ -98,6 +101,7 @@ impl AcceptedLifecycleYield {
             attempt,
             observation,
             reservation,
+            execution: None,
         }
     }
 
@@ -123,7 +127,9 @@ impl AcceptedLifecycleYield {
     }
 
     pub(in crate::cas_projection) fn effective_outcome(&self) -> Option<LifecycleYieldOutcome> {
-        if self.outcome == LifecycleYieldOutcome::PhaseContinue && !self.continuation_pending {
+        if self.outcome == LifecycleYieldOutcome::PhaseContinue
+            && (!self.continuation_pending || self.execution_cancelled())
+        {
             None
         } else {
             Some(self.outcome)
@@ -136,7 +142,7 @@ impl Drop for AcceptedLifecycleYield {
         if let Some(observation) = &self.observation {
             observation.stage(ContinuationWorkStage::Disposing);
         }
-        if self.continuation_pending {
+        if self.continuation_pending && !self.execution_cancelled() {
             if let (Some(pool), Some(attempt)) = (self.attention.upgrade(), self.attempt.as_ref()) {
                 let _ = pool.report_continuation_failure(attempt);
             }
@@ -271,17 +277,44 @@ impl StopCoordinator {
         } else {
             None
         };
-        state.lifecycle_yields.insert(
-            key,
-            AcceptedLifecycleYield::new(
+        let execution = if outcome == LifecycleYieldOutcome::PhaseContinue {
+            match self.commands.execution_candidate_from(&command) {
+                Ok(execution) => Some(execution),
+                Err(crate::process_admission::ProcessExecutionAdmissionError::Process(
+                    crate::process_admission::ProcessAdmissionError::Fenced
+                    | crate::process_admission::ProcessAdmissionError::Stale,
+                )) => return Ok(false),
+                Err(_) => return Err(StopCoordinationError::HomeAuthorityLost),
+            }
+        } else {
+            None
+        };
+        let install = || {
+            let mut accepted = AcceptedLifecycleYield::new(
                 self.home_id,
                 thread_id,
                 turn_id,
                 outcome,
                 attention.clone(),
                 reservation,
-            ),
-        );
+            );
+            accepted.execution = execution;
+            state.lifecycle_yields.insert(key, accepted);
+        };
+        if outcome == LifecycleYieldOutcome::PhaseContinue {
+            match command.commit_execution_if_current(install) {
+                Ok(()) => {}
+                Err(crate::process_admission::ProcessExecutionAdmissionError::Process(
+                    crate::process_admission::ProcessAdmissionError::Fenced
+                    | crate::process_admission::ProcessAdmissionError::Stale,
+                )) => return Ok(false),
+                Err(_) => return Err(StopCoordinationError::HomeAuthorityLost),
+            }
+        } else {
+            command
+                .commit_if_current(install)
+                .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
+        }
         if let Some(observation) = state
             .lifecycle_yields
             .get(&key)
@@ -436,8 +469,15 @@ impl StopCoordinator {
         Ok(state
             .lifecycle_yields
             .get(&LifecycleYieldKey { thread_id, turn_id })
-            .filter(|accepted| accepted.continuation_pending)
-            .and_then(|accepted| accepted.reservation.as_ref())
-            .map(CompactionCustodyReservation::prepare_shared_command))
+            .filter(|accepted| {
+                accepted.effective_outcome() == Some(LifecycleYieldOutcome::PhaseContinue)
+            })
+            .and_then(|accepted| {
+                accepted.reservation.as_ref().map(|reservation| {
+                    let mut preparation = reservation.prepare_shared_command();
+                    preparation.execution = accepted.execution.clone();
+                    preparation
+                })
+            }))
     }
 }

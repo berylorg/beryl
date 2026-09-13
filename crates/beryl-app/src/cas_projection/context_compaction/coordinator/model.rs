@@ -62,6 +62,8 @@ pub enum ContextCompactionOutcome {
 /// Failure to admit, dispatch, correlate, or settle exact context compaction.
 #[derive(Debug, Error)]
 pub enum ContextCompactionError {
+    #[error(transparent)]
+    ProcessAdmission(#[from] crate::process_admission::ProcessAdmissionError),
     #[error("the context-compaction settings read failed: {0}")]
     HomeRead(#[from] beryl_home_store::ReadError),
     #[error("the context-compaction coordinator is unavailable")]
@@ -91,6 +93,19 @@ pub enum ContextCompactionError {
     },
     #[error("the context-compaction driver is unavailable")]
     Driver,
+}
+
+impl From<crate::process_admission::ProcessExecutionAdmissionError> for ContextCompactionError {
+    fn from(error: crate::process_admission::ProcessExecutionAdmissionError) -> Self {
+        match error {
+            crate::process_admission::ProcessExecutionAdmissionError::Process(error) => {
+                Self::ProcessAdmission(error)
+            }
+            crate::process_admission::ProcessExecutionAdmissionError::Service(_) => {
+                Self::Unavailable
+            }
+        }
+    }
 }
 
 /// Content-free bounded-capacity diagnostics for process-owned context compaction.

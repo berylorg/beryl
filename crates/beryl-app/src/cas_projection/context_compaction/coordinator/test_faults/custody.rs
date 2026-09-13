@@ -2,6 +2,8 @@ use super::*;
 
 #[derive(Clone, Copy)]
 pub enum CompactionCustodyTestStage {
+    AdmissionCandidate,
+    AdmissionReserved,
     LifecyclePreparation,
     AdmissionReady,
     AdmissionFailed,
@@ -10,6 +12,8 @@ pub enum CompactionCustodyTestStage {
 
 #[derive(Default)]
 pub(in crate::cas_projection::context_compaction::coordinator) struct CompactionCustodyPauses {
+    admission_candidate: Option<Arc<CustodyPause>>,
+    admission_reserved: Option<Arc<CustodyPause>>,
     lifecycle_preparation: Option<Arc<CustodyPause>>,
     ready: Option<Arc<CustodyPause>>,
     failed: Option<Arc<CustodyPause>>,
@@ -117,6 +121,8 @@ impl ContextCompactionLifecycleTestHarness {
         });
         let mut pauses = coordinator.custody_pauses.lock().unwrap();
         let slot = match stage {
+            CompactionCustodyTestStage::AdmissionCandidate => &mut pauses.admission_candidate,
+            CompactionCustodyTestStage::AdmissionReserved => &mut pauses.admission_reserved,
             CompactionCustodyTestStage::LifecyclePreparation => &mut pauses.lifecycle_preparation,
             CompactionCustodyTestStage::AdmissionReady => &mut pauses.ready,
             CompactionCustodyTestStage::AdmissionFailed => &mut pauses.failed,
@@ -169,6 +175,8 @@ impl ContextCompactionCoordinator {
         let pause = {
             let mut pauses = self.custody_pauses.lock().unwrap();
             match stage {
+                CompactionCustodyTestStage::AdmissionCandidate => pauses.admission_candidate.take(),
+                CompactionCustodyTestStage::AdmissionReserved => pauses.admission_reserved.take(),
                 CompactionCustodyTestStage::LifecyclePreparation => {
                     pauses.lifecycle_preparation.take()
                 }

@@ -44,21 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 394: Fence Provider Execution Dispatch (finished)
+# Phase 395: Fence Compaction And Continuation Admission (finished)
 
-Accepted original queued-epoch validation at pending-start, steering and compaction dispatch.
-Exact nondispatch retains pending identity/content and retryable accepted input, settles compaction
-custody, and leaves stop and terminal publication available. Independent review accepted the
-boundary; 107 focused regressions and the production-library check passed.
+Accepted original-epoch compaction admission and same-thread continuation settlement. Fencing
+consumes volatile intent without reviving it on reopening, preserves admitted pending identity and
+content, and retains counted admission through exact reconciliation. Independent review accepted
+the boundary; 89 focused regressions and the production-library check passed.
 
-# Phase 395: Fence Compaction And Continuation Admission (wip)
-
-Integrate the shared gate with compaction admission and same-thread continuation settlement.
-Cancel volatile intent at its exact cut, preserve already admitted pending identity and content,
-and verify reconciliation custody and coherent reopening. Independently review each integrated
-execution cut before process-wide coordinator composition.
-
-# Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
+# Phase 326: Coordinate Process-Wide Graceful Shutdown (wip)
 
 Compose the accepted admission fence and exact all-work convergence boundary shared by final-window
 close and explicit Exit. Preserve accepted queues and proven-undispatched pending turns, prevent

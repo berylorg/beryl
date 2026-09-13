@@ -36,6 +36,11 @@ impl ContextCompactionCoordinator {
             timestamp_now()?,
         );
         let operation_id = admission.operation_id();
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionCandidate);
+        let _execution = command.command.reserve_execution()?;
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionReserved);
         command
             .observation()
             .operation(operation_id, attempt, admission.target());

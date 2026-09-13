@@ -16,6 +16,7 @@ use syndic_storage::{
 };
 
 pub struct LifecycleFixture {
+    pub process_admission: beryl_app::process_admission::ProcessAdmissionGate,
     directory: tempfile::TempDir,
     pub storage: SyndicStorage,
     pub service: Arc<ProjectionConnectionService>,
@@ -163,8 +164,10 @@ impl LifecycleFixture {
             let _ = source.accept_text(" accepted while compacting");
         }
         let storage = source.storage.clone();
+        let process_admission = source.process_admission.clone();
         let (directory, service) = source.into_service();
         Self {
+            process_admission,
             directory,
             storage,
             service: Arc::new(service),
@@ -240,6 +243,7 @@ impl LifecycleFixture {
 
     pub fn close(self) {
         let Self {
+            process_admission: _,
             directory,
             storage: _,
             service,

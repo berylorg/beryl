@@ -373,6 +373,30 @@ impl ContextCompactionCoordinator {
             return Err(ContextCompactionError::AuthorityMismatch);
         }
         let completion_timeout = timeout_policy.resolve(&self.home)?;
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionCandidate);
+        let execution = match &command.preparation.execution {
+            Some(execution) => execution.reserve(),
+            None => command.command.reserve_execution(),
+        };
+        let _execution = match execution {
+            Ok(execution) => execution,
+            Err(crate::process_admission::ProcessExecutionAdmissionError::Process(
+                crate::process_admission::ProcessAdmissionError::Fenced
+                | crate::process_admission::ProcessAdmissionError::Stale,
+            )) => {
+                if let Some(mut accepted) = self
+                    .stop
+                    .take_lifecycle_continuation(projection.syndic_thread_id(), yielding_turn_id)
+                {
+                    accepted.cancel_continuation();
+                }
+                return Ok(LifecycleCompactionAdmission::NotLaunched(projection));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::AdmissionReserved);
         self.admit_lifecycle(
             projection,
             candidate.as_ref(),

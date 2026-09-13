@@ -74,6 +74,7 @@ impl CompactionCustodyReservation {
         CompactionPreparationCustody {
             observation,
             _reservation: reservation,
+            execution: None,
         }
     }
 
@@ -86,6 +87,7 @@ impl CompactionCustodyReservation {
         CompactionPreparationCustody {
             observation,
             _reservation: self,
+            execution: None,
         }
     }
 }
@@ -108,6 +110,7 @@ pub(super) struct CompactionCommandCustody {
 }
 
 pub(in crate::cas_projection) struct CompactionPreparationCustody {
+    pub(in crate::cas_projection) execution: Option<crate::cas_projection::LiveExecutionCandidate>,
     observation: CompactionCommandObservation,
     _reservation: CompactionCustodyReservation,
 }

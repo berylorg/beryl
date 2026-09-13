@@ -162,10 +162,11 @@ impl ContextCompactionCoordinator {
                         .ok_or(ContextCompactionError::AuthorityMismatch)?,
                 )
             };
-            let phase_continue = accepted.as_ref().is_some_and(|accepted| {
-                accepted.effective_outcome() == Some(crate::LifecycleYieldOutcome::PhaseContinue)
-            });
-            if phase_continue {
+            let execution = match accepted.as_mut() {
+                Some(accepted) => accepted.reserve_execution()?,
+                None => None,
+            };
+            if let Some(_execution) = execution {
                 let outcome =
                     self.home
                         .execute_current(self.storage.current_settle_lifecycle_compaction(
