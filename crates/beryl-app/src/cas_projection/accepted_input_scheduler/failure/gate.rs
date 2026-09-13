@@ -41,3 +41,30 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn gate_status(
         Ok(LiveCommandGateStatus::LocalFailure) | Err(_) => Err(SchedulerFailure::Fatal),
     }
 }
+
+pub(in crate::cas_projection::accepted_input_scheduler) fn execution_candidate(
+    context: &AcceptedInputSchedulerContext,
+    command: &LiveCommandPermit,
+) -> Result<Option<crate::cas_projection::LiveExecutionCandidate>, SchedulerFailure> {
+    use crate::process_admission::{ProcessAdmissionError, ProcessExecutionAdmissionError};
+    match context
+        .command_gate
+        .authorizer()
+        .execution_candidate_from(command)
+    {
+        Ok(candidate) => Ok(Some(candidate)),
+        Err(ProcessExecutionAdmissionError::Process(
+            ProcessAdmissionError::Fenced | ProcessAdmissionError::Stale,
+        )) => Ok(None),
+        Err(ProcessExecutionAdmissionError::Service(LiveCommandAdmissionError::Closed)) => {
+            match gate_status(context)? {
+                SchedulerGateStatus::OrdinaryShutdown => Ok(None),
+                SchedulerGateStatus::PersistentHomeFailure => {
+                    Err(SchedulerFailure::PersistentHomeFailure)
+                }
+                SchedulerGateStatus::Open => Err(SchedulerFailure::Fatal),
+            }
+        }
+        Err(_) => Err(SchedulerFailure::Fatal),
+    }
+}

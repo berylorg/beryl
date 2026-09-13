@@ -462,6 +462,8 @@ impl std::fmt::Debug for ScheduledOrdinaryExecutionLease {
 #[derive(Debug, Error)]
 pub enum ScheduledOrdinaryAdmissionError {
     #[error(transparent)]
+    ProcessAdmission(#[from] crate::process_admission::ProcessAdmissionError),
+    #[error(transparent)]
     Authority(#[from] super::ProjectionCoordinatorError),
     #[error(
         "scheduled ordinary session runtime {admitted} does not match requested runtime {requested}"

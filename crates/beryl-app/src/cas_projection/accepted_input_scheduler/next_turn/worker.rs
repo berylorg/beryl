@@ -42,6 +42,7 @@ pub(super) fn spawn_worker(
     runtime: &mut SchedulerRuntime,
     candidate: AcceptedNextCandidate,
     lease: ScheduledOrdinaryExecutionLease,
+    execution: crate::cas_projection::LiveExecutionCandidate,
 ) -> Result<(), SchedulerFailure> {
     let syndic_thread_id = candidate.thread_id();
     let Some(command) = failure::authorize(&runtime.context)? else {
@@ -65,6 +66,7 @@ pub(super) fn spawn_worker(
                     &native_lineage_recovery,
                     candidate,
                     lease,
+                    execution,
                 )
             }));
             let disposition = result.unwrap_or(WorkerDisposition::Fatal);
@@ -87,6 +89,7 @@ fn execute_candidate(
     native_lineage_recovery: &crate::cas_projection::NativeLineageRecoveryControl,
     candidate: AcceptedNextCandidate,
     mut lease: ScheduledOrdinaryExecutionLease,
+    execution: crate::cas_projection::LiveExecutionCandidate,
 ) -> WorkerDisposition {
     if cancellation.is_cancelled() {
         return WorkerDisposition::NextParked;
@@ -135,7 +138,7 @@ fn execute_candidate(
     crate::cas_projection::test_faults::pause_scheduled_promotion_reservation(
         promotion.thread_id(),
     );
-    let reservation = match validator.reserve_promotion(&mut lease) {
+    let reservation = match validator.reserve_promotion(&mut lease, &execution) {
         Ok(Some(reservation)) => reservation,
         Ok(None) => return WorkerDisposition::NextParked,
         Err(error) if failure::is_cut_correlated_admission(&error, validator.home_generation()) => {
@@ -201,22 +204,33 @@ fn execute_candidate(
             failure,
             reconciliation,
         } => {
-            reconciliation.install();
-            Some(WorkerDisposition::CommandIndeterminate { failure })
+            let handle = reconciliation.install_and_handle();
+            match validator.home.reconcile(&handle) {
+                Ok(beryl_home_store::ReconciliationResolution::ExactNew { .. })
+                | Ok(beryl_home_store::ReconciliationResolution::ExactSuccessor { .. }) => None,
+                Ok(beryl_home_store::ReconciliationResolution::ExactOld) => {
+                    Some(WorkerDisposition::NextParked)
+                }
+                Ok(beryl_home_store::ReconciliationResolution::Collision) => {
+                    Some(WorkerDisposition::Fatal)
+                }
+                Err(_) => Some(WorkerDisposition::CommandIndeterminate { failure }),
+            }
         }
     };
-    match reservation.release() {
-        Ok(ConnectionPromotionReleaseOutcome::Ordinary) => {}
+    let connection_closed = match reservation.release() {
+        Ok(ConnectionPromotionReleaseOutcome::Ordinary) => false,
         Ok(ConnectionPromotionReleaseOutcome::PersistentFailure) => {
             return WorkerDisposition::PersistentHomeFailure;
         }
-        Ok(ConnectionPromotionReleaseOutcome::Closed) => {
-            return WorkerDisposition::NextParked;
-        }
+        Ok(ConnectionPromotionReleaseOutcome::Closed) => true,
         Err(_) => return WorkerDisposition::Fatal,
-    }
+    };
     if let Some(failure) = command_failure {
         return failure;
+    }
+    if connection_closed {
+        return WorkerDisposition::NextParked;
     }
     let promotion_result = reconcile_promotion(validator, &storage, &lease.assets(), &promotion)
         .map(|status| Some((true, status)));

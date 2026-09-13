@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 62 exact accepted-next promotion and connection-service shutdown.
+Exact accepted-next promotion, connection retirement and process shutdown admission.
 
 ## Invalidated Approach
 
@@ -33,9 +33,27 @@ revoke the winner.
 - Keep the reservation through command execution and durable reconciliation, then release it
   before projection execution.
 
+## Process Admission Settlement
+
+The process-fence regression exposed a second settlement gap: the worker installed an
+indeterminate promotion's reconciliation handle and immediately classified the command as a
+persistent home failure. A healthy `AfterCommitBeforePersist` fault then reconciled successfully,
+but service close still failed with `SchedulerShutdown`. Installation alone did not settle the
+winning promotion or justify a home-failure classification.
+
+The worker now reconciles the exact installed handle while retaining both connection and process
+reservations. Exact publication proceeds through existing promotion proof; exact nonpublication
+parks the accepted candidate. Collision and unresolved failure retain their failure paths. Release
+of a concurrently retired connection must not mask an already classified command failure.
+
+The focused process-admission tests cover the reserved-but-uninstalled gap, worker-owned healthy
+reconciliation, and failed promotion concurrent with connection retirement. Provider dispatch
+fencing remains a separate boundary.
+
 ## Affected Authority
 
-- `doc/plan.md` Phase 62
+- `doc/plan.md` accepted-input promotion boundary
 - `doc/systems/cas-live-syndic-transcript/design.md`
 - `crates/beryl-app/doc/design.md`
-- `crates/beryl-app/tests/phase62_accepted_next_scheduler/shutdown.rs`
+- `crates/beryl-app/tests/accepted_next_scheduler/shutdown.rs`
+- `crates/beryl-app/tests/accepted_next_scheduler/process_admission.rs`

@@ -5,7 +5,7 @@ mod reconciliation;
 mod settlement;
 mod types;
 
-pub(super) use gate::{SchedulerGateStatus, authorize, gate_status};
+pub(super) use gate::{SchedulerGateStatus, authorize, execution_candidate, gate_status};
 pub(super) use health::{
     from_read, from_syndic_read, is_current_health_loss_command, is_current_health_loss_read,
     is_current_health_loss_sidecar, is_cut_correlated_command, is_cut_correlated_read,

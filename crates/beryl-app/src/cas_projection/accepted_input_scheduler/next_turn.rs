@@ -179,6 +179,10 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
     let Some(command) = failure::authorize(&runtime.context)? else {
         return Ok(());
     };
+    let Some(execution_admission) = failure::execution_candidate(&runtime.context, &command)?
+    else {
+        return Ok(());
+    };
     runtime.context.signal.update_diagnostics(|diagnostics| {
         diagnostics.next_pass_count = diagnostics.next_pass_count.saturating_add(1);
     });
@@ -336,7 +340,7 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
                     diagnostics.next_retained_source_cursor = false;
                     diagnostics.next_retained_candidate_cursor = false;
                 });
-                spawn_worker(runtime, candidate, lease)?;
+                spawn_worker(runtime, candidate, lease, execution_admission)?;
                 return Ok(());
             }
             CandidateOutcome::SourceFinished => {

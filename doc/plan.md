@@ -44,20 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 392: Fence Direct Submission Acceptance (finished)
+# Phase 393: Fence Accepted Input Promotion (finished)
 
-Accepted original-epoch submission capture and counted final acceptance through durable result or
-reconciliation installation. Independent review found no blocker. The 25 existing exact-submission
-cases, five new shutdown-admission cases and shared-gate regression coverage passed; the production
-library passed Cargo check. Draft preservation, stale callback rejection, cancellation and admitted
-reconciliation remain distinct from scheduler dispatch and full shutdown completion below.
+Accepted original-epoch promotion admission and counted connection/process custody through
+worker-owned reconciliation. Independent review accepted the boundary; 24 focused cases passed
+across the corrected regression and final fault-test runs. Collision precedence was reviewed in
+source without fault injection. The [settlement correction](failures/cas-accepted-next-promotion-reservation-linearization.md)
+records healthy indeterminate handling and failure precedence over ordinary connection retirement.
 
-# Phase 393: Fence Accepted Input Promotion (wip)
-
-Integrate process admission with the existing promotion reservation and retained reconciliation;
-preserve accepted queue identity when the fence wins and settle a promotion that won first.
-
-# Phase 394: Fence Provider Execution Dispatch (pending)
+# Phase 394: Fence Provider Execution Dispatch (wip)
 
 Revalidate the original queued execution epoch at pending-start, steering and compaction dispatch.
 Retain typed exact nondispatch proof and separate uncertain dispatch from preservation eligibility.

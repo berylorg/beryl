@@ -72,6 +72,7 @@ impl ScheduledOrdinaryExecutionProvider for UnavailableScheduledOrdinaryProvider
 pub struct Fixture {
     _directory: tempfile::TempDir,
     pub store: ProjectionConnectionService,
+    pub process_admission: beryl_app::process_admission::ProcessAdmissionGate,
     pub storage: SyndicStorage,
     pub state: BerylState,
     pub cancellation: ProjectionCancellationToken,
@@ -203,8 +204,9 @@ impl Fixture {
         )
         .unwrap();
         let scheduled_provider = create_provider(state.assets());
+        let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let store = ProjectionConnectionService::new(
-            Default::default(),
+            process_admission.clone(),
             store,
             storage.clone(),
             config,
@@ -214,6 +216,7 @@ impl Fixture {
         Self {
             _directory: directory,
             store,
+            process_admission,
             storage,
             state,
             cancellation: ProjectionCancellationToken::new(),
@@ -228,6 +231,7 @@ impl Fixture {
         let Self {
             _directory,
             store,
+            process_admission: _,
             storage: _,
             state: _,
             cancellation: _,

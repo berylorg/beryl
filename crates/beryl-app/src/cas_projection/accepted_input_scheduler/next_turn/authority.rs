@@ -23,10 +23,32 @@ pub(in crate::cas_projection::accepted_input_scheduler) struct LeaseValidationAu
     terminal_disposer: crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
 }
 
+pub(super) struct ScheduledPromotionReservation {
+    connection: ConnectionPromotionReservation,
+    process: crate::process_admission::ProcessAdmissionReservation,
+}
+
+impl ScheduledPromotionReservation {
+    pub(super) fn release(
+        self,
+    ) -> Result<
+        crate::cas_projection::connection::ConnectionPromotionReleaseOutcome,
+        ProjectionCoordinatorError,
+    > {
+        let result = self.connection.release();
+        drop(self.process);
+        result
+    }
+}
+
 pub(in crate::cas_projection::accepted_input_scheduler) fn expected_admission_drift(
     error: &ScheduledOrdinaryAdmissionError,
 ) -> bool {
     match error {
+        ScheduledOrdinaryAdmissionError::ProcessAdmission(
+            crate::process_admission::ProcessAdmissionError::Fenced
+            | crate::process_admission::ProcessAdmissionError::Stale,
+        ) => true,
         ScheduledOrdinaryAdmissionError::RuntimeMismatch { .. }
         | ScheduledOrdinaryAdmissionError::SessionAuthorityUnavailable { .. }
         | ScheduledOrdinaryAdmissionError::AssetAuthority {
@@ -262,7 +284,8 @@ impl LeaseValidationAuthority {
     pub(super) fn reserve_promotion(
         &self,
         lease: &mut ScheduledOrdinaryExecutionLease,
-    ) -> Result<Option<ConnectionPromotionReservation>, ScheduledOrdinaryAdmissionError> {
+        execution: &crate::cas_projection::LiveExecutionCandidate,
+    ) -> Result<Option<ScheduledPromotionReservation>, ScheduledOrdinaryAdmissionError> {
         self.ensure_current()?;
         lease
             .assets()
@@ -295,7 +318,22 @@ impl LeaseValidationAuthority {
             {
                 return Ok(None);
             }
-            expected_connection.reserve_scheduled_promotion()?
+            let process = match execution.reserve() {
+                Ok(reservation) => reservation,
+                Err(crate::process_admission::ProcessExecutionAdmissionError::Process(error)) => {
+                    return Err(error.into());
+                }
+                Err(crate::process_admission::ProcessExecutionAdmissionError::Service(_)) => {
+                    self.ensure_command_current()?;
+                    return Err(ProjectionCoordinatorError::LiveCommandGateUnavailable.into());
+                }
+            };
+            expected_connection
+                .reserve_scheduled_promotion()?
+                .map(|connection| ScheduledPromotionReservation {
+                    connection,
+                    process,
+                })
         };
         self.ensure_generation_current()?;
         Ok(reservation)

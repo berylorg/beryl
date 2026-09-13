@@ -5,6 +5,17 @@ impl LiveCommandAuthorizer {
     ) -> Result<LiveExecutionCandidate, crate::process_admission::ProcessExecutionAdmissionError>
     {
         let permit = self.authorize()?;
+        self.execution_candidate_from(&permit)
+    }
+
+    pub(crate) fn execution_candidate_from(
+        &self,
+        permit: &LiveCommandPermit,
+    ) -> Result<LiveExecutionCandidate, crate::process_admission::ProcessExecutionAdmissionError>
+    {
+        if !Arc::ptr_eq(&self.inner, &permit.inner) {
+            return Err(LiveCommandAdmissionError::Closed.into());
+        }
         permit.commit_execution_if_current(|| LiveExecutionCandidate {
             authorizer: self.clone(),
             execution: permit.execution.clone(),
