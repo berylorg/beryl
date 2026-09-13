@@ -99,7 +99,13 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - Exit freezes new dispatch and cancels every scheduled automatic lifecycle continuation before it
   becomes another turn. A continuation that already became a turn remains ordinary thread work and
   must settle as part of the same barrier; already accepted queued input remains preserved.
-- Exit waits for every open window's dirty-draft flush, all exact work's terminal-history outcome,
+- An accepted turn proven not to have started may settle the shutdown barrier by remaining durably
+  pending for ordinary later recovery, including an already accepted lifecycle continuation.
+  Exit preserves its identity and content without marking it completed or starting it to drain
+  shutdown. Work that started, or might have started, still requires exact terminal-history or
+  authority-loss completion. Missing provider identity alone does not prove that work never started.
+- Exit waits for every open window's dirty-draft flush, each exact work item's applicable completion
+  or durable pending-preservation outcome,
   and admitted draft, session, and restore-set obligations to settle durably. An indeterminate
   durable outcome remains part of the barrier until same-home reconciliation proves its result.
 - While the barrier is active, every visible Exit command is disabled with a waiting indication.
@@ -113,7 +119,7 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - The Exit control keeps its stable toolbar position, changes its label to `Exiting…`, shows the
   `command button` loading state, visibly becomes disabled, and uses the same exact
   waiting reason in its disabled tooltip.
-- After the complete restore set, orderly-exit intent, and all-work terminal history are durable,
+- After the complete restore set, orderly-exit intent, and all applicable work outcomes are durable,
   Beryl closes all application windows and terminates the process.
 - The restore set captures each open main window's selected thread identity, position, size, and Windows virtual-desktop placement.
 - Exit does not add auxiliary Settings windows or transient flyouts, menus, previews, or notices to the restore set.

@@ -70,7 +70,8 @@ governed by [design.md](design.md). It does not independently declare engineerin
   window will survive. Confirmation carries exact attempt, window-set, and work revisions and
   owns no stop or mutation authority until the shared shutdown coordinator admits the barrier.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
-  preserves durable queue custody, and composes resident-preserving draft flush with typed session
+  preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
+  completion rules, and composes resident-preserving draft flush with typed session
   publication. It retains windows and claims until success, then joins service/runtime disposal
   before process exit. Explicit Exit and final ordinary close retain their distinct restore modes.
 - A failed barrier releases interaction gates from the retained coherent state without restoring

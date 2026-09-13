@@ -44,21 +44,36 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 325: Own Running Work Independently Of Views (finished)
+# Phase 390: Define Pending Work Completion At Shutdown (finished)
 
-Accepted joined managed direct/accepted execution, terminal-history retention at both gate-release
-cuts, view detachment/reattachment, compaction retirement and continuation replacement. The 83 app
-regressions and production library check pass; independent composition review found no blocking
-issue. The [composition evidence](failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
-retains request-routing prerequisites and separate GUI, restart, bootstrap and shutdown limits.
+Accepted the Operator-approved pending-preservation outcome in feature, system and app authority.
+Independent semantic review found no blocking gap in exact nondispatch proof, settled obligations,
+identity/content retention or separation from uncertain dispatch and volatile continuation intent.
+The [accepted correction](failures/process-shutdown-pending-turn.md#authorized-course-correction)
+records the decision; production fencing and completion proof remain implementation work.
+
+# Phase 391: Fence Process Execution Admission For Graceful Shutdown (wip)
+
+Establish the shared reversible admission boundary over direct submission, accepted-input
+promotion, pending start, steering, compaction admission/dispatch and continuation settlement.
+Retain exact nondispatch classification, admitted reconciliation and terminal capture. Verify
+dispatch/admission races, cancellation and coherent gate reopening, preserving accepted work and
+existing lock order. Provide the shared gate required by window admission without implementing
+native confirmation or final-window designation here. Independently review every affected cut.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
-Implement one admission fence and exact all-work convergence boundary shared by final-window close
-and explicit Exit. Preserve accepted queues, prevent successor dispatch, retain exact pending and
-noninterruptible targets through terminal history or authority-loss convergence, and return to
+Compose the accepted admission fence and exact all-work convergence boundary shared by final-window
+close and explicit Exit. Preserve accepted queues and proven-undispatched pending turns, prevent
+successor dispatch, retain dispatched or uncertain noninterruptible targets through terminal history
+or authority-loss convergence, and return to
 coherent windows on failure. Confirmation, final-window designation, durable restore mode and OS
 close integration remain their subsequent rework acceptance boundary.
+
+The [pending-turn correction](failures/process-shutdown-pending-turn.md) records the authorized
+completion distinction. Verify durable pending preservation separately from uncertain dispatch,
+including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
+or absent provider identity proves either completion outcome.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

@@ -148,15 +148,26 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   volatile continuation intents at their exact same-thread cut and preserves all already accepted
   input and durably admitted pending turns. A candidate that won before the fence remains part of
   the barrier; a later candidate cannot dispatch. It never drains the queue by starting more turns.
+- A captured durable pending turn may satisfy its execution obligation by remaining durably
+  preserved only when exact existing dispatch authority proves nondispatch and all admitted
+  preparation, binding activation and reconciliation obligations have settled consistently with
+  that proof. Retain the same pending identity and canonical content for ordinary later recovery;
+  do not manufacture terminal history or convert the turn into queued input. This applies equally
+  to Operator input and an already admitted lifecycle continuation. Missing provider identity,
+  absent stop eligibility or coarse idle state is not nondispatch proof. A dispatched or possibly
+  dispatched target cannot use this outcome and must reach terminal-history fixed point or the
+  existing durable authority-loss convergence.
 - The coordinator visits the exact registered targets with bounded pages and joins their retained
   execution flights. It requests or joins each target's existing sole exact graceful soft stop when
   authorized, and waits for initially noninterruptible work to reach exact eligibility, terminal
-  outcome, or authoritative loss. Approval waits remain exact target work; invisibility or shutdown
+  outcome, authoritative loss, or the proven-undispatched pending-preservation outcome above.
+  Approval waits remain exact target work; invisibility or shutdown
   cannot synthesize approval consent. Responses, coarse idle state, and missing stop eligibility
   are not terminal evidence.
 - Terminal capture, repair eligibility/convergence, finalization, and admitted reconciliation
   remain permitted behind the dispatch fence. The barrier completes only after each captured
-  target's terminal-history fixed point or the existing durable authority-loss convergence and
+  target's terminal-history fixed point, existing durable authority-loss convergence, or proven
+  durable pending-preservation outcome, together with
   all required draft/session durability obligations. Only then may claims be released, windows
   disposed, and the process service graph and managed runtimes retired and joined.
 - Any failed or unproven obligation retains coherent windows, claims, resident editors, and exact
@@ -527,5 +538,6 @@ through nonfinal detachment. Verification must cover detach and reattach during 
 streaming, in-flight approval handling, compaction, continuation, and terminal-history work; bounded registry
 saturation and idle reclamation; and shutdown admission racing new work, final-window changes,
 duplicate requests, authority loss, and durability failure. Independent semantic review must examine
+proven-undispatched pending preservation against dispatched and uncertain outcomes, as well as
 the execution lease, request-routing privilege boundary, and all dispatch/successor cuts. Background
 execution does not weaken privacy, recovery, same-thread serialization, or resource guarantees.
