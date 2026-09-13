@@ -34,6 +34,18 @@ impl ProjectionConnectionService {
 }
 
 impl SubmissionExecutionWake {
+    pub(crate) fn execution_candidate(
+        &self,
+    ) -> Result<
+        Option<super::super::LiveExecutionCandidate>,
+        crate::process_admission::ProcessExecutionAdmissionError,
+    > {
+        self.target
+            .as_ref()
+            .map(|target| target.authorizer.execution_candidate())
+            .transpose()
+    }
+
     pub(crate) fn matches_binding(
         &self,
         home_id: BerylHomeId,
@@ -67,10 +79,13 @@ impl SubmissionExecutionWake {
     }
 
     #[cfg(any(test, feature = "test-faults"))]
-    pub fn test_for_home(home: &HomeStore) -> (Self, SubmissionExecutionWakeTestProbe) {
+    pub fn test_for_home(
+        home: &HomeStore,
+        process: crate::process_admission::ProcessAdmissionGate,
+    ) -> (Self, SubmissionExecutionWakeTestProbe) {
         use super::super::persistent_failure::{MasterCommandGate, ProjectionServiceGeneration};
         let gate = MasterCommandGate::new(
-            Default::default(),
+            process,
             ProjectionServiceGeneration::allocate().unwrap(),
             None,
         );

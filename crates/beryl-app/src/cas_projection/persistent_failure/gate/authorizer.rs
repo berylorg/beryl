@@ -1,5 +1,16 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    pub(crate) fn execution_candidate(
+        &self,
+    ) -> Result<LiveExecutionCandidate, crate::process_admission::ProcessExecutionAdmissionError>
+    {
+        let permit = self.authorize()?;
+        permit.commit_execution_if_current(|| LiveExecutionCandidate {
+            authorizer: self.clone(),
+            execution: permit.execution.clone(),
+        })
+    }
+
     /// Admits one scoped command only while this exact service generation remains open.
     pub fn authorize(&self) -> Result<LiveCommandPermit, LiveCommandAdmissionError> {
         let mut state = self

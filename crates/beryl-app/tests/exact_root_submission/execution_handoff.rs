@@ -20,7 +20,7 @@ fn already_committed_acceptance_notifies_once_without_another_durable_write() {
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "once", 4, 1);
-    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store, Default::default());
     let ticket = host.begin_submission(request(execution)).unwrap();
     advance_to_accepting(
         &mut host,
@@ -59,7 +59,7 @@ fn cancellation_before_acceptance_does_not_notify_execution() {
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "keep", 4, 1);
-    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store, Default::default());
     let ticket = host.begin_submission(request(execution)).unwrap();
     let cancellation = CommandCancellation::new();
     for _ in 0..128 {
@@ -94,7 +94,8 @@ fn foreign_home_capability_is_rejected_before_flush_and_foreign_advance_before_w
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "keep", 4, 1);
-    let (foreign_execution, foreign_wakes) = SubmissionExecutionWake::test_for_home(&foreign);
+    let (foreign_execution, foreign_wakes) =
+        SubmissionExecutionWake::test_for_home(&foreign, Default::default());
     let revision = store.home_revision().unwrap();
     assert!(matches!(
         host.begin_submission(request(foreign_execution)),
@@ -105,7 +106,7 @@ fn foreign_home_capability_is_rejected_before_flush_and_foreign_advance_before_w
     assert!(!host.submission_diagnostics().pending());
     assert_eq!(store.home_revision().unwrap(), revision);
     assert_eq!(foreign_wakes.wake_count(), 0);
-    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store, Default::default());
     let ticket = host.begin_submission(request(execution)).unwrap();
     assert!(matches!(
         host.advance_submission(
@@ -129,7 +130,7 @@ fn foreign_home_capability_is_rejected_before_flush_and_foreign_advance_before_w
 #[test]
 fn previous_home_generation_capability_cannot_begin_on_recovered_home() {
     let (_directory, store, _storage, thread, faults) = base::fault_fixture("generation-wake", 231);
-    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = SubmissionExecutionWake::test_for_home(&store, Default::default());
     let old_generation = store.health().generation().unwrap();
     faults.fail_next(beryl_home_store::test_faults::FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());

@@ -87,6 +87,15 @@ impl SyndicComposerHost {
         if cancellation.is_cancelled() {
             return self.cancel_submission();
         }
+        let _admission = self
+            .submission
+            .pending
+            .as_ref()
+            .unwrap()
+            .execution
+            .as_ref()
+            .map(crate::cas_projection::LiveExecutionCandidate::reserve)
+            .transpose()?;
         #[cfg(feature = "test-faults")]
         if let Some(fault) = self.submission_before_execute_fault.take() {
             fault(store, self.storage.clone());

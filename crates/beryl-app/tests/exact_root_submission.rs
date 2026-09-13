@@ -44,8 +44,10 @@ fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "submitted text", 14, 1);
     let next_draft = SyndicDraftId::from_bytes([20; 16]);
     let item = SyndicItemId::from_bytes([21; 16]);
-    let (execution, wakes) =
-        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+        &store,
+        Default::default(),
+    );
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             execution,
@@ -198,8 +200,10 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
     let (mut host, empty) = activated(storage.clone(), &store, thread, 71, 72);
     let second = commit_text(&mut host, &store, empty, 1, 0, 0, "queued", 6, 1);
     let accepted_id = second.candidate().draft_id().accepted_input_id();
-    let (execution, wakes) =
-        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+        &store,
+        Default::default(),
+    );
     let second_ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             execution,
@@ -308,6 +312,8 @@ mod execution_handoff;
 #[cfg(feature = "test-faults")]
 #[path = "exact_root_submission/legacy_reconciliation.rs"]
 mod legacy_reconciliation;
+#[path = "exact_root_submission/process_admission.rs"]
+mod process_admission;
 fn advance_to_accepting(
     host: &mut beryl_app::composer_host::SyndicComposerHost,
     store: &beryl_home_store::HomeStore,

@@ -198,3 +198,20 @@ impl Drop for ProcessAdmissionReservation {
 #[cfg(test)]
 #[path = "../tests/unit/process_admission.rs"]
 mod tests;
+
+#[cfg(any(test, feature = "test-faults"))]
+pub struct ProcessAdmissionFenceTestProbe(ProcessAdmissionFence);
+
+#[cfg(any(test, feature = "test-faults"))]
+impl ProcessAdmissionGate {
+    pub fn test_fence(&self) -> Result<ProcessAdmissionFenceTestProbe, ProcessAdmissionError> {
+        self.fence().map(ProcessAdmissionFenceTestProbe)
+    }
+}
+
+#[cfg(any(test, feature = "test-faults"))]
+impl ProcessAdmissionFenceTestProbe {
+    pub fn try_reopen(&self, coherent: bool) -> Result<(), ProcessAdmissionError> {
+        self.0.reopen_if(coherent)
+    }
+}

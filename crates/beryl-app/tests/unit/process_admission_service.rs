@@ -12,6 +12,41 @@ fn service_gate(process: &ProcessAdmissionGate) -> MasterCommandGate {
 }
 
 #[test]
+fn queued_execution_candidate_keeps_its_epoch_without_retaining_health_command_custody() {
+    let process = ProcessAdmissionGate::new();
+    let service = service_gate(&process);
+    let authorizer = service.authorizer();
+    let candidate = authorizer.execution_candidate().unwrap();
+    assert_eq!(authorizer.active_command_count_for_test(), 0);
+    let fence = process.fence().unwrap();
+    assert!(matches!(
+        candidate.reserve(),
+        Err(ProcessExecutionAdmissionError::Process(
+            ProcessAdmissionError::Fenced
+        ))
+    ));
+    authorizer
+        .authorize()
+        .unwrap()
+        .reopen_process_admission(&fence, true)
+        .unwrap();
+    assert!(matches!(
+        candidate.reserve(),
+        Err(ProcessExecutionAdmissionError::Process(
+            ProcessAdmissionError::Stale
+        ))
+    ));
+    assert_eq!(authorizer.active_command_count_for_test(), 0);
+    service.close_for_shutdown();
+    assert!(matches!(
+        candidate.reserve(),
+        Err(ProcessExecutionAdmissionError::Service(
+            LiveCommandAdmissionError::Closed
+        ))
+    ));
+}
+
+#[test]
 fn process_fence_survives_service_generation_changes_and_preserves_health_commands() {
     let process = ProcessAdmissionGate::new();
     let first = service_gate(&process);

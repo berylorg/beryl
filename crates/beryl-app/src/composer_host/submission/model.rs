@@ -136,6 +136,10 @@ impl ComposerHostSubmissionDiagnostics {
 #[derive(Debug, thiserror::Error)]
 pub enum ComposerHostSubmissionError {
     #[error(transparent)]
+    ProcessAdmission(#[from] crate::process_admission::ProcessAdmissionError),
+    #[error(transparent)]
+    ServiceAdmission(#[from] crate::cas_projection::LiveCommandAdmissionError),
+    #[error(transparent)]
     Host(#[from] ComposerHostError),
     #[error(transparent)]
     Materialization(#[from] syndic_storage::DraftComposerMaterializationErrorV1),
@@ -160,6 +164,21 @@ pub enum ComposerHostSubmissionError {
     InjectedFault(ComposerHostSubmissionFaultPoint),
 }
 
+impl From<crate::process_admission::ProcessExecutionAdmissionError>
+    for ComposerHostSubmissionError
+{
+    fn from(error: crate::process_admission::ProcessExecutionAdmissionError) -> Self {
+        match error {
+            crate::process_admission::ProcessExecutionAdmissionError::Service(error) => {
+                Self::ServiceAdmission(error)
+            }
+            crate::process_admission::ProcessExecutionAdmissionError::Process(error) => {
+                Self::ProcessAdmission(error)
+            }
+        }
+    }
+}
+
 pub(in crate::composer_host) struct ComposerHostSubmissionCoordinator {
     pub(in crate::composer_host) pending: Option<Box<PendingSubmission>>,
     pub(super) generation: u64,
@@ -175,6 +194,7 @@ impl ComposerHostSubmissionCoordinator {
 }
 
 pub(in crate::composer_host) struct PendingSubmission {
+    pub(super) execution: Option<crate::cas_projection::LiveExecutionCandidate>,
     pub(super) ticket: ComposerHostSubmissionTicket,
     pub(super) request: ComposerHostSubmissionRequest,
     pub(super) cancellation: Option<CommandCancellation>,

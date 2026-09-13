@@ -20,10 +20,15 @@ fn reconciled_acceptance(retired: bool) {
     let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "once", 4, 1);
     let item = SyndicItemId::from_bytes([114; 16]);
-    let (execution, wakes) =
-        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+    let (execution, wakes) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+        &store,
+        Default::default(),
+    );
     let (_replacement, replacement_wakes) =
-        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+            &store,
+            Default::default(),
+        );
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             execution,
@@ -140,7 +145,10 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 122, 123);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 4, 1);
-    let (wake, probe) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+    let (wake, probe) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+        &store,
+        Default::default(),
+    );
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
             wake,

@@ -132,6 +132,7 @@ pub use ordinary::{
     OrdinaryInputReplayDiagnostics, OrdinaryInputReplayDiagnosticsSnapshot,
     SourcePageHandoffBarrierController,
 };
+pub(crate) use persistent_failure::LiveExecutionCandidate;
 pub use persistent_failure::{
     LiveCommandAdmissionError, LiveCommandAuthorizer, LiveCommandPermit,
     PersistentFailureCutCompletion, PersistentFailureCutSnapshot, PersistentFailureCutState,

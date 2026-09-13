@@ -41,6 +41,7 @@ impl SyndicComposerHost {
         {
             return Err(ComposerHostError::OldBinding.into());
         }
+        let execution = request.execution_wake.execution_candidate()?;
         let flush = self.begin_flush(ComposerHostFlushPurpose::Submission)?;
         let stage = match flush {
             ComposerHostFlushAdmission::Started { ticket, .. }
@@ -65,6 +66,7 @@ impl SyndicComposerHost {
         };
         self.submission.generation = generation;
         self.submission.pending = Some(Box::new(PendingSubmission {
+            execution,
             ticket,
             request,
             cancellation: None,

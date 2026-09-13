@@ -67,6 +67,23 @@ pub struct LiveCommandPermit {
     released: bool,
 }
 
+pub(crate) struct LiveExecutionCandidate {
+    authorizer: LiveCommandAuthorizer,
+    execution: crate::process_admission::ProcessExecutionPermit,
+}
+
+impl LiveExecutionCandidate {
+    pub(crate) fn reserve(
+        &self,
+    ) -> Result<
+        crate::process_admission::ProcessAdmissionReservation,
+        crate::process_admission::ProcessExecutionAdmissionError,
+    > {
+        let permit = self.authorizer.authorize()?;
+        Ok(permit.commit_if_current(|| self.execution.reserve())??)
+    }
+}
+
 /// Short before/after health fence for one exact store operation.
 #[must_use]
 pub(in crate::cas_projection) struct LiveCommandHealthFence<'permit, 'home> {

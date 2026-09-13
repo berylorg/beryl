@@ -44,21 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 391: Establish Shared Process Admission Authority (finished)
+# Phase 392: Fence Direct Submission Acceptance (finished)
 
-Accepted the shared gate, exact execution epochs, counted admission reservations and required
-service/window construction wiring. Independent review found no remaining blocker. All 26 focused
-gate, service-generation and window-reservation tests passed, and eight affected integration
-targets plus the library passed Cargo check. A broader all-tests check remains unavailable because
-the unrelated draft-marker lifecycle target has existing storage ownership/type errors.
-Execution-path integration and coherent reconciliation proof remain the boundaries below.
+Accepted original-epoch submission capture and counted final acceptance through durable result or
+reconciliation installation. Independent review found no blocker. The 25 existing exact-submission
+cases, five new shutdown-admission cases and shared-gate regression coverage passed; the production
+library passed Cargo check. Draft preservation, stale callback rejection, cancellation and admitted
+reconciliation remain distinct from scheduler dispatch and full shutdown completion below.
 
-# Phase 392: Fence Direct Submission Acceptance (wip)
-
-Integrate the shared gate at first durable submission acceptance, retaining draft and exact
-reconciliation custody when shutdown wins. Verify both admission-race outcomes and cancellation.
-
-# Phase 393: Fence Accepted Input Promotion (pending)
+# Phase 393: Fence Accepted Input Promotion (wip)
 
 Integrate process admission with the existing promotion reservation and retained reconciliation;
 preserve accepted queue identity when the fence wins and settle a promotion that won first.

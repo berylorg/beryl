@@ -9,6 +9,7 @@ pub use coordinator::{
     PersistentFailureCutCompletion, PersistentFailureCutSnapshot, PersistentFailureCutState,
     PersistentFailureTerminalEvidence,
 };
+pub(crate) use gate::LiveExecutionCandidate;
 pub use gate::{LiveCommandAdmissionError, LiveCommandAuthorizer, LiveCommandPermit};
 pub use model::{PersistentFailureGeneration, ProjectionServiceGeneration};
 pub use notification::{PersistentFailureNotification, PersistentFailureNotificationStatus};
