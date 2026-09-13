@@ -75,7 +75,7 @@ pub fn create_third_target(
     let session = state.session();
     let third_claim = replace_claim(
         &fixture.store,
-        session,
+        session.clone(),
         fixture.window_id,
         selected_claim,
         runtime_id,
@@ -104,11 +104,11 @@ pub fn seed_large_published_draft(fixture: &fixture::Fixture, thread: beryl_mode
         )
         .unwrap()
         .unwrap();
-    let mut session = open_session(fixture.storage, &fixture.store, &current);
+    let mut session = open_session(fixture.storage.clone(), &fixture.store, &current);
     for chunk in 0..LARGE_CHUNK_COUNT {
         let offset = (chunk * LARGE_CHUNK_BYTES) as u64;
         session = append_chunk(
-            fixture.storage,
+            fixture.storage.clone(),
             &fixture.store,
             &session,
             (chunk + 1) as u8,
@@ -250,6 +250,7 @@ pub fn assert_same_anchor_marker_order(
     store: &HomeStore,
     root: syndic_storage::DraftPieceRootReferenceV1,
     asset: AssetId,
+    expected_count: usize,
 ) {
     let mut cursor = None;
     let mut seen = 0_usize;
@@ -275,7 +276,7 @@ pub fn assert_same_anchor_marker_order(
                 marker.marker_id(),
                 SyndicDraftMarkerId::from_bytes(marker_object_id(seen).to_be_bytes())
             );
-            assert_eq!(marker.label(), ImageLabelOrdinal::new(1).unwrap());
+            assert_eq!(marker.label(), ImageLabelOrdinal::new((seen + 1) as u64).unwrap());
             assert_eq!(marker.asset_id(), asset);
             seen += 1;
         }
@@ -285,7 +286,7 @@ pub fn assert_same_anchor_marker_order(
             break;
         }
     }
-    assert_eq!(seen, SAME_ANCHOR_MARKERS);
+    assert_eq!(seen, expected_count);
     assert_eq!(cursor, None);
 }
 
@@ -327,6 +328,7 @@ fn open_session(
     }
 }
 
+#[inline(never)]
 fn append_chunk(
     storage: SyndicStorage,
     store: &HomeStore,
@@ -340,6 +342,32 @@ fn append_chunk(
         session.session_id(),
         DraftMutationOperationIdV1::from_bytes([operation; 16]),
     );
+    let active = stage_chunk(&storage, store, session, identity, offset, text);
+    let prepared = transfer_chunk(&storage, store, identity, &active);
+    stage_chunk_window(&storage, store, identity);
+    advance_chunk(&storage, store, identity);
+    committed(execute(
+        store,
+        storage.settle_draft_piece_edit(storage.revision(store).unwrap(), prepared),
+    ));
+    match storage
+        .draft_editor_candidate_session(store, session.draft_id(), session.session_id())
+        .unwrap()
+    {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+        other => panic!("large-draft editor session was not active: {other:?}"),
+    }
+}
+
+#[inline(never)]
+fn stage_chunk(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    session: &DraftEditorCandidateSessionV1,
+    identity: DraftMutationStagingIdentityV1,
+    offset: u64,
+    text: String,
+) -> DraftEditorCandidateSessionV1 {
     let begin = storage
         .prepare_draft_mutation_staging_begin(begin_input(identity, session, offset), session)
         .unwrap();
@@ -354,7 +382,7 @@ fn append_chunk(
         .draft_mutation_staging_head(store, identity)
         .unwrap()
         .unwrap();
-    let page = prepare_page(storage, &head, &active, replacement.clone());
+    let page = prepare_page(storage.clone(), &head, &active, replacement.clone());
     active = page.target_session().unwrap().clone();
     committed(execute(
         store,
@@ -390,6 +418,16 @@ fn append_chunk(
         store,
         storage.draft_mutation_staging_command(storage.revision(store).unwrap(), finish),
     ));
+    active
+}
+
+#[inline(never)]
+fn transfer_chunk(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+    active: &DraftEditorCandidateSessionV1,
+) -> syndic_storage::PreparedDraftPieceEditV1 {
     let head = storage
         .draft_mutation_staging_head(store, identity)
         .unwrap()
@@ -403,6 +441,15 @@ fn append_chunk(
         storage
             .transfer_draft_mutation_staging_to_builder(storage.revision(store).unwrap(), transfer),
     ));
+    prepared
+}
+
+#[inline(never)]
+fn stage_chunk_window(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+) {
     let DraftMutationStagingStatusV1::Building { build, .. } = storage
         .draft_mutation_staging_status(store, identity)
         .unwrap()
@@ -422,6 +469,14 @@ fn append_chunk(
         store,
         storage.stage_next_durable_draft_piece_window(storage.revision(store).unwrap(), window),
     ));
+}
+
+#[inline(never)]
+fn advance_chunk(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    identity: DraftMutationStagingIdentityV1,
+) {
     let mut settled = false;
     for _ in 0..16_384 {
         let Some(advance) = storage
@@ -436,26 +491,12 @@ fn append_chunk(
             settled = true;
             break;
         };
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     assert!(
         settled,
         "large-draft builder exceeded its finite advance bound"
     );
-    committed(execute(
-        store,
-        storage.settle_draft_piece_edit(storage.revision(store).unwrap(), prepared),
-    ));
-    match storage
-        .draft_editor_candidate_session(store, session.draft_id(), session.session_id())
-        .unwrap()
-    {
-        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
-        other => panic!("large-draft editor session was not active: {other:?}"),
-    }
 }
 
 fn prepare_page(

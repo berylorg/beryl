@@ -1,6 +1,7 @@
 use super::*;
 
-type CapturedPreparation = Result<(PreparedCommandMutation, Box<CapturedState>), SyndicMutationError>;
+type CapturedPreparation =
+    Result<(PreparedCommandMutation, Box<CapturedState>), SyndicMutationError>;
 
 pub(super) fn transfer(
     reader: &DomainReader<'_, SyndicDomain>,
@@ -12,7 +13,7 @@ pub(super) fn transfer(
         writer_progress_allowed: true,
     }
     .prepare(reader)?;
-    let target = match &prepared {
+    let target = match prepared.as_deref() {
         Some((value, _)) => CapturedState {
             staging: value.target_head.clone(),
             build: Some(value.build.clone()),
@@ -23,7 +24,7 @@ pub(super) fn transfer(
         None => replay_target(reader, source)?,
     };
     Ok((
-        PreparedCommandMutation::Transfer(Box::new(prepared)),
+        PreparedCommandMutation::Transfer(prepared),
         Box::new(target),
     ))
 }
@@ -48,7 +49,10 @@ pub(super) fn window(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((PreparedCommandMutation::Window(Box::new(prepared)), Box::new(target)))
+    Ok((
+        PreparedCommandMutation::Window(Box::new(prepared)),
+        Box::new(target),
+    ))
 }
 
 pub(super) fn advance(
@@ -71,7 +75,10 @@ pub(super) fn advance(
         },
         None => replay_target(reader, source)?,
     };
-    Ok((PreparedCommandMutation::Advance(Box::new(prepared)), Box::new(target)))
+    Ok((
+        PreparedCommandMutation::Advance(Box::new(prepared)),
+        Box::new(target),
+    ))
 }
 
 pub(super) fn settle(
@@ -80,7 +87,6 @@ pub(super) fn settle(
     value: Box<PreparedDraftPieceEditV1>,
     generation: HomeGeneration,
 ) -> CapturedPreparation {
-
     let prepared = settlement::prepare_for_generation(&value, reader, generation, &[])?;
     let target = match &prepared {
         Some(value) => CapturedState {
@@ -101,7 +107,6 @@ pub(super) fn terminal(
     value: Box<PreparedDraftPieceEditV1>,
     election: StagedDraftPieceTerminalElectionV1,
 ) -> CapturedPreparation {
-
     let prepared = TerminalMutation {
         prepared: *value,
         kind: terminal_kind(election)?,

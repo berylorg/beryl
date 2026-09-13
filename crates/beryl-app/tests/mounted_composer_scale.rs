@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "mounted_composer_scale/setup.rs"]
+mod setup;
 #[path = "mounted_composer_scale/support.rs"]
 mod support;
 
@@ -27,7 +29,6 @@ use beryl_app::{
     },
 };
 use beryl_home_store::CommandCancellation;
-use beryl_model::ImageLabelOrdinal;
 use gpui::{
     AppContext, Entity, EntityInputHandler, IntoElement, Modifiers, ParentElement, Render,
     SharedString, StreamingLayoutBinding, StreamingLayoutLimits, StreamingLayoutPosition, Styled,
@@ -82,38 +83,49 @@ impl Render for MountRoot {
 fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_bounded(
     cx: &mut gpui::TestAppContext,
 ) {
+    exercise_mounted_composer_scale(cx, ScaleCoverage::FullWorkflow);
+}
+
+#[gpui::test]
+fn mounted_multi_mib_eof_caret_is_realized_with_capacity_filler(cx: &mut gpui::TestAppContext) {
+    exercise_mounted_composer_scale(cx, ScaleCoverage::EofCaret);
+}
+
+#[gpui::test]
+fn mounted_multi_mib_shift_left_settles_without_key_retry(cx: &mut gpui::TestAppContext) {
+    exercise_mounted_composer_scale(cx, ScaleCoverage::BoundaryMove);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScaleCoverage {
+    BoundaryMove,
+    EofCaret,
+    FullWorkflow,
+    Disposal,
+}
+
+#[gpui::test]
+fn mounted_autosaved_markers_dispose_and_release_owners(cx: &mut gpui::TestAppContext) {
+    exercise_mounted_composer_scale(cx, ScaleCoverage::Disposal);
+}
+
+#[inline(never)]
+fn exercise_mounted_composer_scale(cx: &mut gpui::TestAppContext, coverage: ScaleCoverage) {
     cx.update(ensure_text_input_bindings);
-    let fixture = Fixture::new("mounted-scale", 191);
-    let (selected_claim, target_claim) = fixture.claims();
-    let (third_thread, third_claim, selected_claim) =
-        create_third_target(&fixture, 191, selected_claim);
-    let window_id = fixture.window_id;
-    let selected_thread = fixture.selected_thread;
-    let target_thread = fixture.target_thread;
-    let mut host = SyndicComposerHost::new(fixture.storage);
-    assert!(matches!(
-        host.test_activate(
-            &fixture.store,
-            mounted_activation(selected_thread, 11, 12, 1, 0),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        ComposerHostActivationOutcome::Activated { .. }
-    ));
-    seed_large_published_draft(&fixture, target_thread);
-    let marker_asset = publish_image_asset(&fixture, b"same-anchor-marker");
-    let assets = fixture.assets();
-    let marker_seals = fixture.marker_seals();
-    let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(assets);
-    let (_directory, store, storage) = fixture.into_store();
-    let slot =
-        MainWindowComposerSlot::new(window_id, selected_claim, host, storage, marker_authority)
-            .unwrap();
-    let store = Arc::new(store);
-    let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
-        slot,
-    ));
+    let setup::ScaleSetup {
+        selected_thread,
+        target_thread,
+        third_thread,
+        target_claim,
+        third_claim,
+        marker_asset,
+        assets,
+        marker_seals,
+        directory: _directory,
+        store,
+        storage,
+        service,
+    } = setup::prepare_scale_fixture();
     let settlement_coordinator = RangeSettlementCoordinator::new(4).unwrap();
     assert_eq!(settlement_coordinator.capacity(), 4);
     assert_eq!(settlement_coordinator.retained_count(), 0);
@@ -209,7 +221,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     });
     let predecessor_entity = predecessor.entity_id();
     let predecessor_selection = service.selected_identity().unwrap();
-    assert_candidate_operation_reconciled(storage, &store, predecessor_selection.binding());
+    assert_candidate_operation_reconciled(storage.clone(), &store, predecessor_selection.binding());
     assert_eq!(settlement_coordinator.retained_count(), 0);
 
     let cancelled = CommandCancellation::new();
@@ -244,7 +256,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     let over_cap =
         mounted_activation_with_demand_count(target_thread, 19, 20, 2, LARGE_DRAFT_BYTES, 17);
     assert!(matches!(
-        SyndicComposerHost::new(storage).test_activate(
+        SyndicComposerHost::new(storage.clone()).test_activate(
             &store,
             over_cap.clone(),
             &CommandCancellation::new(),
@@ -263,7 +275,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
             .is_err()
     );
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
-    assert_candidate_operation_reconciled(storage, &store, predecessor_selection.binding());
+    assert_candidate_operation_reconciled(storage.clone(), &store, predecessor_selection.binding());
     assert!(service.pending_receipt().is_none());
     assert!(
         mount
@@ -398,7 +410,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         .is_err()
     );
     assert_eq!(service.selected_identity(), Some(predecessor_selection));
-    assert_candidate_operation_reconciled(storage, &store, predecessor_selection.binding());
+    assert_candidate_operation_reconciled(storage.clone(), &store, predecessor_selection.binding());
 
     let mut flush = None;
     let mut target_priming_advances = 0_usize;
@@ -494,7 +506,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
             mount.capture_flush_publication(
                 predecessor_selection,
                 flush,
-                assets,
+                assets.clone(),
                 &marker_seals,
                 operation_id(24),
                 None,
@@ -639,17 +651,74 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
                 surface.source_selection.head.byte_offset.get() == LARGE_DRAFT_BYTES
             })
     });
+    input.read_with(cx, |input, _| {
+        let surface = input.surface().expect("Ctrl+End must publish a surface");
+        let caret = surface
+            .caret_bounds(px(16.))
+            .expect("Ctrl+End must retain exact caret geometry");
+        assert_eq!(
+            surface.position_for_source_position(surface.selection().head),
+            Some(caret.origin),
+        );
+        assert!(caret.origin.y >= surface.scroll_block());
+        assert!(caret.origin.y < surface.scroll_block() + px(MOUNT_BLOCK_EXTENT));
+        assert!(
+            surface
+                .fillers()
+                .all(|filler| !filler.contains(caret.origin.y))
+        );
+    });
+    eprintln!("mounted scale: exact EOF caret and filler assertions passed");
+    if coverage == ScaleCoverage::EofCaret {
+        assert_realization_budgets(&input.read_with(cx, |input, _| input.realization_diagnostics()));
+        return;
+    }
+    let before_shift = input.read_with(cx, |input, _| input.realization_diagnostics());
+    let before_shift_surface = input.read_with(cx, |input, _| {
+        (
+            input.is_enabled(),
+            input.is_surface_current_and_interactive(),
+            input.is_semantically_quiescent(),
+            input.is_quiescent(),
+            input.surface().map(|surface| {
+                (
+                    surface.fragments().len(),
+                    surface.realized_object_gaps().len(),
+                    surface.position_for_offset(gpui_text_input::ByteOffset::new(
+                        LARGE_DRAFT_BYTES - 1,
+                    )),
+                    surface.platform_selection(),
+                )
+            }),
+        )
+    });
     cx.simulate_keystrokes("shift-left");
-    drive_until(cx, 256, "shift-left", |cx| {
+    let shift_settled = drive_until_result(cx, 256, |cx| {
         mount
             .read_with(cx, |mount, app| mount.surface_snapshot(app))
             .is_some_and(|surface| surface.source_selection.anchor != surface.source_selection.head)
     });
+    assert!(
+        shift_settled,
+        "shift-left did not settle: selection={:?}, before_surface={before_shift_surface:?}, before={before_shift:?}, after={:?}, owner_error={:?}",
+        mount
+            .read_with(cx, |mount, app| mount.surface_snapshot(app))
+            .map(|surface| surface.source_selection),
+        input.read_with(cx, |input, _| input.realization_diagnostics()),
+        target.read_with(cx, |composer, _| composer.last_error().map(str::to_owned)),
+    );
     let before_edit = mount
         .read_with(cx, |mount, app| mount.surface_snapshot(app))
         .unwrap()
         .source_selection;
+    assert_eq!(before_edit.anchor.byte_offset.get(), LARGE_DRAFT_BYTES);
+    assert_eq!(before_edit.head.byte_offset.get(), LARGE_DRAFT_BYTES - 1);
+    eprintln!("mounted scale: single Shift+Left exact selection assertions passed");
+    if coverage == ScaleCoverage::BoundaryMove {
+        return;
+    }
     let before_edit_root = service.selected_identity().unwrap().binding().root();
+    eprintln!("mounted scale: starting localized edit");
     cx.update(|window, app| {
         input.update(app, |input, input_cx| {
             input.replace_and_mark_text_in_range(None, "!", None, window, input_cx)
@@ -686,13 +755,20 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
             .map(|snapshot| snapshot.source_selection),
         settlement_coordinator.retained_count(),
     );
+    eprintln!("mounted scale: localized edit settled");
     let edited_selection = service.selected_identity().unwrap();
     let after_edit = mount
         .read_with(cx, |mount, app| mount.surface_snapshot(app))
         .unwrap()
         .source_selection;
-    assert_tail_byte(storage, &store, edited_selection.binding().root(), b'!');
+    assert_tail_byte(
+        storage.clone(),
+        &store,
+        edited_selection.binding().root(),
+        b'!',
+    );
 
+    eprintln!("mounted scale: edited tail verified; starting undo");
     cx.simulate_keystrokes("ctrl-z");
     let undo_settled = drive_until_result(cx, 4_096, |cx| {
         service.selected_identity().is_some_and(|selection| {
@@ -731,6 +807,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         }),
         settlement_coordinator.retained_count(),
     );
+    eprintln!("mounted scale: undo settled");
     assert_eq!(
         mount
             .read_with(cx, |mount, app| mount.surface_snapshot(app))
@@ -739,7 +816,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         before_edit
     );
     assert_tail_byte(
-        storage,
+        storage.clone(),
         &store,
         before_edit_root,
         expected_byte(LARGE_DRAFT_BYTES - 1),
@@ -769,7 +846,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
             .source_selection,
         after_edit
     );
-    assert_candidate_operation_reconciled(storage, &store, redone_selection.binding());
+    assert_candidate_operation_reconciled(storage.clone(), &store, redone_selection.binding());
 
     cx.simulate_keystrokes("ctrl-z");
     drive_until(cx, 4_096, "undo before redo clear", |cx| {
@@ -803,12 +880,16 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         .unwrap()
         .source_selection;
     assert_tail_byte(
-        storage,
+        storage.clone(),
         &store,
         redo_cleared_selection.binding().root(),
         b'?',
     );
-    assert_candidate_operation_reconciled(storage, &store, redo_cleared_selection.binding());
+    assert_candidate_operation_reconciled(
+        storage.clone(),
+        &store,
+        redo_cleared_selection.binding(),
+    );
     cx.simulate_keystrokes("ctrl-y");
     drive(cx, 32);
     assert_eq!(service.selected_identity(), Some(redo_cleared_selection));
@@ -820,7 +901,8 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         redo_cleared_source
     );
 
-    for index in 0..SAME_ANCHOR_MARKERS {
+    let marker_count = if coverage == ScaleCoverage::Disposal { 2 } else { SAME_ANCHOR_MARKERS };
+    for index in 0..marker_count {
         let prior_generation = service
             .selected_identity()
             .unwrap()
@@ -832,7 +914,6 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
                 composer.insert_authenticated_image_marker(
                     ComposerHostImageMarkerMetadata::new(
                         InlineObjectId::new(marker_object_id(index)),
-                        ImageLabelOrdinal::new(1).unwrap(),
                         marker_asset,
                     ),
                     InlineObjectOrder::new((index + 1) as u128),
@@ -861,16 +942,22 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     let marker_selection = service.selected_identity().unwrap();
     assert_eq!(
         marker_selection.binding().root().summary().marker_count(),
-        SAME_ANCHOR_MARKERS as u64
+        marker_count as u64
     );
     assert_same_anchor_marker_order(
-        storage,
+        storage.clone(),
         &store,
         marker_selection.binding().root(),
         marker_asset,
+        marker_count,
     );
-    assert_tail_byte(storage, &store, marker_selection.binding().root(), b'?');
-    assert_candidate_operation_reconciled(storage, &store, marker_selection.binding());
+    assert_tail_byte(
+        storage.clone(),
+        &store,
+        marker_selection.binding().root(),
+        b'?',
+    );
+    assert_candidate_operation_reconciled(storage.clone(), &store, marker_selection.binding());
     drive(cx, 512);
     let marker_surface = mount
         .read_with(cx, |mount, app| mount.surface_snapshot(app))
@@ -899,7 +986,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         unreachable!();
     };
     let object_order = object_geometry.order().get();
-    assert!((1..=SAME_ANCHOR_MARKERS as u128).contains(&object_order));
+    assert!((1..=marker_count as u128).contains(&object_order));
     assert_eq!(
         object_geometry.id(),
         InlineObjectId::new(marker_object_id((object_order - 1) as usize))
@@ -1009,7 +1096,7 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     );
     assert_eq!(
         current.draft().piece_root().summary().marker_count(),
-        SAME_ANCHOR_MARKERS as u64
+        marker_count as u64
     );
     let published_current = current.clone();
     cx.executor().advance_clock(Duration::from_secs(5));
@@ -1039,30 +1126,14 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
     assert_eq!(diagnostics.max_realized_block_extent, px(64.));
     assert_eq!(diagnostics.max_resident_pages, 6);
     assert_eq!(diagnostics.max_resident_objects, 48);
-    assert!(diagnostics.high_water.owned_bytes <= diagnostics.max_surface_bytes);
-    assert!(diagnostics.high_water.owned_items <= diagnostics.max_surface_items);
-    assert!(diagnostics.high_water.resident_pages <= diagnostics.max_owned_pages);
-    assert!(diagnostics.high_water.resident_objects <= diagnostics.max_owned_objects);
-    assert!(diagnostics.geometry_high_water_bytes <= diagnostics.max_geometry_bytes);
-    assert!(diagnostics.geometry_high_water_items <= diagnostics.max_geometry_items);
-    assert!(diagnostics.current.owned_bytes <= diagnostics.max_surface_bytes);
-    assert!(diagnostics.current.owned_items <= diagnostics.max_surface_items);
-    assert!(diagnostics.current.resident_pages <= diagnostics.max_owned_pages);
-    assert!(diagnostics.current.resident_objects <= diagnostics.max_owned_objects);
+    assert_realization_budgets(&diagnostics);
     assert!(diagnostics.high_water.resident_pages > 0);
     assert!(diagnostics.high_water.resident_objects > 0);
-    assert!(diagnostics.high_water.owned_bytes < LARGE_DRAFT_BYTES as usize);
-    assert!(diagnostics.high_water.resident_page_bytes < LARGE_DRAFT_BYTES as usize);
-    assert!(diagnostics.high_water.resident_object_bytes < LARGE_DRAFT_BYTES as usize);
-    assert!(diagnostics.high_water.geometry_bytes < LARGE_DRAFT_BYTES as usize);
     assert!(
         diagnostics.high_water.dispatched_page_requests > 0
             || diagnostics.high_water.request_payload_items > 0
             || diagnostics.high_water.target_geometry_page_waits > 0
     );
-    assert!(diagnostics.surface_high_water.bytes <= diagnostics.max_surface_bytes);
-    assert!(diagnostics.surface_high_water.items <= diagnostics.max_surface_items);
-    assert!(diagnostics.surface_high_water.bytes < LARGE_DRAFT_BYTES as usize);
     assert!(input.read_with(cx, |input, _| input.is_quiescent()));
     assert_eq!(settlement_coordinator.retained_count(), 0);
 
@@ -1079,17 +1150,32 @@ fn mounted_multi_mib_activation_retarget_edit_history_autosave_and_disposal_are_
         ) => ticket,
         start => panic!("clean large composer disposal did not start: {start:?}"),
     };
-    assert!(matches!(
-        mount
+    let checkpoint_revision = store.home_revision().unwrap();
+    let checkpoint = mount
+        .update(cx, |mount, _| mount.capture_flush_publication(
+            mount.selected_identity().unwrap(),
+            disposal_flush,
+            assets.clone(),
+            &marker_seals,
+            operation_id(201),
+            None,
+            current_timestamp(),
+            &CommandCancellation::new(),
+        ))
+        .unwrap();
+    assert_eq!(checkpoint,
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired));
+    assert_eq!(store.home_revision().unwrap(), checkpoint_revision);
+    let disposal_capture = mount
             .update(cx, |mount, _| mount.capture_flush_disposal(
                 mount.selected_identity().unwrap(),
                 disposal_flush,
                 operation_id(31),
                 &CommandCancellation::new(),
             ))
-            .unwrap(),
-        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
-    ));
+            .unwrap();
+    assert_eq!(disposal_capture,
+        ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired));
     let mut disposed = None;
     for _ in 0..256 {
         drive(cx, 4);
@@ -1346,16 +1432,35 @@ fn mounted_activation_with_demand_count(
     )
 }
 
+fn assert_realization_budgets(diagnostics: &gpui_text_input::RangeRealizationDiagnostics) {
+    assert!(diagnostics.high_water.owned_bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
+    assert!(diagnostics.high_water.owned_items <= diagnostics.max_surface_items, "{diagnostics:?}");
+    assert!(diagnostics.high_water.resident_pages <= diagnostics.max_owned_pages, "{diagnostics:?}");
+    assert!(diagnostics.high_water.resident_objects <= diagnostics.max_surface_items, "{diagnostics:?}");
+    assert!(diagnostics.geometry_high_water_bytes <= diagnostics.max_geometry_bytes, "{diagnostics:?}");
+    assert!(diagnostics.geometry_high_water_items <= diagnostics.max_geometry_items, "{diagnostics:?}");
+    assert!(diagnostics.current.owned_bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
+    assert!(diagnostics.current.owned_items <= diagnostics.max_surface_items, "{diagnostics:?}");
+    assert!(diagnostics.current.resident_pages <= diagnostics.max_owned_pages, "{diagnostics:?}");
+    assert!(diagnostics.current.resident_objects <= diagnostics.max_surface_items, "{diagnostics:?}");
+    assert!(diagnostics.surface_high_water.bytes <= diagnostics.max_surface_bytes, "{diagnostics:?}");
+    assert!(diagnostics.surface_high_water.items <= diagnostics.max_surface_items, "{diagnostics:?}");
+    assert!(diagnostics.high_water.resident_page_bytes < LARGE_DRAFT_BYTES as usize, "{diagnostics:?}");
+    assert!(diagnostics.high_water.resident_object_bytes < LARGE_DRAFT_BYTES as usize, "{diagnostics:?}");
+}
+
 fn drive_until(
     cx: &mut gpui::VisualTestContext,
     rounds: usize,
     operation: &str,
     mut complete: impl FnMut(&mut gpui::VisualTestContext) -> bool,
 ) {
+    eprintln!("mounted scale: starting {operation}");
     assert!(
         drive_until_result(cx, rounds, &mut complete),
         "bounded mounted operation did not settle: {operation}"
     );
+    eprintln!("mounted scale: completed {operation}");
 }
 
 fn drive_until_result(

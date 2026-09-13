@@ -44,45 +44,16 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 392: Attribute Mounted Marker Edit Work (finished)
+# Phase 388: Bound Candidate Transfer Stack Layout (finished)
 
-Both eight-edit measurements pass. Each edit scans 3 MiB for the index and 3 MiB for the target;
-authentication and sampled budget accounting contribute substantial work. Independent review
-finds no established private production correction. Probes are removed, original sources restored,
-and locked metadata, focused compilation and analyzer refresh pass. The
-[evidence record](failures/composer-scale-workflow-runtime.md#mounted-marker-work-attribution)
-preserves raw results, reproducible sources and timing limits. Full workflow acceptance remains
-with phases 388 and 384.
+Accepted borrowed transfer validation, one bounded owned contribution and smaller fixture stages.
+All 40 focused storage checks, locked production compilation, renewed frame attribution and the
+complete ordinary-stack 257-marker workflow pass; independent final semantic review finds no
+blocking issue. [Stack evidence](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
+and [full workflow evidence](failures/composer-scale-workflow-runtime.md#final-scale-verification)
+preserve the acceptance scope and focused fixture corrections.
 
-# Phase 388: Bound Candidate Transfer Stack Layout (wip)
-
-Preserve the [Syndic draft contract](../crates/syndic-storage/doc/design-draft-storage.md) while
-reducing measured transfer preparation and owned result pressure with borrowing, out-of-line
-helpers and justified bounded boxing. Verify the ordinary-stack mounted scale witness, focused
-staging/transfer and reconciliation semantics, production compilation and renewed frame attribution;
-independently review durable reads, reservations, writes and exact error/custody behavior.
-
-Implementation and independent semantic review are complete; all 40 focused staging/transfer
-checks and locked production compilation pass. Transfer validation borrows its input and owns one
-bounded boxed contribution, reusing the staged-capture allocation boundary. Smaller fixture stages
-preserve all assertions and remove remaining setup-frame overlap. EOF and pending boundary
-navigation are accepted separately.
-
-Acceptance remains blocked by the [full scale-workflow runtime](failures/composer-scale-workflow-runtime.md#full-workflow-after-bulk-maps).
-After phase 391, the unchanged ordinary-stack run passes EOF, single-key selection, localized
-editing, undo/redo and redo clearing, then reaches the twenty-minute monitor limit after 43 of
-257 marker insertions, compared with nine previously. No test result is produced; later marker,
-autosave and disposal checks remain unverified. All owned processes are reaped and temporary
-directories removed.
-
-Phase 392 now establishes that the self-imposed twenty-minute test cap is insufficient: observed
-marker timings project roughly 97–102 minutes before setup and later checks. Run the unchanged,
-uninstrumented ordinary-stack full workflow with a bounded three-hour monitor cap. Preserve the
-existing memory, process, output and cleanup limits and all 257-marker/lifecycle assertions.
-This test-budget adjustment does not select a production correction. Phases 388 and 384 remain
-unaccepted until their original gates pass.
-
-# Phase 384: Hand Exact Submission Acceptance To Process Execution (pending)
+# Phase 384: Hand Exact Submission Acceptance To Process Execution (wip)
 
 The Operator authorizes the correction identified by the
 [submission handoff failure](failures/process-submission-execution-handoff.md). The

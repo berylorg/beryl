@@ -10,7 +10,7 @@ pub(super) struct CommandMutation {
 }
 
 pub(super) enum PreparedCommandMutation {
-    Transfer(Box<<TransferMutation as DomainMutation<SyndicDomain>>::Prepared>),
+    Transfer(<TransferMutation as DomainMutation<SyndicDomain>>::Prepared),
     Window(Box<<StageDurableWindowMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Advance(Box<<AdvanceMutation as DomainMutation<SyndicDomain>>::Prepared>),
     Settle(<SettleMutation as DomainMutation<SyndicDomain>>::Prepared),
@@ -145,7 +145,7 @@ impl DomainMutation<SyndicDomain> for CommandMutation {
     ) -> Result<(), Self::Error> {
         match prepared {
             PreparedCommandMutation::Transfer(value) => {
-                TransferMutation::contribute(*value, mutations)
+                TransferMutation::contribute(value, mutations)
             }
             PreparedCommandMutation::Window(value) => {
                 StageDurableWindowMutation::contribute(*value, mutations)

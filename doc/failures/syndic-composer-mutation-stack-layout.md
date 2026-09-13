@@ -227,7 +227,32 @@ stack bound. Evidence uses `creation-stack-{extraction,production,prologue,recon
 under the same retained monitor root. Normal dev/test profiles disable debug information;
 unoptimized value/result layout is the relevant distinction.
 
-Candidate transfer remains the next separately accepted correction, and phase 384 remains pending.
-Preserve custody, exact acceptance, reconciliation and error semantics while reducing measured
-overlap. Ordinary-stack regression and renewed frame attribution remain required before accepting
-the handoff.
+Candidate transfer now separates borrowed validation from owned contribution construction. Its
+private result is `Option<Box<(PreparedDraftMutationTransferV1, Option<DraftMarkerAdmissionHeadV1>)>>`.
+Contribution borrows the box, and staged capture removes its prior outer box. Staged apply retains
+one transfer-result allocation; staged replay avoids it; direct transfer apply gains one bounded
+allocation. No schema, public custody API, reservation, read or write ordering changes.
+
+The measured normal-development frame allocations are 67,376 bytes in generic typed preparation,
+71,072 in transfer preparation and 209,536 in its borrowed validation helper. The earlier trace
+attributed about 299 KiB to typed preparation and 336 KiB to transfer preparation. These are frame
+allocations, not an exhaustive deepest-stack bound, and boxing still permits a construction
+temporary. Evidence is `transfer-stack-prologues-20260912.output.log` under the same monitor root.
+
+The first corrected scale run passed transfer and then overflowed in a later staging-status read.
+Its caller chain retained roughly a megabyte of fixture setup frames. Splitting `append_chunk`
+into out-of-line staging, transfer, window and advancement helpers preserved every commit assertion,
+the 16,384-advance bound, settlement and active-session verification. Subsequent ordinary-stack runs
+completed large-draft setup and reached keyboard navigation without those overflows.
+
+All 40 focused storage cases pass (`9cde86af-40d5-4efd-b298-aaae7643632e`), including transfer
+acknowledgement loss, exact-old resubmission, replay and more than 256 fragments. Locked production
+compilation and independent semantic review pass. The separate
+[nonresident boundary navigation correction](composer-nonresident-boundary-navigation.md) is now
+accepted, as is the separate private bulk-map correction. After the measured test-budget and
+fixture-contract corrections, the complete ordinary-stack workflow passes in 5,120.270 seconds
+(`f0e7aff1-1d20-4cb9-b7e3-808e2cc1efa5`), including all 257 marker insertions, autosave,
+configured ownership bounds, disposal and final owner release. The
+[full workflow evidence](composer-scale-workflow-runtime.md#final-scale-verification) preserves
+the earlier failures, corrections and focused regressions. No larger stack or temporary probe is
+used. The final full pass completes the remaining candidate-transfer scale verification gate.
