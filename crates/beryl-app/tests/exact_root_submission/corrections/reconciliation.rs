@@ -22,6 +22,7 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
     let parent_item = SyndicItemId::from_bytes([214; 16]);
     let first_ticket = first_host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([215; 16]),
             parent_item,
             DraftComposerMaterializationOperationIdV1::from_bytes([216; 16]),
@@ -204,6 +205,7 @@ fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay(
     let parent_item = SyndicItemId::from_bytes([234; 16]);
     let first_ticket = first_host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([235; 16]),
             parent_item,
             DraftComposerMaterializationOperationIdV1::from_bytes([236; 16]),

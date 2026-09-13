@@ -6,11 +6,15 @@ use std::{
 };
 
 use beryl_backend::{ManagedBackendClientConnector, ManagedBackendError, ManagedBackendSession};
+mod submission_execution;
 use beryl_home_store::{HomeCloseError, HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::{
     BerylHomeId, CasProcessGeneration, DomainRevision, ExecutionBinding, RuntimeId, SyndicThreadId,
     SyndicTurnId,
 };
+pub use submission_execution::SubmissionExecutionWake;
+#[cfg(any(test, feature = "test-faults"))]
+pub use submission_execution::SubmissionExecutionWakeTestProbe;
 use syndic_storage::{
     StopAdmissionIneligibility, StopAdmissionRead, StopCause, SyndicPointReadLimit, SyndicStorage,
 };

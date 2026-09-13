@@ -307,6 +307,7 @@ impl Fixture {
         let seals = publication_support::service(home, self.storage.clone(), assets.clone(), 1, 1);
         let ticket = host
             .begin_submission(ComposerHostSubmissionRequest::new(
+                beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
                 next_draft,
                 user_item,
                 DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),

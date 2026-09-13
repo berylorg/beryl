@@ -61,3 +61,30 @@ successful execution of the previously unreachable lifecycle assertions.
 After resolving this handoff, composition still needs joined terminal-history, lifecycle-compaction
 and compaction-cleanup-to-successor evidence. Existing component tests do not establish those
 registered-session handoffs merely by retaining a separate local session.
+
+## Accepted Handoff
+
+Exact committed, reconciled and already-accepted submission now notifies the originating
+home/service generation before host completion and successor-editor activation. The bounded
+capability rejects another home or generation and cannot redirect into a replacement service.
+Idle acceptance opens pending execution; accepted input opens steering and accepted-next
+inspection under their existing gates. Noncommit, cancellation, collision and unresolved
+outcomes grant no notification, retry or provider-effect authority.
+
+All 25 exact-submission checks pass (`49e0158a-577f-486d-a4b8-7a686ffcd617`). Both managed
+execution checks pass without a synthetic wake (`de33d932-bd54-4ead-9038-f9da800b8849`),
+including last-view detachment, immediate reattachment, accepted-successor dispatch, durable
+capture and final process/session release. The 35 scheduler/runtime, 13 managed-interest/disposal,
+40 mounted/initial-composer and 12 creation regressions pass. Directly affected compilation and
+the [complete ordinary-stack scale workflow](composer-scale-workflow-runtime.md#final-scale-verification)
+also pass. Raw evidence uses `admission-complete-app-20260911`,
+`successor-retirement-completion-20260911`, `successor-retirement-regression-20260911`,
+`successor-retirement-disposal-20260911`, `submission-handoff-mounted-20260911`,
+`submission-handoff-affected-compilation-20260911`, and `creation-stack-extraction-20260912`
+under the evidence root above.
+
+Independent final semantic review finds no blocking issue in generation fencing, notification
+placement, mounted/unmounted settlement, lane selection or effect custody. Broader terminal-history,
+compaction and shutdown composition remain separate. A package-wide test-compilation attempt
+encountered unrelated stale image-metadata arguments and moved storage handles in deferred
+composer/seal fixtures; it is not passing evidence or a requirement to reconcile all deferred tests.

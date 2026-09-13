@@ -2072,6 +2072,7 @@ fn primed_seed_retarget_uses_live_queue_then_final_target_publishes(cx: &mut gpu
 
 fn submission_source() -> MainWindowComposerSubmissionRequestSource {
     MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         beryl_app::cas_projection::ProjectionServiceConfig::try_new(
             1,
             4,

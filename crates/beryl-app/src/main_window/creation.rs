@@ -37,6 +37,7 @@ pub struct MainWindowCreationServices {
     pub configurator_source: MainWindowCreationConfiguratorSource,
     pub marker_seals: crate::composer_marker_seal::DraftMarkerSealService,
     pub turn_start_requirement: beryl_home_store::TurnStartAdmissionRequirement,
+    pub submission_execution: crate::cas_projection::SubmissionExecutionWake,
     #[cfg(feature = "test-faults")]
     pub test_before_initial_advance:
         Option<Arc<dyn Fn(&mut MainWindowInitialComposer) + Send + Sync>>,

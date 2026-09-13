@@ -44,8 +44,11 @@ fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "submitted text", 14, 1);
     let next_draft = SyndicDraftId::from_bytes([20; 16]);
     let item = SyndicItemId::from_bytes([21; 16]);
+    let (execution, wakes) =
+        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            execution,
             next_draft,
             item,
             DraftComposerMaterializationOperationIdV1::from_bytes([22; 16]),
@@ -56,6 +59,7 @@ fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
         .unwrap();
 
     let outcome = drive_submission(&mut host, &store, assets, &seals, ticket, operation_id(25));
+    assert_eq!(wakes.wake_count(), 1);
     assert_eq!(
         outcome,
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Idle {
@@ -108,6 +112,7 @@ fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "root", 4, 1);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([34; 16]),
             SyndicItemId::from_bytes([35; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([36; 16]),
@@ -169,6 +174,7 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "first", 5, 1);
     let first_ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([64; 16]),
             SyndicItemId::from_bytes([65; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([66; 16]),
@@ -192,8 +198,11 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
     let (mut host, empty) = activated(storage.clone(), &store, thread, 71, 72);
     let second = commit_text(&mut host, &store, empty, 1, 0, 0, "queued", 6, 1);
     let accepted_id = second.candidate().draft_id().accepted_input_id();
+    let (execution, wakes) =
+        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
     let second_ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            execution,
             SyndicDraftId::from_bytes([73; 16]),
             SyndicItemId::from_bytes([74; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([75; 16]),
@@ -214,6 +223,7 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
         ),
         ComposerHostSubmissionAdvance::ExactSuccess(FirstAcceptanceKind::Accepted)
     );
+    assert_eq!(wakes.wake_count(), 2);
     let accepted = storage
         .accepted_input(&store, accepted_id, point_limit())
         .unwrap()
@@ -249,6 +259,7 @@ fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
     let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([104; 16]),
             SyndicItemId::from_bytes([105; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([106; 16]),
@@ -276,7 +287,7 @@ fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
         }
     }
     assert_eq!(host.binding().unwrap().candidate(), empty.candidate());
-    assert!(!host.submission_diagnostics().pending());
+    assert!(!host.submission_diagnostics().command_attempted());
     let current = storage
         .current_draft(&store, thread, point_limit())
         .unwrap()
@@ -292,6 +303,8 @@ fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
     ));
 }
 
+#[path = "exact_root_submission/execution_handoff.rs"]
+mod execution_handoff;
 #[cfg(feature = "test-faults")]
 #[path = "exact_root_submission/legacy_reconciliation.rs"]
 mod legacy_reconciliation;

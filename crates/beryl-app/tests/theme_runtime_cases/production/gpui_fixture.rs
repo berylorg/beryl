@@ -162,6 +162,7 @@ pub fn open_root(
     cx.update(|app| {
         app.open_window(gpui::WindowOptions::default(), |window, app| {
             let source = MainWindowComposerSubmissionRequestSource::new(
+                beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
                 beryl_app::cas_projection::ProjectionServiceConfig::try_new(
                     1,
                     4,

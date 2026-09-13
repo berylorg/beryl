@@ -44,49 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 388: Bound Candidate Transfer Stack Layout (finished)
+# Phase 384: Hand Exact Submission Acceptance To Process Execution (finished)
 
-Accepted borrowed transfer validation, one bounded owned contribution and smaller fixture stages.
-All 40 focused storage checks, locked production compilation, renewed frame attribution and the
-complete ordinary-stack 257-marker workflow pass; independent final semantic review finds no
-blocking issue. [Stack evidence](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
-and [full workflow evidence](failures/composer-scale-workflow-runtime.md#final-scale-verification)
-preserve the acceptance scope and focused fixture corrections.
+Accepted generation-scoped notification after exact durable acceptance and before editor
+activation. Exact-submission, managed direct/accepted execution, scheduler, mounted composer,
+creation and full scale verification pass; independent final review finds no blocking issue.
+The [handoff evidence](failures/process-submission-execution-handoff.md#accepted-handoff)
+preserves the verified boundaries and deferred package-wide compilation limitation.
 
-# Phase 384: Hand Exact Submission Acceptance To Process Execution (wip)
-
-The Operator authorizes the correction identified by the
-[submission handoff failure](failures/process-submission-execution-handoff.md). The
-[composer package contract](../crates/beryl-app/doc/design-catalog-and-composer.md#history-publication-and-submission)
-owns exact acceptance notification; existing process-generation ownership and scheduler lane gates
-remain controlling. Add the bounded generation-scoped handoff and wire production submission
-settlement before successor-editor activation, including unmounted settlement.
-
-Verify committed, reconciled and already-accepted success, and absence of notification for
-unresolved, cancelled and proven noncommitted outcomes. Verify wrong-home/generation rejection,
-retired-service isolation and coalesced duplicate notification under existing dispatch gates.
-Use the managed-runtime reproduction without a synthetic execution wake to prove direct and
-accepted-input dispatch. Retain focused composer and scheduler regression evidence and obtain
-independent semantic review of generation fencing, lane selection and notification placement.
-Broader execution-lifetime composition remains the next separate boundary.
-
-Implementation and initial semantic review are complete but acceptance is blocked. The
-25 exact-submission cases now pass after phase 385; managed direct and accepted-successor dispatch
-pass after phase 386. All 40 selected mounted/initial composer cases and directly affected target
-compilation pass. The final creation/scale fixture run passes four cases and aborts ten with
-ordinary-debug stack overflows. CDB attributes about 1.44 MiB to production
-`MainWindowCreation::advance` before nested reconciliation; the scale witness separately overflows
-in candidate-transfer preparation. The [stack-layout failure record](failures/syndic-composer-mutation-stack-layout.md#creation-and-candidate-transfer-recurrence)
-preserves attribution and limits. The Operator authorized phases 387 and 388 before resuming this
-acceptance; no larger-stack run counts as acceptance. Keep the composition fixtures
-with this handoff evidence; broader terminal-history, compaction and shutdown acceptance remain
-separate.
-
-The package-wide test compilation attempt encounters pre-existing stale image-metadata arguments
-and moved storage handles in unrelated composer/seal fixtures. It is not passing evidence and
-does not expand this handoff into reconciliation of every deferred GUI/storage fixture.
-
-# Phase 325: Own Running Work Independently Of Views (pending)
+# Phase 325: Own Running Work Independently Of Views (wip)
 
 Compose process-owned execution interest across direct submission, scheduled input, compaction,
 continuation and terminal-history work. Keep exact request routing and background attention under
@@ -101,10 +67,11 @@ accepted. Resume composition from the existing process session provider, configu
 preparation, shared work sources and control coordinators; verify their joined execution lifetime
 without inferring complete composition from isolated component tests.
 
-Resume after the separately authorized submission handoff correction. The managed-runtime
-composition tests preserve the original reproduction; their later detachment, capture and
-successor assertions remain unaccepted until exercised successfully. Joined terminal-history,
-lifecycle-compaction and compaction-cleanup-to-successor evidence remains required.
+The submission handoff and managed direct/accepted execution tests are accepted, including
+detachment, reattachment, durable capture and owner release. Complete joined terminal-history,
+lifecycle-compaction and compaction-cleanup-to-successor evidence using focused managed-runtime
+cases and existing fault barriers. Preserve exact request routing and obtain independent semantic
+review of the remaining execution-lifetime and successor cuts before acceptance.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

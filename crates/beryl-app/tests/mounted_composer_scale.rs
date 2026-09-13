@@ -1242,6 +1242,7 @@ fn exercise_mounted_composer_scale(cx: &mut gpui::TestAppContext, coverage: Scal
 
 fn submission_source() -> MainWindowComposerSubmissionRequestSource {
     MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         beryl_app::cas_projection::ProjectionServiceConfig::try_new(
             1,
             4,

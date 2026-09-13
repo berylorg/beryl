@@ -5,6 +5,9 @@ mod handle;
 mod idle_maintenance_tests;
 mod state;
 #[cfg(test)]
+#[path = "../../../tests/unit/submission_execution_signal.rs"]
+mod submission_execution_tests;
+#[cfg(test)]
 mod tests;
 mod wake;
 

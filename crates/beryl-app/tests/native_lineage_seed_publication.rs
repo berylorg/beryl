@@ -96,6 +96,7 @@ fn fixture(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, &mut gpui::Visu
                 }),
                 marker_seals,
                 MainWindowComposerSubmissionRequestSource::new(
+                    beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
                     beryl_app::cas_projection::ProjectionServiceConfig::try_new(
                         1,
                         4,

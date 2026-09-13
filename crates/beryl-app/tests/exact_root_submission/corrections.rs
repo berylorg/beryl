@@ -246,6 +246,7 @@ mod lifecycle;
 mod reconciliation;
 fn request(seed: u8) -> ComposerHostSubmissionRequest {
     ComposerHostSubmissionRequest::new(
+        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         SyndicDraftId::from_bytes([seed; 16]),
         SyndicItemId::from_bytes([seed.wrapping_add(1); 16]),
         DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),

@@ -11,6 +11,9 @@ use tungstenite::{
     handshake::server::{Request, Response},
 };
 
+#[path = "managed_runtime_fixture/execution.rs"]
+mod execution;
+
 fn main() {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     assert_eq!(arguments.first().map(String::as_str), Some("app-server"));
@@ -160,6 +163,10 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             }
         }),
     );
+    if matches!(mode.as_str(), "execution-lifetime" | "execution-next") && index > 0 {
+        execution::serve(&mut socket, mode == "execution-next");
+        return;
+    }
     if matches!(mode.as_str(), "pause-projection" | "projection-lifetime") && index > 0 {
         let projection = read_json(&mut socket);
         assert_eq!(projection["method"], "thread/start");

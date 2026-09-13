@@ -439,6 +439,7 @@ fn submit(
     let seals = publication_support::service(store, syndic, assets.clone(), 1, 1);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             next_draft,
             SyndicItemId::from_bytes([seed; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(1); 16]),
@@ -515,6 +516,27 @@ pub fn publish_current_draft(
         outcome => panic!("fixture publication was not captured: {outcome:?}"),
     }
     for _ in 0..128 {
+        if host.flush_state(flush).unwrap()
+            == beryl_app::composer_host::ComposerHostFlushState::CaptureRequired
+        {
+            match host
+                .capture_flush_publication(
+                    store,
+                    flush,
+                    assets.clone(),
+                    &seals,
+                    composer_support::operation_id(u64::from(seed) + 2_000),
+                    marker_authority,
+                    published_at,
+                    &CommandCancellation::new(),
+                )
+                .unwrap()
+            {
+                ComposerHostFlushCapture::Satisfied(ComposerHostFlushPurpose::Submission) => return,
+                ComposerHostFlushCapture::Captured(_) | ComposerHostFlushCapture::State(_) => {}
+                outcome => panic!("fixture publication readiness did not settle: {outcome:?}"),
+            }
+        }
         match host.advance_flush(store, flush).unwrap() {
             ComposerHostFlushAdvance::Progress(_)
             | ComposerHostFlushAdvance::ReconciliationPending => {}

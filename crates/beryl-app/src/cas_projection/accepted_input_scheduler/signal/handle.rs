@@ -40,6 +40,22 @@ impl AcceptedInputSchedulerSignal {
         self.wake_bits(reason.bit());
     }
 
+    pub(in crate::cas_projection) fn wake_submission(
+        &self,
+        kind: syndic_storage::FirstAcceptanceKind,
+    ) {
+        let bits = match kind {
+            syndic_storage::FirstAcceptanceKind::Idle { .. } => {
+                AcceptedInputWakeReason::ExecutionReady.bit()
+            }
+            syndic_storage::FirstAcceptanceKind::Accepted => {
+                AcceptedInputWakeReason::AcceptedReady.bit()
+                    | AcceptedInputWakeReason::AcceptedNextReady.bit()
+            }
+        };
+        self.wake_bits(bits);
+    }
+
     pub(in crate::cas_projection) fn wake_worker_release(
         &self,
         steering: bool,

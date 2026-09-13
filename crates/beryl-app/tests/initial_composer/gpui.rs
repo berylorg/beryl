@@ -46,6 +46,7 @@ fn prepared_transfer_uses_real_hidden_host_and_preserves_post_native_failure_cus
                 )
                 .unwrap();
                 let submission = MainWindowComposerSubmissionRequestSource::new(
+                    beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
                     beryl_app::cas_projection::ProjectionServiceConfig::try_new(
                         1,
                         4,

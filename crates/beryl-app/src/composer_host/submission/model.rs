@@ -9,8 +9,9 @@ use syndic_storage::{
 
 use super::super::{ComposerHostBinding, ComposerHostError, ComposerHostFlushTicket};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ComposerHostSubmissionRequest {
+    pub(super) execution_wake: crate::cas_projection::SubmissionExecutionWake,
     next_draft_id: SyndicDraftId,
     idle_user_item_id: SyndicItemId,
     materialization_operation_id: DraftComposerMaterializationOperationIdV1,
@@ -21,6 +22,7 @@ pub struct ComposerHostSubmissionRequest {
 
 impl ComposerHostSubmissionRequest {
     pub const fn new(
+        execution_wake: crate::cas_projection::SubmissionExecutionWake,
         next_draft_id: SyndicDraftId,
         idle_user_item_id: SyndicItemId,
         materialization_operation_id: DraftComposerMaterializationOperationIdV1,
@@ -29,6 +31,7 @@ impl ComposerHostSubmissionRequest {
         turn_start_admission_requirement: TurnStartAdmissionRequirement,
     ) -> Self {
         Self {
+            execution_wake,
             next_draft_id,
             idle_user_item_id,
             materialization_operation_id,
@@ -38,27 +41,27 @@ impl ComposerHostSubmissionRequest {
         }
     }
 
-    pub const fn next_draft_id(self) -> SyndicDraftId {
+    pub const fn next_draft_id(&self) -> SyndicDraftId {
         self.next_draft_id
     }
 
-    pub const fn idle_user_item_id(self) -> SyndicItemId {
+    pub const fn idle_user_item_id(&self) -> SyndicItemId {
         self.idle_user_item_id
     }
 
-    pub const fn materialization_operation_id(self) -> DraftComposerMaterializationOperationIdV1 {
+    pub const fn materialization_operation_id(&self) -> DraftComposerMaterializationOperationIdV1 {
         self.materialization_operation_id
     }
 
-    pub const fn session_disposal_operation_id(self) -> DraftPieceOperationIdV1 {
+    pub const fn session_disposal_operation_id(&self) -> DraftPieceOperationIdV1 {
         self.session_disposal_operation_id
     }
 
-    pub const fn admitted_at(self) -> SyndicTimestamp {
+    pub const fn admitted_at(&self) -> SyndicTimestamp {
         self.admitted_at
     }
 
-    pub const fn turn_start_admission_requirement(self) -> TurnStartAdmissionRequirement {
+    pub const fn turn_start_admission_requirement(&self) -> TurnStartAdmissionRequirement {
         self.turn_start_admission_requirement
     }
 }

@@ -35,6 +35,12 @@ impl SyndicComposerHost {
             return Err(ComposerHostError::LifecycleBlocked.into());
         }
         let binding = self.binding().ok_or(ComposerHostError::OldBinding)?;
+        if !request
+            .execution_wake
+            .matches_binding(binding.home_id(), binding.home_generation())
+        {
+            return Err(ComposerHostError::OldBinding.into());
+        }
         let flush = self.begin_flush(ComposerHostFlushPurpose::Submission)?;
         let stage = match flush {
             ComposerHostFlushAdmission::Started { ticket, .. }
@@ -90,6 +96,9 @@ impl SyndicComposerHost {
         }
         let cancellation = {
             let pending = self.submission.pending.as_mut().unwrap();
+            if !pending.request.execution_wake.matches_home(store) {
+                return Err(ComposerHostError::OldBinding.into());
+            }
             pending
                 .cancellation
                 .get_or_insert_with(|| cancellation.clone())
@@ -225,7 +234,7 @@ impl SyndicComposerHost {
             let pending = self.submission.pending.as_ref().unwrap();
             let active = self.active.as_ref().ok_or(ComposerHostError::OldBinding)?;
             (
-                pending.request,
+                pending.request.clone(),
                 active.storage_candidate,
                 active.durable_selector,
             )
@@ -378,7 +387,7 @@ impl SyndicComposerHost {
                 {
                     return Err(ComposerHostError::PublicationAssetMismatch.into());
                 }
-                let request = self.submission.pending.as_ref().unwrap().request;
+                let request = &self.submission.pending.as_ref().unwrap().request;
                 let acceptance = FirstAcceptance::new(
                     captured.selector.thread_id(),
                     captured.selector.thread_revision(),
@@ -454,7 +463,14 @@ impl SyndicComposerHost {
         Ok(ComposerHostSubmissionAdvance::Cancelled)
     }
 
-    fn finish_submission_success(&mut self) {
+    fn finish_submission_success(&mut self, kind: syndic_storage::FirstAcceptanceKind) {
+        self.submission
+            .pending
+            .as_ref()
+            .unwrap()
+            .request
+            .execution_wake
+            .accepted(kind);
         self.submission.pending = None;
         self.active = None;
         self.pending.clear();

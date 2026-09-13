@@ -87,6 +87,7 @@ pub fn submit_atoms(
         });
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            crate::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             next_draft,
             item,
             DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(5); 16]),

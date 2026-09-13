@@ -29,7 +29,10 @@ pub fn mount(cx: &mut TestAppContext, seed: u8) -> Mounted {
             .into_shell(
                 Box::new(config),
                 services.marker_seals.clone(),
-                MainWindowComposerSubmissionRequestSource::new(services.turn_start_requirement),
+                MainWindowComposerSubmissionRequestSource::new(
+                    beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
+                    services.turn_start_requirement,
+                ),
                 appearance,
             )
             .unwrap_or_else(|failure| panic!("{}", failure.error))

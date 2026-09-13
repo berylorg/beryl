@@ -1,4 +1,6 @@
 #![cfg(all(feature = "test-faults", target_os = "windows"))]
+#[path = "runtime_session_preparation/execution_lifetime.rs"]
+mod execution_lifetime;
 #[path = "runtime_session_preparation/idle_maintenance.rs"]
 mod idle_maintenance;
 #[path = "runtime_session_preparation/work_facts.rs"]
@@ -359,7 +361,7 @@ fn shutdown_joins_preparation_and_rejects_late_registration() {
 #[test]
 fn recovered_durable_submission_waits_quietly_for_capacity_then_checks_out() {
     let (mut fixture, old_sessions, attention) = fixture(8);
-    submission::submit(&fixture, thread_id(1));
+    submission::seed_pending(&fixture, thread_id(1));
     fs::write(fixture.root(1).join("fixture-mode"), "pause-projection").unwrap();
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     fixture.reopen(Box::new(provider), 6);
@@ -463,7 +465,7 @@ fn ordinary_service_drop_requests_preparation_cancellation_without_waiting_for_n
 fn durable_candidate_resumes_after_runtime_retirement_or_interest_capacity_release() {
     for retiring in [true, false] {
         let (mut fixture, old_sessions, attention) = fixture(8);
-        submission::submit(&fixture, thread_id(1));
+        submission::seed_pending(&fixture, thread_id(1));
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         fixture.reopen(Box::new(provider), 8);
         assert!(old_sessions.diagnostics().closed);

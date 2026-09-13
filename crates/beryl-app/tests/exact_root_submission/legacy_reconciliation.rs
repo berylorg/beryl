@@ -3,6 +3,15 @@ use super::*;
 #[cfg(feature = "test-faults")]
 #[test]
 fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_delivery() {
+    reconciled_acceptance(false);
+}
+
+#[test]
+fn retired_submission_generation_reconciles_exact_success_without_waking_a_replacement() {
+    reconciled_acceptance(true);
+}
+
+fn reconciled_acceptance(retired: bool) {
     use beryl_home_store::test_faults::FaultPoint;
 
     let (_home, mut store, storage, thread, faults) = base::fault_fixture("indeterminate-new", 111);
@@ -11,8 +20,13 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
     let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "once", 4, 1);
     let item = SyndicItemId::from_bytes([114; 16]);
+    let (execution, wakes) =
+        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
+    let (_replacement, replacement_wakes) =
+        beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            execution,
             SyndicDraftId::from_bytes([115; 16]),
             item,
             DraftComposerMaterializationOperationIdV1::from_bytes([116; 16]),
@@ -64,6 +78,10 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
         )
     ));
     assert!(host.submission_diagnostics().command_attempted());
+    assert_eq!(wakes.wake_count(), 0);
+    if retired {
+        wakes.retire();
+    }
     assert_eq!(
         host.advance_submission(
             &store,
@@ -94,6 +112,8 @@ fn indeterminate_first_acceptance_reconciles_exact_new_without_duplicate_deliver
         .unwrap(),
         ComposerHostSubmissionAdvance::Stale
     );
+    assert_eq!(wakes.wake_count(), u64::from(!retired));
+    assert_eq!(replacement_wakes.wake_count(), 0);
     assert!(
         storage
             .accepted_input(
@@ -120,8 +140,10 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 122, 123);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 4, 1);
+    let (wake, probe) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(&store);
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            wake,
             SyndicDraftId::from_bytes([124; 16]),
             SyndicItemId::from_bytes([125; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([126; 16]),
@@ -177,6 +199,7 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
         .unwrap()
         .unwrap();
     assert_eq!(current.draft().id(), edited.candidate().draft_id());
+    assert_eq!(probe.wake_count(), 0);
     assert!(!host.submission_diagnostics().pending());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -197,6 +220,7 @@ fn definite_noncommit_releases_submission_custody_after_concurrent_draft_deletio
     let source_draft = edited.candidate().draft_id();
     let ticket = host
         .begin_submission(ComposerHostSubmissionRequest::new(
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
             SyndicDraftId::from_bytes([134; 16]),
             SyndicItemId::from_bytes([135; 16]),
             DraftComposerMaterializationOperationIdV1::from_bytes([136; 16]),

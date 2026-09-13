@@ -976,6 +976,7 @@ fn drive(cx: &mut gpui::VisualTestContext, rounds: usize) {
 
 fn submission_source() -> MainWindowComposerSubmissionRequestSource {
     MainWindowComposerSubmissionRequestSource::new(
+        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         ProjectionServiceConfig::try_new(1, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
             .unwrap()
             .turn_start_admission_requirement(),

@@ -100,6 +100,7 @@ impl MainWindowCreation {
                         configurator,
                         self.services.marker_seals.clone(),
                         MainWindowComposerSubmissionRequestSource::new(
+                            self.services.submission_execution.clone(),
                             self.services.turn_start_requirement,
                         ),
                         appearance.clone(),

@@ -25,7 +25,7 @@ impl SyndicComposerHost {
                 ReconciliationResolution::ExactNew { .. }
                 | ReconciliationResolution::ExactSuccessor { .. } => {
                     let kind = submission_acceptance_kind(&acceptance);
-                    self.finish_submission_success();
+                    self.finish_submission_success(kind);
                     Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind))
                 }
                 ReconciliationResolution::Collision => {
@@ -52,7 +52,7 @@ impl SyndicComposerHost {
         )?;
         let command = match command {
             crate::input_admission::FirstAcceptanceCommand::AlreadyAccepted(kind) => {
-                self.finish_submission_success();
+                self.finish_submission_success(kind);
                 return Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind));
             }
             crate::input_admission::FirstAcceptanceCommand::Execute(command) => command,
@@ -107,7 +107,7 @@ impl SyndicComposerHost {
             }
             CommandOutcome::Committed { .. } => {
                 let kind = submission_acceptance_kind(&acceptance);
-                self.finish_submission_success();
+                self.finish_submission_success(kind);
                 Ok(ComposerHostSubmissionAdvance::ExactSuccess(kind))
             }
             CommandOutcome::Indeterminate { reconciliation, .. } => {

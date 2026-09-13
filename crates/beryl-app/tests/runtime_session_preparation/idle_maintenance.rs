@@ -77,7 +77,7 @@ fn pending_work_preserves_the_session_after_its_loaded_projection_releases() {
         .service()
         .admit_runtime_session(interest, TIMEOUT)
         .unwrap();
-    submission::submit(&fixture, thread_id(1));
+    submission::seed_pending(&fixture, thread_id(1));
     let loaded = {
         let live = fixture.service().live_home_command().unwrap();
         let home = live.home();
@@ -288,7 +288,7 @@ fn required_work_admitted_after_idle_observation_preserves_its_registered_sessio
     let before = idle_passes(&fixture);
     drop(view);
     pause.wait(TIMEOUT);
-    submission::submit(&fixture, thread_id(1));
+    submission::seed_pending(&fixture, thread_id(1));
     let work = fixture
         .service()
         .required_session_work_for_test(
@@ -325,7 +325,6 @@ fn required_work_admitted_after_idle_retirement_prepares_a_fresh_session() {
 
     fs::write(fixture.root(1).join("fixture-mode"), "pause-projection").unwrap();
     submission::submit(&fixture, thread_id(1));
-    begin(&fixture, 1);
     wait_until(|| {
         fixture
             .root(1)

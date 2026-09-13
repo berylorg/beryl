@@ -370,6 +370,7 @@
 - [x] Established the independently reviewed bounded fatal-reporting authority.
 - [x] Implemented the isolated report window and its two terminal commands; 23 combined checks and independent review passed.
 - [ ] Mount fatal handling and reporter mode when executable bootstrap is reconstructed.
+- [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [ ] Compose production runtime admission and process work ownership across direct submission,
   accepted input, compaction, continuation and terminal-history convergence.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,

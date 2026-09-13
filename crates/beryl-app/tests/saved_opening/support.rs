@@ -195,6 +195,7 @@ pub fn point_limit() -> SyndicPointReadLimit {
 
 pub fn submission_request(seed: u8) -> ComposerHostSubmissionRequest {
     ComposerHostSubmissionRequest::new(
+        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         SyndicDraftId::from_bytes([seed; 16]),
         SyndicItemId::from_bytes([seed + 1; 16]),
         DraftComposerMaterializationOperationIdV1::from_bytes([seed + 2; 16]),

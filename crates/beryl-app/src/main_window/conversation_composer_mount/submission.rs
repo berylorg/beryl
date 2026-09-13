@@ -47,12 +47,17 @@ pub enum MainWindowConversationComposerSubmissionStatus {
 }
 
 pub struct MainWindowComposerSubmissionRequestSource {
+    execution_wake: crate::cas_projection::SubmissionExecutionWake,
     turn_start_admission_requirement: TurnStartAdmissionRequirement,
 }
 
 impl MainWindowComposerSubmissionRequestSource {
-    pub const fn new(turn_start_admission_requirement: TurnStartAdmissionRequirement) -> Self {
+    pub const fn new(
+        execution_wake: crate::cas_projection::SubmissionExecutionWake,
+        turn_start_admission_requirement: TurnStartAdmissionRequirement,
+    ) -> Self {
         Self {
+            execution_wake,
             turn_start_admission_requirement,
         }
     }
@@ -65,6 +70,7 @@ impl MainWindowComposerSubmissionRequestSource {
         let next_draft_id = SyndicDraftId::from_bytes(fresh_bytes()?);
         let admitted_at = current_timestamp()?;
         let request = ComposerHostSubmissionRequest::new(
+            self.execution_wake.clone(),
             next_draft_id,
             SyndicItemId::from_bytes(fresh_bytes()?),
             DraftComposerMaterializationOperationIdV1::from_bytes(fresh_bytes()?),
@@ -307,7 +313,7 @@ impl MainWindowConversationComposerMount {
             .submission
             .request_source
             .prepare(selection, capture_requirement)?;
-        let request = prepared.request;
+        let request = prepared.request.clone();
         let active = self.submission.active.as_mut().unwrap();
         active.selection = selection;
         active.prepared = Some(prepared);

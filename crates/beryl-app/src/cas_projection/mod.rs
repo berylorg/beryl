@@ -165,11 +165,14 @@ pub use scheduled_ordinary::{
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
     ScheduledOrdinaryRequestPolicy, ScheduledProjectionSessionAuthority,
 };
+#[cfg(any(test, feature = "test-faults"))]
+pub use service::SubmissionExecutionWakeTestProbe;
 pub use service::{
     CasProjectionCoordinator, LiveHomeCommand, ProcessWorkCursor, ProcessWorkError,
     ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage, ProcessWorkPageLimits,
     ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
+    SubmissionExecutionWake,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,

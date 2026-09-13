@@ -52,6 +52,8 @@ pub fn services(fixture: &Fixture) -> (Arc<MainWindowCreationServices>, Arc<Appe
     )
     .unwrap();
     let services = MainWindowCreationServices {
+        submission_execution:
+            beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         acquisition: fixture.service.clone(),
         store: fixture.store.clone(),
         state: fixture.state.clone(),

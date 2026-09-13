@@ -101,7 +101,10 @@ pub(super) fn configured_mount(
                     service,
                     Box::new(config),
                     services.marker_seals.clone(),
-                    MainWindowComposerSubmissionRequestSource::new(services.turn_start_requirement),
+                    MainWindowComposerSubmissionRequestSource::new(
+                        beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
+                        services.turn_start_requirement,
+                    ),
                     appearance,
                 ),
             )
