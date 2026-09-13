@@ -122,6 +122,7 @@ pub(super) enum RetryRaceBranch {
 
 pub(super) struct DeliveryFixture {
     directory: tempfile::TempDir,
+    process_admission: crate::process_admission::ProcessAdmissionGate,
     seed: u8,
     service: ProjectionConnectionService,
     storage: SyndicStorage,
@@ -321,8 +322,9 @@ impl DeliveryFixture {
             MinimumTurnCaptureReserve::try_new(1).unwrap(),
         )
         .unwrap();
+        let process_admission = crate::process_admission::ProcessAdmissionGate::new();
         let service = ProjectionConnectionService::new(
-            Default::default(),
+            process_admission.clone(),
             home,
             storage.clone(),
             config,
@@ -453,7 +455,7 @@ impl DeliveryFixture {
             "exact turn/start response must activate the pending target: {:?}",
             start.response_activation_failure(),
         );
-        match start.outcome() {
+        match start.outcome().unwrap() {
             NonIdempotentRequestOutcome::ExactResponse { response } => {
                 assert_eq!(response.turn_id().as_str(), CAS_TURN_ID);
             }
@@ -611,6 +613,7 @@ impl DeliveryFixture {
 
         Self {
             directory,
+            process_admission,
             seed,
             service,
             storage,
@@ -684,6 +687,38 @@ impl DeliveryFixture {
         });
         self.target = Some(target);
         self.second_accepted_input_id = Some(second_input_id);
+        outcome
+    }
+
+    pub(super) fn deliver_across_process_fence(
+        &mut self,
+    ) -> Result<ActiveSteeringDeliveryOutcome, ActiveSteeringDeliveryError> {
+        let pause = install_delivery_pause(
+            self.accepted_input_id,
+            DeliveryPause::BeforeCommandAuthorization,
+        );
+        let target = self.target.take().unwrap();
+        let service = &self.service;
+        let input_id = self.accepted_input_id;
+        let cancellation = &self.cancellation;
+        let (target, outcome) = thread::scope(|scope| {
+            let delivery = scope.spawn(move || {
+                let outcome =
+                    service.deliver_active_steering_input(&target, input_id, cancellation, TIMEOUT);
+                (target, outcome)
+            });
+            pause.wait_until_paused(TIMEOUT);
+            let fence = self.process_admission.fence().unwrap();
+            pause.release();
+            let (target, outcome) = delivery.join().unwrap();
+            assert!(matches!(
+                target.poll(std::time::Duration::ZERO),
+                crate::cas_projection::LiveEventPoll::Quiet
+            ));
+            fence.reopen_if(true).unwrap();
+            (target, outcome)
+        });
+        self.target = Some(target);
         outcome
     }
 
@@ -965,6 +1000,7 @@ impl DeliveryFixture {
     {
         let Self {
             directory,
+            process_admission: _,
             seed: _,
             service,
             storage: _,

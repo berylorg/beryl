@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "compaction_policy/process_admission.rs"]
+mod process_admission;
 #[allow(dead_code)]
 #[path = "accepted_next_scheduler/support.rs"]
 mod scheduler_support;

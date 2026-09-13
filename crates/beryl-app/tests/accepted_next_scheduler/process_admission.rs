@@ -1,4 +1,5 @@
 use super::*;
+use crate::support::point_limit;
 use beryl_app::{
     cas_projection::{
         ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
@@ -97,6 +98,85 @@ fn process_fence_before_reservation_preserves_the_same_accepted_candidate() {
     fence
         .try_reopen(command.home().pending_reconciliations().is_empty())
         .unwrap();
+    drop(command);
+    drop(retirement);
+    finish(fixture, slot, server);
+}
+
+#[test]
+fn process_fence_after_promotion_reservation_preserves_the_pending_turn() {
+    let (mut fixture, slot) = prepared_fixture(216);
+    let cas_thread = {
+        let command = fixture.store.live_home_command().unwrap();
+        current_cas_thread_id(command.home(), &fixture.storage, fixture.thread)
+    };
+    let server = NormalTerminalServer::spawn_resume_nondispatch(cas_thread);
+    let retirement = connect(&fixture, &slot, &server, 62_036);
+    let barrier = install_scheduled_promotion_barrier(fixture.thread);
+    let ids = admit_runtime_next_input(&mut fixture, 216);
+    assert!(barrier.wait_until_paused(TIMEOUT));
+    let accepted_content = {
+        let command = fixture.store.live_home_command().unwrap();
+        fixture
+            .storage
+            .accepted_input(command.home(), ids.accepted_input, point_limit())
+            .unwrap()
+            .unwrap()
+            .content()
+    };
+    let fence = fixture.process_admission.test_fence().unwrap();
+    barrier.release();
+    server.wait_for_projection();
+    wait_for_worker(&fixture, &slot);
+    assert!(!retirement.is_retired());
+    let command = fixture.store.live_home_command().unwrap();
+    assert_eq!(
+        accepted_route_state(command.home(), &fixture.storage, &ids),
+        AcceptedRouteEffectiveState::Promoted
+    );
+    let pending = fixture
+        .storage
+        .thread(command.home(), ids.thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .committed_tail()
+        .unwrap();
+    assert_ne!(pending, ids.parent);
+    assert_eq!(
+        fixture
+            .storage
+            .accepted_input(command.home(), ids.accepted_input, point_limit())
+            .unwrap()
+            .unwrap()
+            .content(),
+        accepted_content
+    );
+    let state = fixture
+        .storage
+        .turn_state(command.home(), pending, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.lifecycle(), syndic_storage::TurnLifecycle::Pending);
+    assert_eq!(state.source_event_count(), 0);
+    assert!(matches!(
+        fixture
+            .storage
+            .current_binding(command.home(), ids.thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .binding()
+            .state(),
+        syndic_storage::BindingState::Valid(_)
+    ));
+    assert!(
+        fixture
+            .storage
+            .non_idle_gate_source(command.home(), ids.thread, point_limit())
+            .unwrap()
+            .is_some()
+    );
+    assert!(command.home().pending_reconciliations().is_empty());
+    fence.try_reopen(true).unwrap();
     drop(command);
     drop(retirement);
     finish(fixture, slot, server);

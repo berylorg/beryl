@@ -25,6 +25,8 @@ use crate::cas_projection::{
 mod active_steering;
 mod compaction;
 mod delayed_steering;
+#[path = "../../../../tests/unit/router_execution_admission.rs"]
+mod execution_admission;
 mod persistent_failure;
 mod provider_publication;
 mod queue_capacity;
@@ -285,7 +287,9 @@ fn not_started_handoff_requires_dispatch_authorization() {
         router.handoff_target(&registration, TargetHandoffRequirement::NotStarted),
         Err(LiveEventTargetHandoffError::TargetMayHaveStarted)
     ));
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&live_command(&router), &registration.proof())
+        .unwrap();
     router
         .handoff_target(&registration, TargetHandoffRequirement::NotStarted)
         .unwrap();

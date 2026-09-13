@@ -58,6 +58,9 @@ pub(super) enum ActiveSteeringRetryPolicy {
 impl ActiveSteeringRetryCause {
     pub(super) fn policy(&self) -> ActiveSteeringRetryPolicy {
         match self {
+            Self::TargetAuthorization(TargetAuthorizationFailure::ExecutionFenced(_)) => {
+                ActiveSteeringRetryPolicy::ParkUntilLifecycleWake
+            }
             Self::Preparation(ActiveSteeringPreparationFailure::Replay(
                 AcceptedInputReplayError::Cancelled,
             )) => ActiveSteeringRetryPolicy::ParkUntilLifecycleWake,

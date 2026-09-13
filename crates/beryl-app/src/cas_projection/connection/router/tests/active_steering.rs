@@ -31,7 +31,9 @@ fn active_target(
     let router = router(generation);
     let owner = generation as u8;
     let registration = register(&router, thread_id, owner, generation, None);
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let cas_thread_id = CasThreadId::new(thread_id).unwrap();
     let cas_turn_id = CasTurnId::new(turn_id).unwrap();
     router
@@ -51,13 +53,15 @@ fn active_target(
     (router, registration, target)
 }
 
-fn activate(
+pub(super) fn activate(
     router: &Arc<super::EventRouter>,
     registration: &super::TargetRegistration,
     turn_id: &'static str,
     owner: u8,
 ) -> SteeringTargetProof {
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let cas_thread_id = registration.key().cas_thread_id.clone();
     let cas_turn_id = CasTurnId::new(turn_id).unwrap();
     router

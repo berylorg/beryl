@@ -359,7 +359,9 @@ impl SteeringFixture {
             )
             .unwrap();
         drop(router_command);
-        router.authorize_turn_start(&registration.proof()).unwrap();
+        router
+            .authorize_turn_start(&commands.authorize().unwrap(), &registration.proof())
+            .unwrap();
         router
             .acquire_source_publication(
                 &cas_thread_id,

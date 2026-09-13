@@ -204,6 +204,7 @@ pub enum OrdinaryTurnExecutionFailure {
 /// Exact reason why CAS proved that an attempted start did not begin a turn.
 #[derive(Debug)]
 pub enum OrdinaryTurnNotStarted {
+    ExecutionFenced(crate::process_admission::ProcessAdmissionError),
     ExactRejection(JsonRpcError),
     ProvenNotDispatched(Box<ManagedBackendError>),
 }

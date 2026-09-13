@@ -193,8 +193,9 @@ pub(super) fn execute_in_flight(
         }
     };
     match start.outcome() {
-        NonIdempotentRequestOutcome::ExactRejection { .. }
-        | NonIdempotentRequestOutcome::ProvenNotDispatched { .. } => finish_not_started(
+        Err(_)
+        | Ok(NonIdempotentRequestOutcome::ExactRejection { .. })
+        | Ok(NonIdempotentRequestOutcome::ProvenNotDispatched { .. }) => finish_not_started(
             store,
             storage,
             target,
@@ -206,7 +207,7 @@ pub(super) fn execute_in_flight(
             limit,
         )
         .map_err(after_activation),
-        NonIdempotentRequestOutcome::ExactResponse { response } => {
+        Ok(NonIdempotentRequestOutcome::ExactResponse { response }) => {
             let cas_turn_id = response.turn_id().clone();
             begin_capture(
                 store,
@@ -222,17 +223,19 @@ pub(super) fn execute_in_flight(
             )
             .map_err(after_activation)
         }
-        NonIdempotentRequestOutcome::CompletionUnknown { .. } => converge_completion_unknown_start(
-            store,
-            storage,
-            target,
-            start,
-            pending,
-            active_binding_revision,
-            limit,
-            request.context_compaction_timeout(),
-        )
-        .map_err(after_activation),
+        Ok(NonIdempotentRequestOutcome::CompletionUnknown { .. }) => {
+            converge_completion_unknown_start(
+                store,
+                storage,
+                target,
+                start,
+                pending,
+                active_binding_revision,
+                limit,
+                request.context_compaction_timeout(),
+            )
+            .map_err(after_activation)
+        }
     }
 }
 
@@ -313,14 +316,15 @@ fn finish_not_started(
     };
     let (outcome, _) = start.into_parts();
     let reason = match outcome {
-        NonIdempotentRequestOutcome::ExactRejection { error } => {
+        Err(reason) => OrdinaryTurnNotStarted::ExecutionFenced(reason),
+        Ok(NonIdempotentRequestOutcome::ExactRejection { error }) => {
             OrdinaryTurnNotStarted::ExactRejection(error)
         }
-        NonIdempotentRequestOutcome::ProvenNotDispatched { error } => {
+        Ok(NonIdempotentRequestOutcome::ProvenNotDispatched { error }) => {
             OrdinaryTurnNotStarted::ProvenNotDispatched(error)
         }
-        NonIdempotentRequestOutcome::ExactResponse { .. }
-        | NonIdempotentRequestOutcome::CompletionUnknown { .. } => {
+        Ok(NonIdempotentRequestOutcome::ExactResponse { .. })
+        | Ok(NonIdempotentRequestOutcome::CompletionUnknown { .. }) => {
             return Err(OrdinaryTurnExecutionError::Invariant(
                 "not-started handoff accepted a possibly dispatched outcome",
             ));

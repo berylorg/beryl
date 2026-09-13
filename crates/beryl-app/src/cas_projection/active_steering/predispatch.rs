@@ -179,6 +179,14 @@ pub(super) fn handle_authorization_failure(
         route.input().id(),
         super::test_support::DeliveryPause::AfterRetryDisposition,
     );
+    if matches!(failure, TargetAuthorizationFailure::ExecutionFenced(_)) {
+        return settle::settle_exact(
+            target,
+            attempt,
+            owner,
+            ExactDisposition::TargetAuthorization(failure),
+        );
+    }
     settle::settle_exact_after_target_failure(
         target,
         attempt,

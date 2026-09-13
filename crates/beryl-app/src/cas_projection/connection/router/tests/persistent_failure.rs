@@ -145,7 +145,9 @@ fn stop_wait_releases_its_command_before_failure_drain_and_freeze_wake() {
     };
     let thread_id = registration.key().cas_thread_id.clone();
     let turn_id = CasTurnId::new("cas-turn-000").unwrap();
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     router
         .acquire_source_publication(&thread_id, &turn_id)
         .unwrap()

@@ -297,10 +297,14 @@ impl LiveEventTarget {
         ) {
             return Err(LiveEventTargetHandoffError::TurnStartOutcomeTargetMismatch);
         }
-        if !turn_start_allows_not_started(start.outcome()) {
-            return Err(LiveEventTargetHandoffError::TurnStartOutcomeNotReusable);
-        }
-        self.into_projection(TargetHandoffRequirement::NotStarted)
+        let requirement = match start.outcome() {
+            Err(_) => TargetHandoffRequirement::StartNotAuthorized,
+            Ok(outcome) if turn_start_allows_not_started(outcome) => {
+                TargetHandoffRequirement::NotStarted
+            }
+            Ok(_) => return Err(LiveEventTargetHandoffError::TurnStartOutcomeNotReusable),
+        };
+        self.into_projection(requirement)
     }
 
     pub(in crate::cas_projection) fn into_proven_terminal_projection(
@@ -313,6 +317,12 @@ impl LiveEventTarget {
         &mut self,
     ) -> Result<LoadedCasProjection, LiveEventTargetHandoffError> {
         self.into_projection(TargetHandoffRequirement::CompactionNotDispatched)
+    }
+
+    pub(in crate::cas_projection) fn into_context_compaction_unauthorized_projection(
+        &mut self,
+    ) -> Result<LoadedCasProjection, LiveEventTargetHandoffError> {
+        self.into_projection(TargetHandoffRequirement::CompactionNotAuthorized)
     }
 
     pub(in crate::cas_projection) fn retire_context_compaction_connection(self) {

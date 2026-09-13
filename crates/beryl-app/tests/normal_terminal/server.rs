@@ -34,6 +34,7 @@ enum ServerScenario {
     Terminal,
     RecoveryTerminal(Vec<Value>),
     ResumeTerminal(Box<str>),
+    ResumeNondispatch(Box<str>),
     ResumeDelayedRejection(Box<str>),
     ConnectionLoss,
     ControlledConnectionLoss,
@@ -81,6 +82,10 @@ impl NormalTerminalServer {
 
     pub fn spawn_resume_terminal(cas_thread_id: impl Into<Box<str>>) -> Self {
         Self::spawn_scenario(ServerScenario::ResumeTerminal(cas_thread_id.into()))
+    }
+
+    pub fn spawn_resume_nondispatch(cas_thread_id: impl Into<Box<str>>) -> Self {
+        Self::spawn_scenario(ServerScenario::ResumeNondispatch(cas_thread_id.into()))
     }
 
     pub fn spawn_resume_delayed_rejection(cas_thread_id: impl Into<Box<str>>) -> Self {
@@ -244,6 +249,13 @@ fn run_server(
             complete_resume_projection(&mut socket, &cas_thread_id);
             events.send(ServerEvent::ProjectionReady).unwrap();
             complete_ordinary_turn(&mut socket, &cas_thread_id);
+            complete_unsubscribe(&mut socket, &cas_thread_id);
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::ResumeNondispatch(cas_thread_id) => {
+            events.send(ServerEvent::AdmissionReady).unwrap();
+            complete_resume_projection(&mut socket, &cas_thread_id);
+            events.send(ServerEvent::ProjectionReady).unwrap();
             complete_unsubscribe(&mut socket, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }

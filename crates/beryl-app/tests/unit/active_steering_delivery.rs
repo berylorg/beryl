@@ -59,6 +59,29 @@ fn wait_for_route_pair(
 }
 
 #[test]
+fn process_fence_retries_accepted_input_without_losing_the_active_target() {
+    let server = SteeringServer::spawn(SteeringServerScenario::NoSteeringRequest);
+    let mut fixture = DeliveryFixture::new(233, 4, &server, STEERING_TEXT);
+    let outcome = fixture.deliver_across_process_fence().unwrap();
+    assert!(matches!(
+        outcome,
+        ActiveSteeringDeliveryOutcome::Retryable {
+            cause: ActiveSteeringRetryCause::TargetAuthorization(
+                crate::cas_projection::connection::TargetAuthorizationFailure::ExecutionFenced(
+                    crate::process_admission::ProcessAdmissionError::Fenced
+                )
+            ),
+            ..
+        }
+    ));
+    assert_eq!(fixture.route_state(), AcceptedRouteEffectiveState::Ready);
+    assert_eq!(fixture.route_lifecycle(), AcceptedInputLifecycle::Retryable);
+    assert!(matches!(fixture.binding_state(), BindingState::Active(_)));
+    assert!(fixture.service_is_accepting());
+    fixture.close(server);
+}
+
+#[test]
 fn automatic_scheduler_claims_delivers_and_joins_at_minimum_capacity() {
     let server = SteeringServer::spawn(SteeringServerScenario::LifecycleBeforeSuccessResponse);
     let fixture = DeliveryFixture::new_scheduled(215, 4, &server, STEERING_TEXT);

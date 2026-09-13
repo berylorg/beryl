@@ -33,7 +33,9 @@ fn exact_target(
     let registration = register(&router, thread_id, owner, generation, None);
     let cas_thread_id = CasThreadId::new(thread_id).unwrap();
     let cas_turn_id = CasTurnId::new(turn_id).unwrap();
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     router
         .acquire_source_publication(&cas_thread_id, &cas_turn_id)
         .unwrap()

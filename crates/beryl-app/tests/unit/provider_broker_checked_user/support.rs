@@ -290,7 +290,9 @@ impl CheckedUserFixture {
             .unwrap();
         drop(router_command);
         if authorize_turn_start {
-            router.authorize_turn_start(&registration.proof()).unwrap();
+            router
+                .authorize_turn_start(&commands.authorize().unwrap(), &registration.proof())
+                .unwrap();
         }
 
         let worker_pool =

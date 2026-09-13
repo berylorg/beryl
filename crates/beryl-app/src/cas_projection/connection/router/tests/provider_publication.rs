@@ -45,7 +45,9 @@ fn finish_terminal(router: &Arc<super::EventRouter>, thread: &CasThreadId, turn:
 fn first_ordered_source_control_binds_and_carries_pending_activation() {
     let router = router(28);
     let registration = register(&router, "cas-source-first", 28, 28, None);
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let thread = CasThreadId::new("cas-source-first").unwrap();
     let turn = CasTurnId::new("turn-source-first").unwrap();
 
@@ -63,7 +65,9 @@ fn first_ordered_source_control_binds_and_carries_pending_activation() {
 fn response_proof_waits_for_broker_source_activation() {
     let router = router(29);
     let registration = register(&router, "cas-response-first", 29, 29, None);
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let thread = CasThreadId::new("cas-response-first").unwrap();
     let turn = CasTurnId::new("turn-response-first").unwrap();
 
@@ -83,7 +87,9 @@ fn response_proof_waits_for_broker_source_activation() {
 fn terminal_permit_wins_a_concurrent_target_loss_request() {
     let router = router(30);
     let registration = register(&router, "cas-loss-terminal", 30, 30, None);
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let thread = CasThreadId::new("cas-loss-terminal").unwrap();
     let turn = CasTurnId::new("turn-loss-terminal").unwrap();
     let permit = router.acquire_source_publication(&thread, &turn).unwrap();

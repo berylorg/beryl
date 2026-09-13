@@ -29,12 +29,9 @@ fn authorize_exact_target(
 impl EventRouter {
     pub(in crate::cas_projection) fn authorize_turn_start(
         &self,
+        command: &crate::cas_projection::LiveCommandPermit,
         registration: &TargetRegistrationProof,
     ) -> Result<(), TargetAuthorizationFailure> {
-        let command = self
-            .commands
-            .authorize()
-            .map_err(|_| TargetAuthorizationFailure::Router)?;
         let mut state = self
             .state
             .lock()
@@ -50,8 +47,6 @@ impl EventRouter {
                     .get_mut(&registration.key.cas_thread_id)
                     .expect("authorized target remains registered");
                 if target.turn_state == TargetTurn::AwaitingStart && !target.start_dispatched {
-                    target.start_dispatched = true;
-                    advance_revision(&mut state);
                     return Ok(());
                 }
                 let reason = match target.turn_state {
@@ -63,7 +58,17 @@ impl EventRouter {
                 close_target(&mut state, &registration.key.cas_thread_id, reason);
                 Err(TargetAuthorizationFailure::Target(reason))
             })
-            .unwrap_or(Err(TargetAuthorizationFailure::Router))
+            .unwrap_or(Err(TargetAuthorizationFailure::Router))?;
+        command
+            .commit_execution_if_current(|| {
+                state
+                    .targets
+                    .get_mut(&registration.key.cas_thread_id)
+                    .expect("validated target remains registered")
+                    .start_dispatched = true;
+                advance_revision(&mut state);
+            })
+            .map_err(TargetAuthorizationFailure::from)
     }
 
     pub(in crate::cas_projection) fn handoff_target(
@@ -91,6 +96,19 @@ impl EventRouter {
                     return Err(LiveEventTargetHandoffError::TargetClosed);
                 }
                 match requirement {
+                    TargetHandoffRequirement::StartNotAuthorized
+                        if target.turn_state != TargetTurn::AwaitingStart
+                            || target.start_dispatched =>
+                    {
+                        return Err(LiveEventTargetHandoffError::TargetMayHaveStarted);
+                    }
+                    TargetHandoffRequirement::CompactionNotAuthorized
+                        if target.turn_state != TargetTurn::AwaitingCompactionTurn
+                            || target.start_dispatched
+                            || target.compaction.is_none() =>
+                    {
+                        return Err(LiveEventTargetHandoffError::TargetMayHaveStarted);
+                    }
                     TargetHandoffRequirement::NotStarted
                         if target.turn_state != TargetTurn::AwaitingStart
                             || !target.start_dispatched =>

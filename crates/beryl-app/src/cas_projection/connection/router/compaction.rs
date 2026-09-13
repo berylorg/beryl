@@ -67,12 +67,9 @@ pub(in crate::cas_projection) enum CompactionControlPermitError {
 impl EventRouter {
     pub(in crate::cas_projection) fn authorize_context_compaction_command(
         &self,
+        command: &crate::cas_projection::LiveCommandPermit,
         registration: &TargetRegistrationProof,
     ) -> Result<(), TargetAuthorizationFailure> {
-        let command = self
-            .commands
-            .authorize()
-            .map_err(|_| TargetAuthorizationFailure::Router)?;
         let mut state = self
             .state
             .lock()
@@ -104,11 +101,19 @@ impl EventRouter {
                         LiveEventTargetCloseReason::DuplicateTurnStart,
                     ));
                 }
-                target.start_dispatched = true;
-                advance_revision(&mut state);
                 Ok(())
             })
-            .unwrap_or(Err(TargetAuthorizationFailure::Router))
+            .unwrap_or(Err(TargetAuthorizationFailure::Router))?;
+        command
+            .commit_execution_if_current(|| {
+                state
+                    .targets
+                    .get_mut(&registration.key.cas_thread_id)
+                    .expect("validated compaction target remains registered")
+                    .start_dispatched = true;
+                advance_revision(&mut state);
+            })
+            .map_err(TargetAuthorizationFailure::from)
     }
 
     pub(in crate::cas_projection) fn acquire_compaction_thread_status(

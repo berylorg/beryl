@@ -5,6 +5,7 @@ pub enum CompactionCustodyTestStage {
     LifecyclePreparation,
     AdmissionReady,
     AdmissionFailed,
+    DispatchClaimed,
 }
 
 #[derive(Default)]
@@ -12,6 +13,7 @@ pub(in crate::cas_projection::context_compaction::coordinator) struct Compaction
     lifecycle_preparation: Option<Arc<CustodyPause>>,
     ready: Option<Arc<CustodyPause>>,
     failed: Option<Arc<CustodyPause>>,
+    dispatch_claimed: Option<Arc<CustodyPause>>,
 }
 
 struct CustodyPause {
@@ -118,6 +120,7 @@ impl ContextCompactionLifecycleTestHarness {
             CompactionCustodyTestStage::LifecyclePreparation => &mut pauses.lifecycle_preparation,
             CompactionCustodyTestStage::AdmissionReady => &mut pauses.ready,
             CompactionCustodyTestStage::AdmissionFailed => &mut pauses.failed,
+            CompactionCustodyTestStage::DispatchClaimed => &mut pauses.dispatch_claimed,
         };
         assert!(slot.is_none());
         *slot = Some(Arc::clone(&pause));
@@ -171,6 +174,7 @@ impl ContextCompactionCoordinator {
                 }
                 CompactionCustodyTestStage::AdmissionReady => pauses.ready.take(),
                 CompactionCustodyTestStage::AdmissionFailed => pauses.failed.take(),
+                CompactionCustodyTestStage::DispatchClaimed => pauses.dispatch_claimed.take(),
             }
         };
         if let Some(pause) = pause {

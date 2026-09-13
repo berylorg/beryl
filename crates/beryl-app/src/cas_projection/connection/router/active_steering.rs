@@ -337,15 +337,19 @@ impl EventRouter {
                         ),
                     ));
                 }
+                Ok(())
+            })
+            .unwrap_or(Err(TargetAuthorizationFailure::Router))?;
+        command
+            .commit_execution_if_current(|| {
                 state
                     .active_steering_attempt
                     .as_mut()
                     .expect("validated steering attempt remains active")
                     .command_dispatched = true;
                 advance_revision(&mut state);
-                Ok(())
             })
-            .unwrap_or(Err(TargetAuthorizationFailure::Router))
+            .map_err(TargetAuthorizationFailure::from)
     }
 
     fn active_steering_attempt_status(

@@ -18,7 +18,7 @@ use crate::cas_projection::{
     context_compaction::ContextCompactionTargetAuthority,
 };
 
-fn register_compaction(
+pub(super) fn register_compaction(
     router: &Arc<crate::cas_projection::connection::router::EventRouter>,
     suffix: &str,
     owner_byte: u8,
@@ -64,7 +64,7 @@ fn context_compaction_router_terminal_publication_wins_loss_after_durable_contro
     let router = router(71);
     let (registration, cas_thread, cas_turn) = register_compaction(&router, "terminal", 71);
     router
-        .authorize_context_compaction_command(&registration.proof())
+        .authorize_context_compaction_command(&super::live_command(&router), &registration.proof())
         .unwrap();
     router
         .acquire_compaction_thread_status(&cas_thread)

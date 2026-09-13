@@ -75,7 +75,10 @@ fn acquisition_requires_an_already_exact_durably_activated_target() {
     let undurable_router = router(62);
     let registration = register(&undurable_router, "cas-steering-undurable", 62, 62, None);
     undurable_router
-        .authorize_turn_start(&registration.proof())
+        .authorize_turn_start(
+            &super::live_command(&undurable_router),
+            &registration.proof(),
+        )
         .unwrap();
     let thread = CasThreadId::new("cas-steering-undurable").unwrap();
     let turn = CasTurnId::new("turn-steering-undurable").unwrap();
@@ -151,7 +154,7 @@ fn acquisition_rejects_an_ordinary_publication_or_target_loss_owner() {
     let loss_router = router(72);
     let registration = register(&loss_router, "cas-steering-loss", 72, 72, None);
     loss_router
-        .authorize_turn_start(&registration.proof())
+        .authorize_turn_start(&super::live_command(&loss_router), &registration.proof())
         .unwrap();
     let thread = CasThreadId::new("cas-steering-loss").unwrap();
     let turn = CasTurnId::new("turn-steering-loss").unwrap();
@@ -181,7 +184,9 @@ fn acquisition_rejects_an_ordinary_publication_or_target_loss_owner() {
 fn loss_requested_during_the_permit_suppresses_commit_and_wakes_the_waiter() {
     let router = router(73);
     let registration = register(&router, "cas-steering-loss-race", 73, 73, None);
-    router.authorize_turn_start(&registration.proof()).unwrap();
+    router
+        .authorize_turn_start(&super::live_command(&router), &registration.proof())
+        .unwrap();
     let thread_id = CasThreadId::new("cas-steering-loss-race").unwrap();
     let turn_id = CasTurnId::new("turn-steering-loss-race").unwrap();
     router

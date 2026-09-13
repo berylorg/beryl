@@ -80,10 +80,11 @@ pub(super) fn begin_capture(
         return Ok(OrdinaryTurnExecutionOutcome::Incomplete { reason });
     }
     let completion_unknown = match start.into_parts().0 {
-        NonIdempotentRequestOutcome::CompletionUnknown { error } => Some(error),
-        NonIdempotentRequestOutcome::ExactResponse { .. } => None,
-        NonIdempotentRequestOutcome::ExactRejection { .. }
-        | NonIdempotentRequestOutcome::ProvenNotDispatched { .. } => {
+        Ok(NonIdempotentRequestOutcome::CompletionUnknown { error }) => Some(error),
+        Ok(NonIdempotentRequestOutcome::ExactResponse { .. }) => None,
+        Err(_)
+        | Ok(NonIdempotentRequestOutcome::ExactRejection { .. })
+        | Ok(NonIdempotentRequestOutcome::ProvenNotDispatched { .. }) => {
             return Err(OrdinaryTurnExecutionError::Invariant(
                 "live capture received a not-started outcome",
             ));
@@ -115,7 +116,7 @@ pub(super) fn converge_completion_unknown_start(
     context_compaction_timeout: &ContextCompactionTimeoutPolicy,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     let (outcome, _) = start.into_parts();
-    let NonIdempotentRequestOutcome::CompletionUnknown { error } = outcome else {
+    let Ok(NonIdempotentRequestOutcome::CompletionUnknown { error }) = outcome else {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "completion-unknown convergence received a known start outcome",
         ));

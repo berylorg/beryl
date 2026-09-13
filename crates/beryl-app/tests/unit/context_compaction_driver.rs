@@ -89,7 +89,10 @@ impl DriverFixture {
         ));
         let driver = dispatch::CompactionDriverGuard(Arc::clone(&local));
         router
-            .authorize_context_compaction_command(&registration.proof())
+            .authorize_context_compaction_command(
+                &gate.authorizer().authorize().unwrap(),
+                &registration.proof(),
+            )
             .unwrap();
         router
             .acquire_compaction_thread_status(&cas_thread)

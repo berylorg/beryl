@@ -138,12 +138,29 @@ impl ContextCompactionCoordinator {
             let _ = target.into_context_compaction_nondispatch_projection();
             return;
         }
+        #[cfg(feature = "test-faults")]
+        self.pause_compaction_custody(CompactionCustodyTestStage::DispatchClaimed);
         let dispatch = target.dispatch_context_compaction(
             CompactionAttemptCorrelation::from_bytes(*local.attempt.as_bytes()),
             COMPACTION_REQUEST_TIMEOUT,
         );
         let dispatch = match dispatch {
             Ok(Ok(command)) => command.into_parts().0,
+            Ok(Err(
+                crate::cas_projection::connection::TargetAuthorizationFailure::ExecutionFenced(_),
+            )) => {
+                let observed = self
+                    .observe_request(&local, CompactionRequestDisposition::ProvenLocalNondispatch);
+                let settled = observed
+                    .and_then(|_| self.settle(&local, CompactionSettlement::LocalNondispatch));
+                self.fail_local(&local);
+                if settled.is_ok() {
+                    let _ = target.into_context_compaction_unauthorized_projection();
+                } else {
+                    target.retire_context_compaction_connection();
+                }
+                return;
+            }
             Ok(Err(_)) | Err(_) => {
                 let _ = self.abandon(&local, CompactionAbandonmentReason::TargetAuthorityLost);
                 self.fail_local(&local);

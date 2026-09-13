@@ -22,7 +22,10 @@ use crate::cas_projection::{ProjectionCoordinatorError, ProjectionExecutionError
 pub(in crate::cas_projection) struct TargetTurnStartOutcome {
     connection_generation: ConnectionGeneration,
     registration: u64,
-    command: ConnectionCommandOutcome<TurnStartOutcome>,
+    command: Result<
+        ConnectionCommandOutcome<TurnStartOutcome>,
+        crate::process_admission::ProcessAdmissionError,
+    >,
     response_activation_failure: Option<TargetTurnStartActivationFailure>,
 }
 
@@ -33,14 +36,28 @@ pub(in crate::cas_projection) enum TargetTurnStartActivationFailure {
 }
 
 impl TargetTurnStartOutcome {
-    pub(in crate::cas_projection) const fn outcome(&self) -> &TurnStartOutcome {
-        self.command.operation()
+    pub(in crate::cas_projection) fn outcome(
+        &self,
+    ) -> Result<&TurnStartOutcome, crate::process_admission::ProcessAdmissionError> {
+        self.command
+            .as_ref()
+            .map(ConnectionCommandOutcome::operation)
+            .map_err(|reason| *reason)
     }
 
     pub(in crate::cas_projection) fn into_parts(
         self,
-    ) -> (TurnStartOutcome, Option<ConnectionRoutingFailure>) {
-        self.command.into_parts()
+    ) -> (
+        Result<TurnStartOutcome, crate::process_admission::ProcessAdmissionError>,
+        Option<ConnectionRoutingFailure>,
+    ) {
+        match self.command {
+            Ok(command) => {
+                let (outcome, routing) = command.into_parts();
+                (Ok(outcome), routing)
+            }
+            Err(reason) => (Err(reason), None),
+        }
     }
 
     pub(in crate::cas_projection) fn response_activation_failure(
@@ -80,7 +97,7 @@ impl ProjectionConnection {
         );
         self.with_runtime(|runtime| {
             runtime.driver.call_classified_checked(
-                move |router, _| router.authorize_context_compaction_command(&proof),
+                move |router, command| router.authorize_context_compaction_command(command, &proof),
                 move |session| session.compact_exact_foreground_thread(target, attempt, timeout),
                 ExactContextCompactionDispatch::invalidates_connection,
             )
@@ -152,7 +169,7 @@ impl ProjectionConnection {
         let thread_id = registration.key().cas_thread_id.clone();
         let command = self.with_runtime(|runtime| {
             runtime.driver.call_classified_checked_with_source(
-                move |router, _| router.authorize_turn_start(&proof),
+                move |router, command| router.authorize_turn_start(command, &proof),
                 move |source| {
                     let input: Box<dyn StreamedInputSource> = Box::new(source);
                     move |session| {
@@ -192,6 +209,14 @@ impl ProjectionConnection {
     ) -> Result<TargetTurnStartOutcome, ProjectionExecutionError> {
         let mut command = match command {
             Ok(command) => command,
+            Err(TargetAuthorizationFailure::ExecutionFenced(reason)) => {
+                return Ok(TargetTurnStartOutcome {
+                    connection_generation: self.authority.generation,
+                    registration: registration.registration(),
+                    command: Err(reason),
+                    response_activation_failure: None,
+                });
+            }
             Err(failure) => {
                 self.publish_target_authorization(registration, Err(failure))?;
                 unreachable!("failed target authorization returns an execution error")
@@ -204,7 +229,7 @@ impl ProjectionConnection {
         Ok(TargetTurnStartOutcome {
             connection_generation: self.authority.generation,
             registration: registration.registration(),
-            command,
+            command: Ok(command),
             response_activation_failure,
         })
     }
@@ -303,6 +328,9 @@ impl ProjectionConnection {
             Err(TargetAuthorizationFailure::Router) => {
                 self.retire();
                 Err(self.unavailable().into())
+            }
+            Err(TargetAuthorizationFailure::ExecutionFenced(_)) => {
+                unreachable!("execution fencing is settled by its dispatch owner")
             }
         }
     }

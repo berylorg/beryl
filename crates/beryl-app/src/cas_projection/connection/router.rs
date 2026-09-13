@@ -776,13 +776,28 @@ pub(in crate::cas_projection) enum RouteOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) enum TargetAuthorizationFailure {
     Target(LiveEventTargetCloseReason),
+    ExecutionFenced(crate::process_admission::ProcessAdmissionError),
     Router,
+}
+
+impl From<crate::process_admission::ProcessExecutionAdmissionError> for TargetAuthorizationFailure {
+    fn from(error: crate::process_admission::ProcessExecutionAdmissionError) -> Self {
+        use crate::process_admission::{ProcessAdmissionError, ProcessExecutionAdmissionError};
+        match error {
+            ProcessExecutionAdmissionError::Process(
+                reason @ (ProcessAdmissionError::Fenced | ProcessAdmissionError::Stale),
+            ) => Self::ExecutionFenced(reason),
+            _ => Self::Router,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) enum TargetHandoffRequirement {
     NotStarted,
+    StartNotAuthorized,
     CompactionNotDispatched,
+    CompactionNotAuthorized,
     ProvenTerminal,
 }
 

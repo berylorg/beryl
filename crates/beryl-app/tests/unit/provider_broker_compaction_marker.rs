@@ -257,7 +257,10 @@ impl Fixture {
             .unwrap();
         drop(router_command);
         router
-            .authorize_context_compaction_command(&registration.proof())
+            .authorize_context_compaction_command(
+                &commands.authorize().unwrap(),
+                &registration.proof(),
+            )
             .unwrap();
         let cas_turn_id = CasTurnId::new(format!("marker-turn-{seed}")).unwrap();
         coordinator
