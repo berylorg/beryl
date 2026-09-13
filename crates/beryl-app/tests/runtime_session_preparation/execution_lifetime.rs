@@ -4,7 +4,11 @@ use beryl_model::SyndicTurnId;
 use serde_json::Value;
 use syndic_storage::{FirstAcceptanceKind, SyndicPointReadLimit, TurnLifecycle};
 
-fn started(fixture: &Fixture, sessions: &ScheduledExecutionSessions, ordinal: u8) -> Value {
+pub(super) fn started(
+    fixture: &Fixture,
+    sessions: &ScheduledExecutionSessions,
+    ordinal: u8,
+) -> Value {
     let path = fixture
         .root(1)
         .join(format!("execution-started-{ordinal}.json"));
@@ -17,27 +21,36 @@ fn started(fixture: &Fixture, sessions: &ScheduledExecutionSessions, ordinal: u8
             return evidence;
         }
         if std::time::Instant::now() >= deadline {
-            let live = fixture.service().live_home_command().unwrap();
-            let gate = fixture
-                .storage
-                .input_gate(
+            let gate = fixture.service().live_home_command().map(|live| {
+                fixture.storage.input_gate(
                     live.home(),
                     thread_id(1),
                     SyndicPointReadLimit::new(1_000_000).unwrap(),
                 )
-                .unwrap();
+            });
             panic!(
-                "managed execution did not start: sessions {:?}, scheduler {:?}, gate {:?}",
+                "managed execution did not start: sessions {:?}, scheduler {:?}, gate {:?}, failure {:?}, projection {:?}, request {:?}",
                 sessions.diagnostics(),
                 fixture.service().accepted_input_scheduler_diagnostics(),
-                gate
+                gate,
+                fixture.service().persistent_failure_cut_snapshot(),
+                fs::read_to_string(
+                    fixture
+                        .root(1)
+                        .join(format!("execution-projection-{ordinal}.json"))
+                ),
+                fs::read_to_string(
+                    fixture
+                        .root(1)
+                        .join(format!("execution-request-{ordinal}.json"))
+                ),
             );
         }
         thread::sleep(Duration::from_millis(2));
     }
 }
 
-fn turn(fixture: &Fixture, expected: TurnLifecycle) -> SyndicTurnId {
+pub(super) fn turn(fixture: &Fixture, expected: TurnLifecycle) -> SyndicTurnId {
     let mut selected = None;
     wait_until(|| {
         let live = fixture.service().live_home_command().unwrap();
@@ -69,12 +82,87 @@ fn turn(fixture: &Fixture, expected: TurnLifecycle) -> SyndicTurnId {
     selected.unwrap()
 }
 
-fn release(fixture: &Fixture, ordinal: u8) {
+pub(super) fn release(fixture: &Fixture, ordinal: u8) {
     fs::write(
         fixture.root(1).join(format!("execution-release-{ordinal}")),
         "complete",
     )
     .unwrap();
+}
+
+#[test]
+fn managed_execution_retains_session_through_terminal_history_without_a_view() {
+    use beryl_app::cas_projection::test_faults::{
+        TerminalHistoryBarrierStage, install_terminal_history_barrier,
+    };
+    for stage in [
+        TerminalHistoryBarrierStage::BeforeGateRelease,
+        TerminalHistoryBarrierStage::AfterGateRelease,
+    ] {
+        let (mut fixture, sessions, attention) = fixture(8);
+        fs::write(fixture.root(1).join("fixture-mode"), "execution-lifetime").unwrap();
+        let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
+        let readiness = support::ready(&view);
+        submission::submit(&fixture, thread_id(1));
+        let evidence = started(&fixture, &sessions, 0);
+        let process = ProcessWitness::open(evidence["pid"].as_u64().unwrap() as u32);
+        let active = turn(&fixture, TurnLifecycle::Active);
+        let barrier = install_terminal_history_barrier(thread_id(1), stage);
+        drop(view);
+        release(&fixture, 0);
+        barrier.wait();
+        assert_eq!(turn(&fixture, TurnLifecycle::Complete), active);
+        assert_eq!(sessions.diagnostics().checked_out, 1);
+        assert!(process.running());
+        assert!(!fixture.root(1).join("execution-unsubscribed-0").exists());
+        let live = fixture.service().live_home_command().unwrap();
+        let gate = fixture
+            .storage
+            .input_gate(
+                live.home(),
+                thread_id(1),
+                SyndicPointReadLimit::new(1_000_000).unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            gate.state(),
+            &match stage {
+                TerminalHistoryBarrierStage::BeforeGateRelease =>
+                    syndic_storage::InputGateState::FinalizingHistory(active),
+                TerminalHistoryBarrierStage::AfterGateRelease =>
+                    syndic_storage::InputGateState::Idle,
+                _ => unreachable!(),
+            }
+        );
+        drop(live);
+        let inventory = fixture
+            .service()
+            .process_work_inventory(&sessions, &attention);
+        let revision = inventory.revision().unwrap();
+        let page = inventory
+            .page(
+                &revision,
+                None,
+                beryl_app::cas_projection::ProcessWorkPageLimits::new(256, 65_536).unwrap(),
+                &beryl_app::cas_projection::ProjectionCancellationToken::new(),
+            )
+            .unwrap();
+        assert_eq!(page.total_threads(), 1);
+        drop(inventory);
+        let reattached = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
+        assert_eq!(support::ready(&reattached), readiness);
+        assert_eq!(sessions.diagnostics().checked_out, 1);
+        drop(reattached);
+        barrier.release();
+        process.assert_exited();
+        wait_until(|| {
+            sessions.diagnostics().retained == 0
+                && fixture.token_count() == 0
+                && fixture.service().worker_pool_diagnostics().active() == 0
+        });
+        close(&mut fixture, &sessions);
+    }
 }
 
 #[test]

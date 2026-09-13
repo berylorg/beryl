@@ -304,7 +304,10 @@ impl SyndicStorage {
                 "recovery topology identity or depth disagrees",
             ));
         }
-        if turn.kind() != TurnKind::OrdinaryUser {
+        if !matches!(
+            turn.kind(),
+            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+        ) {
             return Err(RecoveryProjectionError::UnsupportedHistory {
                 reason: "provider-operation turn",
             });

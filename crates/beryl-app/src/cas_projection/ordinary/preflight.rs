@@ -211,7 +211,10 @@ impl PendingOrdinaryExecution {
         }
         if gate.state() != &InputGateState::PendingTurn(turn_id)
             || turn.origin_thread_id() != thread_id
-            || turn.kind() != TurnKind::OrdinaryUser
+            || !matches!(
+                turn.kind(),
+                TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+            )
             || state.lifecycle() != TurnLifecycle::Pending
             || state.source_event_count() != 0
             || state.item_count() != 1

@@ -44,13 +44,13 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 384: Hand Exact Submission Acceptance To Process Execution (finished)
+# Phase 389: Execute Durably Admitted Lifecycle Continuations (finished)
 
-Accepted generation-scoped notification after exact durable acceptance and before editor
-activation. Exact-submission, managed direct/accepted execution, scheduler, mounted composer,
-creation and full scale verification pass; independent final review finds no blocking issue.
-The [handoff evidence](failures/process-submission-execution-handoff.md#accepted-handoff)
-preserves the verified boundaries and deferred package-wide compilation limitation.
+Accepted distinct lifecycle-continuation eligibility through projection, execution and terminal
+history while retaining exact authority and provider-operation exclusions. All 103 storage and
+83 app regressions plus the production library check pass; independent review found no blocking
+issue. The [accepted correction](failures/process-lifecycle-continuation-projection.md#accepted-continuation-correction)
+records the managed replacement and storage reopen evidence and its limits.
 
 # Phase 325: Own Running Work Independently Of Views (wip)
 
@@ -72,6 +72,11 @@ detachment, reattachment, durable capture and owner release. Complete joined ter
 lifecycle-compaction and compaction-cleanup-to-successor evidence using focused managed-runtime
 cases and existing fault barriers. Preserve exact request routing and obtain independent semantic
 review of the remaining execution-lifetime and successor cuts before acceptance.
+
+The continuation prerequisite is accepted. Joined terminal-history and lifecycle-compaction
+cases pass in the accepted regression run. Complete the composition acceptance record using the
+independent review and these managed-runtime results, retaining the separate GUI close, restart,
+bootstrap and process shutdown boundaries.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "recovery_projection/continuation.rs"]
+mod continuation;
 mod support;
 
 use std::num::NonZeroUsize;
@@ -123,6 +125,24 @@ fn seed_recovery_fixture(
     entries: &[(&str, TurnLifecycle)],
     pending_successor: bool,
 ) -> RecoveryFixture {
+    seed_recovery_fixture_with_kind(
+        store,
+        storage,
+        thread_byte,
+        entries,
+        pending_successor,
+        TurnKind::OrdinaryUser,
+    )
+}
+
+fn seed_recovery_fixture_with_kind(
+    store: &beryl_home_store::HomeStore,
+    storage: &SyndicStorage,
+    thread_byte: u8,
+    entries: &[(&str, TurnLifecycle)],
+    pending_successor: bool,
+    kind: TurnKind,
+) -> RecoveryFixture {
     assert!(!entries.is_empty());
     let thread = id(thread_byte);
     let draft = draft_id(thread_byte.wrapping_add(1));
@@ -151,7 +171,7 @@ fn seed_recovery_fixture(
         records.push(FixtureRecord::Turn(TurnRecord::new(
             turn,
             thread,
-            TurnKind::OrdinaryUser,
+            kind,
             parent.map_or(ConversationParent::Root, ConversationParent::Turn),
             skip_depth.map(|depth| turn_id(thread_byte, usize::try_from(depth - 1).unwrap())),
             depth,
@@ -222,7 +242,7 @@ fn seed_recovery_fixture(
             FixtureRecord::Turn(TurnRecord::new(
                 pending,
                 thread,
-                TurnKind::OrdinaryUser,
+                kind,
                 ConversationParent::Turn(represented_tail),
                 Some(turn_id(
                     thread_byte,

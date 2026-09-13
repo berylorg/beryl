@@ -301,8 +301,10 @@ impl SyndicStorage {
                 .ok_or(NativeProjectionError::Invariant(
                     "pending selected turn state is missing",
                 ))?;
-        if pending.kind() != TurnKind::OrdinaryUser
-            || pending_state.lifecycle() != TurnLifecycle::Pending
+        if !matches!(
+            pending.kind(),
+            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+        ) || pending_state.lifecycle() != TurnLifecycle::Pending
         {
             return Err(NativeProjectionError::CurrentTailNotPendingOrdinaryUser);
         }

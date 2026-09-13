@@ -163,8 +163,12 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             }
         }),
     );
-    if matches!(mode.as_str(), "execution-lifetime" | "execution-next") && index > 0 {
-        execution::serve(&mut socket, mode == "execution-next");
+    if matches!(
+        mode.as_str(),
+        "execution-lifetime" | "execution-next" | "execution-compaction"
+    ) && index > 0
+    {
+        execution::serve(&mut socket, &mode);
         return;
     }
     if matches!(mode.as_str(), "pause-projection" | "projection-lifetime") && index > 0 {

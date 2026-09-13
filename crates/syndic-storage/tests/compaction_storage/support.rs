@@ -65,7 +65,7 @@ pub fn timestamp(value: u64) -> SyndicTimestamp {
     SyndicTimestamp::from_unix_millis(value)
 }
 
-fn execution_binding() -> ExecutionBinding {
+pub(super) fn execution_binding() -> ExecutionBinding {
     ExecutionBinding::new(
         RuntimeId::from_bytes([246; 16]),
         RootId::from_bytes([247; 16]),
@@ -78,7 +78,7 @@ fn execution_binding() -> ExecutionBinding {
     )
 }
 
-fn tool_profile() -> CasConversationToolProfile {
+pub(super) fn tool_profile() -> CasConversationToolProfile {
     CasConversationToolProfile::v1([248; 32])
 }
 

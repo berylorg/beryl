@@ -2,13 +2,24 @@ use super::*;
 
 const THREAD: &str = "managed-execution-thread";
 
-pub(super) fn serve(socket: &mut WebSocket<TcpStream>, queued_successor: bool) {
+#[path = "execution/compaction.rs"]
+mod compaction;
+
+pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
+    let queued_successor = mode == "execution-next";
+    let compaction = mode == "execution-compaction";
+    let successor = queued_successor || compaction;
     let first_ordinal =
-        u32::from(queued_successor && std::path::Path::new("execution-started-0.json").exists());
-    for ordinal in first_ordinal..if queued_successor { 2 } else { 1 } {
+        u32::from(successor && std::path::Path::new("execution-started-0.json").exists());
+    for ordinal in first_ordinal..if successor { 2 } else { 1 } {
         let Some(projection) = read_projection(socket) else {
             return;
         };
+        fs::write(
+            format!("execution-projection-{ordinal}.json"),
+            serde_json::to_vec(&projection).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             projection["method"],
             if ordinal == 0 {
@@ -22,6 +33,11 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, queued_successor: bool) {
         }
         project(socket, &projection, ordinal != 0);
         let request = read_json(socket);
+        fs::write(
+            format!("execution-request-{ordinal}.json"),
+            serde_json::to_vec(&request).unwrap(),
+        )
+        .unwrap();
         assert_eq!(request["method"], "turn/start");
         assert_eq!(request["params"]["threadId"], THREAD);
         let input = request["params"]["input"].as_array().unwrap();
@@ -79,6 +95,19 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, queued_successor: bool) {
                     "startedAt":37_001 + ordinal * 10,"completedAt":37_002 + ordinal * 10,"durationMs":1}
             }}),
         );
+        if compaction && ordinal == 0 {
+            compaction::serve(socket);
+            while let Ok(message) = socket.read() {
+                if message.is_close() {
+                    return;
+                }
+                assert!(
+                    !message.is_text(),
+                    "compaction terminal must retire this connection"
+                );
+            }
+            return;
+        }
         let unsubscribe = read_json(socket);
         assert_eq!(unsubscribe["method"], "thread/unsubscribe");
         assert_eq!(unsubscribe["params"]["threadId"], THREAD);

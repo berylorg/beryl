@@ -81,8 +81,10 @@ impl SyndicStorage {
                 RecoveryTailEligibility::Strict,
             ),
             RecoveryProjectionScope::PendingSelectedTurnParent => {
-                if selected_tail.kind() != TurnKind::OrdinaryUser
-                    || selected_tail_state.lifecycle() != TurnLifecycle::Pending
+                if !matches!(
+                    selected_tail.kind(),
+                    TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+                ) || selected_tail_state.lifecycle() != TurnLifecycle::Pending
                 {
                     return Err(RecoveryProjectionError::CurrentTailNotPendingOrdinaryUser);
                 }
@@ -236,8 +238,10 @@ impl SyndicStorage {
             .ok_or(RecoveryProjectionError::MissingHistory {
                 record: "pending recovery turn-state",
             })?;
-        if pending.kind() != TurnKind::OrdinaryUser
-            || state.turn_id() != selected_tail
+        if !matches!(
+            pending.kind(),
+            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+        ) || state.turn_id() != selected_tail
             || state.lifecycle() != TurnLifecycle::Pending
             || pending.parent().turn() != Some(prefix_tail)
         {

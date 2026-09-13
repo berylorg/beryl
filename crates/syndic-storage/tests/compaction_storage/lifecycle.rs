@@ -208,6 +208,10 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
         outcome => panic!("expected clean descendant lifecycle settlement, got {outcome:?}"),
     }
 
+    assert_pending_continuation_projection(&fixture, turn_id);
+    let fixture = fixture.reopen();
+    assert_pending_continuation_projection(&fixture, turn_id);
+
     let source = exact_cas::establish_turn(
         &fixture.store,
         fixture.storage.clone(),
@@ -289,4 +293,107 @@ fn lifecycle_continuation_accepts_active_and_terminal_descendants_across_reopen(
             .unwrap(),
         syndic_storage::CompactionRecoveryCase::Settled(_)
     ));
+    assert_completed_continuation_recovery(&fixture);
+}
+
+#[cfg(feature = "test-faults")]
+fn assert_pending_continuation_projection(
+    fixture: &CompactionFixture,
+    turn: beryl_model::SyndicTurnId,
+) {
+    let selected = fixture
+        .storage
+        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .binding()
+        .selected_path();
+    let revision = fixture.storage.revision(&fixture.store).unwrap();
+    assert_eq!(selected.tail(), Some(turn));
+    assert_eq!(
+        fixture
+            .storage
+            .turn(&fixture.store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .kind(),
+        TurnKind::BerylLifecycleContinuation
+    );
+    fixture
+        .storage
+        .prepare_native_projection(
+            &fixture.store,
+            &syndic_storage::NativeProjectionRequest::new(
+                fixture.thread,
+                selected,
+                super::compaction_support::execution_binding(),
+                super::compaction_support::tool_profile(),
+            ),
+            point_limit(),
+        )
+        .unwrap();
+    assert!(matches!(
+        fixture
+            .storage
+            .prepare_recovery_projection(
+                &fixture.store,
+                syndic_storage::RecoveryProjectionRequest::for_pending_selected_turn_parent(
+                    fixture.thread,
+                    selected,
+                    Some(2_000_000)
+                ),
+            )
+            .unwrap(),
+        syndic_storage::RecoveryAssembly::NativeEmptyPrefix { .. }
+    ));
+    assert_eq!(fixture.storage.revision(&fixture.store).unwrap(), revision);
+}
+
+#[cfg(feature = "test-faults")]
+fn assert_completed_continuation_recovery(fixture: &CompactionFixture) {
+    let selected = fixture
+        .storage
+        .current_binding(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap()
+        .binding()
+        .selected_path();
+    let revision = fixture.storage.revision(&fixture.store).unwrap();
+    let syndic_storage::RecoveryAssembly::Ready(projection) = fixture
+        .storage
+        .prepare_recovery_projection(
+            &fixture.store,
+            syndic_storage::RecoveryProjectionRequest::for_current_selected_path(
+                fixture.thread,
+                selected,
+                Some(2_000_000),
+            ),
+        )
+        .unwrap()
+    else {
+        panic!("completed continuation must be recoverable");
+    };
+    let mut cursor = fixture
+        .storage
+        .open_recovery_cursor(&fixture.store, projection)
+        .unwrap();
+    let pool = beryl_stream::PagePool::new(
+        std::num::NonZeroUsize::new(65_536).unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
+    let page = fixture
+        .storage
+        .read_recovery_cursor_page(
+            &fixture.store,
+            &mut cursor,
+            pool.try_lease().unwrap(),
+            65_536,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(page.text(), syndic_storage::LIFECYCLE_CONTINUATION_TEXT);
+    assert!(page.item_terminal() && page.sequence_terminal());
+    drop(page);
+    assert_eq!(fixture.storage.revision(&fixture.store).unwrap(), revision);
 }

@@ -19,7 +19,10 @@ pub(super) fn converge_turn_items(
     limit: SyndicPointReadLimit,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     let terminal = snapshot::terminal_turn(store, storage, thread_id, turn_id, limit)?;
-    if terminal.turn.kind() != TurnKind::OrdinaryUser {
+    if !matches!(
+        terminal.turn.kind(),
+        TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+    ) {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "ordinary history convergence received a provider-operation turn",
         ));
