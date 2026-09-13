@@ -112,3 +112,26 @@ evidence directory above. Supervisors report root reaping and no remaining job P
 semantic review found no blocking issue in the six eligibility guards or the dispatch/capture
 boundary. Root review checked the diff and raw verification results. Storage reopen and live
 replacement evidence do not establish full application restart scheduling or executable bootstrap.
+
+## Accepted Process Lifetime Composition
+
+With the continuation prerequisite accepted, the same 83-test app run closes the remaining
+process-lifetime composition boundary. Managed direct execution and accepted-input successor
+dispatch pass alongside terminal-history retention and lifecycle-compaction replacement.
+The terminal-history case pauses at both `BeforeGateRelease` and `AfterGateRelease`, after item
+and transcript convergence. Each cut retains the same checked-out session and live process after
+view detachment, appears in process work inventory, and allows immediate reattachment to the same
+readiness. Releasing the barrier completes exact session, process, token, worker and home disposal.
+
+The compaction case retains the original process and custody after consumed durable settlement,
+with a pending continuation but no early successor. Release joins implicit connection retirement,
+prepares the replacement through the production configured runtime provider, and completes the
+distinct continuation and its terminal history without installing a test-side projection.
+The existing direct and accepted-input tests prove the complementary execution paths.
+
+Independent composition review and root validation found no blocking issue. This acceptance
+composes previously accepted request and approval routing; the change neither introduces a new
+routing path nor claims a new joined managed approval test. GUI claims and close workflows,
+Running threads mounting, full application restart/bootstrap and coordinated graceful shutdown
+remain their separate acceptance boundaries. This outcome closes process execution ownership,
+not those presentation or shutdown obligations.

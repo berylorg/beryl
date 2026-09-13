@@ -44,39 +44,13 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 389: Execute Durably Admitted Lifecycle Continuations (finished)
+# Phase 325: Own Running Work Independently Of Views (finished)
 
-Accepted distinct lifecycle-continuation eligibility through projection, execution and terminal
-history while retaining exact authority and provider-operation exclusions. All 103 storage and
-83 app regressions plus the production library check pass; independent review found no blocking
-issue. The [accepted correction](failures/process-lifecycle-continuation-projection.md#accepted-continuation-correction)
-records the managed replacement and storage reopen evidence and its limits.
-
-# Phase 325: Own Running Work Independently Of Views (wip)
-
-Compose process-owned execution interest across direct submission, scheduled input, compaction,
-continuation and terminal-history work. Keep exact request routing and background attention under
-their owning policies. Consume the accepted work inventory for shutdown and Running threads
-without mounting a GUI per thread. Verify view-interest release and immediate
-reattachment preserve the same live execution and capture, and all terminal/replacement paths
-release required resources. Split any independently missing composition prerequisite before
-activation; production runtime/provider composition remains explicit rather than inferred.
-
-The terminal-disposal, runtime-demand, idle-retirement and regression-evidence prerequisites are
-accepted. Resume composition from the existing process session provider, configured managed-runtime
-preparation, shared work sources and control coordinators; verify their joined execution lifetime
-without inferring complete composition from isolated component tests.
-
-The submission handoff and managed direct/accepted execution tests are accepted, including
-detachment, reattachment, durable capture and owner release. Complete joined terminal-history,
-lifecycle-compaction and compaction-cleanup-to-successor evidence using focused managed-runtime
-cases and existing fault barriers. Preserve exact request routing and obtain independent semantic
-review of the remaining execution-lifetime and successor cuts before acceptance.
-
-The continuation prerequisite is accepted. Joined terminal-history and lifecycle-compaction
-cases pass in the accepted regression run. Complete the composition acceptance record using the
-independent review and these managed-runtime results, retaining the separate GUI close, restart,
-bootstrap and process shutdown boundaries.
+Accepted joined managed direct/accepted execution, terminal-history retention at both gate-release
+cuts, view detachment/reattachment, compaction retirement and continuation replacement. The 83 app
+regressions and production library check pass; independent composition review found no blocking
+issue. The [composition evidence](failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
+retains request-routing prerequisites and separate GUI, restart, bootstrap and shutdown limits.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
