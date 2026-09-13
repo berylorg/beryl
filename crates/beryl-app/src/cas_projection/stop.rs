@@ -404,6 +404,7 @@ impl StopCoordinator {
         storage: SyndicStorage,
     ) -> Self {
         let gate = super::persistent_failure::MasterCommandGate::new(
+            Default::default(),
             super::persistent_failure::ProjectionServiceGeneration::allocate()
                 .expect("test service generation is available"),
             None,

@@ -454,6 +454,7 @@ impl ContextCompactionWaitTestHarness {
 
 fn test_live_command() -> LiveCommandPermit {
     let gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+        Default::default(),
         crate::cas_projection::ProjectionServiceGeneration::allocate()
             .expect("test service generation is available"),
         None,

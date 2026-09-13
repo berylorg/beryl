@@ -62,6 +62,7 @@ fn persistent_failure_terminally_disposes_and_makes_the_service_unavailable() {
     let state = BerylState::register(&mut home).unwrap();
     let provider_shutdowns = Arc::new(AtomicUsize::new(0));
     let supervisor = TerminalServiceSupervisor::start(
+        Default::default(),
         home,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
             .unwrap(),

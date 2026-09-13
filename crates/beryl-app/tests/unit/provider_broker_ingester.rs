@@ -62,6 +62,7 @@ impl BrokerBuildFixture {
                 home_generation,
             );
         let commands = MasterCommandGate::new(
+            Default::default(),
             failure_notification.service_generation(),
             Some(failure_notification.clone()),
         )

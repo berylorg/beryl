@@ -18,7 +18,7 @@ fn window_id(value: u16) -> WindowId {
 
 #[test]
 fn reserves_exactly_256_main_window_slots() {
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let mut reservations = (0..MAIN_WINDOW_CAPACITY)
         .map(|index| {
             process
@@ -57,7 +57,7 @@ fn reserves_exactly_256_main_window_slots() {
 
 #[test]
 fn rejects_duplicates_across_registry_clones_and_reuses_exact_release() {
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let sibling = process.clone();
     let id = window_id(1);
     let reservation = process.reserve_main_window(id).expect("first admission");
@@ -77,8 +77,8 @@ fn rejects_duplicates_across_registry_clones_and_reuses_exact_release() {
 
 #[test]
 fn independent_registries_admit_the_same_window_identity() {
-    let first = RuntimeBackedWindowProcessRegistry::new();
-    let second = RuntimeBackedWindowProcessRegistry::new();
+    let first = RuntimeBackedWindowProcessRegistry::new(Default::default());
+    let second = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let id = window_id(1);
 
     let _first = first.reserve_main_window(id).expect("first registry");
@@ -90,7 +90,7 @@ fn independent_registries_admit_the_same_window_identity() {
 
 #[test]
 fn concurrent_admission_never_duplicates_or_exceeds_capacity() {
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let start = Arc::new(Barrier::new(4));
     let workers = (0..4)
         .map(|worker| {
@@ -133,7 +133,7 @@ fn concurrent_admission_never_duplicates_or_exceeds_capacity() {
 
 #[test]
 fn retained_reservation_outlives_registry_handles_and_repeated_cycles_release() {
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let observer = process.clone();
     let retained = process
         .reserve_main_window(window_id(1))
@@ -144,7 +144,7 @@ fn retained_reservation_outlives_registry_handles_and_repeated_cycles_release() 
     assert_eq!(retained.window_id(), window_id(1));
     drop(retained);
 
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     for _ in 0..16 {
         let reservation = process
             .reserve_main_window(window_id(1))

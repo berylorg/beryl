@@ -1,5 +1,29 @@
 use super::*;
 impl LiveCommandPermit {
+    pub(crate) fn commit_execution_if_current<T>(
+        &self,
+        commit: impl FnOnce() -> T,
+    ) -> Result<T, crate::process_admission::ProcessExecutionAdmissionError> {
+        Ok(self.commit_if_current(|| self.execution.commit(commit))??)
+    }
+
+    pub(crate) fn reserve_execution(
+        &self,
+    ) -> Result<
+        crate::process_admission::ProcessAdmissionReservation,
+        crate::process_admission::ProcessExecutionAdmissionError,
+    > {
+        Ok(self.commit_if_current(|| self.execution.reserve())??)
+    }
+
+    pub(crate) fn reopen_process_admission(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+        coherent: bool,
+    ) -> Result<(), crate::process_admission::ProcessExecutionAdmissionError> {
+        Ok(self.commit_if_current(|| self.execution.reopen(fence, coherent))??)
+    }
+
     fn matches_open_state(&self, state: &GateState) -> bool {
         self.inner
             .status(state, Some((self.service_generation, self.epoch)))

@@ -69,7 +69,11 @@ impl SubmissionExecutionWake {
     #[cfg(any(test, feature = "test-faults"))]
     pub fn test_for_home(home: &HomeStore) -> (Self, SubmissionExecutionWakeTestProbe) {
         use super::super::persistent_failure::{MasterCommandGate, ProjectionServiceGeneration};
-        let gate = MasterCommandGate::new(ProjectionServiceGeneration::allocate().unwrap(), None);
+        let gate = MasterCommandGate::new(
+            Default::default(),
+            ProjectionServiceGeneration::allocate().unwrap(),
+            None,
+        );
         let signal = AcceptedInputSchedulerSignal::new();
         let wake = Self {
             target: Some(SubmissionExecutionTarget {

@@ -15,7 +15,7 @@ pub struct Fixture {
 impl Fixture {
     pub fn new(seed: u8) -> Self {
         let (directory, store, state, storage, faults) = home_support::open_home(seed);
-        let process = RuntimeBackedWindowProcessRegistry::new();
+        let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
             store.clone(),

@@ -8,10 +8,9 @@ use syndic_storage::SyndicStorage;
 use tungstenite::{Message, accept};
 
 use crate::cas_projection::{
-    ProjectionConnectionService, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
-    ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
+    MinimumTurnCaptureReserve, ProjectionConnectionService, ProjectionServiceConfig,
+    ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
-    MinimumTurnCaptureReserve,
 };
 
 struct RejectingScheduledOrdinaryProvider;
@@ -38,6 +37,7 @@ fn public_admit_rejects_lifecycle_connector_without_consuming_another_fixture_se
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
@@ -102,6 +102,7 @@ fn lifecycle_release_admission_sends_only_initialize_initialized_and_config_read
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
@@ -157,7 +158,9 @@ fn lifecycle_release_admission_sends_only_initialize_initialized_and_config_read
             Duration::from_secs(5),
         )
         .unwrap();
-    admitted_observer.recv_timeout(Duration::from_secs(5)).unwrap();
+    admitted_observer
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap();
     drop(session);
     release.send(()).unwrap();
     server.join().unwrap();
@@ -168,17 +171,16 @@ fn app_admission_source_uses_release_admission_terminology_only() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let error = std::fs::read_to_string(crate_root.join("src/cas_projection/error.rs"))
         .expect("projection admission error source is readable");
-    let admission = std::fs::read_to_string(crate_root.join("src/cas_projection/service/admission.rs"))
-        .expect("projection admission source is readable");
+    let admission =
+        std::fs::read_to_string(crate_root.join("src/cas_projection/service/admission.rs"))
+            .expect("projection admission source is readable");
 
     assert!(error.contains("ReleaseAdmission"));
     assert!(error.contains("release_admission("));
     assert!(error.contains("CAS release admission failed"));
     assert!(error.contains("release admission"));
     assert!(admission.contains(".admit_release("));
-    assert!(
-        admission.contains(".admit_release_non_authorizing_for_lifecycle_test(")
-    );
+    assert!(admission.contains(".admit_release_non_authorizing_for_lifecycle_test("));
     for obsolete in [
         "ProjectionSessionAdmissionError::Compatibility",
         "Self::Compatibility",

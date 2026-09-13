@@ -190,6 +190,7 @@ fn connection_command_channel() -> Result<
 #[cfg(test)]
 fn test_driver_command(operation: DriverOperation) -> DriverCommand {
     let gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+        Default::default(),
         crate::cas_projection::persistent_failure::ProjectionServiceGeneration::allocate()
             .expect("test service generation is available"),
         None,

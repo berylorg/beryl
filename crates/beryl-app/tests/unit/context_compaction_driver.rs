@@ -28,7 +28,11 @@ struct DriverFixture {
 
 impl DriverFixture {
     fn new(seed: u8) -> Self {
-        let gate = MasterCommandGate::new(ProjectionServiceGeneration::allocate().unwrap(), None);
+        let gate = MasterCommandGate::new(
+            Default::default(),
+            ProjectionServiceGeneration::allocate().unwrap(),
+            None,
+        );
         let runtime_id = RuntimeId::from_bytes([seed; 16]);
         let process_generation = CasProcessGeneration::new(u64::from(seed)).unwrap();
         let router = Arc::new(

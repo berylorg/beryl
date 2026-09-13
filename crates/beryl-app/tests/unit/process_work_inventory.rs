@@ -76,6 +76,7 @@ fn fixture() -> (
     }
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())

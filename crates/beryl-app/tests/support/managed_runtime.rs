@@ -76,6 +76,7 @@ impl Fixture {
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
         let mut service = ProjectionConnectionService::new(
+            Default::default(),
             home,
             storage.clone(),
             ProjectionServiceConfig::try_new(
@@ -138,6 +139,7 @@ impl Fixture {
         self.storage = SyndicStorage::register(&mut home).unwrap();
         self.state = BerylState::register(&mut home).unwrap();
         let mut service = ProjectionConnectionService::new(
+            Default::default(),
             home,
             self.storage.clone(),
             ProjectionServiceConfig::try_new(

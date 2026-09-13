@@ -72,7 +72,7 @@ impl ShellFixture {
             .unwrap(),
         )
         .unwrap();
-        let process = RuntimeBackedWindowProcessRegistry::new();
+        let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
             Arc::clone(&store),

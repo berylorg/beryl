@@ -258,6 +258,7 @@ impl CheckedUserFixture {
                 home_generation,
             );
         let command_gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+            Default::default(),
             failure_notification.service_generation(),
             Some(failure_notification.clone()),
         );

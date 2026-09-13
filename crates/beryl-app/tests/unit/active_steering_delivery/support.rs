@@ -322,6 +322,7 @@ impl DeliveryFixture {
         )
         .unwrap();
         let service = ProjectionConnectionService::new(
+            Default::default(),
             home,
             storage.clone(),
             config,

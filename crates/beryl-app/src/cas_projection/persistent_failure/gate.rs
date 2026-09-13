@@ -52,6 +52,7 @@ pub(super) enum FailureObservationElection {
 #[derive(Clone, Debug)]
 pub struct LiveCommandAuthorizer {
     inner: Arc<GateInner>,
+    process: crate::process_admission::ProcessAdmissionGate,
     failure_notification: Option<PersistentFailureNotification>,
 }
 
@@ -59,6 +60,7 @@ pub struct LiveCommandAuthorizer {
 #[derive(Debug)]
 pub struct LiveCommandPermit {
     inner: Arc<GateInner>,
+    execution: crate::process_admission::ProcessExecutionPermit,
     failure_notification: Option<PersistentFailureNotification>,
     service_generation: ProjectionServiceGeneration,
     epoch: u64,
@@ -129,6 +131,7 @@ impl PersistentFailureCommandFrontier {
 #[derive(Clone, Debug)]
 pub(in crate::cas_projection) struct MasterCommandGate {
     inner: Arc<GateInner>,
+    process: crate::process_admission::ProcessAdmissionGate,
     failure_notification: Option<PersistentFailureNotification>,
 }
 
@@ -259,6 +262,7 @@ impl GateInner {
 
 impl MasterCommandGate {
     pub(in crate::cas_projection) fn new(
+        process: crate::process_admission::ProcessAdmissionGate,
         service_generation: ProjectionServiceGeneration,
         failure_notification: Option<PersistentFailureNotification>,
     ) -> Self {
@@ -266,11 +270,13 @@ impl MasterCommandGate {
             debug_assert_eq!(notification.service_generation(), service_generation);
             return Self {
                 inner: notification.gate_inner(),
+                process,
                 failure_notification: Some(notification),
             };
         }
         Self {
             inner: GateInner::new(service_generation),
+            process,
             failure_notification: None,
         }
     }
@@ -278,6 +284,7 @@ impl MasterCommandGate {
     pub(in crate::cas_projection) fn authorizer(&self) -> LiveCommandAuthorizer {
         LiveCommandAuthorizer {
             inner: Arc::clone(&self.inner),
+            process: self.process.clone(),
             failure_notification: self.failure_notification.clone(),
         }
     }
@@ -409,3 +416,7 @@ impl MasterCommandGate {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/unit/process_admission_service.rs"]
+mod process_admission_tests;

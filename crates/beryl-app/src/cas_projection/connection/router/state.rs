@@ -77,6 +77,7 @@ impl EventRouter {
         connection_generation: u64,
     ) -> Result<Self, ProjectionCoordinatorError> {
         let gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+            Default::default(),
             crate::cas_projection::ProjectionServiceGeneration::allocate()
                 .map_err(|_| ProjectionCoordinatorError::ProjectionServiceGenerationExhausted)?,
             None,

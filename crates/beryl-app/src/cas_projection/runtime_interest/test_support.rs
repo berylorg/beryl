@@ -9,7 +9,11 @@ pub struct RuntimeInterestTestHarness {
 
 impl RuntimeInterestTestHarness {
     pub fn new(config: RuntimeInterestConfig) -> Self {
-        let gate = MasterCommandGate::new(ProjectionServiceGeneration::allocate().unwrap(), None);
+        let gate = MasterCommandGate::new(
+            Default::default(),
+            ProjectionServiceGeneration::allocate().unwrap(),
+            None,
+        );
         Self {
             owner: RuntimeInterestOwner::new(
                 config,

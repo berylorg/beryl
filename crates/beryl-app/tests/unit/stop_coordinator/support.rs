@@ -346,6 +346,7 @@ impl StopFixture {
         let home_generation = home.health().generation().unwrap();
         let home = Arc::new(home);
         let command_gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+            Default::default(),
             crate::cas_projection::persistent_failure::ProjectionServiceGeneration::allocate()
                 .unwrap(),
             None,

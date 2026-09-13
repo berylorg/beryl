@@ -104,7 +104,7 @@ impl Fixture {
         initialize_empty_session(&store, &state);
         let execution = ExecutionBinding::new(runtime_id, root_id, root_path);
         let store = Arc::new(store);
-        let process = RuntimeBackedWindowProcessRegistry::new();
+        let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
             Arc::clone(&store),
@@ -431,7 +431,7 @@ fn ack_loss_is_exactly_reconstructed_after_process_exit_and_reopen() {
         history_policy(),
     )
     .expect("reopened request");
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let fresh =
         RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
     let RuntimeBackedWindowAcquisitionOutcome::ExactCommitted { acquisition } =
@@ -734,7 +734,7 @@ fn absent_window_with_exact_fallback_is_collision_before_and_after_reopen() {
     .expect("reopen exact-fallback home");
     let state = BerylState::register(&mut reopened).expect("re-register Beryl state");
     let syndic = SyndicStorage::register(&mut reopened).expect("re-register Syndic");
-    let process = RuntimeBackedWindowProcessRegistry::new();
+    let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
     let fresh =
         RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
     assert!(matches!(

@@ -203,9 +203,14 @@ impl Fixture {
         )
         .unwrap();
         let scheduled_provider = create_provider(state.assets());
-        let store =
-            ProjectionConnectionService::new(store, storage.clone(), config, scheduled_provider)
-                .unwrap();
+        let store = ProjectionConnectionService::new(
+            Default::default(),
+            store,
+            storage.clone(),
+            config,
+            scheduled_provider,
+        )
+        .unwrap();
         Self {
             _directory: directory,
             store,

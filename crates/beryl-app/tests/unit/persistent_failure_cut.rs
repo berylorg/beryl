@@ -63,6 +63,7 @@ fn service() -> (
     let state = BerylState::register(&mut home).unwrap();
     let shutdowns = Arc::new(AtomicUsize::new(0));
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())

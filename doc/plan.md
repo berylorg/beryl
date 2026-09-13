@@ -44,22 +44,37 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 390: Define Pending Work Completion At Shutdown (finished)
+# Phase 391: Establish Shared Process Admission Authority (finished)
 
-Accepted the Operator-approved pending-preservation outcome in feature, system and app authority.
-Independent semantic review found no blocking gap in exact nondispatch proof, settled obligations,
-identity/content retention or separation from uncertain dispatch and volatile continuation intent.
-The [accepted correction](failures/process-shutdown-pending-turn.md#authorized-course-correction)
-records the decision; production fencing and completion proof remain implementation work.
+Accepted the shared gate, exact execution epochs, counted admission reservations and required
+service/window construction wiring. Independent review found no remaining blocker. All 26 focused
+gate, service-generation and window-reservation tests passed, and eight affected integration
+targets plus the library passed Cargo check. A broader all-tests check remains unavailable because
+the unrelated draft-marker lifecycle target has existing storage ownership/type errors.
+Execution-path integration and coherent reconciliation proof remain the boundaries below.
 
-# Phase 391: Fence Process Execution Admission For Graceful Shutdown (wip)
+# Phase 392: Fence Direct Submission Acceptance (wip)
 
-Establish the shared reversible admission boundary over direct submission, accepted-input
-promotion, pending start, steering, compaction admission/dispatch and continuation settlement.
-Retain exact nondispatch classification, admitted reconciliation and terminal capture. Verify
-dispatch/admission races, cancellation and coherent gate reopening, preserving accepted work and
-existing lock order. Provide the shared gate required by window admission without implementing
-native confirmation or final-window designation here. Independently review every affected cut.
+Integrate the shared gate at first durable submission acceptance, retaining draft and exact
+reconciliation custody when shutdown wins. Verify both admission-race outcomes and cancellation.
+
+# Phase 393: Fence Accepted Input Promotion (pending)
+
+Integrate process admission with the existing promotion reservation and retained reconciliation;
+preserve accepted queue identity when the fence wins and settle a promotion that won first.
+
+# Phase 394: Fence Provider Execution Dispatch (pending)
+
+Revalidate the original queued execution epoch at pending-start, steering and compaction dispatch.
+Retain typed exact nondispatch proof and separate uncertain dispatch from preservation eligibility.
+Verify the shared router cut and stale queued callbacks without fencing terminal capture or stop.
+
+# Phase 395: Fence Compaction And Continuation Admission (pending)
+
+Integrate the shared gate with compaction admission and same-thread continuation settlement.
+Cancel volatile intent at its exact cut, preserve already admitted pending identity and content,
+and verify reconciliation custody and coherent reopening. Independently review each integrated
+execution cut before process-wide coordinator composition.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -396,6 +396,7 @@ impl RuntimeBackedWindowAcquisitionRepairReconciliation {
 
 #[derive(Clone)]
 pub struct RuntimeBackedWindowAcquisitionService {
+    process_admission: crate::process_admission::ProcessAdmissionGate,
     store: Arc<HomeStore>,
     state: BerylState,
     syndic: SyndicStorage,
@@ -407,16 +408,19 @@ pub struct RuntimeBackedWindowAcquisitionService {
 
 #[derive(Clone)]
 pub struct RuntimeBackedWindowProcessRegistry {
+    process_admission: crate::process_admission::ProcessAdmissionGate,
     flights: Arc<Mutex<AcquisitionFlights>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeBackedWindowMainWindowReservationError {
+    ProcessAdmission(crate::process_admission::ProcessAdmissionError),
     DuplicateWindowIdentity,
     Capacity,
 }
 
 pub struct RuntimeBackedWindowMainWindowReservation {
+    process_admission: crate::process_admission::ProcessAdmissionGate,
     flights: Arc<Mutex<AcquisitionFlights>>,
     window_id: WindowId,
 }
@@ -432,8 +436,9 @@ impl std::fmt::Debug for RuntimeBackedWindowMainWindowReservation {
 
 impl RuntimeBackedWindowProcessRegistry {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(process_admission: crate::process_admission::ProcessAdmissionGate) -> Self {
         Self {
+            process_admission,
             flights: Arc::new(Mutex::new(AcquisitionFlights::default())),
         }
     }
@@ -445,20 +450,26 @@ impl RuntimeBackedWindowProcessRegistry {
         RuntimeBackedWindowMainWindowReservation,
         RuntimeBackedWindowMainWindowReservationError,
     > {
-        {
-            let mut registry = self
-                .flights
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if registry.main_window_reservations.contains(&window_id) {
-                return Err(RuntimeBackedWindowMainWindowReservationError::DuplicateWindowIdentity);
-            }
-            if registry.main_window_reservations.len() >= MAX_RESTORABLE_WINDOWS {
-                return Err(RuntimeBackedWindowMainWindowReservationError::Capacity);
-            }
-            registry.main_window_reservations.insert(window_id);
-        }
+        self.process_admission
+            .admit(|| {
+                let mut registry = self
+                    .flights
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if registry.main_window_reservations.contains(&window_id) {
+                    return Err(
+                        RuntimeBackedWindowMainWindowReservationError::DuplicateWindowIdentity,
+                    );
+                }
+                if registry.main_window_reservations.len() >= MAX_RESTORABLE_WINDOWS {
+                    return Err(RuntimeBackedWindowMainWindowReservationError::Capacity);
+                }
+                registry.main_window_reservations.insert(window_id);
+                Ok(())
+            })
+            .map_err(RuntimeBackedWindowMainWindowReservationError::ProcessAdmission)??;
         Ok(RuntimeBackedWindowMainWindowReservation {
+            process_admission: self.process_admission.clone(),
             flights: Arc::clone(&self.flights),
             window_id,
         })
@@ -483,17 +494,20 @@ impl RuntimeBackedWindowMainWindowReservation {
 
 impl Drop for RuntimeBackedWindowMainWindowReservation {
     fn drop(&mut self) {
-        self.flights
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .main_window_reservations
-            .remove(&self.window_id);
+        self.process_admission.settle(|| {
+            self.flights
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .main_window_reservations
+                .remove(&self.window_id)
+        });
     }
 }
 
 impl RuntimeBackedWindowAcquisitionService {
     pub fn process_registry(&self) -> RuntimeBackedWindowProcessRegistry {
         RuntimeBackedWindowProcessRegistry {
+            process_admission: self.process_admission.clone(),
             flights: Arc::clone(&self.flights),
         }
     }
@@ -506,6 +520,7 @@ impl RuntimeBackedWindowAcquisitionService {
         syndic: SyndicStorage,
     ) -> Self {
         Self {
+            process_admission: process.process_admission.clone(),
             store,
             state,
             syndic,

@@ -2,6 +2,7 @@ use super::*;
 
 impl ProjectionConnectionService {
     pub fn new(
+        process: crate::process_admission::ProcessAdmissionGate,
         home: HomeStore,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
@@ -28,6 +29,7 @@ impl ProjectionConnectionService {
             .revision(&home)
             .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
         Self::construct(
+            process,
             home,
             storage,
             config,
@@ -39,6 +41,7 @@ impl ProjectionConnectionService {
     }
 
     fn construct(
+        process: crate::process_admission::ProcessAdmissionGate,
         home: Arc<HomeStore>,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
@@ -65,8 +68,11 @@ impl ProjectionConnectionService {
             home_generation,
             service_generation,
         );
-        let command_gate =
-            MasterCommandGate::new(service_generation, Some(failure_notification.clone()));
+        let command_gate = MasterCommandGate::new(
+            process,
+            service_generation,
+            Some(failure_notification.clone()),
+        );
         let command_authorizer = command_gate.authorizer();
         let connections = ProjectionServiceConnectionRegistry::new(service_generation);
         let scheduler_signal = AcceptedInputSchedulerSignal::new();

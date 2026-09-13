@@ -70,6 +70,7 @@ fn service() -> (
     let storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage.clone(),
         ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())
@@ -358,6 +359,7 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
     let reopened_storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         reopened_storage.clone(),
         ProjectionServiceConfig::try_new(128, 8, MinimumTurnCaptureReserve::try_new(1).unwrap())

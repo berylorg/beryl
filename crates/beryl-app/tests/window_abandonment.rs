@@ -92,7 +92,7 @@ impl Fixture {
         initialize_empty_session(&store, &state);
         let execution = ExecutionBinding::new(runtime_id, root_id, root_path);
         let store = Arc::new(store);
-        let process = RuntimeBackedWindowProcessRegistry::new();
+        let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
             Arc::clone(&store),

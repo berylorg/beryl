@@ -16,6 +16,7 @@ impl LiveCommandAuthorizer {
             .ok_or(LiveCommandAdmissionError::Unavailable)?;
         Ok(LiveCommandPermit {
             inner: Arc::clone(&self.inner),
+            execution: self.process.execution_permit(),
             failure_notification: self.failure_notification.clone(),
             service_generation: self.inner.service_generation,
             epoch: state.epoch,

@@ -222,6 +222,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
         assets: Arc::clone(&provider_assets),
     };
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
@@ -262,6 +263,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
         assets: Arc::new(Mutex::new(foreign_assets.clone())),
     };
     let foreign_service = ProjectionConnectionService::new(
+        Default::default(),
         foreign_home,
         foreign_storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())

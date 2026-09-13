@@ -6,7 +6,11 @@ use std::{
 use super::*;
 
 fn gate() -> MasterCommandGate {
-    MasterCommandGate::new(ProjectionServiceGeneration::allocate().unwrap(), None)
+    MasterCommandGate::new(
+        Default::default(),
+        ProjectionServiceGeneration::allocate().unwrap(),
+        None,
+    )
 }
 
 fn close_for_failure(gate: &MasterCommandGate) {
@@ -219,7 +223,11 @@ fn ordinary_shutdown_winner_rejects_a_late_typed_failed_signal() {
 
     let service_generation = ProjectionServiceGeneration::allocate().unwrap();
     let fixture = FailedNotificationFixture::new(service_generation);
-    let gate = MasterCommandGate::new(service_generation, Some(fixture.notification.clone()));
+    let gate = MasterCommandGate::new(
+        Default::default(),
+        service_generation,
+        Some(fixture.notification.clone()),
+    );
 
     assert_eq!(
         gate.close_for_shutdown(),
@@ -246,7 +254,11 @@ fn typed_failure_observed_first_makes_shutdown_join_the_failure_owner() {
 
     let service_generation = ProjectionServiceGeneration::allocate().unwrap();
     let fixture = FailedNotificationFixture::new(service_generation);
-    let gate = MasterCommandGate::new(service_generation, Some(fixture.notification.clone()));
+    let gate = MasterCommandGate::new(
+        Default::default(),
+        service_generation,
+        Some(fixture.notification.clone()),
+    );
     let stale_permit = gate.authorizer().authorize().unwrap();
 
     assert_eq!(
@@ -272,7 +284,11 @@ fn failure_observed_before_authority_commit_rejects_the_transition() {
 
     let service_generation = ProjectionServiceGeneration::allocate().unwrap();
     let fixture = FailedNotificationFixture::new(service_generation);
-    let gate = MasterCommandGate::new(service_generation, Some(fixture.notification.clone()));
+    let gate = MasterCommandGate::new(
+        Default::default(),
+        service_generation,
+        Some(fixture.notification.clone()),
+    );
     let permit = gate.authorizer().authorize().unwrap();
     let committed = AtomicBool::new(false);
 
@@ -296,7 +312,11 @@ fn authority_commit_observed_first_linearizes_before_failure_election() {
 
     let service_generation = ProjectionServiceGeneration::allocate().unwrap();
     let fixture = FailedNotificationFixture::new(service_generation);
-    let gate = MasterCommandGate::new(service_generation, Some(fixture.notification.clone()));
+    let gate = MasterCommandGate::new(
+        Default::default(),
+        service_generation,
+        Some(fixture.notification.clone()),
+    );
     let permit = gate.authorizer().authorize().unwrap();
     let (commit_entered, commit_entered_rx) = sync_channel(0);
     let (release_commit, release_commit_rx) = sync_channel(0);

@@ -25,6 +25,7 @@ fn owned_service(
     let state = BerylState::register(&mut home).unwrap();
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(

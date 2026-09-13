@@ -77,6 +77,7 @@ struct TerminalServiceSupervisor {
 impl TerminalServiceSupervisor {
     /// Mounts the initial healthy service and starts one capacity-one terminal-disposal worker.
     fn start(
+        process: crate::process_admission::ProcessAdmissionGate,
         home: HomeStore,
         config: ProjectionServiceConfig,
         mut provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
@@ -95,12 +96,13 @@ impl TerminalServiceSupervisor {
                 return Err(TerminalServiceStartError::SyndicStorage(error));
             }
         };
-        let service = match ProjectionConnectionService::new(home, storage, config, provider) {
-            Ok(service) => service,
-            Err(error) => {
-                return Err(TerminalServiceStartError::Service(error));
-            }
-        };
+        let service =
+            match ProjectionConnectionService::new(process, home, storage, config, provider) {
+                Ok(service) => service,
+                Err(error) => {
+                    return Err(TerminalServiceStartError::Service(error));
+                }
+            };
         let (signal, receiver) = mpsc::sync_channel(1);
         if service.attach_terminal_disposer(signal.clone()).is_err() {
             let _ = service.close();

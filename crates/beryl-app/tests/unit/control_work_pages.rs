@@ -35,6 +35,7 @@ fn service() -> (tempfile::TempDir, ProjectionConnectionService) {
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
     let service = ProjectionConnectionService::new(
+        Default::default(),
         home,
         storage,
         ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
