@@ -33,6 +33,8 @@ fn manual_compaction_admission_linearizes_with_fence_and_keeps_original_epoch() 
             .context_compaction_lifecycle_test_harness()
             .unwrap();
         let pause = harness.pause_compaction_custody(stage);
+        let ready = reserved
+            .then(|| harness.pause_compaction_custody(CompactionCustodyTestStage::AdmissionReady));
         thread::scope(|scope| {
             let worker = scope.spawn(|| {
                 fixture
@@ -42,6 +44,17 @@ fn manual_compaction_admission_linearizes_with_fence_and_keeps_original_epoch() 
             pause.wait_until_paused();
             let revision = fixture.home().home_revision().unwrap();
             let fence = fixture.process_admission.test_fence().unwrap();
+            let mut capture = reserved.then(|| {
+                beryl_app::cas_projection::test_faults::ShutdownExecutionCaptureProbe::new(
+                    &fixture.store,
+                    &fence,
+                )
+                .unwrap()
+            });
+            if let Some(capture) = capture.as_mut() {
+                capture.refresh(&fixture.store).unwrap();
+                assert_eq!(capture.counts(), (0, 0));
+            }
             if reserved {
                 assert_eq!(
                     fence.try_reopen(true),
@@ -51,6 +64,31 @@ fn manual_compaction_admission_linearizes_with_fence_and_keeps_original_epoch() 
                 fence.try_reopen(true).unwrap();
             }
             pause.release();
+            let captured_operation = ready.as_ref().map(|ready| {
+                ready.wait_until_paused();
+                let CompactionAdmissionRead::Existing(operation) = fixture
+                    .storage
+                    .compaction_admission_read(
+                        &fixture.home(),
+                        fixture.thread,
+                        scheduler_support::point_limit(),
+                    )
+                    .unwrap()
+                else {
+                    panic!("winning manual admission must publish its exact operation");
+                };
+                let capture = capture.as_mut().unwrap();
+                capture.refresh(&fixture.store).unwrap();
+                assert_eq!(capture.counts(), (0, 1));
+                assert_eq!(
+                    capture
+                        .compaction_settled(&fixture.store, operation.id())
+                        .unwrap(),
+                    Some(false)
+                );
+                ready.release();
+                operation.id()
+            });
             let result = worker.join().unwrap();
             if reserved {
                 assert_eq!(result.unwrap(), ContextCompactionOutcome::Failed);
@@ -71,6 +109,17 @@ fn manual_compaction_admission_linearizes_with_fence_and_keeps_original_epoch() 
             assert!(!harness.has_local_compaction(fixture.thread));
             assert!(!retirement.is_retired());
             assert!(fixture.home().pending_reconciliations().is_empty());
+            if let Some(operation) = captured_operation {
+                let capture = capture.as_mut().unwrap();
+                capture.refresh(&fixture.store).unwrap();
+                assert_eq!(capture.counts(), (0, 1));
+                assert_eq!(
+                    capture
+                        .compaction_settled(&fixture.store, operation)
+                        .unwrap(),
+                    Some(true)
+                );
+            }
             if !reopen_early {
                 fence.try_reopen(true).unwrap();
             }

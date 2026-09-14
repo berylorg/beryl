@@ -27,6 +27,62 @@ fn page(fixture: &LifecycleFixture) -> CompactionWorkPage {
 }
 
 #[test]
+fn shutdown_capture_retains_exact_compaction_receipt_after_successor_and_source_release() {
+    let fixture = LifecycleFixture::new(246, 181);
+    fixture.publish_success_prefix();
+    let pause = fixture.harness.pause_after_lifecycle_settlement().unwrap();
+    let (mut capture, fence) = thread::scope(|scope| {
+        let terminal = scope.spawn(|| fixture.publish_success_terminal());
+        pause.wait_until_settled();
+        assert_ne!(
+            fixture.committed_tail(),
+            Some(fixture.operation_id.provider_turn_id())
+        );
+        let fence = fixture.process_admission.test_fence().unwrap();
+        let mut capture =
+            beryl_app::cas_projection::test_faults::ShutdownExecutionCaptureProbe::new(
+                &fixture.service,
+                &fence,
+            )
+            .unwrap();
+        capture.refresh(&fixture.service).unwrap();
+        assert_eq!(capture.counts(), (0, 1));
+        assert_eq!(
+            capture
+                .compaction_settled(&fixture.service, fixture.operation_id)
+                .unwrap(),
+            Some(true)
+        );
+        pause.release();
+        terminal.join().unwrap();
+        (capture, fence)
+    });
+    let pending = fixture.committed_tail();
+    fixture.harness.release_compaction_driver();
+    assert!(page(&fixture).records().is_empty());
+    assert_eq!(fixture.harness.compaction_custody_in_use(), 0);
+    capture.refresh(&fixture.service).unwrap();
+    assert_eq!(capture.counts(), (0, 1));
+    assert_eq!(
+        capture
+            .compaction_settled(&fixture.service, fixture.operation_id)
+            .unwrap(),
+        Some(true)
+    );
+    assert_eq!(fixture.committed_tail(), pending);
+    let foreign = LifecycleFixture::new(247, 182);
+    assert!(
+        capture
+            .compaction_settled(&foreign.service, fixture.operation_id)
+            .is_err()
+    );
+    foreign.close();
+    drop(capture);
+    fence.try_reopen(true).unwrap();
+    fixture.close();
+}
+
+#[test]
 fn terminal_compaction_work_survives_local_removal_until_driver_disposal_without_waiter_custody() {
     let (fixture, sessions) = LifecycleFixture::with_process_sessions(245, 180);
     let attention = beryl_app::lifecycle_attention::ProcessLifecycleAttentionPool::new();

@@ -289,6 +289,16 @@ fn terminal_completion_successor_race(
         syndic_storage::FirstAcceptanceKind::Idle { .. }
     ));
     let fence = receive_fence.recv().unwrap();
+    let mut execution_capture =
+        beryl_app::cas_projection::test_faults::ShutdownExecutionCaptureProbe::new(
+            fixture.service(),
+            &fence,
+        )
+        .unwrap();
+    execution_capture.refresh(fixture.service()).unwrap();
+    assert_eq!(execution_capture.counts(), (1, 0));
+    let retained_completion = execution_capture.ordinary(thread_id(1), first).unwrap();
+    assert_eq!(retained_completion.lifecycle(), before_release);
     let pending = turn(&fixture, TurnLifecycle::Pending);
     assert_ne!(pending, first);
     let live = fixture.service().live_home_command().unwrap();
@@ -314,6 +324,12 @@ fn terminal_completion_successor_race(
     );
     barrier.release();
     wait_until(|| sessions.diagnostics().checked_out == 0);
+    execution_capture.refresh(fixture.service()).unwrap();
+    assert_eq!(execution_capture.counts(), (1, 0));
+    assert_eq!(
+        retained_completion.lifecycle(),
+        Some(TurnLifecycle::Complete)
+    );
     assert_eq!(turn(&fixture, TurnLifecycle::Pending), pending);
     assert!(!fixture.root(1).join("execution-started-1.json").exists());
     close(&mut fixture, &sessions);

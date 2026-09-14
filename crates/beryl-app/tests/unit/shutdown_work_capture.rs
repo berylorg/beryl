@@ -97,7 +97,46 @@ fn capture_pages_live_idle_threads_with_count_and_byte_bounds() {
         }
         assert_eq!(found, threads);
     }
+    let ordinary = fixture.acquired_projection_flight(fixture.thread);
+    let publisher = ordinary.bind_terminal_completion(fixture.turn).unwrap();
+    let fence = fixture.gate.fence().unwrap();
+    let revision = fixture
+        .service
+        .shutdown_work_revision(&fixture.sessions)
+        .unwrap();
+    let first = fixture
+        .service
+        .shutdown_work_page(
+            &fixture.sessions,
+            &revision,
+            None,
+            limits(),
+            &ProjectionCancellationToken::new(),
+        )
+        .unwrap();
+    assert!(first.next_cursor.is_some());
+    assert!(
+        first
+            .records
+            .iter()
+            .all(|row| row.thread_id != fixture.thread)
+    );
+    let mut execution_capture = fixture
+        .service
+        .begin_shutdown_execution_capture(&fence)
+        .unwrap();
+    execution_capture
+        .refresh(&fixture.service, &ProjectionCancellationToken::new())
+        .unwrap();
+    let captured: Vec<_> = execution_capture.ordinary().collect();
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].0, fixture.thread);
+    assert!(fixture.read(&fence).unwrap().is_none());
+    drop(publisher);
+    drop(ordinary);
     drop(flights);
+    drop(execution_capture);
+    fence.reopen_if(true).unwrap();
 }
 
 #[test]
@@ -281,7 +320,7 @@ fn terminal_slot_capture_retries_creation_and_release_without_retargeting_observ
     let coordinator =
         CasProjectionCoordinator::for_healthy_home(fixture.service.home.as_deref().unwrap())
             .unwrap();
-    let flight = coordinator.begin_projection(fixture.thread).unwrap();
+    let flight = fixture.acquired_projection_flight(fixture.thread);
     let revision = fixture
         .service
         .shutdown_work_revision(&fixture.sessions)
@@ -326,7 +365,7 @@ fn terminal_slot_capture_retries_creation_and_release_without_retargeting_observ
         },
     );
     assert!(matches!(result, Err(ProcessWorkError::StaleRevision)));
-    let replacement = coordinator.begin_projection(fixture.thread).unwrap();
+    let replacement = fixture.acquired_projection_flight(fixture.thread);
     let next = SyndicTurnId::from_bytes([199; 16]);
     let _publisher = replacement.bind_terminal_completion(next).unwrap();
     let revision = fixture
@@ -356,7 +395,7 @@ fn captured_completion_rejects_foreign_identity_service_generation_and_closed_se
     let coordinator =
         CasProjectionCoordinator::for_healthy_home(fixture.service.home.as_deref().unwrap())
             .unwrap();
-    let flight = coordinator.begin_projection(fixture.thread).unwrap();
+    let flight = fixture.acquired_projection_flight(fixture.thread);
     let publisher = flight.bind_terminal_completion(fixture.turn).unwrap();
     let revision = fixture
         .service

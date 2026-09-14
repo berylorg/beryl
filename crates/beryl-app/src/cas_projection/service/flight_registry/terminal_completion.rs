@@ -27,6 +27,7 @@ impl CasProjectionCoordinator {
 #[derive(Debug)]
 struct TerminalCompletionSlot {
     key: ProjectionFlightKey,
+    service_generation: crate::cas_projection::ProjectionServiceGeneration,
     turn_id: SyndicTurnId,
     completed: OnceLock<TerminalHistoryCompletion>,
 }
@@ -43,6 +44,14 @@ impl PartialEq for TerminalCompletionObserver {
 impl Eq for TerminalCompletionObserver {}
 
 impl TerminalCompletionObserver {
+    pub(crate) fn thread_id(&self) -> SyndicThreadId {
+        self.0.key.thread_id
+    }
+
+    pub(crate) fn service_generation(&self) -> crate::cas_projection::ProjectionServiceGeneration {
+        self.0.service_generation
+    }
+
     pub(crate) fn turn_id(&self) -> SyndicTurnId {
         self.0.turn_id
     }
@@ -95,6 +104,12 @@ impl ProjectionFlight {
         &self,
         turn_id: SyndicTurnId,
     ) -> Result<TerminalCompletionPublisher, OrdinaryTurnExecutionError> {
+        let service_generation = self
+            .acquisition()
+            .ok_or(OrdinaryTurnExecutionError::Invariant(
+                "ordinary execution flight has no admitted service",
+            ))?
+            .service_generation();
         let mut active = PROJECTION_FLIGHTS
             .get_or_init(|| Mutex::new(ProjectionFlightState::default()))
             .lock()
@@ -113,6 +128,7 @@ impl ProjectionFlight {
         }
         let slot = Arc::new(TerminalCompletionSlot {
             key: self.key,
+            service_generation,
             turn_id,
             completed: OnceLock::new(),
         });
@@ -122,6 +138,41 @@ impl ProjectionFlight {
 }
 
 impl FlightRegistry {
+    pub(in crate::cas_projection::service) fn terminal_completions(
+        home_id: BerylHomeId,
+        home_generation: HomeGeneration,
+        service_generation: crate::cas_projection::ProjectionServiceGeneration,
+        revision: u64,
+        limit: usize,
+    ) -> Result<Vec<TerminalCompletionObserver>, super::super::process_work::ProcessWorkError> {
+        let active = PROJECTION_FLIGHTS
+            .get_or_init(|| Mutex::new(ProjectionFlightState::default()))
+            .lock()
+            .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
+                registry: ProjectionRegistryKind::ProjectionFlights,
+            })?;
+        if active.revision != Some(revision) {
+            return Err(super::super::process_work::ProcessWorkError::StaleRevision);
+        }
+        let mut observers = Vec::new();
+        for (key, entry) in active.iter() {
+            if key.home_id != home_id || key.home_generation != home_generation {
+                continue;
+            }
+            let Some(observer) = &entry.terminal_completion else {
+                continue;
+            };
+            if observer.service_generation() != service_generation {
+                continue;
+            }
+            if observers.len() == limit {
+                return Err(super::super::process_work::ProcessWorkError::SourceBoundExceeded);
+            }
+            observers.push(observer.clone());
+        }
+        Ok(observers)
+    }
+
     pub(in crate::cas_projection::service) fn terminal_completion(
         home_id: BerylHomeId,
         home_generation: HomeGeneration,

@@ -37,6 +37,19 @@ impl ProcessWorkRead {
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LiveMap, ProcessWorkError> {
         let mut facts = LiveMap::new();
+        self.visit_live_facts(sessions, revision, cancellation, |thread, work| {
+            add(&mut facts, thread, work);
+        })?;
+        Ok(facts)
+    }
+
+    pub(super) fn visit_live_facts(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        revision: &RequiredWorkRevision,
+        cancellation: &ProjectionCancellationToken,
+        mut visit: impl FnMut(SyndicThreadId, ProcessWorkFacts),
+    ) -> Result<(), ProcessWorkError> {
         let mut cursor = None;
         loop {
             check_cancelled(cancellation)?;
@@ -57,7 +70,7 @@ impl ProcessWorkRead {
                 work.preparing = row
                     .preparation()
                     .is_some_and(|preparing| !preparing.is_complete());
-                add(&mut facts, row.thread_id(), work);
+                visit(row.thread_id(), work);
             }
             cursor = page.next_cursor().cloned();
             if cursor.is_none() {
@@ -93,7 +106,7 @@ impl ProcessWorkRead {
                             && request.response().retained_capabilities() != 0;
                     }
                 }
-                add(&mut facts, row.identity().thread_id(), work);
+                visit(row.identity().thread_id(), work);
             }
             cursor = page.next_cursor().cloned();
             if cursor.is_none() {
@@ -119,8 +132,7 @@ impl ProcessWorkRead {
                             })
                     }
                 };
-                add(
-                    &mut facts,
+                visit(
                     row.thread_id(),
                     ProcessWorkFacts {
                         stopping,
@@ -138,7 +150,7 @@ impl ProcessWorkRead {
                         || (compaction.local_registered && compaction.result.is_none());
                     work.cleanup = compaction.command == Some(CompactionCommandWorkStage::Cleanup);
                 }
-                add(&mut facts, row.thread_id(), work);
+                visit(row.thread_id(), work);
             }
             cursor = page.next_cursor().cloned();
             if cursor.is_none() {
@@ -146,7 +158,7 @@ impl ProcessWorkRead {
             }
         }
         check_cancelled(cancellation)?;
-        Ok(facts)
+        Ok(())
     }
 }
 

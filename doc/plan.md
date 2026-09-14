@@ -44,24 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 403: Bound Direct Ordinary Execution Custody (finished)
+# Phase 404: Retain Bounded Shutdown Execution Obligations (finished)
 
-Direct ordinary execution now retains the existing service ordinary worker role before process
-admission and flight creation through execution return. Scheduled execution reuses its custody;
-returned idle projection cleanup remains separate. Independent semantic review, normal and
-test-faults production library checks, and 124 targeted regressions passed cumulatively, including
-minimum-capacity scheduling and refusal, fence, completion and unwind custody cases. The
+Accepted bounded attempt-local capture of exact ordinary observers and authenticated compaction
+identities across stale refreshes, late admission and successor advancement. Generic cleanup now
+folds bounded source pages into the shutdown prefix. The bound derives from existing ownership;
+no new execution quota or completed-history registry is introduced. Independent semantic review,
+normal and test-faults library checks, and 130 targeted regressions passed cumulatively. The
 [acceptance record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-preserves the ownership distinction. Bounded shutdown capture remains the next boundary.
-
-# Phase 404: Retain Bounded Shutdown Execution Obligations (pending)
-
-Establish bounded exact execution-obligation capture across progress passes using admitted ordinary
-ownership and existing provider-operation ownership. Keep arbitrary durable backlog, preparation
-without execution authority, and generic completed-operation/projection cleanup paged. Retain
-accepted exact identities across inventory retries without waiting for global settlement before
-visiting later stoppable work. Resolve the complete capture and cleanup distinction in owning
-authority before activation; verify later-page progress and the accepted predecessor handoff.
+preserves the proof and cleanup distinction. Coordinator composition is the next boundary.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

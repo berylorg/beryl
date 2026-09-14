@@ -44,8 +44,10 @@ impl Custody {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ShutdownTerminalCompletion {
-    pub(super) service_generation: ProjectionServiceGeneration,
-    pub(super) observer: super::super::super::flight_registry::TerminalCompletionObserver,
+    pub(in crate::cas_projection::service::process_work) service_generation:
+        ProjectionServiceGeneration,
+    pub(in crate::cas_projection::service::process_work) observer:
+        super::super::super::flight_registry::TerminalCompletionObserver,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

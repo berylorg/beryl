@@ -277,7 +277,8 @@ ownership across progress passes using existing execution ownership, while durab
 paged. An alternative per-target settlement boundary would need exact admission closure against
 late winning acquisition; deleting the global-count check is insufficient. Resolve this choice
 in owning authority before implementation. No new quota, completed-history registry, or silent
-weakening of pending preservation is authorized by this record. The root plan remains paused.
+weakening of pending preservation is authorized by this record. These prerequisites precede
+coordinator composition.
 
 The Operator authorized the bounded ownership prerequisites. Direct ordinary execution custody
 was accepted on 2026-09-14: its exact connection supplies one existing service ordinary worker
@@ -292,4 +293,21 @@ pre-flight fencing, terminal handoff, permit reuse and unwind. Two continuation 
 expected connection invalidation to release every worker while the direct handler was still
 paused. They now require the remaining ordinary permit, count the replacement connection
 separately, and verify zero workers after handler return; continuation and attention guarantees
-are unchanged. Bounded exact shutdown capture and coordinator composition remain unaccepted.
+are unchanged.
+
+Bounded exact execution capture was accepted on 2026-09-14. Each fenced attempt retains the
+original service-bound ordinary observers and authenticated admitted compaction identities across
+stale or failed refreshes. Distinct pre-fence attempts of the same pending turn retain distinct
+observers; exact turn completion can authenticate their common durable outcome. Compaction uses
+its existing exact settlement receipt after successor advancement and source release. Its retained
+bound includes both 80 initial observation rows and 72 custody-owning admission winners that may
+publish later, in addition to the service ordinary worker bound. An observed operation id without
+durable admission remains preparation. Generic source pages stream into a bounded prefix.
+
+Independent semantic review, normal and test-faults library checks and 130 targeted regressions
+passed cumulatively. Evidence includes capture beyond 270 earlier generic preparation records,
+retention after stale refresh and flight release, late ordinary slots, sequential attempts of one
+pending turn, real managed predecessor/successor races, and compaction capture before and after
+durable admission behind the same fence through authenticated settlement and cleanup. Pending,
+continuation, permission, compaction and managed-session guards remain intact. Coordinator
+composition and final-window integration remain unaccepted.

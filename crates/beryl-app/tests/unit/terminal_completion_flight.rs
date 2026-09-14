@@ -10,7 +10,7 @@ fn observers_preserve_exact_identity_without_retaining_flight_exclusivity_or_his
     let coordinator =
         CasProjectionCoordinator::for_healthy_home(fixture.service.home.as_deref().unwrap())
             .unwrap();
-    let flight = coordinator.begin_projection(fixture.thread).unwrap();
+    let flight = fixture.acquired_projection_flight(fixture.thread);
     let old_revision = FlightRegistry::work_revision().unwrap();
     let publisher = flight.bind_terminal_completion(fixture.turn).unwrap();
     assert!(
@@ -58,7 +58,7 @@ fn observers_preserve_exact_identity_without_retaining_flight_exclusivity_or_his
     let weak = Arc::downgrade(&observer.0);
     drop(publisher);
     drop(flight);
-    let replacement = coordinator.begin_projection(fixture.thread).unwrap();
+    let replacement = fixture.acquired_projection_flight(fixture.thread);
     let successor = SyndicTurnId::from_bytes([123; 16]);
     let replacement_publisher = replacement.bind_terminal_completion(successor).unwrap();
     let replacement_observer = FlightRegistry::terminal_completion(
@@ -105,7 +105,18 @@ fn old_flight_observer_rejects_recovered_generation_of_the_same_home() {
     let coordinator = CasProjectionCoordinator::for_healthy_home(&home).unwrap();
     let thread = SyndicThreadId::from_bytes([193; 16]);
     let turn = SyndicTurnId::from_bytes([194; 16]);
-    let flight = coordinator.begin_projection(thread).unwrap();
+    let gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+        ProcessAdmissionGate::new(),
+        crate::cas_projection::ProjectionServiceGeneration::allocate().unwrap(),
+        None,
+    );
+    let acquisition =
+        crate::cas_projection::acquisition::ProjectionAcquisition::admit(&gate.authorizer())
+            .unwrap();
+    let flight = coordinator
+        .begin_projection(thread)
+        .unwrap()
+        .with_acquisition(acquisition);
     let publisher = flight.bind_terminal_completion(turn).unwrap();
     let observer = FlightRegistry::terminal_completion(
         coordinator.home_id(),

@@ -208,15 +208,23 @@ impl ProcessWorkRead {
         cancellation: &ProjectionCancellationToken,
     ) -> Result<ShutdownWorkPage, ProcessWorkError> {
         let mut selected = prefix::Prefix::new(after, count + 1);
-        for (thread, facts) in self.live_facts(sessions, &revision.required, cancellation)? {
-            selected.insert(
-                thread,
-                Custody {
-                    work: facts.work,
-                    ..Default::default()
-                },
-            );
-        }
+        self.visit_live_facts(
+            sessions,
+            &revision.required,
+            cancellation,
+            |thread, work| {
+                if work == ProcessWorkFacts::default() {
+                    return;
+                }
+                selected.insert(
+                    thread,
+                    Custody {
+                        work,
+                        ..Default::default()
+                    },
+                );
+            },
+        )?;
         let mut cursor = None;
         loop {
             check_cancelled(cancellation)?;

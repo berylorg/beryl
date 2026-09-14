@@ -54,6 +54,21 @@ fn execute(home: &HomeStore, contribution: beryl_home_store::MutationContributio
 }
 
 impl Fixture {
+    fn acquired_projection_flight(
+        &self,
+        thread: SyndicThreadId,
+    ) -> crate::cas_projection::service::ProjectionFlight {
+        let acquisition = crate::cas_projection::acquisition::ProjectionAcquisition::admit(
+            &self.service.live_command_authorizer(),
+        )
+        .unwrap();
+        CasProjectionCoordinator::for_healthy_home(self.service.live_home_command().unwrap().home())
+            .unwrap()
+            .begin_projection(thread)
+            .unwrap()
+            .with_acquisition(acquisition)
+    }
+
     fn new() -> Self {
         Self::with_pending(true)
     }

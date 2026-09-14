@@ -174,6 +174,13 @@ topology and typed execution surfaces.
   original turn even when a successor has replaced the selected tail. They retain compact facts
   only and grant no projection, session, dispatch or cleanup authority. The service validates its
   home and service generations before accepting a captured observer for shutdown.
+- The service provides an attempt-local execution capture bound derived from its ordinary worker
+  capacity plus the existing compaction observation and custody bounds. It retains exact ordinary
+  observers and authenticated admitted compaction identities across revision retries, scoped to
+  the same fence and service. Generic shutdown pages fold their source pages into a bounded prefix
+  without first accumulating every live thread. Capture exposes late admission winners separately
+  from generic preparation and cleanup, permitting later active work to progress before global
+  settlement. Provider receipt reads preserve their operation identity through successor admission.
 - Promotion uses one exact service lease and one atomic typed home command for Syndic promotion and
   Asset-owner transition. `Prior`, `Exact`, collision, and unresolved outcomes settle before any
   provider work; only exact promotion proceeds.

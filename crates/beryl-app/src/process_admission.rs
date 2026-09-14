@@ -232,6 +232,10 @@ impl ProcessAdmissionGate {
 
 #[cfg(any(test, feature = "test-faults"))]
 impl ProcessAdmissionFenceTestProbe {
+    pub(crate) fn fence(&self) -> &ProcessAdmissionFence {
+        &self.0
+    }
+
     pub fn try_reopen(&self, coherent: bool) -> Result<(), ProcessAdmissionError> {
         self.0.reopen_if(coherent)
     }

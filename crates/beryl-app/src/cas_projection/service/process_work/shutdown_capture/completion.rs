@@ -14,6 +14,7 @@ impl ShutdownTerminalCompletion {
         turn_id: SyndicTurnId,
     ) -> Result<Option<TerminalHistoryCompletion>, ProcessWorkError> {
         if self.service_generation != service.service_generation
+            || self.observer.service_generation() != service.service_generation
             || !self
                 .observer
                 .matches(service.home_id, service.home_generation, thread_id, turn_id)

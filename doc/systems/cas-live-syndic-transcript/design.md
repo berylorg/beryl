@@ -228,6 +228,27 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   service generation. Sequential startup recovery finishes before service publication and consumes
   terminal convergence directly, without constructing runtime observers. Provider-operation and
   pending-preservation evidence retain their distinct contracts.
+- An admitted shutdown attempt retains a bounded set of exact execution obligations separately
+  from paged generic custody. Ordinary obligations come from service-bound terminal slots;
+  compaction obligations come from durably admitted exact operation identities observed through
+  the existing bounded compaction work source. An operation id published during preparation is
+  not by itself durable admission. Captured compaction proof uses the named operation's existing
+  authenticated settlement receipt, which remains valid after successor advancement.
+- The retained bound derives from the service ordinary worker capacity, the compaction source's
+  current observation capacity, and its existing pre-fence custody capacity. The latter two add:
+  old observed operations and admission winners that publish later can be distinct. This is an
+  attempt-local memory bound, not a new execution or durable-work quota. Capture validates the
+  exact admitted fence, service generation and source revisions before accepting a batch; failure
+  or revision drift leaves previously accepted obligations intact. Captured facts grant no new
+  dispatch or cleanup capability and are released with the attempt.
+- A progress pass visits all bounded execution obligations without waiting for global admission
+  settlement on an earlier page. Winning admissions may expose an ordinary slot or durable
+  compaction operation after the fence, so capture repeats until admission closure and a validated
+  final inventory exclude later publication. Raw projection preparation, returned idle projections,
+  old stop/permission custody and completed-operation cleanup remain paged generic obligations;
+  their presence does not manufacture another terminal target. Durable pending backlog remains
+  paged and uses exact pending-preservation settlement only after admission closure. A successor's
+  pending obligation never substitutes for a captured predecessor's completion.
 - Any failed or unproven obligation retains coherent windows, claims, resident editors, and exact
   operation/reconciliation custody. Failed shutdown does not undo a stop already sent, resurrect a
   cancelled continuation, repeat uncertain dispatch, or fabricate rollback. The interaction and

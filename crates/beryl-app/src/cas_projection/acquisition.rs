@@ -33,6 +33,10 @@ impl OrdinaryExecutionCustody {
 }
 
 impl ProjectionAcquisition {
+    pub(super) fn service_generation(&self) -> ProjectionServiceGeneration {
+        self.service_generation
+    }
+
     #[cfg(feature = "test-faults")]
     pub(super) fn pause_for_test(&self, stage: super::test_faults::AcquisitionBarrierStage) {
         super::test_faults::pause_acquisition(self.service_generation, stage);

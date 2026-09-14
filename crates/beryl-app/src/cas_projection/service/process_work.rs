@@ -15,9 +15,15 @@ pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
 mod shutdown;
 mod shutdown_capture;
+mod shutdown_execution;
 pub(crate) use shutdown_capture::{
     ShutdownTerminalCompletion, ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord,
     ShutdownWorkRevision,
+};
+#[cfg(feature = "test-faults")]
+pub use shutdown_execution::ShutdownExecutionCaptureProbe;
+pub(crate) use shutdown_execution::{
+    ShutdownCompactionObligation, ShutdownExecutionCapture, ShutdownExecutionCaptureError,
 };
 mod types;
 pub use types::*;
