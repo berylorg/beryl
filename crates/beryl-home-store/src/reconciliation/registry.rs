@@ -70,6 +70,24 @@ pub(crate) struct ReconciliationRegistry {
 }
 
 impl ReconciliationRegistry {
+    pub(crate) fn try_elect_vacant<T>(
+        &self,
+        elect: impl FnOnce() -> Result<T, crate::HomeCoherenceError>,
+    ) -> Result<T, crate::HomeCoherenceError> {
+        let state = self.inner.state.try_lock()?;
+        if !state.accepting_reservations {
+            return Err(crate::HomeCoherenceError::Closed);
+        }
+        if state
+            .scopes
+            .iter()
+            .any(|scope| !matches!(scope, ScopeState::Vacant))
+        {
+            return Err(crate::HomeCoherenceError::ReconciliationPending);
+        }
+        elect()
+    }
+
     pub(crate) fn new(
         descriptor_byte_limit: usize,
         reserved_byte_limit: usize,

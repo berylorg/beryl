@@ -130,6 +130,16 @@ topology and typed execution surfaces.
   by resume or reinjection.
 - Caller usability begins only after exact durable binding publication.
 
+## Failed Shutdown Admission Reopening
+
+- The service reopens only its own current fenced process admission after all counted reservations
+  return. It owns the master and process admission locks before calling the exact owned home store's
+  `try_elect_coherent` with its expected home generation, following the
+  [shutdown coordination boundary](../../../doc/systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination).
+- The callback changes only the already-owned process fence. Refusal preserves the fence and
+  shutdown custody for later polling. Success keeps old execution permits stale and grants no
+  dispatch, rollback or reconciliation authority by itself.
+
 ## Outbound Preparation
 
 - Pending-turn and accepted-input execution share one bounded range-backed engine retaining compact

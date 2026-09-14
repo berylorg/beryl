@@ -188,6 +188,23 @@ impl MutationState {
 }
 
 impl MutationBoundary {
+    pub(crate) fn try_elect_quiescent<T>(
+        &self,
+        elect: impl FnOnce() -> Result<T, crate::HomeCoherenceError>,
+    ) -> Result<T, crate::HomeCoherenceError> {
+        let state = self.state.try_lock()?;
+        if state.closed {
+            return Err(crate::HomeCoherenceError::Closed);
+        }
+        if state.revision.is_none() {
+            return Err(crate::HomeCoherenceError::Unavailable);
+        }
+        if state.active {
+            return Err(crate::HomeCoherenceError::Busy);
+        }
+        elect()
+    }
+
     pub(crate) fn begin(&self) -> MutationActivity<'_> {
         let mut state = self
             .state

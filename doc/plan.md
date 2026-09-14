@@ -44,14 +44,23 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 405: Bound Shutdown Connection Traversal (finished)
+# Phase 407: Elect Coherent Home State (finished)
 
-Accepted bounded connection reads, cleanup polling and consuming disposal throughout shutdown.
-Invalid ownership and failed joins remain failures while cleanup continues; implicit shutdown
-preserves registry custody. Independent semantic review, normal and test-faults library checks,
-and 96 targeted regressions passed with coordinator composition excluded. The
-[acceptance record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-preserves the full-path proof and accepted persistent-failure capture prerequisite.
+Accepted the bounded home-store election over mutation, all reconciliation scopes and current
+healthy generation. Refusal invokes no callback and preserves custody; no guard escapes. Normal
+and test-faults library checks, independent semantic review, and 48 focused and affected regressions
+passed. The [acceptance record](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
+preserves the pre-installation custody and concurrent health-transition evidence.
+
+# Phase 408: Reopen Process Admission Through Home Coherence (pending)
+
+Compose the accepted home election with the exact live-service master gate and process admission
+ownership according to the [shutdown boundary](systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination).
+Validate the current fence and zero counted reservations before the home call; open the process gate
+only inside its callback with no additional lock acquisition. Refusal preserves the fence, custody
+and old permit invalidity. Verify stale/foreign fence and service identity, retained reservations,
+returned indeterminate custody before installation, concurrent mutation and later exact recovery.
+Accept focused app checks, race tests and independent semantic review before coordinator composition.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -107,10 +116,24 @@ Resumable milestone: the partial coordinator is uncommitted and unaccepted. Eigh
 passed cumulatively, including 271 durable pending rows, 270 generic records with late slot capture,
 exact guard revision accounting, real managed soft stop, failed detached joins and reconciliation.
 
-Resume after the separately accepted connection traversal prerequisite. The
+The connection traversal prerequisite is accepted as `4b3c463e`, following bounded persistent-failure
+capture in `19c9338e`. Readiness covers the complete cleanup path and bounded exact execution
+capture. The
 [failure record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-preserves the invalidated capacity assumption. Do not accept the partial coordinator or infer a
-registry bound from ordinary execution capacity.
+preserves the invalidated capacity assumption; never infer a registry bound from worker capacity.
+
+Independent composition review found that failure reopening uses a healthy-home and empty
+reconciliation snapshot that is not atomic with reopening. Pending handles omit reserved custody,
+including an indeterminate result awaiting synchronous installation. The existing mutation election
+neither covers that custody transfer nor permits acquiring the gate locks inside its callback.
+The [coherence blocker](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
+records source evidence. The Operator authorized the home coherence and admission composition
+prerequisites above; do not substitute another snapshot.
+
+The latest normal library check and all 14 focused coordinator tests passed, including real managed
+soft-stop convergence, but do not cover this race. The partial coordinator remains uncommitted and
+unaccepted. After the coherence prerequisites are accepted, resume full verification and
+independent review, including late admission, predecessor/successor completion and noninterruptible work.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

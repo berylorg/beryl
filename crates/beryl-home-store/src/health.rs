@@ -237,6 +237,21 @@ pub(crate) struct HealthGate {
 }
 
 impl HealthGate {
+    pub(crate) fn try_elect_healthy<T>(
+        &self,
+        expected_generation: HomeGeneration,
+        elect: impl FnOnce() -> T,
+    ) -> Result<T, crate::HomeCoherenceError> {
+        let inner = self.inner.try_lock()?;
+        if inner.generation != expected_generation {
+            return Err(crate::HomeCoherenceError::StaleGeneration);
+        }
+        if inner.state != HomeHealthState::Healthy {
+            return Err(crate::HomeCoherenceError::Unhealthy(inner.state));
+        }
+        Ok(elect())
+    }
+
     pub(crate) fn healthy() -> Self {
         Self {
             inner: Mutex::new(HealthInner {

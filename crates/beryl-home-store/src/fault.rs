@@ -101,7 +101,7 @@ enum FaultAction {
 #[cfg(feature = "test-faults")]
 #[derive(Debug, Default)]
 struct BlockState {
-    state: Mutex<(bool, bool)>,
+    state: Mutex<(bool, bool, Option<io::ErrorKind>)>,
     changed: Condvar,
 }
 
@@ -148,6 +148,17 @@ impl FaultBlock {
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.1 = true;
+        self.state.changed.notify_all();
+    }
+
+    pub fn release_with_error(&self, kind: io::ErrorKind) {
+        let mut state = self
+            .state
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.2 = Some(kind);
         state.1 = true;
         self.state.changed.notify_all();
     }
@@ -356,7 +367,13 @@ impl FaultController {
                         .wait(status)
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                 }
-                Ok(())
+                match status.2 {
+                    Some(kind) => Err(io::Error::new(
+                        kind,
+                        format!("synthetic Beryl-home fault at {location}"),
+                    )),
+                    None => Ok(()),
+                }
             }
         }
     }

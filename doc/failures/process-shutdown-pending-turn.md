@@ -364,3 +364,39 @@ removal and ABA, exact own-removal accounting, later cleanup after failed joins,
 ownership, implicit signaling, actual runtime disposal and isolation, preparation, successor handoff,
 terminal capture, stop retention and reconciliation. Coordinator composition and final-window
 integration remain separate and unaccepted.
+
+## Failure Reopening Coherence
+
+Independent coordinator review on 2026-09-14 invalidated composition of a healthy-home snapshot,
+an empty `pending_reconciliations()` list and `reopen_process_admission(fence, true)` as a coherent
+failure-reopening proof. The service's live command permit is nonexclusive. A concurrent already
+authorized command can create reconciliation after inspection but before reopening, even with no
+counted process execution admission. The current coordinator's tests pass only separated inspection
+and recovery cases; 14 focused tests passing does not establish this atomic boundary.
+
+The gap also exists before installation: [pending handles](../../crates/beryl-home-store/src/reconciliation/registry.rs)
+omit `Reserved` scopes, while [indeterminate custody](../../crates/beryl-home-store/src/command/result.rs)
+can still own its reserved slot after the writer's mutation interval ends. Installation transfers
+that slot under the reconciliation registry lock independently of mutation observation. A fresh
+mutation token and empty handle list therefore cannot prove absence of unresolved custody.
+
+The [existing mutation election contract](../../crates/beryl-home-store/doc/design-atomic-commands.md#mutation-observation-and-in-memory-election)
+also forbids acquiring ownership locks inside its callback; the current reopening path acquires
+the master and process admission locks. Wrapping that call in `try_elect` is not an authorized fix.
+
+The Operator authorized bounded coherent election and atomic app admission composition. The
+home-store boundary was accepted on 2026-09-14: one direct in-memory election holds mutation,
+reconciliation and health synchronization through the caller transition, refuses every nonvacant
+scope and stale or unhealthy generation, and retains no inventory. Caller ownership precedes this
+election; its callback cannot acquire ownership, perform storage work or resolve custody.
+
+Normal and test-faults library checks, independent semantic review and 48 focused and affected
+regressions passed. Evidence includes indeterminate custody before installation, drop installation,
+collision retention, exact-new recovery, stale generation, poison, active mutation and competing
+election. An already-admitted read pauses before confirmation, then attempts structural failure
+while election holds health ownership; publication waits until the callback returns. Existing
+mutation, reconciliation, recovery and maintenance health behavior remains intact.
+
+App admission composition and the coordinator remain separate and unaccepted. Complete the
+master-to-process-to-home lock composition and its exact fence, custody and race tests before
+resuming coordinator acceptance. Do not clear custody, weaken coherence or add an inventory quota.

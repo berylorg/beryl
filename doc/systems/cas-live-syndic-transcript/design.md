@@ -253,6 +253,14 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   operation/reconciliation custody. Failed shutdown does not undo a stop already sent, resurrect a
   cancelled continuation, repeat uncertain dispatch, or fabricate rollback. The interaction and
   dispatch gates reopen only after a coherent failure outcome; a retry is a new explicit attempt.
+- Failure reopening acquires the exact live-service master admission ownership, then the process
+  admission ownership, and validates the current fenced epoch and zero counted admissions before
+  entering the owned home store's coherent in-memory election. The store jointly excludes mutation
+  entry, reconciliation custody changes and health transitions. Only its successful callback opens
+  the already-owned process gate. No home or admission lock is acquired inside that callback.
+  Store refusal or stale service, home or fence authority leaves the attempt fenced for a later
+  explicit poll; no healthy snapshot, empty pending-handle list or mutation token alone authorizes
+  reopening. Returned indeterminate custody is included before registry installation.
 
 ## Pinned CAS Contract
 

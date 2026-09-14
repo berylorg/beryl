@@ -59,6 +59,30 @@ is governed by [the package design](design.md), including that design's engineer
   disposing the physical generation. Tokens cannot keep a dropped observer or store usable, and a
   new store or observer cannot adopt an old token even when durable home identifiers match.
 
+## Coherent In-Memory Election
+
+- `HomeStore::try_elect_coherent` accepts the expected generation of that exact owned store and
+  one bounded in-memory callback. It invokes the callback only while structural health is healthy,
+  that generation is current, no mutation is active, and every reconciliation scope is vacant.
+  Reserved command scopes, returned indeterminate custody awaiting installation, verifying scopes,
+  and collision-closed scopes all prevent election. This is not a durable-record or completion proof.
+- Mutation entry, reconciliation reservation and custody transitions, structural health changes,
+  and generation retirement are excluded until the callback returns. The package acquires its
+  mutation, reconciliation and health synchronization in that order with nonblocking attempts;
+  contention, poison, closed or exhausted mutation authority, unavailable reconciliation ownership,
+  nonhealthy state and generation mismatch refuse election without invoking the callback.
+- The caller obtains all of its own ownership locks before entering this API. The callback may
+  change only already-owned in-memory state; it performs no I/O, storage operation, wait, join,
+  ownership acquisition or reentry. The API returns only the callback result, exposes no lock or
+  storage guard, retains no proof after return, and starts no worker or retry. A later mutation
+  remains ordinary newly admitted work and does not retroactively invalidate the transition.
+- Election inspects the existing fixed reconciliation scope array without collecting handles or
+  descriptors, adds no quota or retained inventory, and never resolves, installs, drops or clears
+  reconciliation custody. A failed attempt leaves health, custody and caller state unchanged.
+- Verification covers reserved custody before installation, verifying and collision-closed scopes,
+  exact recovery to vacant scopes, active mutation, concurrent mutation/reservation and health
+  transition, stale generation, contention, poisoned authority and callback noninvocation on refusal.
+
 ## Writer, Cancellation, And Durability
 
 - Exactly one command holds the writer-admission permit. The package owns no writer wait queue;
