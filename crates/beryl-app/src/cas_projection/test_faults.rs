@@ -12,8 +12,8 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
-pub use super::service::ShutdownExecutionCaptureProbe;
 pub use super::service::GracefulShutdownProbe;
+pub use super::service::ShutdownExecutionCaptureProbe;
 
 pub(crate) use response::pause_response_write;
 pub use response::{ResponseWriteBarrierController, install_response_write_barrier};
