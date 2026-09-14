@@ -125,7 +125,7 @@ fn run_paused_acceptance(cancelled: bool) {
             );
         }
         session.invalidate_connection();
-        assert_eq!(fixture.store.worker_pool_diagnostics().active(), 0);
+        assert_eq!(fixture.store.worker_pool_diagnostics().active(), 1);
         assert_eq!(pressure.in_use(), 72);
         assert_eq!(work_facts::page(&fixture).records().len(), 1);
         let replacement_server = NormalTerminalServer::spawn_admission_only();
@@ -144,13 +144,14 @@ fn run_paused_acceptance(cancelled: bool) {
             )
             .unwrap();
         replacement_server.wait_for_admission();
-        assert_eq!(fixture.store.worker_pool_diagnostics().active(), 2);
+        assert_eq!(fixture.store.worker_pool_diagnostics().active(), 3);
         assert_eq!(pressure.in_use(), 72);
         replacement.invalidate_connection();
         drop(replacement);
         replacement_server.join();
         drop(release);
         let _result = worker.join().unwrap();
+        assert_eq!(fixture.store.worker_pool_diagnostics().active(), 0);
         assert_eq!(pressure.in_use(), 71);
         assert!(work_facts::page(&fixture).records().is_empty());
         assert_eq!(accepted_page.records().len(), 1);

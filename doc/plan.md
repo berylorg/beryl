@@ -44,17 +44,24 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 402: Retain Exact Terminal Completion Through Execution Cleanup (finished)
+# Phase 403: Bound Direct Ordinary Execution Custody (finished)
 
-Accepted the [terminal completion handoff](systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination)
-and its [app flight boundary](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#scheduling-and-steering).
-Each ordinary flight publishes only committed final-command evidence into its exact bounded slot.
-Shutdown capture retains a service-bound observer across flight release and successor admission;
-completion grants no cleanup authority. Startup recovery remains sequential before publication.
-Independent semantic review, the production library check, and 106 targeted regressions passed,
-including real managed cleanup/successor races, authority loss, commit failures, capture races,
-and home/service identity isolation. The [acceptance record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
-preserves evidence and test corrections. Coordinator integration remains the next boundary.
+Direct ordinary execution now retains the existing service ordinary worker role before process
+admission and flight creation through execution return. Scheduled execution reuses its custody;
+returned idle projection cleanup remains separate. Independent semantic review, normal and
+test-faults production library checks, and 124 targeted regressions passed cumulatively, including
+minimum-capacity scheduling and refusal, fence, completion and unwind custody cases. The
+[acceptance record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
+preserves the ownership distinction. Bounded shutdown capture remains the next boundary.
+
+# Phase 404: Retain Bounded Shutdown Execution Obligations (pending)
+
+Establish bounded exact execution-obligation capture across progress passes using admitted ordinary
+ownership and existing provider-operation ownership. Keep arbitrary durable backlog, preparation
+without execution authority, and generic completed-operation/projection cleanup paged. Retain
+accepted exact identities across inventory retries without waiting for global settlement before
+visiting later stoppable work. Resolve the complete capture and cleanup distinction in owning
+authority before activation; verify later-page progress and the accepted predecessor handoff.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -77,15 +84,10 @@ provenance for another turn, or a stop response. The initial unaccepted coordina
 its [review record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
 remains evidence for the required proof and cleanup distinction.
 
-Readiness is blocked by the [bounded obligation ownership gap](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership).
-The existing per-thread settlement API requires all process admissions to settle. Waiting for an
-earlier pending/preparation page can therefore prevent a later active page from receiving the stop
-needed to release its admission. Retaining every unresolved capture instead has no established
-bound for direct ordinary flights. Root inspection and independent review found no accepted API
-that closes both requirements. Establish bounded exact obligation ownership across progress passes
-before resuming composition; do not forget accepted identities, remove admission validation, or
-invent a quota. No coordinator source was added during this readiness review. Implementation is
-paused under the Operator's stop-on-technically-invalid-plan instruction.
+The Operator authorized prerequisites for the [bounded obligation ownership gap](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership).
+Complete direct ordinary custody and bounded execution-obligation capture before resuming
+composition. Preserve exact admission validation and generic cleanup joins while allowing progress
+over later work; no coordinator source from the blocked readiness review remains to integrate.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

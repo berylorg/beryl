@@ -291,6 +291,10 @@ pub enum ProjectionCoordinatorError {
     /// The complete driver-and-ingester worker pair was unavailable.
     #[error("projection worker capacity is full: two permits are required and {available} remain")]
     ProjectionWorkerCapacityFull { available: usize },
+    #[error(
+        "ordinary execution capacity is full: one permit and the steering reserve are required and {available} remain"
+    )]
+    OrdinaryWorkerCapacityFull { available: usize },
     /// No still-admitted worker can own a pre-activation projection.
     #[error("pre-activation projection worker admission is unavailable")]
     PreactivationProjectionAdmissionUnavailable,

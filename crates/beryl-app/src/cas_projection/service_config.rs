@@ -319,6 +319,12 @@ impl ProjectionWorkerPool {
         self.try_acquire_role(ProjectionWorkerRole::ScheduledOrdinary, true)
     }
 
+    pub(super) fn try_acquire_ordinary(
+        &self,
+    ) -> Result<ProjectionWorkerPermit, ProjectionWorkerPermitError> {
+        self.try_acquire_role(ProjectionWorkerRole::ScheduledOrdinary, false)
+    }
+
     /// Acquires steering-critical progress capacity for a direct delivery.
     pub(super) fn try_acquire_steering_critical(
         &self,

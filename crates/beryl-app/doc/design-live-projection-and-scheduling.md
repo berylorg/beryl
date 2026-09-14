@@ -161,6 +161,12 @@ topology and typed execution surfaces.
 - Each ordinary candidate acquires its worker permit before claim and one exact same-thread flight
   through validation, promotion reconciliation, projection establishment, dispatch, and terminal
   disposition. Saturation mutates no route and creates no backlog.
+- Direct ordinary execution obtains the same ordinary worker role from its exact connection's
+  service pool, then wins shared process acquisition before creating its flight. It does not use
+  a separate pool or add a capacity setting. Scheduled execution reuses its already admitted
+  worker and acquisition. Refusal returns the original loaded projection without activating the
+  turn. Direct return releases ordinary custody with the flight; any returned idle projection
+  keeps only its existing generic cleanup custody. Scheduled cleanup retains its longer lease.
 - An ordinary execution binds one terminal-completion publisher to its exact projection flight
   before binding activation. Revision-bound shutdown capture can retain an opaque observer of
   that slot. Only the exact terminal-history command path constructs its completion evidence;

@@ -278,3 +278,18 @@ paged. An alternative per-target settlement boundary would need exact admission 
 late winning acquisition; deleting the global-count check is insufficient. Resolve this choice
 in owning authority before implementation. No new quota, completed-history registry, or silent
 weakening of pending preservation is authorized by this record. The root plan remains paused.
+
+The Operator authorized the bounded ownership prerequisites. Direct ordinary execution custody
+was accepted on 2026-09-14: its exact connection supplies one existing service ordinary worker
+permit before process admission and flight creation. The permit and counted reservation remain
+through execution return; scheduled execution reuses its existing custody. This bounds ordinary
+execution without charging returned idle projection cleanup or adding a quota. Capacity, fence
+and cancellation refusal preserve the exact pending turn and loaded projection before activation.
+
+Independent semantic review, normal and test-faults library checks and 124 targeted regressions
+passed cumulatively. Evidence includes real minimum-capacity direct and scheduled execution,
+pre-flight fencing, terminal handoff, permit reuse and unwind. Two continuation tests previously
+expected connection invalidation to release every worker while the direct handler was still
+paused. They now require the remaining ordinary permit, count the replacement connection
+separately, and verify zero workers after handler return; continuation and attention guarantees
+are unchanged. Bounded exact shutdown capture and coordinator composition remain unaccepted.

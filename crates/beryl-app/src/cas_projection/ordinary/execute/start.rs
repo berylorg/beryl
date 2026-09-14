@@ -41,8 +41,16 @@ pub(super) fn execute(
     tools: &mut OrdinaryDynamicToolHandlers<'_>,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
     let thread_id = projection.syndic_thread_id();
+    let custody = match projection.admit_ordinary_execution() {
+        Ok(custody) => custody,
+        Err(source) => return Err(pre_activation(projection, source.into())),
+    };
+    #[cfg(feature = "test-faults")]
+    custody.acquisition.pause_for_test(
+        crate::cas_projection::test_faults::AcquisitionBarrierStage::OrdinaryExecutionAdmitted,
+    );
     let flight = match coordinator.begin_projection(thread_id) {
-        Ok(flight) => flight,
+        Ok(flight) => flight.with_acquisition(custody.acquisition.clone()),
         Err(source) => return Err(pre_activation(projection, source.into())),
     };
     execute_in_flight(

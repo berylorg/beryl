@@ -76,6 +76,40 @@ impl std::fmt::Debug for ProjectionConnection {
 }
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn admit_ordinary_execution(
+        &self,
+    ) -> Result<
+        crate::cas_projection::acquisition::OrdinaryExecutionCustody,
+        ProjectionCoordinatorError,
+    > {
+        use crate::cas_projection::{
+            acquisition::OrdinaryExecutionCustody, service_config::ProjectionWorkerPermitError,
+        };
+
+        let attachment = self.current_attachment()?;
+        let command = attachment
+            .commands
+            .authorize()
+            .map_err(|source| ProjectionCoordinatorError::AcquisitionServiceUnavailable(source))?;
+        let worker =
+            attachment
+                .ordinary_workers
+                .try_acquire_ordinary()
+                .map_err(|error| match error {
+                    ProjectionWorkerPermitError::CapacityFull { available } => {
+                        ProjectionCoordinatorError::OrdinaryWorkerCapacityFull { available }
+                    }
+                    ProjectionWorkerPermitError::Poisoned => {
+                        ProjectionCoordinatorError::ProjectionWorkerPoolPoisoned
+                    }
+                })?;
+        Ok(OrdinaryExecutionCustody::admit(
+            worker,
+            &attachment.commands,
+            &command,
+        )?)
+    }
+
     pub(in crate::cas_projection) fn admit_projection_acquisition(
         &self,
     ) -> Result<crate::cas_projection::acquisition::ProjectionAcquisition, ProjectionCoordinatorError>
@@ -200,6 +234,7 @@ impl ProjectionConnection {
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
         let persistent_failure = Arc::new(persistent_failure::PersistentFailureDriverSlot::new());
         let runtime_interest_source = worker_permits.runtime_interest_source();
+        let ordinary_workers = worker_permits.worker_pool();
         let ingester_permit = worker_permits.take_ingester();
         let (sink, broker, ingester) = match ProviderBroker::start(
             Arc::clone(&home),
@@ -236,6 +271,7 @@ impl ProjectionConnection {
             broker: Arc::clone(&broker),
             ingester: Mutex::new(Some(ingester)),
             commands: commands.clone(),
+            ordinary_workers,
             persistent_failure: Arc::clone(&persistent_failure),
             stop_coordinator,
             context_compaction,

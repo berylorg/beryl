@@ -45,6 +45,15 @@ pub(in crate::cas_projection) struct ConnectionWorkerRetention {
 }
 
 impl ProjectionWorkerPermitPair {
+    pub(in crate::cas_projection) fn worker_pool(&self) -> super::ProjectionWorkerPool {
+        self.driver
+            .as_ref()
+            .expect("the unsplit pair retains its driver")
+            .admission
+            .pool
+            .clone()
+    }
+
     pub(in crate::cas_projection) fn runtime_interest_source(
         &self,
     ) -> ConnectionRuntimeInterestSource {

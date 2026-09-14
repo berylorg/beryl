@@ -12,6 +12,7 @@ use crate::cas_projection::ProjectionServiceGeneration;
 pub enum AcquisitionBarrierStage {
     SessionPrepared,
     ProjectionAdmitted,
+    OrdinaryExecutionAdmitted,
 }
 
 struct Pending {

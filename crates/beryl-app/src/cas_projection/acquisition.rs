@@ -4,10 +4,32 @@ use crate::process_admission::{ProcessAdmissionReservation, ProcessExecutionAdmi
 
 use super::{LiveCommandAuthorizer, ProjectionServiceGeneration};
 
+#[cfg(test)]
+#[path = "../../tests/unit/ordinary_execution_custody.rs"]
+mod tests;
+
 #[derive(Clone, Debug)]
 pub(super) struct ProjectionAcquisition {
     service_generation: ProjectionServiceGeneration,
     _reservation: Arc<ProcessAdmissionReservation>,
+}
+
+pub(super) struct OrdinaryExecutionCustody {
+    pub(super) acquisition: ProjectionAcquisition,
+    _worker: super::service_config::ProjectionWorkerPermit,
+}
+
+impl OrdinaryExecutionCustody {
+    pub(super) fn admit(
+        worker: super::service_config::ProjectionWorkerPermit,
+        commands: &LiveCommandAuthorizer,
+        command: &super::LiveCommandPermit,
+    ) -> Result<Self, ProcessExecutionAdmissionError> {
+        Ok(Self {
+            acquisition: ProjectionAcquisition::admit_from(commands, command)?,
+            _worker: worker,
+        })
+    }
 }
 
 impl ProjectionAcquisition {

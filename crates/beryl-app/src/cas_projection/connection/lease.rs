@@ -144,6 +144,18 @@ impl LoadedProjectionLease {
         )
     }
 
+    pub(in crate::cas_projection) fn admit_ordinary_execution(
+        &self,
+    ) -> Result<
+        crate::cas_projection::acquisition::OrdinaryExecutionCustody,
+        ProjectionCoordinatorError,
+    > {
+        if !self.is_live()? {
+            return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
+        }
+        self.connection.admit_ordinary_execution()
+    }
+
     pub(in crate::cas_projection) fn invalidate_observed_metadata(
         &self,
     ) -> Result<(), ProjectionCoordinatorError> {

@@ -196,6 +196,18 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   durable pending-preservation outcome, together with
   all required draft/session durability obligations. Only then may claims be released, windows
   disposed, and the process service graph and managed runtimes retired and joined.
+- Every ordinary execution, including direct execution from an already loaded projection, owns one
+  ordinary permit from the existing service worker budget before winning process admission. The
+  scheduled path reuses its existing permit and admission; nested execution never charges twice.
+  Saturation refuses execution before activation and preserves the pending turn and loaded
+  projection. The protected steering reserve remains available. A loaded projection by itself
+  grants no exemption from worker or process admission, including after a fence or reopening.
+- Ordinary worker custody lasts through its exact flight and terminal completion handoff. Scheduled
+  execution retains its existing longer session-return and cleanup custody. A direct execution's
+  returned idle projection becomes generic loaded cleanup after the flight returns; that cleanup
+  remains required for shutdown but does not retain an ordinary worker merely to hold an idle
+  projection. Failure and unwind release the ordinary permit only with the execution owner;
+  surviving provider, projection and reconciliation custody retain their existing owners.
 - Each live ordinary execution retains one compact terminal-history completion slot in its exact
   execution flight. Its identity is fixed before activation. Only a committed exact
   terminal-history completion command may fill the slot, preserving the home generation, thread,

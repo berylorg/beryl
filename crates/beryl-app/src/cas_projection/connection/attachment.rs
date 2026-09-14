@@ -32,6 +32,7 @@ pub(super) struct ConnectionAttachment {
     pub(super) broker: Arc<ProviderBrokerControl>,
     pub(super) ingester: Mutex<Option<RunningProviderBrokerIngester>>,
     pub(super) commands: LiveCommandAuthorizer,
+    pub(super) ordinary_workers: crate::cas_projection::service_config::ProjectionWorkerPool,
     pub(super) persistent_failure: Arc<PersistentFailureDriverSlot>,
     pub(super) stop_coordinator: Arc<StopCoordinator>,
     pub(super) context_compaction: Arc<ContextCompactionCoordinator>,

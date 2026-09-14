@@ -395,6 +395,16 @@ impl LoadedCasProjection {
             .invalidate_observed_metadata()
     }
 
+    pub(in crate::cas_projection) fn admit_ordinary_execution(
+        &self,
+    ) -> Result<super::acquisition::OrdinaryExecutionCustody, super::ProjectionCoordinatorError>
+    {
+        self.lease
+            .as_ref()
+            .ok_or(super::ProjectionCoordinatorError::ProjectionWorkerStopped)?
+            .admit_ordinary_execution()
+    }
+
     /// Consumes this projection into the sole provisional target registered before `turn/start`.
     pub fn into_pending_live_event_target(
         self,

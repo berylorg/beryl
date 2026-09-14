@@ -44,9 +44,10 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     let faults = FaultController::new();
     let slot = SessionSlot::default();
     let provider_slot = slot.clone();
-    let mut fixture = syndic::Fixture::new_with_scheduled_provider_and_faults(
+    let mut fixture = syndic::Fixture::new_with_scheduled_provider_faults_and_capacity(
         162,
         faults.clone(),
+        4,
         move |assets| Box::new(ready_provider(provider_slot, assets)),
     );
     let parent = fixture.submit_text(" completed parent");

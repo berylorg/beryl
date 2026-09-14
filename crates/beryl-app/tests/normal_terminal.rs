@@ -28,6 +28,8 @@ mod compaction_custody;
 mod completion;
 #[path = "normal_terminal/loss.rs"]
 mod loss;
+#[path = "normal_terminal/ordinary_custody.rs"]
+mod ordinary_custody;
 #[path = "normal_terminal/permission_work.rs"]
 mod permission_work;
 #[path = "normal_terminal/server.rs"]
@@ -177,8 +179,8 @@ fn raw_websocket_ordinary_success_reaches_durable_terminal() {
     assert_eq!(released_workers.available(), 128);
     assert_eq!(released_workers.active(), 0);
     assert!(
-        (2..=3).contains(&released_workers.high_water()),
-        "the bounded next-turn scan may complete before or overlap the connection pair"
+        (3..=4).contains(&released_workers.high_water()),
+        "direct execution retains one ordinary permit alongside the connection pair and may overlap a scheduler scan"
     );
     assert!(!projection.is_live().unwrap());
     drop(projection);
