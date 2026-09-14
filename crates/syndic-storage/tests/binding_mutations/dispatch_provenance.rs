@@ -156,6 +156,7 @@ fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance
         .unwrap()
         .unwrap();
     let initial_revision = state(&store, &storage, fixture.turn).revision();
+    let mut evidence_read_count = None;
     for byte in [190, 191, 192] {
         let prior = state(&store, &storage, fixture.turn);
         let anchor = TurnDispatchAnchor::new(
@@ -172,6 +173,29 @@ fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance
             storage.cancel_binding_activation(storage.revision(&store).unwrap(), request),
         );
         let cancelled = state(&store, &storage, fixture.turn);
+        syndic_storage::test_faults::reset_syndic_point_read_count();
+        let evidence = storage
+            .pending_dispatch_evidence(&store, fixture.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let reads = syndic_storage::test_faults::syndic_point_read_count();
+        assert!(
+            reads <= 48,
+            "pending dispatch point acquisition exceeded fixed closure: {reads}"
+        );
+        if let Some(previous) = evidence_read_count {
+            assert_eq!(reads, previous);
+        }
+        evidence_read_count = Some(reads);
+        assert_eq!(evidence.item_id(), item);
+        assert_eq!(
+            Some(evidence.input()),
+            original_input.presentation_content()
+        );
+        assert_eq!(
+            evidence.dispatch_provenance(),
+            TurnDispatchProvenance::Cancelled(anchor)
+        );
         assert_eq!(
             cancelled.dispatch_provenance(),
             TurnDispatchProvenance::Cancelled(anchor)
@@ -325,6 +349,12 @@ fn abandoned_activation_without_provider_identity_cannot_become_safe_by_rebindin
         SyndicMutationError::TurnLifecycleConflict
     ));
     assert_eq!(state(&store, &storage, fixture.turn), original);
+    assert_eq!(
+        storage
+            .pending_dispatch_evidence(&store, fixture.thread, point_limit())
+            .unwrap(),
+        None
+    );
     store
         .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -367,6 +397,10 @@ fn cancelled_anchor_substitution_cannot_authorize_another_attempt() {
     }
     let forged = state(&store, &storage, foreign.turn).dispatch_provenance();
     replace_provenance(&store, &storage, fixture.turn, forged);
+    assert!(matches!(
+        storage.pending_dispatch_evidence(&store, fixture.thread, point_limit()),
+        Err(syndic_storage::SyndicReadError::Invariant(_))
+    ));
     let before = state(&store, &storage, fixture.turn);
     let activation = retry(
         &store,

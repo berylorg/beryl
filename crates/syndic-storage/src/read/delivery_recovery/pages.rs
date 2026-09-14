@@ -1,8 +1,6 @@
 use beryl_home_store::{CursorReadLimits, HomeStore};
 
-use crate::{
-    BindingState, InputGateState, SyndicPointReadLimit, SyndicReadError, domain::SyndicStorage,
-};
+use crate::{InputGateState, SyndicPointReadLimit, SyndicReadError, domain::SyndicStorage};
 
 use super::*;
 
@@ -130,30 +128,17 @@ impl SyndicStorage {
         turn_id: SyndicTurnId,
         limit: SyndicPointReadLimit,
     ) -> Result<RecoveredPendingSource, SyndicReadError> {
-        let state = self
-            .turn_state(store, turn_id, limit)?
+        let pending = self
+            .pending_dispatch_evidence(store, gate.thread_id(), limit)?
             .ok_or(SyndicReadError::Invariant(
-                "recovered-pending gate references a missing turn state",
+                "recovered-pending dispatch evidence is absent",
             ))?;
-        let summary = self
-            .history_summary(store, gate.thread_id(), limit)?
-            .ok_or(SyndicReadError::Invariant(
-                "recovered-pending gate references a missing history summary",
-            ))?;
-        let binding = self
-            .current_binding(store, gate.thread_id(), limit)?
-            .ok_or(SyndicReadError::Invariant(
-                "recovered-pending thread has no current binding",
-            ))?;
-        if state.turn_id() != turn_id
-            || state.lifecycle() != crate::TurnLifecycle::Pending
-            || state.source_event_count() != 0
-            || summary.thread_id() != gate.thread_id()
-            || summary.committed_tail() != Some(turn_id)
-            || summary.complete()
-            || gate.live_steering_count() != 0
-            || binding.binding().thread_id() != gate.thread_id()
-            || matches!(binding.binding().state(), BindingState::Active(_))
+        if pending.source_revision() != source_revision {
+            return Err(SyndicReadError::StaleRecoveredPendingScan);
+        }
+        if pending.turn_id() != turn_id
+            || pending.thread_id() != gate.thread_id()
+            || pending.gate_revision() != gate.revision()
         {
             return Err(SyndicReadError::Invariant(
                 "recovered-pending source is not safe undispatched work",
@@ -164,8 +149,8 @@ impl SyndicStorage {
             thread_id: gate.thread_id(),
             turn_id,
             gate_revision: gate.revision(),
-            state_revision: state.revision(),
-            minimum_timestamp: state.updated_at().max(summary.last_activity_at()),
+            state_revision: pending.state_revision(),
+            minimum_timestamp: pending.minimum_timestamp(),
         })
     }
 

@@ -1,19 +1,20 @@
-use beryl_home_store::{CursorReadLimits, HomeStore};
+use beryl_home_store::HomeStore;
 use beryl_model::{
     BindingRevision, InputGateRevision, SealedAssetReferenceSetProof, SyndicItemId, SyndicThreadId,
     SyndicTurnId,
 };
 use beryl_state::{AssetOwner, AssetOwnerHeadRecord, AssetState};
 use syndic_storage::{
-    BindingState, CanonicalItemKind, CanonicalItemPresentation, ContentReference, InputGateState,
-    SelectedPathProof, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnItemOrdinal,
-    TurnKind, TurnLifecycle, TurnStateRevision,
+    BindingState, ContentReference, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, TurnStateRevision,
 };
 
 use super::OrdinaryTurnExecutionError;
 use crate::cas_projection::LoadedCasProjection;
 
-const TURN_ITEMS_READ_BYTES: usize = 4 * 1024;
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../tests/unit/pending_ordinary_preflight.rs"]
+mod tests;
 
 /// Exact immutable projection facts required to stabilize one pending ordinary turn.
 ///
@@ -95,63 +96,24 @@ impl PendingOrdinaryExecution {
         before_confirmation: impl FnOnce(),
     ) -> Result<Self, OrdinaryTurnExecutionError> {
         let thread_id = witness.expected_syndic_thread_id();
-        let thread = storage
-            .thread(store, thread_id, limit)?
-            .ok_or(OrdinaryTurnExecutionError::PendingTurnUnavailable { thread_id })?;
-        let selected_path = SelectedPathProof::new(
-            thread.committed_tail(),
-            thread.revision(),
-            thread.selected_path_digest(),
-        );
-        let turn_id = selected_path
-            .tail()
+        let read_pending = || {
+            storage
+                .pending_dispatch_evidence(store, thread_id, limit)
+                .map_err(|error| match error {
+                    syndic_storage::SyndicReadError::ConcurrentChange { .. } => {
+                        OrdinaryTurnExecutionError::ConcurrentChange { thread_id }
+                    }
+                    error => OrdinaryTurnExecutionError::Read(error),
+                })
+        };
+        let pending = read_pending()?
             .ok_or(OrdinaryTurnExecutionError::PendingTurnUnavailable { thread_id })?;
         let binding = storage
             .current_binding(store, thread_id, limit)?
             .ok_or(OrdinaryTurnExecutionError::ProjectionMismatch { thread_id })?;
-        let gate = storage
-            .input_gate(store, thread_id, limit)?
-            .ok_or(OrdinaryTurnExecutionError::PendingTurnUnavailable { thread_id })?;
-        let turn =
-            storage
-                .turn(store, turn_id, limit)?
-                .ok_or(OrdinaryTurnExecutionError::Invariant(
-                    "pending turn is missing",
-                ))?;
-        let state = storage.turn_state(store, turn_id, limit)?.ok_or(
-            OrdinaryTurnExecutionError::Invariant("pending turn state is missing"),
-        )?;
-        let summary = storage.history_summary(store, thread_id, limit)?.ok_or(
-            OrdinaryTurnExecutionError::Invariant("pending thread history summary is missing"),
-        )?;
-        let items = storage.turn_items(
-            store,
-            turn_id,
-            None,
-            CursorReadLimits::new(2, TURN_ITEMS_READ_BYTES)
-                .expect("ordinary pending-item read bounds are nonzero"),
-        )?;
-        if items.has_more() || items.records().len() != 1 {
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "pending ordinary turn does not have exactly one canonical input item",
-            ));
-        }
-        let item_index = &items.records()[0];
-        let item = storage
-            .canonical_item(store, item_index.item_id(), limit)?
-            .ok_or(OrdinaryTurnExecutionError::Invariant(
-                "pending ordinary input item is missing",
-            ))?;
-        let input = item
-            .presentation_content()
-            .ok_or(OrdinaryTurnExecutionError::Invariant(
-                "pending ordinary input item has no sealed content",
-            ))?;
-        let manifest = storage
-            .content_manifest(store, input.id(), limit)?
-            .ok_or(OrdinaryTurnExecutionError::InputContentUnavailable)?;
-        let asset_reference_set = item.presentation().asset_reference_set();
-        let asset_owner = AssetOwner::SubmittedTurnItem(item.id());
+        let input = pending.input();
+        let asset_reference_set = pending.asset_reference_set();
+        let asset_owner = AssetOwner::SubmittedTurnItem(pending.item_id());
         let asset_owner_head = assets.owner_head(store, asset_owner)?;
         let asset_proof = asset_reference_set
             .map(|proof| -> Result<_, beryl_state::AssetReadError> {
@@ -160,21 +122,12 @@ impl PendingOrdinaryExecution {
             })
             .transpose()?;
         before_confirmation();
-        let confirmed_thread = storage.thread(store, thread_id, limit)?;
+        let confirmed_pending = read_pending();
+        if storage.revision(store)? != pending.source_revision() {
+            return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
+        }
+        let confirmed_pending = confirmed_pending?;
         let confirmed_binding = storage.current_binding(store, thread_id, limit)?;
-        let confirmed_gate = storage.input_gate(store, thread_id, limit)?;
-        let confirmed_turn = storage.turn(store, turn_id, limit)?;
-        let confirmed_state = storage.turn_state(store, turn_id, limit)?;
-        let confirmed_summary = storage.history_summary(store, thread_id, limit)?;
-        let confirmed_items = storage.turn_items(
-            store,
-            turn_id,
-            None,
-            CursorReadLimits::new(2, TURN_ITEMS_READ_BYTES)
-                .expect("ordinary pending-item read bounds are nonzero"),
-        )?;
-        let confirmed_item = storage.canonical_item(store, item_index.item_id(), limit)?;
-        let confirmed_manifest = storage.content_manifest(store, input.id(), limit)?;
         let confirmed_asset_owner_head = assets.owner_head(store, asset_owner)?;
         let confirmed_asset_proof = asset_reference_set
             .map(|proof| -> Result<_, beryl_state::AssetReadError> {
@@ -182,59 +135,27 @@ impl PendingOrdinaryExecution {
                 Ok(proof)
             })
             .transpose()?;
-        if confirmed_thread.as_ref() != Some(&thread)
+        if confirmed_pending != Some(pending)
             || confirmed_binding.as_ref() != Some(&binding)
-            || confirmed_gate.as_ref() != Some(&gate)
-            || confirmed_turn.as_ref() != Some(&turn)
-            || confirmed_state.as_ref() != Some(&state)
-            || confirmed_summary.as_ref() != Some(&summary)
-            || confirmed_items != items
-            || confirmed_item.as_ref() != Some(&item)
-            || confirmed_manifest.as_ref() != Some(&manifest)
             || confirmed_asset_owner_head != asset_owner_head
             || confirmed_asset_proof != asset_proof
         {
             return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
         }
-
         let BindingState::Valid(usable) = binding.binding().state() else {
             return Err(OrdinaryTurnExecutionError::ProjectionMismatch { thread_id });
         };
         if witness.expected_binding_revision() != binding.binding().revision()
+            || pending.binding_revision() != binding.binding().revision()
             || witness.expected_execution_binding() != usable.execution()
             || witness.expected_cas_thread_id() != usable.cas_thread_id()
             || witness.expected_lineage_proof() != usable.lineage()
-            || !selected_path.is_compatible_descendant_of(binding.binding().selected_path())
-            || thread.context_owner_id().is_some()
+            || !pending
+                .selected_path()
+                .is_compatible_descendant_of(binding.binding().selected_path())
+            || pending.context_owner_id().is_some()
         {
             return Err(OrdinaryTurnExecutionError::ProjectionMismatch { thread_id });
-        }
-        if gate.state() != &InputGateState::PendingTurn(turn_id)
-            || turn.origin_thread_id() != thread_id
-            || !matches!(
-                turn.kind(),
-                TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
-            )
-            || state.lifecycle() != TurnLifecycle::Pending
-            || state.source_event_count() != 0
-            || state.item_count() != 1
-            || state.finalized_item_count() != 0
-            || item_index.turn_id() != turn_id
-            || item_index.ordinal() != TurnItemOrdinal::FIRST
-            || item.turn_id() != turn_id
-            || item.ordinal() != TurnItemOrdinal::FIRST
-            || item.revision() != item_index.item_revision()
-            || item.kind() != CanonicalItemKind::UserInput
-            || !matches!(
-                item.presentation(),
-                CanonicalItemPresentation::UserInput { .. }
-            )
-            || item.source_event().is_some()
-        {
-            return Err(OrdinaryTurnExecutionError::PendingTurnUnavailable { thread_id });
-        }
-        if manifest.sealed_reference() != Some(input) {
-            return Err(OrdinaryTurnExecutionError::InputContentUnavailable);
         }
         let marker_summary = input
             .sealed_marker_summary()
@@ -258,16 +179,16 @@ impl PendingOrdinaryExecution {
         }
         Ok(Self {
             thread_id,
-            turn_id,
-            item_id: item.id(),
-            selected_path,
-            binding_revision: binding.binding().revision(),
-            gate_revision: gate.revision(),
-            state_revision: state.revision(),
+            turn_id: pending.turn_id(),
+            item_id: pending.item_id(),
+            selected_path: pending.selected_path(),
+            binding_revision: pending.binding_revision(),
+            gate_revision: pending.gate_revision(),
+            state_revision: pending.state_revision(),
             input,
             asset_reference_set,
             asset_owner_head,
-            minimum_observed_at: state.updated_at().max(summary.last_activity_at()),
+            minimum_observed_at: pending.minimum_timestamp(),
         })
     }
 }

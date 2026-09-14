@@ -869,7 +869,7 @@ pub use read::{
     DeliveryRecoveryStartupPage, ExactThreadCatalogSummary, NON_IDLE_GATE_PAGE_MAX_BYTES,
     NON_IDLE_GATE_PAGE_MAX_RECORDS, NonIdleGateSourceCursor, NonIdleGateSourcePage,
     PreparedThreadCatalogSummaryReplacement, QUERY_PAGE_MAX_RECORDS, QUERY_PAGE_MAX_STORED_BYTES,
-    RecoveredPendingCursor, RecoveredPendingPage, RecoveredPendingSource, StopAdmissionCandidate,
+    PendingDispatchEvidence, RecoveredPendingCursor, RecoveredPendingPage, RecoveredPendingSource, StopAdmissionCandidate,
     StopAdmissionIneligibility, StopAdmissionRead, StopOperationTransitionStatus,
     SyndicCaptureItem, SyndicCaptureTextRangeRead, SyndicContentTextRangeRead,
     SyndicContentTextSegment, SyndicContentTextSegmentBoundary, SyndicContentTextSegmentRangeRead,

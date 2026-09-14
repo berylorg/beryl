@@ -5,8 +5,8 @@ use crate::{
     AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord, AcceptedRouteTarget,
     ActiveCasTurnRecord, BindingRecord, BindingState, CompactionOperationId,
     CompactionOperationRecord, ExecutionSnapshotRecord, HistorySummaryRecord, InputGateRecord,
-    StopOperationId, StopOperationRecord, SyndicCurrentBinding, SyndicPointReadLimit,
-    SyndicReadError, TurnRecord, TurnStateRecord,
+    PendingDispatchEvidence, StopOperationId, StopOperationRecord, SyndicCurrentBinding,
+    SyndicPointReadLimit, SyndicReadError, TurnRecord, TurnStateRecord,
     codec::{
         AcceptedRouteGenerationHeadsFamily, AcceptedRouteGenerationsFamily, BindingKey,
         BindingsFamily, CompactionOperationsFamily, StopOperationsFamily, ThreadRouteKey,
@@ -16,6 +16,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::read) struct RecoveryFacts {
+    pub(in crate::read) pending: Option<PendingDispatchEvidence>,
     pub(in crate::read) gate: Option<InputGateRecord>,
     pub(in crate::read) turn: Option<TurnRecord>,
     pub(in crate::read) state: Option<TurnStateRecord>,
@@ -135,7 +136,16 @@ pub(in crate::read) fn read(
         Some(id) => storage.point::<StopOperationsFamily>(store, id, limit)?,
         None => None,
     };
+    let pending = if gate.as_ref().is_some_and(|gate| {
+        matches!(gate.state(), crate::InputGateState::PendingTurn(_))
+            && gate.selected_route().is_none()
+    }) {
+        storage.pending_dispatch_evidence(store, thread_id, limit)?
+    } else {
+        None
+    };
     Ok(RecoveryFacts {
+        pending,
         gate,
         turn,
         state,

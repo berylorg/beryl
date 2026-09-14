@@ -13,6 +13,7 @@ mod delivering_steering;
 mod delivery_recovery;
 mod non_idle_gate;
 mod pages;
+mod pending_dispatch;
 mod promotion;
 mod queries;
 mod range;
@@ -60,6 +61,7 @@ pub use non_idle_gate::{
     NonIdleGateSourcePage,
 };
 pub use queries::*;
+pub use pending_dispatch::PendingDispatchEvidence;
 pub use range::SyndicResourceRangeRead;
 pub use routes::*;
 pub use stop::StopOperationTransitionStatus;

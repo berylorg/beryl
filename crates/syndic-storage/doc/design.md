@@ -68,6 +68,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   staging, build, settlement, materialization, restoration, and sealed-text range operations.
 - Accepted-input, capture, item, activity, transcript, projection, resource, binding, execution, and
   recovery reads and package mutation contributions required by the owning system services.
+- `pending_dispatch_evidence` supplies home/generation/revision-bound pending identity, canonical
+  input references and authenticated dispatch provenance to ordinary execution and recovery. Its
+  bounded read snapshot does not settle live execution or cleanup custody; those obligations remain
+  with the [CAS-live system](../../../doc/systems/cas-live-syndic-transcript/design.md).
 - Opaque proof preparation, command dispatch custody, receipt consumption, and targeted
   reconciliation for package operations that participate in HomeStore composition.
 

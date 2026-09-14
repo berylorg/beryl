@@ -10,6 +10,16 @@ pub fn lifecycle_compaction_settlement_fault_scope() -> beryl_home_store::test_f
     crate::mutation::lifecycle_compaction_settlement_fault_scope()
 }
 
+pub fn pending_dispatch_evidence_with_confirmation_hook(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    thread_id: beryl_model::SyndicThreadId,
+    limit: SyndicPointReadLimit,
+    before_confirmation: impl FnOnce(),
+) -> Result<Option<PendingDispatchEvidence>, SyndicReadError> {
+    storage.read_pending_dispatch_evidence(store, thread_id, limit, before_confirmation)
+}
+
 mod build_mapping_custody;
 mod content_text;
 pub use build_mapping_custody::*;

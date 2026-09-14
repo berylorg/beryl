@@ -44,21 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 397: Persist Exact Ordinary-Turn Dispatch Provenance (finished)
+# Phase 398: Expose Bounded Pending Dispatch Evidence (finished)
 
-Accepted explicit V3 turn-state provenance, atomic activation/cancellation with transcript refresh,
-fixed cancelled-anchor authentication, and preservation through capture and authority loss.
-Uncertain work cannot reactivate after rebinding. Independent review and focused codec, corruption,
-reconciliation, recovery, dispatch and terminal-capture checks passed, along with the production
-library check.
+Accepted the shared bounded pending-dispatch evidence for ordinary execution and both recovery
+reads. Canonical identity/content, cancelled-anchor authentication, home-generation fencing and
+drift/corruption outcomes pass independent review and 109 focused storage/app checks. Repeated
+cancellation retains fixed point-read work; uncertain rebound work remains ineligible. The
+production library check passed. Live custody and cleanup remain the following boundary.
 
-# Phase 398: Expose Bounded Pending Dispatch Evidence (wip)
-
-Expose the stable exact pending-provenance read and use it for ordinary execution and recovered
-pending classification. Verify canonical identity/content preservation, mutable-anchor drift,
-cancelled-proof substitution, uncertain rebound work and ordinary later recovery.
-
-# Phase 396: Prove Exact Shutdown Thread Settlement (pending)
+# Phase 396: Prove Exact Shutdown Thread Settlement (wip)
 
 Establish the exact per-thread completion evidence needed by the process barrier before composing
 that coordinator. Join preparation and execution flight custody, validate pending identity, content,

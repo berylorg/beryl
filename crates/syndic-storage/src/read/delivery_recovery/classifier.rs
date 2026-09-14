@@ -170,10 +170,23 @@ fn classify_pending(
     if state.lifecycle() != crate::TurnLifecycle::Pending || state.source_event_count() != 0 {
         return corruption("safe pending delivery-recovery turn is not pending and source-free");
     }
+    let pending = required(
+        facts.pending.as_ref(),
+        "pending delivery-recovery dispatch evidence is absent",
+    )?;
+    if pending.thread_id() != gate.thread_id()
+        || pending.turn_id() != state.turn_id()
+        || pending.gate_revision() != gate.revision()
+        || pending.state_revision() != state.revision()
+        || pending.binding_revision() != binding.binding().revision()
+        || pending.minimum_timestamp() != minimum_timestamp(state, summary)
+    {
+        return corruption("pending delivery-recovery dispatch evidence disagrees");
+    }
     Ok(DeliveryRecoveryCase::Pending {
         thread_id: gate.thread_id(),
         turn_id: state.turn_id(),
-        minimum_timestamp: minimum_timestamp(state, summary),
+        minimum_timestamp: pending.minimum_timestamp(),
     })
 }
 

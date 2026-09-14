@@ -18,3 +18,5 @@ mod projection_support;
 mod recovery_support;
 #[path = "delivery_recovery/source_pages.rs"]
 mod source_pages;
+#[path = "delivery_recovery/pending_dispatch.rs"]
+mod pending_dispatch;
