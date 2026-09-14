@@ -110,7 +110,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     );
     exercise_seeded_populated_case(
         "active-missing-snapshot",
-        "active binding snapshot is missing",
+        "dispatch provenance snapshot is missing",
         |_store, _storage| {
             let mut batch = FixtureBatch::new();
             batch

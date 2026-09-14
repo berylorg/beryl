@@ -18,6 +18,11 @@ fn activate_empty_epoch(
                 thread,
                 current_binding_revision(store, storage, thread),
                 current_gate_revision(store, storage, thread),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,
@@ -51,6 +56,11 @@ fn cancel_empty_epoch(
                 thread,
                 current_binding_revision(store, storage, thread),
                 current_gate_revision(store, storage, thread),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,
@@ -409,6 +419,11 @@ fn route_generation_exhaustion_rejects_without_overwrite() {
                 thread,
                 current_binding_revision(&store, &storage, thread),
                 current_gate_revision(&store, &storage, thread),
+                storage
+                    .turn_state(&store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,

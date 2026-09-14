@@ -238,6 +238,7 @@ pub fn fixture_turn_state(
         item_count,
         lifecycle_end_status(lifecycle),
         updated_at,
+        syndic_storage::TurnDispatchProvenance::Unattempted,
     )
     .unwrap()
 }
@@ -260,6 +261,7 @@ pub fn fixture_turn_state_with_finalization(
         finalized_item_count,
         lifecycle_end_status(lifecycle),
         updated_at,
+        syndic_storage::TurnDispatchProvenance::Unattempted,
     )
     .unwrap()
 }
@@ -287,6 +289,7 @@ pub fn fixture_turn_state_with_capture(
         history_blocking_item_count,
         lifecycle_end_status(lifecycle),
         updated_at,
+        syndic_storage::TurnDispatchProvenance::Unattempted,
     )
     .unwrap()
 }

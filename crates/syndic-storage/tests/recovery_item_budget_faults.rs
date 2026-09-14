@@ -51,6 +51,7 @@ fn with_item_count(state: &TurnStateRecord, item_count: u64) -> TurnStateRecord 
         item_count,
         state.end_status(),
         state.updated_at(),
+        state.dispatch_provenance(),
     )
     .unwrap()
 }

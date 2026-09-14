@@ -96,6 +96,7 @@ impl FreezeNextTurnItemMutation {
             current.provider_observation_issue(),
             current.end_status(),
             request.updated_at,
+            current.dispatch_provenance(),
         )?;
         let (transcript_head, transcript_build) = if visible && selected {
             crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?

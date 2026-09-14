@@ -33,6 +33,7 @@ pub(super) fn seed_item_projection() -> FixtureBatch {
                 .unwrap(),
             ),
             timestamp(4),
+            syndic_storage::TurnDispatchProvenance::Unattempted,
         )
         .unwrap(),
     ));

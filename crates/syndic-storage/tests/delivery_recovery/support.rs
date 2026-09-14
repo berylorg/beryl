@@ -145,6 +145,11 @@ pub fn activate(
                 thread,
                 binding.binding().revision(),
                 gate.revision(),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,
@@ -210,6 +215,11 @@ pub fn cancel_active(
                 thread,
                 binding.binding().revision(),
                 gate.revision(),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 binding.binding().selected_path(),
                 snapshot,
                 turn,

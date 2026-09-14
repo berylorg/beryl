@@ -11,6 +11,7 @@ use crate::{
 use super::scan::{point, require, scan};
 
 mod child;
+mod dispatch;
 
 use child::{validate_child_indexes, validate_replacement_intent};
 
@@ -474,6 +475,7 @@ fn validate_turn_states(
         }
         let turn =
             require::<TurnsFamily>(reader, key, "turn state has no matching immutable turn")?;
+        dispatch::validate(reader, &turn, state)?;
         if state.lifecycle().blocks_same_thread_start() {
             let thread = require::<ThreadsFamily>(
                 reader,

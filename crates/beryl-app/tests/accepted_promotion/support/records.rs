@@ -179,6 +179,7 @@ pub(super) fn promotion_records(
                 0,
                 Some(TurnEndStatus::new(TurnTerminalOutcome::Failed, None).unwrap()),
                 time(5),
+                syndic_storage::TurnDispatchProvenance::Unattempted,
             )
             .unwrap(),
         ),

@@ -15,6 +15,21 @@ pub enum PhysicalCorruption {
     MalformedCodecPayload,
 }
 
+pub fn inject_turn_state_without_dispatch_provenance(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    state: &crate::TurnStateRecord,
+) -> Result<(), beryl_home_store::test_faults::PersistedCorruptionError> {
+    assert_eq!(
+        state.dispatch_provenance(),
+        crate::TurnDispatchProvenance::Unattempted
+    );
+    let mut encoded = versioned_value::<TurnStatesFamily>(state);
+    encoded[..4].copy_from_slice(&2_u32.to_be_bytes());
+    encoded.pop();
+    inject_encoded::<TurnStatesFamily>(store, storage, state.turn_id(), encoded)
+}
+
 /// Representative strict-decoder rejection beyond truncation and version/key failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RepresentativePhysicalCorruption {
@@ -471,6 +486,7 @@ pub fn inject_representative_physical_corruption(
                     crate::TurnIncompleteReason::ItemAuditFailed,
                 )),
                 crate::SyndicTimestamp::from_unix_millis(1),
+                crate::TurnDispatchProvenance::Unattempted,
             )
             .expect("representative incomplete turn state is valid");
             let mut encoded = versioned_value::<TurnStatesFamily>(&value);

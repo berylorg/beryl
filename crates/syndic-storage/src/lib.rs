@@ -785,6 +785,7 @@ mod catalog_title;
 mod codec;
 mod compaction;
 mod content;
+mod dispatch_provenance;
 mod domain;
 mod draft_piece;
 mod error;

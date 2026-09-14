@@ -1,6 +1,7 @@
 mod abandon;
 mod active;
 mod cancel;
+mod provenance;
 mod publish;
 mod transition;
 mod validation;
@@ -231,6 +232,7 @@ pub struct ActivateBinding {
     thread_id: SyndicThreadId,
     expected_binding_revision: BindingRevision,
     expected_gate_revision: InputGateRevision,
+    expected_state_revision: crate::TurnStateRevision,
     selected_path: SelectedPathProof,
     snapshot_id: SyndicExecutionSnapshotId,
     turn_id: SyndicTurnId,
@@ -248,6 +250,7 @@ pub struct CancelBindingActivation {
     thread_id: SyndicThreadId,
     expected_binding_revision: BindingRevision,
     expected_gate_revision: InputGateRevision,
+    expected_state_revision: crate::TurnStateRevision,
     selected_path: SelectedPathProof,
     snapshot_id: SyndicExecutionSnapshotId,
     turn_id: SyndicTurnId,
@@ -259,6 +262,7 @@ impl CancelBindingActivation {
         thread_id: SyndicThreadId,
         expected_binding_revision: BindingRevision,
         expected_gate_revision: InputGateRevision,
+        expected_state_revision: crate::TurnStateRevision,
         selected_path: SelectedPathProof,
         snapshot_id: SyndicExecutionSnapshotId,
         turn_id: SyndicTurnId,
@@ -267,6 +271,7 @@ impl CancelBindingActivation {
             thread_id,
             expected_binding_revision,
             expected_gate_revision,
+            expected_state_revision,
             selected_path,
             snapshot_id,
             turn_id,
@@ -286,6 +291,10 @@ impl CancelBindingActivation {
     #[must_use]
     pub const fn expected_gate_revision(&self) -> InputGateRevision {
         self.expected_gate_revision
+    }
+
+    pub const fn expected_state_revision(&self) -> crate::TurnStateRevision {
+        self.expected_state_revision
     }
 
     #[must_use]
@@ -311,6 +320,7 @@ impl ActivateBinding {
         thread_id: SyndicThreadId,
         expected_binding_revision: BindingRevision,
         expected_gate_revision: InputGateRevision,
+        expected_state_revision: crate::TurnStateRevision,
         selected_path: SelectedPathProof,
         snapshot_id: SyndicExecutionSnapshotId,
         turn_id: SyndicTurnId,
@@ -321,6 +331,7 @@ impl ActivateBinding {
             thread_id,
             expected_binding_revision,
             expected_gate_revision,
+            expected_state_revision,
             selected_path,
             snapshot_id,
             turn_id,
@@ -342,6 +353,10 @@ impl ActivateBinding {
     #[must_use]
     pub const fn expected_gate_revision(&self) -> InputGateRevision {
         self.expected_gate_revision
+    }
+
+    pub const fn expected_state_revision(&self) -> crate::TurnStateRevision {
+        self.expected_state_revision
     }
 
     #[must_use]

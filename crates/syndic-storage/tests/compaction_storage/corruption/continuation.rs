@@ -217,6 +217,7 @@ fn rejects_cross_thread_origin_and_forged_pending_lifecycle() {
         0,
         None,
         state.updated_at(),
+        state.dispatch_provenance(),
     )
     .unwrap();
     let mut batch = FixtureBatch::new();

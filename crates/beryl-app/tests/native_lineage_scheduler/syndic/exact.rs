@@ -160,6 +160,11 @@ pub fn establish_turn(
                 thread,
                 binding.binding().revision(),
                 gate.revision(),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,

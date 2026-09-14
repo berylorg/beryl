@@ -257,6 +257,11 @@ fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
                 thread,
                 current_binding_revision(&store, &storage, thread),
                 current_gate_revision(&store, &storage, thread),
+                storage
+                    .turn_state(&store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,

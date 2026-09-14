@@ -205,7 +205,7 @@ id_family!(
     encode_turn_state,
     decode_turn_state,
     SMALL_MAX,
-    beryl_home_store::RecordVersion::new(2)
+    beryl_home_store::RecordVersion::new(3)
 );
 id_family!(
     AcceptedInputsFamily,

@@ -384,6 +384,7 @@ impl AbandonStopOperationMutation {
             current_state.provider_observation_issue(),
             Some(status),
             request.stale.observed_at(),
+            current_state.dispatch_provenance(),
         )?;
         let gate_revision = current_gate.revision().checked_next()?;
         let gate = InputGateRecord::new(

@@ -164,6 +164,7 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
                     .unwrap(),
                 ),
                 timestamp(2),
+                syndic_storage::TurnDispatchProvenance::Unattempted,
             )
             .unwrap(),
         ),

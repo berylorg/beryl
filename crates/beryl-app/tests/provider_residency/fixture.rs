@@ -319,22 +319,26 @@ fn activate_projection(
     let selected = fixture.selected_path(fixture.thread);
     let snapshot = SyndicExecutionSnapshotId::from_bytes(*submitted.turn.as_bytes());
     let started_at = SyndicTimestamp::from_unix_millis(35_001);
-    let outcome = fixture
-        .home()
-        .execute_current(
-            fixture
-                .storage
-                .current_activate_binding(ActivateBinding::new(
-                    fixture.thread,
-                    binding.binding().revision(),
-                    gate.revision(),
-                    selected,
-                    snapshot,
-                    submitted.turn,
-                    projection.loaded_session_generation(),
-                    started_at,
-                )),
-        );
+    let outcome = fixture.home().execute_current(
+        fixture
+            .storage
+            .current_activate_binding(ActivateBinding::new(
+                fixture.thread,
+                binding.binding().revision(),
+                gate.revision(),
+                fixture
+                    .storage
+                    .turn_state(&*fixture.home(), submitted.turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
+                selected,
+                snapshot,
+                submitted.turn,
+                projection.loaded_session_generation(),
+                started_at,
+            )),
+    );
     match outcome {
         CommandOutcome::Committed {
             later_failure: None,

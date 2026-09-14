@@ -76,6 +76,7 @@ pub(super) fn validate_history(
         }
         if let BindingState::Active(active) = binding.state() {
             validate_active(reader, binding, active, false)?;
+            validate_dispatch_history(reader, binding, active)?;
         }
         if let BindingState::Stale(stale) = binding.state() {
             validate_stale(reader, binding, stale)?;
@@ -93,6 +94,50 @@ pub(super) fn validate_history(
         Ok(())
     })?;
     finish_history(reader, current_thread, observed_last)
+}
+
+fn validate_dispatch_history(
+    reader: &DomainReader<'_, SyndicDomain>,
+    binding: &crate::BindingRecord,
+    active: &crate::ActiveCasBinding,
+) -> Result<(), SyndicValidationError> {
+    let state = require::<TurnStatesFamily>(
+        reader,
+        &active.turn_id(),
+        "dispatch history turn state is missing",
+    )?;
+    let anchor = match state.dispatch_provenance() {
+        crate::TurnDispatchProvenance::Activated(anchor)
+        | crate::TurnDispatchProvenance::Cancelled(anchor) => anchor,
+        _ => return invariant("active binding has no turn dispatch provenance"),
+    };
+    if anchor.binding_revision() < binding.revision() {
+        return invariant("turn dispatch provenance predates an activation");
+    }
+    if anchor.binding_revision() == binding.revision() {
+        return if anchor.snapshot_id() == active.snapshot_id() {
+            Ok(())
+        } else {
+            invariant("turn dispatch provenance substitutes an activation snapshot")
+        };
+    }
+    let revision = binding.revision().checked_next().map_err(|_| {
+        SyndicValidationError::Invariant("dispatch history successor revision is exhausted")
+    })?;
+    let successor = require::<BindingsFamily>(
+        reader,
+        &BindingKey {
+            thread: binding.thread_id(),
+            revision,
+        },
+        "earlier activation cancellation is missing",
+    )?;
+    if !crate::dispatch_provenance::cancelled_successor_matches(binding, &successor)
+        || point::<ActiveCasTurnsFamily>(reader, &active.snapshot_id())?.is_some()
+    {
+        return invariant("turn dispatch provenance replaces an uncertain activation");
+    }
+    Ok(())
 }
 
 fn finish_history(

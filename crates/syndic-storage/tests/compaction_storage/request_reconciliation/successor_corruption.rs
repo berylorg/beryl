@@ -105,6 +105,7 @@ fn late_terminal_reconciliation_rejects_corrupted_provider_lifecycle_successor()
         state.history_blocking_item_count(),
         None,
         state.updated_at(),
+        state.dispatch_provenance(),
     )
     .unwrap();
     let mut batch = FixtureBatch::new();

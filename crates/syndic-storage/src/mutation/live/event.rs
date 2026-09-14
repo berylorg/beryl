@@ -105,6 +105,7 @@ impl LiveSourceEventMutation {
             reader,
             &thread,
             &turn,
+            &current,
             request.source.as_ref(),
             &request.payload,
         )?;
@@ -196,6 +197,7 @@ impl LiveSourceEventMutation {
             provider_observation_issue,
             end_status,
             request.observed_at,
+            current.dispatch_provenance(),
         )?;
         let (transcript_head, transcript_build) = if transcript_dirty {
             crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?
@@ -359,6 +361,7 @@ fn validate_turn_source(
     reader: &DomainReader<'_, SyndicDomain>,
     thread: &crate::ThreadRecord,
     turn: &crate::TurnRecord,
+    state: &TurnStateRecord,
     source: Option<&CasTurnSource>,
     payload: &SourceEventPayload,
 ) -> Result<(), SyndicMutationError> {
@@ -385,6 +388,14 @@ fn validate_turn_source(
         return Err(SyndicMutationError::SourceIdentityConflict);
     };
     if active.turn_id() != turn.id() || active.usable().cas_thread_id() != source.thread_id() {
+        return Err(SyndicMutationError::SourceIdentityConflict);
+    }
+    if state.dispatch_provenance()
+        != crate::TurnDispatchProvenance::Activated(crate::TurnDispatchAnchor::new(
+            active.snapshot_id(),
+            binding.revision(),
+        ))
+    {
         return Err(SyndicMutationError::SourceIdentityConflict);
     }
     let active_turn = required::<ActiveCasTurnsFamily>(reader, &active.snapshot_id())?;

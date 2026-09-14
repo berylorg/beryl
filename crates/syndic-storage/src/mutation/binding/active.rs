@@ -39,6 +39,8 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
         reservation.reserve_records::<ExecutionSnapshotsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
         reserve_input_gate(reservation)?;
         reservation.reserve_records::<AcceptedRouteGenerationHeadsCodec>(1)?;
         reservation.reserve_records::<AcceptedRouteGenerationsCodec>(1)?;
@@ -56,6 +58,8 @@ impl DomainMutation<SyndicDomain> for ActivateBindingMutation {
 }
 
 pub struct ActivateBindingRecords {
+    state: crate::TurnStateRecord,
+    transcript_path: Option<crate::TranscriptPathTurnRecord>,
     binding: BindingRecord,
     head: BindingHeadRecord,
     snapshot: ExecutionSnapshotRecord,
@@ -90,11 +94,32 @@ impl ActivateBindingMutation {
         }
         let turn = required::<TurnsFamily>(reader, &request.turn_id)?;
         let turn_state = required::<TurnStatesFamily>(reader, &request.turn_id)?;
+        if turn_state.revision() != request.expected_state_revision {
+            return Err(SyndicMutationError::TurnStateRevisionConflict {
+                expected: request.expected_state_revision,
+                current: turn_state.revision(),
+            });
+        }
         if turn.origin_thread_id() != request.thread_id
             || turn_state.lifecycle() != TurnLifecycle::Pending
+            || turn_state.source_event_count() != 0
+            || !matches!(
+                turn.kind(),
+                crate::TurnKind::OrdinaryUser | crate::TurnKind::BerylLifecycleContinuation
+            )
         {
             return Err(SyndicMutationError::TurnLifecycleConflict);
         }
+        super::provenance::authenticate_pending(
+            reader,
+            request.thread_id,
+            request.turn_id,
+            turn_state.dispatch_provenance(),
+        )?;
+        let state =
+            turn_state.advance_dispatch_provenance(crate::TurnDispatchProvenance::Activated(
+                crate::TurnDispatchAnchor::new(request.snapshot_id, base.next_revision),
+            ))?;
         let current_gate = required_input_gate(reader, &request.thread_id)?;
         if current_gate.revision() != request.expected_gate_revision {
             return Err(SyndicMutationError::InputGateRevisionConflict {
@@ -104,6 +129,7 @@ impl ActivateBindingMutation {
         }
         if current_gate.state() != &InputGateState::PendingTurn(request.turn_id)
             || current_gate.live_steering_count() != 0
+            || current_gate.selected_route().is_some()
         {
             return Err(SyndicMutationError::InputGateStateConflict);
         }
@@ -214,7 +240,13 @@ impl ActivateBindingMutation {
             request.thread_id,
             base.next_revision,
         )?;
+        let thread = required::<ThreadsFamily>(reader, &request.thread_id)?;
+        let transcript_path = crate::mutation::transcript::refresh_current_path_state(
+            reader, &thread, &turn, &state,
+        )?;
         Ok(ActivateBindingRecords {
+            state,
+            transcript_path,
             binding,
             head,
             snapshot,
@@ -232,6 +264,17 @@ impl ActivateBindingRecords {
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
+        mutations.put::<TurnStatesCodec>(&self.state.turn_id(), &self.state)?;
+        if let Some(path) = &self.transcript_path {
+            mutations.put::<TranscriptPathTurnsCodec>(
+                &ThreadTranscriptPathKey {
+                    thread: path.thread_id(),
+                    generation: path.generation(),
+                    depth: path.depth(),
+                },
+                path,
+            )?;
+        }
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.binding.thread_id(),
@@ -340,6 +383,15 @@ impl PublishActiveCasTurnMutation {
         };
         if active.snapshot_id() != request.snapshot_id
             || active.usable().cas_thread_id() != &request.cas_thread_id
+        {
+            return Err(SyndicMutationError::BindingStateConflict);
+        }
+        let state = required::<TurnStatesFamily>(reader, &active.turn_id())?;
+        if state.dispatch_provenance()
+            != crate::TurnDispatchProvenance::Activated(crate::TurnDispatchAnchor::new(
+                request.snapshot_id,
+                request.binding_revision,
+            ))
         {
             return Err(SyndicMutationError::BindingStateConflict);
         }

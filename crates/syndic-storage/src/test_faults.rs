@@ -27,6 +27,7 @@ pub use crate::draft_piece::build_mapping::fixture::{
     mapping_root_codec_roundtrip,
 };
 pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
+mod dispatch_provenance;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 mod draft_piece_current_drift;
@@ -38,12 +39,14 @@ mod fixture_delete;
 mod fixture_put;
 mod lifecycle_content;
 mod non_idle_gate;
+pub use dispatch_provenance::{decode_turn_state_for_test, turn_state_codec_bytes};
 pub use non_idle_gate::{
     decode_non_idle_gate_source_for_test, non_idle_gate_source_codec_bytes,
     non_idle_gate_source_codec_limits,
 };
 pub(crate) mod metrics;
 mod physical;
+pub use physical::inject_turn_state_without_dispatch_provenance;
 mod provider;
 mod provider_observation;
 mod schema_history;

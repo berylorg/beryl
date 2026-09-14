@@ -89,6 +89,7 @@ pub(super) fn records(
         0,
         None,
         acceptance.admitted_at(),
+        crate::TurnDispatchProvenance::Unattempted,
     )?;
     let child_index = parent
         .turn()

@@ -61,6 +61,21 @@ history disposition, provider-observation status, and the exact bounded provenan
 reads. Source events are append-only normalized metadata referring to exact sealed provider-frame
 ranges. They never embed a complete provider payload.
 
+Turn state also owns the bounded dispatch provenance required by the CAS-live system. Ordinary and
+lifecycle-continuation admissions initialize unattempted provenance; provider-operation admissions
+initialize their distinct marker. Activated and cancelled provenance retain one exact snapshot and
+active binding revision. Every turn-state constructor requires explicit provenance, and unrelated
+state updates preserve it. Binding activation and exact cancellation publish the provenance and
+its next turn-state revision atomically with their existing records and reconciliation closure.
+
+The package authenticates cancellation through the exact snapshot, historical active binding,
+immediate valid successor and absence of a published active CAS turn, with same-thread/turn/path
+agreement. Ordinary activation and stable pending-proof reads use this fixed closure. A provenance
+tag alone cannot authenticate cancellation. A pending proof binds the current home generation,
+durable revision, turn state, gate, selected path and canonical input identity/content; mutable
+anchor drift fails as concurrent change. It supplies durable evidence to the app, not live dispatch
+or cleanup authority. Provider-operation receipts retain their separate proof contract.
+
 Canonical items have one exclusive source:
 
 - A normal provider item is proven by its exact contiguous source-event sequence, provider identities,

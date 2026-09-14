@@ -162,6 +162,7 @@ impl AdmitMutation {
             0,
             None,
             request.started_at,
+            crate::TurnDispatchProvenance::ProviderOperation,
         )?;
         let operation = CompactionOperationRecord::new(
             request.operation_id,

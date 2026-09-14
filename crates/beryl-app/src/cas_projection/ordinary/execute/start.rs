@@ -126,6 +126,7 @@ pub(super) fn execute_in_flight(
         pending.thread_id,
         pending.binding_revision,
         pending.gate_revision,
+        pending.state_revision,
         pending.selected_path,
         snapshot_id,
         pending.turn_id,
@@ -150,7 +151,11 @@ pub(super) fn execute_in_flight(
         pending.turn_id,
         active_binding_revision,
         active_gate_revision,
-        pending.state_revision,
+        pending.state_revision.checked_next().map_err(|_| {
+            activation_failure(OrdinaryTurnExecutionError::Invariant(
+                "activated turn-state revision is exhausted",
+            ))
+        })?,
         snapshot_id,
         started_at,
     );
@@ -301,6 +306,9 @@ fn finish_not_started(
         pending.thread_id,
         active_binding_revision,
         active_gate_revision,
+        pending.state_revision.checked_next().map_err(|_| {
+            OrdinaryTurnExecutionError::Invariant("activated turn-state revision is exhausted")
+        })?,
         pending.selected_path,
         snapshot_id,
         pending.turn_id,

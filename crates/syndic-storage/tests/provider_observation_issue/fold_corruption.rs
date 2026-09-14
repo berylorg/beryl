@@ -68,6 +68,7 @@ fn replace_folded_issue(fixture: &Fixture, issue: Option<ProviderObservationIssu
         issue,
         state.end_status(),
         state.updated_at(),
+        state.dispatch_provenance(),
     )
     .unwrap();
     let mut batch = FixtureBatch::new();

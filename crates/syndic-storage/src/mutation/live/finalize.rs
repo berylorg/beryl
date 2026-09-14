@@ -99,6 +99,7 @@ impl FinalizeNextTurnItemMutation {
             current.provider_observation_issue(),
             current.end_status(),
             request.updated_at,
+            current.dispatch_provenance(),
         )?;
         let next_activity = summary.last_activity_at().max(request.updated_at);
         let summary =

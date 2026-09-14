@@ -19,6 +19,8 @@ pub(crate) struct CancelBindingActivationMutation {
 }
 
 pub struct CancelBindingActivationRecords {
+    state: crate::TurnStateRecord,
+    transcript_path: Option<crate::TranscriptPathTurnRecord>,
     binding: BindingRecord,
     head: BindingHeadRecord,
     gate: InputGateRecord,
@@ -43,6 +45,8 @@ impl DomainMutation<SyndicDomain> for CancelBindingActivationMutation {
     ) -> Result<(), Self::Error> {
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
+        reservation.reserve_records::<TurnStatesCodec>(1)?;
+        reservation.reserve_records::<TranscriptPathTurnsCodec>(1)?;
         reserve_input_gate(reservation)?;
         reservation.reserve_records::<CasThreadIndexCodec>(1)?;
         reservation.reserve_records::<CasThreadBindingIndexCodec>(1)?;
@@ -80,18 +84,31 @@ impl CancelBindingActivationMutation {
         }
 
         let snapshot = required::<ExecutionSnapshotsFamily>(reader, &request.snapshot_id())?;
-        if snapshot.thread_id() != request.thread_id()
-            || snapshot.binding_revision() != base.current.revision()
-            || snapshot.activation_gate_revision() != active.activation_gate_revision()
-            || snapshot.active_turn_id() != active.turn_id()
-            || snapshot.cas_thread_id() != active.usable().cas_thread_id()
-        {
+        let anchor = crate::TurnDispatchAnchor::new(request.snapshot_id(), base.current.revision());
+        if !crate::dispatch_provenance::activation_matches(
+            request.thread_id(),
+            request.turn_id(),
+            anchor,
+            &snapshot,
+            &base.current,
+        ) {
             return Err(SyndicMutationError::BindingStateConflict);
         }
         let state = required::<TurnStatesFamily>(reader, &active.turn_id())?;
+        if state.revision() != request.expected_state_revision() {
+            return Err(SyndicMutationError::TurnStateRevisionConflict {
+                expected: request.expected_state_revision(),
+                current: state.revision(),
+            });
+        }
         if state.lifecycle() != TurnLifecycle::Pending || state.source_event_count() != 0 {
             return Err(SyndicMutationError::TurnLifecycleConflict);
         }
+        if state.dispatch_provenance() != crate::TurnDispatchProvenance::Activated(anchor) {
+            return Err(SyndicMutationError::BindingStateConflict);
+        }
+        let state =
+            state.advance_dispatch_provenance(crate::TurnDispatchProvenance::Cancelled(anchor))?;
 
         let current_gate = required_input_gate(reader, &request.thread_id())?;
         if current_gate.revision() != request.expected_gate_revision() {
@@ -164,7 +181,14 @@ impl CancelBindingActivationMutation {
             request.thread_id(),
             base.next_revision,
         )?;
+        let thread = required::<ThreadsFamily>(reader, &request.thread_id())?;
+        let turn = required::<TurnsFamily>(reader, &active.turn_id())?;
+        let transcript_path = crate::mutation::transcript::refresh_current_path_state(
+            reader, &thread, &turn, &state,
+        )?;
         Ok(CancelBindingActivationRecords {
+            state,
+            transcript_path,
             binding,
             head,
             gate,
@@ -179,6 +203,17 @@ impl CancelBindingActivationRecords {
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
+        mutations.put::<TurnStatesCodec>(&self.state.turn_id(), &self.state)?;
+        if let Some(path) = &self.transcript_path {
+            mutations.put::<TranscriptPathTurnsCodec>(
+                &ThreadTranscriptPathKey {
+                    thread: path.thread_id(),
+                    generation: path.generation(),
+                    depth: path.depth(),
+                },
+                path,
+            )?;
+        }
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.binding.thread_id(),

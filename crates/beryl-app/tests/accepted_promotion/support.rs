@@ -620,6 +620,7 @@ pub fn terminalize_parent_fixture(
         0,
         Some(status),
         ended_at,
+        syndic_storage::TurnDispatchProvenance::Unattempted,
     )
     .unwrap();
     let generation = head.generation();

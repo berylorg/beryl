@@ -414,6 +414,11 @@ impl DeliveryFixture {
                     thread_id,
                     binding.binding().revision(),
                     gate.revision(),
+                    storage
+                        .turn_state(home, submitted_turn_id, point_limit())
+                        .unwrap()
+                        .unwrap()
+                        .revision(),
                     selected_path(home, storage.clone(), thread_id),
                     snapshot_id,
                     submitted_turn_id,
@@ -435,7 +440,7 @@ impl DeliveryFixture {
             submitted_turn_id,
             binding.binding().revision(),
             gate.revision(),
-            pending_turn_state.revision(),
+            pending_turn_state.revision().checked_next().unwrap(),
             snapshot_id,
             timestamp(5),
         );

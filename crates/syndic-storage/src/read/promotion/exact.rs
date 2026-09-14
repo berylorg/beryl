@@ -69,6 +69,7 @@ impl PromotionObservation {
             0,
             None,
             promotion.promoted_at(),
+            crate::TurnDispatchProvenance::Unattempted,
         )
         .map_err(|_| {
             SyndicReadError::Invariant("accepted-input promotion turn state cannot be constructed")

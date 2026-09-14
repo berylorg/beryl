@@ -1,5 +1,51 @@
 use super::*;
 
+pub(crate) fn enc_turn_dispatch_provenance(e: &mut Encoder, value: crate::TurnDispatchProvenance) {
+    use crate::TurnDispatchProvenance;
+    let anchor = match value {
+        TurnDispatchProvenance::Unattempted => {
+            e.u8(0);
+            return;
+        }
+        TurnDispatchProvenance::Activated(anchor) => {
+            e.u8(1);
+            anchor
+        }
+        TurnDispatchProvenance::Cancelled(anchor) => {
+            e.u8(2);
+            anchor
+        }
+        TurnDispatchProvenance::ProviderOperation => {
+            e.u8(3);
+            return;
+        }
+    };
+    enc_snapshot(e, anchor.snapshot_id());
+    enc_binding_rev(e, anchor.binding_revision());
+}
+
+pub(crate) fn dec_turn_dispatch_provenance(
+    d: &mut Decoder<'_>,
+) -> Result<crate::TurnDispatchProvenance, CodecError> {
+    use crate::{TurnDispatchAnchor, TurnDispatchProvenance};
+    match d.u8()? {
+        0 => Ok(TurnDispatchProvenance::Unattempted),
+        1 => Ok(TurnDispatchProvenance::Activated(TurnDispatchAnchor::new(
+            dec_snapshot(d)?,
+            dec_binding_rev(d)?,
+        ))),
+        2 => Ok(TurnDispatchProvenance::Cancelled(TurnDispatchAnchor::new(
+            dec_snapshot(d)?,
+            dec_binding_rev(d)?,
+        ))),
+        3 => Ok(TurnDispatchProvenance::ProviderOperation),
+        tag => Err(CodecError::InvalidTag {
+            kind: "turn dispatch provenance",
+            tag,
+        }),
+    }
+}
+
 pub(crate) fn enc_turn_kind(e: &mut Encoder, value: crate::TurnKind) {
     match value {
         crate::TurnKind::OrdinaryUser => e.u8(0),

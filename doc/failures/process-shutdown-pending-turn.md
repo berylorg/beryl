@@ -65,3 +65,47 @@ Independent semantic review and root authority/diff validation found no blocking
 clarification. The documentation index is current and whitespace checks pass. This accepts the
 completion contract only; exact proof construction, admission races, cleanup and recovery remain
 implementation verification obligations.
+
+## Bounded Provenance Blocker
+
+Proof-readiness review found that the existing bounded durable reads cannot establish the approved
+nondispatch distinction for every pending turn. A current `PendingTurn`, zero source events and a
+`Valid` binding are insufficient even after joining the current execution flight:
+
+- [Abandonment](../../crates/syndic-storage/src/mutation/binding/abandon.rs) can preserve a pending
+  turn while publishing a stale binding and exact projection-loss route provenance.
+- [Recovery](../../crates/beryl-app/src/cas_projection/execute/recovery.rs) can publish a valid
+  replacement binding after replaying only that pending turn's parent. The
+  [binding publication mutation](../../crates/syndic-storage/src/mutation/binding/transition.rs)
+  permits this without changing the pending turn or its route.
+- [Activation](../../crates/syndic-storage/src/mutation/binding/active.rs) does not require the
+  pending gate's selected route to be absent. A later activation and exact
+  [cancellation](../../crates/syndic-storage/src/mutation/binding/cancel.rs) can therefore clear
+  that selected route. Proving the later attempt did not dispatch does not prove that an earlier
+  attempt was undispatched.
+- The [recovered-pending reader](../../crates/syndic-storage/src/read/delivery_recovery/pages.rs)
+  checks current pending, source and binding facts after excluding selected routes; it has no
+  earlier-attempt anchor. Turn topology and state records carry no binding-history or execution-
+  snapshot anchor. Snapshots and active CAS-turn records are keyed by snapshot identity.
+- The [flight registry](../../crates/beryl-app/src/cas_projection/service/flight_registry.rs)
+  releases the flight key and wakes a waiter without retaining a completed dispatch proof. The
+  [scheduler settlement](../../crates/beryl-app/src/cas_projection/accepted_input_scheduler/next_turn/worker/settlement.rs)
+  result is generic and also discards projection-release errors; neither supplies missing proof
+  for older completed flights.
+
+Contiguous binding history can distinguish untouched work, exact cancelled `Active` to `Valid`
+successors, and an earlier `Active` to `Stale` abandonment. The existing
+[history validator](../../crates/syndic-storage/src/validation/bindings/history.rs) establishes those
+transition distinctions. However, a complete per-thread history walk has no fixed bound. The
+[storage package authority](../../crates/syndic-storage/doc/design.md#bounded-work-and-stable-identity)
+restricts composite reads to bounded constituents and exhaustive enumeration to explicit validation,
+scrub, background maintenance or corruption investigation; routine recovery follows only a bounded
+closure around its natural anchor. Paging alone does not authorize a complete routine proof scan.
+
+The Operator selected a clean bounded solution on 2026-09-14. The CAS-live system and storage
+authorities now specify explicit per-turn dispatch provenance and a replacement turn-state record
+encoding. Activation and exact cancellation maintain the anchor atomically; abandonment and
+rebinding cannot erase uncertainty. Cancelled evidence follows the exact snapshot and immediate
+binding successor, while live flight and cleanup obligations remain separate. The root plan
+separates persistent provenance, its bounded read and shutdown composition. Implementation and
+verification remain acceptance obligations; the design correction alone does not establish proof.

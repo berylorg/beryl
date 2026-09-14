@@ -100,6 +100,11 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
         thread,
         current_binding_revision(&store, &storage, thread),
         current_gate_revision(&store, &storage, thread),
+        storage
+            .turn_state(&store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         selected,
         snapshot,
         turn,
@@ -203,6 +208,11 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
         thread,
         current_binding_revision(&store, &storage, thread),
         current_gate_revision(&store, &storage, thread),
+        storage
+            .turn_state(&store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         current_path,
         SyndicExecutionSnapshotId::from_bytes([82; 16]),
         turn,
@@ -241,6 +251,11 @@ fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
         fixture.thread,
         current_binding_revision(&store, &storage, fixture.thread),
         current_gate_revision(&store, &storage, fixture.thread),
+        storage
+            .turn_state(&store, fixture.turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         fixture.selected,
         fixture.snapshot,
         fixture.turn,
@@ -322,6 +337,11 @@ fn cancellation_rejects_after_cas_turn_publication() {
                 fixture.thread,
                 before_binding.binding().revision(),
                 before_gate.revision(),
+                storage
+                    .turn_state(&store, fixture.turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 fixture.selected,
                 fixture.snapshot,
                 fixture.turn,

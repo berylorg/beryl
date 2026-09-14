@@ -11,6 +11,7 @@ use crate::{
 
 use super::SyndicPointReadLimit;
 
+mod provenance;
 mod publication;
 
 struct CasThreadReservationPublication<'a> {
@@ -92,6 +93,11 @@ impl SyndicStorage {
                 request.started_at(),
             );
             let owner = self.cas_thread_owner(store, usable.cas_thread_id().clone(), limit)?;
+            let turn_state = self.turn_state(store, request.turn_id(), limit)?;
+            let anchor = crate::TurnDispatchAnchor::new(request.snapshot_id(), revision);
+            let next_state_revision = request.expected_state_revision().checked_next().map_err(|_| {
+                SyndicReadError::Invariant("activation turn-state revision is exhausted")
+            })?;
             let membership =
                 self.cas_thread_binding_membership(store, usable.cas_thread_id(), revision, limit)?;
             match self.classify_binding_publication(
@@ -107,6 +113,12 @@ impl SyndicStorage {
                         if snapshot
                             .as_ref()
                             .is_some_and(|stored| stored == &expected_snapshot)
+                            && turn_state.as_ref().is_some_and(|state| {
+                                state.revision() >= next_state_revision
+                                    && matches!(state.dispatch_provenance(),
+                                        crate::TurnDispatchProvenance::Activated(stored)
+                                        | crate::TurnDispatchProvenance::Cancelled(stored) if stored == anchor)
+                            })
                             && membership.as_ref().is_some_and(|stored| {
                                 stored
                                     == &expected_membership(
@@ -133,8 +145,24 @@ impl SyndicStorage {
                 BindingPublicationStatus::Prior => {
                     let snapshot = self.execution_snapshot(store, request.snapshot_id(), limit)?;
                     let gate = self.input_gate(store, request.thread_id(), limit)?;
+                    let safe_provenance = match turn_state.as_ref().map(|state| state.dispatch_provenance()) {
+                        Some(crate::TurnDispatchProvenance::Unattempted) => true,
+                        Some(crate::TurnDispatchProvenance::Cancelled(anchor)) => self.authenticated_cancelled_dispatch(
+                            store, request.thread_id(), request.turn_id(), anchor, limit,
+                        )?,
+                        _ => false,
+                    };
                     Ok(
                         if snapshot.is_none()
+                            && safe_provenance
+                            && turn_state.as_ref().is_some_and(|state| {
+                                state.revision() == request.expected_state_revision()
+                                    && state.lifecycle() == crate::TurnLifecycle::Pending
+                                    && state.source_event_count() == 0
+                                    && matches!(state.dispatch_provenance(),
+                                        crate::TurnDispatchProvenance::Unattempted
+                                        | crate::TurnDispatchProvenance::Cancelled(_))
+                            })
                             && membership.is_none()
                             && owner.as_ref().is_some_and(|owner| {
                                 owner.thread_id() == request.thread_id()
@@ -189,10 +217,16 @@ impl SyndicStorage {
             else {
                 return Ok(BindingPublicationStatus::Collision);
             };
-            if snapshot.thread_id() != request.thread_id()
-                || snapshot.binding_revision() != request.expected_binding_revision()
-                || snapshot.activation_gate_revision() != request.expected_gate_revision()
-                || snapshot.active_turn_id() != request.turn_id()
+            if !crate::dispatch_provenance::activation_matches(
+                request.thread_id(),
+                request.turn_id(),
+                crate::TurnDispatchAnchor::new(
+                    request.snapshot_id(),
+                    request.expected_binding_revision(),
+                ),
+                &snapshot,
+                &prior,
+            ) || snapshot.activation_gate_revision() != request.expected_gate_revision()
                 || self
                     .active_cas_turn(store, request.snapshot_id(), limit)?
                     .is_some()
@@ -234,9 +268,27 @@ impl SyndicStorage {
                             "activation-cancellation gate frontier is exhausted",
                         )
                     })?;
+            let turn_state = self.turn_state(store, request.turn_id(), limit)?;
+            let anchor = crate::TurnDispatchAnchor::new(
+                request.snapshot_id(),
+                request.expected_binding_revision(),
+            );
+            let next_state_revision =
+                request
+                    .expected_state_revision()
+                    .checked_next()
+                    .map_err(|_| {
+                        SyndicReadError::Invariant("cancellation turn-state revision is exhausted")
+                    })?;
             Ok(match status {
                 BindingPublicationStatus::Exact
-                    if gate.as_ref().is_some_and(|stored| {
+                    if turn_state.as_ref().is_some_and(|state| {
+                        state.revision() == next_state_revision
+                            && state.dispatch_provenance()
+                                == crate::TurnDispatchProvenance::Cancelled(anchor)
+                            && state.lifecycle() == crate::TurnLifecycle::Pending
+                            && state.source_event_count() == 0
+                    }) && gate.as_ref().is_some_and(|stored| {
                         stored.revision() == expected_next_gate
                             && stored.state() == &InputGateState::PendingTurn(request.turn_id())
                             && stored.live_count() == 0
@@ -246,7 +298,13 @@ impl SyndicStorage {
                     BindingPublicationStatus::Exact
                 }
                 BindingPublicationStatus::Prior
-                    if gate.as_ref().is_some_and(|stored| {
+                    if turn_state.as_ref().is_some_and(|state| {
+                        state.revision() == request.expected_state_revision()
+                            && state.dispatch_provenance()
+                                == crate::TurnDispatchProvenance::Activated(anchor)
+                            && state.lifecycle() == crate::TurnLifecycle::Pending
+                            && state.source_event_count() == 0
+                    }) && gate.as_ref().is_some_and(|stored| {
                         stored.revision() == request.expected_gate_revision()
                             && matches!(
                                 stored.state(),

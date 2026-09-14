@@ -333,6 +333,7 @@ pub fn submit_prepared_current_draft(
                 0,
                 None,
                 submitted_at,
+                syndic_storage::TurnDispatchProvenance::Unattempted,
             )
             .unwrap(),
         ),
@@ -657,6 +658,11 @@ pub fn establish_turn(
                 thread,
                 binding.binding().revision(),
                 gate.revision(),
+                storage
+                    .turn_state(store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,

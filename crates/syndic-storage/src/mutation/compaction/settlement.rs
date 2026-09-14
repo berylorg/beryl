@@ -224,6 +224,7 @@ fn settlement_turn_effect(
         current.provider_observation_issue(),
         Some(status),
         current.updated_at(),
+        current.dispatch_provenance(),
     )?;
     Ok((Some(event), Some(state)))
 }

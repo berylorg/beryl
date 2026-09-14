@@ -157,6 +157,32 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   absent stop eligibility or coarse idle state is not nondispatch proof. A dispatched or possibly
   dispatched target cannot use this outcome and must reach terminal-history fixed point or the
   existing durable authority-loss convergence.
+- Ordinary and lifecycle-continuation turns carry storage-owned bounded dispatch provenance in
+  their turn state: unattempted, activated, or exactly cancelled. Activated and cancelled states
+  name the exact execution snapshot and active binding revision. Provider-operation turns use
+  their existing operation receipts and carry a distinct provider-operation marker.
+- Admission initializes unattempted provenance. Binding activation accepts only unattempted or
+  authenticated cancelled provenance, requires a pending gate without a selected route, and
+  atomically publishes activated provenance with the binding, snapshot and gate. Authentication
+  of a cancelled predecessor follows its exact snapshot, historical active binding and immediate
+  valid successor; it never walks the thread's binding history.
+- Activated provenance means dispatch remains possible. Only cancellation authorized by the
+  existing exact nondispatch request outcome and router authority may atomically replace it with
+  cancelled provenance. Missing CAS-turn identity is insufficient. Cancellation must match the
+  exact activation anchor and preserve pending identity and canonical content. Activation and
+  cancellation advance turn-state revision and include that state in publication reconciliation;
+  execution capture receives the resulting revision.
+- Abandonment, rebinding, capture, finalization, repair and recovery preserve dispatch provenance.
+  Rebinding cannot restore unattempted or cancelled authority or authorize another attempt over
+  activated provenance. Such work retains its terminal or authority-loss convergence path.
+  Provenance construction and preservation are explicit; no generic update defaults it to
+  unattempted. A fresh activation may replace authenticated cancelled provenance with its new
+  exact anchor because every earlier attempt was already proven cancelled.
+- Pending-preservation and recovered-pending reads authenticate this bounded provenance together
+  with the exact pending gate, turn, selected path and canonical content. They do not use a history
+  audit or infer nondispatch from current binding usability. Durable provenance does not discharge
+  live preparation, execution, projection/session cleanup or reconciliation custody; shutdown must
+  still retain its fence and join those exact obligations.
 - The coordinator visits the exact registered targets with bounded pages and joins their retained
   execution flights. It requests or joins each target's existing sole exact graceful soft stop when
   authorized, and waits for initially noninterruptible work to reach exact eligibility, terminal

@@ -140,6 +140,7 @@ fn install_incomplete(
         frontiers.issue,
         Some(status),
         fixture.baseline.updated_at(),
+        fixture.baseline.dispatch_provenance(),
     )
     .unwrap();
     let event = SourceEventRecord::new(
@@ -311,6 +312,7 @@ fn missing_or_mismatched_authority_lost_terminal_is_rejected() {
         0,
         Some(authority_lost),
         mismatched.baseline.updated_at(),
+        mismatched.baseline.dispatch_provenance(),
     )
     .unwrap();
     let mismatched_event = SourceEventRecord::new(
@@ -347,6 +349,7 @@ fn missing_or_mismatched_authority_lost_terminal_is_rejected() {
         0,
         Some(authority_lost),
         missing.baseline.updated_at(),
+        missing.baseline.dispatch_provenance(),
     )
     .unwrap();
     commit(
@@ -458,6 +461,7 @@ fn authority_lost_context_is_allowed_only_at_the_immediate_predecessor() {
                     0,
                     Some(status),
                     older_state.updated_at(),
+                    older_state.dispatch_provenance(),
                 )
                 .unwrap(),
             ),

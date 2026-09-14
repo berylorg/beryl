@@ -96,7 +96,7 @@ fn populated_active_transcript_path(
 fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
     exercise_seeded_populated_case(
         "binding-snapshot-link",
-        "active binding snapshot is missing",
+        "dispatch provenance activation disagrees",
         |store, storage| {
             let binding = populated_active_binding(store, &storage);
             let BindingState::Active(active) = binding.state() else {
@@ -120,7 +120,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
 
     exercise_seeded_populated_case(
         "snapshot-binding-facts",
-        "active binding and execution snapshot disagree",
+        "dispatch provenance activation disagrees",
         |store, storage| {
             let snapshot = populated_execution_snapshot(store, &storage);
             let later_start = SyndicTimestamp::from_unix_millis(
@@ -149,7 +149,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
 
     exercise_seeded_populated_case(
         "snapshot-native-count",
-        "active binding and execution snapshot disagree",
+        "dispatch provenance activation disagrees",
         |store, storage| {
             let snapshot = populated_execution_snapshot(store, &storage);
             batch([FixtureRecord::ExecutionSnapshot(
@@ -178,7 +178,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
 fn reopen_rejects_malformed_tool_profile_and_cas_turn_correlations() {
     exercise_seeded_populated_case(
         "snapshot-tool-profile",
-        "active binding and execution snapshot disagree",
+        "dispatch provenance activation disagrees",
         |store, storage| {
             let snapshot = populated_execution_snapshot(store, &storage);
             batch([FixtureRecord::ExecutionSnapshot(
@@ -389,17 +389,22 @@ fn reopen_rejects_malformed_membership_and_source_correlations() {
                     )
                     .unwrap(),
                 ),
-                FixtureRecord::TurnState(fixture_turn_state_with_capture(
-                    state.turn_id(),
-                    state.revision(),
-                    state.lifecycle(),
-                    state.source_event_count() + 1,
-                    state.item_count(),
-                    state.finalized_item_count(),
-                    state.open_item_count(),
-                    state.history_blocking_item_count(),
-                    state.updated_at(),
-                )),
+                FixtureRecord::TurnState(
+                    TurnStateRecord::with_capture_frontiers(
+                        state.turn_id(),
+                        state.revision(),
+                        state.lifecycle(),
+                        state.source_event_count() + 1,
+                        state.item_count(),
+                        state.finalized_item_count(),
+                        state.open_item_count(),
+                        state.history_blocking_item_count(),
+                        state.end_status(),
+                        state.updated_at(),
+                        state.dispatch_provenance(),
+                    )
+                    .unwrap(),
+                ),
                 FixtureRecord::ActivityQueryHead(
                     ActivityQueryHeadRecord::new(
                         active.thread_id(),

@@ -166,9 +166,9 @@ mod tests {
         assert_eq!(version::<secondary::AcceptedOrderCodec>(), v2);
         assert_eq!(version::<primary::ContentManifestsCodec>(), v2);
         assert_eq!(version::<primary::CanonicalItemsCodec>(), v2);
-        assert_eq!(version::<primary::TurnStatesCodec>(), v2);
 
         let v3 = RecordVersion::new(3);
+        assert_eq!(version::<primary::TurnStatesCodec>(), v3);
         assert_eq!(version::<primary::AcceptedInputsCodec>(), v3);
         assert_eq!(version::<primary::SourceEventsCodec>(), v3);
         assert_eq!(version::<secondary::AcceptedRouteGenerationsCodec>(), v3);

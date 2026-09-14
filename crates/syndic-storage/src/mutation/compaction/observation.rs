@@ -208,6 +208,7 @@ impl ProviderMutation {
                     current_state.provider_observation_issue(),
                     None,
                     request.observed_at,
+                    current_state.dispatch_provenance(),
                 )?;
                 let snapshot = required::<ExecutionSnapshotsFamily>(reader, &target.snapshot_id())?;
                 let active = ActiveCasTurnRecord::new(
@@ -263,6 +264,7 @@ impl ProviderMutation {
                     current_state.provider_observation_issue(),
                     Some(*status),
                     request.observed_at,
+                    current_state.dispatch_provenance(),
                 )?;
                 let source_compaction_revision = operation.revision();
                 let operation = operation.observe_terminal(request.sequence, *status, revision)?;

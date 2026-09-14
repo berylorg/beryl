@@ -7,8 +7,8 @@ use beryl_model::{
 use crate::{
     AcceptedInputOrdinal, AcceptedRouteGeneration, ContentReference, ContextEnvelopeRevision,
     ConversationParent, CurrentTranscriptEntryProof, DiscussionContextEnvelope, SelectedPathProof,
-    SyndicTimestamp, ThreadLineageDepth, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnKind,
-    TurnLifecycle, TurnStateRevision, TurnTerminalOutcome,
+    SyndicTimestamp, ThreadLineageDepth, TurnDepth, TurnDispatchProvenance, TurnEndStatus,
+    TurnIncompleteReason, TurnKind, TurnLifecycle, TurnStateRevision, TurnTerminalOutcome,
 };
 
 mod accepted;
@@ -260,6 +260,7 @@ pub struct TurnStateRecord {
     provider_observation_issue: Option<crate::ProviderObservationIssueReason>,
     end_status: Option<TurnEndStatus>,
     updated_at: SyndicTimestamp,
+    dispatch_provenance: TurnDispatchProvenance,
 }
 
 impl TurnStateRecord {
@@ -271,6 +272,7 @@ impl TurnStateRecord {
         item_count: u64,
         end_status: Option<TurnEndStatus>,
         updated_at: SyndicTimestamp,
+        dispatch_provenance: TurnDispatchProvenance,
     ) -> Result<Self, crate::SyndicRecordError> {
         Self::with_capture_frontiers(
             turn_id,
@@ -283,6 +285,7 @@ impl TurnStateRecord {
             0,
             end_status,
             updated_at,
+            dispatch_provenance,
         )
     }
 
@@ -296,6 +299,7 @@ impl TurnStateRecord {
         finalized_item_count: u64,
         end_status: Option<TurnEndStatus>,
         updated_at: SyndicTimestamp,
+        dispatch_provenance: TurnDispatchProvenance,
     ) -> Result<Self, crate::SyndicRecordError> {
         Self::with_capture_frontiers(
             turn_id,
@@ -308,6 +312,7 @@ impl TurnStateRecord {
             0,
             end_status,
             updated_at,
+            dispatch_provenance,
         )
     }
 
@@ -323,6 +328,7 @@ impl TurnStateRecord {
         history_blocking_item_count: u64,
         end_status: Option<TurnEndStatus>,
         updated_at: SyndicTimestamp,
+        dispatch_provenance: TurnDispatchProvenance,
     ) -> Result<Self, crate::SyndicRecordError> {
         Self::with_capture_frontiers_and_issue(
             turn_id,
@@ -336,6 +342,7 @@ impl TurnStateRecord {
             None,
             end_status,
             updated_at,
+            dispatch_provenance,
         )
     }
 
@@ -352,6 +359,7 @@ impl TurnStateRecord {
         provider_observation_issue: Option<crate::ProviderObservationIssueReason>,
         end_status: Option<TurnEndStatus>,
         updated_at: SyndicTimestamp,
+        dispatch_provenance: TurnDispatchProvenance,
     ) -> Result<Self, crate::SyndicRecordError> {
         if finalized_item_count > item_count
             || open_item_count > item_count
@@ -374,7 +382,21 @@ impl TurnStateRecord {
             provider_observation_issue,
             end_status,
             updated_at,
+            dispatch_provenance,
         })
+    }
+
+    pub const fn dispatch_provenance(&self) -> TurnDispatchProvenance {
+        self.dispatch_provenance
+    }
+
+    pub(crate) fn advance_dispatch_provenance(
+        mut self,
+        provenance: TurnDispatchProvenance,
+    ) -> Result<Self, crate::SyndicValueError> {
+        self.revision = self.revision.checked_next()?;
+        self.dispatch_provenance = provenance;
+        Ok(self)
     }
     #[must_use]
     pub const fn turn_id(&self) -> SyndicTurnId {

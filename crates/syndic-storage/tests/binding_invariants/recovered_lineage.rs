@@ -54,6 +54,11 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         thread,
         current_binding_revision(&store, &storage, thread),
         current_gate_revision(&store, &storage, thread),
+        storage
+            .turn_state(&store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         selected,
         snapshot,
         turn,
@@ -79,6 +84,11 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
         thread,
         current_binding_revision(&store, &storage, thread),
         current_gate_revision(&store, &storage, thread),
+        storage
+            .turn_state(&store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         selected,
         snapshot,
         turn,
@@ -102,6 +112,11 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
                 thread,
                 current_binding_revision(&store, &storage, thread),
                 current_gate_revision(&store, &storage, thread),
+                storage
+                    .turn_state(&store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,
@@ -237,6 +252,11 @@ fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publicati
                 thread,
                 current_binding_revision(&store, &storage, thread),
                 current_gate_revision(&store, &storage, thread),
+                storage
+                    .turn_state(&store, turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 selected,
                 snapshot,
                 turn,

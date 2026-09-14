@@ -108,6 +108,7 @@ impl PromotionRecords {
             0,
             None,
             promotion.promoted_at(),
+            crate::TurnDispatchProvenance::Unattempted,
         )?;
         let child_index = TurnChildIndexRecord::new(parent_id, turn.id(), depth, digest);
         let item_revision = ProjectionRevision::new(1)?;

@@ -44,14 +44,37 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 395: Fence Compaction And Continuation Admission (finished)
+# Phase 397: Persist Exact Ordinary-Turn Dispatch Provenance (finished)
 
-Accepted original-epoch compaction admission and same-thread continuation settlement. Fencing
-consumes volatile intent without reviving it on reopening, preserves admitted pending identity and
-content, and retains counted admission through exact reconciliation. Independent review accepted
-the boundary; 89 focused regressions and the production-library check passed.
+Accepted explicit V3 turn-state provenance, atomic activation/cancellation with transcript refresh,
+fixed cancelled-anchor authentication, and preservation through capture and authority loss.
+Uncertain work cannot reactivate after rebinding. Independent review and focused codec, corruption,
+reconciliation, recovery, dispatch and terminal-capture checks passed, along with the production
+library check.
 
-# Phase 326: Coordinate Process-Wide Graceful Shutdown (wip)
+# Phase 398: Expose Bounded Pending Dispatch Evidence (wip)
+
+Expose the stable exact pending-provenance read and use it for ordinary execution and recovered
+pending classification. Verify canonical identity/content preservation, mutable-anchor drift,
+cancelled-proof substitution, uncertain rebound work and ordinary later recovery.
+
+# Phase 396: Prove Exact Shutdown Thread Settlement (pending)
+
+Establish the exact per-thread completion evidence needed by the process barrier before composing
+that coordinator. Join preparation and execution flight custody, validate pending identity, content,
+binding and route provenance, and distinguish proven nondispatch from uncertain dispatch and durable
+authority-loss convergence. Preserve projection/session cleanup and reconciliation obligations.
+
+Verify untouched pending work and exact cancelled activation separately from abandonment that also
+leaves a pending gate. Exercise dispatch-before-fence, preparation and cleanup still in flight,
+indeterminate cancellation, and ordinary later recovery. Independently review the proof boundary;
+neither process admission counts nor the scheduler's generic settlement result proves completion.
+
+The [provenance correction](failures/process-shutdown-pending-turn.md#bounded-provenance-blocker)
+is supplied by the preceding storage and read boundaries. Compose their accepted evidence with
+exact live custody; neither the new field nor a current valid binding proves cleanup completion.
+
+# Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
 Compose the accepted admission fence and exact all-work convergence boundary shared by final-window
 close and explicit Exit. Preserve accepted queues and proven-undispatched pending turns, prevent

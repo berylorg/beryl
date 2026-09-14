@@ -521,6 +521,7 @@ fn unknown_terminal_source_mutation(
         state.provider_observation_issue(),
         Some(status),
         state.updated_at(),
+        state.dispatch_provenance(),
     )
     .unwrap();
     let mut mutation = batch([

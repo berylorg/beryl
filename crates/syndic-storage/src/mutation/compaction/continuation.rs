@@ -223,6 +223,7 @@ impl SettleLifecycleMutation {
             0,
             None,
             request.settled_at,
+            crate::TurnDispatchProvenance::Unattempted,
         )?;
         let child = parent.turn().map(|parent_id| {
             crate::TurnChildIndexRecord::new(parent_id, request.turn_id, depth, digest)

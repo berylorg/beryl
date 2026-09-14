@@ -169,6 +169,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
                     source_thread,
                     BindingRevision::new(2).unwrap(),
                     InputGateRevision::new(1).unwrap(),
+                    syndic_storage::TurnStateRevision::FIRST,
                     source_selected,
                     source_snapshot(),
                     source_turn,
@@ -204,7 +205,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
         thread: source_thread,
         turn: source_turn,
         source: source_authority.clone(),
-        state_revision: TurnStateRevision::FIRST,
+        state_revision: TurnStateRevision::FIRST.checked_next().unwrap(),
         gate_revision: InputGateRevision::new(3).unwrap(),
         observed_at: timestamp(4),
     };
@@ -389,14 +390,22 @@ fn pre_event_records() -> Vec<FixtureRecord> {
             0,
             timestamp(4),
         )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            active,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Active,
-            0,
-            0,
-            timestamp(8),
-        )),
+        FixtureRecord::TurnState(
+            TurnStateRecord::new(
+                active,
+                TurnStateRevision::FIRST,
+                TurnLifecycle::Active,
+                0,
+                0,
+                None,
+                timestamp(8),
+                TurnDispatchProvenance::Activated(TurnDispatchAnchor::new(
+                    active_snapshot(),
+                    BindingRevision::new(3).unwrap(),
+                )),
+            )
+            .unwrap(),
+        ),
         FixtureRecord::InputGate(
             InputGateRecord::new(
                 source_thread,

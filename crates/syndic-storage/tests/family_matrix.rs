@@ -582,7 +582,7 @@ fn deletion_cases() -> Vec<DeletionCase> {
         DeletionCase {
             family: PhysicalFamily::ExecutionSnapshots,
             delete: FixtureDelete::ExecutionSnapshot(active_snapshot()),
-            expected: "active binding snapshot is missing",
+            expected: "dispatch provenance snapshot is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ActiveCasTurns,

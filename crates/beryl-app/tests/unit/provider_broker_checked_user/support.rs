@@ -217,6 +217,11 @@ impl CheckedUserFixture {
                     thread_id,
                     binding.binding().revision(),
                     gate.revision(),
+                    storage
+                        .turn_state(&home, turn_id, point_limit())
+                        .unwrap()
+                        .unwrap()
+                        .revision(),
                     selected,
                     snapshot_id,
                     turn_id,

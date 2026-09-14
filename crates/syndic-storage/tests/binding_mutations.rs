@@ -5,6 +5,9 @@ mod support;
 #[path = "binding_mutations/lifecycle.rs"]
 mod lifecycle;
 
+#[path = "binding_mutations/dispatch_provenance.rs"]
+mod dispatch_provenance;
+
 use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
@@ -791,6 +794,11 @@ fn activate_pending(
         thread,
         current_binding_revision(store, storage, thread),
         current_gate_revision(store, storage, thread),
+        storage
+            .turn_state(store, turn, point_limit())
+            .unwrap()
+            .unwrap()
+            .revision(),
         selected,
         snapshot,
         turn,
@@ -1210,7 +1218,7 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
 }
 
 #[test]
-fn queued_input_survives_active_abandonment_retry_and_activation() {
+fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
     let home = TestHome::new("queued-active-abandonment-retry");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -1289,7 +1297,11 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
         storage.publish_valid_binding(storage.revision(&store).unwrap(), retry),
     );
     let retry_snapshot = SyndicExecutionSnapshotId::from_bytes([74; 16]);
-    execute(
+    let before_state = storage
+        .turn_state(&store, fixture.turn, point_limit())
+        .unwrap()
+        .unwrap();
+    let outcome = execute_outcome(
         &store,
         storage.activate_binding(
             storage.revision(&store).unwrap(),
@@ -1297,6 +1309,11 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
                 fixture.thread,
                 current_binding_revision(&store, &storage, fixture.thread),
                 current_gate_revision(&store, &storage, fixture.thread),
+                storage
+                    .turn_state(&store, fixture.turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 fixture.selected,
                 retry_snapshot,
                 fixture.turn,
@@ -1305,6 +1322,21 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
             ),
         ),
     );
+    assert!(matches!(
+        typed_error(&outcome),
+        SyndicMutationError::TurnLifecycleConflict
+    ));
+    assert_eq!(
+        storage
+            .turn_state(&store, fixture.turn, point_limit())
+            .unwrap()
+            .unwrap(),
+        before_state
+    );
+    assert!(matches!(
+        before_state.dispatch_provenance(),
+        TurnDispatchProvenance::Activated(_)
+    ));
     assert_eq!(
         storage
             .turn_state(&store, fixture.turn, point_limit())
@@ -1317,12 +1349,9 @@ fn queued_input_survives_active_abandonment_retry_and_activation() {
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
-    assert!(matches!(gate.state(), InputGateState::AwaitingSteering(_)));
+    assert_eq!(gate.state(), &InputGateState::PendingTurn(fixture.turn));
     assert_eq!(gate.live_next_turn_count(), 1);
-    assert_ne!(
-        gate.selected_route().unwrap().generation(),
-        lost_route.generation()
-    );
+    assert_eq!(gate.selected_route(), Some(lost_route));
     let retained = storage
         .accepted_input(&store, accepted, point_limit())
         .unwrap()

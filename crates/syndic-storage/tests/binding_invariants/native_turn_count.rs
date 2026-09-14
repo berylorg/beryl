@@ -30,14 +30,19 @@ fn provider_operation_seed(
             digest,
             timestamp(2),
         )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            turn,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            0,
-            timestamp(2),
-        )),
+        FixtureRecord::TurnState(
+            TurnStateRecord::new(
+                turn,
+                TurnStateRevision::FIRST,
+                TurnLifecycle::Interrupted,
+                1,
+                0,
+                Some(TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap()),
+                timestamp(2),
+                TurnDispatchProvenance::ProviderOperation,
+            )
+            .unwrap(),
+        ),
         FixtureRecord::SourceEvent(
             SourceEventRecord::new(
                 turn,

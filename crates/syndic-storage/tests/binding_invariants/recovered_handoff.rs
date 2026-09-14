@@ -74,6 +74,11 @@ fn activate_recovered(store: &HomeStore, storage: &SyndicStorage, fixture: &Reco
                 fixture.thread,
                 current_binding_revision(store, storage, fixture.thread),
                 current_gate_revision(store, storage, fixture.thread),
+                storage
+                    .turn_state(store, fixture.turn, point_limit())
+                    .unwrap()
+                    .unwrap()
+                    .revision(),
                 fixture.selected,
                 fixture.snapshot,
                 fixture.turn,

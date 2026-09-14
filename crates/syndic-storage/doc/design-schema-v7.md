@@ -12,7 +12,7 @@ change persisted bytes.
   V1 and one exact package-owned record version selected per family. `source-events`,
   and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
   record V5;
-  `accepted-route-generations` and `turns` use record V3; `threads`, `drafts`, `turn-states`,
+  `accepted-route-generations`, `turns`, and `turn-states` use record V3; `threads`, `drafts`,
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
@@ -533,6 +533,22 @@ canonical byte comparison of the point-read target closure.
 - Index values retain the authoritative identity plus the revision or digest needed to prove agreement. Empty marker values are not sufficient index authority.
 - Binding records are immutable revisioned history keyed by thread and binding revision. `binding-heads` selects exactly one current record per thread. `cas-thread-bindings` records immutable ordered membership for every CAS-bearing binding revision, while `cas-thread-index` permanently assigns each CAS thread identity to one Syndic thread, its first and latest binding revisions, and one-way retirement at the first stale or abandoned revision. A scoped binding read requires its membership sequence, binding history, and reservation frontiers to agree exactly within the named thread/CAS natural closure. After retirement, that CAS thread cannot authorize execution for either the original owner or another thread. Only agreement with the current valid or active binding head and a non-retired reverse record authorizes execution; a retired index entry is provenance, not live authorization.
 - Immutable turn topology and mutable lifecycle/frontier facts occupy separate `turns` and `turn-states` families so later event commits cannot rewrite parentage through a lifecycle update.
+- A V3 `turn-states` value appends one closed dispatch-provenance field after its existing
+  timestamp. Tag `0` is unattempted; tag `1` is activated; tag `2` is cancelled; tag `3` is
+  provider-operation. Tags `1` and `2` are followed by the 16-byte execution-snapshot identity and
+  nonzero 64-bit active binding revision, using the canonical identity and integer encodings.
+  Tags `0` and `3` have no payload. Unknown tags, truncated anchors, zero binding revisions and
+  trailing bytes are rejected. V2 turn-state records are rejected without inferred provenance,
+  compatibility decoding or migration. The family inventory and key remain unchanged.
+- Dispatch provenance agrees with the immutable turn kind: ordinary-user and lifecycle-continuation
+  turns cannot carry the provider-operation marker, and provider-operation turns must carry it.
+  Anchored provenance names an ordinary execution snapshot and its exact active binding for that
+  thread and turn. Cancelled provenance additionally requires the immediate unchanged-authority
+  valid successor and no published active CAS turn. Activated provenance survives abandonment,
+  rebinding and terminal-state changes. Unattempted and cancelled pending authority is source-free;
+  normalized provider capture for ordinary-user and lifecycle-continuation turns cannot begin
+  without matching activated provenance. Provider-operation capture uses its distinct marker and
+  existing operation receipts.
 - Every non-root immutable turn stores one deterministic 128-bit ancestor skip. Its target depth is
   `max(1, depth & (depth - 1))`; roots store no skip. A scoped lineage read proves the skip names the exact
   ancestor at that depth. Selected-path membership therefore uses bounded deterministic lineage
