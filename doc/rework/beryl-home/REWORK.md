@@ -375,8 +375,10 @@
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.
 - [ ] Mount immediate live detach/reattach and the bounded application-wide Running threads picker,
   with process-owned lifecycle attention independent of the originating window.
-- [ ] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window
+- [x] Implement process-wide dispatch fencing and exact graceful shutdown before native final-window
   and Exit confirmation, serialized close designation, and durable restore-mode integration.
+  The service component is accepted with 18 focused and 81 affected regressions; native mounting
+  remains separate. See [coordinator acceptance](../../failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance).
 - [ ] Implement ordinary close versus Exit, restoration, progressive bootstrap, runtime/root
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,

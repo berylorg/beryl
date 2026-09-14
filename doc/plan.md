@@ -44,25 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 326: Coordinate Process-Wide Graceful Shutdown (finished)
+# Phase 400: Diagnose Repeated Draft Content Materialization (finished)
 
-Accepted the service-bound graceful-shutdown coordinator with exact captured execution completion,
-bounded generic/durable sweeps, pending preservation, owner cleanup and coherent failure reopening.
-The real-runtime tests verify soft stop, noninterruptible compaction and predecessor/successor
-handoff without treating acknowledgement as completion. Independent semantic review, normal and
-test-faults app checks, all 18 acceptance tests and 81 affected regressions passed. The
-[acceptance record](failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance)
-retains evidence and the boundary with later final-window/Exit mounting.
-
-# Phase 400: Diagnose Repeated Draft Content Materialization (wip)
-
-Determine the bounded correction and acceptance evidence for the
-[repeated-content failure](failures/syndic-draft-materializer-content-identity.md#repeated-content-collision)
-observed while constructing shutdown backlog. Compare immutable content identity, exact-root mapping,
-existing sealed content and concurrent build ownership against the
-[draft storage authority](../crates/syndic-storage/doc/design-draft-storage.md#materialization-restoration-and-text-reads).
-This phase accepts diagnosis and readiness evidence only; resolve any missing architectural choice
-in owning authority before planning an implementation correction.
+Accepted diagnosis and readiness evidence for the
+[repeated-content failure](failures/syndic-draft-materializer-content-identity.md#diagnosis-and-recommended-correction).
+Independent review confirmed sealed-content refusal, incompatible shared-building frontiers and
+the separate exact-root proof requirement. Bounded exact-record replay with cooperative publication
+is recommended; the contention policy remains an architectural decision to record in owning storage
+authority before any implementation plan. No materializer correction is claimed.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 
@@ -72,3 +61,8 @@ ordinary startup installs fatal handling first, normal exit leaves no reporter, 
 isolated application panic terminates its process while the report remains usable. No helper-only
 or library-only evidence accepts this production mount; the current bootstrap removal gap remains
 explicit until its owning rework checkpoint closes.
+
+Blocked on 2026-09-15: `crates/beryl/src/main.rs` remains an intentional compile-error placeholder
+for the later target bootstrap checkpoint. There is no ordinary executable composition root at
+which to mount the accepted reporter and GUI services. Resume after that bootstrap boundary is
+specified and reconstructed; do not substitute helper-only evidence or invent an alternate entry.
