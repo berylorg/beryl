@@ -122,15 +122,12 @@ impl ProcessWorkRead {
     }
 
     fn connection_custody_stamp(&self) -> Result<ConnectionCustodyWorkStamp, ProcessWorkError> {
-        let connections = self
-            .connections
-            .lock()
-            .map_err(|_| crate::cas_projection::ConnectionWorkError::Poisoned)?
-            .clone();
         let mut stamp = ConnectionCustodyWorkStamp::default();
-        for connection in &connections {
-            stamp.add(connection.custody_work_fact()?)?;
-        }
+        self.connections
+            .visit_connections::<ProcessWorkError>(|connection| {
+                stamp.add(connection.custody_work_fact()?)?;
+                Ok(())
+            })?;
         Ok(stamp)
     }
 
@@ -263,26 +260,23 @@ impl ProcessWorkRead {
                 },
             );
         }
-        let connections = self
-            .connections
-            .lock()
-            .map_err(|_| crate::cas_projection::ConnectionWorkError::Poisoned)?
-            .clone();
-        for connection in &connections {
-            check_cancelled(cancellation)?;
-            let generation = connection.custody_work_fact()?.generation();
-            for thread in
-                registry::loaded_owner_prefix(generation, revision.loaded, after, count + 1)?
-            {
-                selected.insert(
-                    thread,
-                    Custody {
-                        loaded_projection: true,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
+        self.connections
+            .visit_connections::<ProcessWorkError>(|connection| {
+                check_cancelled(cancellation)?;
+                let generation = connection.custody_work_fact()?.generation();
+                for thread in
+                    registry::loaded_owner_prefix(generation, revision.loaded, after, count + 1)?
+                {
+                    selected.insert(
+                        thread,
+                        Custody {
+                            loaded_projection: true,
+                            ..Default::default()
+                        },
+                    );
+                }
+                Ok(())
+            })?;
         let (selected, more) = selected.finish(count);
         let home = self.home.as_deref().ok_or(ProcessWorkError::Closed)?;
         let limit = SyndicPointReadLimit::new(65_536).expect("fixed shutdown capture point limit");

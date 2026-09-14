@@ -8,6 +8,11 @@ use beryl_model::{CasProcessGeneration, RuntimeId};
 use super::persistent_failure::{LiveCommandAuthorizer, PersistentFailureTerminalDisposer};
 use super::{ProjectionServiceGeneration, connection::ProjectionConnection};
 
+mod cleanup;
+pub(super) use cleanup::{
+    ConnectionCleanupDisposition, ConnectionCleanupError, ConnectionCleanupMode,
+};
+
 pub(super) struct ProjectionRuntimeRetirement {
     connections: Arc<ProjectionServiceConnectionRegistry>,
     commands: LiveCommandAuthorizer,
@@ -40,23 +45,19 @@ impl ProjectionRuntimeRetirement {
         if command.is_none() && self.commands.is_persistent_failure_cut() {
             self.terminal_disposer.wait_for_cut_worker_exit();
         }
-        let (connections, mut clean) = match self.connections.lock() {
-            Ok(connections) => (connections, true),
-            Err(poison) => (poison.into_inner(), false),
-        };
-        let matching = connections
-            .iter()
-            .filter(|connection| {
-                connection.runtime_id() == self.runtime_id
-                    && connection.process_generation() == self.process_generation
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        drop(connections);
-        for connection in matching {
-            clean &= connection.shutdown_for_runtime_retirement().is_ok();
-        }
-        self.connections.reap_finished_ordinary_retirements();
+        let clean = self
+            .connections
+            .visit_cleanup_connections(
+                ConnectionCleanupMode::Dispose,
+                Some((self.runtime_id, self.process_generation)),
+                |connection| {
+                    connection
+                        .shutdown_for_runtime_retirement()
+                        .map(|()| ConnectionCleanupDisposition::RemoveClean)
+                        .map_err(|_| ())
+                },
+            )
+            .is_ok();
         drop(command);
         clean
     }
@@ -65,45 +66,25 @@ impl ProjectionRuntimeRetirement {
         let Ok(_command) = self.commands.authorize() else {
             return Ok(());
         };
-        let matching = match self.connections.connections.try_lock() {
-            Ok(connections) => connections
-                .entries
-                .iter()
-                .filter(|connection| {
-                    connection.runtime_id() == self.runtime_id
-                        && connection.process_generation() == self.process_generation
-                })
-                .cloned()
-                .collect::<Vec<_>>(),
-            Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                return Err(super::RuntimeFailure::AppRetirement);
-            }
-        };
-        let mut reaped = Vec::new();
-        for connection in matching {
-            if connection
-                .try_reap_ordinary_retirement()
-                .map_err(|_| super::RuntimeFailure::AppRetirement)?
-            {
-                reaped.push(connection);
-            }
+        match self.connections.visit_cleanup_connections(
+            ConnectionCleanupMode::Inspect,
+            Some((self.runtime_id, self.process_generation)),
+            |connection| {
+                connection
+                    .try_reap_ordinary_retirement()
+                    .map(|complete| {
+                        if complete {
+                            ConnectionCleanupDisposition::RemoveClean
+                        } else {
+                            ConnectionCleanupDisposition::Retain
+                        }
+                    })
+                    .map_err(|_| ())
+            },
+        ) {
+            Ok(()) | Err(ConnectionCleanupError::Deferred) => Ok(()),
+            Err(ConnectionCleanupError::Failed) => Err(super::RuntimeFailure::AppRetirement),
         }
-        if !reaped.is_empty() {
-            match self.connections.connections.try_lock() {
-                Ok(state) => {
-                    let mut connections = ConnectionRegistryGuard { state };
-                    connections.retain(|connection| {
-                        !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped))
-                    });
-                }
-                Err(std::sync::TryLockError::WouldBlock) => {}
-                Err(std::sync::TryLockError::Poisoned(_)) => {
-                    return Err(super::RuntimeFailure::AppRetirement);
-                }
-            }
-        }
-        Ok(())
     }
 }
 
@@ -218,26 +199,16 @@ impl ProjectionServiceConnectionRegistry {
     /// Reaps only completed ordinary retirements without holding the service registry across a
     /// connection lifecycle boundary.
     pub(super) fn reap_finished_ordinary_retirements(&self) {
-        let snapshot = self
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
-        let mut reaped = Vec::new();
-        for connection in snapshot {
-            if connection.try_reap_ordinary_retirement().unwrap_or(false) {
-                reaped.push(connection);
-            }
-        }
-        if reaped.is_empty() {
-            return;
-        }
-        self.remove_reaped(&reaped);
-    }
-
-    fn remove_reaped(&self, reaped: &[Arc<ProjectionConnection>]) {
-        self.lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .retain(|connection| !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped)));
+        let _ =
+            self.visit_cleanup_connections(ConnectionCleanupMode::Inspect, None, |connection| {
+                Ok(
+                    if connection.try_reap_ordinary_retirement().unwrap_or(false) {
+                        ConnectionCleanupDisposition::RemoveClean
+                    } else {
+                        ConnectionCleanupDisposition::Retain
+                    },
+                )
+            });
     }
 
     #[cfg(test)]

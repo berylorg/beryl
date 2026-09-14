@@ -80,11 +80,13 @@ impl ProjectionConnectionService {
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }
-        let connections = match self.connections.lock() {
-            Ok(mut connections) => std::mem::take(&mut *connections),
-            Err(poison) => std::mem::take(&mut *poison.into_inner()),
+        let (connections, mut connection_failed) = match self.connections.lock() {
+            Ok(mut connections) => {
+                let retained = std::mem::take(&mut *connections);
+                (retained, connections.revision().is_none())
+            }
+            Err(poison) => (std::mem::take(&mut *poison.into_inner()), true),
         };
-        let mut connection_failed = false;
         for connection in connections {
             if connection.shutdown().is_err() {
                 connection_failed = true;
@@ -164,12 +166,13 @@ impl ProjectionConnectionService {
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }
-        self.connections.reap_finished_ordinary_retirements();
-        let connections = match self.connections.lock() {
-            Ok(mut connections) => std::mem::take(&mut *connections),
-            Err(poison) => std::mem::take(&mut *poison.into_inner()),
+        let (connections, mut connection_failed) = match self.connections.lock() {
+            Ok(mut connections) => {
+                let retained = std::mem::take(&mut *connections);
+                (retained, connections.revision().is_none())
+            }
+            Err(poison) => (std::mem::take(&mut *poison.into_inner()), true),
         };
-        let mut connection_failed = false;
         for connection in connections {
             if connection.shutdown().is_err() {
                 connection_failed = true;
@@ -259,14 +262,14 @@ impl ProjectionConnectionService {
         if let Some(context_compaction) = self.context_compaction.as_ref() {
             context_compaction.request_shutdown();
         }
-        let connections = self
-            .connections
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
-        for connection in connections {
-            connection.request_ordinary_retirement_after_service_shutdown();
-        }
+        let _ = self.connections.visit_cleanup_connections(
+            crate::cas_projection::service_registry::ConnectionCleanupMode::Dispose,
+            None,
+            |connection| {
+                connection.request_ordinary_retirement_after_service_shutdown();
+                Ok(crate::cas_projection::service_registry::ConnectionCleanupDisposition::Retain)
+            },
+        );
     }
 }
 

@@ -44,55 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 406: Bound Persistent-Failure Cut Capture (finished)
+# Phase 405: Bound Shutdown Connection Traversal (finished)
 
-Accepted capture bounded by retained original worker admissions and existing router target capacity,
-with complete freeze and final registry validation before dispatch. Zero-custody routers seal without
-dispatch guards and historical results reduce to counters. Independent semantic review, normal and
-test-faults library checks, and 76 targeted regressions passed on the isolated prerequisite. The
+Accepted bounded connection reads, cleanup polling and consuming disposal throughout shutdown.
+Invalid ownership and failed joins remain failures while cleanup continues; implicit shutdown
+preserves registry custody. Independent semantic review, normal and test-faults library checks,
+and 96 targeted regressions passed with coordinator composition excluded. The
 [acceptance record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-preserves the custody proof and failure evidence. Shutdown traversal and composition remain pending.
-
-# Phase 405: Bound Shutdown Connection Traversal (pending)
-
-Establish the [app-owned shutdown connection traversal](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#scheduling-and-steering)
-boundary required by the [failed-retirement inventory finding](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership).
-The Operator authorized the recommended correction before coordinator composition resumes.
-
-- Use the accepted bounded registry traversal that validates membership revision, retains exact connection
-  identity, and releases the registry lock before each callback. Reject changed, exhausted or
-  poisoned membership without accepting a partial clean result.
-- Replace complete connection snapshots in shutdown custody stamps, loaded-owner capture and
-  per-turn settlement. Provide error-preserving bounded retired-connection cleanup polling for
-  the coordinator, including detached failed joins with a clear coarse cleanup flag.
-- Preserve existing retirement ownership and failure evidence. Do not add a connection quota or
-  erase failed entries to make traversal appear bounded. Keep the partial coordinator unaccepted
-  while connecting it to the prerequisite for focused verification.
-- Complete consuming runtime disposal and implicit-shutdown signaling with bounded traversal that
-  continues cleanup after invalid ownership while preserving failure. Account for exact clean
-  removals, preserve failed entries and foreign runtimes, and keep opportunistic runtime inspection
-  nonblocking. Remove the redundant ordinary-close reaper before the existing ownership transfer.
-
-Verify empty and populated traversal, more retained failed connections than active worker capacity,
-membership insertion/removal and ABA during callbacks, cancellation, stale/poisoned revisions,
-callback failure preservation, and lifecycle calls that reacquire the registry lock. Run focused
-library checks and capture, settlement and failed-cleanup regressions. Independent semantic review
-must confirm the bounded handle count and complete failure-preserving shutdown call path.
-Include poisoned and exhausted ownership with actual resource release, callback failure followed by
-later cleanup, own removal versus external drift, contention deferral and implicit signaling without
-transferring registry custody. Preserve the existing persistent-failure disposal fence.
-
-Resumable milestone: the read visitor, capture/settlement replacements, cleanup poll and consuming
-runtime traversal are implemented but unaccepted. Runtime inspection defers contention and drift;
-disposal continues after invalid ownership, preserves failed entries and accounts for exact clean
-removal. Implicit shutdown retains registry custody. Both final close branches report invalid registry
-ownership after joining, and the failure cut no longer deletes detached failed joins. Normal library
-checking and 25 focused traversal, failure-cut and real runtime-disposal regressions passed for this
-correction; the earlier 49 capture/coordinator/shutdown regressions remain prior evidence.
-
-The persistent-failure capture prerequisite is accepted. Resume completion review of the full bounded
-shutdown traversal and consuming-disposal path, preserving its failure evidence and the accepted cut
-barrier. Its partial source changes remain uncommitted; coordinator composition follows acceptance.
+preserves the full-path proof and accepted persistent-failure capture prerequisite.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

@@ -78,6 +78,10 @@ impl Fixture {
     }
 
     fn with_pending(pending: bool) -> Self {
+        Self::with_worker_capacity(pending, 4)
+    }
+
+    fn with_worker_capacity(pending: bool, worker_capacity: u64) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let faults = beryl_home_store::test_faults::FaultController::new();
         let mut home = HomeStore::open_with_faults(
@@ -135,8 +139,12 @@ impl Fixture {
             gate.clone(),
             home,
             storage,
-            ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
-                .unwrap(),
+            ProjectionServiceConfig::try_new(
+                8,
+                worker_capacity,
+                MinimumTurnCaptureReserve::try_new(1).unwrap(),
+            )
+            .unwrap(),
             Box::new(provider),
         )
         .unwrap();

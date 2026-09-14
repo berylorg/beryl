@@ -29,24 +29,22 @@ impl ProcessWorkRead {
         if !home.pending_reconciliations().is_empty() {
             return Ok(None);
         }
-        let live = self.live_facts(sessions, &revision, cancellation)?;
-        if live
-            .get(&thread_id)
-            .is_some_and(|facts| facts.work != ProcessWorkFacts::default())
-        {
+        let mut required = false;
+        self.visit_live_facts(sessions, &revision, cancellation, |thread, work| {
+            required |= thread == thread_id && work != ProcessWorkFacts::default();
+        })?;
+        if required {
             return Ok(None);
         }
-        let connections = self
-            .connections
-            .lock()
-            .map_err(|_| crate::cas_projection::ConnectionWorkError::Poisoned)
-            .map_err(ProcessWorkError::from)?
-            .clone();
-        for connection in &connections {
-            check_cancelled(cancellation)?;
-            if !connection.settlement_cleanup_complete(thread_id)? {
-                return Ok(None);
-            }
+        let mut cleanup_ready = true;
+        self.connections
+            .visit_connections::<ProcessWorkError>(|connection| {
+                check_cancelled(cancellation)?;
+                cleanup_ready &= connection.settlement_cleanup_complete(thread_id)?;
+                Ok(())
+            })?;
+        if !cleanup_ready {
+            return Ok(None);
         }
         let limit = SyndicPointReadLimit::new(65_536).expect("fixed settlement point limit");
         let disposition = if let Some(pending) = self

@@ -392,3 +392,68 @@ fn admitted_connection(
 
 #[path = "persistent_failure_capture.rs"]
 mod capture;
+
+#[test]
+fn persistent_failure_cut_preserves_detached_failed_join_and_disposes_later_connection() {
+    let (_directory, faults, state, shutdowns, service) = service();
+    let (failed_server, failed_session) = admitted_connection(&service, 102_001);
+    let failed = Arc::clone(failed_session.connection());
+    failed.fail_next_ingester_join_for_test();
+    drop(failed_session);
+    assert!(failed.shutdown().is_err());
+    assert!(failed.is_detached());
+    failed_server.join();
+    let (later_server, later_session) = admitted_connection(&service, 102_002);
+    let later = Arc::clone(later_session.connection());
+    assert!(!later.is_detached());
+    fail_home(&service, state, &faults);
+    wait_until("the failure-preserving cut to finish", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+    {
+        let registry = service.connections.lock().unwrap();
+        assert_eq!(registry.len(), 2);
+        assert!(
+            registry
+                .iter()
+                .any(|connection| Arc::ptr_eq(connection, &failed))
+        );
+    }
+    assert!(matches!(
+        service.close(),
+        Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+    ));
+    assert!(later.is_detached());
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    drop(later_session);
+    drop(failed);
+    drop(later);
+    later_server.join();
+}
+
+#[test]
+fn persistent_failure_close_reports_invalid_registry_ownership_after_joining() {
+    for poison in [true, false] {
+        let (_directory, faults, state, shutdowns, service) = service();
+        let (server, session) = admitted_connection(&service, 102_003);
+        let connection = Arc::clone(session.connection());
+        fail_home(&service, state, &faults);
+        wait_until("the cut before invalidating cleanup ownership", || {
+            service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+        });
+        if poison {
+            service.connections.poison_for_test();
+        } else {
+            service.connections.exhaust_revision_for_test();
+        }
+        assert!(matches!(
+            service.close(),
+            Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
+        ));
+        assert!(connection.is_detached());
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+        drop(session);
+        drop(connection);
+        server.join();
+    }
+}
