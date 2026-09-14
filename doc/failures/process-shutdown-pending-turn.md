@@ -126,3 +126,45 @@ The guard retains its process fence and must be revalidated by its coordinator. 
 cover issued and parked authority return, a real failed unsubscribe with a retained session, and
 indeterminate cancellation before and after exact reconciliation. These obligations supplement
 the bounded durable proof; they do not change the authorized completion distinction.
+
+## Acquisition Admission Gap
+
+Readiness review of shutdown composition on 2026-09-14 invalidated the assumption that the accepted
+dispatch fence and bounded work capture alone freeze the complete process work set. The existing
+process fence deliberately leaves health-authorized commands open for stop, capture, repair and
+cleanup, but new acquisition paths also use that authority without a process admission election:
+
+- [Service admission](../../crates/beryl-app/src/cas_projection/service/admission.rs), through
+  `prepare_session_admission_with_workers` and `finish_session_admission`, obtains a live-command
+  permit, connects and initializes a backend, then registers its connection. The final
+  `LiveCommandPermit::is_current` check validates service health and epoch, not the process fence.
+  A same-home, same-service acquisition can therefore start after the fence.
+- [Projection acquisition](../../crates/beryl-app/src/cas_projection/execute.rs), through
+  `obtain_projection`, acquires the per-thread flight without a process admission check.
+  [The flight registry](../../crates/beryl-app/src/cas_projection/service/flight_registry.rs)
+  enforces only home/generation/thread exclusion. An already admitted session can create a new
+  projection behind the fence, including provider `thread/start` in
+  [fresh projection](../../crates/beryl-app/src/cas_projection/execute/fresh.rs).
+- [Scheduled admission](../../crates/beryl-app/src/cas_projection/service/scheduling.rs) and
+  [session preparation](../../crates/beryl-app/src/cas_projection/process_sessions/preparation.rs)
+  similarly admit through flight and live-service checks without retaining an original process
+  acquisition reservation through preparation settlement.
+
+These are new acquisitions, not the already-admitted convergence that must remain available.
+Revision validation can detect the resulting work change, but it cannot prevent admission after
+the barrier's final validation. Retaining exact per-thread settlement guards also cannot exclude
+new work on another thread or a new threadless connection.
+
+The existing [CAS-live shutdown authority](../systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination)
+already requires atomic execution admission, captured winning work and joined custody. The clean
+correction is a separately accepted acquisition-admission component using the shared process gate:
+new acquisitions elect before effects, winning acquisitions retain counted custody through exact
+publication or disposal, and later acquisitions are refused. Preserve terminal, repair,
+reconciliation and cleanup authority behind the fence, as well as the separate turn-dispatch cuts.
+
+The root plan places this prerequisite before coordinator composition. Required evidence covers
+post-fence public connection/projection/preparation refusal, pre-fence acquisition racing shutdown,
+publication and cleanup failure, and stale admission after coherent reopening. Source inspection
+and independent semantic review established the gap; no reproduction test or production correction
+was attempted. The Operator's stop-on-technically-invalid-plan instruction requires reporting this
+blocker before implementation resumes.
