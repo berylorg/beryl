@@ -42,8 +42,7 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
                 &context,
                 PersistentFailureCutState::Stopped,
                 None,
-                Vec::new(),
-                Vec::new(),
+                CutResultCounts::default(),
             );
             return;
         }
@@ -78,8 +77,7 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
                 &context,
                 PersistentFailureCutState::Stopped,
                 Some(identity.failure_generation),
-                Vec::new(),
-                Vec::new(),
+                CutResultCounts::default(),
             );
             return;
         }
@@ -89,24 +87,21 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             .freeze_for_persistent_failure(identity)
             .is_err();
         let drain_failed = context.gate.wait_until_drained().is_err();
-        let connections = snapshot_connections(&context.connections);
         if stop_freeze_failed || drain_failed {
             finish_worker(
                 &context,
                 PersistentFailureCutState::Incomplete,
                 Some(identity.failure_generation),
-                connections,
-                Vec::new(),
+                CutResultCounts::default(),
             );
             return;
         }
-        let Ok(results) = freeze_and_dispatch_targets(identity, &connections) else {
+        let Ok(results) = freeze_and_dispatch_targets(identity, &context.connections) else {
             finish_worker(
                 &context,
                 PersistentFailureCutState::Incomplete,
                 Some(identity.failure_generation),
-                connections,
-                Vec::new(),
+                CutResultCounts::default(),
             );
             return;
         };
@@ -114,7 +109,6 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             &context,
             PersistentFailureCutState::Finished,
             Some(identity.failure_generation),
-            connections,
             results,
         );
         return;
@@ -123,35 +117,42 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
         &context,
         PersistentFailureCutState::Stopped,
         None,
-        Vec::new(),
-        Vec::new(),
+        CutResultCounts::default(),
     );
-}
-
-fn snapshot_connections(
-    connections: &Arc<crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry>,
-) -> Vec<Arc<ProjectionConnection>> {
-    let mut retained = connections
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
-    retained.retain(|connection| !connection.is_detached());
-    retained.clone()
 }
 
 fn freeze_and_dispatch_targets(
     identity: PersistentFailureCutIdentity,
-    connections: &[Arc<ProjectionConnection>],
-) -> Result<Vec<PersistentFailureDriverResult>, ()> {
-    let mut frozen = Vec::with_capacity(connections.len());
-    for connection in connections {
-        let candidates = connection
-            .freeze_persistent_failure_targets(identity)
-            .map_err(|_| ())?;
-        frozen.push((connection, candidates));
-    }
-    let mut results = Vec::new();
+    connections: &crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
+) -> Result<CutResultCounts, ()> {
+    let mut frozen = Vec::new();
+    let mut results = CutResultCounts::default();
+    connections
+        .visit_connections::<crate::cas_projection::ConnectionWorkError>(|connection| {
+            let workers = connection.retain_persistent_failure_workers();
+            let batch = connection
+                .freeze_original_failure_targets(identity, workers.as_ref())
+                .map_err(|_| crate::cas_projection::ConnectionWorkError::SourceUnavailable)?;
+            if let Some(batch) = batch {
+                if let Some(workers) = workers {
+                    frozen.push((Arc::clone(connection), workers, batch));
+                } else {
+                    for candidate in batch.into_candidates() {
+                        let (_, proof) = candidate.into_parts();
+                        results.record(PersistentFailureDriverResult::NoDispatch(match proof {
+                            Ok(_) => PersistentFailureNoDispatchReason::DriverUnavailable,
+                            Err(reason) => PersistentFailureNoDispatchReason::Router(reason),
+                        }));
+                    }
+                }
+            }
+            Ok(())
+        })
+        .map_err(|_| ())?;
     let mut pending_results = Vec::new();
-    for (connection, batch) in frozen {
+    let mut retained_workers = Vec::with_capacity(frozen.len());
+    for (connection, workers, batch) in frozen {
+        retained_workers.push(workers);
         let candidates = batch.into_candidates();
         let mut proofs = Vec::new();
         let mut proof_witnesses = Vec::new();
@@ -164,7 +165,7 @@ fn freeze_and_dispatch_targets(
                 }
                 Err(reason) => {
                     drop(witness);
-                    results.push(PersistentFailureDriverResult::NoDispatch(
+                    results.record(PersistentFailureDriverResult::NoDispatch(
                         PersistentFailureNoDispatchReason::Router(reason),
                     ));
                 }
@@ -179,61 +180,56 @@ fn freeze_and_dispatch_targets(
                 );
             }
             Ok(_) | Err(()) => {
-                results.extend(proof_witnesses.into_iter().map(|witness| {
+                for witness in proof_witnesses {
                     drop(witness);
-                    PersistentFailureDriverResult::NoDispatch(
+                    results.record(PersistentFailureDriverResult::NoDispatch(
                         PersistentFailureNoDispatchReason::DriverUnavailable,
-                    )
-                }));
+                    ));
+                }
             }
         }
     }
-    results.extend(
-        pending_results
-            .into_iter()
-            .map(|pending| pending.completion.wait()),
-    );
+    for pending in pending_results {
+        results.record(pending.completion.wait());
+    }
+    drop(retained_workers);
     Ok(results)
+}
+
+#[derive(Default)]
+struct CutResultCounts {
+    target_count: usize,
+    proven_nondispatch_count: usize,
+    possible_dispatch_count: usize,
+}
+
+impl CutResultCounts {
+    fn record(&mut self, result: PersistentFailureDriverResult) {
+        self.target_count += 1;
+        match result {
+            PersistentFailureDriverResult::NoDispatch(_)
+            | PersistentFailureDriverResult::Attempted {
+                disposition:
+                    PersistentFailureInterruptDisposition::RejectedBeforeCoreInterrupt
+                    | PersistentFailureInterruptDisposition::ProvenNotDispatched,
+                ..
+            } => self.proven_nondispatch_count += 1,
+            PersistentFailureDriverResult::Attempted {
+                disposition:
+                    PersistentFailureInterruptDisposition::RequestAccepted
+                    | PersistentFailureInterruptDisposition::CompletionUnknown,
+                ..
+            } => self.possible_dispatch_count += 1,
+        }
+    }
 }
 
 fn finish_worker(
     context: &WorkerContext,
     phase: PersistentFailureCutState,
     failure_generation: Option<PersistentFailureGeneration>,
-    connections: Vec<Arc<ProjectionConnection>>,
-    results: Vec<PersistentFailureDriverResult>,
+    results: CutResultCounts,
 ) {
-    drop(connections);
-    let target_count = results.len();
-    let proven_nondispatch_count = results
-        .iter()
-        .filter(|result| {
-            matches!(
-                result,
-                PersistentFailureDriverResult::NoDispatch(_)
-                    | PersistentFailureDriverResult::Attempted {
-                        disposition:
-                            PersistentFailureInterruptDisposition::RejectedBeforeCoreInterrupt
-                                | PersistentFailureInterruptDisposition::ProvenNotDispatched,
-                        ..
-                    }
-            )
-        })
-        .count();
-    let possible_dispatch_count = results
-        .iter()
-        .filter(|result| {
-            matches!(
-                result,
-                PersistentFailureDriverResult::Attempted {
-                    disposition: PersistentFailureInterruptDisposition::RequestAccepted
-                        | PersistentFailureInterruptDisposition::CompletionUnknown,
-                    ..
-                }
-            )
-        })
-        .count();
-    drop(results);
     let mut state = context
         .state
         .0
@@ -241,8 +237,8 @@ fn finish_worker(
         .unwrap_or_else(|poison| poison.into_inner());
     state.phase = phase;
     state.failure_generation = failure_generation;
-    state.target_count = target_count;
-    state.proven_nondispatch_count = proven_nondispatch_count;
-    state.possible_dispatch_count = possible_dispatch_count;
+    state.target_count = results.target_count;
+    state.proven_nondispatch_count = results.proven_nondispatch_count;
+    state.possible_dispatch_count = results.possible_dispatch_count;
     context.state.1.notify_all();
 }

@@ -29,6 +29,11 @@ use crate::cas_projection::{
 
 use super::super::{ActiveSteeringAttemptKey, TargetPublication, TargetTurn};
 
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/unit/persistent_failure_router_capture.rs"
+));
+
 #[derive(Clone, Copy)]
 enum EligibilityCase {
     Eligible,
@@ -198,7 +203,7 @@ fn stop_wait_releases_its_command_before_failure_drain_and_freeze_wake() {
         PersistentFailureGeneration::FIRST,
     );
     router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .expect("failure freeze wakes the permit-free router wait");
     assert!(matches!(
         waiter.join().unwrap(),
@@ -341,10 +346,10 @@ fn failure_cut_snapshots_all_admitted_targets_in_deterministic_order() {
     let ascending_identity = identity_for_router(&ascending_router, identity);
     let descending_identity = identity_for_router(&descending_router, identity);
     let ascending = ascending_router
-        .freeze_persistent_failure_targets(ascending_identity)
+        .freeze_persistent_failure_targets(ascending_identity, true)
         .expect("active router freezes all of its bounded targets");
     let descending = descending_router
-        .freeze_persistent_failure_targets(descending_identity)
+        .freeze_persistent_failure_targets(descending_identity, true)
         .expect("active router freezes all of its bounded targets");
 
     let ascending = ascending.into_candidates();
@@ -447,7 +452,9 @@ fn router_failure_freeze_is_single_flight_after_dispatch_authorization() {
         .authorize_persistent_failure_dispatch(proof)
         .expect("the exact frozen guard is initially spendable");
     assert_eq!(
-        router.freeze_persistent_failure_targets(identity).err(),
+        router
+            .freeze_persistent_failure_targets(identity, true)
+            .err(),
         Some(PersistentFailureTargetIneligibility::RouterUnavailable)
     );
 }
@@ -471,7 +478,7 @@ fn thread_close_before_failure_freeze_marks_the_exact_target_ineligible() {
 
     assert!(!router.record_thread_closed(&thread_id).unwrap());
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .expect("the router records the exact failure cut")
         .into_candidates();
     assert_eq!(candidates.len(), 1);
@@ -504,7 +511,7 @@ fn thread_close_after_failure_freeze_closes_routing_and_invalidates_dispatch() {
     );
     let (router, registration, identity) = eligibility_target(EligibilityCase::Eligible, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .unwrap()
         .into_candidates();
     let proof = candidates.pop().unwrap().into_proof().unwrap();
@@ -530,7 +537,7 @@ fn frozen_candidate(
 ) -> Result<super::super::PersistentFailureTargetProof, PersistentFailureTargetIneligibility> {
     let (router, _registration, identity) = eligibility_target(case, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .expect("active test router freezes once")
         .into_candidates();
     assert_eq!(candidates.len(), 1);
@@ -542,7 +549,7 @@ fn frozen_eligible_target(
 ) -> (Arc<EventRouter>, super::super::PersistentFailureTargetProof) {
     let (router, _registration, identity) = eligibility_target(EligibilityCase::Eligible, identity);
     let mut candidates = router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .unwrap()
         .into_candidates();
     (router, candidates.pop().unwrap().into_proof().unwrap())

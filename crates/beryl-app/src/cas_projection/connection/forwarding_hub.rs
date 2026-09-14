@@ -205,6 +205,19 @@ impl super::ProjectionConnection {
 }
 
 #[cfg(test)]
+impl ForwardingHub {
+    pub(super) fn poison_for_test(&self) {
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _state = self.state.lock().unwrap();
+                panic!("poison exact forwarding hub for capture test");
+            }))
+            .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
 impl ForwardingHubLockAttemptObservation {
     pub(in crate::cas_projection) fn wait(self) {
         self.reached

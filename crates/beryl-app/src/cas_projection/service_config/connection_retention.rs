@@ -44,6 +44,11 @@ pub(in crate::cas_projection) struct ConnectionWorkerRetention {
     ingester: Arc<ProjectionWorkerAdmission>,
 }
 
+pub(in crate::cas_projection) struct ConnectionCutWorkerRetention {
+    _driver: Option<Arc<ProjectionWorkerAdmission>>,
+    _ingester: Option<Arc<ProjectionWorkerAdmission>>,
+}
+
 impl ProjectionWorkerPermitPair {
     pub(in crate::cas_projection) fn worker_pool(&self) -> super::ProjectionWorkerPool {
         self.driver
@@ -91,6 +96,15 @@ impl ProjectionWorkerPermitPair {
 }
 
 impl ConnectionWorkerRetentionSource {
+    pub(in crate::cas_projection) fn retain_for_cut(&self) -> Option<ConnectionCutWorkerRetention> {
+        let driver = self.driver.upgrade();
+        let ingester = self.ingester.upgrade();
+        (driver.is_some() || ingester.is_some()).then_some(ConnectionCutWorkerRetention {
+            _driver: driver,
+            _ingester: ingester,
+        })
+    }
+
     #[cfg(feature = "test-faults")]
     pub(in crate::cas_projection) fn retained_units_for_test(&self) -> (bool, bool) {
         (

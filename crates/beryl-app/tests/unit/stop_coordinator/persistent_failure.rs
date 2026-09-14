@@ -498,7 +498,7 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
     );
     let mut candidates = fixture
         .router
-        .freeze_persistent_failure_targets(identity)
+        .freeze_persistent_failure_targets(identity, true)
         .unwrap()
         .into_candidates();
     assert_eq!(candidates.len(), 1);

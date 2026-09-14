@@ -9,6 +9,9 @@ use beryl_backend::{BackendWebSocketEndpoint, ThreadStartOptions};
 use std::{io::ErrorKind, net::TcpListener, thread};
 use syndic_storage::SelectedPathProof;
 
+#[path = "persistent_failure_projection_disposal.rs"]
+mod persistent_failure_disposal;
+
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/unit/shutdown_support.rs"

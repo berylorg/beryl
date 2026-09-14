@@ -21,7 +21,6 @@ use crate::cas_projection::{
     connection::{
         PersistentFailureCompletion, PersistentFailureDriverResult,
         PersistentFailureInterruptDisposition, PersistentFailureNoDispatchReason,
-        ProjectionConnection,
     },
     stop::StopCoordinator,
 };

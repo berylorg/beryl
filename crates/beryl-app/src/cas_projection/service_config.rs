@@ -15,7 +15,8 @@ mod preparation;
 
 use connection_retention::ConnectionRuntimeInterestCustody;
 pub(super) use connection_retention::{
-    ConnectionRuntimeInterestSource, ConnectionWorkerRetention, ConnectionWorkerRetentionSource,
+    ConnectionCutWorkerRetention, ConnectionRuntimeInterestSource, ConnectionWorkerRetention,
+    ConnectionWorkerRetentionSource,
 };
 
 pub(super) const CONNECTION_WORKER_PERMITS: usize = 2;

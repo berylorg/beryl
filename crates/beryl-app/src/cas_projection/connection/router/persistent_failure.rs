@@ -245,15 +245,54 @@ impl PersistentFailureTargetWitness {
 }
 
 impl EventRouter {
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn failure_dispatch_guard_count_for_test(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap()
+            .persistent_failure
+            .as_ref()
+            .unwrap()
+            .targets
+            .len()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn with_failure_state_locked_for_test(
+        &self,
+        action: impl FnOnce(),
+    ) {
+        let _state = self.state.lock().unwrap();
+        action();
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn failure_is_frozen_for_test(&self) -> bool {
+        self.state.lock().unwrap().persistent_failure.is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn poison_failure_state_for_test(&self) {
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.with_failure_state_locked_for_test(|| {
+                    panic!("poison original router for capture test")
+                });
+            }))
+            .is_err()
+        );
+    }
+
     pub(in crate::cas_projection) fn freeze_persistent_failure_targets(
         &self,
         identity: PersistentFailureCutIdentity,
+        retain_dispatch_guards: bool,
     ) -> Result<PersistentFailureTargetBatch, PersistentFailureTargetIneligibility> {
         let mut state = self
             .state
             .lock()
             .map_err(|_| PersistentFailureTargetIneligibility::RouterUnavailable)?;
-        if state.retired.is_some() || state.persistent_failure.is_some() {
+        if state.persistent_failure.is_some() {
             return Err(PersistentFailureTargetIneligibility::RouterUnavailable);
         }
         if self.commands.service_generation() != identity.service_generation {
@@ -261,7 +300,12 @@ impl EventRouter {
         }
         let keys = sorted_target_keys(&state.targets);
         let mut volatile_admission = state.volatile_stop_admission.take();
-        let mut guards = HashMap::with_capacity(keys.len());
+        let retain_dispatch_guards = retain_dispatch_guards && state.retired.is_none();
+        let mut guards = HashMap::with_capacity(if retain_dispatch_guards {
+            keys.len()
+        } else {
+            0
+        });
         let mut candidates = Vec::with_capacity(keys.len());
         let mut retained_target_projections = Vec::new();
         for (index, cas_thread_id) in keys.into_iter().enumerate() {
@@ -282,20 +326,26 @@ impl EventRouter {
                 |admission| admission.token,
             );
             let witness = build_witness(self, target, &cas_thread_id, identity, token);
-            let proof = build_proof(
-                self,
-                target,
-                &witness,
-                admission,
-                state.active_steering_attempt.is_some(),
-            );
-            guards.insert(
-                cas_thread_id.clone(),
-                FailureTargetGuard {
-                    witness: witness.clone(),
-                    state: FailureTargetGuardState::Frozen,
-                },
-            );
+            let proof = if state.retired.is_some() {
+                Err(PersistentFailureTargetIneligibility::RouterUnavailable)
+            } else {
+                build_proof(
+                    self,
+                    target,
+                    &witness,
+                    admission,
+                    state.active_steering_attempt.is_some(),
+                )
+            };
+            if retain_dispatch_guards {
+                guards.insert(
+                    cas_thread_id.clone(),
+                    FailureTargetGuard {
+                        witness: witness.clone(),
+                        state: FailureTargetGuardState::Frozen,
+                    },
+                );
+            }
             if self.terminal_disposer.is_some()
                 && let Some(projection) = state
                     .targets

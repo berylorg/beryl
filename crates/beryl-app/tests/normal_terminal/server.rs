@@ -32,6 +32,7 @@ enum ServerEvent {
 enum ServerScenario {
     AdmissionOnly,
     ProjectionOnly,
+    ProjectionTerminalDisposal,
     ProjectionControlledCleanup,
     AdmissionOnlyControlledClose,
     UnsubscribeFailure,
@@ -79,6 +80,10 @@ pub struct NormalTerminalServer {
 impl NormalTerminalServer {
     pub fn spawn_projection_only() -> Self {
         Self::spawn_scenario(ServerScenario::ProjectionOnly)
+    }
+
+    pub fn spawn_projection_terminal_disposal() -> Self {
+        Self::spawn_scenario(ServerScenario::ProjectionTerminalDisposal)
     }
 
     pub fn spawn_projection_controlled_cleanup() -> Self {
@@ -248,6 +253,12 @@ fn run_server(
     match scenario {
         ServerScenario::AdmissionOnly => {
             events.send(ServerEvent::AdmissionReady).unwrap();
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::ProjectionTerminalDisposal => {
+            events.send(ServerEvent::AdmissionReady).unwrap();
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
             read_until_close(&mut socket).unwrap();
         }
         ServerScenario::ProjectionOnly => {

@@ -311,3 +311,79 @@ pending turn, real managed predecessor/successor races, and compaction capture b
 durable admission behind the same fence through authenticated settlement and cleanup. Pending,
 continuation, permission, compaction and managed-session guards remain intact. Coordinator
 composition and final-window integration remain unaccepted.
+
+Coordinator composition is blocked by the connection inventory's separate retention boundary.
+The [connection admission path](../../crates/beryl-app/src/cas_projection/service/admission.rs)
+appends to the service registry after its convenience reaper runs. The
+[reaper](../../crates/beryl-app/src/cas_projection/service_registry.rs) retains failed retirement
+polls. [Ordinary shutdown](../../crates/beryl-app/src/cas_projection/connection/lifecycle.rs)
+can release driver and ingester custody and detach the connection before recording a failed join.
+Consequently, repeated failed retirements can remain registered after releasing the worker permits
+that bounded their active connections. Worker capacity does not bound a complete registry snapshot.
+
+The partial correction replaces complete snapshots in shutdown capture, per-turn settlement and
+coordinator cleanup with a one-handle visitor. It validates membership through the final read,
+rejects ABA, poison and revision exhaustion, and invokes callbacks outside the registry lock.
+Three focused tests establish these mechanics, callback failure preservation and cancellation.
+The scale case admits nine sequential connections with four ordinary worker slots, retains their
+failed joins after detachment, checks the exact additional handle count throughout traversal, and
+requires the cleanup poll to return the original worker failure despite a clear coarse cleanup flag.
+
+Independent review found the complete shutdown path still exceeds the bound.
+`ProjectionConnectionService::close_inner` joins the runtime owner, whose worker reaches
+`ManagedRuntime::retire` and `ProjectionRuntimeRetirement::retire`. Runtime retirement collects all
+matching connections and invokes the full-registry convenience reaper. Ordinary final service close
+also invokes that reaper before transferring its existing inventory, and implicit service drop clones
+the registry to signal retirement. Bounded coordinator reads alone therefore do not establish bounded
+shutdown. Explicit final ownership transfer itself adds no cloned inventory.
+
+The fail-fast read visitor is insufficient for consuming disposal. Existing
+[runtime authority](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md#runtime-interest-and-connections)
+requires typed failure for poisoned cleanup ownership while still joining and releasing retained
+resources. Returning early on poison or exhausted revision would skip that duty. Transferring the
+registry out during implicit shutdown could also hide connections from the runtime owner that must
+join them. Preserve these existing duties with bounded disposal traversal and failure reporting;
+do not erase failed entries, skip cleanup or change implicit-drop semantics merely to achieve a bound.
+The ordinary-close preliminary reaper can be removed once the complete disposal path is verified,
+because its following ownership-transfer shutdown loop already settles every retained connection.
+
+The Operator authorized consuming-disposal correction. Its partial implementation uses one retained
+connection handle, immutable identity progress and a finite initial upper identity. Runtime inspection
+defers on contention or membership drift; consuming disposal continues cleanup after invalid ownership
+with a failed outcome. Only proven-clean exact entries are removed, and implicit shutdown retains
+registry custody. Both final service-close branches now preserve invalid registry ownership as failure
+after joining. The persistent-failure dispatch snapshot no longer deletes detached failed-join entries.
+Independent review found no remaining defect in those local mechanics. Nine traversal tests and
+16 other focused failure-cut/runtime regressions passed cumulatively for this correction, including
+real poisoned cleanup, later cleanup after a failed join, exact runtime isolation, and cut ordering.
+Normal library checking passed. The earlier 49 shutdown regressions remain prior evidence.
+
+Readiness also exposed the persistent-failure cut's snapshot bound.
+The former `persistent_failure::coordinator::worker::snapshot_connections` selected connections that did not report
+detachment, but that is not proof of retained worker capacity. `ForwardingHub::is_detached` returns
+false for a poisoned lock even after disposal removes its endpoint. Both ordinary and terminal
+connection shutdown join the driver and ingester before acquiring the final hub lock and detaching;
+ordinary cleanup can also leave the endpoint present when that final lock is poisoned. Thus even a
+disposal-only recovered read of actual attachment presence can observe a connection after its worker
+permits have been released. Attachment presence therefore cannot establish a capture bound.
+
+The cut must freeze all targets before issuing provider requests. Per-connection streamed dispatch
+would violate that separate guarantee. The Operator authorized the bounded cut correction, accepted
+on 2026-09-14 after resolving its owning authority. The strict visitor runs after command admission
+closes and drains. Each retained connection pins at least one surviving original driver or ingester
+admission, including partial pairs, through result completion. Existing worker capacity therefore
+bounds retained connections, and the existing 64-target router limit bounds their batches. Original
+weak router and worker sources remain reachable independently of forwarding-hub health. Expired
+routers contribute no target authority; retired routers cannot dispatch. Zero-custody routers seal
+without dispatch guards, dispose retained projections after unlocking, and reduce results to counts.
+Every router freezes and final membership validation succeeds before any obligation installation.
+
+Independent semantic review, normal and test-faults library checks and 76 targeted regressions passed
+with the prerequisite isolated from pending shutdown composition. Tests retain nine failed historical
+connections with worker capacity four and poisoned detached hubs, check the additional handle count,
+and preserve registry evidence. Two-router tests prove no installation while the later router is
+blocked, and no installation after membership drift. Other evidence covers poisoned router and
+registry ownership, exhausted revisions, late prepared admission, partial worker release, and real
+zero-worker target projection disposal with no retained guard. The terminal server fixture requires
+connection closure without further provider commands. Bounded shutdown traversal and coordinator
+composition remain unaccepted; final-window integration remains separate.

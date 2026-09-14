@@ -181,6 +181,34 @@ topology and typed execution surfaces.
   without first accumulating every live thread. Capture exposes late admission winners separately
   from generic preparation and cleanup, permitting later active work to progress before global
   settlement. Provider receipt reads preserve their operation identity through successor admission.
+- Shutdown connection reads and cleanup retain a bounded number of connection handles independently
+  of the registry's size. Failed retirements can outlive active worker custody and cannot justify
+  a worker-capacity bound on a complete connection snapshot. Traversal validates exact service
+  membership revision through its final read; membership drift invalidates the traversal, including
+  removal and reinsertion that restore the same apparent entries. Connection lifecycle calls run
+  outside the registry lock. Failed-join evidence remains observable after detachment and cannot
+  be dropped or treated as clean to satisfy a traversal bound.
+- Consuming connection disposal continues releasing its retained scope after poisoned ownership,
+  unavailable revisions or membership drift, and preserves a failed outcome. Its bounded traversal
+  follows immutable connection identity so concurrent removal cannot skip another retained owner;
+  a finite initial scope does not admit later connections as evidence of a complete original read.
+  Only proven-clean connections may be removed, with the traversal accounting for its own exact
+  removal separately from external membership changes. Opportunistic inspection defers on lock
+  contention and rejects invalid ownership. Implicit shutdown only signals retirement and leaves
+  registry custody available to the runtime owner that must join resources.
+- Persistent-failure capture closes and drains command admission before traversing exact registry
+  membership. Every surviving original router is frozen before any provider obligation is installed.
+  A retained connection pins at least one surviving original driver or ingester worker admission;
+  even partial custody remains charged until capture is released. This bounds retained connections
+  by existing worker capacity and target batches by the existing per-router target capacity. No new
+  quota is introduced. Original weak router and worker sources remain inspectable independently of
+  forwarding-hub health; an expired original router contributes no target authority.
+  Routers without worker custody are sealed and classified one at a time without retaining dispatch
+  guards. Already-retired routers cannot authorize dispatch. Preserve existing target records and
+  failure evidence, dispose retained terminal projections outside the router lock, and aggregate
+  completed results as counters rather than retaining historical target identities. Invalid registry
+  membership or inaccessible router state leaves the cut incomplete and prevents dispatch. Additional
+  capture storage depends on worker and router-target capacities, not historical registry length.
 - Promotion uses one exact service lease and one atomic typed home command for Syndic promotion and
   Asset-owner transition. `Prior`, `Exact`, collision, and unresolved outcomes settle before any
   provider work; only exact promotion proceeds.

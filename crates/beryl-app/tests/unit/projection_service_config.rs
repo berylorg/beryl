@@ -9,6 +9,50 @@ use beryl_home_store::DURABLE_START_ADMISSION_BUDGET_BYTES;
 use super::*;
 
 #[test]
+fn failure_cut_pins_either_surviving_connection_worker_until_capture_release() {
+    for keep_driver in [false, true] {
+        let pool = ProjectionWorkerPool::new(NonZeroUsize::new(4).unwrap());
+        let mut pair = pool.try_acquire_pair().unwrap();
+        let source = pair.retention_source();
+        let driver = pair.take_driver();
+        let ingester = pair.take_ingester();
+        drop(pair);
+        let survivor = if keep_driver {
+            drop(ingester);
+            driver
+        } else {
+            drop(driver);
+            ingester
+        };
+        assert_eq!(pool.diagnostics().active(), 1);
+        assert!(source.retain().is_none());
+        let capture = source
+            .retain_for_cut()
+            .expect("partial custody remains charged");
+        drop(survivor);
+        assert_eq!(pool.diagnostics().active(), 1);
+        drop(capture);
+        assert_eq!(pool.diagnostics().active(), 0);
+        assert!(source.retain_for_cut().is_none());
+    }
+}
+
+#[test]
+fn failure_cut_preserves_pair_charge_after_both_workers_exit() {
+    let pool = ProjectionWorkerPool::new(NonZeroUsize::new(4).unwrap());
+    let pair = pool.try_acquire_pair().unwrap();
+    let source = pair.retention_source();
+    let capture = source.retain_for_cut().unwrap();
+    drop(pair);
+    assert_eq!(pool.diagnostics().active(), 2);
+    assert!(pool.try_acquire_pair().is_err());
+    drop(capture);
+    assert_eq!(pool.diagnostics().active(), 0);
+    assert!(source.retain_for_cut().is_none());
+    assert!(pool.try_acquire_pair().is_ok());
+}
+
+#[test]
 fn service_config_rejects_invalid_capacity_boundaries() {
     assert_eq!(
         MinimumTurnCaptureReserve::try_new(0),

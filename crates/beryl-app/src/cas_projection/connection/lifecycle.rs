@@ -46,6 +46,8 @@ pub(in crate::cas_projection) struct ProjectionConnection {
     process_generation: CasProcessGeneration,
     process_fact: ConnectionProcessFact,
     runtime_interest_source: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
+    cut_worker_source: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
+    original_router: std::sync::Weak<EventRouter>,
     forwarding_hub: Arc<ForwardingHub>,
     shutdown_settlement: Mutex<ConnectionShutdownSettlement>,
     runtime: Mutex<Option<ConnectionRuntime>>,
@@ -234,6 +236,7 @@ impl ProjectionConnection {
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
         let persistent_failure = Arc::new(persistent_failure::PersistentFailureDriverSlot::new());
         let runtime_interest_source = worker_permits.runtime_interest_source();
+        let cut_worker_source = worker_permits.retention_source();
         let ordinary_workers = worker_permits.worker_pool();
         let ingester_permit = worker_permits.take_ingester();
         let (sink, broker, ingester) = match ProviderBroker::start(
@@ -313,6 +316,8 @@ impl ProjectionConnection {
             process_generation,
             process_fact,
             runtime_interest_source,
+            cut_worker_source,
+            original_router: Arc::downgrade(&router),
             forwarding_hub,
             shutdown_settlement: Mutex::new(ConnectionShutdownSettlement::Unsettled),
             runtime: Mutex::new(Some(ConnectionRuntime { driver })),
@@ -460,14 +465,42 @@ impl ProjectionConnection {
         self.process_generation
     }
 
-    pub(in crate::cas_projection) fn freeze_persistent_failure_targets(
+    pub(in crate::cas_projection) fn retain_persistent_failure_workers(
+        &self,
+    ) -> Option<crate::cas_projection::service_config::ConnectionCutWorkerRetention> {
+        self.cut_worker_source.retain_for_cut()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn original_failure_router_for_test(&self) -> Arc<EventRouter> {
+        self.original_router.upgrade().unwrap()
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn poison_forwarding_hub_for_test(&self) {
+        self.forwarding_hub.poison_for_test();
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn failure_obligations_installed_for_test(&self) -> bool {
+        self.current_attachment()
+            .unwrap()
+            .persistent_failure
+            .cut_is_installed()
+    }
+
+    pub(in crate::cas_projection) fn freeze_original_failure_targets(
         &self,
         identity: crate::cas_projection::persistent_failure::PersistentFailureCutIdentity,
-    ) -> Result<router::PersistentFailureTargetBatch, router::PersistentFailureTargetIneligibility>
-    {
-        self.current_router()
-            .map_err(|_| router::PersistentFailureTargetIneligibility::RouterUnavailable)?
-            .freeze_persistent_failure_targets(identity)
+        workers: Option<&crate::cas_projection::service_config::ConnectionCutWorkerRetention>,
+    ) -> Result<
+        Option<router::PersistentFailureTargetBatch>,
+        router::PersistentFailureTargetIneligibility,
+    > {
+        self.original_router
+            .upgrade()
+            .map(|router| router.freeze_persistent_failure_targets(identity, workers.is_some()))
+            .transpose()
     }
 
     pub(in crate::cas_projection) fn install_persistent_failure_obligations(

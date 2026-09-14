@@ -52,6 +52,18 @@ fn service() -> (
     Arc<AtomicUsize>,
     ProjectionConnectionService,
 ) {
+    service_with_worker_capacity(4)
+}
+
+fn service_with_worker_capacity(
+    worker_capacity: u64,
+) -> (
+    tempfile::TempDir,
+    FaultController,
+    BerylState,
+    Arc<AtomicUsize>,
+    ProjectionConnectionService,
+) {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let mut home = HomeStore::open_with_faults(
@@ -66,8 +78,12 @@ fn service() -> (
         Default::default(),
         home,
         storage,
-        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
-            .unwrap(),
+        ProjectionServiceConfig::try_new(
+            8,
+            worker_capacity,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap(),
         Box::new(ShutdownProbe(Arc::clone(&shutdowns))),
     )
     .unwrap();
@@ -348,3 +364,31 @@ fn terminal_close_recovers_a_poisoned_ingester_handle_before_reporting_failure()
     drop(retirement);
     server.join();
 }
+
+fn admitted_connection(
+    service: &ProjectionConnectionService,
+    generation: u64,
+) -> (
+    terminal_server::NormalTerminalServer,
+    super::super::AdmittedProjectionSession,
+) {
+    let server = terminal_server::NormalTerminalServer::spawn_admission_only();
+    let connector = ManagedBackendClientConnector::for_lifecycle_test(
+        server.endpoint(),
+        terminal_server::AUTHORIZATION,
+    );
+    let session = service
+        .admit_lifecycle_test_candidate(
+            &connector,
+            RuntimeId::from_bytes([102; 16]),
+            CasProcessGeneration::new(generation).unwrap(),
+            Path::new(r"C:\work\beryl"),
+            terminal_server::TIMEOUT,
+        )
+        .unwrap();
+    server.wait_for_admission();
+    (server, session)
+}
+
+#[path = "persistent_failure_capture.rs"]
+mod capture;

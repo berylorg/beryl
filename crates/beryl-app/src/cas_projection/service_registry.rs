@@ -151,6 +151,40 @@ impl DerefMut for ConnectionRegistryGuard<'_> {
 }
 
 impl ProjectionServiceConnectionRegistry {
+    pub(super) fn visit_connections<E>(
+        &self,
+        mut visit: impl FnMut(&Arc<ProjectionConnection>) -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<super::ConnectionWorkError>,
+    {
+        let expected = self
+            .lock()
+            .map_err(|_| super::ConnectionWorkError::Poisoned)?
+            .revision()
+            .ok_or(super::ConnectionWorkError::RevisionUnavailable)?;
+        let mut index = 0;
+        loop {
+            let connection = {
+                let state = self
+                    .lock()
+                    .map_err(|_| super::ConnectionWorkError::Poisoned)?;
+                let revision = state
+                    .revision()
+                    .ok_or(super::ConnectionWorkError::RevisionUnavailable)?;
+                if revision != expected {
+                    return Err(super::ConnectionWorkError::StaleRevision.into());
+                }
+                state.get(index).cloned()
+            };
+            let Some(connection) = connection else {
+                return Ok(());
+            };
+            visit(&connection)?;
+            index += 1;
+        }
+    }
+
     pub(super) fn new(service_generation: ProjectionServiceGeneration) -> Arc<Self> {
         Arc::new(Self {
             service_generation,
@@ -204,6 +238,11 @@ impl ProjectionServiceConnectionRegistry {
         self.lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .retain(|connection| !reaped.iter().any(|reaped| Arc::ptr_eq(connection, reaped)));
+    }
+
+    #[cfg(test)]
+    pub(super) fn exhaust_revision_for_test(&self) {
+        self.connections.lock().unwrap().revision = None;
     }
 
     #[cfg(test)]
