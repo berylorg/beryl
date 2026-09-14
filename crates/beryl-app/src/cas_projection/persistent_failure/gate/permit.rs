@@ -19,9 +19,25 @@ impl LiveCommandPermit {
     pub(crate) fn reopen_process_admission(
         &self,
         fence: &crate::process_admission::ProcessAdmissionFence,
-        coherent: bool,
+        home: &HomeStore,
+        expected_generation: HomeGeneration,
+    ) -> Result<(), crate::process_admission::ProcessAdmissionReopenError> {
+        self.commit_if_current(|| {
+            let reopening = self.execution.prepare_reopening(fence)?;
+            home.try_elect_coherent(expected_generation, || reopening.reopen())?;
+            Ok(())
+        })?
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reopen_process_admission_for_test(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
     ) -> Result<(), crate::process_admission::ProcessExecutionAdmissionError> {
-        Ok(self.commit_if_current(|| self.execution.reopen(fence, coherent))??)
+        self.commit_if_current(|| {
+            self.execution.prepare_reopening(fence)?.reopen();
+            Ok(())
+        })?
     }
 
     fn matches_open_state(&self, state: &GateState) -> bool {

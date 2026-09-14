@@ -28,7 +28,7 @@ fn queued_execution_candidate_keeps_its_epoch_without_retaining_health_command_c
     authorizer
         .authorize()
         .unwrap()
-        .reopen_process_admission(&fence, true)
+        .reopen_process_admission_for_test(&fence)
         .unwrap();
     assert!(matches!(
         candidate.reserve(),
@@ -72,20 +72,20 @@ fn process_fence_survives_service_generation_changes_and_preserves_health_comman
     );
     first.close_for_local_failure();
     assert_eq!(
-        first_permit.reopen_process_admission(&fence, true),
+        first_permit.reopen_process_admission_for_test(&fence),
         Err(ProcessExecutionAdmissionError::Service(
             LiveCommandAdmissionError::Closed
         ))
     );
     assert_eq!(
-        second_permit.reopen_process_admission(&fence, true),
+        second_permit.reopen_process_admission_for_test(&fence),
         Err(ProcessExecutionAdmissionError::Process(
             ProcessAdmissionError::Unsettled
         ))
     );
     drop(reservation);
     second_permit
-        .reopen_process_admission(&fence, true)
+        .reopen_process_admission_for_test(&fence)
         .unwrap();
     assert_eq!(
         second_permit.commit_execution_if_current(|| ()),
@@ -109,7 +109,7 @@ fn a_foreign_process_service_cannot_reopen_the_fence() {
     let foreign = service_gate(&ProcessAdmissionGate::new());
     let permit = foreign.authorizer().authorize().unwrap();
     assert_eq!(
-        permit.reopen_process_admission(&fence, true),
+        permit.reopen_process_admission_for_test(&fence),
         Err(ProcessExecutionAdmissionError::Process(
             ProcessAdmissionError::Stale
         ))
@@ -142,7 +142,7 @@ fn admission_and_coherent_reopening_use_the_same_health_then_process_lock_order(
             .authorizer()
             .authorize()
             .unwrap()
-            .reopen_process_admission(&fence, true)
+            .reopen_process_admission_for_test(&fence)
             .unwrap();
         commands.join().unwrap();
     });

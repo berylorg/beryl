@@ -52,7 +52,7 @@ fn pending_start_keeps_queued_epoch_and_requires_exact_undispatched_handoff() {
         router.handoff_target(&registration, TargetHandoffRequirement::NotStarted),
         Err(LiveEventTargetHandoffError::TargetMayHaveStarted),
     ));
-    queued.reopen_process_admission(&fence, true).unwrap();
+    queued.reopen_process_admission_for_test(&fence).unwrap();
     assert_eq!(
         router.authorize_turn_start(&queued, &registration.proof()),
         Err(TargetAuthorizationFailure::ExecutionFenced(
@@ -95,7 +95,7 @@ fn queued_compaction_stays_undispatched_across_fence_and_reopen() {
             ProcessAdmissionError::Fenced
         )),
     );
-    queued.reopen_process_admission(&fence, true).unwrap();
+    queued.reopen_process_admission_for_test(&fence).unwrap();
     assert_eq!(
         router.authorize_context_compaction_command(&queued, &registration.proof()),
         Err(TargetAuthorizationFailure::ExecutionFenced(
@@ -138,7 +138,7 @@ fn queued_steering_is_retryable_and_keeps_the_active_target_after_a_fence() {
             ProcessAdmissionError::Fenced
         )),
     );
-    queued.reopen_process_admission(&fence, true).unwrap();
+    queued.reopen_process_admission_for_test(&fence).unwrap();
     assert_eq!(
         router.authorize_active_steering_command(&queued, &authorization),
         Err(TargetAuthorizationFailure::ExecutionFenced(

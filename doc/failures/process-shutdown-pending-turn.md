@@ -397,6 +397,15 @@ election. An already-admitted read pauses before confirmation, then attempts str
 while election holds health ownership; publication waits until the callback returns. Existing
 mutation, reconciliation, recovery and maintenance health behavior remains intact.
 
-App admission composition and the coordinator remain separate and unaccepted. Complete the
-master-to-process-to-home lock composition and its exact fence, custody and race tests before
-resuming coordinator acceptance. Do not clear custody, weaken coherence or add an inventory quota.
+App admission composition was then accepted on 2026-09-14. The service selects its exact owned home
+and expected generation. Master and process ownership are acquired before home election; only the
+successful callback opens the process flag. The production boolean-coherence entry is removed.
+Refusal preserves the fence, and successful reopening does not revive pre-fence execution permits.
+
+Independent semantic review, isolated normal and test-faults checks, and 54 focused and affected
+tests passed. Tests cover counted admission return, stale and foreign fences, closed service,
+active mutation followed by returned indeterminate custody, installation, exact-new resolution,
+failed home health and concurrent live commands. An existing no-connection test now permits idle
+workers to retire between count snapshots while still forbidding worker growth and provider contact.
+Coordinator composition remains separate and unaccepted. Do not clear custody, weaken coherence
+or add an inventory quota.

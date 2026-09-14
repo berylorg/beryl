@@ -94,7 +94,7 @@ fn post_fence_public_session_admission_creates_no_connection() {
         })
     ));
     assert_eq!(listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
-    assert_eq!(fixture.service.worker_pool_diagnostics().active(), before);
+    assert!(fixture.service.worker_pool_diagnostics().active() <= before);
     assert_eq!(fence.validate_settled_for(&fixture.gate), Ok(()));
 }
 

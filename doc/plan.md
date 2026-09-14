@@ -44,23 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 407: Elect Coherent Home State (finished)
+# Phase 408: Reopen Process Admission Through Home Coherence (finished)
 
-Accepted the bounded home-store election over mutation, all reconciliation scopes and current
-healthy generation. Refusal invokes no callback and preserves custody; no guard escapes. Normal
-and test-faults library checks, independent semantic review, and 48 focused and affected regressions
-passed. The [acceptance record](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
-preserves the pre-installation custody and concurrent health-transition evidence.
-
-# Phase 408: Reopen Process Admission Through Home Coherence (pending)
-
-Compose the accepted home election with the exact live-service master gate and process admission
-ownership according to the [shutdown boundary](systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination).
-Validate the current fence and zero counted reservations before the home call; open the process gate
-only inside its callback with no additional lock acquisition. Refusal preserves the fence, custody
-and old permit invalidity. Verify stale/foreign fence and service identity, retained reservations,
-returned indeterminate custody before installation, concurrent mutation and later exact recovery.
-Accept focused app checks, race tests and independent semantic review before coordinator composition.
+Accepted exact master-to-process-to-home reopening through the home election in `6b148050`.
+Refusal preserves the fence and custody; success cannot revive old permits. The production boolean
+entry is removed. Independent semantic review, isolated normal and test-faults checks, and 54 focused
+and affected tests passed. The [acceptance record](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
+preserves custody, stale-authority and concurrent-mutation evidence. Coordinator composition remains
+its separate acceptance boundary.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 

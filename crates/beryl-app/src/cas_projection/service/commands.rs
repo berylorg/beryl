@@ -1,6 +1,11 @@
 use super::*;
+use crate::cas_projection::LiveCommandAdmissionError;
 #[cfg(test)]
 use beryl_model::SyndicAcceptedInputId;
+
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../tests/unit/admission_reopening.rs"]
+mod admission_reopening_tests;
 
 enum PreparedStop {
     Exact {
@@ -12,6 +17,21 @@ enum PreparedStop {
 }
 
 impl ProjectionConnectionService {
+    pub(crate) fn try_reopen_shutdown_admission(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+    ) -> Result<(), crate::process_admission::ProcessAdmissionReopenError> {
+        let permit = self.command_authorizer.authorize()?;
+        let home = self
+            .home
+            .as_deref()
+            .ok_or(LiveCommandAdmissionError::Closed)?;
+        if home.home_id() != self.home_id {
+            return Err(crate::process_admission::ProcessAdmissionReopenError::StaleHome);
+        }
+        permit.reopen_process_admission(fence, home, self.home_generation)
+    }
+
     pub fn lifecycle_yield_handler(
         &self,
         attention: &Arc<crate::lifecycle_attention::ProcessLifecycleAttentionPool>,

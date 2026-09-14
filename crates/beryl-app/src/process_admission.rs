@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Debug)]
 pub struct ProcessAdmissionGate {
@@ -30,6 +30,28 @@ pub(crate) enum ProcessExecutionAdmissionError {
     Service(#[from] crate::cas_projection::LiveCommandAdmissionError),
     #[error(transparent)]
     Process(#[from] ProcessAdmissionError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub(crate) enum ProcessAdmissionReopenError {
+    #[error(transparent)]
+    Service(#[from] crate::cas_projection::LiveCommandAdmissionError),
+    #[error(transparent)]
+    Process(#[from] ProcessAdmissionError),
+    #[error(transparent)]
+    Home(#[from] beryl_home_store::HomeCoherenceError),
+    #[error("shutdown service does not own the expected home")]
+    StaleHome,
+}
+
+pub(crate) struct ProcessAdmissionReopening<'a> {
+    state: MutexGuard<'a, AdmissionState>,
+}
+
+impl ProcessAdmissionReopening<'_> {
+    pub(crate) fn reopen(mut self) {
+        self.state.fenced = false;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -154,19 +176,22 @@ impl ProcessExecutionPermit {
         Ok(())
     }
 
-    pub(crate) fn reopen(
+    pub(crate) fn prepare_reopening<'a>(
         &self,
-        fence: &ProcessAdmissionFence,
-        coherent: bool,
-    ) -> Result<(), ProcessAdmissionError> {
+        fence: &'a ProcessAdmissionFence,
+    ) -> Result<ProcessAdmissionReopening<'a>, ProcessAdmissionError> {
         if !Arc::ptr_eq(&self.gate.inner, &fence.gate.inner) {
             return Err(ProcessAdmissionError::Stale);
         }
-        fence.reopen_if(coherent)
+        fence.prepare_reopening()
     }
 }
 
 impl ProcessAdmissionFence {
+    pub(crate) fn same_attempt(&self, other: &Self) -> bool {
+        self.epoch == other.epoch && Arc::ptr_eq(&self.gate.inner, &other.gate.inner)
+    }
+
     pub(crate) fn validate_settled_for(
         &self,
         gate: &ProcessAdmissionGate,
@@ -188,8 +213,8 @@ impl ProcessAdmissionFence {
         Ok(())
     }
 
-    pub(crate) fn reopen_if(&self, coherent: bool) -> Result<(), ProcessAdmissionError> {
-        let mut state = self
+    fn prepare_reopening(&self) -> Result<ProcessAdmissionReopening<'_>, ProcessAdmissionError> {
+        let state = self
             .gate
             .inner
             .lock()
@@ -197,10 +222,19 @@ impl ProcessAdmissionFence {
         if !state.fenced || state.epoch != self.epoch {
             return Err(ProcessAdmissionError::Stale);
         }
-        if state.admissions != 0 || !coherent {
+        if state.admissions != 0 {
             return Err(ProcessAdmissionError::Unsettled);
         }
-        state.fenced = false;
+        Ok(ProcessAdmissionReopening { state })
+    }
+
+    #[cfg(any(test, feature = "test-faults"))]
+    pub(crate) fn reopen_if(&self, coherent: bool) -> Result<(), ProcessAdmissionError> {
+        let reopening = self.prepare_reopening()?;
+        if !coherent {
+            return Err(ProcessAdmissionError::Unsettled);
+        }
+        reopening.reopen();
         Ok(())
     }
 }
