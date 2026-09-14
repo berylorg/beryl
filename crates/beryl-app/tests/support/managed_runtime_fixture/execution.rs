@@ -7,7 +7,10 @@ mod compaction;
 
 pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
     let queued_successor = mode == "execution-next";
-    let compaction = mode == "execution-compaction";
+    let compaction = matches!(
+        mode,
+        "execution-compaction" | "execution-compaction-shutdown"
+    );
     let successor = queued_successor || compaction;
     let first_ordinal =
         u32::from(successor && std::path::Path::new("execution-started-0.json").exists());
@@ -80,6 +83,14 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             fs::write("execution-steering-denied", "ready").unwrap();
         }
         let release = format!("execution-release-{ordinal}");
+        if mode == "execution-shutdown" {
+            let interrupt = read_json(socket);
+            assert_eq!(interrupt["method"], "turn/interrupt");
+            assert_eq!(interrupt["params"]["threadId"], THREAD);
+            assert_eq!(interrupt["params"]["turnId"], turn);
+            send_json(socket, json!({"id":interrupt["id"],"result":{}}));
+            fs::write("execution-interrupted", "once").unwrap();
+        }
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !std::path::Path::new(&release).exists() {
             assert!(
@@ -96,7 +107,7 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>, mode: &str) {
             }}),
         );
         if compaction && ordinal == 0 {
-            compaction::serve(socket);
+            compaction::serve(socket, mode == "execution-compaction-shutdown");
             while let Ok(message) = socket.read() {
                 if message.is_close() {
                     return;

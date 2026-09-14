@@ -178,6 +178,7 @@ impl ProjectionConnectionService {
             native_lineage_recovery,
             scheduled_ordinary_provider: Some(scheduled_ordinary_provider),
             runtime_interest: None,
+            graceful_shutdown: Mutex::new(super::graceful_shutdown::ShutdownCoordinator::default()),
             settled: false,
         })
     }

@@ -196,6 +196,11 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   durable pending-preservation outcome, together with
   all required draft/session durability obligations. Only then may claims be released, windows
   disposed, and the process service graph and managed runtimes retired and joined.
+- Final readiness includes the owned home's coherent election over mutation, reconciliation custody
+  and current health. The coordinator revalidates the captured inventory revisions after that
+  election and checks its exact fence and cancellation before returning ready. A reserved result
+  awaiting installation, active mutation or intervening commit cannot be hidden by an empty pending
+  handle list or an earlier revision check. Election performs no storage work inside its callback.
 - Every ordinary execution, including direct execution from an already loaded projection, owns one
   ordinary permit from the existing service worker budget before winning process admission. The
   scheduled path reuses its existing permit and admission; nested execution never charges twice.

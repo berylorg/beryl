@@ -44,97 +44,17 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 411: Wait For Exact Compaction Gate Release (finished)
+# Phase 326: Coordinate Process-Wide Graceful Shutdown (finished)
 
-Accepted same-target compaction barrier waiting through final gate release. Different-target
-convergence and ordinary safe-reopen failures remain unchanged. Independent semantic review,
-isolated normal/test-faults app checks and 65 compaction/stop/broker regressions passed. The
-[acceptance record](failures/process-shutdown-pending-turn.md#finalizing-compaction-classification)
-includes a real terminal-before-settlement regression that failed before the correction.
+Accepted the service-bound graceful-shutdown coordinator with exact captured execution completion,
+bounded generic/durable sweeps, pending preservation, owner cleanup and coherent failure reopening.
+The real-runtime tests verify soft stop, noninterruptible compaction and predecessor/successor
+handoff without treating acknowledgement as completion. Independent semantic review, normal and
+test-faults app checks, all 18 acceptance tests and 81 affected regressions passed. The
+[acceptance record](failures/process-shutdown-pending-turn.md#coordinator-composition-acceptance)
+retains evidence and the boundary with later final-window/Exit mounting.
 
-# Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
-
-Compose the accepted admission fence and exact all-work convergence boundary shared by final-window
-close and explicit Exit. Preserve accepted queues and proven-undispatched pending turns, prevent
-successor dispatch, retain dispatched or uncertain noninterruptible targets through terminal history
-or authority-loss convergence, and return to
-coherent windows on failure. Confirmation, final-window designation, durable restore mode and OS
-close integration remain their subsequent rework acceptance boundary.
-
-The [pending-turn correction](failures/process-shutdown-pending-turn.md) records the authorized
-completion distinction. Verify durable pending preservation separately from uncertain dispatch,
-including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
-or absent provider identity proves either completion outcome.
-
-The acquisition fence and exact terminal handoff prerequisites are accepted. Resume composition
-using both the original captured execution obligation and any winning successor's separate pending
-obligation. Do not replace exact completion with current Idle state, missing live metadata, pending
-provenance for another turn, or a stop response. The initial unaccepted coordinator was removed;
-its [review record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
-remains evidence for the required proof and cleanup distinction.
-
-The authorized [bounded obligation prerequisites](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-are accepted. Readiness review confirms the execution capture, exact stop, thread settlement and
-owner-driven cleanup primitives can be composed. Preserve exact admission validation and generic
-cleanup joins while allowing progress over later work.
-
-- Retain one service-bound shutdown attempt with its admitted fence and bounded execution capture;
-  concurrent requests join that attempt and stale attempt/service inputs cannot affect another.
-- Refresh and progress every captured ordinary and compaction obligation before waiting for global
-  admission closure. Preserve earlier accepted identities across drift and capture late winners
-  before the final convergence check. Use the existing exact stop and continuation-cancellation
-  paths without treating their responses as completion.
-- Visit generic custody with bounded pages. Await preparation and direct loaded-projection owner
-  release, retire eligible scheduled sessions through their existing exact owner, and explicitly
-  poll every retired connection's join, including threadless failures. Preserve reconciliation
-  custody and do not discard an execution obligation when cleanup disappears.
-- After admission closure, validate a complete current generic inventory and page durable non-idle
-  gates. Authenticate each current pending/terminal turn through the accepted settlement guard;
-  keep guard retention bounded and account only for the coordinator's own flight-revision changes.
-  Any external revision change invalidates the sweep. Accepted queues remain unchanged.
-- Retain failed attempts until coherent failure permits reopening. Do not repeat uncertain dispatch,
-  restore cancelled continuation intents, or release windows/claims through this component.
-
-Verify real active soft-stop convergence, noninterruptible and uncertain work, predecessor/successor
-proofs, late admission behind a progress cursor, multiple live and durable pages, exact guard
-revision changes versus external mutation, cleanup/join failures, reconciliation and later recovery,
-duplicate requests, stale generations and coherent reopening. Run focused normal-library and
-test-faults checks and the affected shutdown, execution, stop and compaction regressions. Independent
-semantic review must accept the exact completion and cleanup composition before this phase finishes.
-
-Resumable milestone: the partial coordinator is uncommitted and unaccepted. Focused tests cover
-271 durable pending rows, 270 generic records with late slot capture, exact guard revision accounting,
-real managed soft stop, failed detached joins and reconciliation.
-
-The connection traversal prerequisite is accepted as `4b3c463e`, following bounded persistent-failure
-capture in `19c9338e`. Readiness covers the complete cleanup path and bounded exact execution
-capture. The
-[failure record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
-preserves the invalidated capacity assumption; never infer a registry bound from worker capacity.
-
-The [coherence correction](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
-is accepted through home election `6b148050` and admission composition `eb3ee8c1`. The coordinator now
-delegates failure reopening to that exact service boundary. Resume complete verification and
-independent review, adding integrated predecessor/successor completion and noninterruptible work
-evidence. Do not substitute another snapshot or count stop acknowledgement as completion.
-
-Final-readiness review also required home election before the final captured-revision validation.
-The implementation now rejects returned custody before installation and retries commits on either
-side of election; focused regressions cover both cases. Integrated runtime tests cover predecessor
-completion across both successor-handoff barriers. The Operator authorized resolving the reported
-compaction blocker; exact-stage inspection and independent review corrected that diagnosis.
-The [compaction progress record](failures/process-shutdown-pending-turn.md#noninterruptible-compaction-progress)
-records the fixture's missing interrupt response and the subsequently exposed rejection of provider
-events while stopping. The app publication correction is accepted in `dbab7017`. Resume with fixture evidence
-for initial waiting, later exact stop, acknowledgement without completion, terminal settlement and
-cancelled continuation. The separate concurrent stop-read retry remains applicable.
-
-The stopping-event, terminal-compaction classification and same-target gate-release prerequisites
-are accepted separately. Resume the full coordinator acceptance with its original captured work
-and cleanup proofs intact. The phase remains unaccepted until focused real-runtime shutdown and
-affected regression checks pass with the coordinator restored.
-
-# Phase 400: Diagnose Repeated Draft Content Materialization (pending)
+# Phase 400: Diagnose Repeated Draft Content Materialization (wip)
 
 Determine the bounded correction and acceptance evidence for the
 [repeated-content failure](failures/syndic-draft-materializer-content-identity.md#repeated-content-collision)

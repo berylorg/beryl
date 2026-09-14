@@ -8,7 +8,7 @@ pub(super) fn wait_release(name: &str) {
     }
 }
 
-pub(super) fn serve(socket: &mut WebSocket<TcpStream>) {
+pub(super) fn serve(socket: &mut WebSocket<TcpStream>, shutdown: bool) {
     let request = read_json(socket);
     assert_eq!(request["method"], "thread/compact/start");
     assert_eq!(request["params"]["threadId"], THREAD);
@@ -38,6 +38,14 @@ pub(super) fn serve(socket: &mut WebSocket<TcpStream>) {
         send_json(socket, json!({"method":method,"params":params}));
     }
     fs::write("compaction-started", "ready").unwrap();
+    if shutdown {
+        let interrupt = read_json(socket);
+        assert_eq!(interrupt["method"], "turn/interrupt");
+        assert_eq!(interrupt["params"]["threadId"], THREAD);
+        assert_eq!(interrupt["params"]["turnId"], "managed-compaction");
+        send_json(socket, json!({"id":interrupt["id"],"result":{}}));
+        fs::write("compaction-interrupted", "once").unwrap();
+    }
     wait_release("compaction-release");
     send_json(
         socket,

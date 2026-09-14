@@ -14,6 +14,28 @@ impl IdleSessionRetirement {
 }
 
 impl ScheduledExecutionSessions {
+    pub(in crate::cas_projection) fn retire_idle_for_shutdown(
+        &self,
+    ) -> Result<(), crate::cas_projection::ProjectionCoordinatorError> {
+        let mut after = None;
+        loop {
+            let registration = {
+                let state = self.lock();
+                let start = after.map_or(std::ops::Bound::Unbounded, std::ops::Bound::Excluded);
+                state
+                    .slots
+                    .range((start, std::ops::Bound::Unbounded))
+                    .next()
+                    .map(|(_, slot)| slot.registration)
+            };
+            let Some(registration) = registration else {
+                return Ok(());
+            };
+            after = Some(registration.thread_id);
+            self.retire_if_idle(registration)?;
+        }
+    }
+
     pub fn retire_if_idle(
         &self,
         registration: ScheduledSessionRegistration,

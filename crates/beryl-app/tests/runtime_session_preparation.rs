@@ -5,6 +5,8 @@ mod acquisition;
 mod compaction_lifetime;
 #[path = "runtime_session_preparation/execution_lifetime.rs"]
 mod execution_lifetime;
+#[path = "runtime_session_preparation/graceful_shutdown.rs"]
+mod graceful_shutdown;
 #[path = "runtime_session_preparation/idle_maintenance.rs"]
 mod idle_maintenance;
 #[path = "runtime_session_preparation/work_facts.rs"]

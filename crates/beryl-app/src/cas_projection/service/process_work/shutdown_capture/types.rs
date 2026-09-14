@@ -12,6 +12,15 @@ pub(crate) struct ShutdownWorkRevision {
 }
 
 impl ShutdownWorkRevision {
+    pub(crate) fn after_settlement_guard(&self) -> Result<Self, ProcessWorkError> {
+        let mut next = self.clone();
+        next.flights = next
+            .flights
+            .checked_add(2)
+            .ok_or(ProcessWorkError::CountOverflow)?;
+        Ok(next)
+    }
+
     pub(crate) fn requires_connection_cleanup(&self) -> bool {
         self.connections.requires_cleanup()
     }
@@ -21,6 +30,12 @@ impl ShutdownWorkRevision {
 pub(crate) struct ShutdownWorkCursor {
     pub(super) revision: ShutdownWorkRevision,
     pub(super) after: SyndicThreadId,
+}
+
+impl ShutdownWorkCursor {
+    pub(crate) fn resume_after(revision: ShutdownWorkRevision, after: SyndicThreadId) -> Self {
+        Self { revision, after }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

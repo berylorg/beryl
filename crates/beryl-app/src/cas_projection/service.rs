@@ -66,6 +66,10 @@ mod compaction_work;
 mod construction;
 mod control_work;
 mod flight_registry;
+mod graceful_shutdown;
+#[cfg(feature = "test-faults")]
+pub use graceful_shutdown::GracefulShutdownProbe;
+pub(crate) use graceful_shutdown::{ShutdownAttemptId, ShutdownCoordinatorError, ShutdownProgress};
 mod process_work;
 pub use process_work::*;
 mod runtime_interest;
@@ -116,6 +120,7 @@ pub struct ProjectionConnectionService {
     native_lineage_recovery: NativeLineageRecoveryControl,
     scheduled_ordinary_provider: Option<Arc<Mutex<Box<dyn ScheduledOrdinaryExecutionProvider>>>>,
     runtime_interest: Option<Arc<super::runtime_interest::RuntimeInterestOwner>>,
+    graceful_shutdown: Mutex<graceful_shutdown::ShutdownCoordinator>,
     settled: bool,
 }
 

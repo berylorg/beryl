@@ -545,3 +545,22 @@ Corruption tests perform scoped authentication before whole-home scrub: a failed
 home health, so checking only a later read error would not prove the scoped validator ran. No
 record encoding, history traversal or provider-event requirement was added. This prerequisite is
 accepted; terminal-compaction classifier acceptance and app barrier composition resume separately.
+
+## Coordinator Composition Acceptance
+
+The process-wide coordinator was accepted on 2026-09-15 after its storage and app prerequisites
+were committed independently. Full focused run `a4ea8ef4-5013-4aeb-8139-cd503c67089c` passed all
+18 cases, including real hidden soft-stop convergence, predecessor completion across both successor
+handoff cuts, and noninterruptible compaction through terminal settlement without continuation.
+The separate affected execution/shutdown regression selection passed all 81 cases. Normal and
+test-faults app checks and renewed independent semantic review passed.
+
+The coordinator retains exact execution obligations separately from stop barriers and owner cleanup,
+pages generic custody and durable gates, accepts only its own settlement-guard revision changes,
+and elects coherent home state before the final revision/fence checks. Reconciliation, failed joins,
+late winners and unresolved ownership cannot become successful completion. Failure reopening uses
+the accepted atomic admission boundary and does not restore cancelled continuation intents.
+
+This accepts the process service component. Final-window designation, confirmation, durable restore
+mode and OS close/Exit mounting remain their owning rework checkpoint; no production GUI mounting
+is claimed by these tests.

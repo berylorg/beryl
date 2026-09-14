@@ -168,7 +168,11 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     );
     if matches!(
         mode.as_str(),
-        "execution-lifetime" | "execution-next" | "execution-compaction"
+        "execution-lifetime"
+            | "execution-next"
+            | "execution-compaction"
+            | "execution-compaction-shutdown"
+            | "execution-shutdown"
     ) && index > 0
     {
         execution::serve(&mut socket, &mode);
