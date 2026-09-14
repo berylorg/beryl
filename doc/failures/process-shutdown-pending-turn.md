@@ -409,3 +409,45 @@ failed home health and concurrent live commands. An existing no-connection test 
 workers to retire between count snapshots while still forbidding worker growth and provider contact.
 Coordinator composition remains separate and unaccepted. Do not clear custody, weaken coherence
 or add an inventory quota.
+
+## Noninterruptible Compaction Progress
+
+The initial diagnosis of runtime test
+`shutdown_waits_for_noninterruptible_compaction_and_cancels_its_continuation` incorrectly located
+the failing line in its first waiting loop. Nextest run
+`25aafc9d-7258-461f-9e86-0db9c6ba4db4` failed in 11.918 seconds with
+`StopCoordinationError::ConnectionUnavailable`, but the failure occurred in final convergence
+after releasing compaction. The initial withheld-response wait had succeeded.
+
+Source inspection and independent review confirm that existing durable stop admission returns
+`Ineligible(Compacting)` until the CAS turn identity is known. The fixture subsequently emitted
+`turn/started` but never answered `turn/interrupt`; it rejected every text request after terminal
+emission. A valid later eligible stop could therefore time out or race terminal and be rejected.
+The passing instrumented rerun `e2333c6e-af69-436a-8198-e9ce3b1e6a30` further demonstrates the
+fixture's timing dependence, not acceptance of a production correction.
+
+The correction adds a dedicated fixture mode that validates and acknowledges one exact compaction
+interrupt, then withholds terminal completion until explicitly released. Verification must cover
+initial noninterruptible waiting, later eligible stop, acknowledgement without completion, exact
+terminal settlement, cancelled continuation and cleanup. No new production compaction-wait
+boundary is justified by this failure. The separate concurrent stop-read retry remains applicable.
+Confirm the exact failing stage before inferring a prerequisite gap from elapsed time alone.
+
+The corrected fixture then exposed a separate production rejection in run
+`3376a070-fb26-41ac-9e10-6e322b387a0c`: initial waiting, durable stop eligibility and interrupt
+acknowledgement succeeded, but final convergence timed out. The exact compaction retained request
+acceptance, its completed marker and `Stopping` state with no terminal observation; the stop
+remained dispatch-claimed. The app's `publish_provider_event` rejected `Stopping` through its
+`is_live` guard. The next idle-status event therefore failed before terminal publication.
+
+Storage's `provider_event_operation` already authenticates `Stopping` against the exact gate and
+provider target. The required correction permits that state locally in the app publisher while
+preserving storage validation. Generic live-operation eligibility and barrier retention are not
+the defect and must not be broadened or removed.
+
+The component correction was accepted on 2026-09-14 after independent semantic review, normal
+and test-faults library checks with coordinator composition excluded, and 59 compaction/stop
+regressions. The new standalone test failed at status publication before the correction and passed
+afterward. It verifies exact matching-terminal stop evidence, manual compaction success, original
+committed tail, no restored continuation and refusal of events after authority consumption.
+The real-runtime shutdown fixture remains separate integration evidence.

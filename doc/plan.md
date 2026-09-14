@@ -44,14 +44,14 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 408: Reopen Process Admission Through Home Coherence (finished)
+# Phase 409: Preserve Provider Events Through Compaction Stop (finished)
 
-Accepted exact master-to-process-to-home reopening through the home election in `6b148050`.
-Refusal preserves the fence and custody; success cannot revive old permits. The production boolean
-entry is removed. Independent semantic review, isolated normal and test-faults checks, and 54 focused
-and affected tests passed. The [acceptance record](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
-preserves custody, stale-authority and concurrent-mutation evidence. Coordinator composition remains
-its separate acceptance boundary.
+Accepted the app's local stopping-state publication correction. Exact status and terminal events
+reach the existing storage authentication without changing dispatch eligibility or custody.
+Independent semantic review, isolated normal and test-faults checks and 59 component regressions
+passed. The [acceptance record](failures/process-shutdown-pending-turn.md#noninterruptible-compaction-progress)
+preserves the failing durable state and direct stop-to-terminal evidence. Shutdown integration
+remains its separate acceptance boundary.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -103,9 +103,9 @@ duplicate requests, stale generations and coherent reopening. Run focused normal
 test-faults checks and the affected shutdown, execution, stop and compaction regressions. Independent
 semantic review must accept the exact completion and cleanup composition before this phase finishes.
 
-Resumable milestone: the partial coordinator is uncommitted and unaccepted. Eighteen focused tests
-passed cumulatively, including 271 durable pending rows, 270 generic records with late slot capture,
-exact guard revision accounting, real managed soft stop, failed detached joins and reconciliation.
+Resumable milestone: the partial coordinator is uncommitted and unaccepted. Focused tests cover
+271 durable pending rows, 270 generic records with late slot capture, exact guard revision accounting,
+real managed soft stop, failed detached joins and reconciliation.
 
 The connection traversal prerequisite is accepted as `4b3c463e`, following bounded persistent-failure
 capture in `19c9338e`. Readiness covers the complete cleanup path and bounded exact execution
@@ -113,18 +113,23 @@ capture. The
 [failure record](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership)
 preserves the invalidated capacity assumption; never infer a registry bound from worker capacity.
 
-Independent composition review found that failure reopening uses a healthy-home and empty
-reconciliation snapshot that is not atomic with reopening. Pending handles omit reserved custody,
-including an indeterminate result awaiting synchronous installation. The existing mutation election
-neither covers that custody transfer nor permits acquiring the gate locks inside its callback.
-The [coherence blocker](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
-records source evidence. The Operator authorized the home coherence and admission composition
-prerequisites above; do not substitute another snapshot.
+The [coherence correction](failures/process-shutdown-pending-turn.md#failure-reopening-coherence)
+is accepted through home election `6b148050` and admission composition `eb3ee8c1`. The coordinator now
+delegates failure reopening to that exact service boundary. Resume complete verification and
+independent review, adding integrated predecessor/successor completion and noninterruptible work
+evidence. Do not substitute another snapshot or count stop acknowledgement as completion.
 
-The latest normal library check and all 14 focused coordinator tests passed, including real managed
-soft-stop convergence, but do not cover this race. The partial coordinator remains uncommitted and
-unaccepted. After the coherence prerequisites are accepted, resume full verification and
-independent review, including late admission, predecessor/successor completion and noninterruptible work.
+Final-readiness review also required home election before the final captured-revision validation.
+The implementation now rejects returned custody before installation and retries commits on either
+side of election; focused regressions cover both cases. Integrated runtime tests cover predecessor
+completion across both successor-handoff barriers. The Operator authorized resolving the reported
+compaction blocker; exact-stage inspection and independent review corrected that diagnosis.
+The [compaction progress record](failures/process-shutdown-pending-turn.md#noninterruptible-compaction-progress)
+records the fixture's missing interrupt response and the subsequently exposed rejection of provider
+events while stopping. Resume after the app publication correction with explicit fixture evidence
+for initial waiting, later exact stop, acknowledgement without completion, terminal settlement and
+cancelled continuation. The separate concurrent stop-read retry remains applicable. Full focused
+and affected regressions and final review remain pending.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

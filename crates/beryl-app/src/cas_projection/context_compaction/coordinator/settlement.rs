@@ -21,7 +21,8 @@ impl ContextCompactionCoordinator {
             .map_err(|_| ContextCompactionError::AuthorityMismatch)?;
         let before = self.read_operation(authority.operation_id())?;
         if before.target().turn_id() != authority.provider_turn_id()
-            || !before.state().is_live() && before.state() != &CompactionOperationState::Finalizing
+            || (!before.state().is_live()
+                && !matches!(before.state(), CompactionOperationState::Stopping(_)))
         {
             return Err(ContextCompactionError::AuthorityMismatch);
         }

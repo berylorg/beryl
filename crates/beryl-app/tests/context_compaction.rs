@@ -2,6 +2,8 @@
 
 #[path = "context_compaction/process_admission.rs"]
 mod process_admission;
+#[path = "context_compaction/stopping.rs"]
+mod stopping;
 #[path = "context_compaction/support.rs"]
 mod support;
 #[path = "projection/syndic.rs"]

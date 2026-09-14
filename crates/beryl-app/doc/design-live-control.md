@@ -66,6 +66,9 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 - Stop of compaction uses its exact provider-operation target and same driver. Nondispatch reopen,
   possible dispatch, loss, terminal, and restart retain system-owned custody and never create a
   replacement compaction.
+- Provider observation continues while that exact compaction is stopping. The app preserves the
+  operation and provider-turn checks and delegates stopping-gate authentication to storage; status,
+  marker and terminal events may converge the existing stop without admitting another dispatch.
 - One process-local continuation intent is keyed to the yielding turn. Stop admission, admitted
   process shutdown, non-success terminal, compaction failure, authority loss, or process loss
   consumes it without consuming accepted input. Thread switching and nonfinal close preserve it.
