@@ -865,6 +865,7 @@ fn window_close_ineligible_status(
     match reason {
         StopAdmissionIneligibility::PendingTurn { turn_id, .. }
         | StopAdmissionIneligibility::AwaitingTerminal { turn_id, .. }
+        | StopAdmissionIneligibility::Compacting { turn_id, .. }
         | StopAdmissionIneligibility::FinalizingHistory { turn_id, .. } => {
             Ok(if turn_id == target_turn_id {
                 WindowCloseStopBarrierStatus::Waiting
@@ -880,7 +881,6 @@ fn window_close_ineligible_status(
         }
         StopAdmissionIneligibility::Idle { .. }
         | StopAdmissionIneligibility::AwaitingSteering { .. }
-        | StopAdmissionIneligibility::Compacting { .. }
         | StopAdmissionIneligibility::DeliveringSteering { .. } => {
             Ok(WindowCloseStopBarrierStatus::Converged)
         }

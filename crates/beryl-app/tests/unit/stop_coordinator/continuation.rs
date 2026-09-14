@@ -116,7 +116,16 @@ fn window_close_barrier_retains_exact_convergence_classification() {
         turn_id: fixture.turn,
         current_gate_revision: gate,
     };
-    for reason in [matching_pending, matching_terminal, matching_finalization] {
+    let matching_compaction = StopAdmissionIneligibility::Compacting {
+        turn_id: fixture.turn,
+        current_gate_revision: gate,
+    };
+    for reason in [
+        matching_pending,
+        matching_terminal,
+        matching_finalization,
+        matching_compaction,
+    ] {
         assert_eq!(
             window_close_ineligible_status(reason, fixture.turn).unwrap(),
             WindowCloseStopBarrierStatus::Waiting

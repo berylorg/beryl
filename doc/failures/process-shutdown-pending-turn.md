@@ -496,6 +496,14 @@ compaction outcomes with and without prior stops, exact-authority corruption, st
 point-limit refusal. Normal/test-faults package checks and independent semantic review passed.
 The correction changes no ordinary blocking-turn rules and consumes no operation authority.
 
+The app barrier correction was accepted separately on 2026-09-15 after independent review,
+isolated normal/test-faults app checks and 65 compaction/stop/broker regressions. Real-storage run
+`354eb195-8ee0-41a7-b16c-3cae32daaaae` first reproduced premature `Converged` after terminal
+publication while the operation remained finalizing. The corrected test requires repeated
+`Waiting` until exact manual settlement releases the gate, then `Converged`. The classification
+matrix preserves different-target convergence and ordinary safe-reopen failure visibility.
+Process-wide shutdown remains a separate integration acceptance boundary.
+
 ## Pending Continuation Dispatch Provenance
 
 Broader storage verification on 2026-09-15 exposed a separate inherited production inconsistency.

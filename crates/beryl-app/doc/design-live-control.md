@@ -69,6 +69,10 @@ the app coordinator, execution-driver, adapter, and custody surfaces.
 - Provider observation continues while that exact compaction is stopping. The app preserves the
   operation and provider-turn checks and delegates stopping-gate authentication to storage; status,
   marker and terminal events may converge the existing stop without admitting another dispatch.
+- An exact stop barrier keeps waiting while the same provider-operation turn remains gate-selected
+  as compacting, including terminal publication followed by pending final settlement. A different
+  gate target or ended gate ownership retains the existing convergence classification. The barrier
+  does not create a second interrupt or treat provider acknowledgement as completion.
 - One process-local continuation intent is keyed to the yielding turn. Stop admission, admitted
   process shutdown, non-success terminal, compaction failure, authority loss, or process loss
   consumes it without consuming accepted input. Thread switching and nonfinal close preserve it.

@@ -47,6 +47,7 @@ struct Fixture {
     home: Arc<HomeStore>,
     storage: SyndicStorage,
     coordinator: Arc<ContextCompactionCoordinator>,
+    stop_coordinator: Arc<StopCoordinator>,
     #[cfg(feature = "test-faults")]
     compaction_driver: Option<crate::cas_projection::ContextCompactionLifecycleTestHarness>,
     authority: Arc<ConnectionRegistryAuthority>,
@@ -298,7 +299,7 @@ impl Fixture {
             home_generation,
             Arc::clone(&authority),
             Arc::clone(&router),
-            stop_coordinator,
+            Arc::clone(&stop_coordinator),
             Arc::clone(&coordinator),
             commands,
             failure_notification,
@@ -311,6 +312,7 @@ impl Fixture {
             home,
             storage,
             coordinator,
+            stop_coordinator,
             #[cfg(feature = "test-faults")]
             compaction_driver: Some(compaction_driver),
             authority,
@@ -472,6 +474,14 @@ mod failure_cases {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/provider_broker_compaction_marker_failures.rs"
+    ));
+}
+
+#[cfg(feature = "test-faults")]
+mod gate_release {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/compaction_gate_release.rs"
     ));
 }
 

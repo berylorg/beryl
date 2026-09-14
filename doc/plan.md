@@ -44,23 +44,13 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 410: Classify Terminal Compaction As Deferred Work (finished)
+# Phase 411: Wait For Exact Compaction Gate Release (finished)
 
-Accepted bounded authentication of terminal-but-unsettled compaction as deferred recovery and
-compacting-ineligible stop admission. Ordinary classification remains unchanged. Independent
-semantic review, normal/test-faults package checks and the broader 166-test storage selection
-passed after the separately committed pending-continuation prerequisite. The
+Accepted same-target compaction barrier waiting through final gate release. Different-target
+convergence and ordinary safe-reopen failures remain unchanged. Independent semantic review,
+isolated normal/test-faults app checks and 65 compaction/stop/broker regressions passed. The
 [acceptance record](failures/process-shutdown-pending-turn.md#finalizing-compaction-classification)
-retains the failing case, outcome/identity/budget coverage and prerequisite distinction.
-
-# Phase 411: Wait For Exact Compaction Gate Release (wip)
-
-Consume the corrected classification under the
-[app live-control contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).
-Keep an existing stop barrier waiting while that same compaction remains gate-selected, and
-preserve different-target, ended-ownership and safe-reopen failure behavior. Verify the classification
-matrix, real terminal-before-settlement waiting and existing stop regressions; complete normal and
-test-faults checks and independent review before resuming process-wide coordinator acceptance.
+includes a real terminal-before-settlement regression that failed before the correction.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -139,16 +129,10 @@ events while stopping. The app publication correction is accepted in `dbab7017`.
 for initial waiting, later exact stop, acknowledgement without completion, terminal settlement and
 cancelled continuation. The separate concurrent stop-read retry remains applicable.
 
-Blocked on 2026-09-15 after normal and test-faults checks passed and 17 of 18 focused tests passed.
-The runtime compaction test now passes initial waiting, eligible stop and acknowledgement, but
-final convergence exposes a separate [classification gap](failures/process-shutdown-pending-turn.md#finalizing-compaction-classification).
-A terminal provider turn remains selected by its compacting gate until final settlement; the
-ordinary blocking-turn classifier rejects this valid state. Independent review confirms that a
-canonical bounded compaction classification correction is needed, followed by same-target waiting
-in the legacy stop barrier. Removing barrier polling or retrying invariant failures would hide
-other required failure outcomes. Implementation is paused under the Operator's invalid-plan rule;
-derive the owning storage and app prerequisite boundaries before resuming this phase. The phase
-remains unaccepted, with full affected regression execution pending.
+The stopping-event, terminal-compaction classification and same-target gate-release prerequisites
+are accepted separately. Resume the full coordinator acceptance with its original captured work
+and cleanup proofs intact. The phase remains unaccepted until focused real-runtime shutdown and
+affected regression checks pass with the coordinator restored.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 
