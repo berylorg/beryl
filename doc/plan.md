@@ -68,9 +68,19 @@ completion distinction. Verify durable pending preservation separately from unce
 including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
 or absent provider identity proves either completion outcome.
 
-The acquisition prerequisite is accepted. Resume readiness review and compose the shared fence,
-bounded capture and exact settlement guards. Preserve winning acquisition custody and existing
-threadless cleanup and reconciliation obligations; coarse capture alone cannot prove settlement.
+The acquisition prerequisite is accepted, but completion review of the initial coordinator found
+a [terminal-predecessor proof blocker](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff).
+Terminal-history publication releases the input gate before old execution/session/projection
+cleanup returns. A winning direct submission may replace the selected tail with a new pending
+turn in that interval, including after the process fence. The current terminal proof then cannot
+authenticate the earlier turn, and execution retains no immutable completion handoff.
+
+Implementation is stopped under the Operator's technically-invalid-plan rule. The unaccepted
+coordinator draft was removed. Before resuming, establish a separately accepted bounded exact
+terminal-completion handoff that survives cleanup and successor admission; derive its scope and
+evidence from owning authority. Do not replace exact completion with current Idle state, missing
+live metadata, pending provenance for another turn, or a stop response. The source investigation
+and independent review are recorded in the linked failure note; no coordinator acceptance is claimed.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

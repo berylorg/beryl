@@ -183,3 +183,45 @@ and failed runtime disposal that prevents reopening. Independent semantic review
 library check and all 96 targeted regressions passed. Test corrections supplied a pending ordinary
 turn for native projection, reconciled deliberately indeterminate publication before home close,
 and retried bounded read-only inventory capture when concurrent retirement invalidated its revision.
+
+## Terminal-Predecessor Completion Handoff
+
+Coordinator review on 2026-09-14 invalidated composing shutdown solely from bounded live capture,
+current-tail terminal evidence and pending preservation. The draft forgot exact captured turn
+identities during progress, then accepted an idle row or its disappearance during a later sweep.
+Retaining those identities exposes an existing completion-proof gap rather than fixing it alone.
+
+- [Terminal convergence](../../crates/beryl-app/src/cas_projection/ordinary/converge/mod.rs)
+  commits the Idle gate before returning the old projection. The existing
+  [managed execution test](../../crates/beryl-app/tests/runtime_session_preparation/execution_lifetime.rs),
+  `managed_execution_retains_session_through_terminal_history_without_a_view`, verifies that its
+  `AfterGateRelease` pause still retains the checked-out session, running process and unfinished
+  unsubscribe. Normal execution has already removed router registration at this point; exact
+  execution, session and loaded-projection custody still exists.
+- [Direct submission](../../crates/beryl-app/src/composer_host/submission/acceptance.rs) reserves
+  process admission before its final durable command, independently of the old projection flight.
+  A winner can publish after the fence. [Idle admission](../../crates/syndic-storage/src/mutation/admission/idle.rs)
+  replaces the selected tail and transcript head with the new pending turn without requiring old
+  app cleanup to have returned.
+- [Terminal evidence](../../crates/syndic-storage/src/read/terminal_history.rs) requires the named
+  turn to remain the current committed tail with an Idle gate and current finalized transcript.
+  Once the new pending turn is published, it cannot authenticate the predecessor even after all
+  old cleanup finishes. The new pending proof authenticates its own identity and nondispatch;
+  it does not prove the predecessor's terminal-history fixed point.
+- [Completion command dispatch](../../crates/beryl-app/src/cas_projection/ordinary/converge/command.rs)
+  discards a successful commit receipt. Convergence returns `()`, and the ordinary terminal
+  outcome retains projection and status without an immutable terminal-completion handoff.
+  Stop-terminal observations are not terminal-history proof either.
+
+The clean prerequisite is bounded exact completion evidence retained through execution cleanup
+and successor admission, composed with live cleanup and reconciliation custody. Establish its
+owning contract and acceptance boundary before resuming coordinator integration. Preserve the
+separate pending and provider-operation outcomes; the existing authenticated
+`compaction_recovery_read` settled case already supplies compaction receipt evidence.
+
+Root inspection and independent semantic review confirmed the reachable ordering and missing
+handoff. Two initial draft-coordinator tests passed pending preservation/join/reopening and idle
+cancellation, but did not cover this gap; they do not establish coordinator acceptance. The
+unaccepted source and tests were removed, preserving all accepted components and unrelated work.
+The combined successor-admission race was established from source and the existing tested cleanup
+pause; no new end-to-end reproduction or correction is claimed. The root plan records the blocker.
