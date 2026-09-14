@@ -242,26 +242,38 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<PassOutcome, Sc
     }
     let coordinator = CasProjectionCoordinator::for_healthy_home(&runtime.context.home)
         .map_err(|error| failure::from_coordinator(&error, runtime.context.home_generation))?;
-    let flight =
-        match coordinator.begin_scheduled_projection(source.thread_id(), &runtime.context.signal) {
-            Ok(flight) => flight,
-            Err(ProjectionCoordinatorError::ProjectionInFlight { .. }) => {
-                runtime.recovered_pending_flight_waiting = true;
-                runtime.context.signal.update_diagnostics(|diagnostics| {
-                    diagnostics.recovered_pending_flight_waits =
-                        diagnostics.recovered_pending_flight_waits.saturating_add(1);
-                });
-                record_retained_scan(runtime, &scan);
-                runtime.recovered_pending_scan = Some(scan);
-                return Ok(PassOutcome::Settled);
-            }
-            Err(error) => {
-                return Err(failure::from_coordinator(
-                    &error,
-                    runtime.context.home_generation,
-                ));
-            }
-        };
+    let flight = match coordinator.begin_scheduled_projection(
+        source.thread_id(),
+        &runtime.context.signal,
+        &runtime.context.command_gate.authorizer(),
+        &command,
+    ) {
+        Ok(flight) => flight,
+        Err(ProjectionCoordinatorError::AcquisitionFenced(
+            crate::process_admission::ProcessAdmissionError::Fenced
+            | crate::process_admission::ProcessAdmissionError::Stale,
+        )) => return Ok(PassOutcome::Settled),
+        Err(ProjectionCoordinatorError::AcquisitionServiceUnavailable(_)) => {
+            failure::authorize(&runtime.context)?;
+            return Ok(PassOutcome::Settled);
+        }
+        Err(ProjectionCoordinatorError::ProjectionInFlight { .. }) => {
+            runtime.recovered_pending_flight_waiting = true;
+            runtime.context.signal.update_diagnostics(|diagnostics| {
+                diagnostics.recovered_pending_flight_waits =
+                    diagnostics.recovered_pending_flight_waits.saturating_add(1);
+            });
+            record_retained_scan(runtime, &scan);
+            runtime.recovered_pending_scan = Some(scan);
+            return Ok(PassOutcome::Settled);
+        }
+        Err(error) => {
+            return Err(failure::from_coordinator(
+                &error,
+                runtime.context.home_generation,
+            ));
+        }
+    };
     let execution = match runtime.context.storage.thread_execution(
         &runtime.context.home,
         source.thread_id(),

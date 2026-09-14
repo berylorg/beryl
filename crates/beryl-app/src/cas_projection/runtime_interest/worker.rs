@@ -13,9 +13,11 @@ pub(super) fn run(
     runtime_id: RuntimeId,
     attempt: u64,
     launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+    acquisition: crate::cas_projection::acquisition::ProjectionAcquisition,
 ) -> bool {
+    let mut acquisition = Some(acquisition);
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        run_inner(&shared, runtime_id, attempt, launch)
+        run_inner(&shared, runtime_id, attempt, launch, &mut acquisition)
     }));
     let (clean, failure) = match outcome {
         Ok(result) => result,
@@ -28,6 +30,9 @@ pub(super) fn run(
         && entry.attempt == attempt
     {
         entry.cleanup_complete = clean;
+        if !clean {
+            entry.failed_acquisition = acquisition.take();
+        }
         entry.connector = None;
         entry.status = failure.map_or(
             RuntimeInterestStatus::Retired,
@@ -50,6 +55,7 @@ fn run_inner(
     runtime_id: RuntimeId,
     attempt: u64,
     launch: Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
+    acquisition: &mut Option<crate::cas_projection::acquisition::ProjectionAcquisition>,
 ) -> (bool, Option<RuntimeFailure>) {
     if !wanted(shared, &shared.lock(), runtime_id, attempt) {
         return (true, None);
@@ -89,6 +95,7 @@ fn run_inner(
                                 process_generation: runtime.process_generation(),
                                 activity_period: RuntimeActivityPeriod(period),
                             });
+                            acquisition.take();
                         });
                     }
                     shared.changed.notify_all();

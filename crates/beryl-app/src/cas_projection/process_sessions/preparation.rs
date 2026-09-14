@@ -147,7 +147,12 @@ impl ScheduledExecutionSessions {
         };
         let thread_id = admission.thread_id();
         let capacity = state.context.as_ref().map_or(0, |context| context.capacity);
-        if state.closed || !context.commands.is_open() {
+        if state.closed
+            || !context.commands.is_open()
+            || !admission
+                .acquisition()
+                .is_some_and(|acquisition| acquisition.belongs_to(&context.commands))
+        {
             return admission.decline(ScheduledOrdinaryExecutionUnavailable::ShuttingDown);
         }
         if state.preparing.contains_key(&thread_id) || state.preparing.len() >= capacity {
@@ -302,6 +307,10 @@ impl PreparationContext {
     }
 
     fn run(&self, sessions: &ScheduledExecutionSessions, admission: &ScheduledOrdinaryAdmission) {
+        let Some(acquisition) = admission.acquisition() else {
+            return;
+        };
+        let admission_context = self.admission.with_acquisition(acquisition);
         let Some(spec) = self.launch_spec(admission) else {
             self.owner
                 .revoke_retry(admission.thread_id(), admission.execution_binding());
@@ -312,13 +321,14 @@ impl PreparationContext {
             spec.clone(),
             admission.execution_binding().clone(),
             admission.thread_id(),
+            acquisition,
             || {
                 let (readiness, execution) = self
                     .workers
                     .try_acquire_cold_preparation_or_arm()
                     .map_err(|_| RuntimeInterestError::WorkerCapacity)?;
                 execution_workers = Some(execution);
-                Ok((self.admission.clone(), readiness))
+                Ok((admission_context.clone(), readiness))
             },
         );
         let Ok(interest) = interest else { return };
@@ -348,7 +358,7 @@ impl PreparationContext {
         let Some(identity) = connector.launch_identity() else {
             return;
         };
-        let session = match self.admission.admit_with_reserved_workers(
+        let session = match admission_context.admit_with_reserved_workers(
             &connector,
             identity.runtime_id(),
             identity.process_generation(),

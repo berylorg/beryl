@@ -136,6 +136,10 @@ pub struct ScheduledOrdinaryAdmission {
 }
 
 impl ScheduledOrdinaryAdmission {
+    pub(super) fn acquisition(&self) -> Option<&super::acquisition::ProjectionAcquisition> {
+        self.flight.acquisition()
+    }
+
     pub(super) fn new(
         home_id: BerylHomeId,
         home_generation: HomeGeneration,

@@ -76,6 +76,21 @@ impl std::fmt::Debug for ProjectionConnection {
 }
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn admit_projection_acquisition(
+        &self,
+    ) -> Result<crate::cas_projection::acquisition::ProjectionAcquisition, ProjectionCoordinatorError>
+    {
+        let attachment = self.current_attachment()?;
+        Ok(crate::cas_projection::acquisition::ProjectionAcquisition::admit(&attachment.commands)?)
+    }
+
+    pub(in crate::cas_projection) fn validate_projection_acquisition(
+        &self,
+        acquisition: &crate::cas_projection::acquisition::ProjectionAcquisition,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        Ok(acquisition.belongs_to(&self.current_attachment()?.commands))
+    }
+
     pub(in crate::cas_projection::connection) fn process_fact_observation(
         &self,
     ) -> super::router::ProcessEventObservation {

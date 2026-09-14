@@ -14,10 +14,13 @@ impl RuntimeInterestOwner {
         kind: RuntimeInterestKind,
         prepare: impl FnOnce() -> Result<ProjectionAdmissionContext, RuntimeInterestError>,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        let acquisition =
+            crate::cas_projection::acquisition::ProjectionAcquisition::admit(&self.shared.commands)
+                .map_err(|_| RuntimeInterestError::Closed)?;
         let launch_spec = spec.clone();
         let timeout = self.shared.config.admission_timeout;
-        self.acquire(spec, binding, kind, || {
-            let admission = prepare()?;
+        self.acquire_with_retry(spec, binding, kind, None, false, &acquisition, || {
+            let admission = prepare()?.with_acquisition(&acquisition);
             let workers = admission.reserve_runtime_workers()?;
             Ok(Box::new(move || {
                 ManagedRuntime::launch(launch_spec, admission, workers, timeout)
@@ -31,6 +34,7 @@ impl RuntimeInterestOwner {
         spec: ManagedBackendLaunchSpec,
         binding: ExecutionBinding,
         thread_id: SyndicThreadId,
+        acquisition: &crate::cas_projection::acquisition::ProjectionAcquisition,
         prepare: impl FnOnce() -> Result<
             (ProjectionAdmissionContext, ProjectionWorkerPermitPair),
             RuntimeInterestError,
@@ -45,8 +49,10 @@ impl RuntimeInterestOwner {
             RuntimeInterestKind::RequiredWork,
             retry,
             true,
+            acquisition,
             || {
                 let (admission, workers) = prepare()?;
+                let admission = admission.with_acquisition(acquisition);
                 Ok(Box::new(move || {
                     ManagedRuntime::launch(launch_spec, admission, workers, timeout)
                         .map(|runtime| Box::new(runtime) as Box<dyn RunningRuntime>)

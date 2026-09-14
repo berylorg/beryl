@@ -118,7 +118,7 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     assert_eq!(config["params"]["includeLayers"], false);
     assert!(config["params"].get("threadId").is_none());
     let mode = fs::read_to_string("fixture-mode").unwrap_or_default();
-    let reject = mode == "reject-config";
+    let reject = mode == "reject-config" || mode == "pause-reject-config";
     fs::write(
         if index == 0 {
             "runtime-evidence.json".to_owned()
@@ -138,7 +138,10 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
     if mode == "drop-config" {
         return;
     }
-    if mode == "pause-config" || (mode == "pause-session-config" && index > 0) {
+    if mode == "pause-config"
+        || mode == "pause-reject-config"
+        || (mode == "pause-session-config" && index > 0)
+    {
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !std::path::Path::new("release-config").exists() {
             assert!(

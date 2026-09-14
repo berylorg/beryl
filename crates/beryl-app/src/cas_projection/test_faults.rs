@@ -383,3 +383,8 @@ fn approval_submit_barrier() -> &'static Mutex<Option<ApprovalSubmitBarrier>> {
 fn approval_slot_barrier() -> &'static Mutex<Option<ApprovalSlotBarrier>> {
     APPROVAL_SLOT_BARRIER.get_or_init(|| Mutex::new(None))
 }
+mod acquisition;
+pub(crate) use acquisition::pause_acquisition;
+pub use acquisition::{
+    AcquisitionBarrierController, AcquisitionBarrierStage, install_acquisition_barrier,
+};

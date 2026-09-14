@@ -27,6 +27,7 @@
 
 mod accepted_delivery_recovery;
 mod accepted_input_scheduler;
+mod acquisition;
 mod active_steering;
 mod cancellation;
 mod compaction_work;

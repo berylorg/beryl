@@ -139,15 +139,30 @@ fn managed_execution_retains_session_through_terminal_history_without_a_view() {
         let inventory = fixture
             .service()
             .process_work_inventory(&sessions, &attention);
-        let revision = inventory.revision().unwrap();
-        let page = inventory
-            .page(
-                &revision,
-                None,
-                beryl_app::cas_projection::ProcessWorkPageLimits::new(256, 65_536).unwrap(),
-                &beryl_app::cas_projection::ProjectionCancellationToken::new(),
-            )
-            .unwrap();
+        let mut captured = None;
+        wait_until(|| {
+            match inventory.revision().and_then(|revision| {
+                inventory.page(
+                    &revision,
+                    None,
+                    beryl_app::cas_projection::ProcessWorkPageLimits::new(256, 65_536).unwrap(),
+                    &beryl_app::cas_projection::ProjectionCancellationToken::new(),
+                )
+            }) {
+                Ok(page) => {
+                    captured = Some(page);
+                    true
+                }
+                Err(
+                    beryl_app::cas_projection::ProcessWorkError::StaleRevision
+                    | beryl_app::cas_projection::ProcessWorkError::Connections(
+                        beryl_app::cas_projection::ConnectionWorkError::StaleRevision,
+                    ),
+                ) => false,
+                Err(error) => panic!("terminal work inventory failed: {error:?}"),
+            }
+        });
+        let page = captured.unwrap();
         assert_eq!(page.total_threads(), 1);
         drop(inventory);
         let reattached = fixture.acquire(1, RuntimeInterestKind::View).unwrap();

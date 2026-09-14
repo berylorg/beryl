@@ -304,6 +304,7 @@ struct RuntimeInterestState {
 }
 
 struct RuntimeEntry {
+    failed_acquisition: Option<super::acquisition::ProjectionAcquisition>,
     spec: ManagedBackendLaunchSpec,
     attempt: u64,
     interests: HashMap<u64, RuntimeInterestRecord>,

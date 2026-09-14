@@ -68,13 +68,18 @@ impl CasProjectionCoordinator {
         &self,
         thread_id: SyndicThreadId,
         scheduler_signal: &AcceptedInputSchedulerSignal,
+        commands: &LiveCommandAuthorizer,
+        command: &super::super::LiveCommandPermit,
     ) -> Result<ProjectionFlight, ProjectionCoordinatorError> {
+        let acquisition =
+            super::super::acquisition::ProjectionAcquisition::admit_from(commands, command)?;
         FlightRegistry::acquire_or_arm(
             self.home_id,
             self.home_generation,
             thread_id,
             scheduler_signal,
         )
+        .map(|flight| flight.with_acquisition(acquisition))
     }
 
     pub(in crate::cas_projection) fn ensure_projection_flight(
@@ -160,7 +165,10 @@ impl FlightRegistry {
         }
         active.insert(key, None);
         drop(active);
-        Ok(ProjectionFlight { key })
+        Ok(ProjectionFlight {
+            key,
+            acquisition: None,
+        })
     }
 
     pub(super) fn acquire_or_arm(
@@ -190,7 +198,10 @@ impl FlightRegistry {
         }
         active.insert(key, None);
         drop(active);
-        Ok(ProjectionFlight { key })
+        Ok(ProjectionFlight {
+            key,
+            acquisition: None,
+        })
     }
 
     fn release(key: ProjectionFlightKey) {
@@ -215,6 +226,23 @@ impl FlightRegistry {
 #[must_use = "dropping the guard releases the thread's projection flight"]
 pub(in crate::cas_projection) struct ProjectionFlight {
     key: ProjectionFlightKey,
+    acquisition: Option<super::super::acquisition::ProjectionAcquisition>,
+}
+
+impl ProjectionFlight {
+    pub(in crate::cas_projection) fn with_acquisition(
+        mut self,
+        acquisition: super::super::acquisition::ProjectionAcquisition,
+    ) -> Self {
+        self.acquisition = Some(acquisition);
+        self
+    }
+
+    pub(in crate::cas_projection) fn acquisition(
+        &self,
+    ) -> Option<&super::super::acquisition::ProjectionAcquisition> {
+        self.acquisition.as_ref()
+    }
 }
 
 impl Drop for ProjectionFlight {

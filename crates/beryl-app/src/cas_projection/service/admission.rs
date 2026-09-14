@@ -1,7 +1,12 @@
 use super::*;
 
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../tests/unit/projection_acquisition.rs"]
+mod tests;
+
 #[derive(Clone)]
 pub(in crate::cas_projection) struct ProjectionAdmissionContext {
+    acquisition: Option<super::super::acquisition::ProjectionAcquisition>,
     home: Option<Arc<HomeStore>>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -77,6 +82,7 @@ impl ProjectionConnectionService {
             .as_ref()
             .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
         Ok(ProjectionAdmissionContext {
+            acquisition: None,
             home: self.home.clone(),
             home_id: self.home_id,
             home_generation: self.home_generation,
@@ -109,6 +115,15 @@ impl ProjectionConnectionService {
 }
 
 impl ProjectionAdmissionContext {
+    pub(in crate::cas_projection) fn with_acquisition(
+        &self,
+        acquisition: &super::super::acquisition::ProjectionAcquisition,
+    ) -> Self {
+        let mut context = self.clone();
+        context.acquisition = Some(acquisition.clone());
+        context
+    }
+
     pub(in crate::cas_projection) fn runtime_retirement(
         &self,
         runtime_id: RuntimeId,
@@ -282,6 +297,28 @@ impl ProjectionAdmissionContext {
         let command = self.command_authorizer.authorize().map_err(|_| {
             ProjectionSessionAdmissionError::service_closed(runtime_id, process_generation)
         })?;
+        let acquisition = match &self.acquisition {
+            Some(acquisition) if acquisition.belongs_to(&self.command_authorizer) => {
+                acquisition.clone()
+            }
+            Some(_) => {
+                return Err(ProjectionSessionAdmissionError::service_closed(
+                    runtime_id,
+                    process_generation,
+                ));
+            }
+            None => super::super::acquisition::ProjectionAcquisition::admit_from(
+                &self.command_authorizer,
+                &command,
+            )
+            .map_err(|source| {
+                ProjectionSessionAdmissionError::connection_ownership(
+                    runtime_id,
+                    process_generation,
+                    source.into(),
+                )
+            })?,
+        };
         self.ensure_current().map_err(|source| {
             ProjectionSessionAdmissionError::connection_ownership(
                 runtime_id,
@@ -307,10 +344,14 @@ impl ProjectionAdmissionContext {
                     source,
                 )
             })?;
+        #[cfg(feature = "test-faults")]
+        acquisition
+            .pause_for_test(super::super::test_faults::AcquisitionBarrierStage::SessionPrepared);
         Ok(PreparedProjectionSessionAdmission {
             command,
             home: Arc::clone(self.home.as_ref().expect("open service owns its home")),
             worker_permits,
+            _acquisition: acquisition,
         })
     }
 

@@ -202,12 +202,15 @@ impl ProjectionConnectionService {
         &self,
         thread_id: SyndicThreadId,
     ) -> Result<ProjectionFlight, ProjectionCoordinatorError> {
+        let acquisition =
+            super::super::acquisition::ProjectionAcquisition::admit(&self.command_authorizer)?;
         FlightRegistry::acquire_or_arm(
             self.home_id,
             self.home_generation,
             thread_id,
             &self.scheduler_signal,
         )
+        .map(|flight| flight.with_acquisition(acquisition))
     }
 
     pub(in crate::cas_projection) fn issue_scheduled_ordinary_execution(
@@ -217,6 +220,12 @@ impl ProjectionConnectionService {
         worker: super::super::service_config::ProjectionWorkerPermit,
         flight: ProjectionFlight,
     ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
+        if !flight
+            .acquisition()
+            .is_some_and(|acquisition| acquisition.belongs_to(&self.command_authorizer))
+        {
+            return Err(ScheduledOrdinaryAdmissionError::LeaseMismatch { thread_id });
+        }
         let Ok(command) = self.command_authorizer.authorize() else {
             return Ok(ScheduledOrdinaryAdmissionResult::Unavailable(
                 ScheduledOrdinaryExecutionUnavailable::ShuttingDown,

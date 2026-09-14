@@ -44,34 +44,15 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 399: Capture Bounded Shutdown Execution Work (finished)
+# Phase 401: Fence New Projection Acquisition (finished)
 
-Accepted bounded revision-checked metadata capture of sessions, retained preparations, projection
-flights, loaded projections, connection requests, control work and threadless cleanup. Count and byte
-pages traverse 270 live threads; 13 non-live pending threads remain outside capture. Detached response
-and shared-lease regressions cover retained custody. Independent review and the production library
-check passed. Of 61 focused cases, 60 passed in the broad run; the scheduler-dependent corruption
-assertion was corrected and all four settlement cases passed their focused rerun. Capture grants no
-dispatch, nondispatch or settlement authority; retain and revalidate the accepted exact settlement
-guards when composing shutdown.
-
-# Phase 401: Fence New Projection Acquisition (pending)
-
-Close the [acquisition admission gap](failures/process-shutdown-pending-turn.md#acquisition-admission-gap)
-before composing the process shutdown barrier. Derive this component from the
-[CAS-live shutdown contract](systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination)
-and the [app execution lifecycle](../crates/beryl-app/doc/design-live-projection-and-scheduling.md).
-Bring new connection/session admission, projection acquisition and scheduled preparation under the
-shared process admission cut. Retain counted custody for an acquisition that wins before the fence
-through its exact publication, reconciliation or cleanup; later acquisitions cannot create work.
-Preserve the separate dispatch fence and allow already-admitted terminal and cleanup convergence.
-
-Verify post-fence public admission, projection and preparation attempts create no connection,
-provider thread or preparation worker; race an admitted acquisition with fencing and join its
-publication or cleanup; cover cancellation, publication failure and stale tokens after coherent
-reopening. Require independent semantic review of the acquisition/dispatch distinction and custody
-release before accepting this prerequisite. Readiness found no missing product-policy decision;
-implementation has not begun, pending the Operator's response to the reported technical blocker.
+Accepted shared process admission for connection/session admission, projection acquisition,
+scheduled preparation and runtime launch. Winning acquisitions retain counted custody through
+publication or cleanup; failed cleanup remains retained and unresolved home reconciliation still
+blocks exact settlement. Original command epochs reject stale acquisition after reopening, while
+dispatch retains its separate election. The [acquisition correction](failures/process-shutdown-pending-turn.md#acquisition-admission-gap)
+passed independent semantic review, all 96 focused acquisition, runtime, scheduler, terminal and
+shutdown regressions, and the production library check.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -87,11 +68,9 @@ completion distinction. Verify durable pending preservation separately from unce
 including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
 or absent provider identity proves either completion outcome.
 
-Readiness is blocked on phase 401: the accepted execution fence leaves new connection, projection
-and preparation admission open. Composing the accepted fence and capture APIs alone cannot freeze
-the complete work set. Source inspection and independent review established this gap; no coordinator
-implementation or workaround was attempted. Resume composition only after the acquisition boundary
-passes its own acceptance review.
+The acquisition prerequisite is accepted. Resume readiness review and compose the shared fence,
+bounded capture and exact settlement guards. Preserve winning acquisition custody and existing
+threadless cleanup and reconciliation obligations; coarse capture alone cannot prove settlement.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

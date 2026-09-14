@@ -24,12 +24,15 @@ pub const TIMEOUT: Duration = Duration::from_secs(10);
 enum ServerEvent {
     AdmissionReady,
     ProjectionReady,
+    UnsubscribeObserved,
     TurnStartObserved,
     Closed,
 }
 
 enum ServerScenario {
     AdmissionOnly,
+    ProjectionOnly,
+    ProjectionControlledCleanup,
     AdmissionOnlyControlledClose,
     UnsubscribeFailure,
     Terminal,
@@ -48,6 +51,7 @@ enum ServerCommand {
     CloseConnection,
     AssertQuietAndClose,
     ReleaseTurnStartRejection,
+    ReleaseUnsubscribe,
     SendPermission,
     SendSteeringCorrelationLoss(String),
 }
@@ -73,6 +77,24 @@ pub struct NormalTerminalServer {
 }
 
 impl NormalTerminalServer {
+    pub fn spawn_projection_only() -> Self {
+        Self::spawn_scenario(ServerScenario::ProjectionOnly)
+    }
+
+    pub fn spawn_projection_controlled_cleanup() -> Self {
+        Self::spawn_scenario(ServerScenario::ProjectionControlledCleanup)
+    }
+
+    pub fn wait_for_unsubscribe(&self) {
+        self.expect(ServerEvent::UnsubscribeObserved);
+    }
+
+    pub fn release_unsubscribe(&self) {
+        self.commands
+            .send(ServerCommand::ReleaseUnsubscribe)
+            .unwrap();
+    }
+
     pub fn spawn() -> Self {
         Self::spawn_scenario(ServerScenario::Terminal)
     }
@@ -226,6 +248,31 @@ fn run_server(
     match scenario {
         ServerScenario::AdmissionOnly => {
             events.send(ServerEvent::AdmissionReady).unwrap();
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::ProjectionOnly => {
+            events.send(ServerEvent::AdmissionReady).unwrap();
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            complete_unsubscribe(&mut socket, CAS_THREAD_ID);
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::ProjectionControlledCleanup => {
+            events.send(ServerEvent::AdmissionReady).unwrap();
+            complete_projection(&mut socket);
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            let request = read_json(&mut socket).expect("projection cleanup");
+            assert_eq!(request["method"], "thread/unsubscribe");
+            assert_eq!(request["params"]["threadId"], CAS_THREAD_ID);
+            events.send(ServerEvent::UnsubscribeObserved).unwrap();
+            assert!(matches!(
+                commands.recv_timeout(TIMEOUT).unwrap(),
+                ServerCommand::ReleaseUnsubscribe
+            ));
+            send_json(
+                &mut socket,
+                &json!({"id":request["id"],"result":{"status":"unsubscribed"}}).to_string(),
+            );
             read_until_close(&mut socket).unwrap();
         }
         ServerScenario::UnsubscribeFailure => {
@@ -548,6 +595,7 @@ fn complete_steering_correlation_loss(
         ServerCommand::SendSteeringCorrelationLoss(correlation) => correlation,
         ServerCommand::AssertQuietAndClose
         | ServerCommand::ReleaseTurnStartRejection
+        | ServerCommand::ReleaseUnsubscribe
         | ServerCommand::CloseConnection
         | ServerCommand::SendPermission => {
             panic!("steering-loss server received an unrelated control command")

@@ -96,7 +96,10 @@ impl RuntimeInterestOwner {
             RuntimeInterestError,
         >,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
-        self.acquire_with_retry(spec, binding, kind, None, false, prepare)
+        let acquisition =
+            crate::cas_projection::acquisition::ProjectionAcquisition::admit(&self.shared.commands)
+                .map_err(|_| RuntimeInterestError::Closed)?;
+        self.acquire_with_retry(spec, binding, kind, None, false, &acquisition, prepare)
     }
 
     pub(super) fn acquire_with_retry(
@@ -106,11 +109,15 @@ impl RuntimeInterestOwner {
         kind: RuntimeInterestKind,
         retry: Option<RuntimeFailureSnapshot>,
         wake_on_release: bool,
+        acquisition: &crate::cas_projection::acquisition::ProjectionAcquisition,
         prepare: impl FnOnce() -> Result<
             Box<dyn FnOnce() -> Result<Box<dyn RunningRuntime>, RuntimeFailure> + Send>,
             RuntimeInterestError,
         >,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        if !acquisition.belongs_to(&self.shared.commands) {
+            return Err(RuntimeInterestError::Closed);
+        }
         if spec.runtime_id() != binding.runtime_id()
             || spec.working_directory() != binding.root_path()
         {
@@ -234,6 +241,7 @@ impl RuntimeInterestOwner {
                         connector: None,
                         retry: None,
                         retirement_waiter: false,
+                        failed_acquisition: None,
                     },
                 );
                 state.interest_count += 1;
@@ -253,9 +261,10 @@ impl RuntimeInterestOwner {
             }
         };
         let shared = Arc::clone(&self.shared);
+        let acquisition = acquisition.clone();
         let worker = match thread::Builder::new()
             .name("beryl-runtime-owner".to_owned())
-            .spawn(move || worker::run(shared, runtime_id, interest, launch))
+            .spawn(move || worker::run(shared, runtime_id, interest, launch, acquisition))
         {
             Ok(worker) => worker,
             Err(_) => {

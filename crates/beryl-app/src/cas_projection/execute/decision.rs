@@ -22,7 +22,10 @@ impl CasProjectionCoordinator {
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
-        let _flight = self.begin_projection(decision.target_thread_id())?;
+        let acquisition = session.connection().admit_projection_acquisition()?;
+        let _flight = self
+            .begin_projection(decision.target_thread_id())?
+            .with_acquisition(acquisition);
         self.retry_native_lineage_retained_in_flight(
             home,
             storage,
@@ -145,7 +148,10 @@ impl CasProjectionCoordinator {
         decision: NativeLineageRecoveryDecision,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
-        let _flight = self.begin_projection(decision.target_thread_id())?;
+        let acquisition = session.connection().admit_projection_acquisition()?;
+        let _flight = self
+            .begin_projection(decision.target_thread_id())?
+            .with_acquisition(acquisition);
         self.recover_native_lineage_from_syndic_retained(
             home,
             storage,

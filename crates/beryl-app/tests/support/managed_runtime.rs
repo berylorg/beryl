@@ -44,6 +44,7 @@ impl ScheduledOrdinaryExecutionProvider for NoQueuedExecution {
 
 pub(crate) struct Fixture {
     pub(crate) service: Option<ProjectionConnectionService>,
+    pub(crate) process_admission: beryl_app::process_admission::ProcessAdmissionGate,
     directory: tempfile::TempDir,
     pub(crate) state: BerylState,
     pub(crate) storage: SyndicStorage,
@@ -75,8 +76,9 @@ impl Fixture {
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
+        let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let mut service = ProjectionConnectionService::new(
-            Default::default(),
+            process_admission.clone(),
             home,
             storage.clone(),
             ProjectionServiceConfig::try_new(
@@ -100,6 +102,7 @@ impl Fixture {
             .unwrap();
         Self {
             service: Some(service),
+            process_admission,
             directory,
             state,
             storage,
@@ -139,7 +142,7 @@ impl Fixture {
         self.storage = SyndicStorage::register(&mut home).unwrap();
         self.state = BerylState::register(&mut home).unwrap();
         let mut service = ProjectionConnectionService::new(
-            Default::default(),
+            self.process_admission.clone(),
             home,
             self.storage.clone(),
             ProjectionServiceConfig::try_new(

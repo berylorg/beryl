@@ -165,6 +165,21 @@ reconciliation and cleanup authority behind the fence, as well as the separate t
 The root plan places this prerequisite before coordinator composition. Required evidence covers
 post-fence public connection/projection/preparation refusal, pre-fence acquisition racing shutdown,
 publication and cleanup failure, and stale admission after coherent reopening. Source inspection
-and independent semantic review established the gap; no reproduction test or production correction
-was attempted. The Operator's stop-on-technically-invalid-plan instruction requires reporting this
-blocker before implementation resumes.
+and independent semantic review established the gap. At diagnosis, no reproduction test or production
+correction was attempted; the blocker was reported under the Operator's stop-on-technically-invalid-plan
+instruction. The Operator then authorized the clean correction.
+
+The accepted correction elects acquisition against the original live-command process epoch and
+shares one counted reservation through nested session, runtime and projection preparation. The
+reservation is not dispatch permission. Runtime readiness and connection/projection publication
+release acquisition custody only after the work enters its existing retained owner; failed cleanup
+keeps the reservation in the failed runtime entry. Provider cleanup and installed reconciliation
+remain separate settlement obligations after a failed publication.
+
+Acceptance on 2026-09-14 includes public post-fence connection/projection/preparation refusal,
+winning admission and real managed-process preparation across fencing, cancellation, stale commands
+after reopening, a real provider start followed by indeterminate publication and blocked unsubscribe,
+and failed runtime disposal that prevents reopening. Independent semantic review, the production
+library check and all 96 targeted regressions passed. Test corrections supplied a pending ordinary
+turn for native projection, reconciled deliberately indeterminate publication before home close,
+and retried bounded read-only inventory capture when concurrent retirement invalidated its revision.

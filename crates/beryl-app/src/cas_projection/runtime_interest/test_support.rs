@@ -2,6 +2,10 @@ use crate::cas_projection::persistent_failure::{MasterCommandGate, ProjectionSer
 
 use super::*;
 
+#[cfg(test)]
+#[path = "../../../tests/unit/runtime_acquisition_cleanup.rs"]
+mod acquisition_cleanup_tests;
+
 pub struct RuntimeInterestTestHarness {
     owner: RuntimeInterestOwner,
     gate: MasterCommandGate,
@@ -46,12 +50,17 @@ impl RuntimeInterestTestHarness {
         binding: ExecutionBinding,
         probe: RuntimeInterestTestProbe,
     ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        let acquisition = crate::cas_projection::acquisition::ProjectionAcquisition::admit(
+            &self.gate.authorizer(),
+        )
+        .map_err(|_| RuntimeInterestError::Closed)?;
         self.owner.acquire_with_retry(
             spec,
             binding,
             RuntimeInterestKind::RequiredWork,
             None,
             true,
+            &acquisition,
             || Ok(Box::new(move || probe.launch())),
         )
     }

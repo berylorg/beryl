@@ -184,6 +184,10 @@ impl std::fmt::Display for ProjectionRegistryKind {
 /// Closed failures produced by the app-owned CAS projection coordinator.
 #[derive(Debug, Error)]
 pub enum ProjectionCoordinatorError {
+    #[error("projection acquisition was refused: {0}")]
+    AcquisitionFenced(crate::process_admission::ProcessAdmissionError),
+    #[error("projection acquisition service authority is unavailable: {0}")]
+    AcquisitionServiceUnavailable(super::LiveCommandAdmissionError),
     #[error(transparent)]
     MutationObservation(#[from] beryl_home_store::HomeMutationObservationError),
     #[error("a coordinator mutation was proven not committed: {0}")]

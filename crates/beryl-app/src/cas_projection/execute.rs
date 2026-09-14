@@ -35,7 +35,15 @@ impl CasProjectionCoordinator {
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let (request, tool_profile) =
             self.prepare_projection_request(home, session, request, cancellation)?;
-        let flight = self.begin_projection(request.thread_id())?;
+        let acquisition = session.connection().admit_projection_acquisition()?;
+        let flight = self
+            .begin_projection(request.thread_id())?
+            .with_acquisition(acquisition);
+        #[cfg(feature = "test-faults")]
+        flight
+            .acquisition()
+            .expect("admitted projection")
+            .pause_for_test(super::test_faults::AcquisitionBarrierStage::ProjectionAdmitted);
         self.obtain_projection_with_prepared_flight(
             home,
             storage,
@@ -120,6 +128,21 @@ impl CasProjectionCoordinator {
         native_lineage_recovery: Option<&NativeLineageRecoveryControl>,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         self.ensure_projection_flight(flight, request.thread_id())?;
+        let acquisition =
+            flight
+                .acquisition()
+                .ok_or(ProjectionCoordinatorError::ProjectionFlightMismatch {
+                    thread_id: request.thread_id(),
+                })?;
+        if !session
+            .connection()
+            .validate_projection_acquisition(acquisition)?
+        {
+            return Err(ProjectionCoordinatorError::ProjectionFlightMismatch {
+                thread_id: request.thread_id(),
+            }
+            .into());
+        }
         self.ensure_home(home)?;
         let native = storage.prepare_native_projection(
             home,

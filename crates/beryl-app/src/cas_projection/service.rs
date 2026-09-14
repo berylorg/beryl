@@ -88,6 +88,7 @@ struct PreparedProjectionSessionAdmission {
     command: super::LiveCommandPermit,
     home: Arc<HomeStore>,
     worker_permits: ProjectionWorkerPermitPair,
+    _acquisition: super::acquisition::ProjectionAcquisition,
 }
 
 /// Process-owned admission and shutdown boundary for projection connections.

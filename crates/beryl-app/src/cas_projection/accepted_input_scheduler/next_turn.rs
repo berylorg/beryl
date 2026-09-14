@@ -253,10 +253,21 @@ pub(super) fn run_pass(runtime: &mut SchedulerRuntime) -> Result<(), SchedulerFa
         }
         let coordinator = CasProjectionCoordinator::for_healthy_home(&runtime.context.home)
             .map_err(|error| failure::from_coordinator(&error, runtime.context.home_generation))?;
-        let flight = match coordinator
-            .begin_scheduled_projection(source.thread_id(), &runtime.context.signal)
-        {
+        let flight = match coordinator.begin_scheduled_projection(
+            source.thread_id(),
+            &runtime.context.signal,
+            &runtime.context.command_gate.authorizer(),
+            &command,
+        ) {
             Ok(flight) => flight,
+            Err(ProjectionCoordinatorError::AcquisitionFenced(
+                crate::process_admission::ProcessAdmissionError::Fenced
+                | crate::process_admission::ProcessAdmissionError::Stale,
+            )) => return Ok(()),
+            Err(ProjectionCoordinatorError::AcquisitionServiceUnavailable(_)) => {
+                failure::authorize(&runtime.context)?;
+                return Ok(());
+            }
             Err(ProjectionCoordinatorError::ProjectionInFlight { .. }) => {
                 runtime.next_flight_waiting = true;
                 runtime.context.signal.update_diagnostics(|diagnostics| {
