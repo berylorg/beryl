@@ -6,6 +6,16 @@ use crate::{
     TranscriptBuildPhase, codec::*, domain::SyndicDomain,
 };
 
+pub(crate) trait TerminalHistoryReader {
+    fn read<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, ReadError>;
+}
+
+impl TerminalHistoryReader for DomainReader<'_, SyndicDomain> {
+    fn read<F: Family>(&self, key: &F::Key) -> Result<Option<F::Value>, ReadError> {
+        self.point::<ExactCodec<F>>(key, crate::codec::family_point_limit::<F>())
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct ExpectedTerminalTranscript {
     generation: crate::TranscriptGeneration,
@@ -25,7 +35,7 @@ impl ExpectedTerminalTranscript {
 }
 
 pub(crate) fn is_complete(
-    reader: &DomainReader<'_, SyndicDomain>,
+    reader: &impl TerminalHistoryReader,
     thread: &crate::ThreadRecord,
     state: &crate::TurnStateRecord,
     expected_transcript: Option<ExpectedTerminalTranscript>,
@@ -83,7 +93,7 @@ pub(crate) fn is_complete(
 }
 
 fn item_frontier_is_settled(
-    reader: &DomainReader<'_, SyndicDomain>,
+    reader: &impl TerminalHistoryReader,
     state: &crate::TurnStateRecord,
 ) -> Result<bool, ReadError> {
     if state.finalized_item_count() > state.item_count() {
@@ -144,7 +154,7 @@ fn item_frontier_is_settled(
 }
 
 fn item_content_is_settled(
-    reader: &DomainReader<'_, SyndicDomain>,
+    reader: &impl TerminalHistoryReader,
     item: &crate::CanonicalItemRecord,
 ) -> Result<bool, ReadError> {
     let provider_manifest = match item.provider_content() {
@@ -197,8 +207,8 @@ fn item_content_is_settled(
 }
 
 fn point<F: Family>(
-    reader: &DomainReader<'_, SyndicDomain>,
+    reader: &impl TerminalHistoryReader,
     key: &F::Key,
 ) -> Result<Option<F::Value>, ReadError> {
-    reader.point::<ExactCodec<F>>(key, crate::codec::family_point_limit::<F>())
+    reader.read::<F>(key)
 }

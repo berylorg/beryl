@@ -72,7 +72,7 @@ struct LoadedThreadEntry {
 #[derive(Default)]
 struct LoadedThreadState {
     entries: HashMap<LoadedThreadKey, LoadedThreadEntry>,
-    connection_authority_counts: HashMap<ConnectionGeneration, usize>,
+    connection_authority_counts: HashMap<ConnectionGeneration, HashMap<SyndicThreadId, usize>>,
 }
 
 static CONNECTION_GENERATIONS: AtomicU64 = AtomicU64::new(0);
@@ -121,26 +121,42 @@ fn lock() -> Result<std::sync::MutexGuard<'static, LoadedThreadState>, Projectio
         })
 }
 
-fn add_connection_authority(state: &mut LoadedThreadState, connection: ConnectionGeneration) {
+fn add_connection_authority(
+    state: &mut LoadedThreadState,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+) {
     let count = state
         .connection_authority_counts
         .entry(connection)
+        .or_default()
+        .entry(owner)
         .or_default();
     *count = count
         .checked_add(1)
         .expect("registered connection authorities fit in memory");
 }
 
-fn remove_connection_authority(state: &mut LoadedThreadState, connection: ConnectionGeneration) {
+fn remove_connection_authority(
+    state: &mut LoadedThreadState,
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+) {
     let remove = {
-        let count = state
+        let owners = state
             .connection_authority_counts
             .get_mut(&connection)
             .expect("every registered authority contributes to its connection count");
+        let count = owners
+            .get_mut(&owner)
+            .expect("every registered authority contributes to its owner count");
         *count = count
             .checked_sub(1)
             .expect("connection authority count cannot underflow");
-        *count == 0
+        if *count == 0 {
+            owners.remove(&owner);
+        }
+        owners.is_empty()
     };
     if remove {
         state.connection_authority_counts.remove(&connection);
@@ -171,7 +187,7 @@ pub(in crate::cas_projection) fn register_new(
             metadata,
         },
     );
-    add_connection_authority(&mut state, connection);
+    add_connection_authority(&mut state, connection, owner);
     Ok((
         CasLoadedSessionGeneration::new(key.process_generation, generation),
         token,
@@ -278,6 +294,16 @@ pub(in crate::cas_projection) fn connection_has_authority(
         .contains_key(&connection))
 }
 
+pub(in crate::cas_projection) fn thread_has_authority(
+    connection: ConnectionGeneration,
+    owner: SyndicThreadId,
+) -> Result<bool, ProjectionCoordinatorError> {
+    Ok(lock()?
+        .connection_authority_counts
+        .get(&connection)
+        .is_some_and(|owners| owners.contains_key(&owner)))
+}
+
 pub(in crate::cas_projection) fn release_exact(
     key: &LoadedThreadKey,
     connection: ConnectionGeneration,
@@ -303,7 +329,7 @@ pub(in crate::cas_projection) fn release_exact(
         return Ok(ReleaseDisposition::Shared);
     }
     state.entries.remove(key);
-    remove_connection_authority(&mut state, connection);
+    remove_connection_authority(&mut state, connection, owner);
     Ok(ReleaseDisposition::Last)
 }
 
@@ -329,8 +355,11 @@ pub(in crate::cas_projection) fn invalidate_connection_thread(
         .get(key)
         .is_some_and(|entry| entry.connection == connection);
     if remove {
-        state.entries.remove(key);
-        remove_connection_authority(&mut state, connection);
+        let entry = state
+            .entries
+            .remove(key)
+            .expect("selected exact entry exists");
+        remove_connection_authority(&mut state, connection, entry.owner);
     }
     Ok(remove)
 }
@@ -354,7 +383,7 @@ pub(in crate::cas_projection) fn invalidate_thread(
     }
     let generation = CasLoadedSessionGeneration::new(key.process_generation, entry.generation);
     state.entries.remove(key);
-    remove_connection_authority(&mut state, connection);
+    remove_connection_authority(&mut state, connection, owner);
     Ok(ObservedSubscription::Exact(generation))
 }
 
@@ -375,7 +404,7 @@ pub(in crate::cas_projection) fn invalidate_exact_generation(
     });
     if remove {
         state.entries.remove(key);
-        remove_connection_authority(&mut state, connection);
+        remove_connection_authority(&mut state, connection, owner);
     }
     Ok(remove)
 }

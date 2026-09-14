@@ -31,6 +31,7 @@ enum ServerEvent {
 enum ServerScenario {
     AdmissionOnly,
     AdmissionOnlyControlledClose,
+    UnsubscribeFailure,
     Terminal,
     RecoveryTerminal(Vec<Value>),
     ResumeTerminal(Box<str>),
@@ -122,6 +123,10 @@ impl NormalTerminalServer {
 
     pub fn spawn_admission_only() -> Self {
         Self::spawn_scenario(ServerScenario::AdmissionOnly)
+    }
+
+    pub fn spawn_unsubscribe_failure() -> Self {
+        Self::spawn_scenario(ServerScenario::UnsubscribeFailure)
     }
 
     pub fn spawn_admission_only_controlled_close() -> Self {
@@ -221,6 +226,17 @@ fn run_server(
     match scenario {
         ServerScenario::AdmissionOnly => {
             events.send(ServerEvent::AdmissionReady).unwrap();
+            read_until_close(&mut socket).unwrap();
+        }
+        ServerScenario::UnsubscribeFailure => {
+            events.send(ServerEvent::AdmissionReady).unwrap();
+            let request = read_json(&mut socket).unwrap();
+            assert_eq!(request["method"], "thread/unsubscribe");
+            send_json(
+                &mut socket,
+                &json!({"id":request["id"],"error":{"code":-32603,"message":"unsubscribe failed"}})
+                    .to_string(),
+            );
             read_until_close(&mut socket).unwrap();
         }
         ServerScenario::AdmissionOnlyControlledClose => {

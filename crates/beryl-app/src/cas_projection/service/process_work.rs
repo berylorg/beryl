@@ -13,6 +13,7 @@ mod live;
 mod required;
 pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
+mod shutdown;
 mod types;
 pub use types::*;
 

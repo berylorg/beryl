@@ -167,6 +167,27 @@ impl ProcessExecutionPermit {
 }
 
 impl ProcessAdmissionFence {
+    pub(crate) fn validate_settled_for(
+        &self,
+        gate: &ProcessAdmissionGate,
+    ) -> Result<(), ProcessAdmissionError> {
+        if !Arc::ptr_eq(&self.gate.inner, &gate.inner) {
+            return Err(ProcessAdmissionError::Stale);
+        }
+        let state = self
+            .gate
+            .inner
+            .lock()
+            .map_err(|_| ProcessAdmissionError::Unavailable)?;
+        if !state.fenced || state.epoch != self.epoch {
+            return Err(ProcessAdmissionError::Stale);
+        }
+        if state.admissions != 0 {
+            return Err(ProcessAdmissionError::Unsettled);
+        }
+        Ok(())
+    }
+
     pub(crate) fn reopen_if(&self, coherent: bool) -> Result<(), ProcessAdmissionError> {
         let mut state = self
             .gate

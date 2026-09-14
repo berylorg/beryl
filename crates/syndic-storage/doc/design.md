@@ -72,6 +72,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   input references and authenticated dispatch provenance to ordinary execution and recovery. Its
   bounded read snapshot does not settle live execution or cleanup custody; those obligations remain
   with the [CAS-live system](../../../doc/systems/cas-live-syndic-transcript/design.md).
+- `terminal_history_evidence` binds the exact selected terminal turn to its home, generation and
+  revision after the idle gate and the same bounded fixed point used by terminal-history release
+  are established. Complete and authority-loss incomplete history remain distinct lifecycle
+  outcomes. This read likewise grants no live cleanup or process-shutdown authority.
 - Opaque proof preparation, command dispatch custody, receipt consumption, and targeted
   reconciliation for package operations that participate in HomeStore composition.
 

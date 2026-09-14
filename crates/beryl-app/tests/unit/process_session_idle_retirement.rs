@@ -1,6 +1,50 @@
 use super::*;
 
 #[test]
+fn failed_unsubscribe_publishes_retirement_before_releasing_cleanup_custody() {
+    let (directory, service, _state, _sessions) = owned_service(6);
+    let server = NormalTerminalServer::spawn_unsubscribe_failure();
+    let connector =
+        ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
+    let session = service
+        .admit_lifecycle_test_candidate(
+            &connector,
+            RuntimeId::from_bytes([91; 16]),
+            CasProcessGeneration::new(72_105).unwrap(),
+            Path::new(r"C:\work\scheduled-ordinary"),
+            TIMEOUT,
+        )
+        .unwrap();
+    server.wait_for_admission();
+    let connection = Arc::clone(session.connection());
+    let thread = SyndicThreadId::from_bytes([215; 16]);
+    let loaded = connection
+        .register_new(
+            beryl_model::CasThreadId::new("unsubscribe-failure").unwrap(),
+            beryl_backend::ThreadSessionMetadata::default(),
+            thread,
+            TIMEOUT,
+        )
+        .unwrap();
+    assert!(!connection.settlement_cleanup_complete(thread).unwrap());
+    let observed = std::cell::Cell::new(false);
+    let result = loaded.release_with_completion_observer(|| {
+        assert!(
+            connection.is_retired(),
+            "failed release cannot expose a healthy session after cleanup custody ends"
+        );
+        observed.set(true);
+    });
+    assert!(result.is_err());
+    assert!(observed.get());
+    drop(session);
+    assert!(connection.settlement_cleanup_complete(thread).unwrap());
+    let _ = service.close().unwrap();
+    server.join();
+    drop(directory);
+}
+
+#[test]
 fn idle_retirement_preserves_promotion_and_cleanup_owners_and_later_checkout() {
     let (directory, service, state, sessions) = owned_service(6);
     let (session, server) = admitted_session(&service, 72_101);

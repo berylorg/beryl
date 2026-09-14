@@ -20,6 +20,7 @@ mod range;
 mod routes;
 mod stop;
 mod stop_admission;
+mod terminal_history;
 
 pub use accepted_delivery::{AcceptedInputDeliveryTransitionStatus, SyndicReadySteeringInput};
 pub(crate) use accepted_next::AcceptedNextCandidateBasis;
@@ -60,12 +61,13 @@ pub use non_idle_gate::{
     NON_IDLE_GATE_PAGE_MAX_BYTES, NON_IDLE_GATE_PAGE_MAX_RECORDS, NonIdleGateSourceCursor,
     NonIdleGateSourcePage,
 };
-pub use queries::*;
 pub use pending_dispatch::PendingDispatchEvidence;
+pub use queries::*;
 pub use range::SyndicResourceRangeRead;
 pub use routes::*;
 pub use stop::StopOperationTransitionStatus;
 pub use stop_admission::{StopAdmissionCandidate, StopAdmissionIneligibility, StopAdmissionRead};
+pub use terminal_history::TerminalHistoryEvidence;
 
 use beryl_home_store::{HomeStore, PointReadLimit, ReadLimitError};
 use beryl_model::{

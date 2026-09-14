@@ -181,7 +181,22 @@ impl LoadedProjectionLease {
     }
 
     pub(in crate::cas_projection) fn release(
+        self,
+    ) -> Result<LoadedProjectionReleaseOutcome, LoadedProjectionReleaseError> {
+        self.release_inner(|| {})
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(in crate::cas_projection) fn release_with_completion_observer(
+        self,
+        after_cleanup: impl FnOnce(),
+    ) -> Result<LoadedProjectionReleaseOutcome, LoadedProjectionReleaseError> {
+        self.release_inner(after_cleanup)
+    }
+
+    fn release_inner(
         mut self,
+        after_cleanup: impl FnOnce(),
     ) -> Result<LoadedProjectionReleaseOutcome, LoadedProjectionReleaseError> {
         let connection = Arc::clone(&self.connection);
         let cleanup = match connection.acquire_cleanup_owner() {
@@ -211,6 +226,7 @@ impl LoadedProjectionLease {
                 }
                 Err(error) => {
                     drop(self);
+                    connection.request_ordinary_retirement();
                     let cleanup_error = cleanup.finish().err();
                     connection.retire();
                     return Err(LoadedProjectionReleaseError::Registry(
@@ -227,10 +243,18 @@ impl LoadedProjectionLease {
                 connection.try_unsubscribe(&self.key.cas_thread_id, self.unsubscribe_timeout)
             }
         };
+        if outcome.is_err() {
+            connection.request_ordinary_retirement();
+        }
         let cleanup_result = cleanup
             .finish()
             .map_err(LoadedProjectionReleaseError::Registry);
-        outcome.and_then(|outcome| cleanup_result.map(|()| outcome))
+        after_cleanup();
+        let result = outcome.and_then(|outcome| cleanup_result.map(|()| outcome));
+        if result.is_err() {
+            connection.retire();
+        }
+        result
     }
 
     fn settle_implicit_drop(&mut self) {

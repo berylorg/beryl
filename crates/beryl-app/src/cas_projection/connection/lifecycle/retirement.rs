@@ -1,6 +1,17 @@
 use super::*;
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn settlement_cleanup_complete(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        if self.authority.is_retired() {
+            self.try_reap_ordinary_retirement()
+        } else {
+            self.authority.settlement_owners_clear(thread_id)
+        }
+    }
+
     pub(in crate::cas_projection) fn elect_idle_session_retirement(
         &self,
     ) -> Result<bool, ProjectionCoordinatorError> {

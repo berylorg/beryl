@@ -72,6 +72,10 @@ mod runtime_interest;
 mod runtime_preparation;
 mod scheduling;
 mod shutdown;
+mod shutdown_settlement;
+pub(crate) use shutdown_settlement::{
+    ShutdownThreadDisposition, ShutdownThreadSettlement, ShutdownThreadSettlementError,
+};
 mod stop_work;
 mod work_facts;
 mod work_sources;

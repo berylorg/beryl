@@ -109,3 +109,20 @@ rebinding cannot erase uncertainty. Cancelled evidence follows the exact snapsho
 binding successor, while live flight and cleanup obligations remain separate. The root plan
 separates persistent provenance, its bounded read and shutdown composition. Implementation and
 verification remain acceptance obligations; the design correction alone does not establish proof.
+
+## Cleanup Custody Is Separate Evidence
+
+Concrete settlement review found two ways that valid durable pending evidence could coexist with
+unfinished cleanup. A failed unsubscribe released its cleanup owner before publishing connection
+retirement; a retained session owner prevented automatic retirement in that interval. Separately,
+an indeterminate cancellation could publish all pending records while retaining an installed
+reconciliation scope in a healthy home. Neither a released flight nor healthy point reads closes
+these gaps.
+
+The correction retains exact flight custody through session and tool return, checks projection
+owners and connection retirement, publishes failed-release retirement before ending cleanup
+custody, and withholds settlement while the bounded home reconciliation registry remains occupied.
+The guard retains its process fence and must be revalidated by its coordinator. Focused regressions
+cover issued and parked authority return, a real failed unsubscribe with a retained session, and
+indeterminate cancellation before and after exact reconciliation. These obligations supplement
+the bounded durable proof; they do not change the authorized completion distinction.

@@ -12,11 +12,13 @@ mod finalizing_history;
 mod finalizing_history_support;
 #[path = "delivery_recovery/pages.rs"]
 mod pages;
+#[path = "delivery_recovery/pending_dispatch.rs"]
+mod pending_dispatch;
 #[path = "delivery_recovery/projection_support.rs"]
 mod projection_support;
 #[path = "delivery_recovery/support.rs"]
 mod recovery_support;
 #[path = "delivery_recovery/source_pages.rs"]
 mod source_pages;
-#[path = "delivery_recovery/pending_dispatch.rs"]
-mod pending_dispatch;
+#[path = "delivery_recovery/terminal_evidence.rs"]
+mod terminal_evidence;

@@ -1,5 +1,12 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    pub(crate) fn validate_process_settlement_fence(
+        &self,
+        fence: &crate::process_admission::ProcessAdmissionFence,
+    ) -> Result<(), crate::process_admission::ProcessAdmissionError> {
+        fence.validate_settled_for(&self.process)
+    }
+
     pub(crate) fn execution_candidate(
         &self,
     ) -> Result<LiveExecutionCandidate, crate::process_admission::ProcessExecutionAdmissionError>

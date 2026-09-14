@@ -44,6 +44,13 @@ mod process_sessions {
     ));
 }
 
+mod return_custody {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/scheduled_return_custody.rs"
+    ));
+}
+
 struct ReturningSession {
     session: Option<AdmittedProjectionSession>,
     slot: Arc<Mutex<Option<AdmittedProjectionSession>>>,
@@ -389,6 +396,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     let ScheduledOrdinaryAdmissionResult::Issued(lease) = result else {
         panic!("ready provider declined exact execution authority");
     };
+    let (lease, returned) = return_custody::observe(lease, &service);
     assert_eq!(lease.home_id(), service.home_id());
     assert_eq!(lease.home_generation(), service.home_generation());
     assert_eq!(lease.thread_id(), thread_id);
@@ -439,6 +447,7 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
             if actual == thread_id
     ));
     drop(lease);
+    assert_eq!(returned.load(std::sync::atomic::Ordering::SeqCst), 2);
     let diagnostics_after = service.accepted_input_scheduler_diagnostics();
     let new_wakes = diagnostics_after.wake_count() - diagnostics_before.wake_count();
     let newly_coalesced =
@@ -452,6 +461,22 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
     assert!(slot.lock().unwrap().is_some());
     wait_for_worker_availability(&service, 2);
 
+    let worker = service.try_acquire_scheduled_ordinary_worker().unwrap();
+    let flight = service.begin_scheduled_ordinary_flight(thread_id).unwrap();
+    let ScheduledOrdinaryAdmissionResult::Issued(lease) = service
+        .issue_scheduled_ordinary_execution(
+            thread_id,
+            execution_binding(runtime_id),
+            worker,
+            flight,
+        )
+        .unwrap()
+    else {
+        panic!("parked fixture needs exact execution authority");
+    };
+    let (lease, returned) = return_custody::observe(lease, &service);
+    drop(lease.park());
+    assert_eq!(returned.load(std::sync::atomic::Ordering::SeqCst), 2);
     let retired_session = slot.lock().unwrap().take().unwrap();
     retired_session.invalidate_connection();
     assert!(slot.lock().unwrap().replace(retired_session).is_none());

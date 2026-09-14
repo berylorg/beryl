@@ -1,6 +1,17 @@
 use super::*;
 
 impl ConnectionRegistryAuthority {
+    pub(in crate::cas_projection) fn settlement_owners_clear(
+        &self,
+        thread_id: SyndicThreadId,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let state = self.lock()?;
+        Ok(!self.is_retired()
+            && state.scheduled_promotion.is_none()
+            && state.cleanup_owners.is_empty()
+            && !registry::thread_has_authority(self.generation, thread_id)?)
+    }
+
     pub(in crate::cas_projection) fn try_retire_session_owner(
         &self,
         elect_ordinary_retirement: impl FnOnce() -> bool,

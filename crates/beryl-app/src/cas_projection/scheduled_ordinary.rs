@@ -269,10 +269,10 @@ pub struct ScheduledOrdinaryExecutionLease {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
-    _worker: ProjectionWorkerPermit,
-    flight: ProjectionFlight,
     session: Box<dyn ScheduledProjectionSessionAuthority>,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
+    _worker: ProjectionWorkerPermit,
+    flight: ProjectionFlight,
 }
 
 pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
@@ -284,9 +284,9 @@ pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
-    flight: ProjectionFlight,
     session: Box<dyn ScheduledProjectionSessionAuthority>,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
+    flight: ProjectionFlight,
 }
 
 /// Result of one synchronous provider call.
