@@ -44,35 +44,16 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 412: Authenticate Pending Continuation Descendants (finished)
+# Phase 410: Classify Terminal Compaction As Deferred Work (finished)
 
-Accepted authenticated activated/cancelled pending continuation descendants in whole-home validation
-and bounded consumed-successor reconciliation. Exact initial content and capture counters remain
-required. Independent semantic review, normal/test-faults package checks, 166 broader storage
-regressions and the five refined provenance tests passed. The
-[acceptance record](failures/process-shutdown-pending-turn.md#pending-continuation-dispatch-provenance)
-preserves the baseline failure and proof-path test correction. Resume classifier acceptance below.
+Accepted bounded authentication of terminal-but-unsettled compaction as deferred recovery and
+compacting-ineligible stop admission. Ordinary classification remains unchanged. Independent
+semantic review, normal/test-faults package checks and the broader 166-test storage selection
+passed after the separately committed pending-continuation prerequisite. The
+[acceptance record](failures/process-shutdown-pending-turn.md#finalizing-compaction-classification)
+retains the failing case, outcome/identity/budget coverage and prerequisite distinction.
 
-# Phase 410: Classify Terminal Compaction As Deferred Work (wip)
-
-Implement the bounded provider-finalization classification in the
-[storage read contract](../crates/syndic-storage/doc/design-history-storage.md#provider-operation-finalization-reads).
-The Operator authorized this correction and the subsequent app barrier correction. Authenticate
-the exact compacting gate, operation, parentless provider turn, snapshot, admitted binding and
-terminal/turn-state agreement. Preserve deferred compaction recovery and compacting-ineligible
-stop admission without relaxing ordinary turn validation or consuming any authority.
-
-Verify terminal publication before settlement, both with and without an admitted stop, across
-successful, interrupted and failed outcomes. Check exact identity and terminal mismatches, missing
-authority, stale source and bounded-read refusal; preserve ordinary recovery and stop behavior.
-Run normal and test-faults package checks, focused storage regressions and independent semantic
-review of the read boundary. No schema or manifest changes are required.
-
-The inherited pending-continuation validation gap is corrected. The bounded classifier, independent
-review, normal/test-faults package checks and broader compaction/recovery/stop regressions are ready
-for final acceptance with the prerequisite correction committed separately.
-
-# Phase 411: Wait For Exact Compaction Gate Release (pending)
+# Phase 411: Wait For Exact Compaction Gate Release (wip)
 
 Consume the corrected classification under the
 [app live-control contract](../crates/beryl-app/doc/design-live-control.md#compaction-and-continuation).

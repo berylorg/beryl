@@ -549,6 +549,9 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   snapshot identity is the system-owned domain-separated hash of the complete admission target;
   callers cannot choose, shorten, or substitute either identity.
 - Exact success requires the pinned completed compaction item and matching successful terminal evidence in order. Acknowledgement, timeout, an idle observation, or item completion alone is insufficient.
+- A terminal provider turn may remain selected by its compacting gate while the exact operation
+  awaits final settlement. It is ineligible for another stop, remains deferred compaction work,
+  and keeps an existing same-target stop barrier waiting until that gate ownership ends.
 - Accepted input during compaction is durable ordered next-turn work.
 - Soft stop may target compaction only after its exact CAS turn identity is durably known and the
   same-thread gate still owns that exact compaction operation. A guessed current turn, thread-wide

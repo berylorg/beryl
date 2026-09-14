@@ -8,6 +8,8 @@ mod compaction_support;
 #[cfg(feature = "test-faults")]
 #[path = "compaction_storage/corruption.rs"]
 mod corruption;
+#[path = "compaction_storage/finalization_classification.rs"]
+mod finalization_classification;
 #[path = "compaction_storage/lifecycle.rs"]
 mod lifecycle;
 #[cfg(feature = "test-faults")]

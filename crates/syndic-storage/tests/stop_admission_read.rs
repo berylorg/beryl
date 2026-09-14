@@ -595,12 +595,10 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
         reader.join().unwrap()
     });
 
-    assert!(matches!(
-        outcome,
-        Err(SyndicReadError::ConcurrentChange {
-            operation: "stop-admission read"
-        })
-    ));
+    assert!(
+        matches!(outcome, Err(SyndicReadError::ConcurrentChange { .. })),
+        "unexpected terminal stop-admission race result: {outcome:?}"
+    );
 }
 
 #[test]

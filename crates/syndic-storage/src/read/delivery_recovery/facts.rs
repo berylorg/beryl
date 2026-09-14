@@ -16,6 +16,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::read) struct RecoveryFacts {
+    pub(in crate::read) home_id: beryl_model::BerylHomeId,
     pub(in crate::read) pending: Option<PendingDispatchEvidence>,
     pub(in crate::read) gate: Option<InputGateRecord>,
     pub(in crate::read) turn: Option<TurnRecord>,
@@ -145,6 +146,7 @@ pub(in crate::read) fn read(
         None
     };
     Ok(RecoveryFacts {
+        home_id: store.home_id(),
         pending,
         gate,
         turn,

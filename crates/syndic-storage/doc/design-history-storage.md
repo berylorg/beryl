@@ -234,6 +234,21 @@ copying all resource records, or doing sidecar I/O. The final command and its re
 remain fixed-size in media count. Fresh recovery can seal or select a fully staged durable candidate
 through fresh handles but cannot fill missing stages or authorize another historical request.
 
+## Provider-Operation Finalization Reads
+
+A compacting gate may still select its exact operation after provider terminal publication and
+before final compaction settlement. The provider turn is terminal, but this is deferred compaction
+authority rather than settled ordinary history. Delivery recovery retains its deferred-compaction
+classification, and stop admission returns the existing compacting-ineligible result.
+
+The bounded read authenticates the gate's operation nonce and provider turn against the exact
+operation, parentless provider-turn record, execution snapshot and admitted binding. The operation's
+finalizing state, terminal status and recorded turn-state revision must agree with the provider
+turn state. It does not apply ordinary committed-tail or still-blocking-turn requirements to this
+state. Mutable facts retain the existing stabilized-read contract; stable missing, substituted or
+contradictory authority remains corruption. Reads neither consume finalization nor publish another
+stop or dispatch capability.
+
 ## Non-Idle Gate Discovery
 
 The package owns one compact current source for each non-idle input gate. Direct pending turns,

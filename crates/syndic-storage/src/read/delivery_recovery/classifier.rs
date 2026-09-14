@@ -1,5 +1,6 @@
 mod abandonment;
 pub(super) mod active;
+mod compaction;
 
 use beryl_home_store::HomeStore;
 
@@ -113,7 +114,7 @@ pub(in crate::read) fn classify(
     match gate.state() {
         InputGateState::Idle => Ok(DeliveryRecoveryCase::Settled { thread_id }),
         InputGateState::Compacting { turn_id, .. } => {
-            let _ = validate_blocking_turn(facts, *turn_id)?;
+            compaction::validate(facts, gate, *turn_id)?;
             Ok(DeliveryRecoveryCase::DeferredCompaction {
                 thread_id,
                 turn_id: *turn_id,

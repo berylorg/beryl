@@ -417,6 +417,18 @@ fn classify_compacting(
     gate: &crate::InputGateRecord,
     turn_id: SyndicTurnId,
 ) -> Result<StopAdmissionRead, SyndicReadError> {
+    if facts
+        .compaction
+        .as_ref()
+        .is_some_and(|operation| operation.state() == &crate::CompactionOperationState::Finalizing)
+    {
+        return Ok(StopAdmissionRead::Ineligible(
+            StopAdmissionIneligibility::Compacting {
+                turn_id,
+                current_gate_revision: gate.revision(),
+            },
+        ));
+    }
     let Some(target) = target else {
         return Ok(StopAdmissionRead::Ineligible(
             StopAdmissionIneligibility::Compacting {

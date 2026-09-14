@@ -19,7 +19,7 @@ use super::compaction_support::{CompactionFixture, point_limit};
 #[path = "provider_stop/exact_successors.rs"]
 mod exact_successors;
 
-fn admit_provider_stop(
+pub(super) fn admit_provider_stop(
     name: &str,
     seed: u8,
 ) -> (CompactionFixture, CompactionOperationId, StopOperationId) {

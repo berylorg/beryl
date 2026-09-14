@@ -490,6 +490,12 @@ and delivery-recovery cases passed in the broader 139-test selection before an u
 test interrupted that run. Acceptance remains uncommitted pending the distinct issue below;
 the app's exact-target barrier correction has not yet been implemented.
 
+Classifier acceptance completed on 2026-09-15 after the pending-continuation prerequisite was
+committed separately. All 166 tests in the broader storage selection passed, including terminal
+compaction outcomes with and without prior stops, exact-authority corruption, stale-source and
+point-limit refusal. Normal/test-faults package checks and independent semantic review passed.
+The correction changes no ordinary blocking-turn rules and consumes no operation authority.
+
 ## Pending Continuation Dispatch Provenance
 
 Broader storage verification on 2026-09-15 exposed a separate inherited production inconsistency.
