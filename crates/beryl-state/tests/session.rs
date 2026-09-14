@@ -1,16 +1,15 @@
 mod support;
 
-use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError};
 use beryl_model::{
     MonitorHint, MonitorId, RootId, RuntimeId, SyndicThreadId, WindowBounds, WindowDisplayState,
     WindowId, WindowPlacement,
 };
 use beryl_state::{
-    ActivateRestoringClaim, BeginSessionRestore, BerylStateBootstrap, BerylStateRegistrationError,
-    CreateClaimedWindow, InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit,
-    RememberedTarget, RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES,
-    SESSION_WINDOW_V1_BYTES, SessionExitIntent, SessionMutationError, SessionState,
-    UpdateWindowPlacement,
+    ActivateRestoringClaim, BeginSessionRestore, BerylState, CreateClaimedWindow,
+    InitializeThreadlessWindow, MAX_RESTORABLE_WINDOWS, MarkOrderlyExit, RememberedTarget,
+    RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    SessionExitIntent, SessionMutationError, SessionReadError, SessionState, UpdateWindowPlacement,
 };
 use tempfile::tempdir;
 
@@ -41,14 +40,14 @@ fn identity(value: u128) -> [u8; 16] {
 }
 
 #[test]
-fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes() {
+fn minimal_session_discovery_after_complete_registration_accepts_all_zero_identities() {
     let directory = tempdir().unwrap();
     let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylStateBootstrap::register(&mut store).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
     assert!(state.session().minimal_bootstrap(&store).unwrap().is_none());
 
     let monitor = MonitorHint::new(
@@ -88,14 +87,13 @@ fn minimal_bootstrap_is_session_only_and_accepts_fixed_all_zero_identity_shapes(
     assert_eq!(SESSION_HEADER_V1_BYTES, 6_188);
     assert_eq!(SESSION_WINDOW_V1_BYTES, 655);
 
-    let _complete = state.complete(&mut store).unwrap();
     store.close().unwrap();
     let mut reopened = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let reopened_state = BerylStateBootstrap::register(&mut reopened).unwrap();
+    let reopened_state = BerylState::register(&mut reopened).unwrap();
     assert_eq!(
         bootstrap(&reopened, &reopened_state.session()).windows()[0].placement(),
         &placement
@@ -647,7 +645,7 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
 }
 
 #[test]
-fn session_bootstrap_cannot_complete_against_a_different_home() {
+fn complete_state_handles_cannot_discover_a_different_home_session() {
     let first_directory = tempdir().unwrap();
     let second_directory = tempdir().unwrap();
     let mut first = HomeStore::open(HomeOpenOptions::new(
@@ -655,18 +653,35 @@ fn session_bootstrap_cannot_complete_against_a_different_home() {
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let bootstrap = BerylStateBootstrap::register(&mut first).unwrap();
+    let first_state = BerylState::register(&mut first).unwrap();
     let mut second = HomeStore::open(HomeOpenOptions::new(
         second_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = match bootstrap.complete(&mut second) {
-        Ok(_) => panic!("session bootstrap unexpectedly crossed Beryl homes"),
-        Err(error) => error,
-    };
+    let second_state = BerylState::register(&mut second).unwrap();
+    let error = first_state
+        .session()
+        .minimal_bootstrap(&second)
+        .unwrap_err();
     assert!(matches!(
         error,
-        BerylStateRegistrationError::BootstrapHomeMismatch { .. }
+        SessionReadError::Read(ReadError::ForeignDomain {
+            domain: "beryl-session"
+        })
     ));
+    assert!(
+        first_state
+            .session()
+            .minimal_bootstrap(&first)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        second_state
+            .session()
+            .minimal_bootstrap(&second)
+            .unwrap()
+            .is_none()
+    );
 }

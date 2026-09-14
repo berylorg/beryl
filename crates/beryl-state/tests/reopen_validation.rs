@@ -7,7 +7,7 @@ use beryl_home_store::{
     ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::RuntimeId;
-use beryl_state::{BerylState, BerylStateBootstrap, BerylStateRegistrationError};
+use beryl_state::{BerylState, BerylStateRegistrationError};
 use tempfile::tempdir;
 
 struct IncompleteRuntimeDomain;
@@ -164,7 +164,7 @@ impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
 }
 
 #[test]
-fn routine_bootstrap_defers_unrelated_runtime_validation_to_explicit_schema_boundary() {
+fn complete_routine_registration_defers_unrelated_record_validation_to_explicit_schema_boundary() {
     let directory = tempdir().unwrap();
     let mut store = HomeStore::open(HomeOpenOptions::new(
         directory.path(),
@@ -200,18 +200,15 @@ fn routine_bootstrap_defers_unrelated_runtime_validation_to_explicit_schema_boun
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let bootstrap = BerylStateBootstrap::register(&mut reopened)
-        .expect("minimal bootstrap must register only the session domain");
+    let state = BerylState::register(&mut reopened)
+        .expect("complete routine registration must not scan dormant runtime records");
     assert!(
-        bootstrap
+        state
             .session()
             .minimal_bootstrap(&reopened)
             .unwrap()
             .is_none()
     );
-    let state = bootstrap
-        .complete(&mut reopened)
-        .expect("routine completion must not exhaustively validate dormant runtime records");
     assert_complete_handle_set(state, &reopened);
     let reacquired = BerylState::reacquire(&reopened)
         .expect("routine same-home handle reacquisition must not scan dormant runtime records");

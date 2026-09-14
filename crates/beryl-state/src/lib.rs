@@ -31,22 +31,6 @@
 //! # }
 //! # example()
 //! ```
-//! # Registration Boundaries
-//!
-//! [`BerylState::register`] and [`BerylStateBootstrap::register`] are routine
-//! composition paths. They register or reacquire the complete Beryl-owned handle
-//! set from durable declarations, exact owner/codec types, required families, and
-//! the current generation without scanning persisted application records. After a
-//! same-home recovery has published its fresh store generation,
-//! [`BerylState::reacquire`] follows the same routine boundary.
-//! Before publication, the composition owner can construct the complete fresh
-//! handle set with [`BerylState::reacquire_candidate`].
-//!
-//! A composition root that deliberately needs exhaustive persisted-schema and
-//! sidecar validation uses [`BerylState::register_with_schema_validation`]. The
-//! home store then invokes every Beryl domain's exact exhaustive validator; this
-//! is not a routine-open compatibility alias.
-//!
 //! # Catalog Projection
 //!
 //! Catalog rows are rebuildable Beryl projections. Callers obtain exact runtime/root facts through
@@ -113,70 +97,6 @@
 //! # }
 //! ```
 //!
-//! # Example
-//!
-//! ```no_run
-//! use beryl_home_store::{
-//!     CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-//! };
-//! use beryl_model::{
-//!     AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode,
-//!     RuntimeNativePath,
-//! };
-//! use beryl_state::{
-//!     AvailabilitySnapshot, BerylStateBootstrap, CreateRuntimeWithHomeRoot, RootRegistration,
-//!     RuntimeRegistration, UnixMillis,
-//! };
-//!
-//! # fn example() -> Result<CommandOutcome, Box<dyn std::error::Error>> {
-//! let directory = tempfile::tempdir()?;
-//! let mut home = HomeStore::open(HomeOpenOptions::new(
-//!     directory.path(),
-//!     HomeSchemaVersion::CURRENT,
-//! ))?;
-//! let bootstrap = BerylStateBootstrap::register(&mut home)?;
-//! let _restorable_session = bootstrap.session().minimal_bootstrap(&home)?;
-//! let state = bootstrap.complete(&mut home)?;
-//! let mode = RuntimeMode::host();
-//! let runtime = RuntimeRegistration::new(
-//!     RuntimeId::from_bytes([1; 16]),
-//!     AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\\Codex\\codex.exe")?,
-//!     mode.clone(),
-//!     RuntimeNativePath::from_admitted(
-//!         mode.clone(),
-//!         PathFlavor::Windows,
-//!         r"C:\\Codex\\codex.exe",
-//!     )?,
-//!     UnixMillis::new(1),
-//!     AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(1))?,
-//! )?;
-//! let root = RootRegistration::new(
-//!     RootId::from_bytes([2; 16]),
-//!     RuntimeNativePath::from_admitted(mode, PathFlavor::Windows, r"C:\\Users\\operator")?,
-//!     AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\\Users\\operator")?,
-//!     UnixMillis::new(1),
-//!     AvailabilitySnapshot::unknown(),
-//! );
-//! let expected_domain = state.runtime_roots().revision(&home)?;
-//! let mut command = HomeCommand::new(home.home_revision()?);
-//! command.add(state.runtime_roots().create_runtime_with_home_root(
-//!     expected_domain,
-//!     CreateRuntimeWithHomeRoot::new(runtime, root)?,
-//! ))?;
-//! let outcome = home.execute(command);
-//! if let CommandOutcome::Committed {
-//!     receipt,
-//!     later_failure,
-//! } = &outcome {
-//!     assert!(later_failure.is_none());
-//!     assert_eq!(
-//!         state.runtime_roots().committed_revision(&home, receipt)?,
-//!         Some(expected_domain.checked_next()?),
-//!     );
-//! }
-//! Ok(outcome)
-//! # }
-//! ```
 #![forbid(unsafe_code)]
 
 mod asset;
@@ -252,10 +172,7 @@ pub use settings::{
     SettingSchemaVersion, SettingUpdate, SettingValue, SettingValueError, SettingsMutationError,
     SettingsState,
 };
-pub use state::{
-    BerylState, BerylStateBootstrap, BerylStateReacquireError, BerylStateRegistrationError,
-    StatePage,
-};
+pub use state::{BerylState, BerylStateReacquireError, BerylStateRegistrationError, StatePage};
 pub use theme::*;
 pub use value::{AvailabilitySnapshot, RecordRevision, UnixMillis, ValueError};
 #[cfg(feature = "test-faults")]

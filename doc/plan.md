@@ -44,14 +44,29 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 400: Diagnose Repeated Draft Content Materialization (finished)
+# Phase 413: Remove Session-Only Bootstrap Composition (finished)
 
-Accepted diagnosis and readiness evidence for the
-[repeated-content failure](failures/syndic-draft-materializer-content-identity.md#diagnosis-and-recommended-correction).
-Independent review confirmed sealed-content refusal, incompatible shared-building frontiers and
-the separate exact-root proof requirement. Bounded exact-record replay with cooperative publication
-is recommended; the contention policy remains an architectural decision to record in owning storage
-authority before any implementation plan. No materializer correction is claimed.
+Removed the session-only facade and deferred completion while preserving complete routine
+registration and explicit schema validation. All 13 affected state checks, normal state/app library
+checks and independent semantic review passed; [acceptance evidence](failures/target-bootstrap-composition.md#session-only-facade-removal)
+records the limited boundary. Initial-home and complete application publication remain separate.
+
+# Phase 414: Specify Initial Home Publication Composition (wip)
+
+Resolve the initial candidate, required-domain set, dependent-service preparation and one-shot
+publication boundary in owning home-store, storage-system and app authority before planning its
+implementation. Account for current constructors that perform healthy-store reads or startup
+recovery; record separate implementation acceptance boundaries and preserve typed failure custody.
+The Operator authorizes defining and reconstructing this bootstrap boundary under the
+[complete-stack startup contract](systems/beryl-home-storage/design.md#session-and-window-records).
+
+# Phase 415: Specify Restore-Set Startup Composition (pending)
+
+Resolve exact restoration custody, complete-set first visibility, threadless empty-session startup,
+placement and native process-lifetime composition in owning authority, using the accepted session,
+window and graceful-shutdown components. Derive bounded implementation phases before wiring the
+ordinary executable. The [bootstrap readiness evidence](failures/target-bootstrap-composition.md)
+identifies the remaining gaps without authorizing alternate startup behavior.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

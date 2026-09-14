@@ -43,6 +43,10 @@ This entry point governs these bounded normative supplements:
 - A healthy unpublished home generation constructs the complete `BerylState` handle set. This
   package neither constructs the app/backend stack nor publishes it. Prior-generation handles,
   prepared commands, sidecar tokens, and receipts cannot authorize candidate or later work.
+- Complete routine registration returns the session, runtime/root, settings, durable-job, catalog,
+  asset and theme handles together or returns its typed failure. There is no session-only bootstrap
+  facade or deferred completion operation. Routine registration remains distinct from explicit
+  exhaustive schema validation; complete handles do not themselves publish the application stack.
 
 ## Outcomes, Reconciliation, And Validation
 

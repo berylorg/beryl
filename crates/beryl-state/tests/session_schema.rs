@@ -10,8 +10,8 @@ use beryl_home_store::{
 };
 use beryl_model::{RootId, RuntimeId};
 use beryl_state::{
-    BeginSessionRestore, BerylState, BerylStateBootstrap, BerylStateRegistrationError,
-    RememberedTarget, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
+    BeginSessionRestore, BerylState, BerylStateRegistrationError, RememberedTarget,
+    SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
 };
 use tempfile::tempdir;
 
@@ -389,7 +389,7 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylStateBootstrap::register(&mut store).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
     let snapshot = state.session().minimal_bootstrap(&store).unwrap().unwrap();
     assert!(snapshot.windows().is_empty());
     match support::execute(
