@@ -734,6 +734,31 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Dedicated application Exit flushes the already-open window set and marks shutdown mode without processing those windows as ordinary closes.
 - External process termination leaves the last `SyncAll`-completed active generation intact.
 - In-memory window identity, placement, or selection retained during a failed store cannot survive process termination unless it was part of that last `SyncAll`-completed generation.
+- The initial composition root declares the complete Beryl-state domains and Syndic domain through
+  their owning packages. It admits no optional subset, session-only declaration or dependency on
+  stored window count when choosing that set. Domain registration and attachment construction
+  finish in one private opening candidate before any dependent service obtains construction inputs.
+- `beryl-app` prepares one private complete service stack from that candidate's exact typed handle
+  set and immutable validated service limits. The prepared stack owns every service and its
+  disposal custody; optional feature availability cannot replace a required service with a null
+  field or publish a second partial stack. Background workers may be constructed behind the one
+  startup fence, but cannot admit ordinary storage work, CAS work, window claims or subscriptions.
+- Initial durable convergence runs sequentially through explicit candidate access and the existing
+  CAS-live startup-recovery boundary. It reads only the established compact sources and bounded
+  exact target closures. It performs no session, restore-set, catalog, draft-view or GUI discovery,
+  and cannot launch ordinary execution. Its exact mutation outcomes and reconciliation custody
+  remain governed by the ordinary storage contracts.
+- The complete prepared app stack owns the initial publication decision. After required service
+  construction and durable convergence succeed, publication makes the same home generation and
+  the complete graph available together, then releases its waiting ordinary workers. Every
+  fallible preparation step precedes this transition; a constructor, registration result or
+  physical-open result is never a publication receipt. The home-store checks its generic candidate
+  obligations while app composition enforces completeness of the Beryl service graph.
+- Initial failure joins and disposes all constructed candidate services before releasing the
+  candidate under its storage-custody rules. It exposes only the exact configured-home startup
+  failure, never an ordinary window or partially constructed graph. Retry begins one fresh attempt
+  for that same home after prior candidate custody permits reopening. Fatal panic follows the
+  independent crash-reporting policy rather than this returned-error cleanup path.
 - During initial bootstrap, the `beryl` executable opens the home behind its startup fence,
   registers or structurally reacquires every required Beryl and Syndic domain into one private typed
   candidate, constructs every required dependent service, and atomically publishes the complete

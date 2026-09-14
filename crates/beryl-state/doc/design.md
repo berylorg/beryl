@@ -40,13 +40,16 @@ This entry point governs these bounded normative supplements:
   owner-transfer participant exposes a checked maximum record and encoded-key-plus-value footprint
   derived from Asset V3 head shapes, including its marker-free validation-only form; it accepts no
   caller estimate and excludes other participants and physical-store overhead.
-- A healthy unpublished home generation constructs the complete `BerylState` handle set. This
+- An unpublished opening or reopening home candidate constructs the complete `BerylState` handle set. This
   package neither constructs the app/backend stack nor publishes it. Prior-generation handles,
   prepared commands, sidecar tokens, and receipts cannot authorize candidate or later work.
 - Complete routine registration returns the session, runtime/root, settings, durable-job, catalog,
   asset and theme handles together or returns its typed failure. There is no session-only bootstrap
   facade or deferred completion operation. Routine registration remains distinct from explicit
   exhaustive schema validation; complete handles do not themselves publish the application stack.
+- The package supplies the complete typed declaration of its required domains. Initial registration
+  uses candidate-only authority, and candidate theme-service construction consumes exact home and
+  generation metadata without requiring a prematurely healthy store.
 
 ## Outcomes, Reconciliation, And Validation
 

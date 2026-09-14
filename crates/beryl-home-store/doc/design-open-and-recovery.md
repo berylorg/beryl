@@ -41,6 +41,35 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
 - Any disagreement, attachment-construction failure, or I/O failure publishes no candidate slot,
   registration, attachment, handle, or replacement state. It drops the provisional candidate and
   permits a later retry.
+- Initial open returns an owned opening candidate, not a healthy `HomeStore`. Its registration
+  methods are the only initial domain-registration authority. Ordinary healthy stores may reacquire
+  existing handles but cannot append another initial registration stage.
+- Before dependent-service preparation, the composition owner supplies its complete required-domain
+  declaration. The candidate checks that its registered live owner types, schemas, families and
+  attachments match that declaration exactly, then irreversibly closes registration. Missing,
+  duplicate, foreign or unexpected registrations reject preparation. The declaration identifies
+  package-owned domains without exposing their private records; the package does not decide which
+  domains an application requires.
+- A registration-complete candidate exposes exact metadata and non-owning typed handles for
+  dependent-service construction. Shared references retained by those services remain subject to
+  the ordinary opening gate. Neither a clone nor a constructor makes them healthy.
+- Candidate recovery uses a distinct borrowed access object bound to the same candidate, closed
+  registration set and generation. It supports the bounded typed reads, revision-checked commands,
+  candidate receipt interpretation and exact reconciliation needed by the owning recovery sequence.
+  It does not expose raw storage, ordinary admission, sidecar publication or a healthy-store
+  conversion. Its authority is an explicit input, not ambient or thread-local state. Ordinary and
+  candidate operations share the same underlying codecs, limits, writer, durability and outcome
+  classification; candidate access cannot weaken a command or grant a second writer.
+- Candidate access and publication are exclusive. Publication consumes one capability after all
+  admitted candidate work has settled, all required attachments remain live and the relevant
+  storage health check succeeds. A pending or indeterminate candidate command prevents publication
+  until its exact custody has reached the owning system's permitted settlement. The outer system
+  couples this transition to publication of its already prepared complete service stack.
+- Failed initial construction or cancellation closes registration and candidate admission, joins
+  dependent work and retires the candidate before releasing its database and home lock. Successful
+  durable registration or recovery writes are not rolled back, deleted or treated as uncommitted;
+  a later same-path open reuses only their exact valid persisted state. Unsettled reconciliation
+  retains the existing lock and custody rules rather than permitting a second opener.
 
 ## Structural Health And Lifecycle
 

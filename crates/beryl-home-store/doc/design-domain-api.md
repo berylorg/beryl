@@ -37,6 +37,10 @@ bounded typed reads and results, and read-only proof composition. It is governed
   nonmatching declaration is structural failure, with no cleanup, rename, or adapter path.
 - Stored values carry the package-owned exact record-version prefix. Domain codecs remain private
   to their owning packages.
+- Domain packages provide their typed required-domain declarations and acquire handles through the
+  initial or recovery candidate. Declaration identity uses the same exact live owner, codec and
+  attachment types as registration. Completing the candidate's declared set validates registration
+  metadata and attachments without adding an exhaustive application-record scan.
 
 ## Runtime Attachments
 

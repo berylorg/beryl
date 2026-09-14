@@ -40,6 +40,32 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Settings, busy-home, and home-failure windows are distinct top-level controllers and never receive
   main-window claims or restore records.
 
+## Initial Service Preparation And Publication
+
+- The app accepts the registration-complete private home candidate, complete Beryl-state and
+  Syndic handles, process admission and validated immutable service configuration. It prepares one
+  owned graph containing execution/session and runtime-interest services, scheduler and tool
+  routing, shutdown, bounded catalog/activity/attention services, settings/theme services,
+  durable-job coordination, marker sealing and their bounded worker custody.
+- Preparation constructs services against exact candidate identity without claiming healthy-store
+  admission. Constructors may validate candidate handle provenance and configuration; persisted
+  recovery reads and commands go only through the explicit candidate recovery access. No
+  constructor starts session discovery or an ordinary work loop.
+- The accepted sequential CAS-live startup recovery completes before publication. Required worker
+  creation and attachment also complete behind the startup fence before publication; workers
+  retain their exact shutdown/join custody while waiting. A construction error or cancellation
+  closes their admission and joins them before the candidate can be discarded.
+- Only the complete private prepared graph can consume app publication. It publishes the same
+  candidate generation and graph under one outer transition, then releases ordinary workers.
+  Consumers receive a published graph or a typed failure, never a builder, partial handle tuple,
+  candidate access, pending constructor or early healthy-store result.
+- Exactly one marker-seal service is constructed from the prepared graph's home generation and
+  immutable limits. Clones are distributed from that owner after publication, preserving existing
+  flight capacity and retirement semantics without process-global service discovery.
+- Settings/theme repository loading, compact session discovery and progressive window preparation
+  begin only after the complete graph publishes. Their owning readiness and startup-failure gates
+  still apply; publishing services does not certify any restore set or first visible window.
+
 ## Startup And Activation
 
 - Startup accepts only the validated minimal session plus each restored window's selected thread,

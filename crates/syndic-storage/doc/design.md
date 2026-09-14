@@ -62,6 +62,9 @@ and composer behavior remain in their feature authorities.
 The package exposes grouped typed operations rather than raw record mechanics:
 
 - Domain registration, fresh typed-handle acquisition, and explicit schema validation.
+- The complete typed declaration of the Syndic domain, candidate-only initial registration and
+  fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store
+  candidate access while preserving the same compact sources, typed mutations and bounded outcomes.
 - Thread, draft, turn, branch-context, usage, title-source, lineage, history-summary, and revision
   reads.
 - Editor-candidate open, publish, dispose, exact-root read, edit-history append, undo/redo adoption,

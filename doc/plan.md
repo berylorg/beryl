@@ -44,21 +44,85 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 413: Remove Session-Only Bootstrap Composition (finished)
+The Operator authorizes defining and reconstructing target executable bootstrap. Establish the
+private home candidate and its typed consumers, explicit recovery access and prepared service
+composition before restore-set and native process-entry integration. Preserve each separate
+acceptance boundary and the intentional removal gaps; complete registration alone does not accept
+the service graph or visible startup.
 
-Removed the session-only facade and deferred completion while preserving complete routine
-registration and explicit schema validation. All 13 affected state checks, normal state/app library
-checks and independent semantic review passed; [acceptance evidence](failures/target-bootstrap-composition.md#session-only-facade-removal)
-records the limited boundary. Initial-home and complete application publication remain separate.
+# Phase 414: Specify Initial Home Publication Composition (finished)
 
-# Phase 414: Specify Initial Home Publication Composition (wip)
+Accepted the private initial candidate, closed typed-domain declaration, explicit recovery access,
+complete prepared graph and one-shot publication contracts in their owning package and system
+authority. Independent architectural review found no blocking conflict; [readiness evidence](failures/target-bootstrap-composition.md#initial-publication-authority)
+retains the implementation and verification boundaries.
 
-Resolve the initial candidate, required-domain set, dependent-service preparation and one-shot
-publication boundary in owning home-store, storage-system and app authority before planning its
-implementation. Account for current constructors that perform healthy-store reads or startup
-recovery; record separate implementation acceptance boundaries and preserve typed failure custody.
-The Operator authorizes defining and reconstructing this bootstrap boundary under the
-[complete-stack startup contract](systems/beryl-home-storage/design.md#session-and-window-records).
+# Phase 416: Establish Private Initial Home Candidates (wip)
+
+Implement the [home-store candidate contract](../crates/beryl-home-store/doc/design-open-and-recovery.md#unpublished-open-candidates)
+and [typed registration declaration](../crates/beryl-home-store/doc/design-domain-api.md#registration-and-type-ownership).
+This boundary owns physical opening, candidate-only registration, exact required-domain closure,
+ordinary-admission denial and the storage-owned publication/abandonment capability. It does not
+implement candidate recovery commands or application-graph publication.
+
+- Replace immediately healthy initial open with an owned opening candidate. Move initial domain
+  registration and schema-validation registration onto that candidate; preserve physical layout,
+  lock, schema, exact attachment and typed failure behavior.
+- Close registration against the caller's exact typed required-domain declaration. Permit only
+  metadata and candidate-bound handle construction before publication; reject missing, duplicate,
+  foreign or unexpected registration and preserve failed-candidate cleanup ownership.
+- Consume publication once after exact candidate generation, attachment and relevant health
+  validation. Ordinary reads, commands, sidecars and receipt projection remain gated while opening.
+  Initial abandonment retires attachments and releases ownership only under existing custody rules.
+- Adapt home-store tests to explicit candidate construction and publication. Verify fresh/reopened
+  homes, declaration mismatch, failed registration, partial persisted registration followed by
+  exact retry, prepublication access refusal, failed publication and release of the exact home lock.
+- Run home-store focused candidate tests and affected lifecycle/registration/recovery regressions,
+  normal home-store compilation and independent semantic review. Typed consumers intentionally
+  remain a tracked compilation gap until the following owning phases; no alternate healthy opener
+  or automatic-publication helper may conceal it.
+
+# Phase 417: Bind Beryl State To Initial Candidates (pending)
+
+Provide the complete package-owned required-domain declaration and candidate-bound state/theme
+construction, then convert state fixtures to explicit complete registration and publication.
+Preserve routine versus exhaustive validation, all handle identities and typed failure evidence.
+
+# Phase 418: Bind Syndic Storage To Initial Candidates (pending)
+
+Provide the package-owned Syndic declaration and candidate-bound handle/attachment acquisition,
+then convert Syndic fixtures to explicit registration and publication. Preserve reconstructed
+attachment custody, compact recovery sources and the V7 storage contract.
+
+# Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
+
+Convert app fixtures to declared complete candidate registration and explicit publication, preserving
+their exact services and initial conditions. Compile affected app targets and run representative
+construction, runtime and window regressions; do not claim production bootstrap from fixtures.
+
+# Phase 420: Establish Explicit Candidate Recovery Access (pending)
+
+Implement the distinct candidate recovery access and its typed consumers with ordinary command,
+durability, receipt and reconciliation semantics. Preserve exclusive publication and candidate
+custody; separate independently verifiable package boundaries when activating this work.
+
+# Phase 421: Prepare CAS Services Before Initial Publication (pending)
+
+Connect accepted candidate recovery access to sequential initial convergence and dormant CAS service
+construction, retaining worker creation, startup fencing, cancellation and joined disposal before
+publication. Preserve healthy ordinary-service behavior and exact recovery outcomes.
+
+# Phase 422: Establish Explicit Home Marker-Service Ownership (pending)
+
+Construct one marker-seal service from candidate identity and immutable limits, inject shared clones
+from the home owner and remove global discovery while preserving flight and retirement custody.
+
+# Phase 423: Publish The Complete Initial App Service Graph (pending)
+
+After every required service factory is independently accepted, compose and publish the complete
+private graph with the same home generation, then release ordinary workers. Verify last-constructor
+failure, cancellation, startup convergence and publication rejection with full cleanup ownership.
+This integration cannot absorb missing service implementations or accept restored GUI visibility.
 
 # Phase 415: Specify Restore-Set Startup Composition (pending)
 

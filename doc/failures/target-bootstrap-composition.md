@@ -52,3 +52,17 @@ All 13 `beryl-state` cases in `session`, `session_schema` and `reopen_validation
 session_schema --test reopen_validation --no-fail-fast`. Normal state/app library checks, exact-file
 format and diff checks, and independent semantic review passed. This removes the obsolete API;
 it does not establish initial-candidate or application-stack publication.
+
+## Initial Publication Authority
+
+Independent architectural review accepted the explicit opening candidate, package-owned typed
+required-domain declarations, closed registration, borrowed candidate recovery access and complete
+app-owned prepared graph. Sequential durable startup recovery remains before service publication;
+ordinary work and session discovery cannot observe a prematurely healthy store. Candidate and
+ordinary operations share the existing storage implementations and outcome rules.
+
+Publication rejection retains candidate and graph ownership for cleanup. Interrupted durable
+registration or recovery is not rolled back or assumed uncommitted, and unresolved reconciliation
+retains the existing home-lock custody. Existing healthy-only constructors and the absent candidate
+APIs are implementation gaps, not permission to weaken publication. Source and authority review
+establish readiness only; no new runtime behavior is claimed by this documentation acceptance.

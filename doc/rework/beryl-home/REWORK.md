@@ -117,6 +117,9 @@
 - Marker-seal construction retains its current shared registry until validated-home bootstrap
   enforces single construction and injects shared clones; that slice removes discovery without
   permitting duplicate home-level flight capacity.
+- Replacing immediately healthy initial open intentionally breaks typed consumers until their
+  candidate registration and publication boundaries are rebuilt; no alternate healthy opener or
+  automatic-publication substitute may conceal that gap.
 
 # Reference Snapshot
 
@@ -371,6 +374,8 @@
 - [x] Implemented the isolated report window and its two terminal commands; 23 combined checks and independent review passed.
 - [ ] Mount fatal handling and reporter mode when executable bootstrap is reconstructed.
 - [x] Removed session-only bootstrap composition while preserving complete state registration and [its bounded acceptance](../../failures/target-bootstrap-composition.md#session-only-facade-removal).
+- [ ] Establish private initial-home candidates and their typed consumers before application service preparation.
+- [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.
