@@ -255,6 +255,30 @@ impl SyndicStorage {
         let Ok(binding_revision) = operation.target().binding_revision().checked_next() else {
             return Ok(false);
         };
+        let dispatch_is_exact = if state.lifecycle() == TurnLifecycle::Pending {
+            match state.dispatch_provenance() {
+                crate::TurnDispatchProvenance::Unattempted => true,
+                crate::TurnDispatchProvenance::Activated(anchor) => self
+                    .authenticated_activated_dispatch(
+                        store,
+                        turn.origin_thread_id(),
+                        turn_id,
+                        anchor,
+                        limit,
+                    )?,
+                crate::TurnDispatchProvenance::Cancelled(anchor) => self
+                    .authenticated_cancelled_dispatch(
+                        store,
+                        turn.origin_thread_id(),
+                        turn_id,
+                        anchor,
+                        limit,
+                    )?,
+                crate::TurnDispatchProvenance::ProviderOperation => false,
+            }
+        } else {
+            true
+        };
         Ok(turn_id == expected_turn
             && item_id == expected_item
             && content_id == prepared.id()
@@ -264,13 +288,16 @@ impl SyndicStorage {
             && continuation.content().id() == prepared.id()
             && continuation.content().encoding() == prepared.encoding()
             && continuation.content().summary() == prepared.summary()
+            && turn.id() == turn_id
             && turn.origin_thread_id() == operation.target().thread_id()
             && turn.kind() == TurnKind::BerylLifecycleContinuation
             && turn.parent() == expected_parent
             && turn.depth() == expected_depth
             && turn.chain_digest() == expected_digest
             && turn.ancestor_skip() == expected_ancestor_skip
+            && state.turn_id() == turn_id
             && continuation_lifecycle_is_descendant(&state)
+            && dispatch_is_exact
             && binding.is_some_and(|binding| {
                 binding.thread_id() == operation.target().thread_id()
                     && binding.selected_path() == expected_path
@@ -381,8 +408,16 @@ fn continuation_lifecycle_is_descendant(state: &crate::TurnStateRecord) -> bool 
     }
     match state.lifecycle() {
         TurnLifecycle::Pending => {
-            state.revision() == crate::TurnStateRevision::FIRST
-                && state.source_event_count() == 0
+            (match state.dispatch_provenance() {
+                crate::TurnDispatchProvenance::Unattempted => {
+                    state.revision() == crate::TurnStateRevision::FIRST
+                }
+                crate::TurnDispatchProvenance::Activated(_)
+                | crate::TurnDispatchProvenance::Cancelled(_) => {
+                    state.revision() > crate::TurnStateRevision::FIRST
+                }
+                crate::TurnDispatchProvenance::ProviderOperation => false,
+            }) && state.source_event_count() == 0
                 && state.item_count() == 1
                 && state.finalized_item_count() == 0
                 && state.open_item_count() == 1

@@ -171,8 +171,16 @@ fn lifecycle_is_descendant(state: &TurnStateRecord) -> bool {
     }
     match state.lifecycle() {
         TurnLifecycle::Pending => {
-            state.revision() == crate::TurnStateRevision::FIRST
-                && state.source_event_count() == 0
+            (match state.dispatch_provenance() {
+                crate::TurnDispatchProvenance::Unattempted => {
+                    state.revision() == crate::TurnStateRevision::FIRST
+                }
+                crate::TurnDispatchProvenance::Activated(_)
+                | crate::TurnDispatchProvenance::Cancelled(_) => {
+                    state.revision() > crate::TurnStateRevision::FIRST
+                }
+                crate::TurnDispatchProvenance::ProviderOperation => false,
+            }) && state.source_event_count() == 0
                 && state.item_count() == 1
                 && state.finalized_item_count() == 0
                 && state.open_item_count() == 1

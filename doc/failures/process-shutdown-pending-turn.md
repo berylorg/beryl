@@ -451,3 +451,83 @@ regressions. The new standalone test failed at status publication before the cor
 afterward. It verifies exact matching-terminal stop evidence, manual compaction success, original
 committed tail, no restored continuation and refusal of events after authority consumption.
 The real-runtime shutdown fixture remains separate integration evidence.
+
+## Finalizing Compaction Classification
+
+After the stopping-event publication correction, the integrated shutdown test on 2026-09-15
+reached exact interrupt acknowledgement and terminal publication but failed during final
+convergence. Focused run `e704569a-f48e-4f31-a683-cf8880f66e23` passed 17 of 18 tests. Diagnostic
+run `f15f2aa0-4aeb-4683-814c-22a3cff6295a` identified
+`Read(Invariant("delivery-recovery gate turn does not block its thread"))`; temporary instrumentation
+was removed. This is distinct from the earlier fixture timeout and stopping-event rejection.
+
+Provider terminal publication leaves the exact operation in `Finalizing`, its provider turn
+terminal and its input gate compacting until named compaction settlement consumes that authority.
+The generic delivery-recovery classifier invokes ordinary `validate_blocking_turn` for every
+compacting gate, so stop admission and an already-retained stop barrier reject this valid
+intermediate state. The named compaction recovery reader already represents it as pending success,
+interrupted-with-idle-evidence or failure finalization; it is not settled ordinary history.
+
+Independent review recommends a bounded compaction-specific classification that authenticates
+the exact gate nonce, operation, provider turn, snapshot and terminal/turn-state agreement while
+preserving deferred compaction ownership. Stop admission must remain ineligible until finalization
+finishes. If the existing compacting-ineligible result is retained, the legacy stop barrier must
+wait while that same target still owns the gate; its current unconditional convergence is too
+early. Keep ordinary committed-tail and blocking-turn rules intact for ordinary operations.
+
+Removing retained-barrier polling alone is insufficient: first stop selection can encounter the
+same state, and skipping polls changes failure visibility when another primary stop later safely
+reopens the same ordinary target. Do not retry invariant failures, discard captured obligations,
+or treat terminal publication as completed compaction settlement. Implementation paused under the
+Operator's invalid-plan rule pending the owning storage and app prerequisite corrections.
+
+The Operator authorized those corrections. The bounded finalization classifier now authenticates
+exact home, operation, gate, parentless provider turn, execution snapshot, binding, CAS turn and
+terminal-state agreement; it preserves deferred recovery and compacting-ineligible stop admission.
+The original focused regression failed before the change and passed afterward. Independent
+semantic review and normal/test-faults package checks passed. The final fault-enabled compaction
+and delivery-recovery cases passed in the broader 139-test selection before an unrelated stop
+test interrupted that run. Acceptance remains uncommitted pending the distinct issue below;
+the app's exact-target barrier correction has not yet been implemented.
+
+## Pending Continuation Dispatch Provenance
+
+Broader storage verification on 2026-09-15 exposed a separate inherited production inconsistency.
+`pending_published_target_stops_and_consumes_a_matching_terminal_without_activation` fails its
+first whole-home scrub with `compaction continuation settlement and successor disagree`.
+Baseline run `d602d09d-50a7-495b-aff4-eb41b9484296` reproduced the failure with all finalization
+classifier production changes excluded. Those changes were then restored and verified exactly.
+
+The fixture uses production compaction settlement, binding activation and CAS-turn publication.
+Binding activation advances dispatch provenance and the turn-state revision while leaving the
+continuation pending until a provider activation event. The continuation validator still requires
+every pending descendant to have revision `FIRST`, rejecting this valid state. Independent review
+confirmed the production mismatch; changing the fixture or removing the scrub would hide it.
+
+The recommended bounded correction is to recognize authenticated pending dispatch-provenance
+descendants while retaining the exact initial continuation content and counters. Existing graph
+dispatch validation authenticates activation and cancellation provenance; no schema change or
+history scan appears necessary. This is separate from terminal-compaction classification and
+requires the owning contract and plan to be reconciled before implementation. Work paused under
+the Operator's invalid-plan rule; the failing test remains intact.
+
+An earlier ordinary race-test assertion also depended on which validation layer first detected
+concurrent mutation. It returned the required typed `ConcurrentChange` from gate/source
+reconciliation instead of the stop-read layer. The test now requires that typed result and retains
+diagnostics without fixing the internal layer name. Independent review accepted this test-only
+repair; all 18 stop-admission-read cases passed in the subsequent run before the continuation scrub
+failure. The unrun remainder of the stop-storage suite is not claimed as passing.
+
+The Operator authorized the pending-descendant correction. On 2026-09-15 the implementation passed
+independent semantic review and normal/test-faults package checks. A 166-test broader storage run
+passed, including all previously unrun stop cases. The original pending stop/terminal test passed
+as run `97631f6d-02e6-4ce6-977d-13bb98bca493`. Five targeted provenance tests passed after final
+review refinements in run `846fe31d-bd8e-4f22-9d3e-3d834a4c97cb`.
+
+Both validation and scoped consumed-successor reconciliation now recognize the provenance-based
+pending revision distinction. Scoped reads authenticate historical activation or exact cancellation
+records and decoded turn/state identities; initial content and capture counters remain fixed.
+Corruption tests perform scoped authentication before whole-home scrub: a failed scrub changes
+home health, so checking only a later read error would not prove the scoped validator ran. No
+record encoding, history traversal or provider-event requirement was added. This prerequisite is
+accepted; terminal-compaction classifier acceptance and app barrier composition resume separately.

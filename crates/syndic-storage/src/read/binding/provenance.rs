@@ -5,6 +5,25 @@ use crate::read::SyndicPointReadLimit;
 use crate::{SyndicReadError, SyndicStorage, TurnDispatchAnchor};
 
 impl SyndicStorage {
+    pub(in crate::read) fn authenticated_activated_dispatch(
+        &self,
+        store: &HomeStore,
+        thread: SyndicThreadId,
+        turn: SyndicTurnId,
+        anchor: TurnDispatchAnchor,
+        limit: SyndicPointReadLimit,
+    ) -> Result<bool, SyndicReadError> {
+        let Some(binding) = self.binding(store, thread, anchor.binding_revision(), limit)? else {
+            return Ok(false);
+        };
+        let Some(snapshot) = self.execution_snapshot(store, anchor.snapshot_id(), limit)? else {
+            return Ok(false);
+        };
+        Ok(crate::dispatch_provenance::activation_matches(
+            thread, turn, anchor, &snapshot, &binding,
+        ))
+    }
+
     pub(in crate::read) fn authenticated_cancelled_dispatch(
         &self,
         store: &HomeStore,

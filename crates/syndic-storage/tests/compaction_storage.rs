@@ -10,6 +10,9 @@ mod compaction_support;
 mod corruption;
 #[path = "compaction_storage/lifecycle.rs"]
 mod lifecycle;
+#[cfg(feature = "test-faults")]
+#[path = "compaction_storage/pending_continuation.rs"]
+mod pending_continuation;
 #[path = "compaction_storage/provider_stop.rs"]
 mod provider_stop;
 #[path = "compaction_storage/recovery.rs"]

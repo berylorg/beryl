@@ -76,6 +76,14 @@ durable revision, turn state, gate, selected path and canonical input identity/c
 anchor drift fails as concurrent change. It supplies durable evidence to the app, not live dispatch
 or cleanup authority. Provider-operation receipts retain their separate proof contract.
 
+Pending lifecycle-continuation descendants retain their exact initial canonical input, content,
+source-free capture and item counters. Unattempted provenance retains the initial turn-state
+revision; activated or cancelled provenance permits later pending revisions only with its exact
+authenticated dispatch closure. Binding activation and cancellation do not require a provider
+activation event. Whole-home validation and scoped consumed-compaction successor reads apply the
+same distinction, preserving their existing bounds and concurrent-change behavior. A later revision
+or provenance tag alone is insufficient; missing or mismatched historical authority is corruption.
+
 Canonical items have one exclusive source:
 
 - A normal provider item is proven by its exact contiguous source-event sequence, provider identities,

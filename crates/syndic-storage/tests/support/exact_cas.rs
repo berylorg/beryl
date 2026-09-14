@@ -553,6 +553,42 @@ pub fn establish_turn(
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
 ) -> CasTurnSource {
+    let (cas_thread, snapshot) = activate_turn(store, storage.clone(), thread, turn, started_at);
+    let binding = storage
+        .current_binding(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let cas_turn = CasTurnId::new(format!("test-turn-{turn}")).unwrap();
+    execute(
+        store,
+        storage.clone().publish_active_cas_turn(
+            storage.clone().revision(store).unwrap(),
+            PublishActiveCasTurn::new(
+                thread,
+                binding.binding().revision(),
+                gate.revision(),
+                snapshot,
+                cas_thread.clone(),
+                cas_turn.clone(),
+                started_at,
+            ),
+        ),
+        "active-CAS-turn publication",
+    );
+    CasTurnSource::new(cas_thread, cas_turn)
+}
+
+pub fn activate_turn(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    started_at: SyndicTimestamp,
+) -> (CasThreadId, SyndicExecutionSnapshotId) {
     let current = storage
         .current_binding(store, thread, point_limit())
         .unwrap()
@@ -672,32 +708,7 @@ pub fn establish_turn(
         ),
         "binding activation",
     );
-    let binding = storage
-        .current_binding(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let cas_turn = CasTurnId::new(format!("test-turn-{turn}")).unwrap();
-    execute(
-        store,
-        storage.clone().publish_active_cas_turn(
-            storage.clone().revision(store).unwrap(),
-            PublishActiveCasTurn::new(
-                thread,
-                binding.binding().revision(),
-                gate.revision(),
-                snapshot,
-                cas_thread.clone(),
-                cas_turn.clone(),
-                started_at,
-            ),
-        ),
-        "active-CAS-turn publication",
-    );
-    CasTurnSource::new(cas_thread, cas_turn)
+    (cas_thread, snapshot)
 }
 
 pub fn admit_event(

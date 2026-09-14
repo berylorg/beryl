@@ -516,6 +516,11 @@ canonical byte comparison of the point-read target closure.
   one, any operation/receipt mismatch, or an orphan receipt is corruption. Later gate, binding,
   selected-path, and continuation lifecycle descendants remain valid only after the immutable
   receipt authenticates their exact historical predecessor.
+  Pending continuation descendants additionally authenticate any activated or cancelled dispatch
+  provenance while retaining their initial content and capture counters. The initial state revision
+  is required only for unattempted pending provenance; activation or cancellation may advance that
+  revision before any provider activation event. This rule applies to both explicit validation and
+  bounded consumed-successor reconciliation without changing record encodings.
 - Every compacting gate selects exactly one live compaction record. A record handed to stop names
   the current stop nonce while the stopping gate and stop record name the same provider-operation
   target. A consumed record is inert but remains exact response and mutation-reconciliation
