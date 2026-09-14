@@ -244,3 +244,37 @@ for exact reservation release rather than a worker counter; paused provider prep
 admission until cleanup; the native-lineage fixture permits bounded exact-thread unsubscribe and
 resume retries before dispatch after a concurrent storage revision change. Both original retained
 turns must still complete. The affected scheduler suites passed in full after these corrections.
+
+## Bounded Shutdown Obligation Ownership
+
+Readiness review on 2026-09-14 found that the accepted terminal handoff closes predecessor proof
+loss, but does not by itself make bounded coordinator composition ready. A page-at-a-time approach
+that retains exact observations until each page settles creates a progress dependency:
+
+- [Thread settlement](../../crates/beryl-app/src/cas_projection/service/shutdown_settlement.rs)
+  calls `validate_process_settlement_fence` before acquiring its thread guard. The
+  [process fence](../../crates/beryl-app/src/process_admission.rs) requires the global admission
+  count to be zero. An earlier page containing unresolved pending/preparation work cannot settle
+  while a later page contains an admitted active execution that still needs shutdown's soft stop.
+  Waiting for the first page prevents that later stop and the admission release it would enable.
+- Retaining every unresolved page is not an established bounded alternative. The direct
+  [ordinary execution entry](../../crates/beryl-app/src/cas_projection/ordinary/execute/start.rs)
+  acquires its raw flight before preparation. The
+  [flight registry](../../crates/beryl-app/src/cas_projection/service/flight_registry.rs) enforces
+  same-thread exclusion without a global flight cardinality limit. Router or scheduled-worker
+  capacities do not bound this separate direct path. Terminal conversion also removes router
+  registration before history convergence releases the flight.
+- The accepted [completion observer](../../crates/beryl-app/src/cas_projection/service/process_work/shutdown_capture/completion.rs)
+  can discharge committed ordinary history independently of later cleanup. Pending preservation
+  cannot use that receipt, and its current settlement boundary still requires admission and
+  preparation closure. Forgetting an accepted pending identity or accepting current Idle state
+  would reintroduce the original proof loss.
+
+Root inspection and independent semantic review confirmed the dependency and absence of an
+accepted composing API. This is source-backed readiness evidence; no new deadlock reproduction
+or coordinator implementation is claimed. The proposed prerequisite is bounded exact obligation
+ownership across progress passes using existing execution ownership, while durable backlog stays
+paged. An alternative per-target settlement boundary would need exact admission closure against
+late winning acquisition; deleting the global-count check is insufficient. Resolve this choice
+in owning authority before implementation. No new quota, completed-history registry, or silent
+weakening of pending preservation is authorized by this record. The root plan remains paused.

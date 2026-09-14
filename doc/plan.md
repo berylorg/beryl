@@ -77,6 +77,16 @@ provenance for another turn, or a stop response. The initial unaccepted coordina
 its [review record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
 remains evidence for the required proof and cleanup distinction.
 
+Readiness is blocked by the [bounded obligation ownership gap](failures/process-shutdown-pending-turn.md#bounded-shutdown-obligation-ownership).
+The existing per-thread settlement API requires all process admissions to settle. Waiting for an
+earlier pending/preparation page can therefore prevent a later active page from receiving the stop
+needed to release its admission. Retaining every unresolved capture instead has no established
+bound for direct ordinary flights. Root inspection and independent review found no accepted API
+that closes both requirements. Establish bounded exact obligation ownership across progress passes
+before resuming composition; do not forget accepted identities, remove admission validation, or
+invent a quota. No coordinator source was added during this readiness review. Implementation is
+paused under the Operator's stop-on-technically-invalid-plan instruction.
+
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 
 Determine the bounded correction and acceptance evidence for the
