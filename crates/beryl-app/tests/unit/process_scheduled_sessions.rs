@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "process_session_idle_retirement.rs"]
 mod idle_retirement;
+#[path = "shutdown_connection_capture.rs"]
+mod shutdown_capture;
 use crate::cas_projection::{
     ProcessScheduledExecutionProvider, ScheduledExecutionSessions,
     ScheduledSessionRegistrationError,

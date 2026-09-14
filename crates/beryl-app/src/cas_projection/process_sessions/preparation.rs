@@ -7,6 +7,9 @@ use beryl_state::RuntimeRootState;
 use syndic_storage::SyndicStorage;
 
 use super::*;
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../../tests/unit/shutdown_preparation_capture.rs"]
+mod shutdown_capture_tests;
 use crate::cas_projection::{
     ProcessOrdinaryDynamicToolAuthority, RuntimeInterestError, RuntimeInterestStatus,
     ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionResult,

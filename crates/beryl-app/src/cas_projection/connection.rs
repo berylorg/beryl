@@ -45,6 +45,7 @@ mod source_broker;
 mod target_command;
 mod thread_closed;
 mod work_facts;
+pub(in crate::cas_projection) use work_facts::ConnectionCustodyWorkStamp;
 
 pub use recovery_source_broker::{
     RecoveryReplayCapacityDiagnostics, RecoveryReplayDiagnosticsObserver,

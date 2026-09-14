@@ -1,5 +1,7 @@
 use super::*;
 
+mod work_facts;
+
 impl CasProjectionCoordinator {
     /// Binds a coordinator to the exact identity and current healthy generation of `home`.
     pub fn for_healthy_home(home: &HomeStore) -> Result<Self, ProjectionCoordinatorError> {
@@ -101,9 +103,36 @@ struct ProjectionFlightKey {
     thread_id: SyndicThreadId,
 }
 
-static PROJECTION_FLIGHTS: OnceLock<
-    Mutex<HashMap<ProjectionFlightKey, Option<AcceptedInputSchedulerSignal>>>,
-> = OnceLock::new();
+static PROJECTION_FLIGHTS: OnceLock<Mutex<ProjectionFlightState>> = OnceLock::new();
+
+struct ProjectionFlightState {
+    revision: Option<u64>,
+    entries: HashMap<ProjectionFlightKey, Option<AcceptedInputSchedulerSignal>>,
+}
+
+impl Default for ProjectionFlightState {
+    fn default() -> Self {
+        Self {
+            revision: Some(0),
+            entries: HashMap::new(),
+        }
+    }
+}
+
+impl std::ops::Deref for ProjectionFlightState {
+    type Target = HashMap<ProjectionFlightKey, Option<AcceptedInputSchedulerSignal>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+
+impl std::ops::DerefMut for ProjectionFlightState {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.revision = self.revision.and_then(|value| value.checked_add(1));
+        &mut self.entries
+    }
+}
 
 pub(super) struct FlightRegistry;
 
@@ -113,7 +142,8 @@ impl FlightRegistry {
         home_generation: HomeGeneration,
         thread_id: SyndicThreadId,
     ) -> Result<ProjectionFlight, ProjectionCoordinatorError> {
-        let registry = PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(HashMap::new()));
+        let registry =
+            PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(ProjectionFlightState::default()));
         let mut active =
             registry
                 .lock()
@@ -139,7 +169,8 @@ impl FlightRegistry {
         thread_id: SyndicThreadId,
         scheduler_signal: &AcceptedInputSchedulerSignal,
     ) -> Result<ProjectionFlight, ProjectionCoordinatorError> {
-        let registry = PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(HashMap::new()));
+        let registry =
+            PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(ProjectionFlightState::default()));
         let mut active =
             registry
                 .lock()
@@ -163,7 +194,8 @@ impl FlightRegistry {
     }
 
     fn release(key: ProjectionFlightKey) {
-        let registry = PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(HashMap::new()));
+        let registry =
+            PROJECTION_FLIGHTS.get_or_init(|| Mutex::new(ProjectionFlightState::default()));
         let mut active = match registry.lock() {
             Ok(active) => active,
             Err(poisoned) => poisoned.into_inner(),

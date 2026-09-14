@@ -1,6 +1,8 @@
 use super::*;
 
 mod idle_retirement;
+mod work_facts;
+pub(in crate::cas_projection) use work_facts::ConnectionAuthorityWorkFact;
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct ConnectionRegistryAuthority {

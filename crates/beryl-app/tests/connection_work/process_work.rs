@@ -73,7 +73,10 @@ pub(super) fn assert_request_work(
         let targeted = fixture
             .store
             .required_session_work_for_test(sessions, &cancellation);
-        if let (Ok(public), Ok(targeted)) = (public, targeted) {
+        let shutdown = fixture
+            .store
+            .shutdown_work_first_page_for_test(sessions, &cancellation);
+        if let (Ok(public), Ok(targeted), Ok(shutdown)) = (public, targeted, shutdown) {
             assert_eq!(targeted.len(), 1);
             let public = public
                 .records()
@@ -83,6 +86,11 @@ pub(super) fn assert_request_work(
             assert_eq!(targeted[0].0, fixture.thread);
             assert_eq!(public.facts, targeted[0].2);
             assert_eq!(public.facts.request_handling, expected);
+            let shutdown = shutdown
+                .iter()
+                .find(|(thread, _)| *thread == fixture.thread)
+                .unwrap();
+            assert_eq!(shutdown.1.request_handling, expected);
             assert_eq!(fixture.home().home_revision().unwrap(), home_before);
             return;
         }

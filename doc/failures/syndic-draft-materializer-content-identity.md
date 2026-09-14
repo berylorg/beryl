@@ -19,3 +19,19 @@ Phase 174 of `doc/plan.md`.
 Remaining risk: every newly sealed generic content format must continue to exercise its owning
 whole-home integrity validator rather than assuming a format-local validator proves global content
 identity.
+
+## Repeated Content Collision
+
+The shutdown capture backlog test exposed another consequence of digest-derived content identity:
+submitting identical text from different draft roots reaches the same content id, but
+`draft_piece/materializer/engine.rs` rejects an existing sealed manifest while advancing a new
+build. `shutdown_work_capture::tests::durable_pending_work_without_live_custody_does_not_fill_capture`
+failed in `submission_fixture::submit_atoms` with `Materialization(InvalidOutput)` before capture
+ran. Distinct text per thread passed with the same backlog size. Changing operation and draft ids
+did not resolve the repeated-text failure.
+
+The capture test now uses distinct text to isolate its live-custody acceptance boundary. This does
+not correct or accept repeated-content materialization. The follow-up must reconcile exact-root
+mapping with immutable sealed-content reuse and concurrent build ownership, preserving bounded
+validation and publication. Do not restore operation-derived content ids to avoid the collision.
+The root plan retains a separate diagnosis boundary before any implementation correction.

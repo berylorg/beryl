@@ -259,6 +259,10 @@ pub enum ProjectionCoordinatorError {
         /// Exact registry that can no longer publish trusted results.
         registry: ProjectionRegistryKind,
     },
+    #[error("projection registry work revision is unavailable: {registry:?}")]
+    RegistryWorkRevisionUnavailable { registry: ProjectionRegistryKind },
+    #[error("projection registry work source changed: {registry:?}")]
+    RegistryWorkSourceChanged { registry: ProjectionRegistryKind },
     /// The app-owned loaded-thread generation counter cannot advance safely.
     #[error("CAS loaded-thread generation is exhausted")]
     LoadedThreadGenerationExhausted,

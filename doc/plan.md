@@ -44,17 +44,18 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 396: Prove Exact Shutdown Thread Settlement (finished)
+# Phase 399: Capture Bounded Shutdown Execution Work (finished)
 
-Accepted exact thread settlement guards that retain the process fence and exclusive flight while
-combining pending-dispatch or terminal-history evidence with preparation, execution, cleanup and
-reconciliation checks. Session/tool returns retain flight custody, and failed unsubscribe publishes
-retirement before cleanup custody ends. Independent review, 97 focused storage/app checks and the
-production library check passed. The coordinator must retain and revalidate these guards; the
-[cleanup lesson](failures/process-shutdown-pending-turn.md#cleanup-custody-is-separate-evidence)
-records why durable evidence alone is insufficient.
+Accepted bounded revision-checked metadata capture of sessions, retained preparations, projection
+flights, loaded projections, connection requests, control work and threadless cleanup. Count and byte
+pages traverse 270 live threads; 13 non-live pending threads remain outside capture. Detached response
+and shared-lease regressions cover retained custody. Independent review and the production library
+check passed. Of 61 focused cases, 60 passed in the broad run; the scheduler-dependent corruption
+assertion was corrected and all four settlement cases passed their focused rerun. Capture grants no
+dispatch, nondispatch or settlement authority; retain and revalidate the accepted exact settlement
+guards when composing shutdown.
 
-# Phase 326: Coordinate Process-Wide Graceful Shutdown (wip)
+# Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
 Compose the accepted admission fence and exact all-work convergence boundary shared by final-window
 close and explicit Exit. Preserve accepted queues and proven-undispatched pending turns, prevent
@@ -67,6 +68,16 @@ The [pending-turn correction](failures/process-shutdown-pending-turn.md) records
 completion distinction. Verify durable pending preservation separately from uncertain dispatch,
 including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
 or absent provider identity proves either completion outcome.
+
+# Phase 400: Diagnose Repeated Draft Content Materialization (pending)
+
+Determine the bounded correction and acceptance evidence for the
+[repeated-content failure](failures/syndic-draft-materializer-content-identity.md#repeated-content-collision)
+observed while constructing shutdown backlog. Compare immutable content identity, exact-root mapping,
+existing sealed content and concurrent build ownership against the
+[draft storage authority](../crates/syndic-storage/doc/design-draft-storage.md#materialization-restoration-and-text-reads).
+This phase accepts diagnosis and readiness evidence only; resolve any missing architectural choice
+in owning authority before planning an implementation correction.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

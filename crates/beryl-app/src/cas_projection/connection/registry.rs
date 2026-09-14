@@ -13,6 +13,9 @@ use beryl_model::{
 
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
+mod work_facts;
+pub(in crate::cas_projection) use work_facts::{loaded_owner_prefix, work_revision};
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(in crate::cas_projection) struct ConnectionGeneration(u64);
 
@@ -69,10 +72,36 @@ struct LoadedThreadEntry {
     metadata: beryl_backend::ThreadSessionMetadata,
 }
 
-#[derive(Default)]
 struct LoadedThreadState {
+    revision: Option<u64>,
     entries: HashMap<LoadedThreadKey, LoadedThreadEntry>,
     connection_authority_counts: HashMap<ConnectionGeneration, HashMap<SyndicThreadId, usize>>,
+}
+
+impl Default for LoadedThreadState {
+    fn default() -> Self {
+        Self {
+            revision: Some(0),
+            entries: HashMap::new(),
+            connection_authority_counts: HashMap::new(),
+        }
+    }
+}
+
+struct LoadedRegistryGuard(std::sync::MutexGuard<'static, LoadedThreadState>);
+
+impl std::ops::Deref for LoadedRegistryGuard {
+    type Target = LoadedThreadState;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for LoadedRegistryGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.revision = self.0.revision.and_then(|value| value.checked_add(1));
+        &mut self.0
+    }
 }
 
 static CONNECTION_GENERATIONS: AtomicU64 = AtomicU64::new(0);
@@ -113,12 +142,12 @@ fn registry() -> &'static Mutex<LoadedThreadState> {
     LOADED_THREADS.get_or_init(|| Mutex::new(LoadedThreadState::default()))
 }
 
-fn lock() -> Result<std::sync::MutexGuard<'static, LoadedThreadState>, ProjectionCoordinatorError> {
-    registry()
-        .lock()
-        .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
+fn lock() -> Result<LoadedRegistryGuard, ProjectionCoordinatorError> {
+    registry().lock().map(LoadedRegistryGuard).map_err(|_| {
+        ProjectionCoordinatorError::RegistryPoisoned {
             registry: ProjectionRegistryKind::LoadedThreads,
-        })
+        }
+    })
 }
 
 fn add_connection_authority(

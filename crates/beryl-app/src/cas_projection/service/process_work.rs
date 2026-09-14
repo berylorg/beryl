@@ -14,6 +14,10 @@ mod required;
 pub(in crate::cas_projection) use required::RequiredSessionWork;
 mod selection;
 mod shutdown;
+mod shutdown_capture;
+pub(crate) use shutdown_capture::{
+    ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord, ShutdownWorkRevision,
+};
 mod types;
 pub use types::*;
 
