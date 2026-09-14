@@ -168,6 +168,10 @@ impl RuntimeAttachmentSlot {
         self.attachment_type
     }
 
+    pub(crate) fn is_active(&self) -> bool {
+        self.attachment.is_some()
+    }
+
     pub(crate) fn get<D: StorageDomain>(
         &self,
     ) -> Result<&D::RuntimeAttachment, DomainAttachmentAccessError> {
@@ -286,6 +290,15 @@ impl HomeStore {
         callback: impl FnOnce(&D::RuntimeAttachment) -> R,
     ) -> Result<R, DomainAttachmentAccessError> {
         let admission = self.health.admit()?;
+        self.with_domain_attachment_admitted(admission, capability, callback)
+    }
+
+    pub(crate) fn with_domain_attachment_admitted<D: StorageDomain, R>(
+        &self,
+        admission: crate::health::HealthAdmission<'_>,
+        capability: &DomainAttachmentCapability<D>,
+        callback: impl FnOnce(&D::RuntimeAttachment) -> R,
+    ) -> Result<R, DomainAttachmentAccessError> {
         let generation = self
             .generation
             .read()

@@ -4,8 +4,8 @@ mod support;
 use std::{sync::Arc, thread};
 
 use beryl_home_store::{
-    CommandError, DomainHandle, DomainMutation, DomainReader, HomeCommand, HomeStore,
-    MutationBuilder, PointReadLimit,
+    CommandError, DomainHandle, DomainMutation, DomainReader, HomeCommand, HomeDomainRequirements,
+    HomeOpenCandidate, HomeStore, MutationBuilder, PointReadLimit,
 };
 #[cfg(feature = "test-faults")]
 use beryl_home_store::{
@@ -64,12 +64,21 @@ impl DomainMutation<AlphaDomain> for PutIfMissing {
 fn current_domain_command_captures_physical_revisions_after_writer_admission() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let first_cut = faults.block_next(FaultPoint::BeforeCommit);
 
@@ -106,12 +115,21 @@ fn current_domain_command_captures_physical_revisions_after_writer_admission() {
 fn scoped_writer_fault_ignores_other_typed_current_commands() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next_in_scope(FaultPoint::BeforeCommit, FaultScope::of::<PutIfMissing>());
 
     committed(
@@ -156,6 +174,15 @@ fn current_domain_command_preserves_exact_logical_validation() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let command = alpha.current_command(PutIfMissing {
         key: 4,
         value: b"stale".to_vec(),

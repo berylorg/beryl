@@ -167,24 +167,7 @@ pub struct HomeStore {
 }
 
 impl HomeStore {
-    /// Opens, exclusively owns, and validates one Beryl home.
-    ///
-    /// Existing state is force-recovered. It is never passed through Fjall's
-    /// create-or-recover dispatch when the physical database is nonempty.
-    pub fn open(options: HomeOpenOptions) -> Result<Self, HomeOpenError> {
-        Self::open_inner(options, FaultController::new())
-    }
-
-    /// Opens one home with store-local deterministic fault controls.
-    #[cfg(feature = "test-faults")]
-    pub fn open_with_faults(
-        options: HomeOpenOptions,
-        faults: FaultController,
-    ) -> Result<Self, HomeOpenError> {
-        Self::open_inner(options, faults)
-    }
-
-    fn open_inner(
+    pub(crate) fn open_initial(
         options: HomeOpenOptions,
         faults: FaultController,
     ) -> Result<Self, HomeOpenError> {
@@ -247,7 +230,7 @@ impl HomeStore {
         let instance_id = next_store_instance();
         let writer_id = next_writer_instance();
 
-        let health = Arc::new(HealthGate::healthy());
+        let health = Arc::new(HealthGate::opening());
         let lifecycle = Arc::new(HomeLifecycleCustodian::new(ownership));
         let reconciliation = ReconciliationRegistry::new(
             storage_profile.reconciliation_descriptor_bytes(),

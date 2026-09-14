@@ -6,8 +6,17 @@ fn marker_free_success_reconstructs_original_receipt_and_releases_custody() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
+    let (_directory, faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -20,10 +29,14 @@ fn marker_free_success_reconstructs_original_receipt_and_releases_custody() {
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 42)),
     ));
     let foreign_directory = tempdir().unwrap();
-    let foreign = HomeStore::open(HomeOpenOptions::new(
+    let foreign = HomeOpenCandidate::open(HomeOpenOptions::new(
         foreign_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     assert!(foreign.reconcile(&handle).is_err());
     foreign.close().unwrap();
@@ -51,9 +64,20 @@ fn fixed_admission_rejects_missing_unexpected_duplicate_and_orphan_roles_before_
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, _faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let asset = store.register_domain::<AssetDomain>().unwrap();
+    let (_directory, _faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let asset = candidate.register_domain::<AssetDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let missing =
         store.execute_current(source.current_command(SourcePromotion::<AssetSource>::new(
             FirstAcceptancePromotionAdmission::AssetTransferRequired,
@@ -116,9 +140,20 @@ fn ordinary_exact_sides_and_passive_ineligibility_take_precedence_over_source_ho
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let passive = store.register_domain::<PassiveDomain>().unwrap();
+    let (_directory, faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let passive = candidate.register_domain::<PassiveDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<PassiveDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -176,8 +211,17 @@ fn cancellation_prevents_fixed_successor_admission() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, _faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
+    let (_directory, _faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let cancellation = CommandCancellation::new();
     cancellation.cancel();
     let outcome = store.execute_current(
@@ -204,9 +248,20 @@ fn all_new_and_passive_non_new_classification_precede_fixed_source_authenticatio
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let passive = store.register_domain::<PassiveDomain>().unwrap();
+    let (_directory, faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let passive = candidate.register_domain::<PassiveDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<PassiveDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));

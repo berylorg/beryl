@@ -15,12 +15,12 @@ fn owner_derived_maxima_compose_to_the_direct_and_queued_envelopes() {
         ),
     )
     .expect("direct composition");
-    assert_eq!(27, direct.logical().records());
+    assert_eq!(28, direct.logical().records());
     assert_eq!(
-        1_328_750,
+        1_328_794,
         direct.logical().encoded_key_value_bytes().expect("total")
     );
-    assert_eq!(1_329_343, direct.journal_append_bytes());
+    assert_eq!(1_329_408, direct.journal_append_bytes());
 
     let queued = DurableStartFootprint::compose(
         accepted_input_promotion_max_footprint().expect("promotion footprint"),
@@ -30,12 +30,12 @@ fn owner_derived_maxima_compose_to_the_direct_and_queued_envelopes() {
         ),
     )
     .expect("queued composition");
-    assert_eq!(25, queued.logical().records());
+    assert_eq!(26, queued.logical().records());
     assert_eq!(
-        1_328_212,
+        1_328_256,
         queued.logical().encoded_key_value_bytes().expect("total")
     );
-    assert_eq!(1_328_763, queued.journal_append_bytes());
+    assert_eq!(1_328_828, queued.journal_append_bytes());
 }
 
 #[test]
@@ -61,24 +61,24 @@ fn no_image_start_omits_the_asset_participant() {
         None,
     )
     .expect("marker-free direct composition");
-    assert_eq!(24, direct.logical().records());
+    assert_eq!(25, direct.logical().records());
     assert_eq!(
-        1_319_996,
+        1_320_040,
         direct.logical().encoded_key_value_bytes().expect("total")
     );
-    assert_eq!(1_320_526, direct.journal_append_bytes());
+    assert_eq!(1_320_591, direct.journal_append_bytes());
 
     let queued = DurableStartFootprint::compose(
         accepted_input_promotion_max_footprint().expect("promotion footprint"),
         None,
     )
     .expect("marker-free queued composition");
-    assert_eq!(22, queued.logical().records());
+    assert_eq!(23, queued.logical().records());
     assert_eq!(
-        1_319_458,
+        1_319_502,
         queued.logical().encoded_key_value_bytes().expect("total")
     );
-    assert_eq!(1_319_946, queued.journal_append_bytes());
+    assert_eq!(1_320_011, queued.journal_append_bytes());
 }
 
 #[test]

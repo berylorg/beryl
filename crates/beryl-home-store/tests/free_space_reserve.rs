@@ -2,9 +2,9 @@
 
 use beryl_home_store::{
     CheckedBatchFootprint, DomainReader, DomainSchemaVersion, DurableStartFootprint,
-    FreeSpaceOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore, MinimumTurnCaptureReserve,
-    RecordFamily, StorageDomain, SyndicDurableStartFootprint, TurnStartAdmissionRequirement,
-    participating_domain_footprint,
+    FreeSpaceOutcome, HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, MinimumTurnCaptureReserve, RecordFamily, StorageDomain,
+    SyndicDurableStartFootprint, TurnStartAdmissionRequirement, participating_domain_footprint,
     test_faults::{FaultController, FreeSpaceTestObservation},
 };
 use tempfile::{TempDir, tempdir};
@@ -142,23 +142,28 @@ fn requirement_rejects_zero_overflow_and_each_owner_path_drift() {
     );
 }
 
-fn open(faults: FaultController) -> OpenedHome {
+fn open(faults: FaultController) -> (TempDir, HomeOpenCandidate) {
     let directory = tempdir().expect("temporary home directory");
-    let store = HomeStore::open_with_faults(
+    let candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults,
     )
     .expect("open home with free-space test seam");
-    OpenedHome {
-        _directory: directory,
-        store,
-    }
+    (directory, candidate)
 }
 
 #[test]
 fn reserve_query_reports_each_tested_physical_boundary_outcome_exactly() {
     let faults = FaultController::new();
-    let home = open(faults.clone());
+    let (directory, candidate) = open(faults.clone());
+    let home = OpenedHome {
+        _directory: directory,
+        store: candidate
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    };
     let requirement = requirement(1);
     let reserve_bytes = requirement.total_bytes();
     let observations = [
@@ -214,7 +219,15 @@ fn reserve_query_reports_each_tested_physical_boundary_outcome_exactly() {
 #[test]
 fn repeated_queries_consume_independent_observations_without_caching() {
     let faults = FaultController::new();
-    let home = open(faults.clone());
+    let (directory, candidate) = open(faults.clone());
+    let home = OpenedHome {
+        _directory: directory,
+        store: candidate
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    };
     let requirement = requirement(10);
     let reserve_bytes = requirement.total_bytes();
     faults.push_free_space_observation(FreeSpaceTestObservation::Observed {

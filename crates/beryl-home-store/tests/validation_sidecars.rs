@@ -4,8 +4,8 @@ use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
     CommandError, ContributorCallbackStage, DomainCallbackError, DomainCallbackSource,
-    DomainReader, DomainValidator, HomeCommand, HomeHealthState, PointReadLimit, ReadError,
-    ReadStage, SidecarByteLimit, SidecarNamespace,
+    DomainReader, DomainValidator, HomeCommand, HomeDomainRequirements, HomeHealthState,
+    PointReadLimit, ReadError, ReadStage, SidecarByteLimit, SidecarNamespace,
 };
 use tempfile::tempdir;
 
@@ -74,6 +74,17 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
         let mut store = open_home(directory.path());
         let alpha = store.register_domain::<AlphaDomain>().unwrap();
         let beta = store.register_domain::<BetaDomain>().unwrap();
+        let store = store
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<AlphaDomain>()
+                    .unwrap()
+                    .with_domain::<BetaDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let bytes = b"validation-sidecar-bytes";
         let sidecar = store
             .admit_sidecar(SidecarNamespace::new("images").unwrap(), bytes, limit())

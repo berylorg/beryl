@@ -1,6 +1,7 @@
 use beryl_home_store::{
     CommitReceipt, CommitReceiptError, DomainHandle, DomainHandleError, DomainReconciliation,
-    DomainRegistrationError, DomainSchemaVersion, HomeRecoveryCandidate, HomeStore,
+    DomainRegistrationError, DomainSchemaVersion, HomeDomainRequirements,
+    HomeDomainRequirementsError, HomeOpenCandidate, HomeRecoveryCandidate, HomeStore,
     KeyspaceSchemaVersion, ReadError, ReconciliationReader, RecordCodec, RecordFamily,
     StorageDomain,
 };
@@ -278,13 +279,14 @@ pub struct SyndicStorage {
 }
 
 impl SyndicStorage {
-    pub fn register(store: &mut HomeStore) -> Result<Self, DomainRegistrationError> {
-        let home_generation = store
-            .health()
-            .generation()
-            .expect("registered home has a healthy generation");
-        store.register_domain::<SyndicDomain>().map(|handle| {
-            let reconstructed_cleanup_admissions = store
+    pub fn required_domains() -> Result<HomeDomainRequirements, HomeDomainRequirementsError> {
+        HomeDomainRequirements::new().with_domain::<SyndicDomain>()
+    }
+
+    pub fn register(candidate: &mut HomeOpenCandidate) -> Result<Self, DomainRegistrationError> {
+        let home_generation = candidate.generation();
+        candidate.register_domain::<SyndicDomain>().map(|handle| {
+            let reconstructed_cleanup_admissions = candidate
                 .with_domain_attachment(&handle.attachment_capability(), |attachment| {
                     attachment.reconstructed_cleanup_owners()
                 })
@@ -299,16 +301,13 @@ impl SyndicStorage {
     }
 
     pub fn register_with_schema_validation(
-        store: &mut HomeStore,
+        candidate: &mut HomeOpenCandidate,
     ) -> Result<Self, DomainRegistrationError> {
-        let home_generation = store
-            .health()
-            .generation()
-            .expect("registered home has a healthy generation");
-        store
+        let home_generation = candidate.generation();
+        candidate
             .register_domain_with_schema_validation::<SyndicDomain>()
             .map(|handle| {
-                let reconstructed_cleanup_admissions = store
+                let reconstructed_cleanup_admissions = candidate
                     .with_domain_attachment(&handle.attachment_capability(), |attachment| {
                         attachment.reconstructed_cleanup_owners()
                     })

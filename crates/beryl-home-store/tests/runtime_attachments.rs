@@ -9,9 +9,10 @@ use std::{
 use beryl_home_store::{
     DomainAttachmentAccessError, DomainHandleError, DomainMutation, DomainReader,
     DomainRegistrationError, DomainRegistrationReader, DomainRuntimeAttachment,
-    DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError,
-    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainSchemaVersion, HomeCommand, HomeDomainRequirements, HomeHealthState, HomeOpenCandidate,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder,
+    PointReadLimit, ReadError, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
     test_faults::{FaultController, FaultPoint, capability_with_test_attachment_type},
 };
 use tempfile::tempdir;
@@ -257,8 +258,8 @@ attachment_domain!(
     |reader| TestAttachment::new(&IMPOSTOR_STATS, reader)
 );
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -302,16 +303,38 @@ fn registration_attachments_read_only_their_persisted_domain_on_reopen() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain_a = store.register_domain::<DomainA>().unwrap();
-    let domain_b = store.register_domain::<DomainB>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain_a = candidate.register_domain::<DomainA>().unwrap();
+    let domain_b = candidate.register_domain::<DomainB>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap()
+                .with_domain::<DomainB>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &domain_a, 41);
     put(&store, &domain_b, 99);
     store.close().unwrap();
 
-    let mut store = open(directory.path(), faults);
-    let domain_a = store.register_domain::<DomainA>().unwrap();
-    let domain_b = store.register_domain::<DomainB>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    let domain_a = candidate.register_domain::<DomainA>().unwrap();
+    let domain_b = candidate.register_domain::<DomainB>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap()
+                .with_domain::<DomainB>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let value_a = store
         .with_domain_attachment(&domain_a.attachment_capability(), |attachment| {
             attachment.persisted_value
@@ -332,26 +355,36 @@ fn failed_initial_attachment_construction_publishes_no_slot_and_allows_retry() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
+    let mut candidate = open(directory.path(), faults);
 
     FAIL_DOMAIN_B.store(true, Ordering::SeqCst);
     assert!(matches!(
-        store.register_domain::<DomainB>(),
+        candidate.register_domain::<DomainB>(),
         Err(DomainRegistrationError::AttachmentConstruction {
             domain: "runtime-b",
             ..
         })
     ));
     assert!(matches!(
-        store.domain_handle::<DomainB>(),
-        Err(DomainHandleError::NotRegistered {
-            domain: "runtime-b"
-        })
+        candidate.domain_handle::<DomainB>(),
+        Err(DomainHandleError::HealthGate(_))
     ));
     assert_eq!(DOMAIN_B_STATS.counts(), (0, 0, 0));
 
+    candidate.close().unwrap();
+
     FAIL_DOMAIN_B.store(false, Ordering::SeqCst);
-    let handle = store.register_domain::<DomainB>().unwrap();
+    let mut candidate = open(directory.path(), FaultController::new());
+    let handle = candidate.register_domain::<DomainB>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainB>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(DOMAIN_B_STATS.counts(), (1, 0, 0));
     drop(handle);
     store.close().unwrap();
@@ -363,8 +396,17 @@ fn structural_registration_read_failure_fails_health_before_publication() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &domain, 41);
     store
         .inject_persisted_corrupt_record::<DomainA, TestCodec<DomainA>>(
@@ -375,52 +417,70 @@ fn structural_registration_read_failure_fails_health_before_publication() {
         .unwrap();
     store.close().unwrap();
 
-    let mut store = open(directory.path(), faults);
+    let mut candidate = open(directory.path(), faults);
     assert!(matches!(
-        store.register_domain::<DomainA>(),
+        candidate.register_domain::<DomainA>(),
         Err(DomainRegistrationError::AttachmentConstruction {
             domain: "runtime-a",
             ..
         })
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    assert_eq!(candidate.health().state(), HomeHealthState::Failed);
     assert!(matches!(
-        store.domain_handle::<DomainA>(),
+        candidate.domain_handle::<DomainA>(),
         Err(DomainHandleError::HealthGate(_))
     ));
     assert_eq!(DOMAIN_A_STATS.counts(), (1, 1, 1));
-    store.close().unwrap();
+    candidate.close().unwrap();
 }
 
 #[test]
-fn bounded_registration_read_failure_keeps_health_and_allows_retry() {
+fn bounded_registration_read_failure_invalidates_candidate_and_allows_fresh_retry() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &domain, 41);
     store.close().unwrap();
 
     ATTACHMENT_READ_LIMIT.store(1, Ordering::SeqCst);
-    let mut store = open(directory.path(), faults);
+    let mut candidate = open(directory.path(), faults);
     assert!(matches!(
-        store.register_domain::<DomainA>(),
+        candidate.register_domain::<DomainA>(),
         Err(DomainRegistrationError::AttachmentConstruction {
             domain: "runtime-a",
             ..
         })
     ));
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(candidate.health().state(), HomeHealthState::Failed);
     assert!(matches!(
-        store.domain_handle::<DomainA>(),
-        Err(DomainHandleError::NotRegistered {
-            domain: "runtime-a"
-        })
+        candidate.domain_handle::<DomainA>(),
+        Err(DomainHandleError::HealthGate(_))
     ));
 
+    candidate.close().unwrap();
     ATTACHMENT_READ_LIMIT.store(16, Ordering::SeqCst);
-    let domain = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), FaultController::new());
+    let domain = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let persisted = store
         .with_domain_attachment(&domain.attachment_capability(), |attachment| {
             attachment.persisted_value
@@ -435,8 +495,17 @@ fn one_slot_owns_one_attachment_across_clone_and_reacquisition() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
-    let handle = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    let handle = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let cloned = handle.clone();
     let reacquired = store.domain_handle::<DomainA>().unwrap();
     let capability = handle.attachment_capability();
@@ -471,8 +540,17 @@ fn committed_local_finalization_resolves_the_exact_live_attachment() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let attachment_capability = domain.attachment_capability();
     let identity = store
         .with_domain_attachment(&attachment_capability, |attachment| attachment.identity)
@@ -518,8 +596,17 @@ fn recovery_retires_old_attachment_and_rejects_stale_views() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let stale_handle = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let stale_handle = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let stale_capability = stale_handle.attachment_capability();
     let old_identity = store
         .with_domain_attachment(&stale_capability, |attachment| attachment.identity)
@@ -555,8 +642,17 @@ fn candidate_abort_retires_attachment_before_a_fresh_retry() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let failed = fail_store(store, &faults);
     let candidate = failed.recover_same_home().unwrap();
     let candidate_handle = candidate.domain_handle::<DomainA>().unwrap();
@@ -590,9 +686,20 @@ fn candidate_factory_failure_cleans_every_attachment_it_constructed() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    store.register_domain::<DomainA>().unwrap();
-    store.register_domain::<DomainB>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    candidate.register_domain::<DomainA>().unwrap();
+    candidate.register_domain::<DomainB>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap()
+                .with_domain::<DomainB>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let failed = fail_store(store, &faults);
 
     FAIL_DOMAIN_B.store(true, Ordering::SeqCst);
@@ -625,9 +732,20 @@ fn late_candidate_failure_retires_every_constructed_attachment_before_retry() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    store.register_domain::<DomainA>().unwrap();
-    store.register_domain::<DomainB>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    candidate.register_domain::<DomainA>().unwrap();
+    candidate.register_domain::<DomainB>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap()
+                .with_domain::<DomainB>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let failed = fail_store(store, &faults);
 
     faults.fail_next(FaultPoint::AfterReopen);
@@ -654,8 +772,17 @@ fn attachment_type_mismatch_is_rejected_without_weakening_owner_identity() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
-    let handle = store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    let handle = candidate.register_domain::<DomainA>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let capability = handle.attachment_capability();
     let mismatched = capability_with_test_attachment_type::<DomainA, ()>(&capability);
 
@@ -675,21 +802,21 @@ fn stable_name_cannot_impersonate_the_registered_owner() {
     reset();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
-    store.register_domain::<DomainA>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    candidate.register_domain::<DomainA>().unwrap();
 
     assert!(matches!(
-        store.domain_handle::<ImpostorDomain>(),
+        candidate.domain_handle::<ImpostorDomain>(),
         Err(DomainHandleError::OwnerTypeMismatch {
             domain: "runtime-a"
         })
     ));
     assert!(matches!(
-        store.register_domain::<ImpostorDomain>(),
+        candidate.register_domain::<ImpostorDomain>(),
         Err(DomainRegistrationError::OwnerTypeMismatch {
             domain: "runtime-a"
         })
     ));
     assert_eq!(IMPOSTOR_STATS.counts(), (0, 0, 0));
-    store.close().unwrap();
+    candidate.close().unwrap();
 }

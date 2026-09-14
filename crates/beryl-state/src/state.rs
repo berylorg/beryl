@@ -1,10 +1,15 @@
 use std::{error::Error, fmt};
 
-use beryl_home_store::{DomainHandleError, DomainRegistrationError, HomeStore};
+use beryl_home_store::{
+    DomainHandleError, DomainRegistrationError, HomeDomainRequirements,
+    HomeDomainRequirementsError, HomeOpenCandidate, HomeStore,
+};
 
 use crate::{
     AssetState, CatalogState, DurableJobState, RuntimeRootState, SessionState, SettingsState,
-    ThemeService, ThemeServiceError,
+    ThemeService, ThemeServiceError, asset::AssetDomain, catalog::CatalogDomain,
+    durable_job::DurableJobDomain, runtime_root::RuntimeRootDomain, session::SessionDomain,
+    settings::SettingsDomain,
 };
 
 /// One explicitly bounded page of typed state records.
@@ -55,49 +60,62 @@ pub struct BerylState {
 }
 
 impl BerylState {
+    pub fn required_domains() -> Result<HomeDomainRequirements, HomeDomainRequirementsError> {
+        HomeDomainRequirements::new()
+            .with_domain::<SessionDomain>()?
+            .with_domain::<RuntimeRootDomain>()?
+            .with_domain::<SettingsDomain>()?
+            .with_domain::<DurableJobDomain>()?
+            .with_domain::<CatalogDomain>()?
+            .with_domain::<AssetDomain>()
+    }
+
     /// Routinely registers every exact Beryl-owned state domain.
     ///
     /// Registration verifies durable declarations, exact owner and codec types,
     /// required families, and the current generation, but does not scan persisted
     /// application records. Use [`Self::register_with_schema_validation`] only
     /// when the composition root deliberately requests exhaustive validation.
-    pub fn register(store: &mut HomeStore) -> Result<Self, BerylStateRegistrationError> {
-        let session = SessionState::register(store).map_err(|source| {
+    pub fn register(
+        candidate: &mut HomeOpenCandidate,
+    ) -> Result<Self, BerylStateRegistrationError> {
+        let session = SessionState::register(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-session",
                 source,
             }
         })?;
-        let runtime_roots = RuntimeRootState::register(store).map_err(|source| {
+        let runtime_roots = RuntimeRootState::register(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-runtime-root",
                 source,
             }
         })?;
-        let settings = SettingsState::register(store).map_err(|source| {
+        let settings = SettingsState::register(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-settings",
                 source,
             }
         })?;
-        let durable_jobs = DurableJobState::register(store).map_err(|source| {
+        let durable_jobs = DurableJobState::register(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-durable-job",
                 source,
             }
         })?;
-        let catalog = CatalogState::register(store).map_err(|source| {
+        let catalog = CatalogState::register(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-catalog",
                 source,
             }
         })?;
-        let assets =
-            AssetState::register(store).map_err(|source| BerylStateRegistrationError::Domain {
+        let assets = AssetState::register(candidate).map_err(|source| {
+            BerylStateRegistrationError::Domain {
                 domain: "beryl-assets",
                 source,
-            })?;
-        let themes = ThemeService::acquire(store)
+            }
+        })?;
+        let themes = ThemeService::acquire_initial_candidate(candidate)
             .map_err(|source| BerylStateRegistrationError::Theme { source })?;
         Ok(Self {
             session,
@@ -119,47 +137,50 @@ impl BerylState {
     /// set. A composition root should call this only for a deliberate scrub or
     /// schema-validation request.
     pub fn register_with_schema_validation(
-        store: &mut HomeStore,
+        candidate: &mut HomeOpenCandidate,
     ) -> Result<Self, BerylStateRegistrationError> {
-        let session = SessionState::register_with_schema_validation(store).map_err(|source| {
-            BerylStateRegistrationError::Domain {
-                domain: "beryl-session",
-                source,
-            }
-        })?;
+        let session =
+            SessionState::register_with_schema_validation(candidate).map_err(|source| {
+                BerylStateRegistrationError::Domain {
+                    domain: "beryl-session",
+                    source,
+                }
+            })?;
         let runtime_roots =
-            RuntimeRootState::register_with_schema_validation(store).map_err(|source| {
+            RuntimeRootState::register_with_schema_validation(candidate).map_err(|source| {
                 BerylStateRegistrationError::Domain {
                     domain: "beryl-runtime-root",
                     source,
                 }
             })?;
-        let settings = SettingsState::register_with_schema_validation(store).map_err(|source| {
-            BerylStateRegistrationError::Domain {
-                domain: "beryl-settings",
-                source,
-            }
-        })?;
+        let settings =
+            SettingsState::register_with_schema_validation(candidate).map_err(|source| {
+                BerylStateRegistrationError::Domain {
+                    domain: "beryl-settings",
+                    source,
+                }
+            })?;
         let durable_jobs =
-            DurableJobState::register_with_schema_validation(store).map_err(|source| {
+            DurableJobState::register_with_schema_validation(candidate).map_err(|source| {
                 BerylStateRegistrationError::Domain {
                     domain: "beryl-durable-job",
                     source,
                 }
             })?;
-        let catalog = CatalogState::register_with_schema_validation(store).map_err(|source| {
-            BerylStateRegistrationError::Domain {
-                domain: "beryl-catalog",
-                source,
-            }
-        })?;
-        let assets = AssetState::register_with_schema_validation(store).map_err(|source| {
+        let catalog =
+            CatalogState::register_with_schema_validation(candidate).map_err(|source| {
+                BerylStateRegistrationError::Domain {
+                    domain: "beryl-catalog",
+                    source,
+                }
+            })?;
+        let assets = AssetState::register_with_schema_validation(candidate).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-assets",
                 source,
             }
         })?;
-        let themes = ThemeService::acquire(store)
+        let themes = ThemeService::acquire_initial_candidate(candidate)
             .map_err(|source| BerylStateRegistrationError::Theme { source })?;
         Ok(Self {
             session,

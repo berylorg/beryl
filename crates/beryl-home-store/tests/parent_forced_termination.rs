@@ -11,7 +11,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
+    HomeCommand, HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    PointReadLimit,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -22,8 +23,8 @@ const HOME_ENV: &str = "BERYL_FORCE_HOME";
 const POINT_ENV: &str = "BERYL_FORCE_POINT";
 const READY_ENV: &str = "BERYL_FORCE_READY";
 
-fn open(path: &Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -57,8 +58,17 @@ fn parent_forced_cut_helper() {
         }
     });
 
-    let mut store = open(&home, faults);
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(&home, faults);
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -89,8 +99,17 @@ fn assert_parent_forced_cut(point: &str, expected: ExpectedState) {
     let home = fixture.path().join("home");
     let ready = fixture.path().join("cut-reached");
 
-    let mut initial = open(&home, FaultController::new());
-    initial.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(&home, FaultController::new());
+    candidate.register_domain::<AlphaDomain>().unwrap();
+    let initial = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     initial.close().unwrap();
 
     let mut child = Command::new(env::current_exe().unwrap())
@@ -110,6 +129,15 @@ fn assert_parent_forced_cut(point: &str, expected: ExpectedState) {
 
     let mut reopened = open(&home, FaultController::new());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let home_revision = reopened.home_revision().unwrap().get();
     let domain_revision = reopened.domain_revision(&alpha).unwrap().get();
     let value = reopened

@@ -18,7 +18,11 @@ impl HomeStore {
             .database
             .health()
             .expect("maintenance-terminal fixture requires initially healthy Fjall state");
-        assert_eq!(self.health.snapshot().state(), HomeHealthState::Healthy);
+        let state = self.health.snapshot().state();
+        assert!(matches!(
+            state,
+            HomeHealthState::Healthy | HomeHealthState::Opening
+        ));
 
         fjall::test_faults::retain_maintenance_terminal(&generation.database);
 
@@ -26,6 +30,6 @@ impl HomeStore {
             .database
             .health()
             .expect_err("maintenance-terminal fixture did not retain a Fjall terminal");
-        assert_eq!(self.health.snapshot().state(), HomeHealthState::Healthy);
+        assert_eq!(self.health.snapshot().state(), state);
     }
 }

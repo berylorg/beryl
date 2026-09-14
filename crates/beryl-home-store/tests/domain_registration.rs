@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 
 use beryl_home_store::{
     DomainDefinitionError, DomainRegistrationError, DomainValidationError, HomeCommand,
-    HomeHealthState, HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    HomeUnreadableStage, KeyspaceSchemaVersion, WholeHomeScrubTrigger,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenError, HomeOpenOptions,
+    HomeSchemaVersion, HomeUnreadableStage, KeyspaceSchemaVersion, WholeHomeScrubTrigger,
 };
 use fjall::{Database, PersistMode};
 use tempfile::tempdir;
@@ -21,10 +21,8 @@ use support::{
 fn fresh_registration_reopens_and_rejects_a_duplicate_generation_registration() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let _alpha = store.register_domain::<AlphaDomain>().unwrap();
 
-    assert_eq!(store.home_revision().unwrap().get(), 1);
-    assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
     assert!(matches!(
         store.register_domain::<AlphaDomain>(),
         Err(DomainRegistrationError::DuplicateDomain { domain: "alpha" })
@@ -33,6 +31,16 @@ fn fresh_registration_reopens_and_rejects_a_duplicate_generation_registration() 
 
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    assert_eq!(reopened.home_revision().unwrap().get(), 1);
     assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
     reopened
         .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
@@ -54,6 +62,9 @@ fn invalid_static_family_declarations_fail_before_registration() {
             }
         ))
     ));
+    store.close().unwrap();
+
+    let mut store = open_home(directory.path());
     assert!(matches!(
         store.register_domain::<EmptyDomain>(),
         Err(DomainRegistrationError::InvalidDefinition(
@@ -103,6 +114,15 @@ fn fresh_registration_adopts_only_an_empty_interrupted_family() {
 
     let mut reopened = open_home(empty_directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
     reopened.close().unwrap();
     let mut persisted = open_home(empty_directory.path());
@@ -144,7 +164,7 @@ fn missing_registered_keyspace_is_not_recreated() {
     assert_eq!(added.len(), 1, "registration creates one physical family");
     std::fs::remove_dir_all(&added[0]).unwrap();
 
-    let error = HomeStore::open(HomeOpenOptions::new(
+    let error = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
@@ -171,7 +191,7 @@ fn missing_home_revision_makes_existing_home_unreadable() {
     drop(keyspace);
     drop(database);
 
-    let error = HomeStore::open(HomeOpenOptions::new(
+    let error = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
@@ -207,6 +227,15 @@ fn persisted_registration_distinguishes_routine_reacquisition_from_schema_valida
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let domain = store.register_domain::<ValidatedDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ValidatedDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(

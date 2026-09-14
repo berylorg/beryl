@@ -4,13 +4,13 @@ mod fjall_support;
 use std::{fs, path::PathBuf};
 
 use beryl_home_store::{
-    HomeDurabilityTier, HomeOpenError, HomeOpenOptions, HomeOpenStage, HomeOwnershipTestSeam,
-    HomeSchemaVersion, HomeStore, HomeUnreadableStage,
+    HomeDurabilityTier, HomeOpenCandidate, HomeOpenError, HomeOpenOptions, HomeOpenStage,
+    HomeOwnershipTestSeam, HomeSchemaVersion, HomeUnreadableStage,
 };
 use fjall::{Database, PersistMode};
 
-fn open(path: impl Into<PathBuf>) -> Result<HomeStore, HomeOpenError> {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
+fn open(path: impl Into<PathBuf>) -> Result<HomeOpenCandidate, HomeOpenError> {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn best_effort_tier_propagates_through_opened_store() {
         HomeOwnershipTestSeam::UncPath,
         HomeOwnershipTestSeam::MappedRemotePath,
     ] {
-        let best_effort = HomeStore::open(
+        let best_effort = HomeOpenCandidate::open(
             HomeOpenOptions::new(
                 directory.path().join(format!("best-effort-{seam:?}")),
                 HomeSchemaVersion::CURRENT,
@@ -68,7 +68,7 @@ fn best_effort_tier_propagates_through_opened_store() {
 fn unsupported_reliable_lock_is_typed_and_prevents_database_creation() {
     let directory = tempfile::tempdir().expect("temp directory");
     let home = directory.path().join("unsupported-lock");
-    let error = HomeStore::open(
+    let error = HomeOpenCandidate::open(
         HomeOpenOptions::new(&home, HomeSchemaVersion::CURRENT)
             .with_ownership_test_seam(HomeOwnershipTestSeam::UnsupportedExclusiveLock),
     )
@@ -133,7 +133,7 @@ fn unsupported_schema_is_typed_and_non_destructive() {
     first.close().expect("orderly close");
 
     let newer = HomeSchemaVersion::new(2).expect("nonzero schema");
-    let error = HomeStore::open(HomeOpenOptions::new(&configured, newer))
+    let error = HomeOpenCandidate::open(HomeOpenOptions::new(&configured, newer))
         .expect_err("schema mismatch must fail");
     assert!(matches!(
         error,

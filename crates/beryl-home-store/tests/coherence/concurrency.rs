@@ -5,7 +5,7 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCoherenceError, HomeHealthState,
+    HomeCoherenceError, HomeDomainRequirements, HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -23,6 +23,15 @@ fn mutation_that_starts_first_refuses_election_until_its_outcome_releases_custod
     let faults = FaultController::new();
     let mut store = open(directory.path(), &faults);
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
     let store = Arc::new(store);
     let pause = faults.block_next(FaultPoint::BeforeCommit);
@@ -46,6 +55,15 @@ fn election_that_starts_first_excludes_reservation_and_competing_election() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), &faults);
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
     let store = Arc::new(store);
     let pause = faults.block_next(FaultPoint::BeforeCommit);
@@ -87,7 +105,13 @@ fn election_that_starts_first_excludes_reservation_and_competing_election() {
 fn structural_failure_waits_for_election_then_prevents_further_elections() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), &faults));
+    let store = Arc::new(
+        open(directory.path(), &faults)
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    );
     let generation = store.health().generation().unwrap();
     let read_pause = faults.block_next(FaultPoint::BeforeReadConfirmation);
     let (done_tx, done_rx) = mpsc::channel();

@@ -11,8 +11,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandCancellation, CommandError, DomainMutation, DomainReader, HomeCommand, MutationBuilder,
-    PointReadLimit,
+    CommandCancellation, CommandError, DomainMutation, DomainReader, HomeCommand,
+    HomeDomainRequirements, MutationBuilder, PointReadLimit,
 };
 use tempfile::tempdir;
 
@@ -109,6 +109,17 @@ fn writer_assembly_is_serialized_while_typed_reads_continue() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     seed(&store, &alpha);
     let store = Arc::new(store);
     let expected_home = store.home_revision().unwrap();
@@ -196,6 +207,17 @@ fn cancellation_while_waiting_is_observed_before_writer_admission() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let expected_home = store.home_revision().unwrap();
     let gate = Arc::new(AssemblyGate::default());

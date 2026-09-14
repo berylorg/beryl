@@ -5,7 +5,7 @@ use beryl_model::DomainRevision;
 use super::*;
 
 impl DomainBlueprint {
-    pub(super) fn for_domain<D: StorageDomain>() -> Result<Self, DomainDefinitionError> {
+    pub(crate) fn for_domain<D: StorageDomain>() -> Result<Self, DomainDefinitionError> {
         validate_component("domain", D::NAME)?;
         if D::FAMILIES.is_empty() {
             return Err(DomainDefinitionError::NoKeyspaces { domain: D::NAME });

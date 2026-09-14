@@ -5,8 +5,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, StableThemeFileId, ThemeWatchError,
-    ThemeWatchHint, ThemeWatchLimits,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    StableThemeFileId, ThemeWatchError, ThemeWatchHint, ThemeWatchLimits,
 };
 
 fn limits(capacity: usize, entries: usize) -> ThemeWatchLimits {
@@ -20,8 +20,8 @@ fn limits(capacity: usize, entries: usize) -> ThemeWatchLimits {
     .unwrap()
 }
 
-fn open(path: &std::path::Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &std::path::Path) -> HomeOpenCandidate {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
 }
 
 fn receive_until(
@@ -45,7 +45,11 @@ fn receive_until(
 #[test]
 fn watcher_reports_manifest_and_valid_stable_document_create_write_and_delete() {
     let directory = tempfile::tempdir().unwrap();
-    let store = open(directory.path());
+    let store = open(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let subscription = store.subscribe_theme_changes(limits(8, 16)).unwrap();
     let themes = directory.path().join("themes");
     let installed = themes.join("installed");
@@ -71,7 +75,11 @@ fn watcher_ignores_temporary_and_invalid_names_and_coalesces_duplicates() {
     let directory = tempfile::tempdir().unwrap();
     let installed = directory.path().join("themes/installed");
     fs::create_dir_all(&installed).unwrap();
-    let store = open(directory.path());
+    let store = open(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let subscription = store.subscribe_theme_changes(limits(8, 16)).unwrap();
 
     fs::write(installed.join(".document-staged"), b"temporary").unwrap();
@@ -94,7 +102,11 @@ fn bounded_enumeration_and_queue_pressure_collapse_to_overflow() {
     let directory = tempfile::tempdir().unwrap();
     let installed = directory.path().join("themes/installed");
     fs::create_dir_all(&installed).unwrap();
-    let store = open(directory.path());
+    let store = open(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let subscription = store.subscribe_theme_changes(limits(1, 1)).unwrap();
 
     fs::write(installed.join("one.toml"), b"one").unwrap();
@@ -106,7 +118,11 @@ fn bounded_enumeration_and_queue_pressure_collapse_to_overflow() {
 #[test]
 fn one_lane_per_generation_releases_on_subscription_drop_and_store_drop() {
     let directory = tempfile::tempdir().unwrap();
-    let store = open(directory.path());
+    let store = open(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let first = store.subscribe_theme_changes(limits(4, 8)).unwrap();
     assert!(matches!(
         store.subscribe_theme_changes(limits(4, 8)),

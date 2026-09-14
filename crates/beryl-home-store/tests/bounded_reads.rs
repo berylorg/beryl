@@ -1,8 +1,8 @@
 mod support;
 
 use beryl_home_store::{
-    CommandError, CursorDirection, CursorRange, CursorReadLimits, HomeCommand, HomeHealthState,
-    MutationBuildError, PointReadLimit, ReadError,
+    CommandError, CursorDirection, CursorRange, CursorReadLimits, HomeCommand,
+    HomeDomainRequirements, HomeHealthState, MutationBuildError, PointReadLimit, ReadError,
 };
 use tempfile::tempdir;
 
@@ -15,6 +15,15 @@ fn typed_point_and_cursor_reads_return_only_decoded_records() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     for (key, value) in [
         (1, b"one".to_vec()),
@@ -76,6 +85,15 @@ fn point_and_cursor_materialization_obey_explicit_byte_bounds() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &alpha, 1, vec![7; 32]);
 
     assert!(matches!(
@@ -117,6 +135,15 @@ fn reversed_cursor_range_and_non_owning_record_codec_are_typed() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         store.read_cursor::<AlphaDomain, BytesRecord<AlphaDomain>>(

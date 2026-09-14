@@ -5,8 +5,8 @@ mod support;
 use std::{env, fs, num::NonZeroU64, path::PathBuf, process::Command};
 
 use beryl_home_store::{
-    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, SidecarError, SidecarNamespace,
+    CommandError, HomeCommand, HomeDomainRequirements, HomeHealthState, HomeOpenCandidate,
+    HomeOpenOptions, HomeSchemaVersion, SidecarByteLimit, SidecarError, SidecarNamespace,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -17,8 +17,8 @@ fn limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
 }
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -29,8 +29,17 @@ fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
 fn sidecar_is_durable_before_its_first_metadata_reference_commits() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -56,13 +65,26 @@ fn sidecar_is_durable_before_its_first_metadata_reference_commits() {
     store.close().unwrap();
     let mut reopened = open(directory.path(), FaultController::new());
     reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(reopened.verify_sidecar(&address, limit()).is_ok());
 }
 
 #[test]
 fn identical_content_reuses_one_final_path_without_replacement() {
     let directory = tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let first = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -90,7 +112,11 @@ fn identical_content_reuses_one_final_path_without_replacement() {
 #[test]
 fn content_mismatch_is_a_structural_failure_and_never_overwrites() {
     let directory = tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -115,8 +141,17 @@ fn content_mismatch_is_a_structural_failure_and_never_overwrites() {
 fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::BeforeSidecarFileSync);
 
     assert!(matches!(
@@ -153,7 +188,11 @@ fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
 fn failure_after_atomic_rename_retains_unreferenced_final_bytes() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterSidecarRename);
 
     assert!(matches!(
@@ -180,7 +219,11 @@ fn rename_and_directory_flush_failures_never_publish_a_metadata_token() {
     ] {
         let directory = tempdir().unwrap();
         let faults = FaultController::new();
-        let store = open(directory.path(), faults.clone());
+        let store = open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         faults.fail_next(point);
         assert!(matches!(
             store.admit_sidecar(
@@ -201,8 +244,17 @@ fn rename_and_directory_flush_failures_never_publish_a_metadata_token() {
 fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -300,7 +352,17 @@ fn sidecar_crash_cut_helper() {
     };
     let faults = FaultController::new();
     faults.abort_next(point);
-    let store = open(&home, faults);
+    let mut candidate = open(&home, faults);
+    candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let _ = store.admit_sidecar(
         SidecarNamespace::new("images").unwrap(),
         SIDECAR_CRASH_BYTES,
@@ -324,8 +386,17 @@ enum SidecarCrashResidue {
 
 fn assert_sidecar_crash_cut(point: &str, expected_residue: SidecarCrashResidue) {
     let directory = tempdir().unwrap();
-    let mut initial = open(directory.path(), FaultController::new());
-    initial.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), FaultController::new());
+    candidate.register_domain::<AlphaDomain>().unwrap();
+    let initial = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     initial.close().unwrap();
 
     let status = Command::new(env::current_exe().unwrap())
@@ -338,6 +409,15 @@ fn assert_sidecar_crash_cut(point: &str, expected_residue: SidecarCrashResidue) 
 
     let mut reopened = open(directory.path(), FaultController::new());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 1);
     assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 1);
 

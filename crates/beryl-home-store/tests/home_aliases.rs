@@ -4,10 +4,10 @@ use std::{
     process::Command,
 };
 
-use beryl_home_store::{HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenCandidate, HomeOpenError, HomeOpenOptions, HomeSchemaVersion};
 
-fn open(path: impl Into<PathBuf>) -> Result<HomeStore, HomeOpenError> {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
+fn open(path: impl Into<PathBuf>) -> Result<HomeOpenCandidate, HomeOpenError> {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
 }
 
 fn assert_busy(path: &Path) {

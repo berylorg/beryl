@@ -7,9 +7,9 @@ use std::{
 
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, DomainSchemaVersion,
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationBuilder, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
-    WholeHomeScrubTrigger,
+    HomeCommand, HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
 };
 use tempfile::tempdir;
 
@@ -135,12 +135,21 @@ impl DomainMutation<CountedDomain> for Put {
 #[test]
 fn one_command_never_scans_the_existing_domain() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let domain = store.register_domain::<CountedDomain>().unwrap();
+    let domain = candidate.register_domain::<CountedDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CountedDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     for key in 0..64 {
         execute(&store, &domain, key);

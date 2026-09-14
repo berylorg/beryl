@@ -14,6 +14,19 @@ where
     let source = store.register_domain::<SourceDomain>().unwrap();
     let asset = store.register_domain::<AssetDomain>().unwrap();
     let passive = store.register_domain::<PassiveDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap()
+                .with_domain::<PassiveDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -107,6 +120,17 @@ fn full_proof_mismatch_and_unregistered_adapter_are_rejected() {
     let (_directory, _faults, mut store) = open();
     let source = store.register_domain::<SourceDomain>().unwrap();
     let asset = store.register_domain::<AssetDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -173,6 +197,17 @@ fn current_stored_version_failure_retains_typed_read_provenance() {
     let (_directory, faults, mut store) = open();
     let source = store.register_domain::<SourceDomain>().unwrap();
     let asset = store.register_domain::<AssetDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -229,6 +264,17 @@ fn invalid_expected_rejects_before_a_malformed_current_head_is_acquired() {
     let (_directory, faults, mut store) = open();
     let source = store.register_domain::<SourceDomain>().unwrap();
     let asset = store.register_domain::<AssetDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -281,6 +327,17 @@ fn current_decoded_limit_rejects_a_present_required_absent_head_after_expected_f
     let (_directory, faults, mut store) = open();
     let source = store.register_domain::<SourceDomain>().unwrap();
     let asset = store.register_domain::<AssetDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));

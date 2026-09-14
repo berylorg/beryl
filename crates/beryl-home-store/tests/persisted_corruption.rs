@@ -6,9 +6,10 @@ use std::{convert::Infallible, error::Error, fmt, sync::Arc};
 
 use beryl_home_store::{
     CodecOperation, DomainCallbackSource, DomainHandle, DomainMutation, DomainReader,
-    DomainSchemaVersion, DomainValidationError, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
-    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
+    DomainSchemaVersion, DomainValidationError, HomeCommand, HomeDomainRequirements,
+    HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
+    RecordVersion, StorageDomain, WholeHomeScrubTrigger,
     test_faults::{FaultController, PersistedCorruptionError},
 };
 use tempfile::tempdir;
@@ -139,8 +140,8 @@ fn encoded_value(version: u32, payload: &[u8]) -> Vec<u8> {
     encoded
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -152,6 +153,15 @@ fn codec_valid_envelope_is_rejected_without_mutating_the_family() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -182,6 +192,15 @@ fn same_thread_writer_reentry_is_rejected_without_deadlock_or_corruption() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
@@ -213,6 +232,15 @@ fn malformed_in_bound_key_is_persisted_only_for_structural_validation() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -242,6 +270,15 @@ fn malformed_in_bound_payload_is_persisted_only_when_the_exact_codec_rejects_it(
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<StrictPayloadDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<StrictPayloadDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     store
         .inject_persisted_corrupt_record::<StrictPayloadDomain, StrictPayloadRecord>(
@@ -270,6 +307,15 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
     let directory = tempdir().unwrap();
     let mut truncated_store = support::open_home(directory.path());
     let truncated_alpha = truncated_store.register_domain::<AlphaDomain>().unwrap();
+    let truncated_store = truncated_store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     truncated_store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
             &truncated_alpha,
@@ -292,6 +338,15 @@ fn truncated_and_unsupported_version_values_are_admitted_as_corruption() {
     let directory = tempdir().unwrap();
     let mut version_store = support::open_home(directory.path());
     let version_alpha = version_store.register_domain::<AlphaDomain>().unwrap();
+    let version_store = version_store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     version_store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
             &version_alpha,
@@ -320,6 +375,15 @@ fn oversized_envelope_remains_an_accepted_corruption_fixture() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -351,7 +415,25 @@ fn foreign_domain_handle_and_shadow_codec_are_rejected_before_fixture_validation
     let mut first = support::open_home(first_directory.path());
     let mut second = support::open_home(second_directory.path());
     let first_alpha = first.register_domain::<AlphaDomain>().unwrap();
+    let first = first
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let second_alpha = second.register_domain::<AlphaDomain>().unwrap();
+    let second = second
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         first.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -373,6 +455,8 @@ fn foreign_domain_handle_and_shadow_codec_are_rejected_before_fixture_validation
         })
     ));
     assert_eq!(first.health().state(), HomeHealthState::Healthy);
+    first.close().unwrap();
+    second.close().unwrap();
 }
 
 #[test]
@@ -380,6 +464,15 @@ fn empty_engine_oversized_and_fixture_oversized_requests_are_hard_rejected() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -435,6 +528,15 @@ fn scrub_rejects_but_routine_recovery_ignores_a_dormant_malformed_envelope() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
             &alpha,

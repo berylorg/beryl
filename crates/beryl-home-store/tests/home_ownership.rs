@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_home_store::{HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenCandidate, HomeOpenError, HomeOpenOptions, HomeSchemaVersion};
 use wait_timeout::ChildExt;
 
 const FIXTURE_MODE: &str = "BERYL_HOME_OWNERSHIP_FIXTURE";
@@ -15,8 +15,8 @@ const FIXTURE_READY: &str = "BERYL_HOME_OWNERSHIP_READY";
 const FIXTURE_RELEASE: &str = "BERYL_HOME_OWNERSHIP_RELEASE";
 const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn open(path: impl Into<PathBuf>) -> Result<HomeStore, HomeOpenError> {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
+fn open(path: impl Into<PathBuf>) -> Result<HomeOpenCandidate, HomeOpenError> {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
 }
 
 #[test]

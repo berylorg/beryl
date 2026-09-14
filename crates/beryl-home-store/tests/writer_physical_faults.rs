@@ -11,9 +11,10 @@ use std::{
 
 use beryl_home_store::{
     CommandError, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator, HomeCommand,
-    HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
-    KeyspaceSchemaVersion, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
-    RecordVersion, StorageCommitState, StorageDomain, StorageErrorClass,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeRecoveryError,
+    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
+    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageCommitState, StorageDomain,
+    StorageErrorClass,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -171,8 +172,8 @@ impl DomainMutation<AggregateReservationDomain> for AggregateReservationPut {
     }
 }
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -248,6 +249,15 @@ fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let exact_application_records = 16_384 - 2;
     let mut exact = HomeCommand::new(store.home_revision().unwrap());
@@ -289,6 +299,15 @@ fn theoretical_reconciliation_descriptor_limit_rejects_before_writer_admission()
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -315,6 +334,15 @@ fn registry_install_retains_unique_custody_and_exact_charge() {
     let mut store = open(directory.path(), faults.clone());
     let domain = store
         .register_domain::<AggregateReservationDomain>()
+        .unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AggregateReservationDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
         .unwrap();
 
     for key in 0..4 {
@@ -347,6 +375,15 @@ fn direct_outcomes_release_their_exact_registry_reservations() {
     let mut store = open(directory.path(), faults.clone());
     let domain = store
         .register_domain::<AggregateReservationDomain>()
+        .unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AggregateReservationDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
         .unwrap();
 
     faults.fail_next(FaultPoint::BeforeCommit);
@@ -389,6 +426,15 @@ fn dropping_uninstalled_custody_installs_and_retains_its_exact_slot_and_charge()
     let domain = store
         .register_domain::<AggregateReservationDomain>()
         .unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AggregateReservationDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut custody = Vec::new();
 
     for key in 0..4 {
@@ -418,7 +464,7 @@ fn dropping_uninstalled_custody_installs_and_retains_its_exact_slot_and_charge()
     drop(store);
 
     assert!(matches!(
-        HomeStore::open(HomeOpenOptions::new(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         )),
@@ -434,6 +480,15 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
     let domain = store
         .register_domain::<AggregateReservationDomain>()
         .unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AggregateReservationDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let custody = match store.execute_current(domain.current_command(AggregateReservationPut(0))) {
@@ -448,7 +503,7 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
         .into_open_store()
         .expect("pending-custody close error retains the open store");
     assert!(
-        HomeStore::open(HomeOpenOptions::new(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
@@ -467,7 +522,7 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
     drop(store);
 
     assert!(matches!(
-        HomeStore::open(HomeOpenOptions::new(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         )),
@@ -479,10 +534,15 @@ fn orderly_close_retains_reserved_and_verifying_custody_with_the_open_home() {
 fn dropping_a_store_without_reconciliation_scopes_releases_home_ownership() {
     let directory = tempdir().unwrap();
     let store = open(directory.path(), FaultController::new());
+    let store = store
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     drop(store);
 
-    HomeStore::open(HomeOpenOptions::new(
+    HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
@@ -497,6 +557,15 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
 
     let fault = fjall::test_faults::fail_next_journal_write();
@@ -545,6 +614,15 @@ fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
 
     let fault = fjall::test_faults::fail_batch_publication_after(0);
@@ -603,6 +681,17 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     let mut store = open(directory.path(), faults);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation_before = store.health().generation().unwrap();
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
@@ -648,6 +737,15 @@ fn controlled_commit_boundary_panics_fail_closed_and_recover_old_or_new() {
         let faults = FaultController::new();
         let mut store = open(directory.path(), faults.clone());
         let alpha = store.register_domain::<AlphaDomain>().unwrap();
+        let store = store
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<AlphaDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let original_generation = store.health().generation().unwrap();
 
         faults.panic_next(point);
@@ -681,6 +779,15 @@ fn exact_io_error_kinds_surface_at_the_commit_boundary() {
         let faults = FaultController::new();
         let mut store = open(directory.path(), faults.clone());
         let alpha = store.register_domain::<AlphaDomain>().unwrap();
+        let store = store
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<AlphaDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let generation = store.health().generation().unwrap();
 
         faults.fail_next_with_kind(FaultPoint::BeforeCommit, kind);
@@ -706,6 +813,15 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
@@ -745,6 +861,17 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(beta.contribution(
@@ -798,6 +925,15 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
@@ -841,6 +977,15 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
     let faults = FaultController::new();
     let mut store = open(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let original_generation = store.health().generation().unwrap();
     let mut poison_probe = Some(put_command(&store, &alpha, 99, b"poison probe"));
 

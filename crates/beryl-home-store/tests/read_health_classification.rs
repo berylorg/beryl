@@ -6,8 +6,8 @@ use std::{sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackSource, DomainRegistrationError,
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
-    ReadError,
+    HomeCommand, HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, PointReadLimit, ReadError,
     test_faults::{FaultController, FaultPoint, PersistedCorruptionError},
 };
 use tempfile::tempdir;
@@ -22,8 +22,8 @@ fn encoded_value(payload: &[u8]) -> Vec<u8> {
     encoded
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -59,6 +59,15 @@ fn point_read_fails_closed_on_persisted_oversized_value_before_caller_budget() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let oversized = encoded_value(&vec![7; 1_025]);
     assert_eq!(oversized.len(), MAX_STORED_VALUE_BYTES + 1);
 
@@ -91,6 +100,15 @@ fn cursor_read_fails_closed_on_persisted_oversized_key() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let oversized_key = [0_u8; 9];
 
     store
@@ -122,6 +140,15 @@ fn cursor_read_fails_closed_on_persisted_oversized_value() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let oversized = encoded_value(&vec![9; 1_025]);
 
     store
@@ -153,6 +180,15 @@ fn persisted_corruption_seam_rejects_valid_or_empty_records() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         store.inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -186,6 +222,15 @@ fn persisted_corruption_seam_completes_a_durable_record_barrier() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(
             &domain,
@@ -216,6 +261,15 @@ fn admitted_coherent_point_read_publishes_across_unrelated_maintenance_terminal(
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &domain, 1, b"coherent".to_vec());
 
     let blocked = faults.block_next(FaultPoint::BeforeReadConfirmation);
@@ -244,6 +298,15 @@ fn admitted_success_rejects_after_concurrent_structural_read_failure() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     put(&store, &domain, 1, b"coherent".to_vec());
     store
         .inject_persisted_corrupt_record::<AlphaDomain, BytesRecord<AlphaDomain>>(

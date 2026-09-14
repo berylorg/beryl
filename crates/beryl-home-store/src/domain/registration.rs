@@ -12,34 +12,14 @@ use crate::{
 };
 
 impl HomeStore {
-    /// Registers or routinely reacquires one typed logical domain without an
-    /// exhaustive scan of persisted application records.
-    ///
-    /// A second registration of the same stable name in one generation is an
-    /// error. On reopen, persistent schema and family declarations must match
-    /// exactly and every required physical keyspace must already exist.
-    pub fn register_domain<D: StorageDomain>(
-        &mut self,
-    ) -> Result<DomainHandle<D>, DomainRegistrationError> {
-        self.register_domain_inner::<D>(false)
-    }
-
-    /// Registers or reacquires one typed logical domain at an explicit schema-
-    /// validation boundary, exhaustively validating persisted records and sidecars.
-    pub fn register_domain_with_schema_validation<D: StorageDomain>(
-        &mut self,
-    ) -> Result<DomainHandle<D>, DomainRegistrationError> {
-        self.register_domain_inner::<D>(true)
-    }
-
-    fn register_domain_inner<D: StorageDomain>(
+    pub(crate) fn register_initial_domain<D: StorageDomain>(
         &mut self,
         validate_schema: bool,
     ) -> Result<DomainHandle<D>, DomainRegistrationError> {
         let _mutation = self.mutation_boundary.begin();
         let definition = DomainBlueprint::for_domain::<D>()?;
         let sidecars = crate::SidecarVerifier::new(self);
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_opening()?;
         let mut registrations = match self.registrations.lock() {
             Ok(registrations) => registrations,
             Err(_) => {
@@ -133,6 +113,13 @@ impl HomeStore {
     /// Reacquires one typed domain handle for the current healthy generation.
     pub fn domain_handle<D: StorageDomain>(&self) -> Result<DomainHandle<D>, DomainHandleError> {
         let admission = self.health.admit()?;
+        self.domain_handle_admitted(admission)
+    }
+
+    pub(crate) fn domain_handle_admitted<D: StorageDomain>(
+        &self,
+        admission: crate::health::HealthAdmission<'_>,
+    ) -> Result<DomainHandle<D>, DomainHandleError> {
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

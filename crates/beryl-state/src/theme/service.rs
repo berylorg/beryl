@@ -168,6 +168,12 @@ impl ThemeService {
         Self::from_parts(store.home_id(), generation)
     }
 
+    pub(crate) fn acquire_initial_candidate(
+        candidate: &beryl_home_store::HomeOpenCandidate,
+    ) -> Result<Self, ThemeServiceError> {
+        Self::from_parts(candidate.home_id(), candidate.generation())
+    }
+
     /// Constructs the fresh candidate service before the candidate stack is published.
     ///
     /// The caller supplies the already-proven durable home id retained by the same-home recovery

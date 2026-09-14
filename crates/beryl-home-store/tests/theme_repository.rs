@@ -1,9 +1,9 @@
 use std::{fs, io::Cursor, num::NonZeroUsize};
 
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, StableThemeFileId, ThemeFileIdentity,
-    ThemeFileSelector, ThemeMutationOutcome, ThemeOperationLimits, ThemeReconciliationOutcome,
-    ThemeRepositoryError,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    StableThemeFileId, ThemeFileIdentity, ThemeFileSelector, ThemeMutationOutcome,
+    ThemeOperationLimits, ThemeReconciliationOutcome, ThemeRepositoryError,
     test_faults::{FaultController, FaultPoint},
 };
 use sha2::{Digest, Sha256};
@@ -23,8 +23,8 @@ fn identity(bytes: &[u8]) -> ThemeFileIdentity {
     ThemeFileIdentity::new(bytes.len() as u64, Sha256::digest(bytes).into())
 }
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -47,7 +47,11 @@ fn empty_snapshot_install_and_ranges_use_only_the_physical_theme_layout() {
     let directory = tempfile::tempdir().unwrap();
     let root_theme = directory.path().join("theme.toml");
     fs::write(&root_theme, b"outside-boundary").unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let empty = store.theme_repository_snapshot(limits()).unwrap();
     assert_eq!(empty.manifest_identity(), None);
 
@@ -114,7 +118,11 @@ fn empty_snapshot_install_and_ranges_use_only_the_physical_theme_layout() {
     ));
 
     let other = tempfile::tempdir().unwrap();
-    let foreign = open(other.path(), FaultController::new());
+    let foreign = open(other.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         foreign.read_theme_file_range(
             committed.snapshot(),
@@ -131,7 +139,11 @@ fn empty_snapshot_install_and_ranges_use_only_the_physical_theme_layout() {
 #[test]
 fn staged_sources_reject_short_extra_digest_and_limit_mismatches() {
     let directory = tempfile::tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let snapshot = store.theme_repository_snapshot(limits()).unwrap();
     let id = StableThemeFileId::new("source-check").unwrap();
     let expected = identity(b"abcd");
@@ -173,7 +185,11 @@ fn staged_sources_reject_short_extra_digest_and_limit_mismatches() {
 #[test]
 fn document_only_and_manifest_only_replacements_keep_the_other_file_unchanged() {
     let directory = tempfile::tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let id = StableThemeFileId::new("retained").unwrap();
     let first_document = b"first";
     let first_manifest = b"listed";
@@ -239,7 +255,11 @@ fn document_only_and_manifest_only_replacements_keep_the_other_file_unchanged() 
 fn indeterminate_document_reconciles_after_a_fresh_reopen() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let snapshot = store.theme_repository_snapshot(limits()).unwrap();
     let id = StableThemeFileId::new("reconcile-me").unwrap();
     faults.fail_next(FaultPoint::AfterThemeDocumentReplace);
@@ -261,7 +281,11 @@ fn indeterminate_document_reconciles_after_a_fresh_reopen() {
     let home_id = store.home_id();
     store.close().unwrap();
 
-    let reopened = open(directory.path(), FaultController::new());
+    let reopened = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_id(), home_id);
     let reconciled = reopened
         .reconcile_theme_mutation(&evidence, limits())
@@ -278,7 +302,11 @@ fn indeterminate_document_reconciles_after_a_fresh_reopen() {
 fn manifest_last_fault_leaves_the_new_document_inert() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let snapshot = store.theme_repository_snapshot(limits()).unwrap();
     faults.fail_next(FaultPoint::BeforeThemeManifestReplace);
     let id = StableThemeFileId::new("inert").unwrap();
@@ -314,7 +342,11 @@ fn manifest_last_fault_leaves_the_new_document_inert() {
 fn delete_commits_manifest_first_and_cleanup_failure_remains_committed() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let id = StableThemeFileId::new("delete-me").unwrap();
     let document = b"retained only on cleanup failure";
     let listed = b"listed";
@@ -375,7 +407,11 @@ fn deterministic_document_fault_cuts_classify_exactly() {
     for point in before_points {
         let directory = tempfile::tempdir().unwrap();
         let faults = FaultController::new();
-        let store = open(directory.path(), faults.clone());
+        let store = open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         let snapshot = store.theme_repository_snapshot(limits()).unwrap();
         let id = StableThemeFileId::new("fault-cut").unwrap();
         let bytes = b"new";
@@ -402,7 +438,11 @@ fn deterministic_document_fault_cuts_classify_exactly() {
     ] {
         let directory = tempfile::tempdir().unwrap();
         let faults = FaultController::new();
-        let store = open(directory.path(), faults.clone());
+        let store = open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         let snapshot = store.theme_repository_snapshot(limits()).unwrap();
         let id = StableThemeFileId::new("fault-cut").unwrap();
         let bytes = b"new";
@@ -429,7 +469,11 @@ fn manifest_indeterminate_reconciles_exact_new_or_collision() {
     for collide in [false, true] {
         let directory = tempfile::tempdir().unwrap();
         let faults = FaultController::new();
-        let store = open(directory.path(), faults.clone());
+        let store = open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         let snapshot = store.theme_repository_snapshot(limits()).unwrap();
         let manifest = b"intended";
         faults.fail_next(FaultPoint::AfterThemeManifestReplace);
@@ -449,7 +493,11 @@ fn manifest_indeterminate_reconciles_exact_new_or_collision() {
         if collide {
             fs::write(directory.path().join("themes/manifest.toml"), b"external").unwrap();
         }
-        let reopened = open(directory.path(), FaultController::new());
+        let reopened = open(directory.path(), FaultController::new())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         let resolution = reopened
             .reconcile_theme_mutation(&evidence, limits())
             .unwrap();

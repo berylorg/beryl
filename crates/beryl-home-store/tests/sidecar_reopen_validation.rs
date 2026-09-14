@@ -5,10 +5,11 @@ use std::{error::Error, fmt, io, num::NonZeroU64};
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
     DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HomeCommand,
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec, RecordFamily, RecordVersion,
-    SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError, SidecarNamespace,
-    SidecarVerifier, StorageDomain, WholeHomeScrubTrigger, test_faults::FaultController,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
+    RecordCodec, RecordFamily, RecordVersion, SidecarAddress, SidecarByteLimit, SidecarDigest,
+    SidecarError, SidecarNamespace, SidecarVerifier, StorageDomain, WholeHomeScrubTrigger,
+    test_faults::FaultController,
 };
 use tempfile::tempdir;
 
@@ -187,8 +188,8 @@ fn sidecar_limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
 }
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -214,8 +215,17 @@ fn put_reference(
 fn reopen_validator_accepts_a_durable_referenced_sidecar() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<ReferenceDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<ReferenceDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ReferenceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -240,6 +250,15 @@ fn reopen_validator_accepts_a_durable_referenced_sidecar() {
     reopened
         .register_domain_with_schema_validation::<ReferenceDomain>()
         .unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ReferenceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.health().state(), HomeHealthState::Healthy);
 }
 
@@ -247,8 +266,17 @@ fn reopen_validator_accepts_a_durable_referenced_sidecar() {
 fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<ReferenceDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<ReferenceDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ReferenceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let missing = SidecarAddress::new(
         SidecarNamespace::new("images").unwrap(),
         SidecarDigest::from_bytes([9; 32]),
@@ -291,8 +319,17 @@ fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
 fn existing_domain_registration_runs_its_sidecar_reopen_validator() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let domain = store.register_domain::<ReferenceDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let domain = candidate.register_domain::<ReferenceDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ReferenceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let missing = SidecarAddress::new(
         SidecarNamespace::new("images").unwrap(),
         SidecarDigest::from_bytes([7; 32]),

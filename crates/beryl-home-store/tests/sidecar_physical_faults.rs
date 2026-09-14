@@ -3,8 +3,9 @@
 use std::{error::Error, fs, io, num::NonZeroU64, path::Path};
 
 use beryl_home_store::{
-    HomeDurabilityTier, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, SidecarError, SidecarNamespace, SidecarStage,
+    HomeDomainRequirements, HomeDurabilityTier, HomeHealthState, HomeOpenCandidate,
+    HomeOpenOptions, HomeSchemaVersion, SidecarByteLimit, SidecarError, SidecarNamespace,
+    SidecarStage,
     test_faults::{FaultController, FaultPoint},
 };
 use sha2::{Digest, Sha256};
@@ -14,8 +15,8 @@ fn limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
 }
 
-fn open(path: &Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -26,8 +27,8 @@ fn open_with_tier(
     path: &Path,
     faults: FaultController,
     durability_tier: HomeDurabilityTier,
-) -> HomeStore {
-    HomeStore::open_with_faults(
+) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)
             .with_durability_tier_for_tests(durability_tier),
         faults,
@@ -51,7 +52,11 @@ fn directory_sync_tier_treatment_distinguishes_physical_unsupported_and_faults()
         directory.path(),
         FaultController::new(),
         HomeDurabilityTier::BestEffort,
-    );
+    )
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     store.fail_next_sidecar_directory_sync_for_tests(io::ErrorKind::Unsupported);
     assert!(
         store
@@ -65,7 +70,11 @@ fn directory_sync_tier_treatment_distinguishes_physical_unsupported_and_faults()
         directory.path(),
         FaultController::new(),
         HomeDurabilityTier::BestEffort,
-    );
+    )
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     store.fail_next_sidecar_directory_sync_for_tests(io::ErrorKind::PermissionDenied);
     let error = store
         .admit_sidecar(SidecarNamespace::new("images").unwrap(), bytes, limit())
@@ -78,7 +87,11 @@ fn directory_sync_tier_treatment_distinguishes_physical_unsupported_and_faults()
         directory.path(),
         faults.clone(),
         HomeDurabilityTier::BestEffort,
-    );
+    )
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     faults.fail_next_with_kind(
         FaultPoint::BeforeSidecarRootDirectorySync,
         io::ErrorKind::Unsupported,
@@ -93,7 +106,11 @@ fn directory_sync_tier_treatment_distinguishes_physical_unsupported_and_faults()
         directory.path(),
         FaultController::new(),
         HomeDurabilityTier::Full,
-    );
+    )
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     store.fail_next_sidecar_directory_sync_for_tests(io::ErrorKind::Unsupported);
     let error = store
         .admit_sidecar(SidecarNamespace::new("images").unwrap(), bytes, limit())
@@ -114,7 +131,11 @@ fn assert_storage_error_kind(error: SidecarError, expected: io::ErrorKind) {
 #[test]
 fn truncating_a_final_sidecar_fails_structural_verification() {
     let directory = tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -143,7 +164,11 @@ fn truncating_a_final_sidecar_fails_structural_verification() {
 fn fault_targets_the_final_post_rename_containing_directory_sync() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bytes = b"final directory barrier";
     let digest: [u8; 32] = Sha256::digest(bytes).into();
     let digest_hex = hex::encode(digest);
@@ -180,7 +205,11 @@ fn fault_targets_the_final_post_rename_containing_directory_sync() {
 fn final_sidecar_verification_fault_surfaces_before_reading_the_final_file() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), faults.clone());
+    let store = open(directory.path(), faults.clone())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),

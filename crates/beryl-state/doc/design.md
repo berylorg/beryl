@@ -50,6 +50,9 @@ This entry point governs these bounded normative supplements:
 - The package supplies the complete typed declaration of its required domains. Initial registration
   uses candidate-only authority, and candidate theme-service construction consumes exact home and
   generation metadata without requiring a prematurely healthy store.
+- `BerylState::required_domains` returns that complete declaration. `BerylState::register` and
+  `register_with_schema_validation` consume a mutable `HomeOpenCandidate` reference and preserve
+  their routine versus exhaustive validation distinction.
 
 ## Outcomes, Reconciliation, And Validation
 

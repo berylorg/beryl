@@ -2,9 +2,10 @@ use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainHandleError, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
-    PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeDomainRequirements,
+    HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, KeyspaceSchemaVersion,
+    MutationBuildError, MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily,
+    RecordVersion, StorageDomain,
 };
 use tempfile::tempdir;
 
@@ -142,25 +143,43 @@ impl DomainMutation<OwnerDomain> for AliasPut {
 #[test]
 fn stable_names_cannot_alias_live_domain_or_family_rust_owners() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let owner = store.register_domain::<OwnerDomain>().unwrap();
+    candidate.register_domain::<OwnerDomain>().unwrap();
 
     assert!(matches!(
-        store.register_domain::<ImpostorDomain>(),
+        candidate.register_domain::<ImpostorDomain>(),
         Err(DomainRegistrationError::OwnerTypeMismatch {
             domain: "typed_owner"
         })
     ));
+    candidate.close().unwrap();
+
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    candidate.register_domain::<OwnerDomain>().unwrap();
     assert!(matches!(
-        store.domain_handle::<ImpostorDomain>(),
+        candidate.domain_handle::<ImpostorDomain>(),
         Err(DomainHandleError::OwnerTypeMismatch {
             domain: "typed_owner"
         })
     ));
+    let owner = candidate.domain_handle::<OwnerDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<OwnerDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         store.read_point::<OwnerDomain, AliasCodec>(&owner, &1, PointReadLimit::new(5).unwrap(),),
         Err(ReadError::CodecTypeMismatch {

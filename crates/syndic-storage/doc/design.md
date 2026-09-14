@@ -65,6 +65,9 @@ The package exposes grouped typed operations rather than raw record mechanics:
 - The complete typed declaration of the Syndic domain, candidate-only initial registration and
   fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store
   candidate access while preserving the same compact sources, typed mutations and bounded outcomes.
+- `SyndicStorage::required_domains` returns the package declaration. `register` and
+  `register_with_schema_validation` take a mutable `HomeOpenCandidate` reference and reconstruct
+  cleanup attachment custody within that same candidate generation.
 - Thread, draft, turn, branch-context, usage, title-source, lineage, history-summary, and revision
   reads.
 - Editor-candidate open, publish, dispose, exact-root read, edit-history append, undo/redo adoption,

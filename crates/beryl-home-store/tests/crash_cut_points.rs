@@ -5,7 +5,8 @@ mod support;
 use std::{env, path::PathBuf, process::Command};
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, PointReadLimit,
+    HomeCommand, HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    PointReadLimit,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -15,8 +16,8 @@ use support::{AlphaDomain, BytesRecord, PutBytes};
 const HOME_ENV: &str = "BERYL_CRASH_HOME";
 const POINT_ENV: &str = "BERYL_CRASH_POINT";
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -36,8 +37,17 @@ fn crash_cut_helper() {
     };
     let faults = FaultController::new();
     faults.abort_next(point);
-    let mut store = open(&home, faults);
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(&home, faults);
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -65,8 +75,17 @@ enum ExpectedState {
 
 fn assert_crash_cut(point: &str, expected: ExpectedState) {
     let directory = tempdir().unwrap();
-    let mut initial = open(directory.path(), FaultController::new());
-    initial.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), FaultController::new());
+    candidate.register_domain::<AlphaDomain>().unwrap();
+    let initial = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     initial.close().unwrap();
 
     let status = Command::new(env::current_exe().unwrap())
@@ -79,6 +98,15 @@ fn assert_crash_cut(point: &str, expected: ExpectedState) {
 
     let mut reopened = open(directory.path(), FaultController::new());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let home_revision = reopened.home_revision().unwrap().get();
     let domain_revision = reopened.domain_revision(&alpha).unwrap().get();
     let value = reopened

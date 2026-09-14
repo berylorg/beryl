@@ -37,10 +37,6 @@
 //! The registry survives same-home store-generation recovery; orderly close
 //! stops reservations and returns a [`HomeCloseError`] retaining the open store while reserved or
 //! installed custody remains. Success is never reported before `SyncAll`.
-//! Persisted-domain [`HomeStore::register_domain`] is routine declaration/family/type
-//! reacquisition and never scans application records. Call
-//! [`HomeStore::register_domain_with_schema_validation`] only at an explicit schema-validation
-//! boundary. [`HomeStore::scrub_whole_home`] is the separate per-home exhaustive path; concurrent
 //! requests join one worker and corruption evidence coalesces at most one rerun.
 //! Failed-store [`HomeStore::recover_same_home`] consumes the failed service, drops its Fjall
 //! generation and writer, and returns an unpublished [`HomeRecoveryCandidate`] built from a fresh
@@ -76,171 +72,6 @@
 //! bounded exact-codec-rejected physical-envelope fixture; production builds
 //! expose no corruption writer or raw storage handle.
 //!
-//! ```no_run
-//! use std::convert::Infallible;
-//! use beryl_home_store::{
-//!     CommandOutcome, DomainMutation, DomainReader, DomainSchemaVersion, DomainValidator,
-//!     HomeCommand, HomeOpenOptions,
-//!     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, PointReadLimit, RecordCodec,
-//!     MutationBuilder, RecordFamily, RecordVersion, ReconciliationReservation, StorageDomain,
-//!     ReconciliationResolution,
-//! };
-//!
-//! struct ExampleDomain;
-//! struct ExampleCodec;
-//! impl RecordCodec<ExampleDomain> for ExampleCodec {
-//!     type Key = u8;
-//!     type Value = u8;
-//!     type Error = Infallible;
-//!     const FAMILY: &'static str = "records";
-//!     const VERSION: RecordVersion = RecordVersion::new(1);
-//!     const MAX_KEY_BYTES: usize = 1;
-//!     const MAX_VALUE_BYTES: usize = 1;
-//!
-//!     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
-//!         Ok(vec![*key])
-//!     }
-//!
-//!     fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
-//!         Ok(encoded[0])
-//!     }
-//!
-//!     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
-//!         Ok(vec![*value])
-//!     }
-//!
-//!     fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
-//!         Ok(encoded[0])
-//!     }
-//! }
-//!
-//! impl StorageDomain for ExampleDomain {
-//!     const NAME: &'static str = "example";
-//!     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-//!     const FAMILIES: &'static [RecordFamily<Self>] = &[
-//!         RecordFamily::new::<ExampleCodec>(KeyspaceSchemaVersion::new(1)),
-//!     ];
-//!     type ValidationError = Infallible;
-//!
-//!     fn validate(
-//!         _reader: &DomainReader<'_, Self>,
-//!     ) -> Result<(), Self::ValidationError> {
-//!         Ok(())
-//!     }
-//! }
-//!
-//! struct ExampleGuard;
-//! impl DomainValidator<ExampleDomain> for ExampleGuard {
-//!     type Error = Infallible;
-//!
-//!     fn validate(
-//!         &self,
-//!         _reader: &DomainReader<'_, ExampleDomain>,
-//!     ) -> Result<(), Self::Error> {
-//!         Ok(())
-//!     }
-//! }
-//!
-//! struct ExampleMutation;
-//! impl DomainMutation<ExampleDomain> for ExampleMutation {
-//!     type Error = Infallible;
-//!
-//!     fn validate(
-//!         &self,
-//!         _reader: &DomainReader<'_, ExampleDomain>,
-//!     ) -> Result<(), Self::Error> {
-//!         Ok(())
-//!     }
-//!
-//!     fn reserve_reconciliation(
-//!         &self,
-//!         reservation: &mut ReconciliationReservation<'_, ExampleDomain>,
-//!     ) -> Result<(), Self::Error> {
-//!         reservation.reserve_records::<ExampleCodec>(1).unwrap();
-//!         Ok(())
-//!     }
-//!
-//!     fn contribute(
-//!         &self,
-//!         _reader: &DomainReader<'_, ExampleDomain>,
-//!         mutations: &mut MutationBuilder<'_, ExampleDomain>,
-//!     ) -> Result<(), Self::Error> {
-//!         mutations.put::<ExampleCodec>(&1, &1).unwrap();
-//!         Ok(())
-//!     }
-//! }
-//!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let directory = tempfile::tempdir()?;
-//! let mut store = HomeStore::open(HomeOpenOptions::new(
-//!     directory.path(),
-//!     HomeSchemaVersion::CURRENT,
-//! ))?;
-//! let _durability_tier = store.durability_tier();
-//! let domain = store.register_domain::<ExampleDomain>()?;
-//! assert_eq!(store.domain_revision(domain)?.get(), 1);
-//! assert!(store
-//!     .read_point::<ExampleDomain, ExampleCodec>(
-//!         domain,
-//!         &1,
-//!         PointReadLimit::new(6)?,
-//!     )?
-//!     .is_none());
-//! let mut command = HomeCommand::new(store.home_revision()?);
-//! command.add(domain.contribution(store.domain_revision(domain)?, ExampleMutation))?;
-//! let outcome = store.execute(command);
-//! match outcome {
-//!     CommandOutcome::NotCommitted { evidence } => eprintln!("not committed: {evidence}"),
-//!     CommandOutcome::Committed { receipt, later_failure } => {
-//!         assert!(later_failure.is_none());
-//!         assert_eq!(receipt.home_revision().get(), 2);
-//!     }
-//!     CommandOutcome::Indeterminate { failure, reconciliation } => {
-//!         eprintln!("indeterminate and retained for reconciliation: {failure}; {reconciliation:?}");
-//!         let handle = reconciliation.install_and_handle();
-//!         match store.reconcile(&handle)? {
-//!             ReconciliationResolution::ExactOld => eprintln!("the command did not commit"),
-//!             ReconciliationResolution::ExactNew { receipt } => {
-//!                 assert_eq!(receipt.home_revision().get(), 2);
-//!             }
-//!             ReconciliationResolution::Collision => {
-//!                 eprintln!("the exact operation scope remains closed");
-//!             }
-//!         }
-//!     }
-//! }
-//! store.close()?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ```
-//! use beryl_home_store::CheckedBatchFootprint;
-//!
-//! let record = CheckedBatchFootprint::new(1, 16, 68);
-//! assert_eq!(84, record.encoded_key_value_bytes()?);
-//! # Ok::<(), beryl_home_store::DurableStartFootprintError>(())
-//! ```
-//!
-//! ```no_run
-//! use std::num::NonZeroUsize;
-//! use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore, ThemeOperationLimits};
-//!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let directory = tempfile::tempdir()?;
-//! let store = HomeStore::open(HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT))?;
-//! let limits = ThemeOperationLimits::new(
-//!     1024 * 1024,
-//!     NonZeroUsize::new(8192).unwrap(),
-//!     NonZeroUsize::new(2).unwrap(),
-//!     NonZeroUsize::new(4).unwrap(),
-//!     NonZeroUsize::new(512).unwrap(),
-//! )?;
-//! let snapshot = store.theme_repository_snapshot(limits)?;
-//! assert!(snapshot.manifest_identity().is_none());
-//! # Ok(())
-//! # }
-//! ```
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod codec;
@@ -253,6 +84,7 @@ mod footprint;
 mod free_space;
 mod header;
 mod health;
+mod initial_open;
 mod layout;
 mod metadata;
 mod mutation_observation;
@@ -301,6 +133,10 @@ pub use free_space::FreeSpaceOutcome;
 pub use header::HomeSchemaVersion;
 pub use health::{
     HealthGateError, HomeGeneration, HomeHealthSnapshot, HomeHealthState, RecoveryRetrySchedule,
+};
+pub use initial_open::{
+    HomeCandidateError, HomeCandidateFailure, HomeDomainRequirements, HomeDomainRequirementsError,
+    HomeOpenCandidate, HomeOpenPublication,
 };
 pub use mutation_observation::{
     HomeMutationObservation, HomeMutationObservationError, HomeMutationObserver,
@@ -354,6 +190,7 @@ pub mod test_faults {
         JournalWriteFault, PersistedCorruptionError, PersistedCorruptionStage,
         fail_next_journal_write,
     };
+    pub use crate::initial_open::{with_initial_candidate_store, with_initial_publication_store};
     pub use crate::metadata::{decode_test_domain_metadata, encode_test_domain_metadata};
     pub use crate::proof::ProofCommandIdentityTestHarness;
     pub use crate::read::{reset_test_point_acquisition_count, test_point_acquisition_count};

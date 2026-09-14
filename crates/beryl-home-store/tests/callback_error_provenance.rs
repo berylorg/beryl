@@ -193,8 +193,12 @@ fn storage_read() -> ReadError {
     }
 }
 
-fn open(path: &std::path::Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &std::path::Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn execute(
@@ -254,8 +258,17 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
         ),
     ] {
         let directory = tempdir().unwrap();
-        let mut store = open(directory.path());
-        let domain = store.register_domain::<AccessDomain>().unwrap();
+        let mut candidate = open(directory.path());
+        let domain = candidate.register_domain::<AccessDomain>().unwrap();
+        let store = candidate
+            .prepare_publication(
+                beryl_home_store::HomeDomainRequirements::new()
+                    .with_domain::<AccessDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let home_before = store.home_revision().unwrap();
         let domain_before = store.domain_revision(&domain).unwrap();
 
@@ -293,8 +306,17 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
 #[test]
 fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
     let directory = tempdir().unwrap();
-    let mut store = open(directory.path());
-    let domain = store.register_domain::<AccessDomain>().unwrap();
+    let mut candidate = open(directory.path());
+    let domain = candidate.register_domain::<AccessDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<AccessDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     for (validation, contribution) in [
         (Failure::Semantic, Failure::None),
@@ -322,8 +344,17 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
     store.close().unwrap();
 
     let directory = tempdir().unwrap();
-    let mut store = open(directory.path());
-    let domain = store.register_domain::<AccessDomain>().unwrap();
+    let mut candidate = open(directory.path());
+    let domain = candidate.register_domain::<AccessDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            beryl_home_store::HomeDomainRequirements::new()
+                .with_domain::<AccessDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = execute(
         &store,
         &domain,
@@ -349,9 +380,20 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
 fn validation_only_participant_preserves_semantic_and_access_provenance() {
     for failure in [Failure::Storage, Failure::Structural, Failure::Semantic] {
         let directory = tempdir().unwrap();
-        let mut store = open(directory.path());
-        let mutation_domain = store.register_domain::<AlphaDomain>().unwrap();
-        let validator_domain = store.register_domain::<AccessDomain>().unwrap();
+        let mut candidate = open(directory.path());
+        let mutation_domain = candidate.register_domain::<AlphaDomain>().unwrap();
+        let validator_domain = candidate.register_domain::<AccessDomain>().unwrap();
+        let store = candidate
+            .prepare_publication(
+                beryl_home_store::HomeDomainRequirements::new()
+                    .with_domain::<AlphaDomain>()
+                    .unwrap()
+                    .with_domain::<AccessDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let home_before = store.home_revision().unwrap();
         let mutation_before = store.domain_revision(&mutation_domain).unwrap();
         let validator_before = store.domain_revision(&validator_domain).unwrap();
@@ -418,8 +460,17 @@ fn registration_preserves_access_provenance_and_semantic_rejection() {
         (b"registration-reject".as_slice(), false),
     ] {
         let directory = tempdir().unwrap();
-        let mut store = open(directory.path());
-        let domain = store.register_domain::<AccessDomain>().unwrap();
+        let mut candidate = open(directory.path());
+        let domain = candidate.register_domain::<AccessDomain>().unwrap();
+        let store = candidate
+            .prepare_publication(
+                beryl_home_store::HomeDomainRequirements::new()
+                    .with_domain::<AccessDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         committed(execute(
             &store,
             &domain,

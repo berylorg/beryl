@@ -15,10 +15,11 @@ use std::sync::mpsc;
 
 use beryl_home_store::{
     CommandCancellation, DomainHandle, DomainReader, DomainSchemaVersion,
-    ExecutableHomeProofCommand, HomeCommand, HomeProofCommand, HomeProofProtocol, HomeStore,
-    KeyspaceSchemaVersion, MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, PointReadLimit,
-    ProofCommandBuildError, ProofCompositionError, ProofCorrelationBytes, ProofDomain,
-    ProofProtocolIdentity, ProofReceiptError, StorageDomain,
+    ExecutableHomeProofCommand, HomeCommand, HomeDomainRequirements, HomeOpenCandidate,
+    HomeProofCommand, HomeProofProtocol, HomeStore, KeyspaceSchemaVersion,
+    MAX_PROOF_CORRELATION_BYTES, MAX_PROOF_ROLES, PointReadLimit, ProofCommandBuildError,
+    ProofCompositionError, ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity,
+    ProofReceiptError, StorageDomain,
 };
 use tempfile::tempdir;
 
@@ -463,8 +464,8 @@ fn compose<P: HomeProofProtocol>(
 }
 
 #[cfg(feature = "test-faults")]
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -479,6 +480,21 @@ fn source_only_and_multi_domain_agreement_leave_durable_and_reconciliation_state
     let beta = store.register_domain::<BetaDomain>().unwrap();
     let role1 = store.register_domain::<RoleDomain1>().unwrap();
     let role2 = store.register_domain::<RoleDomain2>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap()
+                .with_domain::<RoleDomain1>()
+                .unwrap()
+                .with_domain::<RoleDomain2>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
@@ -531,6 +547,15 @@ fn source_only_and_multi_domain_agreement_leave_durable_and_reconciliation_state
     store.close().unwrap();
     let mut reopened = open_home(directory.path());
     reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         reopened.consume_proof_receipt(stale_consumer, stale_receipt),
         Err(ProofReceiptError::StaleOrForeign)
@@ -547,6 +572,17 @@ fn source_consumer_rejects_same_fence_cross_page_receipts_and_consumes_the_exact
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let alpha_revision = store.domain_revision(&alpha).unwrap();
     let beta_revision = store.domain_revision(&beta).unwrap();
     let home = store.home_revision().unwrap();
@@ -677,6 +713,17 @@ fn disagreement_callback_failure_and_stale_fences_are_determinate_and_nonmutatin
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
@@ -737,6 +784,15 @@ fn nested_independent_proofs_complete_without_writer_reentry() {
     let directory = tempdir().unwrap();
     let mut opened = open_home(directory.path());
     let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let opened = opened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(opened);
     let (nested, _nested_consumer) = command(&store, &alpha, Role::agreeing([6; 16]))
         .seal()
@@ -764,6 +820,15 @@ fn proof_and_receipt_publish_across_unrelated_maintenance_terminal() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let proof = command(&store, &alpha, Role::agreeing([7; 16]));
 
     store.inject_retained_maintenance_terminal();
@@ -780,6 +845,15 @@ fn proof_completes_while_a_writer_remains_blocked() {
     let faults = FaultController::new();
     let mut opened = open_with_faults(directory.path(), faults.clone());
     let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let opened = opened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let expected_home = opened.home_revision().unwrap();
     let expected_domain = opened.domain_revision(&alpha).unwrap();
     let blocked = faults.block_next(FaultPoint::BeforeCommit);
@@ -837,6 +911,17 @@ fn proof_snapshot_is_one_complete_old_or_new_cross_domain_state() {
     let mut opened = open_with_faults(directory.path(), faults);
     let source = opened.register_domain::<CorrelatedSourceDomain>().unwrap();
     let witness = opened.register_domain::<CorrelatedWitnessDomain>().unwrap();
+    let opened = opened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CorrelatedSourceDomain>()
+                .unwrap()
+                .with_domain::<CorrelatedWitnessDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let old = [1; 16];
     let new = [2; 16];
     committed(put_correlated_pair(&opened, &source, &witness, old));
@@ -898,6 +983,15 @@ fn cancellation_after_waiting_for_health_admission_skips_proof_callbacks() {
     let faults = FaultController::new();
     let mut opened = open_with_faults(directory.path(), faults.clone());
     let alpha = opened.register_domain::<AlphaDomain>().unwrap();
+    let opened = opened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let cancellation = CommandCancellation::new();
     let callbacks = Arc::new(AtomicBool::new(false));
     let command = command(
@@ -990,7 +1084,49 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     let role5 = store.register_domain::<RoleDomain5>().unwrap();
     let role6 = store.register_domain::<RoleDomain6>().unwrap();
     let role7 = store.register_domain::<RoleDomain7>().unwrap();
+    let oversized_domain = store.register_domain::<OversizedDomain>().unwrap();
+    let malformed = store
+        .register_domain::<MalformedExpectationDomain>()
+        .unwrap();
     let foreign_alpha = foreign.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap()
+                .with_domain::<RoleDomain1>()
+                .unwrap()
+                .with_domain::<RoleDomain2>()
+                .unwrap()
+                .with_domain::<RoleDomain3>()
+                .unwrap()
+                .with_domain::<RoleDomain4>()
+                .unwrap()
+                .with_domain::<RoleDomain5>()
+                .unwrap()
+                .with_domain::<RoleDomain6>()
+                .unwrap()
+                .with_domain::<RoleDomain7>()
+                .unwrap()
+                .with_domain::<OversizedDomain>()
+                .unwrap()
+                .with_domain::<MalformedExpectationDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let foreign = foreign
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let revision = store.domain_revision(&alpha).unwrap();
 
     let mut duplicate = command(&store, &alpha, Role::agreeing([3; 16]));
@@ -1040,7 +1176,6 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
     assert!(compose(&store, admitted).is_ok());
     assert!(admitted_cancellation.is_cancelled());
 
-    let oversized_domain = store.register_domain::<OversizedDomain>().unwrap();
     let oversized = HomeProofCommand::<OversizedProtocol>::new(
         generation(&store),
         store.home_revision().unwrap(),
@@ -1057,9 +1192,6 @@ fn duplicate_foreign_cancellation_and_bounds_reject_without_callbacks_or_reconci
         })
     ));
 
-    let malformed = store
-        .register_domain::<MalformedExpectationDomain>()
-        .unwrap();
     let malformed = HomeProofCommand::<AgreementProtocol>::new(
         generation(&store),
         store.home_revision().unwrap(),
@@ -1132,6 +1264,15 @@ fn registration_invariant_fault_rejects_before_proof_callbacks() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let called = Arc::new(AtomicBool::new(false));
     faults.fail_next(FaultPoint::BeforeVerification);
 
@@ -1158,6 +1299,15 @@ fn stale_executable_is_rejected_after_same_home_generation_recovery() {
     let faults = FaultController::new();
     let mut store = open_with_faults(directory.path(), faults.clone());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let (stale, _consumer) = command(&store, &alpha, Role::agreeing([11; 16]))
         .seal()
         .unwrap();

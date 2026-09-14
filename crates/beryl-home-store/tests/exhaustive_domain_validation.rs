@@ -13,8 +13,9 @@ use beryl_home_store::{
 };
 use beryl_home_store::{
     DomainCallbackSource, DomainReader, DomainRegistrationError, DomainSchemaVersion,
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain, WholeHomeScrubTrigger,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    WholeHomeScrubTrigger,
 };
 use fjall::{Database, PersistMode};
 use tempfile::tempdir;
@@ -160,8 +161,8 @@ impl RecordCodec<EmptyKeyDomain> for EmptyKeyRecord {
     }
 }
 
-fn open(path: &std::path::Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &std::path::Path) -> HomeOpenCandidate {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
 }
 
 fn raw_insert(path: &std::path::Path, key: &[u8], value: &[u8]) {
@@ -183,8 +184,17 @@ fn valid_value(value: u8) -> Vec<u8> {
 #[test]
 fn shared_physical_key_guard_rejects_empty_codec_output() {
     let directory = tempdir().unwrap();
-    let mut store = open(directory.path());
-    let domain = store.register_domain::<EmptyKeyDomain>().unwrap();
+    let mut candidate = open(directory.path());
+    let domain = candidate.register_domain::<EmptyKeyDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<EmptyKeyDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         store.read_point::<EmptyKeyDomain, EmptyKeyRecord>(
             &domain,
@@ -214,8 +224,17 @@ fn explicit_schema_registration_scans_every_raw_key_and_value_envelope() {
 
     for (key, value) in cases {
         let directory = tempdir().unwrap();
-        let mut store = open(directory.path());
-        store.register_domain::<StrictDomain>().unwrap();
+        let mut candidate = open(directory.path());
+        candidate.register_domain::<StrictDomain>().unwrap();
+        let store = candidate
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<StrictDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         store.close().unwrap();
         raw_insert(directory.path(), key, value);
 
@@ -296,12 +315,21 @@ impl DomainMutation<StrictDomain> for FailStructurally {
 fn routine_recovery_ignores_raw_corruption_but_explicit_scrub_rejects_it() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
-    let domain = store.register_domain::<StrictDomain>().unwrap();
+    let domain = candidate.register_domain::<StrictDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<StrictDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(store.domain_revision(&domain).unwrap(), FailStructurally))

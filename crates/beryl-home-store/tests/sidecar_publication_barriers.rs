@@ -11,8 +11,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    AdmittedSidecar, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, SidecarError, SidecarNamespace,
+    AdmittedSidecar, HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarError, SidecarNamespace,
     test_faults::{FaultController, FaultPoint},
 };
 use sha2::{Digest, Sha256};
@@ -22,8 +22,8 @@ fn limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
 }
 
-fn open(path: &Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -113,7 +113,13 @@ fn create_junction(link: &Path, target: &Path) {
 fn fresh_publication_and_existing_reuse_visit_all_four_directory_barriers() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), faults.clone()));
+    let store = Arc::new(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    );
 
     let fresh = admit_through_all_barriers(&store, &faults, b"all fresh barriers");
     drop(fresh);
@@ -125,7 +131,13 @@ fn fresh_publication_and_existing_reuse_visit_all_four_directory_barriers() {
 fn retry_after_post_rename_failure_repairs_the_final_barrier_before_token() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), faults.clone()));
+    let store = Arc::new(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    );
     let bytes = b"retry final publication";
     faults.fail_next(FaultPoint::AfterSidecarRename);
 
@@ -158,7 +170,13 @@ fn retry_after_post_rename_failure_repairs_the_final_barrier_before_token() {
 fn exact_concurrent_collision_returns_two_tokens_and_retains_the_losing_temporary() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), faults.clone()));
+    let store = Arc::new(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    );
     let first_cut = faults.block_next(FaultPoint::BeforeSidecarRename);
     let second_cut = faults.block_next(FaultPoint::BeforeSidecarRename);
     let published_cut = faults.block_next(FaultPoint::AfterSidecarRename);
@@ -210,7 +228,11 @@ fn exact_concurrent_collision_returns_two_tokens_and_retains_the_losing_temporar
 #[test]
 fn elevated_exact_content_final_symlink_and_final_directory_are_structurally_rejected() {
     let symlink_fixture = tempdir().unwrap();
-    let symlink_store = open(symlink_fixture.path(), FaultController::new());
+    let symlink_store = open(symlink_fixture.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let symlink_bytes = b"exact bytes behind symlink";
     let (_, _, shard, final_path) = sidecar_paths(symlink_fixture.path(), symlink_bytes);
     fs::create_dir_all(&shard).unwrap();
@@ -241,7 +263,11 @@ fn elevated_exact_content_final_symlink_and_final_directory_are_structurally_rej
     symlink_store.close().unwrap();
 
     let directory_fixture = tempdir().unwrap();
-    let directory_store = open(directory_fixture.path(), FaultController::new());
+    let directory_store = open(directory_fixture.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let directory_bytes = b"directory collision";
     let (_, _, shard, final_path) = sidecar_paths(directory_fixture.path(), directory_bytes);
     fs::create_dir_all(&shard).unwrap();
@@ -266,7 +292,11 @@ fn sidecar_root_namespace_and_shard_junctions_are_rejected_without_touching_targ
         let external = fixture.path().join("external");
         fs::create_dir(&external).unwrap();
         fs::write(external.join("sentinel"), b"unchanged").unwrap();
-        let store = open(&home, FaultController::new());
+        let store = open(&home, FaultController::new())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap();
         let bytes = b"ancestor junction";
         let (root, namespace, shard, _) = sidecar_paths(&home, bytes);
         let link = match level {
@@ -299,7 +329,13 @@ fn sidecar_root_namespace_and_shard_junctions_are_rejected_without_touching_targ
 fn identical_byte_replacement_after_successful_rename_converges_by_content() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = Arc::new(open(directory.path(), faults.clone()));
+    let store = Arc::new(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+    );
     let bytes = b"same bytes different object";
     let (_, _, shard, final_path) = sidecar_paths(directory.path(), bytes);
     let replacement = shard.join("replacement-object");

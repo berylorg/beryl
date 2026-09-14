@@ -7,15 +7,16 @@ use std::{cell::Cell, io};
 use beryl_home_store::{
     CommandError, CommandOutcome, CommitReceipt, CommittedLocalFinalization,
     CommittedLocalFinalizationError, DomainAttachmentAccessError, DomainHandle, HomeCommand,
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
 use support::{AlphaDomain, BetaDomain, PutBytes, committed};
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -52,8 +53,17 @@ fn committed_with_local(outcome: CommandOutcome) -> (CommitReceipt, CommittedLoc
 fn normal_commit_has_no_local_finalization() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults);
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults);
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         store.execute(command(&store, &alpha, 1)),
@@ -69,8 +79,17 @@ fn normal_commit_has_no_local_finalization() {
 fn after_persist_capability_finalizes_the_live_attachment_without_reopening_health() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let attachment = alpha.attachment_capability();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
@@ -100,8 +119,17 @@ fn after_persist_capability_finalizes_the_live_attachment_without_reopening_heal
 fn substituted_receipt_is_rejected_without_invoking_the_callback() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let earlier_receipt = committed(store.execute(command(&store, &alpha, 3)));
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
@@ -125,9 +153,20 @@ fn substituted_receipt_is_rejected_without_invoking_the_callback() {
 fn wrong_domain_is_rejected_without_invoking_the_callback() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let beta = candidate.register_domain::<BetaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     let (receipt, local_finalization) =
@@ -146,15 +185,33 @@ fn wrong_domain_is_rejected_without_invoking_the_callback() {
 fn foreign_store_and_recovered_generation_are_rejected_without_callback() {
     let first_directory = tempdir().unwrap();
     let first_faults = FaultController::new();
-    let mut first = open(first_directory.path(), first_faults.clone());
-    let first_alpha = first.register_domain::<AlphaDomain>().unwrap();
+    let mut first_candidate = open(first_directory.path(), first_faults.clone());
+    let first_alpha = first_candidate.register_domain::<AlphaDomain>().unwrap();
+    let first = first_candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     first_faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     let (first_receipt, first_local) =
         committed_with_local(first.execute(command(&first, &first_alpha, 6)));
 
     let second_directory = tempdir().unwrap();
-    let mut second = open(second_directory.path(), FaultController::new());
-    let second_alpha = second.register_domain::<AlphaDomain>().unwrap();
+    let mut second_candidate = open(second_directory.path(), FaultController::new());
+    let second_alpha = second_candidate.register_domain::<AlphaDomain>().unwrap();
+    let second = second_candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let foreign_invoked = Cell::new(false);
     assert!(matches!(
         second.with_committed_local_finalization(
@@ -171,8 +228,17 @@ fn foreign_store_and_recovered_generation_are_rejected_without_callback() {
 
     let third_directory = tempdir().unwrap();
     let third_faults = FaultController::new();
-    let mut third = open(third_directory.path(), third_faults.clone());
-    let third_alpha = third.register_domain::<AlphaDomain>().unwrap();
+    let mut third_candidate = open(third_directory.path(), third_faults.clone());
+    let third_alpha = third_candidate.register_domain::<AlphaDomain>().unwrap();
+    let third = third_candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     third_faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     let (third_receipt, third_local) =
         committed_with_local(third.execute(command(&third, &third_alpha, 7)));
@@ -197,8 +263,17 @@ fn foreign_store_and_recovered_generation_are_rejected_without_callback() {
 fn finalization_uses_generation_identity_when_writer_identity_has_diverged() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     let _ = committed_with_local(store.execute(command(&store, &alpha, 8)));
@@ -224,9 +299,20 @@ fn finalization_uses_generation_identity_when_writer_identity_has_diverged() {
 fn multi_domain_commit_has_no_local_finalization() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let mut candidate = open(directory.path(), faults.clone());
+    let alpha = candidate.register_domain::<AlphaDomain>().unwrap();
+    let beta = candidate.register_domain::<BetaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = command(&store, &alpha, 8);
     command
         .add(beta.contribution(

@@ -44,6 +44,12 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
 - Initial open returns an owned opening candidate, not a healthy `HomeStore`. Its registration
   methods are the only initial domain-registration authority. Ordinary healthy stores may reacquire
   existing handles but cannot append another initial registration stage.
+- `HomeOpenCandidate::open` owns physical initial opening. Its `prepare_publication` consumes the
+  candidate and the exact `HomeDomainRequirements`, returning `HomeOpenPublication` with no further
+  registration methods. `HomeOpenPublication::publish` consumes that capability and returns the
+  healthy `HomeStore`. A failed preparation or publication returns `HomeCandidateFailure` retaining
+  both typed failure evidence and the candidate for explicit cleanup. Both candidate stages support
+  `close`; ordinary destruction preserves the same attachment retirement and lock-custody rules.
 - Before dependent-service preparation, the composition owner supplies its complete required-domain
   declaration. The candidate checks that its registered live owner types, schemas, families and
   attachments match that declaration exactly, then irreversibly closes registration. Missing,

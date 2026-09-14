@@ -7,8 +7,8 @@ use std::sync::{
 
 use beryl_home_store::{
     CommandBuildError, CommandCancellation, CommandError, DomainHandle, DomainMutation,
-    DomainReader, DomainValidator, HomeCommand, HomeStore, MutationBuilder, PointReadLimit,
-    RevisionConflict,
+    DomainReader, DomainValidator, HomeCommand, HomeDomainRequirements, HomeStore, MutationBuilder,
+    PointReadLimit, RevisionConflict,
 };
 use beryl_model::DomainRevision;
 use tempfile::tempdir;
@@ -176,6 +176,17 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
@@ -214,6 +225,17 @@ fn mixed_validation_and_mutation_commit_only_mutating_revisions_and_reopen() {
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     let beta = reopened.register_domain::<BetaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_revision().unwrap(), receipt.home_revision());
     assert_eq!(
         reopened.domain_revision(&alpha).unwrap(),
@@ -228,6 +250,15 @@ fn validation_only_command_is_rejected_without_running_its_callback() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let beta_before = store.domain_revision(&beta).unwrap();
@@ -256,6 +287,15 @@ fn mutation_and_validation_roles_cannot_duplicate_one_domain_in_either_order() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let revision = store.domain_revision(&alpha).unwrap();
 
     let mut mutation_first = HomeCommand::new(store.home_revision().unwrap());
@@ -293,6 +333,17 @@ fn stale_validator_revision_conflicts_before_any_mutation_callback() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let stale_beta = store.domain_revision(&beta).unwrap();
     commit(&store, &beta, 7, b"current");
     let home_before = store.home_revision().unwrap();
@@ -328,6 +379,17 @@ fn validator_rejection_and_empty_mutation_each_abort_the_complete_command() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(&store, &beta, 7, b"guarded");
     let home_before = store.home_revision().unwrap();
     let alpha_before = store.domain_revision(&alpha).unwrap();
@@ -376,6 +438,17 @@ fn validator_obeys_command_cancellation_and_reentry_boundaries() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(&store, &beta, 7, b"guarded");
 
     let called = Arc::new(AtomicBool::new(false));

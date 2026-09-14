@@ -8,7 +8,7 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
     test_faults::{FaultController, FaultPoint},
 };
 
@@ -16,8 +16,8 @@ use super::*;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-fn open(faults: FaultController, path: &std::path::Path) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(faults: FaultController, path: &std::path::Path) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -30,6 +30,15 @@ fn active_writer_refuses_election_and_settles_to_the_replacement_observer() {
     let faults = FaultController::new();
     let mut store = open(faults.clone(), directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let (first, first_wake) = observe(&store);
     let before = first.observe().unwrap();
@@ -63,6 +72,15 @@ fn election_that_wins_first_excludes_writer_entry_until_its_callback_finishes() 
     let faults = FaultController::new();
     let mut store = open(faults.clone(), directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let (observer, _) = observe(&store);
     let token = observer.observe().unwrap();
@@ -96,6 +114,11 @@ fn same_home_recovery_revokes_old_tokens_before_reopening_the_generation() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let store = open(faults.clone(), directory.path());
+    let store = store
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, _) = observe(&store);
     let token = observer.observe().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
@@ -117,6 +140,11 @@ fn same_home_recovery_revokes_old_tokens_before_reopening_the_generation() {
 fn last_observer_release_linearizes_with_an_inflight_election() {
     let directory = tempdir().unwrap();
     let store = open_home(directory.path());
+    let store = store
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, _) = observe(&store);
     let token = observer.observe().unwrap();
     let election_token = token.clone();
@@ -150,6 +178,15 @@ fn persisted_corruption_injection_invalidates_the_mutation_interval() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, wake) = observe(&store);
     let token = observer.observe().unwrap();
     store
@@ -216,6 +253,15 @@ fn early_health_refusal_drops_command_custody_before_publishing_quiescence() {
     let faults = FaultController::new();
     let mut store = open(faults.clone(), directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, wake) = observe(&store);
     let destroyed = Arc::new(AtomicBool::new(false));
     let dropped_busy = Arc::new(AtomicBool::new(false));

@@ -5,8 +5,8 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CommitReceiptError, HomeCommand, HomeHealthState, HomeStore, ReadError, SidecarByteLimit,
-    SidecarError, SidecarNamespace, SidecarStage,
+    CommitReceiptError, HomeCommand, HomeDomainRequirements, HomeHealthState, HomeStore, ReadError,
+    SidecarByteLimit, SidecarError, SidecarNamespace, SidecarStage,
 };
 use tempfile::tempdir;
 
@@ -29,6 +29,15 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -50,7 +59,11 @@ fn receipt_revision_rejects_an_unobserved_fjall_maintenance_terminal() {
 #[test]
 fn sidecar_admission_rejects_an_unobserved_fjall_maintenance_terminal() {
     let directory = tempdir().unwrap();
-    let store = support::open_home(directory.path());
+    let store = support::open_home(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     store.inject_retained_maintenance_terminal();
 
@@ -71,7 +84,11 @@ fn sidecar_admission_rejects_an_unobserved_fjall_maintenance_terminal() {
 #[test]
 fn sidecar_verification_rejects_an_unobserved_fjall_maintenance_terminal() {
     let directory = tempdir().unwrap();
-    let store = support::open_home(directory.path());
+    let store = support::open_home(directory.path())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let admitted = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),

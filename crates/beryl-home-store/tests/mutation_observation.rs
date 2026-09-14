@@ -7,7 +7,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeMutationObservationError as ObservationError, HomeMutationObserver,
+    HomeCommand, HomeDomainRequirements, HomeMutationObservationError as ObservationError,
+    HomeMutationObserver,
 };
 use tempfile::tempdir;
 
@@ -59,6 +60,15 @@ fn commands_invalidate_old_reads_and_notify_after_election_becomes_available() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, wake) = observe(&store);
     let original = observer.observe().unwrap();
     let revision = store.home_revision().unwrap();
@@ -91,6 +101,15 @@ fn rejected_writer_attempt_invalidates_without_claiming_a_commit() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let stale_revision = store.home_revision().unwrap();
     committed(
         store.execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(1, vec![1]))),
@@ -112,10 +131,12 @@ fn rejected_writer_attempt_invalidates_without_claiming_a_commit() {
 }
 
 #[test]
+#[cfg(feature = "test-faults")]
 fn domain_registration_participates_in_mutation_exclusion() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
-    let (observer, wake) = observe(&store);
+    let (observer, wake) =
+        beryl_home_store::test_faults::with_initial_candidate_store(&store, observe);
     let before = observer.observe().unwrap();
     store.register_domain::<AlphaDomain>().unwrap();
     assert_eq!(before.try_elect(|| ()), Err(ObservationError::Stale));
@@ -126,6 +147,11 @@ fn domain_registration_participates_in_mutation_exclusion() {
 fn replacement_and_last_owner_drop_revoke_tokens_without_retaining_the_home() {
     let directory = tempdir().unwrap();
     let store = open_home(directory.path());
+    let store = store
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (first, _) = observe(&store);
     let first_clone = first.as_ref().clone();
     let first_token = first.observe().unwrap();
@@ -152,6 +178,11 @@ fn replacement_and_last_owner_drop_revoke_tokens_without_retaining_the_home() {
     assert_eq!(third.observe().unwrap_err(), ObservationError::Closed);
     assert_eq!(third_token.try_elect(|| ()), Err(ObservationError::Closed));
     let reopened = open_home(directory.path());
+    let reopened = reopened
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_id(), home_id);
     let (fresh, _) = observe(&reopened);
     assert_eq!(fresh.observe().unwrap().try_elect(|| ()), Ok(()));
@@ -163,6 +194,15 @@ fn poisoned_observation_refuses_election_without_changing_writer_outcomes() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let (observer, wake) = observe(&store);
     let token = observer.observe().unwrap();
     assert!(

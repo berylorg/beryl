@@ -13,10 +13,11 @@ use std::{
 
 use beryl_home_store::{
     CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainReconciliation, DomainSchemaVersion, HomeCommand, HomeHealthState, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder, PointReadLimit,
-    ReadError, ReadStage, ReconciliationReader, ReconciliationReservation,
-    ReconciliationResolution, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainReconciliation, DomainSchemaVersion, HomeCommand, HomeDomainRequirements,
+    HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, KeyspaceSchemaVersion,
+    MutationBuilder, PointReadLimit, ReadError, ReadStage, ReconciliationReader,
+    ReconciliationReservation, ReconciliationResolution, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -318,12 +319,21 @@ fn exact_new_reconstructs_receipt_and_releases_scope_without_validation() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let validation_before = VALIDATION_CALLS.load(Ordering::SeqCst);
 
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -352,12 +362,21 @@ fn current_unsupported_version_retains_reconciliation_error_provenance() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store
@@ -395,12 +414,21 @@ fn exact_old_after_reopen_releases_the_gate_without_fabricating_a_receipt() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let fault = fjall::test_faults::fail_next_journal_write();
     let handle = match store
@@ -433,13 +461,24 @@ fn mixed_and_neither_observations_seal_collision_without_health_failure() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
     let beta = store.register_domain::<Beta>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap()
+                .with_domain::<Beta>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let mut seed = HomeCommand::new(store.home_revision().unwrap());
     seed.add(alpha.contribution(
@@ -514,12 +553,21 @@ fn collision_custody_survives_drop_but_orderly_close_releases_ownership() {
 
     let abandoned_directory = tempdir().unwrap();
     let abandoned_faults = FaultController::new();
-    let mut abandoned = HomeStore::open_with_faults(
+    let mut abandoned = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(abandoned_directory.path(), HomeSchemaVersion::CURRENT),
         abandoned_faults.clone(),
     )
     .unwrap();
     let abandoned_alpha = abandoned.register_domain::<Alpha>().unwrap();
+    let abandoned = abandoned
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     abandoned_faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let abandoned_handle =
         match abandoned.execute_current(
@@ -543,7 +591,7 @@ fn collision_custody_survives_drop_but_orderly_close_releases_ownership() {
     drop(abandoned);
     drop(abandoned_handle);
     assert!(matches!(
-        HomeStore::open(HomeOpenOptions::new(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
             abandoned_directory.path(),
             HomeSchemaVersion::CURRENT,
         )),
@@ -552,12 +600,21 @@ fn collision_custody_survives_drop_but_orderly_close_releases_ownership() {
 
     let orderly_directory = tempdir().unwrap();
     let orderly_faults = FaultController::new();
-    let mut orderly = HomeStore::open_with_faults(
+    let mut orderly = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(orderly_directory.path(), HomeSchemaVersion::CURRENT),
         orderly_faults.clone(),
     )
     .unwrap();
     let orderly_alpha = orderly.register_domain::<Alpha>().unwrap();
+    let orderly = orderly
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     orderly_faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let orderly_handle =
         match orderly.execute_current(
@@ -581,7 +638,7 @@ fn collision_custody_survives_drop_but_orderly_close_releases_ownership() {
     orderly.close().unwrap();
     drop(orderly_handle);
 
-    HomeStore::open(HomeOpenOptions::new(
+    HomeOpenCandidate::open(HomeOpenOptions::new(
         orderly_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
@@ -596,13 +653,24 @@ fn duplicate_trigger_joins_and_four_workers_leave_unrelated_work_available() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
     let beta = store.register_domain::<Beta>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap()
+                .with_domain::<Beta>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut handles = Vec::new();
     for key in 0..5 {
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -665,12 +733,21 @@ fn collision_replaces_the_conservative_descriptor_charge() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let domain = store.register_domain::<CollisionDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CollisionDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut handles = Vec::new();
     for key in 0..4 {
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -721,13 +798,24 @@ fn nonstructural_hook_access_failure_is_scope_local_joined_and_retryable() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
     let beta = store.register_domain::<Beta>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap()
+                .with_domain::<Beta>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store
         .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(12, b"new")))
@@ -774,12 +862,21 @@ fn exact_retrigger_refreshes_only_the_failed_scope() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store
         .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(14, b"new")))
@@ -810,12 +907,21 @@ fn exact_retrigger_keeps_old_handles_joined_to_the_refreshed_flight() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store
         .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(15, b"new")))
@@ -863,12 +969,21 @@ fn exact_retrigger_returns_a_terminal_result_after_slot_reuse() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let first = match store
         .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(16, b"first")))
@@ -906,12 +1021,21 @@ fn structural_hook_access_evidence_fails_health_and_retains_scope() {
     reset_counters();
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let alpha = store.register_domain::<Alpha>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<Alpha>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let handle = match store
         .execute_current(alpha.current_command(Put::<Alpha, AlphaRecord>::new(13, b"new")))

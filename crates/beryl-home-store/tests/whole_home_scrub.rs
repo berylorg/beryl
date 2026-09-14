@@ -11,8 +11,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, RecordFamily, StorageDomain,
-    WholeHomeScrubTrigger,
+    DomainReader, DomainSchemaVersion, HomeDomainRequirements, KeyspaceSchemaVersion, RecordFamily,
+    StorageDomain, WholeHomeScrubTrigger,
 };
 use tempfile::tempdir;
 
@@ -62,6 +62,15 @@ fn requests_join_and_corruption_evidence_coalesces_one_released_rerun() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     store.register_domain::<ScrubDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ScrubDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
 
     let leader_store = Arc::clone(&store);
@@ -119,6 +128,15 @@ fn corruption_request_at_terminal_decision_is_not_lost() {
     let directory = tempdir().unwrap();
     let mut store = support::open_home(directory.path());
     store.register_domain::<ScrubDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ScrubDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let terminal = store.block_next_scrub_terminal_decision();
 

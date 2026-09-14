@@ -22,8 +22,17 @@ fn fixed_successor_flights_join_and_memoized_failures_retrigger_from_retained_cu
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
+    let (_directory, faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -57,8 +66,17 @@ fn fixed_successor_flights_join_and_memoized_failures_retrigger_from_retained_cu
     store.close().unwrap();
 
     reset_hooks();
-    let (_directory, faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
+    let (_directory, faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     committed(store.execute_current(
         source.current_command(Put::<SourceDomain, SourceRecord>::new(SOURCE_KEY, 1)),
     ));
@@ -86,9 +104,20 @@ fn fixed_descriptor_limits_reject_before_writer_and_charge_retained_scopes() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     reset_hooks();
-    let (_directory, _faults, mut store) = open();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let asset = store.register_domain::<AssetDomain>().unwrap();
+    let (_directory, _faults, mut candidate) = open();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let asset = candidate.register_domain::<AssetDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut too_large = HomeCommand::new(store.home_revision().unwrap());
     too_large
         .add(source.contribution(
@@ -112,13 +141,24 @@ fn fixed_descriptor_limits_reject_before_writer_and_charge_retained_scopes() {
     let faults = FaultController::new();
     drop(store);
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open_with_faults(
+    let mut candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
-    let source = store.register_domain::<SourceDomain>().unwrap();
-    let asset = store.register_domain::<AssetDomain>().unwrap();
+    let source = candidate.register_domain::<SourceDomain>().unwrap();
+    let asset = candidate.register_domain::<AssetDomain>().unwrap();
+    let mut store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SourceDomain>()
+                .unwrap()
+                .with_domain::<AssetDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     for _ in 0..4 {
         let mut command = HomeCommand::new(store.home_revision().unwrap());
         command

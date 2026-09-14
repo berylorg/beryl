@@ -66,3 +66,29 @@ registration or recovery is not rolled back or assumed uncommitted, and unresolv
 retains the existing home-lock custody. Existing healthy-only constructors and the absent candidate
 APIs are implementation gaps, not permission to weaken publication. Source and authority review
 establish readiness only; no new runtime behavior is claimed by this documentation acceptance.
+
+## Initial Candidate Boundary
+
+Initial physical opening now returns `HomeOpenCandidate` in `Opening`. Exact package-owned domain
+declarations close registration into `HomeOpenPublication`; publication validates current owner,
+codec, attachment and generation identity and storage health before returning a healthy store.
+Preparation and publication failures retain candidate cleanup ownership. Complete Beryl-state and
+Syndic production registration adapters use this candidate, including theme metadata construction
+and reconstructed Syndic attachment custody.
+
+Eight focused candidate cases cover exact registration, declaration rejection, partial durable
+registration and retry, ordinary prepublication access refusal, storage failure at publication,
+lock retention and attachment retirement. All 249 home-store tests across 42 binaries passed with
+`cargo +stable --config .cargo/local.toml nextest run -p beryl-home-store --features test-faults
+--no-fail-fast`; the six applicable candidate cases also passed without fault injection. Normal
+home-store, Beryl-state and Syndic library compilation, exact-file formatting, diff checks and
+independent semantic review passed.
+
+Aggregate footprint regression assertions were stale after accepted commit `a22b5296` added
+`NonIdleGateSourcesCodec` to direct and queued start footprints. Their corrected expectations add
+one record, 16 encoded key bytes, 28 stored value bytes and the corresponding owned Fjall framing.
+The owner-defined production footprints and admission policy were unchanged.
+
+This accepts the storage candidate and production domain adapters. State, Syndic and application
+fixture qualification, explicit recovery access, prepared application services, restore discovery
+and executable mounting retain their separate acceptance boundaries.

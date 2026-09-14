@@ -54,7 +54,6 @@ pub struct HomeHealthSnapshot {
 }
 
 impl HomeHealthSnapshot {
-    /// Constructs the state used by a caller before [`crate::HomeStore::open`] returns.
     #[must_use]
     pub const fn opening() -> Self {
         Self {
@@ -252,10 +251,10 @@ impl HealthGate {
         Ok(elect())
     }
 
-    pub(crate) fn healthy() -> Self {
+    pub(crate) fn opening() -> Self {
         Self {
             inner: Mutex::new(HealthInner {
-                state: HomeHealthState::Healthy,
+                state: HomeHealthState::Opening,
                 generation: HomeGeneration::INITIAL,
                 active: 0,
                 maintenance: None,
@@ -276,13 +275,24 @@ impl HealthGate {
     }
 
     pub(crate) fn admit(&self) -> Result<HealthAdmission<'_>, HealthGateError> {
+        self.admit_state(HomeHealthState::Healthy)
+    }
+
+    pub(crate) fn admit_opening(&self) -> Result<HealthAdmission<'_>, HealthGateError> {
+        self.admit_state(HomeHealthState::Opening)
+    }
+
+    fn admit_state(
+        &self,
+        expected_state: HomeHealthState,
+    ) -> Result<HealthAdmission<'_>, HealthGateError> {
         let mut inner = self
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let nested = thread_holds_gate(self);
         loop {
-            if inner.state != HomeHealthState::Healthy {
+            if inner.state != expected_state {
                 return Err(gate_error(&inner));
             }
             if nested || inner.active < MAX_CONCURRENT_STORAGE_ADMISSIONS {
@@ -303,6 +313,7 @@ impl HealthGate {
         Ok(HealthAdmission {
             gate: self,
             generation: inner.generation,
+            state: expected_state,
             counted: !nested,
             _not_send: PhantomData,
         })
@@ -314,7 +325,7 @@ impl HealthGate {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         match (inner.state, severity) {
-            (HomeHealthState::Healthy, FailureSeverity::Structural) => {
+            (HomeHealthState::Healthy | HomeHealthState::Opening, FailureSeverity::Structural) => {
                 inner.state = HomeHealthState::Failed;
             }
             _ => {}
@@ -326,6 +337,26 @@ impl HealthGate {
         self: &std::sync::Arc<Self>,
     ) -> Result<HealthMaintenance, HealthMaintenanceError> {
         self.begin(Maintenance::Recovery)
+    }
+
+    pub(crate) fn publish_opening(
+        &self,
+        expected_generation: HomeGeneration,
+    ) -> Result<(), HealthGateError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if inner.state != HomeHealthState::Opening
+            || inner.generation != expected_generation
+            || inner.active != 0
+            || inner.maintenance.is_some()
+        {
+            return Err(gate_error(&inner));
+        }
+        inner.state = HomeHealthState::Healthy;
+        self.drained.notify_all();
+        Ok(())
     }
 
     fn begin(
@@ -394,6 +425,7 @@ fn gate_error(inner: &HealthInner) -> HealthGateError {
 pub(crate) struct HealthAdmission<'a> {
     gate: &'a HealthGate,
     generation: HomeGeneration,
+    state: HomeHealthState,
     counted: bool,
     _not_send: PhantomData<Rc<()>>,
 }
@@ -409,7 +441,7 @@ impl HealthAdmission<'_> {
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if inner.state == HomeHealthState::Healthy && inner.generation == self.generation {
+        if inner.state == self.state && inner.generation == self.generation {
             Ok(())
         } else {
             Err(gate_error(&inner))

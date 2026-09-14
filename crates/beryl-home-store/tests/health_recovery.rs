@@ -7,8 +7,8 @@ mod support;
 use std::{fs, process::Command, thread, time::Duration};
 
 use beryl_home_store::{
-    HomeHealthSnapshot, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion,
-    HomeStore, ReadError,
+    HomeDomainRequirements, HomeHealthSnapshot, HomeHealthState, HomeOpenCandidate,
+    HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore, ReadError,
     test_faults::{FaultController, FaultPoint},
 };
 use fjall::{Database, PersistMode};
@@ -16,8 +16,8 @@ use tempfile::tempdir;
 
 use support::AlphaDomain;
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -35,8 +35,17 @@ fn opening_snapshot_has_no_generation() {
 fn candidate_abort_retains_failed_authority_and_allows_a_fresh_retry() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), faults.clone());
-    let stale = store.register_domain::<AlphaDomain>().unwrap();
+    let mut initial = open(directory.path(), faults.clone());
+    let stale = initial.register_domain::<AlphaDomain>().unwrap();
+    let store = initial
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let home_id = store.home_id();
     let original_generation = store.health().generation().unwrap();
     let original_tier = store.durability_tier();
@@ -69,7 +78,11 @@ fn candidate_abort_retains_failed_authority_and_allows_a_fresh_retry() {
 #[test]
 fn recovery_is_rejected_outside_failed_authority() {
     let directory = tempdir().unwrap();
-    let store = open(directory.path(), FaultController::new());
+    let store = open(directory.path(), FaultController::new())
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let failure = store.recover_same_home().unwrap_err();
     assert_eq!(
         failure.into_store().health().state(),
@@ -91,7 +104,14 @@ fn fail_store(store: HomeStore, faults: &FaultController) -> HomeStore {
 fn recovery_rejects_current_state_file_without_fresh_fallback() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let store = fail_store(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+        &faults,
+    );
     let state = directory.path().join("state");
     let saved_state = directory.path().join("saved-state");
     let block = faults.block_next(FaultPoint::BeforeReopen);
@@ -118,7 +138,14 @@ fn recovery_rejects_current_state_file_without_fresh_fallback() {
 fn recovery_rejects_missing_current_state_without_fresh_fallback() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let store = fail_store(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+        &faults,
+    );
     let state = directory.path().join("state");
     let saved_state = directory.path().join("saved-state");
     let block = faults.block_next(FaultPoint::BeforeReopen);
@@ -144,7 +171,14 @@ fn recovery_rejects_missing_current_state_without_fresh_fallback() {
 fn recovery_rejects_current_state_header_schema_mismatch() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let store = fail_store(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+        &faults,
+    );
     let state = directory.path().join("state");
     let block = faults.block_next(FaultPoint::BeforeReopen);
     let worker = thread::spawn(move || store.recover_same_home());
@@ -176,7 +210,14 @@ fn recovery_rejects_current_state_header_schema_mismatch() {
 fn recovery_rejects_current_state_reparse_point() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = fail_store(open(directory.path(), faults.clone()), &faults);
+    let store = fail_store(
+        open(directory.path(), faults.clone())
+            .prepare_publication(HomeDomainRequirements::new())
+            .unwrap()
+            .publish()
+            .unwrap(),
+        &faults,
+    );
     let state = directory.path().join("state");
     let saved_state = directory.path().join("saved-state");
     let external = directory.path().join("external-state");

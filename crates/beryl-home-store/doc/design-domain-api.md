@@ -41,6 +41,10 @@ bounded typed reads and results, and read-only proof composition. It is governed
   initial or recovery candidate. Declaration identity uses the same exact live owner, codec and
   attachment types as registration. Completing the candidate's declared set validates registration
   metadata and attachments without adding an exhaustive application-record scan.
+- `HomeDomainRequirements::with_domain` derives one declaration from its exact `StorageDomain`
+  type. `merge` composes package declarations and rejects duplicate stable domain names. Initial
+  `register_domain` and `register_domain_with_schema_validation` belong to `HomeOpenCandidate`;
+  healthy `HomeStore::domain_handle` only reacquires an already registered live domain.
 
 ## Runtime Attachments
 

@@ -9,7 +9,8 @@ use std::io;
 
 use beryl_home_store::{
     DomainDefinitionError, DomainReader, DomainRegistrationError, DomainSchemaVersion,
-    KeyspaceSchemaVersion, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    HomeDomainRequirements, KeyspaceSchemaVersion, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
 };
 use tempfile::tempdir;
 
@@ -237,12 +238,30 @@ fn seventy_three_family_registration_reopens_exactly() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let domain = store.register_domain::<SeventyThreeFamilyDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SeventyThreeFamilyDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(store.domain_revision(&domain).unwrap().get(), 1);
     store.close().unwrap();
 
     let mut reopened = open_home(directory.path());
     let domain = reopened
         .register_domain::<SeventyThreeFamilyDomain>()
+        .unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SeventyThreeFamilyDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
         .unwrap();
     assert_eq!(reopened.domain_revision(&domain).unwrap().get(), 1);
     reopened.close().unwrap();

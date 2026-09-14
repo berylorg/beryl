@@ -15,9 +15,10 @@ use beryl_home_store::{
     FirstAcceptancePromotionAdmission, FirstAcceptancePromotionAssetAdapter,
     FirstAcceptancePromotionAssetPlan, FirstAcceptancePromotionAssetSeed,
     FirstAcceptancePromotionObservation, FirstAcceptancePromotionSource, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder,
-    ReadError, ReconciliationReader, ReconciliationReservation, ReconciliationResolution,
-    RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuilder, ReadError, ReconciliationReader,
+    ReconciliationReservation, ReconciliationResolution, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -527,15 +528,15 @@ fn installed(outcome: CommandOutcome) -> beryl_home_store::ReconciliationHandle 
         other => panic!("expected indeterminate outcome, got {other:?}"),
     }
 }
-fn open() -> (tempfile::TempDir, FaultController, HomeStore) {
+fn open() -> (tempfile::TempDir, FaultController, HomeOpenCandidate) {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
-    (directory, faults, store)
+    (directory, faults, candidate)
 }
 
 mod flight_capacity;

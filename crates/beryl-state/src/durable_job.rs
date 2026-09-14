@@ -110,16 +110,18 @@ pub struct DurableJobState {
 }
 
 impl DurableJobState {
-    pub(crate) fn register(store: &mut HomeStore) -> Result<Self, DomainRegistrationError> {
-        store
+    pub(crate) fn register(
+        candidate: &mut beryl_home_store::HomeOpenCandidate,
+    ) -> Result<Self, DomainRegistrationError> {
+        candidate
             .register_domain::<DurableJobDomain>()
             .map(|handle| Self { handle })
     }
 
     pub(crate) fn register_with_schema_validation(
-        store: &mut HomeStore,
+        candidate: &mut beryl_home_store::HomeOpenCandidate,
     ) -> Result<Self, DomainRegistrationError> {
-        store
+        candidate
             .register_domain_with_schema_validation::<DurableJobDomain>()
             .map(|handle| Self { handle })
     }

@@ -4,8 +4,8 @@ use std::{convert::Infallible, error::Error, fmt, marker::PhantomData, path::Pat
 
 use beryl_home_store::{
     CommandError, CommandOutcome, CommitReceipt, DomainCallbackError, DomainCallbackSource,
-    DomainMutation, DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
+    DomainMutation, DomainReader, DomainSchemaVersion, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
     ReadError, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 
@@ -386,6 +386,6 @@ where
     }
 }
 
-pub fn open_home(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+pub fn open_home(path: &Path) -> HomeOpenCandidate {
+    HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
 }

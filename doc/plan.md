@@ -50,48 +50,36 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 414: Specify Initial Home Publication Composition (finished)
+# Phase 416: Establish Private Initial Home Candidates (finished)
 
-Accepted the private initial candidate, closed typed-domain declaration, explicit recovery access,
-complete prepared graph and one-shot publication contracts in their owning package and system
-authority. Independent architectural review found no blocking conflict; [readiness evidence](failures/target-bootstrap-composition.md#initial-publication-authority)
-retains the implementation and verification boundaries.
+Accepted candidate-only initial registration, exact required-domain closure, ordinary admission
+denial and storage publication/cleanup ownership, with production state/Syndic adapters. All 249
+home-store cases, six normal candidate cases, package compilation and independent review passed;
+[acceptance evidence](failures/target-bootstrap-composition.md#initial-candidate-boundary) retains
+the scope and aggregate-footprint fixture correction.
 
-# Phase 416: Establish Private Initial Home Candidates (wip)
+# Phase 417: Qualify Beryl State Initial Candidates (wip)
 
-Implement the [home-store candidate contract](../crates/beryl-home-store/doc/design-open-and-recovery.md#unpublished-open-candidates)
-and [typed registration declaration](../crates/beryl-home-store/doc/design-domain-api.md#registration-and-type-ownership).
-This boundary owns physical opening, candidate-only registration, exact required-domain closure,
-ordinary-admission denial and the storage-owned publication/abandonment capability. It does not
-implement candidate recovery commands or application-graph publication.
+Apply the [state boundary](../crates/beryl-state/doc/design.md#public-boundary) and its inherited
+persistent-state-integrity contract to state-owned fixtures.
 
-- Replace immediately healthy initial open with an owned opening candidate. Move initial domain
-  registration and schema-validation registration onto that candidate; preserve physical layout,
-  lock, schema, exact attachment and typed failure behavior.
-- Close registration against the caller's exact typed required-domain declaration. Permit only
-  metadata and candidate-bound handle construction before publication; reject missing, duplicate,
-  foreign or unexpected registration and preserve failed-candidate cleanup ownership.
-- Consume publication once after exact candidate generation, attachment and relevant health
-  validation. Ordinary reads, commands, sidecars and receipt projection remain gated while opening.
-  Initial abandonment retires attachments and releases ownership only under existing custody rules.
-- Adapt home-store tests to explicit candidate construction and publication. Verify fresh/reopened
-  homes, declaration mismatch, failed registration, partial persisted registration followed by
-  exact retry, prepublication access refusal, failed publication and release of the exact home lock.
-- Run home-store focused candidate tests and affected lifecycle/registration/recovery regressions,
-  normal home-store compilation and independent semantic review. Typed consumers intentionally
-  remain a tracked compilation gap until the following owning phases; no alternate healthy opener
-  or automatic-publication helper may conceal it.
+- Convert shared complete-state fixture composition and direct initial opens to `HomeOpenCandidate`,
+  complete `BerylState` registration and its exact `required_domains` declaration before publication.
+  Fixed typed fixture composers may own that explicit sequence; no generic healthy opener or
+  registration inference may conceal the candidate boundary.
+- Preserve routine versus exhaustive validation, state and theme identities, exact failure
+  provenance, rejected candidate cleanup and same-home recovery. Every fresh physical open must
+  register its live domain set even when durable domain metadata already exists.
+- Preserve cross-package fixture registration where required, merging exact package declarations
+  before publication. Keep isolated physical theme fixtures explicit about their required domains.
+- Run the state package suite with required fault features, normal compilation and focused
+  independent review of changed setup and failure assertions. Accept neither candidate recovery
+  access nor app service composition from fixture qualification.
 
-# Phase 417: Bind Beryl State To Initial Candidates (pending)
+# Phase 418: Qualify Syndic Storage Initial Candidates (pending)
 
-Provide the complete package-owned required-domain declaration and candidate-bound state/theme
-construction, then convert state fixtures to explicit complete registration and publication.
-Preserve routine versus exhaustive validation, all handle identities and typed failure evidence.
-
-# Phase 418: Bind Syndic Storage To Initial Candidates (pending)
-
-Provide the package-owned Syndic declaration and candidate-bound handle/attachment acquisition,
-then convert Syndic fixtures to explicit registration and publication. Preserve reconstructed
+Convert Syndic fixtures to the package-owned declaration, candidate-bound handle/attachment
+acquisition and explicit registration and publication. Preserve reconstructed
 attachment custody, compact recovery sources and the V7 storage contract.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)

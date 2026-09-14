@@ -4,7 +4,8 @@ use std::{path::PathBuf, process::Command, sync::Arc};
 
 use beryl_home_store::{
     CommandCancellation, CommandError, CommitReceiptError, DomainHandle, DomainMutation,
-    DomainReader, HomeCommand, HomeStore, MutationBuilder, PointReadLimit, RevisionConflict,
+    DomainReader, HomeCommand, HomeDomainRequirements, HomeStore, MutationBuilder, PointReadLimit,
+    RevisionConflict,
 };
 use beryl_model::DomainRevision;
 use tempfile::tempdir;
@@ -20,6 +21,17 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -57,6 +69,17 @@ fn one_cross_domain_batch_advances_all_revisions_and_reopens_wholly() {
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
     let beta = reopened.register_domain::<BetaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 2);
     assert_eq!(reopened.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(reopened.domain_revision(&beta).unwrap().get(), 2);
@@ -70,6 +93,17 @@ fn receipt_reports_only_affected_domains_in_its_exact_generation() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(alpha.contribution(
@@ -103,6 +137,24 @@ fn receipt_rejects_another_home_and_another_registration() {
     let mut second = open_home(second_directory.path());
     let first_alpha = first.register_domain::<AlphaDomain>().unwrap();
     let second_alpha = second.register_domain::<AlphaDomain>().unwrap();
+    let first = first
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let second = second
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut command = HomeCommand::new(first.home_revision().unwrap());
     command
         .add(first_alpha.contribution(
@@ -129,6 +181,17 @@ fn later_validation_or_assembly_failure_commits_nothing() {
         let mut store = open_home(directory.path());
         let alpha = store.register_domain::<AlphaDomain>().unwrap();
         let beta = store.register_domain::<BetaDomain>().unwrap();
+        let store = store
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<AlphaDomain>()
+                    .unwrap()
+                    .with_domain::<BetaDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let mut rejected = PutBytes::<BetaDomain>::new(2, b"beta".to_vec());
         if reject_assembly {
             rejected = rejected.rejecting_assembly();
@@ -171,6 +234,17 @@ fn stale_conflicts_are_home_first_then_domain_name_order() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit_one(&store, &alpha, 1, b"first".to_vec());
 
     let mut stale = HomeCommand::new(beryl_model::HomeRevision::new(1).unwrap());
@@ -213,6 +287,15 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
@@ -278,6 +361,15 @@ fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let store = Arc::new(store);
     let mut outer = HomeCommand::new(store.home_revision().unwrap());
     outer
@@ -306,6 +398,24 @@ fn empty_duplicate_and_foreign_commands_are_rejected_before_mutation() {
     let mut second = open_home(second_directory.path());
     let alpha = first.register_domain::<AlphaDomain>().unwrap();
     second.register_domain::<AlphaDomain>().unwrap();
+    let first = first
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let second = second
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
 
     assert!(matches!(
         first.execute(HomeCommand::new(first.home_revision().unwrap())),
@@ -361,6 +471,15 @@ fn durable_success_survives_immediate_process_abort() {
 
     let mut reopened = open_home(directory.path());
     let alpha = reopened.register_domain::<AlphaDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(reopened.home_revision().unwrap().get(), 2);
     assert_eq!(read(&reopened, &alpha, 44), Some(b"durable".to_vec()));
 }
@@ -372,6 +491,15 @@ fn abort_after_durable_success_helper() {
     };
     let mut store = open_home(&path);
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     commit_one(&store, &alpha, 44, b"durable".to_vec());
     std::process::abort();
 }

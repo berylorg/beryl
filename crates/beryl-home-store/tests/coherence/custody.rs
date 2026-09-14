@@ -2,8 +2,9 @@ use std::{convert::Infallible, path::Path};
 
 use beryl_home_store::{
     CommandOutcome, DomainReader, DomainReconciliation, DomainSchemaVersion, HomeCoherenceError,
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    ReconciliationReader, ReconciliationResolution, RecordFamily, StorageDomain,
+    HomeDomainRequirements, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    KeyspaceSchemaVersion, ReconciliationReader, ReconciliationResolution, RecordFamily,
+    StorageDomain,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -56,8 +57,8 @@ impl StorageDomain for ReconciledDomain {
     }
 }
 
-pub(super) fn open(path: &Path, faults: &FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+pub(super) fn open(path: &Path, faults: &FaultController) -> HomeOpenCandidate {
+    HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
@@ -68,8 +69,17 @@ pub(super) fn open(path: &Path, faults: &FaultController) -> HomeStore {
 fn returned_custody_blocks_before_installation_and_exact_resolution_restores_election() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), &faults);
-    let domain = store.register_domain::<ReconciledDomain>().unwrap();
+    let mut candidate = open(directory.path(), &faults);
+    let domain = candidate.register_domain::<ReconciledDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<ReconciledDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let CommandOutcome::Indeterminate { reconciliation, .. } = store.execute_current(
@@ -101,8 +111,17 @@ fn returned_custody_blocks_before_installation_and_exact_resolution_restores_ele
 fn drop_installed_and_collision_closed_custody_both_block_election() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = open(directory.path(), &faults);
-    let domain = store.register_domain::<AlphaDomain>().unwrap();
+    let mut candidate = open(directory.path(), &faults);
+    let domain = candidate.register_domain::<AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     let CommandOutcome::Indeterminate { reconciliation, .. } =
@@ -132,7 +151,11 @@ fn drop_installed_and_collision_closed_custody_both_block_election() {
 fn failed_health_and_stale_generation_never_invoke_election() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let store = open(directory.path(), &faults);
+    let store = open(directory.path(), &faults)
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
+        .unwrap();
     let original = store.health().generation().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());

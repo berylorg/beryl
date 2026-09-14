@@ -3,8 +3,9 @@ mod support;
 use std::any::TypeId;
 
 use beryl_home_store::{
-    DomainReader, FixedDigestHomeProofProtocol, HomeProofCommand, HomeProofProtocol,
-    ProofCommandBuildError, ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity,
+    DomainReader, FixedDigestHomeProofProtocol, HomeDomainRequirements, HomeProofCommand,
+    HomeProofProtocol, ProofCommandBuildError, ProofCorrelationBytes, ProofDomain,
+    ProofProtocolIdentity,
 };
 use tempfile::tempdir;
 
@@ -71,6 +72,17 @@ fn fixed_digest_protocol_shares_matching_ids_and_rejects_different_ids() {
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
     let beta = store.register_domain::<BetaDomain>().unwrap();
+    let store = store
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<AlphaDomain>()
+                .unwrap()
+                .with_domain::<BetaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let generation = store.health().generation().unwrap();
     let home_revision = store.home_revision().unwrap();
     let correlation = [7; 32];
