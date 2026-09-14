@@ -1,4 +1,5 @@
 use super::*;
+use crate::cas_projection::ProjectionServiceGeneration;
 use beryl_model::{InputGateRevision, SyndicTurnId};
 use syndic_storage::{InputGateState, SelectedPathProof};
 
@@ -42,6 +43,12 @@ impl Custody {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ShutdownTerminalCompletion {
+    pub(super) service_generation: ProjectionServiceGeneration,
+    pub(super) observer: super::super::super::flight_registry::TerminalCompletionObserver,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ShutdownWorkRecord {
     pub(crate) thread_id: SyndicThreadId,
     pub(crate) selected_path: SelectedPathProof,
@@ -53,6 +60,7 @@ pub(crate) struct ShutdownWorkRecord {
     pub(crate) preparation_retained: bool,
     pub(crate) projection_flight: bool,
     pub(crate) loaded_projection: bool,
+    pub(crate) terminal_completion: Option<ShutdownTerminalCompletion>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

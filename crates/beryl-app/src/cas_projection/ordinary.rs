@@ -6,6 +6,7 @@ mod execute;
 mod model;
 pub(in crate::cas_projection) mod preflight;
 
+pub(crate) use converge::TerminalHistoryCompletion;
 pub(in crate::cas_projection) use converge::converge_terminal_history;
 
 #[cfg(feature = "test-faults")]

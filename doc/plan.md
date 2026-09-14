@@ -44,15 +44,17 @@ complexity. The [system boundary](systems/crash-reporting/design.md) supersedes 
 in-process panic-recovery correction. Establish its bounded components before returning to CAS
 regression reconciliation; final production mounting remains dependent on executable bootstrap.
 
-# Phase 401: Fence New Projection Acquisition (finished)
+# Phase 402: Retain Exact Terminal Completion Through Execution Cleanup (finished)
 
-Accepted shared process admission for connection/session admission, projection acquisition,
-scheduled preparation and runtime launch. Winning acquisitions retain counted custody through
-publication or cleanup; failed cleanup remains retained and unresolved home reconciliation still
-blocks exact settlement. Original command epochs reject stale acquisition after reopening, while
-dispatch retains its separate election. The [acquisition correction](failures/process-shutdown-pending-turn.md#acquisition-admission-gap)
-passed independent semantic review, all 96 focused acquisition, runtime, scheduler, terminal and
-shutdown regressions, and the production library check.
+Accepted the [terminal completion handoff](systems/cas-live-syndic-transcript/design.md#application-shutdown-coordination)
+and its [app flight boundary](../crates/beryl-app/doc/design-live-projection-and-scheduling.md#scheduling-and-steering).
+Each ordinary flight publishes only committed final-command evidence into its exact bounded slot.
+Shutdown capture retains a service-bound observer across flight release and successor admission;
+completion grants no cleanup authority. Startup recovery remains sequential before publication.
+Independent semantic review, the production library check, and 106 targeted regressions passed,
+including real managed cleanup/successor races, authority loss, commit failures, capture races,
+and home/service identity isolation. The [acceptance record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
+preserves evidence and test corrections. Coordinator integration remains the next boundary.
 
 # Phase 326: Coordinate Process-Wide Graceful Shutdown (pending)
 
@@ -68,19 +70,12 @@ completion distinction. Verify durable pending preservation separately from unce
 including preparation cleanup, reconciliation failure and later recovery; no coarse work snapshot
 or absent provider identity proves either completion outcome.
 
-The acquisition prerequisite is accepted, but completion review of the initial coordinator found
-a [terminal-predecessor proof blocker](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff).
-Terminal-history publication releases the input gate before old execution/session/projection
-cleanup returns. A winning direct submission may replace the selected tail with a new pending
-turn in that interval, including after the process fence. The current terminal proof then cannot
-authenticate the earlier turn, and execution retains no immutable completion handoff.
-
-Implementation is stopped under the Operator's technically-invalid-plan rule. The unaccepted
-coordinator draft was removed. Before resuming, establish a separately accepted bounded exact
-terminal-completion handoff that survives cleanup and successor admission; derive its scope and
-evidence from owning authority. Do not replace exact completion with current Idle state, missing
-live metadata, pending provenance for another turn, or a stop response. The source investigation
-and independent review are recorded in the linked failure note; no coordinator acceptance is claimed.
+The acquisition fence and exact terminal handoff prerequisites are accepted. Resume composition
+using both the original captured execution obligation and any winning successor's separate pending
+obligation. Do not replace exact completion with current Idle state, missing live metadata, pending
+provenance for another turn, or a stop response. The initial unaccepted coordinator was removed;
+its [review record](failures/process-shutdown-pending-turn.md#terminal-predecessor-completion-handoff)
+remains evidence for the required proof and cleanup distinction.
 
 # Phase 400: Diagnose Repeated Draft Content Materialization (pending)
 

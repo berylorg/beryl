@@ -7,6 +7,7 @@ use crate::cas_projection::{
 };
 use syndic_storage::{SelectedPathProof, SyndicPointReadLimit, SyndicReadError};
 
+mod completion;
 mod prefix;
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../../tests/unit/shutdown_work_capture.rs"]
@@ -14,10 +15,44 @@ mod tests;
 mod types;
 use types::Custody;
 pub(crate) use types::{
-    ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord, ShutdownWorkRevision,
+    ShutdownTerminalCompletion, ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord,
+    ShutdownWorkRevision,
 };
 
 impl ProjectionConnectionService {
+    #[cfg(feature = "test-faults")]
+    pub fn terminal_completion_for_test(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        thread_id: SyndicThreadId,
+    ) -> Result<Option<crate::cas_projection::test_faults::TerminalCompletionProbe>, ProcessWorkError>
+    {
+        let revision = self.shutdown_work_revision(sessions)?;
+        let mut cursor = None;
+        loop {
+            let page = self.shutdown_work_page(
+                sessions,
+                &revision,
+                cursor.as_ref(),
+                ProcessWorkPageLimits::new(256, 65_536)?,
+                &ProjectionCancellationToken::new(),
+            )?;
+            for row in page.records {
+                if row.thread_id == thread_id {
+                    return Ok(row.terminal_completion.map(|captured| {
+                        crate::cas_projection::test_faults::TerminalCompletionProbe(
+                            captured.observer,
+                        )
+                    }));
+                }
+            }
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                return Ok(None);
+            }
+        }
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn shutdown_work_first_page_for_test(
         &self,
@@ -285,6 +320,16 @@ impl ProcessWorkRead {
                 preparation_retained: custody.preparation_retained,
                 projection_flight: custody.projection_flight,
                 loaded_projection: custody.loaded_projection,
+                terminal_completion: FlightRegistry::terminal_completion(
+                    self.home_id,
+                    self.home_generation,
+                    thread_id,
+                    revision.flights,
+                )?
+                .map(|observer| ShutdownTerminalCompletion {
+                    service_generation: self.service_generation,
+                    observer,
+                }),
             });
         }
         Ok(ShutdownWorkPage {

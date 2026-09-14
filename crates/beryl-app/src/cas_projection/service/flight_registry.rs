@@ -1,6 +1,9 @@
 use super::*;
 
+mod terminal_completion;
 mod work_facts;
+pub(crate) use terminal_completion::TerminalCompletionObserver;
+pub(in crate::cas_projection) use terminal_completion::TerminalCompletionPublisher;
 
 impl CasProjectionCoordinator {
     /// Binds a coordinator to the exact identity and current healthy generation of `home`.
@@ -112,7 +115,13 @@ static PROJECTION_FLIGHTS: OnceLock<Mutex<ProjectionFlightState>> = OnceLock::ne
 
 struct ProjectionFlightState {
     revision: Option<u64>,
-    entries: HashMap<ProjectionFlightKey, Option<AcceptedInputSchedulerSignal>>,
+    entries: HashMap<ProjectionFlightKey, ProjectionFlightEntry>,
+}
+
+#[derive(Default)]
+struct ProjectionFlightEntry {
+    release_signal: Option<AcceptedInputSchedulerSignal>,
+    terminal_completion: Option<TerminalCompletionObserver>,
 }
 
 impl Default for ProjectionFlightState {
@@ -125,7 +134,7 @@ impl Default for ProjectionFlightState {
 }
 
 impl std::ops::Deref for ProjectionFlightState {
-    type Target = HashMap<ProjectionFlightKey, Option<AcceptedInputSchedulerSignal>>;
+    type Target = HashMap<ProjectionFlightKey, ProjectionFlightEntry>;
 
     fn deref(&self) -> &Self::Target {
         &self.entries
@@ -163,7 +172,7 @@ impl FlightRegistry {
         if active.contains_key(&key) {
             return Err(ProjectionCoordinatorError::ProjectionInFlight { thread_id });
         }
-        active.insert(key, None);
+        active.insert(key, ProjectionFlightEntry::default());
         drop(active);
         Ok(ProjectionFlight {
             key,
@@ -190,13 +199,13 @@ impl FlightRegistry {
             home_generation,
             thread_id,
         };
-        if let Some(release_signal) = active.get_mut(&key) {
-            if release_signal.is_none() {
-                *release_signal = Some(scheduler_signal.clone());
+        if let Some(entry) = active.get_mut(&key) {
+            if entry.release_signal.is_none() {
+                entry.release_signal = Some(scheduler_signal.clone());
             }
             return Err(ProjectionCoordinatorError::ProjectionInFlight { thread_id });
         }
-        active.insert(key, None);
+        active.insert(key, ProjectionFlightEntry::default());
         drop(active);
         Ok(ProjectionFlight {
             key,
@@ -211,7 +220,7 @@ impl FlightRegistry {
             Ok(active) => active,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let release_signal = active.remove(&key).flatten();
+        let release_signal = active.remove(&key).and_then(|entry| entry.release_signal);
         drop(active);
         if let Some(signal) = release_signal {
             signal.wake(AcceptedInputWakeReason::ProjectionFlightReleased);

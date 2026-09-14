@@ -211,9 +211,13 @@ fn process_fence_waits_for_a_winning_promotion_reservation_to_release() {
         accepted_route_state(command.home(), &fixture.storage, &ids),
         AcceptedRouteEffectiveState::Promoted
     );
-    fence
-        .try_reopen(command.home().pending_reconciliations().is_empty())
-        .unwrap();
+    wait_until("winning acquisition custody released", || {
+        match fence.try_reopen(command.home().pending_reconciliations().is_empty()) {
+            Ok(()) => Some(()),
+            Err(ProcessAdmissionError::Unsettled) => None,
+            Err(error) => panic!("winning acquisition did not settle: {error:?}"),
+        }
+    });
     drop(command);
     drop(retirement);
     finish(fixture, slot, server);
@@ -349,7 +353,7 @@ impl ScheduledOrdinaryExecutionProvider for PausingProvider {
 }
 
 #[test]
-fn provider_preparation_cannot_refresh_a_candidate_after_process_reopening() {
+fn provider_preparation_retains_admission_until_fenced_candidate_cleanup() {
     let slot = SessionSlot::default();
     let provider_slot = slot.clone();
     let (entered_tx, entered) = sync_channel(1);
@@ -368,10 +372,14 @@ fn provider_preparation_cannot_refresh_a_candidate_after_process_reopening() {
     let ids = admit_runtime_next_input(&mut fixture, 213);
     entered.recv_timeout(TIMEOUT).unwrap();
     let fence = fixture.process_admission.test_fence().unwrap();
-    fence.try_reopen(true).unwrap();
+    assert_eq!(
+        fence.try_reopen(true),
+        Err(ProcessAdmissionError::Unsettled)
+    );
     release.send(()).unwrap();
     wait_for_worker(&fixture, &slot);
     assert_unpromoted(&fixture, &ids);
+    fence.try_reopen(true).unwrap();
     drop(retirement);
     finish(fixture, slot, server);
 }

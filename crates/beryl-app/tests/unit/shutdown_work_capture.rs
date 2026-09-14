@@ -276,6 +276,145 @@ fn stable_missing_flight_thread_is_an_invariant_but_concurrent_release_is_stale(
 }
 
 #[test]
+fn terminal_slot_capture_retries_creation_and_release_without_retargeting_observers() {
+    let fixture = Fixture::idle();
+    let coordinator =
+        CasProjectionCoordinator::for_healthy_home(fixture.service.home.as_deref().unwrap())
+            .unwrap();
+    let flight = coordinator.begin_projection(fixture.thread).unwrap();
+    let revision = fixture
+        .service
+        .shutdown_work_revision(&fixture.sessions)
+        .unwrap();
+    let mut publisher = None;
+    let result = fixture.service.work_read().read_shutdown_work_page(
+        &fixture.sessions,
+        &revision,
+        None,
+        limits(),
+        &ProjectionCancellationToken::new(),
+        || {
+            publisher = Some(flight.bind_terminal_completion(fixture.turn).unwrap());
+        },
+    );
+    assert!(matches!(result, Err(ProcessWorkError::StaleRevision)));
+    let revision = fixture
+        .service
+        .shutdown_work_revision(&fixture.sessions)
+        .unwrap();
+    let page = fixture
+        .service
+        .shutdown_work_page(
+            &fixture.sessions,
+            &revision,
+            None,
+            limits(),
+            &ProjectionCancellationToken::new(),
+        )
+        .unwrap();
+    let observer = page.records[0].terminal_completion.clone().unwrap();
+    assert_eq!(observer.turn_id(), fixture.turn);
+    let result = fixture.service.work_read().read_shutdown_work_page(
+        &fixture.sessions,
+        &revision,
+        None,
+        limits(),
+        &ProjectionCancellationToken::new(),
+        || {
+            drop(publisher);
+            drop(flight);
+        },
+    );
+    assert!(matches!(result, Err(ProcessWorkError::StaleRevision)));
+    let replacement = coordinator.begin_projection(fixture.thread).unwrap();
+    let next = SyndicTurnId::from_bytes([199; 16]);
+    let _publisher = replacement.bind_terminal_completion(next).unwrap();
+    let revision = fixture
+        .service
+        .shutdown_work_revision(&fixture.sessions)
+        .unwrap();
+    let page = fixture
+        .service
+        .shutdown_work_page(
+            &fixture.sessions,
+            &revision,
+            None,
+            limits(),
+            &ProjectionCancellationToken::new(),
+        )
+        .unwrap();
+    let next_observer = page.records[0].terminal_completion.as_ref().unwrap();
+    assert_ne!(&observer, next_observer);
+    assert_eq!(observer.turn_id(), fixture.turn);
+    assert_eq!(next_observer.turn_id(), next);
+}
+
+#[test]
+fn captured_completion_rejects_foreign_identity_service_generation_and_closed_service() {
+    let fixture = Fixture::idle();
+    let foreign = Fixture::idle();
+    let coordinator =
+        CasProjectionCoordinator::for_healthy_home(fixture.service.home.as_deref().unwrap())
+            .unwrap();
+    let flight = coordinator.begin_projection(fixture.thread).unwrap();
+    let publisher = flight.bind_terminal_completion(fixture.turn).unwrap();
+    let revision = fixture
+        .service
+        .shutdown_work_revision(&fixture.sessions)
+        .unwrap();
+    let page = fixture
+        .service
+        .shutdown_work_page(
+            &fixture.sessions,
+            &revision,
+            None,
+            limits(),
+            &ProjectionCancellationToken::new(),
+        )
+        .unwrap();
+    let captured = page.records[0].terminal_completion.as_ref().unwrap();
+    assert_eq!(
+        captured
+            .completion(&fixture.service, fixture.thread, fixture.turn)
+            .unwrap(),
+        None
+    );
+    assert!(matches!(
+        captured.completion(&foreign.service, fixture.thread, fixture.turn),
+        Err(ProcessWorkError::ForeignSources)
+    ));
+    assert!(matches!(
+        captured.completion(
+            &fixture.service,
+            fixture.thread,
+            SyndicTurnId::from_bytes([199; 16])
+        ),
+        Err(ProcessWorkError::ForeignSources)
+    ));
+    assert!(matches!(
+        captured.completion(
+            &fixture.service,
+            SyndicThreadId::from_bytes([198; 16]),
+            fixture.turn
+        ),
+        Err(ProcessWorkError::ForeignSources)
+    ));
+    let mut old_service = captured.clone();
+    old_service.service_generation = foreign.service.service_generation;
+    assert!(matches!(
+        old_service.completion(&fixture.service, fixture.thread, fixture.turn),
+        Err(ProcessWorkError::ForeignSources)
+    ));
+    drop(publisher);
+    drop(flight);
+    fixture.service.command_gate.close_for_shutdown();
+    assert!(matches!(
+        captured.completion(&fixture.service, fixture.thread, fixture.turn),
+        Err(ProcessWorkError::Closed)
+    ));
+}
+
+#[test]
 fn cancellation_and_byte_limits_fail_before_returning_capture() {
     let fixture = Fixture::new();
     let revision = fixture

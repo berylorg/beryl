@@ -8,6 +8,20 @@ use beryl_model::SyndicThreadId;
 
 use super::NEXT_TOKEN;
 
+pub struct TerminalCompletionProbe(
+    pub(crate) crate::cas_projection::service::TerminalCompletionObserver,
+);
+
+impl TerminalCompletionProbe {
+    pub fn turn_id(&self) -> beryl_model::SyndicTurnId {
+        self.0.turn_id()
+    }
+
+    pub fn lifecycle(&self) -> Option<syndic_storage::TurnLifecycle> {
+        self.0.completion().map(|proof| proof.lifecycle())
+    }
+}
+
 static TERMINAL_HISTORY_BARRIER: OnceLock<Mutex<Option<TerminalHistoryBarrier>>> = OnceLock::new();
 
 struct TerminalHistoryBarrier {
@@ -22,6 +36,7 @@ struct TerminalHistoryBarrier {
 pub enum TerminalHistoryBarrierStage {
     AfterItems,
     BeforeGateRelease,
+    AfterGateCommit,
     AfterGateRelease,
 }
 

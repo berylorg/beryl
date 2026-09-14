@@ -41,6 +41,7 @@ pub(super) fn submit_text(
         seed,
         admitted_at,
         fixture.service().submission_execution_wake(),
+        None,
     )
 }
 
@@ -52,10 +53,32 @@ pub(super) fn seed_pending(fixture: &super::Fixture, thread: SyndicThreadId) {
             "continue durable work",
             150,
             SyndicTimestamp::from_unix_millis(5),
-            SubmissionExecutionWake::storage_only_for_test()
+            SubmissionExecutionWake::storage_only_for_test(),
+            None
         ),
         FirstAcceptanceKind::Idle { .. }
     ));
+}
+
+pub(super) fn submit_text_after_admission(
+    fixture: &super::Fixture,
+    thread: SyndicThreadId,
+    text: &str,
+    seed: u8,
+    admitted_at: SyndicTimestamp,
+    before_execute: impl FnOnce(&beryl_home_store::HomeStore, syndic_storage::SyndicStorage)
+    + Send
+    + 'static,
+) -> FirstAcceptanceKind {
+    submit_text_with_wake(
+        fixture,
+        thread,
+        text,
+        seed,
+        admitted_at,
+        fixture.service().submission_execution_wake(),
+        Some(Box::new(before_execute)),
+    )
 }
 
 fn submit_text_with_wake(
@@ -65,12 +88,18 @@ fn submit_text_with_wake(
     seed: u8,
     admitted_at: SyndicTimestamp,
     execution_wake: SubmissionExecutionWake,
+    before_execute: Option<
+        Box<dyn FnOnce(&beryl_home_store::HomeStore, syndic_storage::SyndicStorage) + Send>,
+    >,
 ) -> FirstAcceptanceKind {
     let live = fixture.service().live_home_command().unwrap();
     let home = live.home();
     let assets = fixture.state.assets();
     let (mut host, binding) =
         composer::activated(fixture.storage.clone(), home, thread, seed, seed + 1);
+    if let Some(hook) = before_execute {
+        host.test_arm_submission_before_execute_fault(hook);
+    }
     composer::commit_text(
         &mut host,
         home,

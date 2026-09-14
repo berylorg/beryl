@@ -83,6 +83,8 @@ pub(in crate::cas_projection) use work_sources::ProcessWorkSources;
 
 pub(super) use admission::ProjectionAdmissionContext;
 pub(super) use flight_registry::ProjectionFlight;
+pub(crate) use flight_registry::TerminalCompletionObserver;
+pub(in crate::cas_projection) use flight_registry::TerminalCompletionPublisher;
 
 struct PreparedProjectionSessionAdmission {
     command: super::LiveCommandPermit,

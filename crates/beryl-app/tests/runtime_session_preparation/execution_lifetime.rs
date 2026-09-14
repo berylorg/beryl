@@ -218,6 +218,110 @@ fn managed_direct_execution_survives_last_view_detach_and_immediate_reattach() {
 }
 
 #[test]
+fn terminal_completion_survives_winning_successor_admission_during_cleanup() {
+    use beryl_app::cas_projection::test_faults::TerminalHistoryBarrierStage;
+    for stage in [
+        TerminalHistoryBarrierStage::AfterGateCommit,
+        TerminalHistoryBarrierStage::AfterGateRelease,
+    ] {
+        terminal_completion_successor_race(stage);
+    }
+}
+
+fn terminal_completion_successor_race(
+    stage: beryl_app::cas_projection::test_faults::TerminalHistoryBarrierStage,
+) {
+    use beryl_app::cas_projection::test_faults::{
+        TerminalHistoryBarrierStage, install_terminal_history_barrier,
+    };
+    let (mut fixture, sessions, _attention) = fixture(8);
+    fs::write(fixture.root(1).join("fixture-mode"), "execution-lifetime").unwrap();
+    let view = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
+    support::ready(&view);
+    submission::submit(&fixture, thread_id(1));
+    let evidence = started(&fixture, &sessions, 0);
+    let process = ProcessWitness::open(evidence["pid"].as_u64().unwrap() as u32);
+    let first = turn(&fixture, TurnLifecycle::Active);
+    let mut captured = None;
+    wait_until(|| {
+        match fixture
+            .service()
+            .terminal_completion_for_test(&sessions, thread_id(1))
+        {
+            Ok(Some(probe)) => {
+                captured = Some(probe);
+                true
+            }
+            Ok(None)
+            | Err(beryl_app::cas_projection::ProcessWorkError::StaleRevision)
+            | Err(beryl_app::cas_projection::ProcessWorkError::Connections(
+                beryl_app::cas_projection::ConnectionWorkError::StaleRevision,
+            )) => false,
+            Err(error) => panic!("terminal completion capture failed: {error:?}"),
+        }
+    });
+    let captured = captured.unwrap();
+    assert_eq!(captured.turn_id(), first);
+    assert_eq!(captured.lifecycle(), None);
+    let barrier = install_terminal_history_barrier(thread_id(1), stage);
+    drop(view);
+    release(&fixture, 0);
+    barrier.wait();
+    let before_release =
+        (stage == TerminalHistoryBarrierStage::AfterGateRelease).then_some(TurnLifecycle::Complete);
+    assert_eq!(captured.lifecycle(), before_release);
+    assert_eq!(sessions.diagnostics().checked_out, 1);
+    assert!(process.running());
+    let admission = fixture.process_admission.clone();
+    let (send_fence, receive_fence) = std::sync::mpsc::sync_channel(1);
+    let acceptance = submission::submit_text_after_admission(
+        &fixture,
+        thread_id(1),
+        "preserve the admitted successor",
+        170,
+        SyndicTimestamp::from_unix_millis(6),
+        move |_, _| {
+            send_fence.send(admission.test_fence().unwrap()).unwrap();
+        },
+    );
+    assert!(matches!(
+        acceptance,
+        syndic_storage::FirstAcceptanceKind::Idle { .. }
+    ));
+    let fence = receive_fence.recv().unwrap();
+    let pending = turn(&fixture, TurnLifecycle::Pending);
+    assert_ne!(pending, first);
+    let live = fixture.service().live_home_command().unwrap();
+    assert!(
+        fixture
+            .storage
+            .terminal_history_evidence(
+                live.home(),
+                thread_id(1),
+                first,
+                SyndicPointReadLimit::new(1_000_000).unwrap(),
+            )
+            .unwrap()
+            .is_none()
+    );
+    drop(live);
+    assert_eq!(captured.turn_id(), first);
+    assert_eq!(captured.lifecycle(), before_release);
+    assert_eq!(sessions.diagnostics().checked_out, 1);
+    assert_eq!(
+        fence.try_reopen(true),
+        Err(beryl_app::process_admission::ProcessAdmissionError::Unsettled)
+    );
+    barrier.release();
+    wait_until(|| sessions.diagnostics().checked_out == 0);
+    assert_eq!(turn(&fixture, TurnLifecycle::Pending), pending);
+    assert!(!fixture.root(1).join("execution-started-1.json").exists());
+    close(&mut fixture, &sessions);
+    process.assert_exited();
+    assert_eq!(captured.lifecycle(), Some(TurnLifecycle::Complete));
+}
+
+#[test]
 fn managed_accepted_successor_dispatches_and_captures_without_a_view() {
     let (mut fixture, sessions, _attention) = fixture(8);
     fs::write(fixture.root(1).join("fixture-mode"), "execution-next").unwrap();

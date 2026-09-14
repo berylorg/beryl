@@ -51,6 +51,8 @@ impl PendingOrdinaryExecutionWitness for LoadedCasProjection {
 }
 
 pub(in crate::cas_projection) struct PendingOrdinaryExecution {
+    pub(super) terminal_completion:
+        Option<crate::cas_projection::service::TerminalCompletionPublisher>,
     pub(super) thread_id: SyndicThreadId,
     pub(super) turn_id: SyndicTurnId,
     pub(super) item_id: SyndicItemId,
@@ -178,6 +180,7 @@ impl PendingOrdinaryExecution {
             _ => return Err(OrdinaryTurnExecutionError::InputAssetReferenceSetMismatch),
         }
         Ok(Self {
+            terminal_completion: None,
             thread_id,
             turn_id: pending.turn_id(),
             item_id: pending.item_id(),

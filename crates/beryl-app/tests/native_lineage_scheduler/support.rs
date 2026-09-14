@@ -219,7 +219,16 @@ fn run_native_lineage_server(
     match scenario {
         NativeLineageServerScenario::RetrySucceeds => {
             complete_counted_resume_projection(&mut socket, &cas_thread_id, resume_requests);
-            complete_turn_and_report(&mut socket, &events, &cas_thread_id, expected_input);
+            if expected_input.is_none() {
+                complete_turn_after_preflight_retries(
+                    &mut socket,
+                    &events,
+                    &cas_thread_id,
+                    resume_requests,
+                );
+            } else {
+                complete_turn_and_report(&mut socket, &events, &cas_thread_id, expected_input);
+            }
             complete_unsubscribe(&mut socket, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }
@@ -364,6 +373,10 @@ fn read_any_ordinary_turn_start(
     cas_thread_id: &str,
 ) -> (u64, Box<str>) {
     let request = read_json(socket).unwrap();
+    any_ordinary_turn_start(request, cas_thread_id)
+}
+
+fn any_ordinary_turn_start(request: Value, cas_thread_id: &str) -> (u64, Box<str>) {
     assert_eq!(request["jsonrpc"], "2.0");
     assert_eq!(request["method"], "turn/start");
     assert_eq!(request["params"]["threadId"], cas_thread_id);
@@ -373,6 +386,31 @@ fn read_any_ordinary_turn_start(
     let text = input[0]["text"].as_str().unwrap();
     assert!(!text.is_empty());
     (request["id"].as_u64().unwrap(), Box::from(text))
+}
+
+fn complete_turn_after_preflight_retries(
+    socket: &mut WebSocket<TcpStream>,
+    events: &SyncSender<NativeLineageServerEvent>,
+    cas_thread_id: &str,
+    resume_requests: &AtomicUsize,
+) {
+    for _ in 0..16 {
+        let request = read_json(socket).expect("pending execution or preflight cleanup");
+        if request["method"] == "thread/unsubscribe" {
+            assert_eq!(request["params"]["threadId"], cas_thread_id);
+            let id = request["id"].as_u64().unwrap();
+            send_json(socket, &format!(r#"{{"id":{id},"result":{{}}}}"#));
+            complete_counted_resume_projection(socket, cas_thread_id, resume_requests);
+            continue;
+        }
+        let (id, input) = any_ordinary_turn_start(request, cas_thread_id);
+        events
+            .send(NativeLineageServerEvent::TurnStartObserved)
+            .unwrap();
+        finish_ordinary_turn_with_text(socket, cas_thread_id, id, &input);
+        return;
+    }
+    panic!("same-thread pending execution exceeded bounded preflight retries");
 }
 
 fn finish_ordinary_turn_with_text(

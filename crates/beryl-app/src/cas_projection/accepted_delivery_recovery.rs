@@ -165,6 +165,7 @@ fn converge_case(
                     stopping.target().turn_id(),
                     observed_at,
                     point_limit(),
+                    None,
                 )
                 .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             }
@@ -198,6 +199,7 @@ fn converge_case(
                 turn_id,
                 minimum_timestamp,
                 point_limit(),
+                None,
             )
             .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
@@ -362,6 +364,7 @@ fn publish_source_less_terminal(
         turn_id,
         minimum_observed_at,
         point_limit(),
+        None,
     )
     .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)
 }

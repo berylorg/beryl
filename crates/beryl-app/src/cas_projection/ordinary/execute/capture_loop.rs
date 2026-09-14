@@ -313,6 +313,11 @@ pub(super) fn converge_target_loss(
                 pending.turn_id,
                 pending.minimum_observed_at,
                 limit,
+                Some(pending.terminal_completion.as_ref().ok_or(
+                    OrdinaryTurnExecutionError::Invariant(
+                        "ordinary execution has no terminal completion publisher",
+                    ),
+                )?),
             )?;
             if let Some(stop) = lifecycle_stop {
                 stop.observe_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
@@ -380,6 +385,14 @@ fn finish_proven_terminal(
         pending.turn_id,
         outcome.observed_at(),
         limit,
+        Some(
+            pending
+                .terminal_completion
+                .as_ref()
+                .ok_or(OrdinaryTurnExecutionError::Invariant(
+                    "ordinary execution has no terminal completion publisher",
+                ))?,
+        ),
     )?;
     stop_coordinator.observe_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
     accepted_next_ready.notify();

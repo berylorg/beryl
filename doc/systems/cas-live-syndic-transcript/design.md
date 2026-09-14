@@ -196,6 +196,26 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   durable pending-preservation outcome, together with
   all required draft/session durability obligations. Only then may claims be released, windows
   disposed, and the process service graph and managed runtimes retired and joined.
+- Each live ordinary execution retains one compact terminal-history completion slot in its exact
+  execution flight. Its identity is fixed before activation. Only a committed exact
+  terminal-history completion command may fill the slot, preserving the home generation, thread,
+  turn, commit revision and complete or authority-loss incomplete outcome. A committed command's
+  later failure still retains that durable fact; noncommit and indeterminate outcomes supply no
+  completion proof. Reconciliation and cleanup remain separate obligations.
+- Shutdown captures an observer of that exact slot under the flight inventory's revision boundary.
+  The observer survives flight release and successor admission without following a replacement
+  flight or rereading the predecessor through the current selected tail. Once accepted, a captured
+  target remains an obligation across subsequent inventory retries. Capture racing slot creation,
+  flight release or replacement retries before accepting its facts. A flight completed before
+  accepted capture may leave generic loaded-projection cleanup; this does not require a retained
+  history of old execution receipts. Current execution evidence and that cleanup remain separate.
+- Completion slots contain fixed-size identity and receipt facts, without transcript or provider
+  payloads. They accumulate only with retained live execution flights and bounded shutdown capture;
+  there is no completed-thread registry or durable completion journal. The last flight or captured
+  observer releases its slot. Old-generation slots cannot authorize work or shutdown in a new
+  service generation. Sequential startup recovery finishes before service publication and consumes
+  terminal convergence directly, without constructing runtime observers. Provider-operation and
+  pending-preservation evidence retain their distinct contracts.
 - Any failed or unproven obligation retains coherent windows, claims, resident editors, and exact
   operation/reconciliation custody. Failed shutdown does not undo a stop already sent, resurrect a
   cancelled continuation, repeat uncertain dispatch, or fabricate rollback. The interaction and

@@ -225,3 +225,22 @@ cancellation, but did not cover this gap; they do not establish coordinator acce
 unaccepted source and tests were removed, preserving all accepted components and unrelated work.
 The combined successor-admission race was established from source and the existing tested cleanup
 pause; no new end-to-end reproduction or correction is claimed. The root plan records the blocker.
+
+The Operator authorized the prerequisite, accepted on 2026-09-14. Each live ordinary execution
+binds one fixed completion slot to its exact flight before activation. Only a committed terminal
+history command publishes its receipt, including a commit followed by later failure; noncommit
+and indeterminate outcomes publish nothing. Bounded revision-checked shutdown capture retains an
+observer bound to home, home generation, service generation, thread and turn. It survives flight
+release and successor admission without granting cleanup authority or retaining completed history
+in the registry. Startup recovery remains sequential before service publication.
+
+Independent semantic review, the production library check and 106 targeted regressions passed.
+Real managed execution tests pause both before completion publication and after gate release,
+publish a winning successor after the fence, and retain the predecessor's exact completion while
+session/process cleanup remains outstanding. Evidence also covers authority-loss incomplete
+history, command commit classifications, observer release, capture races and recovered-home and
+service-generation rejection. Three regression assumptions were corrected: promotion tests wait
+for exact reservation release rather than a worker counter; paused provider preparation retains
+admission until cleanup; the native-lineage fixture permits bounded exact-thread unsubscribe and
+resume retries before dispatch after a concurrent storage revision change. Both original retained
+turns must still complete. The affected scheduler suites passed in full after these corrections.

@@ -161,6 +161,13 @@ topology and typed execution surfaces.
 - Each ordinary candidate acquires its worker permit before claim and one exact same-thread flight
   through validation, promotion reconciliation, projection establishment, dispatch, and terminal
   disposition. Saturation mutates no route and creates no backlog.
+- An ordinary execution binds one terminal-completion publisher to its exact projection flight
+  before binding activation. Revision-bound shutdown capture can retain an opaque observer of
+  that slot. Only the exact terminal-history command path constructs its completion evidence;
+  execution return, a stop response, or flight release cannot construct it. Observers name the
+  original turn even when a successor has replaced the selected tail. They retain compact facts
+  only and grant no projection, session, dispatch or cleanup authority. The service validates its
+  home and service generations before accepting a captured observer for shutdown.
 - Promotion uses one exact service lease and one atomic typed home command for Syndic promotion and
   Asset-owner transition. `Prior`, `Exact`, collision, and unresolved outcomes settle before any
   provider work; only exact promotion proceeds.

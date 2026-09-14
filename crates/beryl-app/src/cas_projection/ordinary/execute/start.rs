@@ -98,12 +98,15 @@ pub(super) fn execute_in_flight(
     }
     retain_projection!(coordinator.ensure_projection_flight(flight, projection.syndic_thread_id()));
     let limit = point_limit();
-    let pending = retain_projection!(PendingOrdinaryExecution::read(
+    let mut pending = retain_projection!(PendingOrdinaryExecution::read(
         store,
         storage,
         assets,
         &projection,
         limit,
+    ));
+    pending.terminal_completion = Some(retain_projection!(
+        flight.bind_terminal_completion(pending.turn_id)
     ));
     let prepared = retain_projection!(InputReplayFactory::prepare(
         store,

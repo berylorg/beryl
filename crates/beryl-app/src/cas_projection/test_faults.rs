@@ -59,7 +59,8 @@ pub(crate) use target::abandon_live_event_target_if_requested;
 pub use target::{LiveEventTargetAbandonmentController, install_live_event_target_abandonment};
 pub(crate) use terminal_history::pause_terminal_history;
 pub use terminal_history::{
-    TerminalHistoryBarrierController, TerminalHistoryBarrierStage, install_terminal_history_barrier,
+    TerminalCompletionProbe, TerminalHistoryBarrierController, TerminalHistoryBarrierStage,
+    install_terminal_history_barrier,
 };
 
 pub fn signal_accepted_ready(service: &super::ProjectionConnectionService) {

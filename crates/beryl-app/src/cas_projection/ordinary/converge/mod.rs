@@ -5,6 +5,7 @@ mod gate;
 mod item;
 mod snapshot;
 mod transcript;
+pub(crate) use gate::TerminalHistoryCompletion;
 
 use beryl_home_store::HomeStore;
 use beryl_model::{SyndicThreadId, SyndicTurnId};
@@ -19,6 +20,7 @@ pub(in crate::cas_projection) fn converge_terminal_history(
     turn_id: SyndicTurnId,
     minimum_observed_at: SyndicTimestamp,
     limit: SyndicPointReadLimit,
+    completion: Option<&crate::cas_projection::service::TerminalCompletionPublisher>,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     item::converge_turn_items(
         store,
@@ -39,7 +41,7 @@ pub(in crate::cas_projection) fn converge_terminal_history(
         thread_id,
         crate::cas_projection::test_faults::TerminalHistoryBarrierStage::BeforeGateRelease,
     );
-    gate::complete(store, storage, thread_id, turn_id, limit)?;
+    gate::complete(store, storage, thread_id, turn_id, limit, completion)?;
     #[cfg(feature = "test-faults")]
     crate::cas_projection::test_faults::pause_terminal_history(
         thread_id,

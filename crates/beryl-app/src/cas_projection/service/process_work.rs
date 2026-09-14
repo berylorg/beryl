@@ -16,7 +16,8 @@ mod selection;
 mod shutdown;
 mod shutdown_capture;
 pub(crate) use shutdown_capture::{
-    ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord, ShutdownWorkRevision,
+    ShutdownTerminalCompletion, ShutdownWorkCursor, ShutdownWorkPage, ShutdownWorkRecord,
+    ShutdownWorkRevision,
 };
 mod types;
 pub use types::*;
