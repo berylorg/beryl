@@ -64,19 +64,13 @@ Owning authority selects one conservative counter and one complete checkpoint. T
 [recovery blocker](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
 is resolved in target design; its separate component boundaries below precede live integration.
 
-# Phase 432: Establish Complete Flush And Journal Retirement (finished)
+# Phase 433: Initialize Replay Capacity Before Worker Publication (finished)
 
-Accepted Fjall's complete checkpoint component and record/clear exclusion. Ten focused and all 265
-dependency cases, normal compilation, formatting and independent review passed, including genuine
-pins, full two-file capacity, clear progress, lowered persisted maxima and supported failure prefixes.
+Accepted Fjall's conservative raw-history seeding, clear-prefix safety admission and normalization
+before workers, including deferred compaction follow-up and exact failure progress. Eight focused
+and all 273 dependency cases, normal compilation, formatting and independent semantic review passed.
 The [admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-records the target boundary; recovery initialization and live capacity admission remain pending.
-
-# Phase 433: Initialize Replay Capacity Before Worker Publication (pending)
-
-Accept Fjall's conservative raw-history accounting, pre-mutation clear-prefix safety admission and
-oversized-history normalization before workers start. Verify safe refusal, same-policy reopening and
-bounded recovery-progress failures before connecting the counter to live admission.
+records recovery acceptance; live capacity admission remains the next boundary.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 

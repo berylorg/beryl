@@ -193,5 +193,18 @@ Committed clear completion failures retain a terminal before releasing the journ
 ordinary journal backpressure remains outside the new exclusion so clear can still release capacity;
 worker-wait failures report unknown selected-flush commitment instead of asserting noncommit.
 
-Recovery initialization and live admission remain separate root phases 433 and 431 / Fjall phases
-110 and 108. App qualification remains paused until their acceptance.
+Recovery initialization is now accepted: eight focused and all 273 dependency cases passed
+(`736c2483-1c77-4b4c-844e-d813fd17ef20`), together with normal compilation, formatting and independent
+semantic review. Evidence covers the full two-file persisted-coverage history, exact-prefix
+clear refusal without filesystem mutation, byte and record normalization, malformed-tail exclusion,
+pre/post-flush and journal failure progress, same-policy reopening and worker-independent follow-up.
+
+Review corrected a missing deferred-compaction owner after synchronous normalization. The existing
+bounded recovery plan now carries either flush or compaction work per selected application keyspace,
+without publishing a wake before all workers start. Raw-recovery assertions now verify normalized
+durable data instead of requiring records to remain in memtables. The absent-catalog identity case
+retains advancement in the current generation; no authority requires retired journal identities to
+remain permanently reserved after reopening. Existing orphan cleanup has the same lifetime boundary.
+
+Live admission remains root phase 431 / Fjall phase 108. App qualification remains paused until its
+acceptance and the unchanged workload rerun.
