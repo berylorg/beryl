@@ -212,3 +212,30 @@ Syndic draft-publication cases passed in 25.514 seconds. Normal app compilation 
 seconds, changed Rust formatting and diff checks passed, and independent lifecycle/persistence review
 accepted both the shared access path and reopened structural-failure correction. This boundary does
 not accept typed startup recovery consumers or complete service-graph preparation/publication.
+
+## Recovery Publication Fixture Qualification
+
+Active analyzer references and focused downstream builds did not enumerate every conditional test
+caller of recovered publication. Building all Syndic and app test targets exposed remaining callers
+of the former infallible API. Merely unwrapping checked publication then revealed fixtures that
+retained an uncertain operation until after publication, contrary to the candidate custody boundary.
+
+The corrected fixtures settle the original registry handle through explicit candidate access before
+publication, then resume their original typed flight. Journal-write failures remain exact-old;
+marker acknowledgement loss remains exact-new. The app descendant case retains its exact-successor
+result. Neither a new command nor discarded custody substitutes for the pending outcome. Cleanup
+settlement remains distinct from its already committed parent result. Existing receipt, original
+failure, unchanged-source, explicit-resubmission and retired-generation assertions remain intact.
+
+All Syndic and app test targets compile. The 70 selected app cases passed across the initial 69
+successes and the corrected descendant rerun; all eight corrected Syndic custody cases passed.
+Independent review accepted the mechanical callers and semantic custody corrections. The broader
+Syndic run completed 205 selected cases in 2688.808 seconds, with 198 passing and seven fixture
+failures subsequently passing focused reruns. This includes the separately owned discovery test
+whose recovery setup now uses the explicit read-confirmation failure hook. The focused corrected
+set passed seven cases initially and its remaining four after exact-new/setup corrections. Runs
+`c2a2fb19-7bdb-4529-b116-b7a86115f796` and
+`b8d50d66-7c2d-40fe-afcf-bf7b60c7830e` preserve the broad and final-rerun identities.
+Family deletion, malformed-record decoding, semantic corruption, read bounds, reconciliation,
+marker custody and stop recovery retained their original assertions. Phase 439 is accepted;
+candidate discovery and service composition retain their separate acceptance boundaries.

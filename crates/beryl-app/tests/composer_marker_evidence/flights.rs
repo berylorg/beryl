@@ -452,7 +452,7 @@ fn unavailable_build_after_recovery(committed: bool) {
     );
     let recovery = fixture.store.recover_same_home().unwrap();
     let _storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     for _ in 0..2 {
         let error = host
             .execute_mutation(

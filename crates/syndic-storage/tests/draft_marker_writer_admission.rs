@@ -1144,7 +1144,7 @@ fn uncertain_and_later_failed_staging_cancellation_reconcile_to_exact_new_termin
                 let (store, storage) = if store.health().state() == HomeHealthState::Failed {
                     let recovery = store.recover_same_home().unwrap();
                     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-                    (recovery.publish(), storage)
+                    (recovery.publish().unwrap(), storage)
                 } else {
                     (store, storage)
                 };
@@ -1169,7 +1169,7 @@ fn uncertain_and_later_failed_staging_cancellation_reconcile_to_exact_new_termin
                 ));
                 let recovery = store.recover_same_home().unwrap();
                 let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-                let store = recovery.publish();
+                let store = recovery.publish().unwrap();
                 let replay = execute(
                     &store,
                     storage.draft_mutation_staging_command(
@@ -1271,7 +1271,7 @@ fn structural_later_failure_finalizes_admitted_terminal_custody_before_recovery(
 
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let replay = execute(
         &store,
         storage.draft_mutation_staging_command(storage.revision(&store).unwrap(), terminal.clone()),

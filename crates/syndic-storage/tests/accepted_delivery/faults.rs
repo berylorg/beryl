@@ -89,7 +89,7 @@ fn every_delivery_transition_fault_cut_reconciles_to_exact_prior_or_successor() 
                 assert_eq!(store.health().state(), HomeHealthState::Failed);
                 let candidate = store.recover_same_home().unwrap();
                 let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-                let store = candidate.publish();
+                let store = candidate.publish().unwrap();
                 assert_eq!(store.health().state(), HomeHealthState::Healthy);
                 (store, storage)
             };

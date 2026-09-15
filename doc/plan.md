@@ -50,27 +50,41 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 419: Restore App Construction Evidence With Initial Candidates (finished)
+# Phase 439: Qualify Remaining Recovery Publication Callers (finished)
 
-Accepted explicit complete-domain candidate publication and fresh-handle reconstruction across app
-fixtures. Aggregate independent semantic review, normal and test-target compilation, focused
-runtime qualification and formatting passed. [Acceptance evidence](failures/target-bootstrap-composition.md#app-candidate-qualification)
-includes unchanged scale, failed-service disposal and exact-root submission; production candidate
-recovery and service-graph publication remain separate gates.
+Qualified remaining conditional Syndic/app fixtures for checked recovered publication, settling
+original pending custody through candidate access. All test targets compile; 70 selected app cases
+and 205 selected Syndic cases have passing evidence after focused corrections. Independent review
+accepted preserved outcomes and generation fences. [Evidence](failures/target-bootstrap-composition.md#recovery-publication-fixture-qualification).
 
-# Phase 420: Establish Home-Store Candidate Recovery Access (finished)
+# Phase 436: Establish Syndic Candidate Startup Discovery (wip)
 
-Accepted explicit borrowed initial/reopened access and checked publication with retained failure
-ownership. Shared reads, writer, receipts and reconciliation preserve limits and outcome truth;
-ordinary admission stays closed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-recovery-admission)
-records 253 home-store regressions, downstream recovery checks, normal app compilation and
-independent persistence/lifecycle review. Typed startup consumers remain the next boundary.
+Implement explicit candidate variants of startup source paging and forward-cursor rebase under the
+[compact-source contract](../crates/syndic-storage/doc/design-history-storage.md#non-idle-gate-discovery).
+Share the ordinary traversal, exact gate resolution, codec reads, limits and revision checks through
+private explicit read access. Preserve the ordinary API and gate; expose no raw store or new command
+authority. Do not implement classifier, convergence or service construction in this boundary.
 
-# Phase 436: Connect Typed Candidate Recovery Consumers (pending)
+Verify initial/reopened candidate discovery, empty and paged sources, item/byte bounds, drift and
+stale/foreign handles/cursors, ordinary refusal before publication, and equivalent discovery after
+publication. Existing source corruption and no-broad-scan tests must pass through the shared path.
+Run focused discovery and package read regression checks, normal compilation and independent review
+of identity, bounds and admission before acceptance.
 
-Adapt the exact Beryl-state and Syndic recovery consumers to explicit candidate access, preserving
-their compact discovery, bounded mutations, receipt and reconciliation semantics. Separate any
-independently verifiable consumer boundaries before activation; do not publish healthy services.
+The shared reader and candidate page/rebase methods are implemented; normal compilation, focused
+candidate/source/read regressions and independent review passed. Record the separate acceptance
+and commit after the recovered-publication fixture phase.
+
+# Phase 437: Establish Syndic Candidate Recovery Classification (pending)
+
+Connect bounded stabilized delivery-recovery classification to explicit candidate access, retaining
+exact source anchors, stop/provider authority, drift/corruption distinctions and shared classifiers.
+
+# Phase 438: Connect Typed Candidate Convergence Consumers (pending)
+
+Adapt remaining exact Beryl-state and Syndic startup recovery reads, mutations, receipt interpretation
+and reconciliation required by service preparation. Split independently verifiable consumer boundaries
+before activation; do not publish healthy services or absorb CAS construction.
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

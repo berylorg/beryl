@@ -244,7 +244,7 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
     let candidate = store.recover_same_home().unwrap();
     let recovered_state = BerylState::reacquire_candidate(&candidate).unwrap();
     let recovered_syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     assert_eq!(
         job(&recovered, &recovered_state, job_id).lifecycle(),
         BranchHandoffJobLifecycle::ParentActive

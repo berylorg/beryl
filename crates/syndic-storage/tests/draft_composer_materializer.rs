@@ -1525,7 +1525,7 @@ fn advancing_step_has_not_committed_and_indeterminate_custody() {
     ));
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     committed(execute(
         &store,
         storage.advance_draft_composer_materialization(

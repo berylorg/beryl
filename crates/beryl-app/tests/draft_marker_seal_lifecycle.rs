@@ -310,7 +310,7 @@ fn construction_rejects_a_new_generation_while_old_home_authority_is_live() {
     let old_generation = store.health().generation().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
-    let store = store.recover_same_home().unwrap().publish();
+    let store = store.recover_same_home().unwrap().publish().unwrap();
     let storage = syndic_storage::SyndicStorage::reacquire(&store).unwrap();
     let state = BerylState::reacquire(&store).unwrap();
     let current_generation = store.health().generation().unwrap();

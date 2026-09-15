@@ -226,7 +226,7 @@ fn old_generation_cursors_cannot_be_used_or_rebased_after_same_home_recovery() {
     );
     let candidate = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     let revision = storage.revision(&recovered).unwrap();
     assert!(matches!(
         storage.non_idle_gate_source_page(&recovered, revision, Some(cursor), limits(1),),

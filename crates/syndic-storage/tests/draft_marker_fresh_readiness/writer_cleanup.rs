@@ -302,7 +302,7 @@ fn fresh_writer_begin_acknowledgement_loss_reconciles_exact_deleted_predecessors
             if fixture.store.health().state() == HomeHealthState::Failed {
                 let recovery = fixture.store.recover_same_home().unwrap();
                 fixture.storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-                fixture.store = recovery.publish();
+                fixture.store = recovery.publish().unwrap();
             }
             assert_eq!(
                 fixture
@@ -319,7 +319,7 @@ fn fresh_writer_begin_acknowledgement_loss_reconciles_exact_deleted_predecessors
         if fixture.store.health().state() == HomeHealthState::Failed {
             let recovery = fixture.store.recover_same_home().unwrap();
             fixture.storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            fixture.store = recovery.publish();
+            fixture.store = recovery.publish().unwrap();
         }
         let after = fixture
             .storage

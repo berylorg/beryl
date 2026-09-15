@@ -228,7 +228,7 @@ fn adoption_crash_cuts_reconcile_to_old_or_exact_complete_pair() {
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            (recovery.publish(), storage)
+            (recovery.publish().unwrap(), storage)
         } else {
             (store, storage)
         };

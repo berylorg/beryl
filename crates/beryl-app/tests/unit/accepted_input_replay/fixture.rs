@@ -165,7 +165,7 @@ impl Fixture {
         let candidate = store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
         let state = BerylState::reacquire_candidate(&candidate).unwrap();
-        let store = candidate.publish();
+        let store = candidate.publish().unwrap();
         Self {
             _directory,
             store,

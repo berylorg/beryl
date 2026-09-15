@@ -103,7 +103,7 @@ fn eviction_commit_crash_cuts_recover_old_or_complete_successor() {
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            (recovery.publish(), storage)
+            (recovery.publish().unwrap(), storage)
         } else {
             (store, storage)
         };
@@ -253,7 +253,7 @@ fn capacity_unavailable_is_terminal_at_every_commit_crash_cut_without_a_successo
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            (recovery.publish(), storage)
+            (recovery.publish().unwrap(), storage)
         } else {
             (store, storage)
         };

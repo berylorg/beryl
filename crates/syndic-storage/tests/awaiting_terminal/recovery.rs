@@ -328,7 +328,7 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
         assert_eq!(store.health().state(), HomeHealthState::Failed);
         let candidate = store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-        let store = candidate.publish();
+        let store = candidate.publish().unwrap();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         let exact = assert_uncertain_transition_whole(&store, &storage, thread, turn);
         assert_eq!(

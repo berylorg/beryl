@@ -188,8 +188,7 @@ fn assigned_marker_resolution_preserves_read_state_and_builder_consumes_once() {
         {
             committed(execute(
                 &fixture.store,
-                fixture.storage.advance_draft_piece_edit(advance,
-                ),
+                fixture.storage.advance_draft_piece_edit(advance),
             ));
         }
         committed(execute(
@@ -263,7 +262,7 @@ fn assigned_marker_resolution_rejects_retired_home_and_reconstructed_owner() {
     );
     let recovery = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert!(
         storage
             .resolve_draft_mutation_staging_marker(&store, begin, target, fixture.asset_id, 0)

@@ -386,7 +386,7 @@ fn stale_generation_schedules_inert_cleanup_and_retirement_never_reactivates_adm
     assert!(store.home_revision().is_err());
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let reopened = recovery.publish();
+    let reopened = recovery.publish().unwrap();
     assert_eq!(
         storage
             .next_inert_draft_marker_admission_cleanup(&reopened)
@@ -463,7 +463,7 @@ fn exact_compact_terminal_closure_transfers_final_charge_to_settlement_once() {
     assert!(store.home_revision().is_err());
     let recovery = store.recover_same_home().unwrap();
     let fresh_storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let reopened = recovery.publish();
+    let reopened = recovery.publish().unwrap();
     assert!(
         storage
             .transfer_draft_marker_admission_terminal_to_settlement_for_test(

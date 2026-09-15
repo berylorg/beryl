@@ -138,7 +138,7 @@ impl Fixture {
     pub fn recover_same_home(self) -> (tempfile::TempDir, HomeStore, SyndicStorage) {
         let recovery = self.store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-        (self._directory, recovery.publish(), storage)
+        (self._directory, recovery.publish().unwrap(), storage)
     }
 
     pub fn into_store(self) -> (tempfile::TempDir, HomeStore, SyndicStorage) {

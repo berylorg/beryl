@@ -263,7 +263,7 @@ fn same_home_recovery_invalidates_the_old_storage_generation() {
     );
     let candidate = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     let after = storage
         .pending_dispatch_evidence(&recovered, fixture.thread, point_limit())
         .unwrap()

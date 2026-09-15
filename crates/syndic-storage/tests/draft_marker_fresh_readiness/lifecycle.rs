@@ -215,9 +215,16 @@ fn uncertain_fresh_assignment_reconciles_once_and_retired_custody_cannot_mint_re
         if retired {
             faults.fail_next(FaultPoint::BeforeReadConfirmation);
             assert!(fixture.store.home_revision().is_err());
-            let recovery = fixture.store.recover_same_home().unwrap();
+            let mut recovery = fixture.store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            let store = recovery.publish();
+            let access = recovery.recovery_access().unwrap();
+            let handles = access.pending_reconciliations();
+            assert_eq!(handles.len(), 1);
+            assert!(matches!(
+                access.retry_reconciliation(&handles[0]).unwrap(),
+                beryl_home_store::ReconciliationResolution::ExactNew { .. }
+            ));
+            let store = recovery.publish().unwrap();
             assert!(!matches!(
                 storage.submit_draft_marker_label_assignment(&store, pending),
                 DraftMarkerLabelAssignmentOutcomeV1::Ready { .. }

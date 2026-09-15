@@ -86,7 +86,7 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
             assert_eq!(store.health().state(), HomeHealthState::Failed);
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            let store = recovery.publish();
+            let store = recovery.publish().unwrap();
             assert_eq!(store.health().state(), HomeHealthState::Healthy);
             (store, storage)
         };

@@ -192,10 +192,17 @@ fn assignment_exact_old_retains_storage_failure_and_prior_custody_for_retry() {
     };
     drop(fault);
     assert!(store.home_revision().is_err());
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     let retired_storage = storage;
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactOld
+    ));
+    let store = recovery.publish().unwrap();
     match retired_storage.submit_draft_marker_label_assignment(&store, pending) {
         DraftMarkerLabelAssignmentOutcomeV1::StorageError(
             DraftMarkerAdmissionStorageErrorV1::Command(CommandError::Commit { .. }),
@@ -253,7 +260,7 @@ fn after_persist_assignment_keeps_selected_receipt_and_failure_without_minting_r
     }
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let head = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, operation, &[])
         .unwrap();
@@ -323,7 +330,7 @@ fn retired_committed_readiness_cannot_issue_a_proof() {
     assert!(store.home_revision().is_err());
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let pending = take_pending(storage.submit_draft_marker_label_assignment(&store, pending));
     drop(pending);
     assert!(matches!(

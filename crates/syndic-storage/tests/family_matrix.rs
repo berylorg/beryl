@@ -137,7 +137,7 @@ fn exercise_deletion(case: DeletionCase) {
     );
     let candidate = store.recover_same_home().unwrap();
     SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     SyndicStorage::reacquire(&recovered).unwrap();
     recovered.close().unwrap();
 }

@@ -147,7 +147,7 @@ fn successful_recovery_requires_old_handle_reacquisition() {
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     let candidate = store.recover_same_home().unwrap();
     let current = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     assert!(

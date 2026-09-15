@@ -799,7 +799,7 @@ fn fresh_and_accepted_marker_targets_preserve_committed_cleanup_custody_when_hom
     assert_known_commit_verification(flight.verification_work());
     let recovery = fixture.store.recover_same_home().unwrap();
     fixture.storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    fixture.store = recovery.publish();
+    fixture.store = recovery.publish().unwrap();
     let flight = flight.resume(&fixture.store);
     assert_eq!(
         flight.state(),

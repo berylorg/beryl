@@ -157,7 +157,7 @@ fn every_four_record_commit_cut_recovers_only_exact_old_or_exact_new_after_reope
         let (store, storage) = if store.health().state() == HomeHealthState::Failed {
             let recovery = store.recover_same_home().unwrap();
             let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-            (recovery.publish(), storage)
+            (recovery.publish().unwrap(), storage)
         } else {
             (store, storage)
         };

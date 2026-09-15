@@ -95,7 +95,7 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
         assert_eq!(store.health().state(), HomeHealthState::Failed);
         let recovery = store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-        let store = recovery.publish();
+        let store = recovery.publish().unwrap();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_eq!(
             storage

@@ -77,7 +77,7 @@ pub fn exercise_case(
     );
     let candidate = store.recover_same_home().unwrap();
     SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     SyndicStorage::reacquire(&recovered).unwrap();
     recovered.close().unwrap();
 }
@@ -141,7 +141,7 @@ pub fn exercise_seeded_populated_case(
     );
     let candidate = store.recover_same_home().unwrap();
     SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     SyndicStorage::reacquire(&recovered).unwrap();
     recovered.close().unwrap();
 }

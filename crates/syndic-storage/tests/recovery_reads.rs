@@ -69,7 +69,7 @@ fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
         ));
         let candidate = store.recover_same_home().unwrap();
         let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-        let recovered = candidate.publish();
+        let recovered = candidate.publish().unwrap();
         assert!(storage.revision(&recovered).is_err());
         recovered_storage.revision(&recovered).unwrap();
         recovered.close().unwrap();
@@ -155,7 +155,7 @@ fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options_o
                 DomainValidationError::Access { domain: "syndic", .. }
             )
         ));
-        let recovered = store.recover_same_home().unwrap().publish();
+        let recovered = store.recover_same_home().unwrap().publish().unwrap();
         SyndicStorage::reacquire(&recovered).unwrap();
         recovered.close().unwrap();
 

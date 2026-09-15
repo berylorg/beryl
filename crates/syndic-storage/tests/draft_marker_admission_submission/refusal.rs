@@ -271,7 +271,7 @@ fn proven_noncommit_retains_storage_failure_and_releases_the_transient_slot() {
     ));
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap(), revision);
     assert!(snapshot(&storage, &store, operation).head().is_none());
     let next = make_flight(
@@ -323,10 +323,17 @@ fn exact_old_reconciliation_retains_failure_across_pending_retry() {
         _ => panic!("foreign reconciliation discarded original failure or custody"),
     };
     assert!(store.home_revision().is_err());
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     let retired_storage = storage;
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactOld
+    ));
+    let store = recovery.publish().unwrap();
     match retired_storage.submit_draft_marker_label_readiness_page(&store, pending) {
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::StorageError(
             DraftMarkerAdmissionStorageErrorV1::Command(CommandError::Commit { .. }),

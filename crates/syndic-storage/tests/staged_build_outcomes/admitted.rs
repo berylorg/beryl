@@ -247,9 +247,16 @@ fn cleanup_exact_old_retriggers_its_failed_handle_before_explicit_bounded_retry(
         assert!(flight.has_reconciliation_custody());
         assert!(flight.failure().is_some());
     }
-    let recovery = fixture.store.recover_same_home().unwrap();
+    let mut recovery = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactOld
+    ));
+    let store = recovery.publish().unwrap();
     let flight = flight.resume(&store);
     assert_eq!(flight.state(), State::CleanupPending, "{flight:?}");
     assert_eq!(flight.classification(), Durable::Committed);
@@ -343,7 +350,7 @@ fn known_committed_writer_finalization_is_consumed_once_despite_later_failure() 
     ));
     let recovery = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let flight = flight.resume(&store);
     assert_eq!(flight.state(), State::Unavailable);
     assert_eq!(flight.classification(), Durable::Committed);
@@ -382,7 +389,7 @@ fn cleanup_local_finalization_releases_writer_once_despite_later_failure() {
     );
     let recovery = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let snapshot = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, admission, &[])
         .unwrap();

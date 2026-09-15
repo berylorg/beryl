@@ -111,7 +111,7 @@ fn recover_direct_fault(
     } = fixture;
     let candidate = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     super::stop_support::ActiveStopFixture {
         _home,

@@ -79,7 +79,7 @@ fn foreign_and_retired_commands_cannot_publish() {
     ));
     let candidate = store.recover_same_home().unwrap();
     let current = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
     let before = store.home_revision().unwrap();
     assert!(matches!(
         store.execute_current(stale_command),
@@ -156,7 +156,7 @@ fn writer_faults_leave_exact_absence_or_the_complete_sealed_closure() {
         assert_eq!(store.health().state(), HomeHealthState::Failed);
         let candidate = store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-        let store = candidate.publish();
+        let store = candidate.publish().unwrap();
         assert!(store.pending_reconciliations().is_empty());
         if point == FaultPoint::BeforeCommit {
             assert!(snapshot(&store, &storage).is_empty());

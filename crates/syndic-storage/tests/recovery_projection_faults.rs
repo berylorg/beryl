@@ -69,7 +69,7 @@ fn recovery_assembly_read_fault_preserves_state_for_same_home_recovery() {
 
     let candidate = store.recover_same_home().unwrap();
     let _candidate_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     let storage = SyndicStorage::reacquire(&recovered).unwrap();
     assert_eq!(
         storage

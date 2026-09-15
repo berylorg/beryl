@@ -207,7 +207,7 @@ fn after_persist_preserves_the_committed_receipt_and_later_storage_failure() {
     }
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     let head = snapshot(&storage, &store, owner);
     assert_eq!(head.head().unwrap().target_root().count(), 1);
     assert_eq!(
@@ -263,7 +263,7 @@ fn ready_flight_is_rejected_after_its_home_generation_retires() {
     assert!(store.home_revision().is_err());
     let recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert!(matches!(
         storage.submit_draft_marker_label_readiness_page(&store, flight),
         DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Refused(
@@ -419,9 +419,16 @@ fn lost_ack_reconciles_after_recovery_without_reviving_the_prior_generation() {
 
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactNew { .. }
+    ));
+    let store = recovery.publish().unwrap();
     assert_advanced(
         "recovered exact-new",
         &storage,
@@ -671,10 +678,7 @@ fn complete_marker_edit(
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

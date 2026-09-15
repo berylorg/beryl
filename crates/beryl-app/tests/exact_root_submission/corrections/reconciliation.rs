@@ -171,10 +171,17 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
     drop(seals);
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
-    let candidate = store.recover_same_home().unwrap();
+    let mut candidate = store.recover_same_home().unwrap();
     let recovered_state = BerylState::reacquire_candidate(&candidate).unwrap();
     let recovered_storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    let access = candidate.recovery_access().unwrap();
+    let pending = access.pending_reconciliations();
+    assert_eq!(pending.len(), 1);
+    assert!(matches!(
+        access.reconcile(&pending[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactSuccessor { .. }
+    ));
+    let store = candidate.publish().unwrap();
     let assets = recovered_state.assets();
     let seals = service(&store, recovered_storage.clone(), assets.clone(), 1, 1);
     let revision_before_restart_reconciliation = store.home_revision().unwrap();

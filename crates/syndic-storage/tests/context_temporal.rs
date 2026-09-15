@@ -280,7 +280,7 @@ fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) 
     }
     let candidate = store.recover_same_home().unwrap();
     SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     SyndicStorage::reacquire(&recovered).unwrap();
     recovered.close().unwrap();
 

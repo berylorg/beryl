@@ -229,7 +229,7 @@ fn evidence_storage_noncommit_preserves_its_failure_and_the_exact_prior_candidat
     assert_eq!(host.settlement_custody_in_use(), 0);
     let recovery = fixture.store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap(), revision);
     assert_eq!(
         storage

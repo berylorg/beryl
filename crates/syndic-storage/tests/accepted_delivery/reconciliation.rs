@@ -202,7 +202,7 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
     );
     let candidate = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     assert_eq!(
         recovered.health().state(),
         beryl_home_store::HomeHealthState::Healthy

@@ -137,7 +137,7 @@ fn previous_home_generation_capability_cannot_begin_on_recovered_home() {
     assert!(store.home_revision().is_err());
     let candidate = store.recover_same_home().unwrap();
     let storage = syndic_storage::SyndicStorage::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
     assert_ne!(store.health().generation().unwrap(), old_generation);
     let (mut host, _) = activated(storage, &store, thread, 232, 233);
     let revision = store.home_revision().unwrap();

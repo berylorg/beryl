@@ -72,7 +72,7 @@ fn allocation_permitted_preserves_candidate_source_labels_and_equal_label_assets
     assert!(store.home_revision().is_err());
     let recovery = store.recover_same_home().unwrap();
     let reopened_storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let reopened = recovery.publish();
+    let reopened = recovery.publish().unwrap();
     assert!(
         reopened_storage
             .inspect_draft_marker_label_readiness_proof_for_test(&reopened, &proof)
@@ -436,9 +436,16 @@ fn retired_generation_pending_assignment_cannot_mint_readiness() {
     };
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactNew { .. }
+    ));
+    let store = recovery.publish().unwrap();
     match storage.submit_draft_marker_label_assignment(&store, pending) {
         DraftMarkerLabelAssignmentOutcomeV1::CommittedUnavailable {
             receipt,

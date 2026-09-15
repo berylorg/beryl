@@ -118,9 +118,16 @@ fn transfer_exact_old_requires_explicit_resubmission_and_preserves_first_failure
     let flight = flight.resume(&store);
     assert_eq!(flight.state(), State::Reconciling, "{flight:?}");
     assert!(flight.has_reconciliation_custody());
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    let handles = access.pending_reconciliations();
+    assert_eq!(handles.len(), 1);
+    assert!(matches!(
+        access.retry_reconciliation(&handles[0]).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactOld
+    ));
+    let store = recovery.publish().unwrap();
     let flight = flight.resume(&store);
     assert_eq!(flight.classification(), Durable::NotCommitted);
     assert!(matches!(
