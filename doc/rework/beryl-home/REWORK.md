@@ -380,6 +380,7 @@
 - [x] Qualified application initial-candidate fixtures with [complete publication and runtime evidence](../../failures/target-bootstrap-composition.md#app-candidate-qualification).
 - [x] Accepted explicit borrowed home-candidate recovery access and checked publication with [failure, custody and regression evidence](../../failures/target-bootstrap-composition.md#candidate-recovery-admission).
 - [x] Accepted bounded Syndic candidate startup discovery and cursor rebase with [identity, corruption and read regression evidence](../../failures/target-bootstrap-composition.md#candidate-startup-discovery).
+- [x] Accepted candidate pending-dispatch evidence with [stabilization, provenance and admission evidence](../../failures/target-bootstrap-composition.md#candidate-pending-evidence).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

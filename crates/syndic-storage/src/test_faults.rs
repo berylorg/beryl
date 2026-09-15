@@ -20,6 +20,21 @@ pub fn pending_dispatch_evidence_with_confirmation_hook(
     storage.read_pending_dispatch_evidence(store, thread_id, limit, before_confirmation)
 }
 
+pub fn pending_dispatch_evidence_candidate_with_confirmation_hook(
+    storage: &crate::SyndicStorage,
+    store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    thread_id: beryl_model::SyndicThreadId,
+    limit: crate::SyndicPointReadLimit,
+    before_confirmation: impl FnOnce(),
+) -> Result<Option<crate::PendingDispatchEvidence>, crate::SyndicReadError> {
+    storage.read_pending_dispatch_evidence_with_access(
+        crate::read::access::ReadAccess::Candidate(store),
+        thread_id,
+        limit,
+        before_confirmation,
+    )
+}
+
 pub fn terminal_history_evidence_with_confirmation_hook(
     storage: &SyndicStorage,
     store: &beryl_home_store::HomeStore,

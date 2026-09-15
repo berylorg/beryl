@@ -1,6 +1,7 @@
 mod pages;
 pub use pages::*;
 
+use super::access::ReadAccess;
 use super::*;
 use crate::{NonIdleGateSourceRecord, record::non_idle_gate_source_matches};
 
@@ -12,14 +13,29 @@ impl SyndicStorage {
         limit: SyndicPointReadLimit,
         read: impl FnOnce() -> Result<T, SyndicReadError>,
     ) -> Result<T, SyndicReadError> {
+        self.with_current_gate_source_with_access(
+            ReadAccess::Ordinary(store),
+            thread_id,
+            limit,
+            read,
+        )
+    }
+
+    pub(super) fn with_current_gate_source_with_access<T>(
+        &self,
+        store: ReadAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+        read: impl FnOnce() -> Result<T, SyndicReadError>,
+    ) -> Result<T, SyndicReadError> {
         let observed = (
-            self.point::<InputGatesFamily>(store, thread_id, limit)?,
-            self.point::<NonIdleGateSourcesFamily>(store, thread_id, limit)?,
+            self.point_with_access::<InputGatesFamily>(store, thread_id, limit)?,
+            self.point_with_access::<NonIdleGateSourcesFamily>(store, thread_id, limit)?,
         );
         let result = read();
         let confirmed = (
-            self.point::<InputGatesFamily>(store, thread_id, limit)?,
-            self.point::<NonIdleGateSourcesFamily>(store, thread_id, limit)?,
+            self.point_with_access::<InputGatesFamily>(store, thread_id, limit)?,
+            self.point_with_access::<NonIdleGateSourcesFamily>(store, thread_id, limit)?,
         );
         if observed != confirmed {
             return Err(SyndicReadError::ConcurrentChange {

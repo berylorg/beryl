@@ -1,9 +1,20 @@
 use super::*;
+use crate::read::access::ReadAccess;
 
 impl SyndicStorage {
     pub(super) fn owner_page<F: OwnerPageFamily>(
         &self,
         store: &HomeStore,
+        owner: F::Owner,
+        after: Option<F::Ordinal>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<F::Value>, SyndicReadError> {
+        self.owner_page_with_access::<F>(ReadAccess::Ordinary(store), owner, after, limits)
+    }
+
+    pub(super) fn owner_page_with_access<F: OwnerPageFamily>(
+        &self,
+        store: ReadAccess<'_>,
         owner: F::Owner,
         after: Option<F::Ordinal>,
         limits: CursorReadLimits,
@@ -14,12 +25,21 @@ impl SyndicStorage {
             Some(after) => CursorRange::after(F::key(owner, after), last),
             None => CursorRange::closed(first, last),
         };
-        self.page::<F>(store, range, limits)
+        self.page_with_access::<F>(store, range, limits)
     }
 
     pub(crate) fn page<F: Family>(
         &self,
         store: &HomeStore,
+        range: CursorRange<F::Key>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<F::Value>, SyndicReadError> {
+        self.page_with_access::<F>(ReadAccess::Ordinary(store), range, limits)
+    }
+
+    pub(crate) fn page_with_access<F: Family>(
+        &self,
+        store: ReadAccess<'_>,
         range: CursorRange<F::Key>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<F::Value>, SyndicReadError> {

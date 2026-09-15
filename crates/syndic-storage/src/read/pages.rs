@@ -149,7 +149,22 @@ impl SyndicStorage {
         after: Option<crate::TurnItemOrdinal>,
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::TurnItemIndexRecord>, SyndicReadError> {
-        self.owner_page::<TurnItemsFamily>(store, turn, after, limits)
+        self.turn_items_with_access(
+            super::access::ReadAccess::Ordinary(store),
+            turn,
+            after,
+            limits,
+        )
+    }
+
+    pub(in crate::read) fn turn_items_with_access(
+        &self,
+        store: super::access::ReadAccess<'_>,
+        turn: SyndicTurnId,
+        after: Option<crate::TurnItemOrdinal>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<crate::TurnItemIndexRecord>, SyndicReadError> {
+        self.owner_page_with_access::<TurnItemsFamily>(store, turn, after, limits)
     }
 
     pub fn item_source_events(

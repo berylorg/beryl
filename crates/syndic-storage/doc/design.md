@@ -78,6 +78,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   input references and authenticated dispatch provenance to ordinary execution and recovery. Its
   bounded read snapshot does not settle live execution or cleanup custody; those obligations remain
   with the [CAS-live system](../../../doc/systems/cas-live-syndic-transcript/design.md).
+- `pending_dispatch_evidence_candidate` supplies the same stabilized bounded facts through borrowed
+  home-store candidate recovery access. It preserves exact gate/source, binding, canonical-input
+  and cancellation-provenance checks and grants no ordinary execution or cleanup authority before
+  complete service publication.
 - `terminal_history_evidence` binds the exact selected terminal turn to its home, generation and
   revision after the idle gate and the same bounded fixed point used by terminal-history release
   are established. Complete and authority-loss incomplete history remain distinct lifecycle

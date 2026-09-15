@@ -1,6 +1,7 @@
 mod facts;
 
-use beryl_home_store::{HomeGeneration, HomeStore};
+use super::access::ReadAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
 use beryl_model::{
     BerylHomeId, BindingRevision, DiscussionContextOwnerId, DomainRevision, InputGateRevision,
     ProjectionRevision, SealedAssetReferenceSetProof, SyndicItemId, SyndicThreadId, SyndicTurnId,
@@ -96,6 +97,20 @@ impl SyndicStorage {
         self.read_pending_dispatch_evidence(store, thread_id, limit, || {})
     }
 
+    pub fn pending_dispatch_evidence_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<PendingDispatchEvidence>, SyndicReadError> {
+        self.read_pending_dispatch_evidence_with_access(
+            ReadAccess::Candidate(store),
+            thread_id,
+            limit,
+            || {},
+        )
+    }
+
     pub(crate) fn read_pending_dispatch_evidence(
         &self,
         store: &HomeStore,
@@ -103,12 +118,27 @@ impl SyndicStorage {
         limit: SyndicPointReadLimit,
         before_confirmation: impl FnOnce(),
     ) -> Result<Option<PendingDispatchEvidence>, SyndicReadError> {
-        let revision = self.revision(store)?;
-        self.with_current_gate_source(store, thread_id, limit, || {
+        self.read_pending_dispatch_evidence_with_access(
+            ReadAccess::Ordinary(store),
+            thread_id,
+            limit,
+            before_confirmation,
+        )
+    }
+
+    pub(crate) fn read_pending_dispatch_evidence_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+        before_confirmation: impl FnOnce(),
+    ) -> Result<Option<PendingDispatchEvidence>, SyndicReadError> {
+        let revision = self.revision_with_access(store)?;
+        self.with_current_gate_source_with_access(store, thread_id, limit, || {
             let first = facts::read(self, store, thread_id, limit);
             before_confirmation();
             let second = facts::read(self, store, thread_id, limit);
-            if self.revision(store)? != revision {
+            if self.revision_with_access(store)? != revision {
                 return Err(SyndicReadError::ConcurrentChange {
                     operation: "pending dispatch evidence",
                 });

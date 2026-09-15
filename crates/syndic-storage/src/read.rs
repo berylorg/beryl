@@ -1,7 +1,7 @@
 mod accepted_delivery;
 mod accepted_next;
 mod accepted_ready;
-mod access;
+pub(crate) mod access;
 mod admission;
 mod binding;
 mod capture;
@@ -261,7 +261,16 @@ impl SyndicStorage {
         id: SyndicContentId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<ContentManifestRecord>, SyndicReadError> {
-        let manifest = self.point::<ContentManifestsFamily>(store, id, limit)?;
+        self.content_manifest_with_access(access::ReadAccess::Ordinary(store), id, limit)
+    }
+
+    pub(in crate::read) fn content_manifest_with_access(
+        &self,
+        store: access::ReadAccess<'_>,
+        id: SyndicContentId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ContentManifestRecord>, SyndicReadError> {
+        let manifest = self.point_with_access::<ContentManifestsFamily>(store, id, limit)?;
         if matches!(
             manifest.as_ref(),
             Some(manifest)
@@ -429,8 +438,18 @@ impl SyndicStorage {
         thread: SyndicThreadId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<SyndicCurrentBinding>, SyndicReadError> {
-        let Some(first) = self.point::<BindingHeadsFamily>(store, thread, limit)? else {
-            return match self.point::<BindingHeadsFamily>(store, thread, limit)? {
+        self.current_binding_with_access(access::ReadAccess::Ordinary(store), thread, limit)
+    }
+
+    pub(in crate::read) fn current_binding_with_access(
+        &self,
+        store: access::ReadAccess<'_>,
+        thread: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<SyndicCurrentBinding>, SyndicReadError> {
+        let Some(first) = self.point_with_access::<BindingHeadsFamily>(store, thread, limit)?
+        else {
+            return match self.point_with_access::<BindingHeadsFamily>(store, thread, limit)? {
                 None => Ok(None),
                 Some(_) => Err(SyndicReadError::ConcurrentChange {
                     operation: "current-binding read",
@@ -439,7 +458,7 @@ impl SyndicStorage {
         };
         let head = first.clone();
         let binding = self
-            .point::<BindingsFamily>(
+            .point_with_access::<BindingsFamily>(
                 store,
                 BindingKey {
                     thread,
@@ -451,7 +470,7 @@ impl SyndicStorage {
                 "current binding head selects a missing binding",
             ))?;
         let second = self
-            .point::<BindingHeadsFamily>(store, thread, limit)?
+            .point_with_access::<BindingHeadsFamily>(store, thread, limit)?
             .ok_or(SyndicReadError::ConcurrentChange {
                 operation: "current-binding read",
             })?;

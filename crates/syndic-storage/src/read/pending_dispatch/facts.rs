@@ -1,4 +1,9 @@
-use beryl_home_store::{CursorReadLimits, HomeGeneration, HomeStore};
+use crate::codec::{
+    CanonicalItemsFamily, HistorySummariesFamily, InputGatesFamily, ThreadsFamily,
+    TurnStatesFamily, TurnsFamily,
+};
+use crate::read::access::ReadAccess;
+use beryl_home_store::{CursorReadLimits, HomeGeneration};
 use beryl_model::{BerylHomeId, DomainRevision, SyndicThreadId};
 
 use crate::{
@@ -26,11 +31,11 @@ pub(super) struct PendingDispatchFacts {
 
 pub(super) fn read(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<Option<PendingDispatchFacts>, SyndicReadError> {
-    let Some(gate) = storage.input_gate(store, thread_id, limit)? else {
+    let Some(gate) = storage.point_with_access::<InputGatesFamily>(store, thread_id, limit)? else {
         return Ok(None);
     };
     let InputGateState::PendingTurn(turn_id) = gate.state() else {
@@ -41,23 +46,23 @@ pub(super) fn read(
     }
     let turn_id = *turn_id;
     let thread = required(
-        storage.thread(store, thread_id, limit)?,
+        storage.point_with_access::<ThreadsFamily>(store, thread_id, limit)?,
         "pending dispatch thread is missing",
     )?;
     let binding = required(
-        storage.current_binding(store, thread_id, limit)?,
+        storage.current_binding_with_access(store, thread_id, limit)?,
         "pending dispatch binding is missing",
     )?;
     let turn = required(
-        storage.turn(store, turn_id, limit)?,
+        storage.point_with_access::<TurnsFamily>(store, turn_id, limit)?,
         "pending dispatch turn is missing",
     )?;
     let state = required(
-        storage.turn_state(store, turn_id, limit)?,
+        storage.point_with_access::<TurnStatesFamily>(store, turn_id, limit)?,
         "pending dispatch turn state is missing",
     )?;
     let summary = required(
-        storage.history_summary(store, thread_id, limit)?,
+        storage.point_with_access::<HistorySummariesFamily>(store, thread_id, limit)?,
         "pending dispatch history summary is missing",
     )?;
     if matches!(binding.binding().state(), BindingState::Active(_))
@@ -74,9 +79,9 @@ pub(super) fn read(
     match state.dispatch_provenance() {
         TurnDispatchProvenance::Unattempted => {}
         TurnDispatchProvenance::Cancelled(anchor) => {
-            if !storage
-                .authenticated_cancelled_dispatch(store, thread_id, turn_id, anchor, limit)?
-            {
+            if !storage.authenticated_cancelled_dispatch_with_access(
+                store, thread_id, turn_id, anchor, limit,
+            )? {
                 return Err(SyndicReadError::Invariant(
                     "pending dispatch cancellation provenance disagrees",
                 ));
@@ -89,7 +94,7 @@ pub(super) fn read(
             ));
         }
     }
-    let items = storage.turn_items(
+    let items = storage.turn_items_with_access(
         store,
         turn_id,
         None,
@@ -101,7 +106,11 @@ pub(super) fn read(
         ));
     }
     let item = required(
-        storage.canonical_item(store, items.records()[0].item_id(), limit)?,
+        storage.point_with_access::<CanonicalItemsFamily>(
+            store,
+            items.records()[0].item_id(),
+            limit,
+        )?,
         "pending dispatch canonical input is missing",
     )?;
     let input = required(
@@ -109,7 +118,7 @@ pub(super) fn read(
         "pending dispatch canonical input has no sealed content",
     )?;
     let manifest = required(
-        storage.content_manifest(store, input.id(), limit)?,
+        storage.content_manifest_with_access(store, input.id(), limit)?,
         "pending dispatch input content is missing",
     )?;
     Ok(Some(PendingDispatchFacts {

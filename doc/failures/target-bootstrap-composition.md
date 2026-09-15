@@ -254,3 +254,19 @@ foreign cursors, ordinary refusal, stable missing-gate corruption and post-publi
 Existing compact-source corruption, bounded paging and typed recovery-read checks passed. Normal
 package compilation, changed Rust formatting and diff checks passed; independent review accepted
 the shared reader and the corrected explicit read-fault recovery setup.
+
+## Candidate Pending Evidence
+
+Phase 440 accepted candidate pending-dispatch evidence through shared bounded gate/source, binding,
+manifest, input-page and cancellation-provenance reads. Refactoring typed reads must preserve their
+semantic guards as well as their codecs; the content-manifest ownerless/unsealed guard remains in
+the common helper. Candidate facts preserve the ordinary proof fields and grant no execution or
+cleanup authority.
+
+All 45 selected delivery-recovery and shared-reader regressions passed in 95.141 seconds (run
+`771ef720-88f8-4372-bacf-a3eb4151d52a`). After the manifest-helper correction, all seven directly
+affected candidate/ordinary pending tests passed in 19.305 seconds (run
+`ad51d3d4-8a65-4dc1-ab9c-0b5f7d910eea`). New cases cover initial/reopened candidates, publication
+parity, retired handles, ordinary refusal, absent targets, byte limits, cancellation provenance and
+mutation drift versus stable missing input. Normal package compilation, formatting and diff checks
+passed; independent adversarial review accepted stabilization, boundedness and capability semantics.

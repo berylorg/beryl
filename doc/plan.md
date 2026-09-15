@@ -50,12 +50,18 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 436: Establish Syndic Candidate Startup Discovery (finished)
+# Phase 440: Establish Candidate Pending-Dispatch Evidence (finished)
 
-Accepted explicit candidate startup paging and cursor rebase through the shared bounded reader.
-Initial/reopened access, identity fences, limits, drift, corruption and ordinary refusal passed
-with 41 selected discovery/source/read cases, normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-discovery).
+Accepted candidate pending evidence through shared stabilized bounded reads, preserving identity,
+cancellation provenance and ordinary admission. All 45 focused regressions and seven final affected
+reruns passed, with normal compilation and independent review.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-pending-evidence).
+
+# Phase 441: Establish Candidate Stop-Admission Evidence (pending)
+
+Share bounded stabilized stop-admission reads and exact target/operation observation through
+explicit candidate access. Preserve provider-finalization, selected-source and live-stop authority
+semantics; verify ordinary/candidate parity, drift, corruption and generation fences independently.
 
 # Phase 437: Establish Syndic Candidate Recovery Classification (pending)
 
