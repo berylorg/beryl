@@ -50,14 +50,20 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 429: Diagnose Remaining Memtable Pressure After History Retirement (finished)
+# Phase 430: Establish Exact Snapshot History Retirement Floor (finished)
 
-Accepted [remaining-pressure diagnosis](failures/syndic-draft-build-memtable-capacity.md#accepted-remaining-pressure-diagnosis):
-physical charge equals aggregate active memtables plus the prepared batch prefix, with no pending
-rotation, flush or compaction. Two unchanged-workload captures and independent review passed;
-temporary probes were removed. Further correction must cover bounded aggregate-pressure progress
-and snapshot-safe reclamation without depending on another application write. No production remedy
-or app qualification is accepted by this diagnostic result.
+Accepted the exact exclusive snapshot-history floor separately from record GC in the
+[Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability). Eight focused and all 255
+dependency cases, normal compilation, formatting and independent review passed, including zero,
+clone/backing pins and immediate post-flush physical reuse through the test-fault boundary with an
+explicit journal cut. Ordinary aggregate admission and app qualification remain pending.
+
+# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (pending)
+
+Complete owning authority for the recovery journal cut, bounded maintenance selection and completion,
+then implement explicit capacity progress before actual record reservation and journal publication.
+Preserve hard limits and typed refusal when pins or supported failures prevent release. Rerun the
+unchanged app workload after dependency acceptance.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
