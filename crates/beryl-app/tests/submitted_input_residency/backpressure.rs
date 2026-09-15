@@ -1,6 +1,8 @@
 use beryl_app::cas_projection::{
     OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
-    test_faults::{install_checked_user_publication_barrier, provider_broker_snapshot},
+    test_faults::{
+        capture_provider_broker_snapshot_reader, install_checked_user_publication_barrier,
+    },
 };
 use beryl_backend::{TurnStartOptions, UserMessageEchoLifecycle};
 
@@ -42,9 +44,10 @@ pub fn run() {
 
         let checked_barrier =
             install_checked_user_publication_barrier(session, UserMessageEchoLifecycle::Completed);
+        let broker_metrics = capture_provider_broker_snapshot_reader(session);
         server.release_lifecycle();
         assert!(checked_barrier.wait_until_paused(TIMEOUT));
-        let blocked_broker = provider_broker_snapshot(session);
+        let blocked_broker = broker_metrics.snapshot();
         assert_eq!(blocked_broker.in_flight().current(), 1);
         assert_eq!(blocked_broker.in_flight().high_water(), 1);
         assert_eq!(blocked_broker.submitted(), 2);
@@ -60,7 +63,7 @@ pub fn run() {
         let blocked_input = diagnostics.snapshot();
 
         server.wait_for_tail();
-        assert_eq!(provider_broker_snapshot(session), blocked_broker);
+        assert_eq!(broker_metrics.snapshot(), blocked_broker);
         assert_eq!(diagnostics.snapshot(), blocked_input);
         checked_barrier.release();
     });

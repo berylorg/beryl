@@ -12,6 +12,7 @@ use beryl_model::{
     AssetId, ExecutionBinding, ImageLabelOrdinal, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicThreadId,
 };
+use beryl_state::BerylState;
 use syndic_storage::{
     CreateThread, DraftCompositeGapWitnessV1, DraftCompositePositionV1, DraftEditHistoryPolicyV1,
     DraftEditorCandidateSessionIdV1, DraftEditorCandidateSessionOpenOutcomeV1,
@@ -67,9 +68,17 @@ pub fn fixture_with_history_budget(
     history_byte_budget: u64,
 ) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(
@@ -88,11 +97,86 @@ pub fn fixture_with_history_budget(
     (home, store, storage, thread)
 }
 
-pub fn reopen(home: &TestHome) -> (HomeStore, SyndicStorage) {
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+pub fn fixture_with_state(
+    name: &str,
+    seed: u8,
+) -> (
+    TestHome,
+    HomeStore,
+    BerylState,
+    SyndicStorage,
+    SyndicThreadId,
+) {
+    let home = TestHome::new(name);
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
+    committed(execute(
+        &store,
+        storage.create_thread(
+            storage.revision(&store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                execution(),
+                SyndicTimestamp::from_unix_millis(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ),
+    ));
+    (home, store, state, storage, thread)
+}
+
+pub fn reopen(home: &TestHome) -> (HomeStore, SyndicStorage) {
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, storage)
+}
+
+pub fn reopen_with_state(home: &TestHome) -> (HomeStore, BerylState, SyndicStorage) {
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    (store, state, storage)
 }
 
 #[cfg(feature = "test-faults")]
@@ -108,12 +192,17 @@ pub fn fault_fixture(
 ) {
     let home = TestHome::new(name);
     let faults = beryl_home_store::test_faults::FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(
@@ -130,6 +219,55 @@ pub fn fault_fixture(
         ),
     ));
     (home, store, storage, thread, faults)
+}
+
+#[cfg(feature = "test-faults")]
+pub fn fault_fixture_with_state(
+    name: &str,
+    seed: u8,
+) -> (
+    TestHome,
+    HomeStore,
+    BerylState,
+    SyndicStorage,
+    SyndicThreadId,
+    beryl_home_store::test_faults::FaultController,
+) {
+    let home = TestHome::new(name);
+    let faults = beryl_home_store::test_faults::FaultController::new();
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
+    committed(execute(
+        &store,
+        storage.create_thread(
+            storage.revision(&store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                execution(),
+                SyndicTimestamp::from_unix_millis(1),
+                DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ),
+    ));
+    (home, store, state, storage, thread, faults)
 }
 
 pub fn transaction(

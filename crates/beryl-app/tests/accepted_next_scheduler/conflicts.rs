@@ -1,7 +1,8 @@
 use super::*;
 
 use beryl_app::cas_projection::test_faults::install_scheduled_promotion_reconciliation_barrier;
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
+use beryl_state::BerylState;
 
 fn assert_candidate_unpromoted(fixture: &syndic::Fixture, ids: &support::NextRecordIds) {
     let command_home = fixture.store.live_home_command().unwrap();
@@ -176,12 +177,23 @@ fn service_shutdown_joins_uncommitted_conflict_and_preserves_accepted_input() {
     server.join();
     assert!(!slot.is_ready());
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let _state = BerylState::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         accepted_route_state(&reopened, &storage, &ids),
         AcceptedRouteEffectiveState::NextTurn(syndic_storage::NextTurnReason::UnknownTerminal)

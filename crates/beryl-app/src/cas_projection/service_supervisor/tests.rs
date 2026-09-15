@@ -8,7 +8,7 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeCommand, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_state::{
@@ -53,13 +53,23 @@ fn wait_until(description: &str, mut predicate: impl FnMut() -> bool) {
 fn persistent_failure_terminally_disposes_and_makes_the_service_unavailable() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let mut home = HomeStore::open_with_faults(
+    let mut home = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let provider_shutdowns = Arc::new(AtomicUsize::new(0));
     let supervisor = TerminalServiceSupervisor::start(
         Default::default(),

@@ -40,9 +40,9 @@ fn caller_cancellation_before_final_home_command_preserves_exact_editor_state_an
 
 #[test]
 fn materializer_indeterminate_custody_is_joined_and_released_by_service_disposal() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("dispose-materializer", 71);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("dispose-materializer", 71);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 72, 73);
     commit_text(&mut host, &store, empty, 1, 0, 0, "materializer", 12, 1);
@@ -73,8 +73,9 @@ fn materializer_indeterminate_custody_is_joined_and_released_by_service_disposal
 
 #[test]
 fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal() {
-    let (_home, mut store, storage, thread, faults) = base::fault_fixture("dispose-acceptance", 81);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("dispose-acceptance", 81);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 82, 83);
     commit_text(&mut host, &store, empty, 1, 0, 0, "acceptance", 10, 1);
@@ -107,8 +108,8 @@ fn acceptance_indeterminate_custody_is_joined_and_released_by_service_disposal()
 }
 
 fn prove_cancellation_cut(cut: CancellationCut, name: &str, seed: u8) {
-    let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) = base::fault_fixture_with_state(name, seed);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
     commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 9, 1);

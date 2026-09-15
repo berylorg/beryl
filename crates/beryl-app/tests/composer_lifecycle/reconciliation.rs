@@ -1,13 +1,12 @@
 use super::{base, captured_autosave, composer, publication};
 use beryl_app::composer_host::ComposerHostAutosaveAdvance;
 use beryl_home_store::{CommandCancellation, test_faults::FaultPoint};
-use beryl_state::BerylState;
 
 #[test]
 fn autosave_reconciliation_ignores_late_cancellation_and_converges_exact_new() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("autosave-late-cancel", 221);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("autosave-late-cancel", 221);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 222, 223);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);

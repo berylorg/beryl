@@ -18,8 +18,10 @@ use std::{
 use beryl_app::{
     composer_host::{
         ComposerHostActivationOutcome, ComposerHostActivationRequest, ComposerHostError,
-        ComposerHostImageMarkerMetadata, ComposerHostInitialDemand, ComposerHostMutationOutcome,
-        ComposerHostRequestId, ComposerHostRequestPurpose, SyndicComposerHost,
+        ComposerHostImageMarkerMetadata, ComposerHostInitialDemand,
+        ComposerHostMutationEvidenceOutcome, ComposerHostMutationEvidenceRequest,
+        ComposerHostMutationOutcome, ComposerHostRequestId, ComposerHostRequestPurpose,
+        SyndicComposerHost,
     },
     main_window::{
         ComposerImagePresentationState, ComposerImagePreviewCommandState,
@@ -30,7 +32,8 @@ use beryl_app::{
     },
 };
 use beryl_home_store::{CommandCancellation, HomeStore};
-use beryl_model::{AssetId, ImageLabelOrdinal};
+use beryl_model::AssetId;
+use beryl_state::AssetState;
 use gpui::{
     EntityInputHandler, Modifiers, SharedString, StreamingLayoutBinding, StreamingLayoutLimits,
     StreamingLayoutPosition, TextRun, black, font, point, px,
@@ -40,12 +43,13 @@ use gpui_text_input::{
     BindingId, ByteOffset, ClipboardLimits, ClipboardWriteOutcome, ExactGeometryLimits,
     InlineObjectGap, InlineObjectId, InlineObjectNeighbor, InlineObjectOrder, LogicalExtent,
     MutationBeginRequest, MutationCommitRequest, MutationCursor, MutationFinishInput,
-    MutationIdentity, MutationKind, MutationLane, MutationLimits, MutationPage, MutationPageItem,
-    MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
-    MutationStreamFinish, MutationTotals, ObjectChange, ObjectResidencyLimits, OperationId,
-    PresentationGeneration, RangeSettlementCoordinator, RangeSourceSelection, RangeTextInputConfig,
-    RangeTextInputLimits, ResidencyLimits, SegmentationLimits, SourcePosition, SourceRange,
-    SourceRevision, StreamingGeometryStyle, StreamingOversizePresentation, SuccessorObject,
+    MutationIdentity, MutationKind, MutationLane, MutationLimits, MutationPage,
+    MutationPageAcceptance, MutationPageItem, MutationPageKey, MutationPageRequest,
+    MutationPositions, MutationProducerIdentity, MutationProposal, ObjectChange,
+    ObjectResidencyLimits, OperationId, PresentationGeneration, RangeEditCoordinator,
+    RangeSettlementCoordinator, RangeSourceSelection, RangeTextInputConfig, RangeTextInputLimits,
+    ResidencyLimits, SegmentationLimits, SourcePosition, SourceRange, SourceRevision,
+    StreamingGeometryStyle, StreamingOversizePresentation, SuccessorObject,
     TextInputAtomClipboardPolicy, TextInputEnterKey, TextInputRichPastePolicy, TextInputTheme,
     ensure_text_input_bindings,
 };
@@ -260,9 +264,7 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
 }
 
 #[gpui::test]
-fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
-    cx: &mut gpui::TestAppContext,
-) {
+fn composite_clipboard_orders_markers_and_cuts_only_after_write(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("composite-clipboard", 101);
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
@@ -383,7 +385,11 @@ fn composite_clipboard_orders_markers_enforces_cap_and_cuts_only_after_write(
     assert_eq!(cut.binding().logical_extent().logical_utf8_bytes(), 1);
     assert_eq!(cut.binding().root().summary().marker_count(), 0);
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
+}
 
+#[gpui::test]
+fn composite_clipboard_enforces_cap_and_release_fence(cx: &mut gpui::TestAppContext) {
+    cx.update(ensure_text_input_bindings);
     let fixture = Fixture::new("composite-cap", 111);
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
     let window_id = fixture.window_id;
@@ -530,6 +536,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         b"marker-surface",
     );
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let assets = fixture.assets();
     let window_id = fixture.window_id;
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
@@ -553,7 +560,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
     ));
     let binding = host.binding().unwrap();
     let binding = composer_support::commit_text(&mut host, &store, binding, 134, 0, 0, "AB", 2, 1);
-    let binding = insert_marker_at_text_end(&mut host, &store, binding, 135, marker_asset);
+    let binding = insert_marker_at_text_end(&mut host, &store, &assets, binding, 135, marker_asset);
     host.dispose_composer_service(&store).unwrap();
     let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
@@ -564,7 +571,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         133,
         2,
         Some(DraftCompositeSearchKeyV1::Marker {
-            anchor: 1,
+            anchor: binding.logical_extent().logical_utf8_bytes(),
             order_key: 1,
             marker_id: beryl_model::SyndicDraftMarkerId::from_bytes(0x1001_u128.to_be_bytes()),
         }),
@@ -577,11 +584,9 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         Arc::new(store),
         slot,
     ));
-    let configuration = MainWindowConversationComposerConfig::new(
-        selection,
-        widget_config(selection.binding().range_binding(), 1024),
-    )
-    .unwrap();
+    let mut input_config = widget_config(selection.binding().range_binding(), 1024);
+    input_config.mutation_limits = MutationLimits::new(8, 65_536).unwrap();
+    let configuration = MainWindowConversationComposerConfig::new(selection, input_config).unwrap();
     let (composer, cx) = cx.add_window_view(|window, cx| {
         let composer = MainWindowConversationComposer::new(
             configuration,
@@ -740,10 +745,20 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         composer.update(app, |composer, composer_cx| {
             composer
                 .insert_authenticated_image_marker(
-                    ComposerHostImageMarkerMetadata::new(
+                    ComposerHostImageMarkerMetadata::from_source(
                         InlineObjectId::new(0x1001),
-                        ImageLabelOrdinal::new(1).unwrap(),
                         marker_asset,
+                        syndic_storage::DraftMarkerReadinessSourceSelectorV1::Candidate(
+                            syndic_storage::DraftMarkerReadinessCandidateSourceV1::new(
+                                selection.binding().candidate().draft_id(),
+                                selection.binding().candidate().session_id(),
+                                selection.binding().candidate().candidate_generation(),
+                                selection.binding().root(),
+                                beryl_model::SyndicDraftMarkerId::from_bytes(
+                                    InlineObjectId::new(0x1001).get().to_be_bytes(),
+                                ),
+                            ),
+                        ),
                     ),
                     InlineObjectOrder::new(2),
                     composer_cx,
@@ -777,6 +792,11 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         assert_eq!(markers.len(), 1);
         assert_eq!(markers[0].id(), InlineObjectId::new(0x1001));
         assert_eq!(markers[0].order(), InlineObjectOrder::new(2));
+        assert!(
+            markers
+                .iter()
+                .all(|marker| marker.order() != InlineObjectOrder::new(1))
+        );
     });
     composer.read_with(cx, |composer, _| assert_eq!(composer.last_error(), None));
 }
@@ -791,6 +811,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
         b"marker-remove-noncommit",
     );
     let marker_authority = MainWindowComposerMarkerMetadataAuthority::new(fixture.assets());
+    let assets = fixture.assets();
     let window_id = fixture.window_id;
     let thread = fixture.selected_thread;
     let (claim, _) = fixture.claims();
@@ -814,7 +835,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
     ));
     let binding = host.binding().unwrap();
     let binding = composer_support::commit_text(&mut host, &store, binding, 154, 0, 0, "AB", 2, 1);
-    let binding = insert_marker_at_text_end(&mut host, &store, binding, 155, marker_asset);
+    let binding = insert_marker_at_text_end(&mut host, &store, &assets, binding, 155, marker_asset);
     host.dispose_composer_service(&store).unwrap();
     let mut host = SyndicComposerHost::new(storage.clone());
     let rebound = activate_with_initial_pages(
@@ -825,7 +846,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
         153,
         2,
         Some(DraftCompositeSearchKeyV1::Marker {
-            anchor: 1,
+            anchor: binding.logical_extent().logical_utf8_bytes(),
             order_key: 1,
             marker_id: beryl_model::SyndicDraftMarkerId::from_bytes(0x1001_u128.to_be_bytes()),
         }),
@@ -1028,15 +1049,17 @@ fn late_cut_preparation_is_fenced_after_successful_clipboard_write(cx: &mut gpui
 fn insert_marker_at_text_end(
     host: &mut SyndicComposerHost,
     store: &HomeStore,
+    assets: &AssetState,
     binding: beryl_app::composer_host::ComposerHostBinding,
     operation: u64,
     asset: AssetId,
 ) -> beryl_app::composer_host::ComposerHostBinding {
     let object = InlineObjectId::new(0x1001);
     let order = InlineObjectOrder::new(1);
-    let point = SourcePosition::new(ByteOffset::new(1), InlineObjectGap::NoObjects);
+    let offset = binding.range_binding().extent().byte_len();
+    let point = SourcePosition::new(ByteOffset::new(offset), InlineObjectGap::NoObjects);
     let after = SourcePosition::new(
-        ByteOffset::new(1),
+        ByteOffset::new(offset),
         InlineObjectGap::after(InlineObjectNeighbor::new(object, order)),
     );
     let key = gpui_text_input::MutationKey::new(
@@ -1044,22 +1067,40 @@ fn insert_marker_at_text_end(
         SourceRevision::new(binding.candidate().candidate_generation()),
         OperationId::new(operation),
     );
-    host.begin_mutation(
-        store,
-        binding,
-        MutationBeginRequest::new(
-            MutationProposal::new(
-                key,
-                MutationKind::Edit,
-                MutationPositions::collapsed(point),
-                SourceRange::new(point, point).unwrap(),
-                0,
-            ),
-            MutationCursor::new(0),
-            MutationCursor::new(0),
+    let begin = MutationBeginRequest::new(
+        MutationProposal::new(
+            key,
+            MutationKind::Edit,
+            MutationPositions::collapsed(point),
+            SourceRange::new(point, point).unwrap(),
+            0,
         ),
+        MutationCursor::new(0),
+        MutationCursor::new(0),
     )
-    .unwrap();
+    .with_replayable_producer(MutationProducerIdentity::new(operation));
+    let mut editor = RangeEditCoordinator::new(
+        binding.range_binding(),
+        MutationLimits::new(16, 65_536)
+            .unwrap()
+            .with_object_limits(16, 65_536, 65_536)
+            .unwrap(),
+    );
+    editor.begin(begin).unwrap();
+    let evidence = editor.request_evidence(key).unwrap();
+    assert!(matches!(
+        drive_mutation_evidence(
+            host,
+            store,
+            assets,
+            binding,
+            ComposerHostMutationEvidenceRequest::Begin {
+                begin,
+                pass: evidence,
+            },
+        ),
+        ComposerHostMutationEvidenceOutcome::Started(actual) if actual == evidence
+    ));
     let page = MutationPage::new(
         MutationPageKey::new(
             key,
@@ -1070,43 +1111,64 @@ fn insert_marker_at_text_end(
         ),
         MutationCursor::new(1),
         vec![MutationPageItem::Object(ObjectChange::Insert {
-            object: SuccessorObject::new(object, ByteOffset::new(1), order, 17, 5),
+            object: SuccessorObject::new(object, ByteOffset::new(offset), order, 17, 5),
         })],
     )
     .unwrap();
-    let proposal_finish = MutationStreamFinish {
-        next_cursor: page.next_cursor(),
-        next_ordinal: 1,
-        cumulative_identity: page.cumulative_identity(),
-        totals: page.totals(),
-    };
+    let acknowledgement = editor.submit_evidence_page(evidence, page.clone()).unwrap();
+    assert!(matches!(
+        drive_mutation_evidence(
+            host,
+            store,
+            assets,
+            binding,
+            ComposerHostMutationEvidenceRequest::Page {
+                pass: evidence,
+                page: page.clone(),
+                metadata: Box::new([ComposerHostImageMarkerMetadata::new(object, asset)]),
+            },
+        ),
+        ComposerHostMutationEvidenceOutcome::PageAccepted(actual) if actual == evidence
+    ));
+    editor.acknowledge_evidence_page(acknowledgement).unwrap();
+    let proposal_finish = editor.stream_finish(key, MutationLane::Proposal).unwrap();
+    let source_finish = editor.stream_finish(key, MutationLane::Source).unwrap();
+    let finish = MutationFinishInput::new(
+        key,
+        source_finish,
+        proposal_finish,
+        binding.range_binding().extent(),
+        MutationPositions::collapsed(after),
+    );
+    editor.finish_evidence(evidence, finish).unwrap();
+    assert!(matches!(
+        drive_mutation_evidence(
+            host,
+            store,
+            assets,
+            binding,
+            ComposerHostMutationEvidenceRequest::Finish {
+                pass: evidence,
+                finish,
+            },
+        ),
+        ComposerHostMutationEvidenceOutcome::Began(actual) if actual == key
+    ));
+    editor.accept_preflight(key, None).unwrap();
+    let staging = editor.mutation_restart(key).unwrap();
+    editor.acknowledge_restart(staging).unwrap();
+    assert!(matches!(
+        editor.accept_pass_page(staging, page.clone()),
+        Ok(MutationPageAcceptance::Accepted { .. })
+    ));
     host.stage_mutation_page(
         store,
-        MutationPageRequest::new(page),
-        vec![ComposerHostImageMarkerMetadata::new(
-            object,
-            ImageLabelOrdinal::new(1).unwrap(),
-            asset,
-        )]
-        .into_boxed_slice(),
+        MutationPageRequest::new(page).with_pass(staging),
+        vec![ComposerHostImageMarkerMetadata::new(object, asset)].into_boxed_slice(),
     )
     .unwrap();
-    host.finish_mutation_input(
-        store,
-        MutationFinishInput::new(
-            key,
-            MutationStreamFinish {
-                next_cursor: MutationCursor::new(0),
-                next_ordinal: 0,
-                cumulative_identity: MutationIdentity::ROOT,
-                totals: MutationTotals::default(),
-            },
-            proposal_finish,
-            LogicalExtent::new(0, 1),
-            MutationPositions::collapsed(after),
-        ),
-    )
-    .unwrap();
+    editor.finish_pass_input(staging, finish).unwrap();
+    host.finish_mutation_input(store, finish).unwrap();
     for _ in 0..16 {
         match host.execute_mutation(
             store,
@@ -1119,6 +1181,35 @@ fn insert_marker_at_text_end(
         }
     }
     panic!("marker mutation remained pending")
+}
+
+fn drive_mutation_evidence(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    assets: &AssetState,
+    binding: beryl_app::composer_host::ComposerHostBinding,
+    request: ComposerHostMutationEvidenceRequest,
+) -> ComposerHostMutationEvidenceOutcome {
+    let cancellation = CommandCancellation::new();
+    let mut request = Some(request);
+    for _ in 0..64 {
+        match host
+            .dispatch_mutation_evidence(
+                store,
+                binding,
+                assets,
+                request.take().unwrap(),
+                &cancellation,
+            )
+            .unwrap()
+        {
+            ComposerHostMutationEvidenceOutcome::Pending(key) => {
+                request = Some(ComposerHostMutationEvidenceRequest::Advance(key));
+            }
+            outcome => return outcome,
+        }
+    }
+    panic!("marker mutation evidence exceeded its bounded work budget")
 }
 
 fn drive_owner(cx: &mut gpui::VisualTestContext, rounds: usize) {
@@ -1229,7 +1320,7 @@ fn activate_with_initial_pages(
             request_id: ComposerHostRequestId::new(NonZeroU64::new(2).unwrap()),
             purpose: ComposerHostRequestPurpose::Geometry,
             demand: DraftPieceMarkerDemandV1::new(
-                DraftPieceMarkerScopeV1::Range { start: 0, end },
+                DraftPieceMarkerScopeV1::InclusiveRange { start: 0, end },
                 DraftPieceMarkerDirectionV1::Forward,
                 None,
                 32,
@@ -1242,7 +1333,7 @@ fn activate_with_initial_pages(
             request_id: ComposerHostRequestId::new(NonZeroU64::new(3).unwrap()),
             purpose: ComposerHostRequestPurpose::Geometry,
             demand: DraftPieceMarkerDemandV1::new(
-                DraftPieceMarkerScopeV1::Range { start: 0, end },
+                DraftPieceMarkerScopeV1::InclusiveRange { start: 0, end },
                 DraftPieceMarkerDirectionV1::Forward,
                 Some(cursor),
                 32,

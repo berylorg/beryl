@@ -10,7 +10,7 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{CasProcessGeneration, RuntimeId};
@@ -66,13 +66,23 @@ fn service_with_worker_capacity(
 ) {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let mut home = HomeStore::open_with_faults(
+    let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let shutdowns = Arc::new(AtomicUsize::new(0));
     let service = ProjectionConnectionService::new(
         Default::default(),

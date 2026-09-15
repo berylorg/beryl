@@ -25,12 +25,17 @@ mod app_support;
 
 use app_support::*;
 
+#[path = "support/durable_marker_home.rs"]
+mod marker_home;
+use marker_home::fixture_with_state;
+#[cfg(feature = "test-faults")]
+use marker_home::fixture_with_state_and_faults;
+
 #[test]
 fn changed_nonempty_streams_multiple_atomic_pages_and_changed_empty_has_no_asset_set() {
-    let (_home, mut store, storage, thread) = fixture("app-complete", 10);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 11, 12);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-complete", 10);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 11, 12);
     session = complete_staged(
         &storage,
         &store,
@@ -64,7 +69,7 @@ fn changed_nonempty_streams_multiple_atomic_pages_and_changed_empty_has_no_asset
             DraftLogicalExtentV1::new(3, 1),
         );
     }
-    let service = new_service(&store, storage, state.assets(), 2, 1);
+    let service = new_service(&store, &storage, state.assets(), 2, 1);
     let request = request(&session, 40, 41);
     let flight = admitted(&service, &store, request);
     let mut progress = 0;
@@ -84,7 +89,7 @@ fn changed_nonempty_streams_multiple_atomic_pages_and_changed_empty_has_no_asset
     assert_eq!(assets.ordered_assets(), syndic.ordered_assets());
     assert_eq!(service.diagnostics().current_flights(), 0);
 
-    let empty_session = open_session(storage, &store, &durable, 42, 43);
+    let empty_session = open_session(&storage, &store, &durable, 42, 43);
     let empty_set = AssetReferenceSetId::from_bytes([44; 16]);
     let empty_flight = admitted(
         &service,
@@ -124,10 +129,9 @@ fn changed_nonempty_streams_multiple_atomic_pages_and_changed_empty_has_no_asset
 
 #[test]
 fn failed_atomic_page_keeps_both_frontiers_and_replays_after_asset_metadata_arrives() {
-    let (_home, mut store, storage, thread) = fixture("app-replay", 50);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 51, 52);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-replay", 50);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 51, 52);
     session = complete_staged(
         &storage,
         &store,
@@ -158,7 +162,7 @@ fn failed_atomic_page_keeps_both_frontiers_and_replays_after_asset_metadata_arri
             )),
         DraftLogicalExtentV1::new(1, 1),
     );
-    let service = new_service(&store, storage, state.assets(), 1, 1);
+    let service = new_service(&store, &storage, state.assets(), 1, 1);
     let request = request(&session, 56, 57);
     let key = syndic_storage::DraftMarkerSealRequestV1::new(
         session.newest_root(),
@@ -199,12 +203,11 @@ fn failed_atomic_page_keeps_both_frontiers_and_replays_after_asset_metadata_arri
 #[test]
 fn indeterminate_atomic_advance_uses_exact_home_reconciliation() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-indeterminate", 60, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 61, 62);
-    let service = new_service(&store, storage, state.assets(), 1, 1);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-indeterminate", 60, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 61, 62);
+    let service = new_service(&store, &storage, state.assets(), 1, 1);
     let flight = admitted(&service, &store, request(&session, 63, 64));
     assert_eq!(
         service.drive(&store, flight).unwrap(),
@@ -220,11 +223,10 @@ fn indeterminate_atomic_advance_uses_exact_home_reconciliation() {
 
 #[test]
 fn shared_cap_coalesces_exact_identity_and_rejects_conflict_without_queueing() {
-    let (_home, mut store, storage, thread) = fixture("app-cap", 70);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 71, 72);
-    let service = new_service(&store, storage, state.assets(), 1, 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-cap", 70);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 71, 72);
+    let service = new_service(&store, &storage, state.assets(), 1, 1);
     let other_host = service.clone();
     let first_request = request(&session, 73, 74);
     let first = admitted(&service, &store, first_request);
@@ -278,11 +280,10 @@ fn shared_cap_coalesces_exact_identity_and_rejects_conflict_without_queueing() {
 
 #[test]
 fn prebegin_release_retire_and_dispose_release_owned_capacity() {
-    let (_home, mut store, storage, thread) = fixture("app-release", 90);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 91, 92);
-    let service = new_service(&store, storage, state.assets(), 2, 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-release", 90);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 91, 92);
+    let service = new_service(&store, &storage, state.assets(), 2, 1);
     let cancelled = CommandCancellation::new();
     cancelled.cancel();
     assert_eq!(
@@ -316,7 +317,7 @@ fn prebegin_release_retire_and_dispose_release_owned_capacity() {
     assert_eq!(service.diagnostics().current_flights(), 0);
     drop(service);
 
-    let disposable = new_service(&store, storage, state.assets(), 2, 1);
+    let disposable = new_service(&store, &storage, state.assets(), 2, 1);
     admitted(&disposable, &store, request(&session, 105, 106));
     admitted(&disposable, &store, request(&session, 107, 108));
     assert!(matches!(
@@ -336,10 +337,9 @@ fn prebegin_release_retire_and_dispose_release_owned_capacity() {
 
 #[test]
 fn drive_error_requires_durable_failed_settlement_without_asset_visibility() {
-    let (_home, mut store, storage, thread) = fixture("app-drive-failed", 90);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 91, 92);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-drive-failed", 90);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 91, 92);
     session = complete_staged(
         &storage,
         &store,
@@ -370,7 +370,7 @@ fn drive_error_requires_durable_failed_settlement_without_asset_visibility() {
             )),
         DraftLogicalExtentV1::new(1, 1),
     );
-    let service = new_service(&store, storage, state.assets(), 1, 1);
+    let service = new_service(&store, &storage, state.assets(), 1, 1);
     let request = request(&session, 95, 96);
     let key =
         DraftMarkerSealRequestV1::new(request.candidate().root(), request.operation_id()).key();
@@ -437,10 +437,9 @@ fn drive_error_requires_durable_failed_settlement_without_asset_visibility() {
 
 #[test]
 fn staging_authority_never_remints_from_a_set_id_and_debug_redacts_its_secret() {
-    let (_home, mut store, storage, thread) = fixture("app-authority", 200);
-    let state = BerylState::register(&mut store).unwrap();
-    let session = marker_session(storage, &store, thread, 201);
-    let service = new_service(&store, storage, state.assets(), 1, 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-authority", 200);
+    let session = marker_session(&storage, &store, thread, 201);
+    let service = new_service(&store, &storage, state.assets(), 1, 1);
     let request = request(&session, 202, 203);
     let flight = admitted(&service, &store, request);
     assert_eq!(
@@ -458,7 +457,7 @@ fn staging_authority_never_remints_from_a_set_id_and_debug_redacts_its_secret() 
         ),
     );
     assert!(format!("{reminted:?}").contains("[redacted]"));
-    let fresh = new_service(&store, storage, state.assets(), 1, 1);
+    let fresh = new_service(&store, &storage, state.assets(), 1, 1);
     let reminted_flight = admitted(&fresh, &store, reminted);
     assert!(matches!(
         fresh.drive(&store, reminted_flight),
@@ -470,18 +469,17 @@ fn staging_authority_never_remints_from_a_set_id_and_debug_redacts_its_secret() 
 
 #[test]
 fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marker_retraversal() {
-    let (_home, mut store, storage, thread) = fixture("app-fresh", 210);
-    let state = BerylState::register(&mut store).unwrap();
-    let session = published_marker_session(storage, &store, &state, thread, 211);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-fresh", 210);
+    let session = published_marker_session(&storage, &store, &state, thread, 211);
     let request = request(&session, 212, 213);
-    let initial = new_service(&store, storage, state.assets(), 1, 1);
+    let initial = new_service(&store, &storage, state.assets(), 1, 1);
     let flight = admitted(&initial, &store, request);
     assert_eq!(
         initial.drive(&store, flight).unwrap(),
         DraftMarkerSealDriveOutcome::Progress
     );
 
-    let resumed = new_service(&store, storage, state.assets(), 1, 1);
+    let resumed = new_service(&store, &storage, state.assets(), 1, 1);
     let resumed_flight = match resumed
         .admit(&store, request, &CommandCancellation::new())
         .unwrap()
@@ -498,7 +496,7 @@ fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marke
         DraftMarkerSealDriveOutcome::ChangedNonempty { .. }
     ));
 
-    let replay = new_service(&store, storage, state.assets(), 1, 1);
+    let replay = new_service(&store, &storage, state.assets(), 1, 1);
     let replay_flight = admitted(&replay, &store, request);
     assert!(matches!(
         replay.drive(&store, replay_flight).unwrap(),
@@ -508,12 +506,11 @@ fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marke
 
 #[test]
 fn independent_services_share_same_home_capacity_and_release_registry_ownership() {
-    let (_home, mut store, storage, thread) = fixture("app-shared-home", 215);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 216, 217);
-    let first = new_service(&store, storage, state.assets(), 1, 1);
-    let second = new_service(&store, storage, state.assets(), 1, 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-shared-home", 215);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 216, 217);
+    let first = new_service(&store, &storage, state.assets(), 1, 1);
+    let second = new_service(&store, &storage, state.assets(), 1, 1);
     let first_request = request(&session, 218, 219);
     let flight = admitted(&first, &store, first_request);
     assert_eq!(
@@ -533,12 +530,11 @@ fn independent_services_share_same_home_capacity_and_release_registry_ownership(
         DraftMarkerSealAdmission::Saturated
     );
 
-    let (_other_home, mut other_store, other_storage, other_thread) =
-        fixture("app-independent-home", 222);
-    let other_state = BerylState::register(&mut other_store).unwrap();
-    let other_durable = current(other_storage, &other_store, other_thread);
-    let other_session = open_session(other_storage, &other_store, &other_durable, 223, 224);
-    let other_service = new_service(&other_store, other_storage, other_state.assets(), 1, 1);
+    let (_other_home, other_store, other_state, other_storage, other_thread) =
+        fixture_with_state("app-independent-home", 222);
+    let other_durable = current(&other_storage, &other_store, other_thread);
+    let other_session = open_session(&other_storage, &other_store, &other_durable, 223, 224);
+    let other_service = new_service(&other_store, &other_storage, other_state.assets(), 1, 1);
     assert!(matches!(
         other_service.admit(
             &other_store,
@@ -561,7 +557,7 @@ fn independent_services_share_same_home_capacity_and_release_registry_ownership(
         beryl_app::composer_marker_seal::DraftMarkerSealDisposeOutcome::Disposed
     );
 
-    let reopened = new_service(&store, storage, state.assets(), 1, 1);
+    let reopened = new_service(&store, &storage, state.assets(), 1, 1);
     assert!(matches!(
         reopened.admit(&store, first_request, &CommandCancellation::new()),
         Ok(DraftMarkerSealAdmission::Admitted(_))
@@ -572,11 +568,10 @@ fn independent_services_share_same_home_capacity_and_release_registry_ownership(
 
 #[test]
 fn shared_home_construction_requires_exact_limits_and_domain_authority() {
-    let (_home, mut store, storage, thread) = fixture("app-construction", 227);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 228, 229);
-    let service = new_service(&store, storage, state.assets(), 2, 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-construction", 227);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 228, 229);
+    let service = new_service(&store, &storage, state.assets(), 2, 1);
     admitted(&service, &store, request(&session, 230, 231));
     admitted(&service, &store, request(&session, 232, 233));
 
@@ -596,7 +591,7 @@ fn shared_home_construction_requires_exact_limits_and_domain_authority() {
             DraftMarkerSealService::new(
                 &store,
                 store.health().generation().unwrap(),
-                storage,
+                storage.clone(),
                 state.assets(),
                 limits,
             ),
@@ -606,8 +601,8 @@ fn shared_home_construction_requires_exact_limits_and_domain_authority() {
         ));
     }
 
-    let (_other_home, mut other_store, other_storage, _) = fixture("app-construction-other", 234);
-    let _other_state = BerylState::register(&mut other_store).unwrap();
+    let (_other_home, _other_store, _other_state, other_storage, _) =
+        fixture_with_state("app-construction-other", 234);
     assert!(matches!(
         DraftMarkerSealService::new(
             &store,
@@ -650,10 +645,9 @@ fn requested_65_marker_page_clamps_to_64_asset_entries_and_streams_the_remainder
         ASSET_REFERENCE_PAGE_MAX_ENTRIES
     );
 
-    let (_home, mut store, storage, thread) = fixture("app-page-clamp", 220);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 221, 222);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-page-clamp", 220);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 221, 222);
     session = complete_staged(
         &storage,
         &store,
@@ -690,7 +684,7 @@ fn requested_65_marker_page_clamps_to_64_asset_entries_and_streams_the_remainder
             DraftLogicalExtentV1::new(66, 1),
         );
     }
-    let service = new_service(&store, storage, state.assets(), 1, 65);
+    let service = new_service(&store, &storage, state.assets(), 1, 65);
     let request = request(&session, 224, 225);
     let flight = admitted(&service, &store, request);
     assert_eq!(

@@ -2,7 +2,6 @@ use beryl_app::composer_host::{
     ComposerHostAutosaveAdvance, ComposerHostAutosaveCapture, ComposerHostServiceDisposalCompletion,
 };
 use beryl_home_store::CommandCancellation;
-use beryl_state::BerylState;
 use gpui_text_input::MutationKind;
 use syndic_storage::SyndicTimestamp;
 
@@ -10,8 +9,9 @@ use super::{base, composer, publication};
 
 #[test]
 fn service_disposal_releases_changed_marker_flight_and_all_host_custody() {
-    let (_home, mut store, storage, thread) = base::fixture("service-disposal-flight", 220);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) =
+        base::fixture_with_state("service-disposal-flight", 220);
+    let assets = state.assets();
     let asset = publication::publish_image_asset(&store, assets.clone(), b"service-disposal");
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 221, 222);

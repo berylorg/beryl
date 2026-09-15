@@ -141,6 +141,15 @@ impl ProviderBrokerControl {
     ) -> crate::cas_projection::test_faults::ProviderBrokerSnapshot {
         self.test_metrics.snapshot()
     }
+
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection::connection) fn test_snapshot_reader(
+        &self,
+    ) -> crate::cas_projection::test_faults::ProviderBrokerSnapshotReader {
+        crate::cas_projection::test_faults::ProviderBrokerSnapshotReader::new(Arc::clone(
+            &self.test_metrics,
+        ))
+    }
 }
 
 impl std::fmt::Debug for ProviderBrokerControl {

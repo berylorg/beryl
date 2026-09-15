@@ -118,3 +118,7 @@ adversarial review passed; no blocking review findings remained.
 App qualification must now rerun its original repeated payloads and remaining fixture checks.
 This production acceptance does not accept app candidate composition or the separate bootstrap
 and service-graph checkpoints.
+
+The resumed app run completed the original repeated marker-free inputs and the 16-image input.
+It then exposed the separate [sequence marker-fold defect](syndic-text-insertion-marker-fold.md)
+while preparing the 64-image fixture's source tree, before materialization.

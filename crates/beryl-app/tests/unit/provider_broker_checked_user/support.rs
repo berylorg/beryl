@@ -104,11 +104,23 @@ impl CheckedUserFixture {
         let directory = tempfile::tempdir().unwrap();
         let options = HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT);
         let mut home = match faults {
-            Some(faults) => HomeStore::open_with_faults(options, faults).unwrap(),
-            None => HomeStore::open(options).unwrap(),
+            Some(faults) => {
+                beryl_home_store::HomeOpenCandidate::open_with_faults(options, faults).unwrap()
+            }
+            None => beryl_home_store::HomeOpenCandidate::open(options).unwrap(),
         };
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread_id = SyndicThreadId::from_bytes([seed; 16]);
         let initial_draft_id = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
         let runtime_id = RuntimeId::from_bytes([seed.wrapping_add(4); 16]);

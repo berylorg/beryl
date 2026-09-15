@@ -15,8 +15,9 @@ fn request(execution: SubmissionExecutionWake) -> ComposerHostSubmissionRequest 
 
 #[test]
 fn already_committed_acceptance_notifies_once_without_another_durable_write() {
-    let (_directory, mut store, storage, thread) = fixture("already-accepted-wake", 231);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_directory, store, state, storage, thread) =
+        base::fixture_with_state("already-accepted-wake", 231);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "once", 4, 1);
@@ -54,8 +55,8 @@ fn already_committed_acceptance_notifies_once_without_another_durable_write() {
 
 #[test]
 fn cancellation_before_acceptance_does_not_notify_execution() {
-    let (_directory, mut store, storage, thread) = fixture("cancel-wake", 231);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_directory, store, state, storage, thread) = base::fixture_with_state("cancel-wake", 231);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "keep", 4, 1);
@@ -88,9 +89,9 @@ fn cancellation_before_acceptance_does_not_notify_execution() {
 
 #[test]
 fn foreign_home_capability_is_rejected_before_flush_and_foreign_advance_before_work() {
-    let (_directory, mut store, storage, thread) = fixture("bound-wake", 231);
-    let (_foreign_directory, foreign, _, _) = fixture("foreign-wake", 235);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_directory, store, state, storage, thread) = base::fixture_with_state("bound-wake", 231);
+    let (_foreign_directory, foreign, _, _) = base::fixture("foreign-wake", 235);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, binding) = activated(storage.clone(), &store, thread, 232, 233);
     commit_text(&mut host, &store, binding, 1, 0, 0, "keep", 4, 1);

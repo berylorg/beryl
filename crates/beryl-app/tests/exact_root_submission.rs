@@ -31,14 +31,14 @@ mod corrections;
 #[path = "accepted_promotion/support.rs"]
 mod promotion_support;
 
-use base::fixture;
+use base::fixture_with_state;
 use composer::{activated, commit_text, history_intent, operation_id};
 use publication::service;
 
 #[test]
 fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
-    let (_home, mut store, storage, thread) = fixture("idle", 1);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("idle", 1);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 2, 3);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "submitted text", 14, 1);
@@ -107,8 +107,8 @@ fn exact_published_root_streams_to_idle_acceptance_and_releases_all_custody() {
 
 #[test]
 fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
-    let (_home, mut store, storage, thread) = fixture("capture-barrier", 31);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("capture-barrier", 31);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "root", 4, 1);
@@ -169,8 +169,8 @@ fn captured_submission_blocks_later_edits_and_retains_only_bounded_authority() {
 
 #[test]
 fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
-    let (_home, mut store, storage, thread) = fixture("accepted-next", 61);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("accepted-next", 61);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 62, 63);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "first", 5, 1);
@@ -257,8 +257,8 @@ fn busy_thread_uses_the_same_exact_root_boundary_for_accepted_next() {
 
 #[test]
 fn empty_rejection_preserves_the_exact_draft_and_starts_no_model_work() {
-    let (_home, mut store, storage, thread) = fixture("empty", 101);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("empty", 101);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let ticket = host

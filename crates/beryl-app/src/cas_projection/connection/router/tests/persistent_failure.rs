@@ -4,7 +4,9 @@ use beryl_backend::{
     ApprovalRequestKind, ApprovalResponseDisposition,
     lifecycle_test_support::{approval_request, building_dynamic_tool_call},
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+};
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasThreadId, CasTurnId,
     DynamicToolCallId, RuntimeId, SyndicThreadId,
@@ -120,11 +122,15 @@ fn dynamic_tool_builder_liveness_cannot_authorize_after_the_exact_failure_cut() 
 #[test]
 fn stop_wait_releases_its_command_before_failure_drain_and_freeze_wake() {
     let home_directory = tempfile::tempdir().expect("router wait failure home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router wait failure home");
+    .expect("open router wait failure home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let home_generation = home.health().generation().unwrap();
     let (router, gate) = router_with_gate_for(0xed, 8_899);
     let registration = {
@@ -314,11 +320,15 @@ fn live_target_capacity_rejects_the_sixty_fifth_target_and_reopens_after_removal
 #[test]
 fn failure_cut_snapshots_all_admitted_targets_in_deterministic_order() {
     let home_directory = tempfile::tempdir().expect("router failure batch home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router failure batch home");
+    .expect("open router failure batch home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let home_generation = home
         .health()
         .generation()
@@ -369,11 +379,15 @@ fn failure_cut_snapshots_all_admitted_targets_in_deterministic_order() {
 #[test]
 fn failure_target_freeze_classifies_every_eligibility_exclusion() {
     let home_directory = tempfile::tempdir().expect("router eligibility home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router eligibility home");
+    .expect("open router eligibility home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),
         home.health().generation().unwrap(),
@@ -436,11 +450,15 @@ fn failure_target_freeze_classifies_every_eligibility_exclusion() {
 #[test]
 fn router_failure_freeze_is_single_flight_after_dispatch_authorization() {
     let home_directory = tempfile::tempdir().expect("router guard home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router guard home");
+    .expect("open router guard home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),
         home.health().generation().unwrap(),
@@ -462,11 +480,15 @@ fn router_failure_freeze_is_single_flight_after_dispatch_authorization() {
 #[test]
 fn thread_close_before_failure_freeze_marks_the_exact_target_ineligible() {
     let home_directory = tempfile::tempdir().expect("router close-before-freeze home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router close-before-freeze home");
+    .expect("open router close-before-freeze home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),
         home.health().generation().unwrap(),
@@ -498,11 +520,15 @@ fn thread_close_before_failure_freeze_marks_the_exact_target_ineligible() {
 #[test]
 fn thread_close_after_failure_freeze_closes_routing_and_invalidates_dispatch() {
     let home_directory = tempfile::tempdir().expect("router close-after-freeze home");
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         home_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
-    .expect("open router close-after-freeze home");
+    .expect("open router close-after-freeze home")
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
+    .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),
         home.health().generation().unwrap(),

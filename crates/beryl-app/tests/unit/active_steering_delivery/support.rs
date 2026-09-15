@@ -4,7 +4,7 @@ use beryl_backend::{
     ManagedBackendClientConnector, NonIdempotentRequestOutcome, ThreadStartOptions,
     TurnStartOptions,
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     CasProcessGeneration, ImageLabelOrdinal, RuntimeId, SyndicAcceptedInputId, SyndicDraftId,
     SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId,
@@ -279,11 +279,22 @@ impl DeliveryFixture {
         #[cfg(feature = "test-faults")]
         let faults = beryl_home_store::test_faults::FaultController::new();
         #[cfg(feature = "test-faults")]
-        let mut home = HomeStore::open_with_faults(options, faults.clone()).unwrap();
+        let mut home =
+            beryl_home_store::HomeOpenCandidate::open_with_faults(options, faults.clone()).unwrap();
         #[cfg(not(feature = "test-faults"))]
-        let mut home = HomeStore::open(options).unwrap();
+        let mut home = beryl_home_store::HomeOpenCandidate::open(options).unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread_id = SyndicThreadId::from_bytes([seed; 16]);
         let runtime_id = RuntimeId::from_bytes([seed.wrapping_add(4); 16]);
         execute(

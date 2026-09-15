@@ -4,7 +4,7 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    HomeCommand, HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_state::{
@@ -26,12 +26,17 @@ pub(in crate::cas_projection::persistent_failure) struct FailedNotificationFixtu
 fn open_faulted_home() -> (tempfile::TempDir, HomeStore) {
     let directory = tempfile::tempdir().expect("persistent-failure notification home");
     let faults = FaultController::new();
-    let mut home = HomeStore::open_with_faults(
+    let mut home = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .expect("open notification test home");
     let state = BerylState::register(&mut home).expect("register Beryl state");
+    let home = home
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let settings = state.settings();
     let update = SettingUpdate::new(
         SettingKey::DraftAutosaveInterval,

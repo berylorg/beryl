@@ -70,5 +70,7 @@ marker-order root records refuse further advancement. When revision reads remain
 show no new mutation; corruption may instead fail the home. A deliberately corrupted shared marker
 root also invalidates predecessor reads, so those reads are not an unaffected-state oracle.
 
-App qualification resumes with its original scale inputs. This storage acceptance alone does not
-accept app construction, the outstanding failure-taxonomy test or executable bootstrap.
+The resumed original app workload completed the 64-image input that formerly failed. The first
+128-image input then reached a separate [memtable-capacity refusal](syndic-draft-build-memtable-capacity.md).
+This storage acceptance alone does not accept app construction, the outstanding failure-taxonomy
+test or executable bootstrap.

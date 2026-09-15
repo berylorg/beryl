@@ -20,13 +20,23 @@ pub fn open_home(
 ) {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let state = BerylState::register(&mut store).unwrap();
     let storage = syndic_storage::SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let host_path = |path| AdmittedHostPath::from_admitted(PathFlavor::Windows, path).unwrap();
     let runtime = RuntimeRegistration::new(
         RuntimeId::from_bytes([seed; 16]),

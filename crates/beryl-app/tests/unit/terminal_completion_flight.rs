@@ -96,12 +96,17 @@ fn old_flight_observer_rejects_recovered_generation_of_the_same_home() {
     };
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let mut home = HomeStore::open_with_faults(
+    let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let coordinator = CasProjectionCoordinator::for_healthy_home(&home).unwrap();
     let thread = SyndicThreadId::from_bytes([193; 16]);
     let turn = SyndicTurnId::from_bytes([194; 16]);

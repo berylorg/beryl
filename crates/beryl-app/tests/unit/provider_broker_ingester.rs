@@ -46,12 +46,17 @@ struct BrokerBuildFixture {
 impl BrokerBuildFixture {
     fn new(seed: u8) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut home = HomeStore::open(HomeOpenOptions::new(
+        let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let home_id = home.home_id();
         let home_generation = home.health().generation().unwrap();
         let home = Arc::new(home);

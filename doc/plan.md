@@ -50,48 +50,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 435: Qualify Ordinary Execution During Failed-Service Disposal (finished)
+# Phase 419: Restore App Construction Evidence With Initial Candidates (finished)
 
-Existing consuming failed-service close retires the connection and releases ordinary execution.
-The corrected complete failure-taxonomy test passed in 79.386 seconds with original fault ordering
-and fresh-handle persistence assertions for both terminal cases. Normal compilation, formatting
-and independent semantic review passed. [Disposal evidence](failures/ordinary-capture-persistent-failure-polling.md)
-records the fixture correction; no production runtime change or recovery-convergence claim was needed.
-
-# Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
-
-Apply the [app public boundary](../crates/beryl-app/doc/design.md#public-boundary) and
-[initial publication contract](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication)
-to app-owned fixture construction.
-
-- Convert shared, direct and library-test fixtures to unpublished candidates with complete exact
-  Beryl-state, Syndic and applicable test-domain registration before explicit publication. Generic
-  openers retain candidates; fixed complete fixture composers may publish their declared graph.
-- Rebuild live handles on each fresh physical open, preserve initial versus same-home recovery
-  distinctions, and keep rejected candidate cleanup and typed failure assertions intact.
-- Preserve each fixture's services, identity, initial state and fault behavior. Reconcile existing
-  source and test setup with accepted APIs without treating fixture publication as production
-  bootstrap or complete service-graph acceptance.
-- Compile affected app targets, run representative construction, runtime and window regressions
-  with bounded test concurrency, and run normal compilation, formatting and independent review of
-  changed composition and failure evidence before acceptance.
-
-App fixture conversion is in place. Normal compilation, all integration-target compilation, 360
-library cases and 24 marker-service cases passed. Runtime qualification and its outstanding fixture
-corrections are recorded in [app candidate evidence](failures/target-bootstrap-composition.md#app-candidate-qualification).
-This phase is not accepted or committed.
-
-All 19 cases across the GPUI and main-window composer targets and the corrected backpressure case
-passed. Accepted chunk-frontier, cooperative-reuse, marker-fold and bounded-admission corrections
-now permit the complete unchanged scale workload, including repeated 128-image input. Its latest
-run passed in 300.575 seconds with original limits and one service lifetime. Compilation and focused
-independent fixture reviews passed; this does not accept the remaining failure qualification.
-
-The complete failure-taxonomy case now passes after the accepted failed-service fixture correction.
-Typed disposal releases execution, and fresh reads distinguish an absent precommit terminal from a
-persisted terminal without claiming finalized history. The [qualification](failures/ordinary-capture-persistent-failure-polling.md)
-removes that runtime blocker. Complete the aggregate construction-fixture acceptance review before
-accepting this phase; candidate recovery and later bootstrap phases remain pending.
+Accepted explicit complete-domain candidate publication and fresh-handle reconstruction across app
+fixtures. Aggregate independent semantic review, normal and test-target compilation, focused
+runtime qualification and formatting passed. [Acceptance evidence](failures/target-bootstrap-composition.md#app-candidate-qualification)
+includes unchanged scale, failed-service disposal and exact-root submission; production candidate
+recovery and service-graph publication remain separate gates.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 

@@ -11,9 +11,8 @@ use syndic_storage::{
 
 #[test]
 fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("promoted-descendant-restart", 211);
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("promoted-descendant-restart", 211);
     let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut first_host, empty) = activated(storage.clone(), &store, thread, 212, 213);
@@ -194,9 +193,8 @@ fn promoted_image_descendant_reconciles_after_home_restart_without_re_admission(
 
 #[test]
 fn corrupted_permanent_promoted_route_leaf_is_terminal_collision_without_replay() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("corrupt-promoted-leaf", 231);
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("corrupt-promoted-leaf", 231);
     let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut first_host, empty) = activated(storage.clone(), &store, thread, 232, 233);

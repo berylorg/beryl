@@ -5,7 +5,7 @@ use crate::cas_projection::{
     ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionProvider,
     ScheduledOrdinaryExecutionUnavailable, StopWorkError, stop::PermissionCustodyToken,
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasThreadId,
     CasTurnId, RuntimeId, SyndicThreadId, SyndicTurnId,
@@ -27,13 +27,23 @@ impl ScheduledOrdinaryExecutionProvider for IdleProvider {
 
 fn service() -> (tempfile::TempDir, ProjectionConnectionService) {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = ProjectionConnectionService::new(
         Default::default(),
         home,

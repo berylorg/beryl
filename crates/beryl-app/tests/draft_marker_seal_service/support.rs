@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn marker_session(
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     store: &beryl_home_store::HomeStore,
     thread: SyndicThreadId,
     seed: u8,
@@ -15,7 +15,7 @@ pub(super) fn marker_session(
         seed.wrapping_add(2),
     );
     session = complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(3),
@@ -24,7 +24,7 @@ pub(super) fn marker_session(
     );
     let marker = marker(seed, 1, 1);
     complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(4),
@@ -41,7 +41,7 @@ pub(super) fn marker_session(
 }
 
 pub(super) fn published_marker_session(
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     store: &beryl_home_store::HomeStore,
     state: &BerylState,
     thread: SyndicThreadId,
@@ -56,7 +56,7 @@ pub(super) fn published_marker_session(
         seed.wrapping_add(2),
     );
     session = complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(3),
@@ -70,7 +70,7 @@ pub(super) fn published_marker_session(
         publish_asset(store, state, b"published-marker"),
     );
     complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(4),
@@ -88,7 +88,7 @@ pub(super) fn published_marker_session(
 
 pub(super) fn new_service(
     store: &beryl_home_store::HomeStore,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     assets: beryl_state::AssetState,
     flights: usize,
     page: usize,
@@ -96,7 +96,7 @@ pub(super) fn new_service(
     DraftMarkerSealService::new(
         store,
         store.health().generation().unwrap(),
-        storage,
+        storage.clone(),
         assets,
         DraftMarkerSealServiceLimits::new(
             NonZeroUsize::new(flights).unwrap(),

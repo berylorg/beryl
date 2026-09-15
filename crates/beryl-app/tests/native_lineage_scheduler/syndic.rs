@@ -105,7 +105,7 @@ impl Fixture {
 
     pub fn new_with_worker_capacity(seed: u8, worker_capacity: u64) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open(HomeOpenOptions::new(
+        let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
@@ -118,7 +118,7 @@ impl Fixture {
         create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open(HomeOpenOptions::new(
+        let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
@@ -143,7 +143,7 @@ impl Fixture {
         create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open_with_faults(
+        let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults,
         )
@@ -154,7 +154,7 @@ impl Fixture {
     #[cfg(feature = "test-faults")]
     pub fn with_faults(seed: u8, faults: beryl_home_store::test_faults::FaultController) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open_with_faults(
+        let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults,
         )
@@ -165,7 +165,7 @@ impl Fixture {
     fn from_store(
         seed: u8,
         directory: tempfile::TempDir,
-        store: HomeStore,
+        store: beryl_home_store::HomeOpenCandidate,
         worker_capacity: u64,
     ) -> Self {
         Self::from_store_with_provider(seed, directory, store, worker_capacity, |_| {
@@ -176,12 +176,22 @@ impl Fixture {
     fn from_store_with_provider(
         seed: u8,
         directory: tempfile::TempDir,
-        mut store: HomeStore,
+        mut store: beryl_home_store::HomeOpenCandidate,
         worker_capacity: u64,
         create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
         let storage = SyndicStorage::register(&mut store).unwrap();
         let state = BerylState::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(
+                SyndicStorage::required_domains()
+                    .unwrap()
+                    .merge(BerylState::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         execute(
             &store,

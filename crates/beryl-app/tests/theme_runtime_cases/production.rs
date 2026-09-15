@@ -85,12 +85,17 @@ struct RuntimeFixture {
 impl RuntimeFixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let state = BerylState::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(BerylState::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         Self {
             directory,
             store,

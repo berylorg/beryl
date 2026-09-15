@@ -4,9 +4,18 @@ use beryl_home_store::{
 };
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
-    SyndicAcceptedInputId, SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId,
+    SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId,
+    SyndicTurnId,
 };
 use beryl_state::{AssetOwner, BerylState};
+use gpui_text_input::{
+    ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor, InlineObjectOrder,
+    LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
+    MutationFinishInput, MutationIdentity, MutationKind, MutationLane, MutationPage,
+    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
+    MutationStreamFinish, MutationTotals, ObjectChange, SourcePosition, SourceRange,
+    SuccessorObject,
+};
 use syndic_storage::test_faults::{
     FixtureBatch, FixtureDelete, FixtureRecord, fixture_transcript_digest_seed,
 };
@@ -42,7 +51,7 @@ pub struct Fixture {
 impl Fixture {
     pub fn new(seed: u8, assets: FixtureAssets) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open(HomeOpenOptions::new(
+        let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
@@ -56,7 +65,7 @@ impl Fixture {
         faults: beryl_home_store::test_faults::FaultController,
     ) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open_with_faults(
+        let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults,
         )
@@ -68,10 +77,20 @@ impl Fixture {
         seed: u8,
         assets: FixtureAssets,
         directory: tempfile::TempDir,
-        mut store: HomeStore,
+        mut store: beryl_home_store::HomeOpenCandidate,
     ) -> Self {
         let state = BerylState::register(&mut store).unwrap();
         let syndic = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         let current_draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
         let initial_draft = SyndicDraftId::from_bytes([seed.wrapping_add(2); 16]);
@@ -130,8 +149,15 @@ impl Fixture {
                     state.assets(),
                     b"accepted image",
                 );
-                let (binding, _, _) = publication_support::insert_published_marker(
-                    &mut host, &store, empty, 2, asset,
+                let (binding, _, _) = insert_fresh_published_marker_with_readiness(
+                    &mut host,
+                    &store,
+                    &syndic,
+                    &state.assets(),
+                    empty,
+                    2,
+                    asset,
+                    1,
                 );
                 publication_support::insert_text_after_published_marker(
                     &mut host, &store, binding, 3,
@@ -187,8 +213,15 @@ impl Fixture {
                     state.assets(),
                     b"current draft image",
                 );
-                let (binding, _, _) = publication_support::insert_published_marker(
-                    &mut host, &store, empty, 4, asset,
+                let (binding, _, _) = insert_fresh_published_marker_with_readiness(
+                    &mut host,
+                    &store,
+                    &syndic,
+                    &state.assets(),
+                    empty,
+                    4,
+                    asset,
+                    2,
                 );
                 publication_support::insert_text_after_published_marker(
                     &mut host, &store, binding, 5,
@@ -402,6 +435,183 @@ impl Fixture {
             stray_proof,
         }
     }
+}
+
+fn insert_fresh_published_marker_with_readiness(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    assets: &beryl_state::AssetState,
+    binding: ComposerHostBinding,
+    operation: u64,
+    asset: beryl_model::AssetId,
+    label: u64,
+) -> (ComposerHostBinding, SourcePosition, SourcePosition) {
+    let object = InlineObjectId::new(0x1001);
+    let point = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::NoObjects);
+    let key = gpui_text_input::MutationKey::new(
+        gpui_text_input::BindingId::new(binding.host_generation().get()),
+        gpui_text_input::SourceRevision::new(binding.candidate().candidate_generation()),
+        gpui_text_input::OperationId::new(operation),
+    );
+    let begin = MutationBeginRequest::new(
+        MutationProposal::new(
+            key,
+            MutationKind::Edit,
+            MutationPositions::collapsed(point),
+            SourceRange::new(point, point).unwrap(),
+            0,
+        ),
+        MutationCursor::new(0),
+        MutationCursor::new(0),
+    );
+    let session = match storage
+        .draft_editor_candidate_session(
+            store,
+            binding.candidate().draft_id(),
+            binding.candidate().session_id(),
+        )
+        .unwrap()
+    {
+        DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
+        other => panic!("fixture candidate session was not active: {other:?}"),
+    };
+    let mut operation_bytes = [0; 16];
+    operation_bytes[8..].copy_from_slice(&operation.to_be_bytes());
+    let owner = DraftMarkerAdmissionOwnerV1::new(
+        session.draft_id(),
+        session.session_id(),
+        DraftMarkerAdmissionOperationIdV1::from_bytes(operation_bytes),
+    );
+    let marker = DraftPieceMarkerV1::new(
+        SyndicDraftMarkerId::from_bytes(object.get().to_be_bytes()),
+        label,
+        ImageLabelOrdinal::new(label).unwrap(),
+        asset,
+    );
+    let mut command = *owner.operation_id().as_bytes();
+    let mut attempt = storage
+        .prepare_draft_marker_label_readiness_page(
+            store,
+            DraftMarkerLabelReadinessPageRequestV1::new(
+                owner,
+                DraftMarkerAdmissionCommandIdV1::from_bytes(command),
+                std::num::NonZeroU64::MIN,
+                true,
+                DraftMarkerLabelReadinessDispositionV1::Allocate,
+                Box::new([DraftMarkerReadinessSourceAssociationV1::new(
+                    marker.marker_id(),
+                    DraftMarkerReadinessSourceSelectorV1::FreshAsset(marker.asset_id()),
+                )]),
+                Some(DraftMarkerReadinessWitnessFactoryV1::fresh(
+                    assets.draft_marker_fresh_asset_readiness_witness_factory(),
+                )),
+            ),
+        )
+        .unwrap();
+    let receipt = store
+        .compose_proof(attempt.take_command().unwrap())
+        .unwrap();
+    let flight = attempt.into_submission_flight(store, receipt).unwrap();
+    assert!(matches!(
+        storage.submit_draft_marker_label_readiness_page(store, flight),
+        DraftMarkerLabelReadinessPageSubmissionOutcomeV1::Advanced {
+            later_failure: None,
+            ..
+        }
+    ));
+    command[..8].copy_from_slice(&1_u64.to_be_bytes());
+    let flight = storage
+        .prepare_draft_marker_label_assignment(
+            store,
+            owner,
+            DraftMarkerAdmissionCommandIdV1::from_bytes(command),
+        )
+        .unwrap();
+    let DraftMarkerLabelAssignmentOutcomeV1::Ready {
+        proof,
+        later_failure: None,
+        ..
+    } = storage.submit_draft_marker_label_assignment(store, flight)
+    else {
+        panic!("fresh marker assignment did not become ready")
+    };
+    host.test_begin_marker_mutation(store, binding, begin, proof)
+        .unwrap();
+    let page = MutationPage::new(
+        MutationPageKey::new(
+            key,
+            MutationLane::Proposal,
+            MutationCursor::new(0),
+            0,
+            MutationIdentity::ROOT,
+        ),
+        MutationCursor::new(1),
+        vec![MutationPageItem::Object(ObjectChange::Insert {
+            object: SuccessorObject::new(
+                object,
+                ByteOffset::new(0),
+                InlineObjectOrder::new(1),
+                17,
+                5,
+            ),
+        })],
+    )
+    .unwrap();
+    let finish = MutationStreamFinish {
+        next_cursor: page.next_cursor(),
+        next_ordinal: 1,
+        cumulative_identity: page.cumulative_identity(),
+        totals: page.totals(),
+    };
+    host.stage_mutation_page(
+        store,
+        MutationPageRequest::new(page),
+        Box::from([beryl_app::composer_host::ComposerHostImageMarkerMetadata::new(object, asset)]),
+    )
+    .unwrap();
+    let after = SourcePosition::new(
+        ByteOffset::new(0),
+        InlineObjectGap::after(InlineObjectNeighbor::new(object, InlineObjectOrder::new(1))),
+    );
+    host.finish_mutation_input(
+        store,
+        MutationFinishInput::new(
+            key,
+            MutationStreamFinish {
+                next_cursor: MutationCursor::new(0),
+                next_ordinal: 0,
+                cumulative_identity: MutationIdentity::ROOT,
+                totals: MutationTotals::default(),
+            },
+            finish,
+            LogicalExtent::new(0, 1),
+            MutationPositions::collapsed(after),
+        ),
+    )
+    .unwrap();
+    for _ in 0..16 {
+        match host.execute_mutation(
+            store,
+            MutationCommitRequest::new(key, MutationIdentity::ROOT),
+            &CommandCancellation::new(),
+        ) {
+            Ok(beryl_app::composer_host::ComposerHostMutationOutcome::Committed {
+                binding,
+                ..
+            }) => {
+                let neighbor = InlineObjectNeighbor::new(object, InlineObjectOrder::new(1));
+                return (
+                    binding,
+                    SourcePosition::new(ByteOffset::new(0), InlineObjectGap::before(neighbor)),
+                    after,
+                );
+            }
+            Err(beryl_app::composer_host::ComposerHostError::MutationWorkPending) => {}
+            other => panic!("fresh marker mutation did not commit: {other:?}"),
+        }
+    }
+    panic!("fresh marker mutation remained pending")
 }
 
 fn execution_binding(seed: u8) -> ExecutionBinding {

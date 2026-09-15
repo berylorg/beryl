@@ -161,10 +161,7 @@ pub(super) fn complete_marker_edit(
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

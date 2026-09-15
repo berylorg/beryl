@@ -15,7 +15,7 @@ use beryl_app::{
 use beryl_home_store::{
     CommandCancellation, CommandOutcome, HomeCommand, HomeHealthState, test_faults::FaultPoint,
 };
-use beryl_state::{AssetOwner, BerylState};
+use beryl_state::AssetOwner;
 use gpui_text_input::MutationKind;
 use syndic_storage::{
     CapturedDraftEditorCandidatePublicationSourceV1, DraftEditorCandidatePublicationEvidenceV1,
@@ -37,7 +37,7 @@ mod composer;
 mod publication;
 
 use admitted_markers::{insert_later_marker, insert_published_marker, insert_two_markers};
-use base::{current, fixture};
+use base::{current, fixture_with_state};
 use composer::{
     activated, commit_text, direct_adopt, insert_marker, operation_id, remove_marker,
     select_history,
@@ -173,8 +173,8 @@ fn settle_publication_step(
 
 #[test]
 fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_custody() {
-    let (_home, mut store, storage, thread) = fixture("unchanged-empty", 11);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("unchanged-empty", 11);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 12, 13);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -231,8 +231,8 @@ fn unchanged_empty_is_derived_without_sealing_and_stale_ticket_preserves_newer_c
 
 #[test]
 fn changed_nonempty_streams_multiple_pages_and_later_edit_remains_dirty() {
-    let (_home, mut store, storage, thread) = fixture("changed-nonempty", 21);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("changed-nonempty", 21);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 22, 23);
     let marker_assets = [
@@ -288,8 +288,8 @@ fn changed_nonempty_streams_multiple_pages_and_later_edit_remains_dirty() {
 
 #[test]
 fn marker_changing_undo_source_survives_two_later_candidates() {
-    let (_home, mut store, storage, thread) = fixture("historical-undo", 25);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("historical-undo", 25);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 26, 27);
     let asset = publish_image_asset(&store, assets.clone(), b"historical-undo-marker");
@@ -332,8 +332,8 @@ fn marker_changing_undo_source_survives_two_later_candidates() {
 
 #[test]
 fn marker_changing_redo_source_survives_two_later_candidates() {
-    let (_home, mut store, storage, thread) = fixture("historical-redo", 29);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("historical-redo", 29);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 30, 31);
     let asset = publish_image_asset(&store, assets.clone(), b"historical-redo-marker");
@@ -369,8 +369,8 @@ fn marker_changing_redo_source_survives_two_later_candidates() {
 
 #[test]
 fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
-    let (_home, mut store, storage, thread) = fixture("empty-transition", 31);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("empty-transition", 31);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
     let asset = publish_image_asset(&store, assets.clone(), b"marker-transition");
@@ -421,8 +421,8 @@ fn unchanged_nonempty_reuses_exact_head_without_marker_sealing() {
 
 #[test]
 fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
-    let (_home, mut store, storage, thread) = fixture("changed-empty", 36);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("changed-empty", 36);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 37, 38);
     let asset = publish_image_asset(&store, assets.clone(), b"marker-removal");
@@ -463,8 +463,8 @@ fn changed_to_empty_seals_exact_summaries_and_removes_the_asset_head() {
 
 #[test]
 fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
-    let (_home, mut store, storage, thread) = fixture("atomic-stale-nonempty", 112);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("atomic-stale-nonempty", 112);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -518,8 +518,8 @@ fn stale_changed_nonempty_cannot_swap_asset_after_unchanged_winner() {
 
 #[test]
 fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
-    let (_home, mut store, storage, thread) = fixture("atomic-stale-empty", 118);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("atomic-stale-empty", 118);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 119, 120);
     let asset = publish_image_asset(&store, assets.clone(), b"atomic-stale-empty");
@@ -631,8 +631,8 @@ fn stale_changed_to_empty_cannot_remove_asset_after_equal_head_winner() {
 
 #[test]
 fn seal_preflight_and_release_are_bounded_and_do_not_retain_a_queue() {
-    let (_home, mut store, storage, thread) = fixture("release", 41);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("release", 41);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 42, 43);
     let (dirty, _, _) = insert_marker(&mut host, &store, empty, 1, true);
@@ -699,8 +699,9 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
         ("seal-drive-collision", 126, false),
         ("seal-release-collision", 136, true),
     ] {
-        let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread, faults) =
+            base::fault_fixture_with_state(name, seed);
+        let assets = state.assets();
         let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let marker_assets = [
@@ -834,8 +835,8 @@ fn marker_seal_drive_and_release_collision_retain_terminal_publication_custody()
 #[test]
 fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody() {
     for (name, seed, collide) in [("replay", 51, false), ("collision", 61, true)] {
-        let (_home, mut store, storage, thread) = fixture(name, seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread) = fixture_with_state(name, seed);
+        let assets = state.assets();
         let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
         let durable = current(storage.clone(), &store, thread);
         let selector = DraftEditorCurrentSelectorV1::new(
@@ -948,8 +949,8 @@ fn exact_replay_and_occupied_identity_collision_have_distinct_terminal_custody()
 
 #[test]
 fn exact_replay_callback_converges_to_a_same_session_later_publication() {
-    let (_home, mut store, storage, thread) = fixture("replay-descendant", 111);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("replay-descendant", 111);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -1044,8 +1045,8 @@ fn exact_replay_callback_rejects_a_competing_session_later_publication() {
 }
 
 fn exact_replay_callback_rejects_a_competing_session_case() {
-    let (_home, mut store, storage, thread) = fixture("replay-other-session", 116);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("replay-other-session", 116);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -1113,8 +1114,9 @@ fn superseded_callback_rejects_a_competing_session_later_publication() {
 }
 
 fn superseded_callback_rejects_a_competing_session_case() {
-    let (_home, mut store, storage, thread) = fixture("superseded-other-session", 121);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state("superseded-other-session", 121);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -1179,8 +1181,8 @@ fn superseded_callback_rejects_a_competing_session_case() {
 
 #[test]
 fn session_disposal_retains_terminal_publication_custody() {
-    let (_home, mut store, storage, thread) = fixture("session-disposed", 70);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("session-disposed", 70);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -1267,8 +1269,8 @@ fn session_disposal_retains_terminal_publication_custody() {
 
 #[test]
 fn newer_durable_publication_supersedes_only_the_captured_generation() {
-    let (_home, mut store, storage, thread) = fixture("superseded", 65);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("superseded", 65);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let durable = current(storage.clone(), &store, thread);
     let selector = DraftEditorCurrentSelectorV1::new(
@@ -1331,8 +1333,8 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
         ("disposal-replay", 81, false),
         ("disposal-already", 91, true),
     ] {
-        let (_home, mut store, storage, thread) = fixture(name, seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread) = fixture_with_state(name, seed);
+        let assets = state.assets();
         let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
@@ -1389,8 +1391,8 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
         );
     }
 
-    let (_home, mut store, storage, thread) = fixture("disposal-stale", 101);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("disposal-stale", 101);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 102, 103);
     let _dirty = commit_text(&mut host, &store, empty, 10, 0, 0, "x", 1, 1);
@@ -1430,9 +1432,9 @@ fn clean_disposal_replay_already_disposed_and_stale_callbacks_are_exact() {
 
 #[test]
 fn indeterminate_collision_retains_exact_terminal_custody() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("indeterminate-collision", 106);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("indeterminate-collision", 106);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 107, 108);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);
@@ -1485,8 +1487,9 @@ fn indeterminate_collision_retains_exact_terminal_custody() {
 
 #[test]
 fn ambiguous_exact_new_and_clean_disposal_are_generation_qualified() {
-    let (_home, mut store, storage, thread, faults) = base::fault_fixture("indeterminate", 71);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("indeterminate", 71);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 72, 73);
     let _dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "x", 1, 1);

@@ -29,7 +29,7 @@ pub(super) struct Fixture {
 impl Fixture {
     pub(super) fn new(seed: u8) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open(HomeOpenOptions::new(
+        let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
@@ -43,7 +43,7 @@ impl Fixture {
         faults: beryl_home_store::test_faults::FaultController,
     ) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let store = HomeStore::open_with_faults(
+        let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults,
         )
@@ -51,9 +51,23 @@ impl Fixture {
         Self::from_store(seed, directory, store)
     }
 
-    fn from_store(seed: u8, directory: tempfile::TempDir, mut store: HomeStore) -> Self {
+    fn from_store(
+        seed: u8,
+        directory: tempfile::TempDir,
+        mut store: beryl_home_store::HomeOpenCandidate,
+    ) -> Self {
         let storage = SyndicStorage::register(&mut store).unwrap();
         let state = BerylState::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         execute_one(
             &store,

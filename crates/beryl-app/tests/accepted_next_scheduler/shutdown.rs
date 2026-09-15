@@ -1,6 +1,7 @@
 use super::*;
 
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
+use beryl_state::BerylState;
 
 #[test]
 fn service_shutdown_after_reservation_waits_for_exact_promotion() {
@@ -57,12 +58,23 @@ fn service_shutdown_after_reservation_waits_for_exact_promotion() {
     server.join();
     assert!(!slot.is_ready());
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let _state = BerylState::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         accepted_route_state(&reopened, &reopened_storage, &ids),
         AcceptedRouteEffectiveState::Promoted,

@@ -14,7 +14,7 @@ use beryl_app::cas_projection::{
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
 use beryl_backend::ManagedBackendLaunchSpec;
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     AdmittedHostPath, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath,
@@ -69,13 +69,23 @@ impl Fixture {
         fs::create_dir(directory.path().join("root-2")).unwrap();
         fs::create_dir(directory.path().join("tokens")).unwrap();
         let faults = beryl_home_store::test_faults::FaultController::new();
-        let mut home = HomeStore::open_with_faults(
+        let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path().join("home"), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let mut service = ProjectionConnectionService::new(
             process_admission.clone(),
@@ -131,7 +141,7 @@ impl Fixture {
             self.service.take().unwrap().close().unwrap(),
             beryl_app::cas_projection::ProjectionConnectionServiceCloseOutcome::Closed
         ));
-        let mut home = HomeStore::open_with_faults(
+        let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(
                 self.directory.path().join("home"),
                 HomeSchemaVersion::CURRENT,
@@ -141,6 +151,16 @@ impl Fixture {
         .unwrap();
         self.storage = SyndicStorage::register(&mut home).unwrap();
         self.state = BerylState::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let mut service = ProjectionConnectionService::new(
             self.process_admission.clone(),
             home,

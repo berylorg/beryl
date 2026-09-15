@@ -1094,6 +1094,15 @@ impl ProjectionConnection {
     }
 
     #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn provider_broker_test_snapshot_reader(
+        &self,
+    ) -> crate::cas_projection::test_faults::ProviderBrokerSnapshotReader {
+        self.attached_broker()
+            .expect("attached test connection retains its provider broker")
+            .test_snapshot_reader()
+    }
+
+    #[cfg(feature = "test-faults")]
     pub(in crate::cas_projection) fn fail_next_write_before_dispatch_for_test(
         &self,
     ) -> Result<(), ProjectionCoordinatorError> {

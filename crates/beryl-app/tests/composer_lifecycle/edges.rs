@@ -6,7 +6,6 @@ use beryl_app::composer_host::{
     ComposerHostFlushState,
 };
 use beryl_home_store::{CommandCancellation, test_faults::FaultPoint};
-use beryl_state::BerylState;
 use gpui_text_input::MutationKind;
 use syndic_storage::{DraftEditorCandidateSessionIdV1, SyndicTimestamp};
 
@@ -34,8 +33,8 @@ fn activation_cannot_erase_an_admitted_publication_or_disposal_barrier() {
     );
     host.dispose_composer_service(&store).unwrap();
 
-    let (_home, mut store, storage, thread) = base::fixture("disposal-fence", 117);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("disposal-fence", 117);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 118, 119);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -102,8 +101,8 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
     host.begin_history_selection(&store, dirty, intent).unwrap();
     assert_activation_blocked(&mut host, &store, thread, dirty, 219, 220);
 
-    let (_home, mut store, storage, thread) = base::fixture("activate-barriers", 221);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("activate-barriers", 221);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 222, 223);
     let dirty = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
@@ -117,8 +116,8 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
     );
     assert_activation_blocked(&mut host, &store, thread, dirty, 227, 228);
 
-    let (_home, mut store, storage, thread) = base::fixture("activate-disposal", 229);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("activate-disposal", 229);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 230, 231);
     let _ = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
@@ -152,8 +151,8 @@ fn activation_requires_an_empty_host_in_every_live_lifecycle_state() {
 
 #[test]
 fn disposal_dirty_conflict_cuts_the_barrier_and_retains_exact_terminal_custody() {
-    let (_home, mut store, storage, thread) = base::fixture("disposal-dirty", 121);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("disposal-dirty", 121);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 122, 123);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -215,9 +214,10 @@ fn disposal_dirty_conflict_cuts_the_barrier_and_retains_exact_terminal_custody()
 
 #[test]
 fn foreign_disposal_execution_is_stale_and_preserves_the_joined_barrier() {
-    let (_home, mut store, storage, thread) = base::fixture("disposal-generation", 131);
+    let (_home, store, state, storage, thread) =
+        base::fixture_with_state("disposal-generation", 131);
     let (_other_home, other_store, _, _) = base::fixture("disposal-foreign", 132);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 133, 134);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -266,9 +266,9 @@ fn foreign_disposal_execution_is_stale_and_preserves_the_joined_barrier() {
 
 #[test]
 fn foreign_autosave_publication_callback_is_inert() {
-    let (_home, mut store, storage, thread) = base::fixture("stale-autosave", 181);
+    let (_home, store, state, storage, thread) = base::fixture_with_state("stale-autosave", 181);
     let (_other_home, other_store, _, _) = base::fixture("stale-autosave-other", 182);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 183, 184);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -305,9 +305,9 @@ fn foreign_autosave_publication_callback_is_inert() {
 
 #[test]
 fn foreign_flush_publication_callback_is_inert() {
-    let (_home, mut store, storage, thread) = base::fixture("stale-flush", 186);
+    let (_home, store, state, storage, thread) = base::fixture_with_state("stale-flush", 186);
     let (_other_home, other_store, _, _) = base::fixture("stale-flush-other", 187);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 188, 189);
     composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -333,8 +333,8 @@ fn foreign_flush_publication_callback_is_inert() {
 
 #[test]
 fn stale_barrier_ticket_is_inert_while_current_barrier_remains_owned() {
-    let (_home, mut store, storage, thread) = base::fixture("stale-barrier", 197);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("stale-barrier", 197);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 198, 199);
     let current_binding = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -371,10 +371,10 @@ fn stale_barrier_ticket_is_inert_while_current_barrier_remains_owned() {
 
 #[test]
 fn foreign_disposal_reconciliation_is_stale_and_preserves_exact_custody() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("stale-disposal-reconcile", 191);
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("stale-disposal-reconcile", 191);
     let (_other_home, other_store, _, _) = base::fixture("stale-disposal-reconcile-other", 192);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, clean) = composer::activated(storage.clone(), &store, thread, 193, 194);
     let _ = composer::commit_text(&mut host, &store, clean, 1, 0, 0, "a", 1, 1);
@@ -426,8 +426,8 @@ fn foreign_disposal_reconciliation_is_stale_and_preserves_exact_custody() {
 
 #[test]
 fn recoverable_capture_failure_cuts_once_without_retaining_source_custody() {
-    let (_home, mut store, storage, thread) = base::fixture("recoverable", 136);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("recoverable", 136);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 137, 138);
     let marker_assets = [
@@ -464,8 +464,8 @@ fn recoverable_capture_failure_cuts_once_without_retaining_source_custody() {
 
 #[test]
 fn undo_and_redo_during_one_flush_repeat_to_the_newest_frontier() {
-    let (_home, mut store, storage, thread) = base::fixture("history-flush", 141);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("history-flush", 141);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 142, 143);
     let a = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);

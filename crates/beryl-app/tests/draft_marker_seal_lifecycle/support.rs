@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn marker_session(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     seed: u8,
@@ -10,7 +10,7 @@ pub(super) fn marker_session(
 }
 
 pub(super) fn marker_session_with_marker(
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     store: &HomeStore,
     thread: SyndicThreadId,
     seed: u8,
@@ -25,7 +25,7 @@ pub(super) fn marker_session_with_marker(
         seed.wrapping_add(2),
     );
     session = complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(3),
@@ -37,7 +37,7 @@ pub(super) fn marker_session_with_marker(
         DraftLogicalExtentV1::new(3, 1),
     );
     complete_staged(
-        &storage,
+        storage,
         store,
         &session,
         seed.wrapping_add(4),
@@ -111,14 +111,14 @@ pub(super) fn publish_asset(
 
 pub(super) fn new_service(
     store: &HomeStore,
-    storage: SyndicStorage,
+    storage: &SyndicStorage,
     assets: beryl_state::AssetState,
     flights: usize,
 ) -> DraftMarkerSealService {
     DraftMarkerSealService::new(
         store,
         store.health().generation().unwrap(),
-        storage,
+        storage.clone(),
         assets,
         DraftMarkerSealServiceLimits::new(
             NonZeroUsize::new(flights).unwrap(),

@@ -2,7 +2,6 @@ use beryl_app::composer_host::{
     ComposerHostFlushAdvance, ComposerHostFlushFailure, ComposerHostFlushPurpose,
 };
 use beryl_home_store::{CommandCancellation, test_faults::FaultPoint};
-use beryl_state::BerylState;
 use syndic_storage::{
     DraftEditorCandidateActivationBindingV1, DraftHistoricalRootDirectionV1,
     DraftHistoricalRootSelectionIntentV1,
@@ -17,8 +16,8 @@ use super::{
 
 #[test]
 fn publication_not_committed_cuts_once_and_rearms_for_an_explicit_attempt() {
-    let (_home, mut store, storage, thread) = base::fixture("not-committed", 51);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("not-committed", 51);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 52, 53);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -44,8 +43,8 @@ fn publication_not_committed_cuts_once_and_rearms_for_an_explicit_attempt() {
 
 #[test]
 fn durable_base_conflict_is_an_exact_terminal_cut() {
-    let (_home, mut store, storage, thread) = base::fixture("durable-conflict", 61);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("durable-conflict", 61);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let selector = common::selector(storage.clone(), &store, thread);
     let competing = {
@@ -71,8 +70,8 @@ fn durable_base_conflict_is_an_exact_terminal_cut() {
 
 #[test]
 fn session_disposal_is_an_exact_terminal_cut() {
-    let (_home, mut store, storage, thread) = base::fixture("session-disposed", 71);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("session-disposed", 71);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let selector = common::selector(storage.clone(), &store, thread);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 72, 73);
@@ -95,8 +94,8 @@ fn session_disposal_is_an_exact_terminal_cut() {
 
 #[test]
 fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
-    let (_home, mut store, storage, thread) = base::fixture("identity", 81);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = base::fixture_with_state("identity", 81);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let selector = common::selector(storage.clone(), &store, thread);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 82, 83);
@@ -113,9 +112,9 @@ fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
         ComposerHostFlushAdvance::Unsatisfied(ComposerHostFlushFailure::IdentityCollision)
     );
 
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("reconciliation-collision", 91);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("reconciliation-collision", 91);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 92, 93);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -167,9 +166,9 @@ fn identity_and_reconciliation_collisions_preserve_exact_failure_identity() {
 
 #[test]
 fn ambiguous_publication_reconciliation_stays_pending_then_cuts_exactly() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("reconciliation-exact", 101);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("reconciliation-exact", 101);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 102, 103);
     let _ = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);

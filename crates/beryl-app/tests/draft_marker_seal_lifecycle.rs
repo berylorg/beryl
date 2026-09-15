@@ -24,13 +24,18 @@ mod app_support;
 
 use app_support::*;
 
+#[path = "support/durable_marker_home.rs"]
+mod marker_home;
+use marker_home::fixture_with_state;
+#[cfg(feature = "test-faults")]
+use marker_home::fixture_with_state_and_faults;
+
 #[test]
 fn admission_authenticates_the_exact_active_head_before_charging_capacity() {
-    let (_home, mut store, storage, thread) = fixture("app-auth", 110);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 111, 112);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-auth", 110);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 111, 112);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let active = DraftEditorCandidateActivationBindingV1::from_head(&session);
     let stale = DraftEditorCandidateActivationBindingV1::new(
         active.draft_id(),
@@ -82,10 +87,9 @@ fn admission_authenticates_the_exact_active_head_before_charging_capacity() {
 
 #[test]
 fn cancelled_failed_superseded_and_session_disposed_settle_durably() {
-    let (_home, mut store, storage, thread) = fixture("app-terminal", 120);
-    let state = BerylState::register(&mut store).unwrap();
-    let session = marker_session(storage, &store, thread, 121);
-    let service = new_service(&store, storage, state.assets(), 4);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-terminal", 120);
+    let session = marker_session(&storage, &store, thread, 121);
+    let service = new_service(&store, &storage, state.assets(), 4);
     let active = DraftEditorCandidateActivationBindingV1::from_head(&session);
     let intents = [
         DraftMarkerSealReleaseIntent::Cancelled,
@@ -156,11 +160,10 @@ fn cancelled_failed_superseded_and_session_disposed_settle_durably() {
 
 #[test]
 fn terminal_not_committed_keeps_the_slot_and_replay_settles_exactly() {
-    let (_home, mut store, storage, thread) = fixture("app-terminal-replay", 140);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 141, 142);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-terminal-replay", 140);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 141, 142);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let request = request(&session, 143, 144);
     let key =
         DraftMarkerSealRequestV1::new(request.candidate().root(), request.operation_id()).key();
@@ -205,12 +208,11 @@ fn supersession_replays_after_successor_drift_for_deferred_and_not_committed_set
 
 fn deferred_supersession_replay_after_successor_drift() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-supersession-deferred", 145, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 146, 147);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-supersession-deferred", 145, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 146, 147);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let flight = admitted(&service, &store, request(&session, 148, 149));
     let successor = DraftEditorCandidateActivationBindingV1::from_head(&session);
     let intent = DraftMarkerSealReleaseIntent::Superseded {
@@ -256,11 +258,10 @@ fn deferred_supersession_replay_after_successor_drift() {
 }
 
 fn not_committed_supersession_replay_after_successor_drift() {
-    let (_home, mut store, storage, thread) = fixture("app-supersession-replay", 152);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 153, 154);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) = fixture_with_state("app-supersession-replay", 152);
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 153, 154);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let flight = admitted(&service, &store, request(&session, 155, 156));
     assert_eq!(
         service.drive(&store, flight).unwrap(),
@@ -303,10 +304,9 @@ fn not_committed_supersession_replay_after_successor_drift() {
 #[test]
 fn construction_rejects_a_new_generation_while_old_home_authority_is_live() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, _) =
-        fixture_with_faults("app-construction-generation", 146, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, _) =
+        fixture_with_state_and_faults("app-construction-generation", 146, faults.clone());
+    let service = new_service(&store, &storage, state.assets(), 1);
     let old_generation = store.health().generation().unwrap();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
@@ -336,11 +336,9 @@ fn construction_rejects_a_new_generation_while_old_home_authority_is_live() {
 
 #[test]
 fn holding_one_home_state_does_not_block_other_home_construction_or_drop() {
-    let (_home_a, mut store_a, storage_a, _) = fixture("app-registry-a", 147);
-    let state_a = BerylState::register(&mut store_a).unwrap();
-    let service_a = new_service(&store_a, storage_a, state_a.assets(), 1);
-    let (_home_b, mut store_b, storage_b, _) = fixture("app-registry-b", 148);
-    let state_b = BerylState::register(&mut store_b).unwrap();
+    let (_home_a, store_a, state_a, storage_a, _) = fixture_with_state("app-registry-a", 147);
+    let service_a = new_service(&store_a, &storage_a, state_a.assets(), 1);
+    let (_home_b, store_b, state_b, storage_b, _) = fixture_with_state("app-registry-b", 148);
     let (reached_send, reached_receive) = std::sync::mpsc::channel();
     let (release_send, release_receive) = std::sync::mpsc::channel();
     let holder = service_a.clone();
@@ -369,8 +367,7 @@ fn holding_one_home_state_does_not_block_other_home_construction_or_drop() {
 
 #[test]
 fn begin_page_and_asset_seal_fault_cuts_replay_without_frontier_drift() {
-    let (_home, mut store, storage, thread) = fixture("app-all-cuts", 150);
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) = fixture_with_state("app-all-cuts", 150);
     let asset = publish_asset(&store, &state, &[151; 32]);
     let inserted = DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes([151; 16]),
@@ -378,8 +375,8 @@ fn begin_page_and_asset_seal_fault_cuts_replay_without_frontier_drift() {
         ImageLabelOrdinal::new(1).unwrap(),
         asset,
     );
-    let session = marker_session_with_marker(storage, &store, thread, 151, inserted);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let session = marker_session_with_marker(&storage, &store, thread, 151, inserted);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let request = request(&session, 152, 153);
     let flight = admitted(&service, &store, request);
 
@@ -417,14 +414,16 @@ fn begin_page_and_asset_seal_fault_cuts_replay_without_frontier_drift() {
 
 #[test]
 fn stale_final_asset_seal_reopens_to_a_competing_exact_asset_proof() {
-    let (_home, mut store, storage, thread) = fixture("app-competing-asset-seal", 154);
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state("app-competing-asset-seal", 154);
     let asset = publish_asset(&store, &state, b"competing-asset-seal");
-    let service = new_service(&store, storage, state.assets(), 1);
-    let flight = final_asset_seal_flight(&service, &store, storage, thread, 155, asset);
+    let service = new_service(&store, &storage, state.assets(), 1);
+    let flight = final_asset_seal_flight(&service, &store, &storage, thread, 155, asset);
     let request = flight.request();
     let assets = state.assets();
-    service.test_arm_before_command_fault(move |store| advance_revision(store, assets, 156));
+    let competing_assets = assets.clone();
+    service
+        .test_arm_before_command_fault(move |store| advance_revision(store, competing_assets, 156));
     assert_eq!(
         service.drive(&store, flight).unwrap(),
         DraftMarkerSealDriveOutcome::NotCommitted(DraftMarkerSealCommandStage::AssetSeal)
@@ -471,11 +470,10 @@ fn stale_final_asset_seal_reopens_to_a_competing_exact_asset_proof() {
 #[test]
 fn indeterminate_collision_is_classified_and_releases_app_custody() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-collision", 160, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 161, 162);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-collision", 160, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 161, 162);
     let source = session.newest_root();
     let seed_request =
         DraftMarkerSealRequestV1::new(source, DraftMarkerSealOperationIdV1::from_bytes([163; 16]));
@@ -491,7 +489,7 @@ fn indeterminate_collision_is_classified_and_releases_app_custody() {
         CommandOutcome::Committed { .. }
     ));
 
-    let service = new_service(&store, storage, state.assets(), 1);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let request = request(&session, 164, 165);
     service.test_arm_before_reconcile_fault(move |store, storage, request| {
         let (_, collision) =
@@ -521,12 +519,11 @@ fn indeterminate_collision_is_classified_and_releases_app_custody() {
 #[test]
 fn concurrent_drive_release_keeps_capacity_until_the_drive_settles() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-drive-release", 170, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 171, 172);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-drive-release", 170, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 171, 172);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let flight = admitted(&service, &store, request(&session, 173, 174));
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);
@@ -586,12 +583,11 @@ fn final_asset_seal_races_release_dispose_and_generation_loss() {
 #[test]
 fn indeterminate_final_asset_seal_reconciles_to_the_complete_asset_proof() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-asset-indeterminate", 240, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-asset-indeterminate", 240, faults.clone());
     let asset = publish_asset(&store, &state, b"asset-indeterminate");
-    let service = new_service(&store, storage, state.assets(), 1);
-    let flight = final_asset_seal_flight(&service, &store, storage, thread, 241, asset);
+    let service = new_service(&store, &storage, state.assets(), 1);
+    let flight = final_asset_seal_flight(&service, &store, &storage, thread, 241, asset);
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
     assert!(matches!(
         service.drive(&store, flight).unwrap(),
@@ -602,12 +598,11 @@ fn indeterminate_final_asset_seal_reconciles_to_the_complete_asset_proof() {
 
 fn final_asset_seal_release_case() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-final-release", 210, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-final-release", 210, faults.clone());
     let asset = publish_asset(&store, &state, b"final-release");
-    let service = new_service(&store, storage, state.assets(), 1);
-    let flight = final_asset_seal_flight(&service, &store, storage, thread, 211, asset);
+    let service = new_service(&store, &storage, state.assets(), 1);
+    let flight = final_asset_seal_flight(&service, &store, &storage, thread, 211, asset);
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);
     let worker_service = service.clone();
@@ -637,12 +632,11 @@ fn final_asset_seal_release_case() {
 
 fn final_asset_seal_dispose_case() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-final-dispose", 220, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-final-dispose", 220, faults.clone());
     let asset = publish_asset(&store, &state, b"final-dispose");
-    let service = new_service(&store, storage, state.assets(), 1);
-    let flight = final_asset_seal_flight(&service, &store, storage, thread, 221, asset);
+    let service = new_service(&store, &storage, state.assets(), 1);
+    let flight = final_asset_seal_flight(&service, &store, &storage, thread, 221, asset);
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);
     let worker_service = service.clone();
@@ -667,12 +661,11 @@ fn final_asset_seal_dispose_case() {
 
 fn final_asset_seal_retire_case() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-final-retire", 230, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-final-retire", 230, faults.clone());
     let asset = publish_asset(&store, &state, b"final-retire");
-    let service = new_service(&store, storage, state.assets(), 1);
-    let flight = final_asset_seal_flight(&service, &store, storage, thread, 231, asset);
+    let service = new_service(&store, &storage, state.assets(), 1);
+    let flight = final_asset_seal_flight(&service, &store, &storage, thread, 231, asset);
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);
     let worker_service = service.clone();
@@ -691,7 +684,7 @@ fn final_asset_seal_retire_case() {
 fn final_asset_seal_flight(
     service: &DraftMarkerSealService,
     store: &HomeStore,
-    storage: syndic_storage::SyndicStorage,
+    storage: &syndic_storage::SyndicStorage,
     thread: SyndicThreadId,
     seed: u8,
     asset: beryl_model::AssetId,
@@ -726,12 +719,11 @@ fn final_asset_seal_flight(
 
 fn concurrent_dispose_case() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-drive-dispose", 180, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 181, 182);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-drive-dispose", 180, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 181, 182);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let flight = admitted(&service, &store, request(&session, 183, 184));
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);
@@ -759,12 +751,11 @@ fn concurrent_dispose_case() {
 
 fn concurrent_retire_case() {
     let faults = FaultController::new();
-    let (_home, mut store, storage, thread) =
-        fixture_with_faults("app-drive-retire", 190, faults.clone());
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let session = open_session(storage, &store, &durable, 191, 192);
-    let service = new_service(&store, storage, state.assets(), 1);
+    let (_home, store, state, storage, thread) =
+        fixture_with_state_and_faults("app-drive-retire", 190, faults.clone());
+    let durable = current(&storage, &store, thread);
+    let session = open_session(&storage, &store, &durable, 191, 192);
+    let service = new_service(&store, &storage, state.assets(), 1);
     let flight = admitted(&service, &store, request(&session, 193, 194));
     let block = faults.block_next(FaultPoint::BeforeCommit);
     let store = Arc::new(store);

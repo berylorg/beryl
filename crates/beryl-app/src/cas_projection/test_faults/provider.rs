@@ -185,6 +185,27 @@ pub fn provider_broker_snapshot(session: &AdmittedProjectionSession) -> Provider
     session.provider_broker_test_snapshot()
 }
 
+#[derive(Clone, Debug)]
+pub struct ProviderBrokerSnapshotReader {
+    metrics: Arc<ProviderBrokerTestMetrics>,
+}
+
+impl ProviderBrokerSnapshotReader {
+    pub(crate) fn new(metrics: Arc<ProviderBrokerTestMetrics>) -> Self {
+        Self { metrics }
+    }
+
+    pub fn snapshot(&self) -> ProviderBrokerSnapshot {
+        self.metrics.snapshot()
+    }
+}
+
+pub fn capture_provider_broker_snapshot_reader(
+    session: &AdmittedProjectionSession,
+) -> ProviderBrokerSnapshotReader {
+    session.provider_broker_test_snapshot_reader()
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ProviderTestKey {
     home_id: BerylHomeId,

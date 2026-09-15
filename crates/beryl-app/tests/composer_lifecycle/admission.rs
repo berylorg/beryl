@@ -4,7 +4,6 @@ use beryl_app::composer_host::{
     ComposerHostMutationOutcome,
 };
 use beryl_home_store::CommandCancellation;
-use beryl_state::BerylState;
 use gpui_text_input::{
     BindingId, LogicalExtent, MutationCommitRequest, MutationCursor, MutationFinishInput,
     MutationIdentity, MutationKey, MutationKind, MutationLane, MutationPage, MutationPageItem,
@@ -89,8 +88,9 @@ fn submission_allows_edits_until_a_disposing_join_upgrades_the_barrier() {
 
 #[test]
 fn work_admitted_before_a_disposing_barrier_finishes_and_the_barrier_drains_it() {
-    let (_home, mut store, storage, thread) = base::fixture("admitted-work-drains", 200);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) =
+        base::fixture_with_state("admitted-work-drains", 200);
+    let assets = state.assets();
     let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = composer::activated(storage.clone(), &store, thread, 201, 202);
     let dirty = composer::commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);

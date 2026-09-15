@@ -1,4 +1,4 @@
-use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{RuntimeMode, SyndicDraftId};
 use beryl_state::AssetOwner;
 use syndic_storage::{AcceptedInputAdmissionProof, AcceptedInputRecord, DraftEditHistoryPolicyV1};
@@ -67,10 +67,14 @@ fn preparation_rejects_cancellation_identity_drift_and_missing_input() {
     ));
 
     let other_directory = tempfile::tempdir().unwrap();
-    let other = HomeStore::open(HomeOpenOptions::new(
+    let other = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         other_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(beryl_home_store::HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let owner_head = fixture
         .state

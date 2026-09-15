@@ -98,13 +98,23 @@ impl SteeringFixture {
 
     fn build(seed: u8, router_turn: Option<CasTurnId>, fixture_input: FixtureInput) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut home = HomeStore::open(HomeOpenOptions::new(
+        let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let state = BerylState::register(&mut home).unwrap();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread_id = SyndicThreadId::from_bytes([seed; 16]);
         let runtime_id = RuntimeId::from_bytes([seed.wrapping_add(4); 16]);
         execute(

@@ -138,56 +138,52 @@ assertions. App fixtures, candidate recovery access and complete service publica
 
 ## App Candidate Qualification
 
-Application fixtures now explicitly prepare and publish their complete package-owned candidate
-declarations. Generic openers retain candidates; fixed mixed-domain composers register both state
-and Syndic before publication. Fresh physical opens rebuild live handles, and same-home recovery
-retains its separate publication path. Production app behavior was not changed.
+Application fixtures are accepted with explicit preparation and publication of their complete
+package-owned candidate declarations. Generic openers retain candidates; fixed mixed-domain
+composers register both state and Syndic before publication. Fresh physical opens rebuild live
+handles, while same-home recovery retains its separate publication path. This accepts test
+construction and corrected evidence, not production service preparation or executable bootstrap.
 
-Qualification is incomplete. Normal app compilation, all app test-target compilation, 360 library
-cases and 24 marker-service cases passed. The first representative integration run passed 312 of
-330 cases and exposed stale fixture setup. All five accepted-promotion cases subsequently passed
-with authentic fresh image-label allocation; clipboard scenarios passed on the normal stack after
-splitting two independent fixtures. The final runtime corrections have not all passed acceptance,
-and the interrupted combined run is not success evidence.
+Normal app compilation, all app test-target compilation, 360 library cases and 24 marker-service
+cases passed. The initial representative integration run passed 312 of 330 cases; its stale fixture
+failures were corrected and qualified by subsequent focused runs. These included all five
+accepted-promotion cases, all 11 native retry cases, all 19 GPUI/main-window composer cases,
+backpressure, unchanged scale, and the complete failure-taxonomy case. The final exact-root
+submitted-content smoke passed in 1.347 seconds
+(`71194f8b-0bb1-40a4-94b4-4208f878e505`). Aggregate independent semantic review and formatting of
+all 73 remaining source paths passed; no qualification blockers remained.
 
-Mutation fixtures require replayable evidence admission before staging. The large submitted-input
-fixture's original 41-byte durable fragments exhausted the production 256 MiB memtable payload
-budget after real build progress. Bounded text coalescing preserves the logical payload while
-limiting each page's actual owned bytes; it exposed the confirmed
-[materializer chunk-frontier defect](syndic-materializer-chunk-frontier.md), which temporarily
-blocked this fixture-only phase. Its separate correction passed acceptance on 2026-09-15, allowing
-qualification to resume without raising storage limits or avoiding the header boundary.
+The corrected fixtures preserve authentic evidence rather than changing the workload:
+marker readiness comes from exact sources; distinct image labels come from distinct mutation
+operations; current selection is recaptured after publication; cancellation and noncommit retain
+the exact document and candidate while allowing monotonic session-generation changes. Independent
+clipboard and edit fixtures use separate normal-stack frames. The submitted-input source remains
+bounded and coalesces text without altering its logical content.
 
-Remaining fixture work includes current-selection recapture after flush publication, final GUI and
-low-history terminal verification, native retry evidence, and submitted-input descriptor/label
-reconciliation. Marker-free replay emits one logical text descriptor regardless of stored text
-atom count. Repeated fresh references to one AssetId share an allocated label within one mutation;
-the image-scaling fixture needs authentic distinct-operation label provenance to retain its
-intended distinct-image assertions. Do not replace those assertions with repeated-label behavior.
+Production defects exposed during qualification passed separate acceptance:
+[chunk-frontier publication](syndic-materializer-chunk-frontier.md),
+[cooperative sealed-content reuse](syndic-draft-materializer-content-identity.md),
+[sequence marker folding](syndic-text-insertion-marker-fold.md), and
+[aggregate memtable/replay admission](syndic-draft-build-memtable-capacity.md).
+The unchanged same-service scale workload passed in 300.575 seconds, including repeated 128-image
+input, with original limits and real pins. Those corrections did not authorize a fixture reopen,
+larger storage budget, or reduced repeated payload.
 
-The reported flush synchronization suspicion was disproved: publication completion updates the
-slot identity and dispatcher, and callers must honor `CaptureRequired` using the current selection.
-The separately corrected production blocker was the materializer producer/decoder contradiction.
-No candidate recovery, prepared service graph, executable startup or phase acceptance is claimed.
+## Qualification After Marker Authority Correction
 
-After chunk-frontier acceptance, the resumed 30-case runtime run passed 27 cases, including all 11
-native retry cases and the current-selection flush corrections. The final all-app test-target
-compilation and exact-file formatting passed. Marker-free replay expectations now use the logical
-descriptor count instead of stored atom count; the first three scale inputs completed before the
-fourth repeated input exposed the separately documented
-[sealed-content reuse blocker](syndic-draft-materializer-content-identity.md#app-qualification-reproduction).
-Production implementation stopped for Operator review; no repeated-payload workaround was made.
-The Operator subsequently selected bounded cooperative replay, which passed
-[separate production acceptance](syndic-draft-materializer-content-identity.md#accepted-cooperative-replay)
-with 25 materializer cases and independent adversarial review. App qualification resumes with
-its original repeated payloads; that acceptance does not close the remaining fixture checks.
+The earlier terminal-publication case 35 reached Completed persistence and released both fault
+barriers, then joined execution while it polled an open target queue. The ingester and failure
+coordinator were absent from the captured threads; the snapshot alone could not classify the
+coordinator exit. This was separate from the earlier fixture-held command guard, which had
+prevented failure capture from draining ordinary admission.
 
-The end-marker GUI fixtures now use the actual anchor and an inclusive marker-demand scope; the
-cancelled-removal case passed. The marker menu/preview case reaches its replacement mutation but
-still fails exact host translation and remains unclassified. The five-outcome edit fixture's
-earlier `InvalidRoot` was operation 58, the two-empty-text-fragment rejection setup, not the
-history-limited case. Independent review identified the unsupported empty continuation. Its new
-multibyte-boundary rejection setup has compiled, but the combined test overflowed its normal stack;
-split fixture frames, retain valid predecessor/intended caret positions, and verify all outcomes
-before acceptance. Distinct-operation image-label seeding has compiled but remains runtime
-unverified because the repeat-content blocker occurs before the marker-aware scale series.
+The [completed disposal qualification](ordinary-capture-persistent-failure-polling.md) resolved that
+uncertainty: the cut finished and intentionally retained the target. Existing failed-service close
+released execution. The corrected fixture checks typed disposal and fresh-handle durable evidence;
+it no longer expects a new stream-loss terminal through a failed home. The complete failure-taxonomy
+test passed in 79.386 seconds. The bounded atomic broker snapshot reader similarly resolves the
+backpressure fixture's self-held publication-lock wait without changing production routing.
+
+App candidate fixture acceptance does not accept explicit candidate recovery access, a prepared
+service graph, restored windows, or native process-entry composition. Those remain separate
+implementation-plan and rework gates.

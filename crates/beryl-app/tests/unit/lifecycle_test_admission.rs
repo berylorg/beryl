@@ -1,7 +1,7 @@
 use std::{io::ErrorKind, net::TcpListener, path::Path, sync::mpsc, thread, time::Duration};
 
 use beryl_backend::{BackendWebSocketEndpoint, ManagedBackendClientConnector, ManagedBackendError};
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{CasProcessGeneration, RuntimeId};
 use beryl_state::BerylState;
 use syndic_storage::SyndicStorage;
@@ -29,13 +29,23 @@ impl ScheduledOrdinaryExecutionProvider for RejectingScheduledOrdinaryProvider {
 #[test]
 fn public_admit_rejects_lifecycle_connector_without_consuming_another_fixture_server() {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = ProjectionConnectionService::new(
         Default::default(),
         home,
@@ -94,13 +104,23 @@ fn public_admit_rejects_lifecycle_connector_without_consuming_another_fixture_se
 #[test]
 fn lifecycle_release_admission_sends_only_initialize_initialized_and_config_read() {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = ProjectionConnectionService::new(
         Default::default(),
         home,

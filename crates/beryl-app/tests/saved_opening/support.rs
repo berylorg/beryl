@@ -9,7 +9,7 @@ use beryl_app::{
 };
 use beryl_home_store::{CommandCancellation, HomeStore};
 use beryl_model::{SyndicDraftId, SyndicItemId, SyndicThreadId};
-use beryl_state::{AssetState, BerylState};
+use beryl_state::AssetState;
 use syndic_storage::{
     DraftComposerMaterializationOperationIdV1, SyndicCurrentDraft, SyndicPointReadLimit,
     SyndicStorage, SyndicTimestamp,
@@ -30,8 +30,9 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new(name: &str, seed: u8) -> Self {
-        let (home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (home, store, state, storage, thread, faults) =
+            base::fault_fixture_with_state(name, seed);
+        let assets = state.assets();
         let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
         let (host, _) = composer::activated(storage.clone(), &store, thread, seed + 2, seed + 3);
         Self {
@@ -78,8 +79,8 @@ impl Fixture {
         drop(seals);
         drop(assets);
         drop(store);
-        let (mut store, storage) = base::reopen(&home);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (store, state, storage) = base::reopen_with_state(&home);
+        let assets = state.assets();
         let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
         let (host, _) = composer::activated(storage.clone(), &store, thread, seed + 5, seed + 6);
         let fixture = Self {

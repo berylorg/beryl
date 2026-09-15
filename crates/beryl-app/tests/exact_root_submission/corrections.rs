@@ -17,8 +17,9 @@ use syndic_storage::{ACCEPTED_NEXT_PAGE_MAX_BYTES, PromoteAcceptedInput, SyndicS
 
 #[test]
 fn flush_error_restores_the_exact_stage_and_retry_converges() {
-    let (_home, mut store, storage, thread, _faults) = base::fault_fixture("flush-fault", 141);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, _faults) =
+        base::fault_fixture_with_state("flush-fault", 141);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 142, 143);
     commit_text(&mut host, &store, empty, 1, 0, 0, "flush", 5, 1);
@@ -39,9 +40,9 @@ fn flush_error_restores_the_exact_stage_and_retry_converges() {
 
 #[test]
 fn materializer_error_restores_root_custody_and_retry_converges() {
-    let (_home, mut store, storage, thread, _faults) =
-        base::fault_fixture("materializer-fault", 151);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, _faults) =
+        base::fault_fixture_with_state("materializer-fault", 151);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 152, 153);
     commit_text(&mut host, &store, empty, 1, 0, 0, "materialize", 11, 1);
@@ -72,9 +73,9 @@ fn materializer_error_restores_root_custody_and_retry_converges() {
 
 #[test]
 fn pre_attempt_error_restores_materialization_custody_without_admission() {
-    let (_home, mut store, storage, thread, _faults) =
-        base::fault_fixture("pre-acceptance-fault", 161);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, _faults) =
+        base::fault_fixture_with_state("pre-acceptance-fault", 161);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 162, 163);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "accept", 6, 1);
@@ -141,8 +142,9 @@ fn direct_idle_admission_requires_one_immediate_sufficient_observation() {
         ),
     ];
     for (name, seed, denied_observation) in cases {
-        let (_home, mut store, storage, thread, faults) = base::fault_fixture(name, seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread, faults) =
+            base::fault_fixture_with_state(name, seed);
+        let assets = state.assets();
         let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, empty) = activated(storage.clone(), &store, thread, seed + 1, seed + 2);
         let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "reserve", 7, 1);
@@ -203,9 +205,9 @@ fn direct_idle_admission_requires_one_immediate_sufficient_observation() {
 
 #[test]
 fn accepted_next_does_not_consume_a_direct_idle_space_observation() {
-    let (_home, mut store, storage, thread, faults) =
-        base::fault_fixture("accepted-no-space-check", 201);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("accepted-no-space-check", 201);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut first_host, empty) = activated(storage.clone(), &store, thread, 202, 203);
     commit_text(&mut first_host, &store, empty, 1, 0, 0, "first", 5, 1);

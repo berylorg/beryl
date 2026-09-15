@@ -29,8 +29,9 @@ struct Submission {
 
 impl Submission {
     fn accepting(name: &str) -> Self {
-        let (home, mut store, storage, thread, faults) = base::fault_fixture(name, 201);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (home, store, state, storage, thread, faults) =
+            base::fault_fixture_with_state(name, 201);
+        let assets = state.assets();
         let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, binding) = activated(storage.clone(), &store, thread, 202, 203);
         commit_text(&mut host, &store, binding, 1, 0, 0, "preserve", 8, 1);

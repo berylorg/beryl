@@ -5,7 +5,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+};
 use beryl_model::{
     BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasThreadId, CasTurnId,
     SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId,
@@ -343,10 +345,14 @@ fn permit_accessors_validate_the_exact_durable_target_and_home_generation() {
     ));
 
     let directory = tempfile::tempdir().unwrap();
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     assert_eq!(permit.home_generation(&home), home.health().generation());
     permit.finish_with(|| {}).unwrap();

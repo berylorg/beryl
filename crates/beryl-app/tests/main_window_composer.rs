@@ -15,8 +15,10 @@ use beryl_app::{
         ComposerHostAutosaveCapture, ComposerHostBinding, ComposerHostError,
         ComposerHostFlushAdmission, ComposerHostFlushAdvance, ComposerHostFlushCapture,
         ComposerHostFlushPurpose, ComposerHostFlushState, ComposerHostImageMarkerMetadata,
-        ComposerHostInitialDemand, ComposerHostMutationOutcome, ComposerHostRequestId,
-        ComposerHostRequestPurpose, SyndicComposerHost,
+        ComposerHostInitialDemand, ComposerHostMutationAdmissionFailure,
+        ComposerHostMutationEvidenceOutcome, ComposerHostMutationEvidenceRequest,
+        ComposerHostMutationOutcome, ComposerHostRequestId, ComposerHostRequestPurpose,
+        SyndicComposerHost,
     },
     main_window::{
         ComposerImagePresentationState, ComposerImagePreviewCommandState,
@@ -32,20 +34,20 @@ use beryl_app::{
 use beryl_home_store::{
     CommandCancellation, CommandOutcome, HomeCommand, SidecarByteLimit, SidecarNamespace,
 };
-use beryl_model::{AssetId, ImageLabelOrdinal};
+use beryl_model::AssetId;
 use beryl_state::{AssetMediaType, PublishAssetMetadata};
 use gpui::{Bounds, Point, Size, px};
 use gpui_text_input::{
     ByteOffset, InlineObjectActivation, InlineObjectGap, InlineObjectId, InlineObjectInputOrigin,
     InlineObjectNeighbor, InlineObjectOrder, LayoutEpoch, LogicalExtent, MutationBeginRequest,
     MutationCommitRequest, MutationCursor, MutationFinishInput, MutationIdentity, MutationKey,
-    MutationKind, MutationLane, MutationPage, MutationPageItem, MutationPageKey,
-    MutationPageRequest, MutationPositions, MutationProposal, MutationStreamFinish, MutationTotals,
-    ObjectChange, ObjectDemandEnvelope, ObjectDirection, ObjectPurpose, ObjectRequest,
-    ObjectRequestId, ObjectRequestKey, ObjectTarget, OperationId, PageDirection, PagePurpose,
-    PageRequest, PageRequestId, PageRequestKey, PresentationGeneration, RangeHistoryOutcome,
-    RangeTextInputRequest, RealizedInlineObjectAnchor, SourcePosition, SourceRange,
-    SuccessorObject,
+    MutationKind, MutationLane, MutationLimits, MutationPage, MutationPageAcceptance,
+    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions,
+    MutationProducerIdentity, MutationProposal, ObjectChange, ObjectDemandEnvelope,
+    ObjectDirection, ObjectPurpose, ObjectRequest, ObjectRequestId, ObjectRequestKey, ObjectTarget,
+    OperationId, PageDirection, PagePurpose, PageRequest, PageRequestId, PageRequestKey,
+    PresentationGeneration, RangeEditCoordinator, RangeHistoryOutcome, RangeTextInputRequest,
+    RealizedInlineObjectAnchor, SourcePosition, SourceRange, SuccessorObject,
 };
 use syndic_storage::{
     DraftEditorCandidateSessionIdV1, DraftHistoricalRootAdoptionErrorReasonV1,
@@ -60,7 +62,7 @@ use support::Fixture;
 fn initial_and_reselection_mounts_retain_the_prior_coherent_selection() {
     let fixture = Fixture::new("selection", 9);
     let (selected_claim, target_claim) = fixture.claims();
-    let mut host = SyndicComposerHost::new(fixture.storage);
+    let mut host = SyndicComposerHost::new(fixture.storage.clone());
     let activation = ComposerHostActivationRequest::new(
         fixture.selected_thread,
         DraftEditorCandidateSessionIdV1::from_bytes([10; 16]),
@@ -97,7 +99,7 @@ fn initial_and_reselection_mounts_retain_the_prior_coherent_selection() {
         fixture.window_id,
         selected_claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -135,7 +137,7 @@ fn selected_dispatch_is_bounded_and_rejects_stale_binding() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -201,7 +203,7 @@ fn object_dispatch_preserves_canonical_marker_identity_order_and_fallback() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -236,7 +238,7 @@ fn object_dispatch_preserves_canonical_marker_identity_order_and_fallback() {
     let marker = &page.objects()[0];
     assert_eq!(marker.order(), InlineObjectOrder::new(1));
     assert_eq!(marker.fallback_copy(), "[Image A]");
-    assert_eq!(marker.presentation().display().as_ref(), "[A]");
+    assert_eq!(marker.presentation().display(), "[A]");
     assert!(marker.presentation().activation_eligible());
 }
 
@@ -249,7 +251,7 @@ fn authenticated_marker_insert_and_remove_keep_adopted_and_published_state_disti
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -260,11 +262,7 @@ fn authenticated_marker_insert_and_remove_keep_adopted_and_published_state_disti
     let before = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::before(neighbor));
     let after = SourcePosition::new(ByteOffset::new(0), InlineObjectGap::after(neighbor));
     let admitted_asset = publish_image_asset(&fixture, b"admitted-marker");
-    let metadata = ComposerHostImageMarkerMetadata::new(
-        marker_id,
-        ImageLabelOrdinal::new(1).unwrap(),
-        admitted_asset,
-    );
+    let metadata = ComposerHostImageMarkerMetadata::new(marker_id, admitted_asset);
     let inserted = dispatch_edit(
         &mut slot,
         &fixture.store,
@@ -276,7 +274,7 @@ fn authenticated_marker_insert_and_remove_keep_adopted_and_published_state_disti
             object: SuccessorObject::new(marker_id, ByteOffset::new(0), order, 17, 5),
         })],
         MutationPositions::collapsed(before),
-        LogicalExtent::new(0, 1),
+        LogicalExtent::new(0, 0),
         vec![metadata].into_boxed_slice(),
         &CommandCancellation::new(),
     );
@@ -300,7 +298,7 @@ fn authenticated_marker_insert_and_remove_keep_adopted_and_published_state_disti
         before,
         vec![MutationPageItem::Object(ObjectChange::Remove { target })],
         MutationPositions::collapsed(composer::position(0)),
-        LogicalExtent::new(0, 1),
+        LogicalExtent::new(0, 0),
         Box::new([]),
         &CommandCancellation::new(),
     );
@@ -321,11 +319,14 @@ fn unadmitted_marker_metadata_is_rejected_before_proposal_staging() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
     let selection = slot.selected_identity().unwrap();
+    let initial_state = slot.selected_draft_state(selection).unwrap();
+    let initial_host_binding = slot.selected_host().unwrap().binding();
+    let initial_host_dirty = slot.selected_host().unwrap().is_dirty();
     let range = selection.binding().range_binding();
     let key = MutationKey::new(range.binding(), range.revision(), OperationId::new(35));
     let position = composer::position(0);
@@ -339,29 +340,44 @@ fn unadmitted_marker_metadata_is_rejected_before_proposal_staging() {
         ),
         MutationCursor::new(0),
         MutationCursor::new(0),
+    )
+    .with_replayable_producer(MutationProducerIdentity::new(35));
+    let mut editor = RangeEditCoordinator::new(
+        range,
+        MutationLimits::new(16, 65_536)
+            .unwrap()
+            .with_object_limits(16, 65_536, 65_536)
+            .unwrap(),
     );
+    editor.begin(begin).unwrap();
+    let evidence = editor.request_evidence(key).unwrap();
     assert!(matches!(
-        slot.dispatch_selected_request(
+        slot.dispatch_selected_mutation_evidence(
             &fixture.store,
             selection,
-            RangeTextInputRequest::MutationBegin(begin),
-            Box::new([]),
+            ComposerHostMutationEvidenceRequest::Begin {
+                begin,
+                pass: evidence,
+            },
             &CommandCancellation::new(),
         )
         .unwrap(),
-        MainWindowComposerDispatchOutcome::MutationBegan(actual) if actual == key
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::Started(actual)
+        ) if actual == evidence
     ));
 
     let marker_id = InlineObjectId::new(0x8201);
+    let frontier = editor.stream_finish(key, MutationLane::Proposal).unwrap();
     let page = MutationPage::new(
         MutationPageKey::new(
             key,
             MutationLane::Proposal,
-            MutationCursor::new(0),
-            0,
-            MutationIdentity::ROOT,
+            frontier.next_cursor,
+            frontier.next_ordinal,
+            frontier.cumulative_identity,
         ),
-        MutationCursor::new(1),
+        MutationCursor::new(frontier.next_cursor.get() + 1),
         vec![MutationPageItem::Object(ObjectChange::Insert {
             object: SuccessorObject::new(
                 marker_id,
@@ -373,27 +389,43 @@ fn unadmitted_marker_metadata_is_rejected_before_proposal_staging() {
         })],
     )
     .unwrap();
-    let metadata = ComposerHostImageMarkerMetadata::new(
-        marker_id,
-        ImageLabelOrdinal::new(1).unwrap(),
-        asset_id(marker_id),
-    );
+    editor.submit_evidence_page(evidence, page.clone()).unwrap();
+    let metadata = ComposerHostImageMarkerMetadata::new(marker_id, asset_id(marker_id));
     assert!(matches!(
-        slot.dispatch_selected_request(
+        slot.dispatch_selected_mutation_evidence(
             &fixture.store,
             selection,
-            RangeTextInputRequest::MutationProposalPage(MutationPageRequest::new(page)),
-            Box::new([metadata]),
+            ComposerHostMutationEvidenceRequest::Page {
+                pass: evidence,
+                page,
+                metadata: Box::new([metadata]),
+            },
             &CommandCancellation::new(),
         ),
         Err(MainWindowComposerDispatchError::MarkerMetadata(message))
             if message == "composer marker asset is not admitted"
     ));
+    assert!(matches!(
+        drive_mutation_evidence(
+            &fixture.store,
+            &mut slot,
+            selection,
+            ComposerHostMutationEvidenceRequest::Cancel(key),
+            &CommandCancellation::new(),
+        )
+        .unwrap(),
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::Refused { key: actual, .. }
+        ) if actual == key
+    ));
     assert_eq!(slot.selected_identity(), Some(selection));
     let state = slot.selected_draft_state(selection).unwrap();
-    assert_eq!(state.adopted(), selection.binding());
-    assert_published_binding(state, selection.binding());
-    assert_eq!(state.is_dirty(), slot.selected_host().unwrap().is_dirty());
+    assert_eq!(state, initial_state);
+    assert_eq!(
+        slot.selected_host().unwrap().binding(),
+        initial_host_binding
+    );
+    assert_eq!(slot.selected_host().unwrap().is_dirty(), initial_host_dirty);
 }
 
 #[test]
@@ -402,15 +434,15 @@ fn production_edit_dispatch_preserves_all_five_terminal_outcomes() {
 }
 
 #[test]
-fn early_terminal_multi_item_page_advances_one_synthetic_ordinal() {
-    let fixture = Fixture::new("early-terminal-page-ordinal", 191);
+fn stale_evidence_admission_refuses_before_multi_item_page() {
+    let fixture = Fixture::new("stale-evidence-admission", 191);
     let (claim, _) = fixture.claims();
     let host = fixture.activated_host(fixture.selected_thread, 192, 193, 18);
     let mut slot = MainWindowComposerSlot::new(
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -429,7 +461,7 @@ fn early_terminal_multi_item_page_advances_one_synthetic_ordinal() {
     assert_eq!(selection.binding(), adopted);
     composer::direct_adopt(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         DraftHistoricalRootSelectionIntentV1::new(
             adopted.candidate(),
             support::operation_id(195),
@@ -465,6 +497,13 @@ fn early_terminal_multi_item_page_advances_one_synthetic_ordinal() {
 }
 
 fn edit_terminal_outcomes_case() {
+    cancelled_edit_preserves_selection();
+    rejected_edit_preserves_selection();
+    committed_then_conflicting_edit_preserves_selection();
+    failed_edit_preserves_selection();
+}
+
+fn cancelled_edit_preserves_selection() {
     let fixture = Fixture::new("edit-cancel", 51);
     let (claim, _) = fixture.claims();
     let host = fixture.activated_host(fixture.selected_thread, 52, 53, 8);
@@ -472,7 +511,7 @@ fn edit_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -492,44 +531,59 @@ fn edit_terminal_outcomes_case() {
         ComposerHostMutationOutcome::Cancelled
     );
     assert_eq!(slot.selected_identity(), Some(selection));
+}
 
+fn rejected_edit_preserves_selection() {
     let fixture = Fixture::new("edit-reject", 55);
-    let (claim, _) = fixture.claims();
-    let host = fixture.activated_host(fixture.selected_thread, 56, 57, 9);
-    let mut slot = MainWindowComposerSlot::new(
-        fixture.window_id,
-        claim,
-        host,
-        fixture.storage,
-        MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
-    )
-    .unwrap();
+    let mut slot = seeded_rejection_slot(&fixture);
     let selection = slot.selected_identity().unwrap();
     let rejected = dispatch_edit(
         &mut slot,
         &fixture.store,
         selection,
         58,
-        SourceRange::new(composer::position(0), composer::position(0)).unwrap(),
+        SourceRange::new(composer::position(1), composer::position(1)).unwrap(),
         composer::position(0),
-        vec![
-            MutationPageItem::Utf8 {
-                inserted_offset: 0,
-                text: "".into(),
-            },
-            MutationPageItem::Utf8 {
-                inserted_offset: 0,
-                text: "".into(),
-            },
-        ],
+        vec![MutationPageItem::Utf8 {
+            inserted_offset: 0,
+            text: "x".into(),
+        }],
         MutationPositions::collapsed(composer::position(0)),
-        LogicalExtent::new(0, 1),
+        LogicalExtent::new(3, 1),
         Box::new([]),
         &CommandCancellation::new(),
     );
     assert_eq!(rejected, ComposerHostMutationOutcome::Rejected);
-    assert_eq!(slot.selected_identity(), Some(selection));
+    assert_noncommit_selection(slot.selected_identity().unwrap(), selection);
+}
 
+fn seeded_rejection_slot(fixture: &Fixture) -> Box<MainWindowComposerSlot> {
+    let (claim, _) = fixture.claims();
+    let host = fixture.activated_host(fixture.selected_thread, 56, 57, 9);
+    let mut slot = Box::new(
+        MainWindowComposerSlot::new(
+            fixture.window_id,
+            claim,
+            host,
+            fixture.storage.clone(),
+            MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
+        )
+        .unwrap(),
+    );
+    let selection = slot.selected_identity().unwrap();
+    committed_binding(dispatch_text(
+        &mut slot,
+        &fixture.store,
+        selection,
+        580,
+        0,
+        "é",
+        &CommandCancellation::new(),
+    ));
+    slot
+}
+
+fn committed_then_conflicting_edit_preserves_selection() {
     let fixture = Fixture::new("edit-conflict", 59);
     let (claim, _) = fixture.claims();
     let host = fixture.activated_host(fixture.selected_thread, 60, 61, 10);
@@ -537,7 +591,7 @@ fn edit_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -556,7 +610,7 @@ fn edit_terminal_outcomes_case() {
     assert_eq!(selection.binding(), adopted);
     composer::direct_adopt(
         &fixture.store,
-        fixture.storage,
+        fixture.storage.clone(),
         DraftHistoricalRootSelectionIntentV1::new(
             adopted.candidate(),
             support::operation_id(64),
@@ -564,34 +618,29 @@ fn edit_terminal_outcomes_case() {
         ),
     );
 
-    let (key, finish) = stage_edit(
-        &mut slot,
-        &fixture.store,
-        selection,
-        63,
-        SourceRange::new(composer::position(1), composer::position(1)).unwrap(),
-        composer::position(1),
-        vec![MutationPageItem::Utf8 {
-            inserted_offset: 0,
-            text: "b".into(),
-        }],
-        MutationPositions::collapsed(composer::position(2)),
-        LogicalExtent::new(2, 1),
-        Box::new([]),
-    );
     assert_eq!(
-        settle_edit(
+        dispatch_edit(
             &mut slot,
             &fixture.store,
             selection,
-            key,
-            finish,
+            63,
+            SourceRange::new(composer::position(1), composer::position(1)).unwrap(),
+            composer::position(1),
+            vec![MutationPageItem::Utf8 {
+                inserted_offset: 0,
+                text: "b".into(),
+            }],
+            MutationPositions::collapsed(composer::position(2)),
+            LogicalExtent::new(2, 1),
+            Box::new([]),
             &CommandCancellation::new(),
         ),
         ComposerHostMutationOutcome::Conflict
     );
     assert_eq!(slot.selected_identity(), Some(selection));
+}
 
+fn failed_edit_preserves_selection() {
     let fixture = Fixture::with_history_budget("edit-error", 65, 1_390);
     let (claim, _) = fixture.claims();
     let host = fixture.activated_host(fixture.selected_thread, 66, 67, 11);
@@ -599,7 +648,7 @@ fn edit_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -616,7 +665,38 @@ fn edit_terminal_outcomes_case() {
         ),
         ComposerHostMutationOutcome::Error
     );
-    assert_eq!(slot.selected_identity(), Some(selection));
+    assert_noncommit_selection(slot.selected_identity().unwrap(), selection);
+}
+
+fn assert_noncommit_selection(
+    actual: beryl_app::main_window::MainWindowComposerSelectionIdentity,
+    before: beryl_app::main_window::MainWindowComposerSelectionIdentity,
+) {
+    assert_eq!(actual.window_id(), before.window_id());
+    assert_eq!(actual.claim(), before.claim());
+    let actual = actual.binding();
+    let before = before.binding();
+    assert_eq!(actual.home_id(), before.home_id());
+    assert_eq!(actual.home_generation(), before.home_generation());
+    assert_eq!(actual.host_generation(), before.host_generation());
+    assert_eq!(
+        actual.presentation_generation(),
+        before.presentation_generation()
+    );
+    assert_eq!(actual.range_binding(), before.range_binding());
+    assert_eq!(
+        actual.range_history_frontier(),
+        before.range_history_frontier()
+    );
+    let actual = actual.candidate();
+    let before = before.candidate();
+    assert_eq!(actual.draft_id(), before.draft_id());
+    assert_eq!(actual.session_id(), before.session_id());
+    assert_eq!(actual.candidate_generation(), before.candidate_generation());
+    assert_eq!(actual.root(), before.root());
+    assert_eq!(actual.history(), before.history());
+    assert_eq!(actual.logical_extent(), before.logical_extent());
+    assert!(actual.session_generation() >= before.session_generation());
 }
 
 #[test]
@@ -632,7 +712,7 @@ fn history_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -702,7 +782,7 @@ fn history_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -761,7 +841,7 @@ fn history_terminal_outcomes_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -832,7 +912,7 @@ fn autosave_and_release_flush_case() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -916,15 +996,45 @@ fn autosave_and_release_flush_case() {
         .unwrap(),
         ComposerHostFlushCapture::Captured(_)
     ));
+    let mut disposal_required = false;
+    let mut recaptured = false;
     for _ in 0..16 {
-        if matches!(
-            slot.advance_selected_flush(&fixture.store, selection, ticket)
-                .unwrap(),
-            ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired)
-        ) {
-            break;
+        let selection = slot.selected_identity().unwrap();
+        match slot
+            .advance_selected_flush(&fixture.store, selection, ticket)
+            .unwrap()
+        {
+            ComposerHostFlushAdvance::Progress(ComposerHostFlushState::DisposalRequired) => {
+                disposal_required = true;
+                break;
+            }
+            ComposerHostFlushAdvance::Progress(ComposerHostFlushState::CaptureRequired)
+                if !recaptured =>
+            {
+                recaptured = true;
+                let selection = slot.selected_identity().unwrap();
+                assert!(matches!(
+                    slot.capture_selected_flush_publication(
+                        &fixture.store,
+                        selection,
+                        ticket,
+                        fixture.assets(),
+                        &seals,
+                        support::operation_id(43),
+                        None,
+                        syndic_storage::SyndicTimestamp::from_unix_millis(43),
+                        &CommandCancellation::new(),
+                    )
+                    .unwrap(),
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+                ));
+            }
+            ComposerHostFlushAdvance::Progress(_)
+            | ComposerHostFlushAdvance::ReconciliationPending => {}
+            other => panic!("release publication did not reach disposal: {other:?}"),
         }
     }
+    assert!(disposal_required);
     let selection = slot.selected_identity().unwrap();
     let state = slot.selected_draft_state(selection).unwrap();
     assert_eq!(state.adopted(), selection.binding());
@@ -961,7 +1071,7 @@ fn activation_publish_advance_maps_the_captured_binding_before_widget_release() 
         fixture.window_id,
         selected_claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -1018,6 +1128,24 @@ fn activation_publish_advance_maps_the_captured_binding_before_widget_release() 
                 disposal_required = true;
                 break;
             }
+            MainWindowComposerPublishAdvance::Progress(ComposerHostFlushState::CaptureRequired) => {
+                let published_selection = slot.selected_identity().unwrap();
+                assert!(matches!(
+                    slot.capture_selected_flush_publication(
+                        &fixture.store,
+                        published_selection,
+                        ticket,
+                        fixture.assets(),
+                        &fixture.marker_seals(),
+                        support::operation_id(154),
+                        None,
+                        syndic_storage::SyndicTimestamp::from_unix_millis(154),
+                        &CommandCancellation::new(),
+                    )
+                    .unwrap(),
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+                ));
+            }
             MainWindowComposerPublishAdvance::Progress(_)
             | MainWindowComposerPublishAdvance::ReconciliationPending => {}
             other => panic!("activation publication did not reach disposal: {other:?}"),
@@ -1056,7 +1184,7 @@ fn final_disposal_advance_maps_the_captured_binding_before_widget_release() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -1101,6 +1229,26 @@ fn final_disposal_advance_maps_the_captured_binding_before_widget_release() {
                 disposal_required = true;
                 break;
             }
+            MainWindowComposerDisposalAdvance::Progress(
+                ComposerHostFlushState::CaptureRequired,
+            ) => {
+                let published_selection = slot.selected_identity().unwrap();
+                assert!(matches!(
+                    slot.capture_selected_flush_publication(
+                        &fixture.store,
+                        published_selection,
+                        ticket,
+                        fixture.assets(),
+                        &fixture.marker_seals(),
+                        support::operation_id(161),
+                        None,
+                        syndic_storage::SyndicTimestamp::from_unix_millis(161),
+                        &CommandCancellation::new(),
+                    )
+                    .unwrap(),
+                    ComposerHostFlushCapture::State(ComposerHostFlushState::DisposalRequired)
+                ));
+            }
             MainWindowComposerDisposalAdvance::Progress(_)
             | MainWindowComposerDisposalAdvance::ReconciliationPending => {}
             other => panic!("final disposal did not reach disposal capture: {other:?}"),
@@ -1139,7 +1287,7 @@ fn concurrent_autosave_successor_keeps_newest_adopted_and_older_publication_dirt
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -1231,7 +1379,7 @@ fn marker_menu_and_preview_keep_canonical_anchor_and_focus_fallback() {
         fixture.window_id,
         claim,
         host,
-        fixture.storage,
+        fixture.storage.clone(),
         MainWindowComposerMarkerMetadataAuthority::new(fixture.assets()),
     )
     .unwrap();
@@ -1367,10 +1515,11 @@ fn dispatch_text(
             text: text.into(),
         }],
         MutationPositions::collapsed(composer::position(offset + text.len() as u64)),
-        LogicalExtent::new(
-            selection.binding().logical_extent().logical_utf8_bytes() + text.len() as u64,
-            selection.binding().logical_extent().logical_line_count(),
-        ),
+        {
+            let bytes =
+                selection.binding().logical_extent().logical_utf8_bytes() + text.len() as u64;
+            LogicalExtent::new(bytes, u64::from(bytes != 0))
+        },
         Box::new([]),
         cancellation,
     )
@@ -1412,7 +1561,7 @@ fn dispatch_edit(
     marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
     cancellation: &CommandCancellation,
 ) -> ComposerHostMutationOutcome {
-    let (key, finish) = stage_edit(
+    let (key, finish) = match stage_edit(
         slot,
         store,
         selection,
@@ -1423,7 +1572,11 @@ fn dispatch_edit(
         intended,
         extent,
         marker_metadata,
-    );
+        cancellation,
+    ) {
+        Ok(staged) => staged,
+        Err(outcome) => return outcome,
+    };
     settle_edit(slot, store, selection, key, finish, cancellation)
 }
 
@@ -1439,7 +1592,8 @@ fn stage_edit(
     intended: MutationPositions,
     extent: LogicalExtent,
     marker_metadata: Box<[ComposerHostImageMarkerMetadata]>,
-) -> (MutationKey, MutationIdentity) {
+    cancellation: &CommandCancellation,
+) -> Result<(MutationKey, MutationIdentity), ComposerHostMutationOutcome> {
     let range = selection.binding().range_binding();
     let key = MutationKey::new(
         range.binding(),
@@ -1456,60 +1610,155 @@ fn stage_edit(
         ),
         MutationCursor::new(0),
         MutationCursor::new(0),
+    )
+    .with_replayable_producer(MutationProducerIdentity::new(operation));
+    let mut editor = RangeEditCoordinator::new(
+        range,
+        MutationLimits::new(16, 65_536)
+            .unwrap()
+            .with_object_limits(16, 65_536, 65_536)
+            .unwrap(),
     );
-    assert!(matches!(
-        slot.dispatch_selected_request(
-            store,
-            selection,
-            RangeTextInputRequest::MutationBegin(begin),
-            Box::new([]),
-            &CommandCancellation::new(),
-        )
-        .unwrap(),
-        MainWindowComposerDispatchOutcome::MutationBegan(actual) if actual == key
-    ));
+    editor.begin(begin).unwrap();
+    let evidence = editor.request_evidence(key).unwrap();
+    match drive_mutation_evidence(
+        store,
+        slot,
+        selection,
+        ComposerHostMutationEvidenceRequest::Begin {
+            begin,
+            pass: evidence,
+        },
+        cancellation,
+    )
+    .unwrap()
+    {
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::Started(actual),
+        ) if actual == evidence => {}
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::Refused { failure, .. },
+        ) => match failure.as_ref() {
+            ComposerHostMutationAdmissionFailure::Cancelled => {
+                return Err(ComposerHostMutationOutcome::Cancelled);
+            }
+            ComposerHostMutationAdmissionFailure::Rejected => {
+                return Err(ComposerHostMutationOutcome::Rejected);
+            }
+            ComposerHostMutationAdmissionFailure::Conflict => {
+                return Err(ComposerHostMutationOutcome::Conflict);
+            }
+            failure => panic!("composer mutation evidence was refused: {failure:?}"),
+        },
+        outcome => panic!(
+            "composer mutation evidence did not start: {:?}",
+            std::mem::discriminant(&outcome)
+        ),
+    }
+    let frontier = editor.stream_finish(key, MutationLane::Proposal).unwrap();
     let page = MutationPage::new(
         MutationPageKey::new(
             key,
             MutationLane::Proposal,
-            MutationCursor::new(0),
-            0,
-            MutationIdentity::ROOT,
+            frontier.next_cursor,
+            frontier.next_ordinal,
+            frontier.cumulative_identity,
         ),
-        MutationCursor::new(1),
+        MutationCursor::new(frontier.next_cursor.get() + 1),
         items,
     )
     .unwrap();
-    let proposal_finish = MutationStreamFinish {
-        next_cursor: page.next_cursor(),
-        next_ordinal: 1,
-        cumulative_identity: page.cumulative_identity(),
-        totals: page.totals(),
-    };
+    let acknowledgement = editor.submit_evidence_page(evidence, page.clone()).unwrap();
+    assert!(matches!(
+        drive_mutation_evidence(
+            store,
+            slot,
+            selection,
+            ComposerHostMutationEvidenceRequest::Page {
+                pass: evidence,
+                page: page.clone(),
+                metadata: marker_metadata.clone(),
+            },
+            cancellation,
+        )
+        .unwrap(),
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::PageAccepted(actual)
+        ) if actual == evidence
+    ));
+    editor.acknowledge_evidence_page(acknowledgement).unwrap();
+    let proposal_finish = editor.stream_finish(key, MutationLane::Proposal).unwrap();
+    let empty = editor.stream_finish(key, MutationLane::Source).unwrap();
+    let finish = MutationFinishInput::new(key, empty, proposal_finish, extent, intended);
+    editor.finish_evidence(evidence, finish).unwrap();
+    assert!(matches!(
+        drive_mutation_evidence(
+            store,
+            slot,
+            selection,
+            ComposerHostMutationEvidenceRequest::Finish {
+                pass: evidence,
+                finish,
+            },
+            cancellation,
+        )
+        .unwrap(),
+        MainWindowComposerDispatchOutcome::MutationEvidence(
+            ComposerHostMutationEvidenceOutcome::Began(actual)
+        ) if actual == key
+    ));
+    editor.accept_preflight(key, None).unwrap();
+    let staging = editor.mutation_restart(key).unwrap();
+    editor.acknowledge_restart(staging).unwrap();
+    assert!(matches!(
+        editor.accept_pass_page(staging, page.clone()),
+        Ok(MutationPageAcceptance::Accepted { .. })
+    ));
     slot.dispatch_selected_request(
         store,
         selection,
-        RangeTextInputRequest::MutationProposalPage(MutationPageRequest::new(page)),
+        RangeTextInputRequest::MutationProposalPage(
+            MutationPageRequest::new(page).with_pass(staging),
+        ),
         marker_metadata,
-        &CommandCancellation::new(),
+        cancellation,
     )
     .unwrap();
-    let empty = MutationStreamFinish {
-        next_cursor: MutationCursor::new(0),
-        next_ordinal: 0,
-        cumulative_identity: MutationIdentity::ROOT,
-        totals: MutationTotals::default(),
-    };
-    let finish = MutationFinishInput::new(key, empty, proposal_finish, extent, intended);
+    editor.finish_pass_input(staging, finish).unwrap();
     slot.dispatch_selected_request(
         store,
         selection,
         RangeTextInputRequest::MutationFinishInput(finish),
         Box::new([]),
-        &CommandCancellation::new(),
+        cancellation,
     )
     .unwrap();
-    (key, proposal_finish.cumulative_identity)
+    Ok((key, proposal_finish.cumulative_identity))
+}
+
+fn drive_mutation_evidence(
+    store: &beryl_home_store::HomeStore,
+    slot: &mut MainWindowComposerSlot,
+    selection: beryl_app::main_window::MainWindowComposerSelectionIdentity,
+    request: ComposerHostMutationEvidenceRequest,
+    cancellation: &CommandCancellation,
+) -> Result<MainWindowComposerDispatchOutcome, MainWindowComposerDispatchError> {
+    let mut request = Some(request);
+    for _ in 0..64 {
+        let outcome = slot.dispatch_selected_mutation_evidence(
+            store,
+            selection,
+            request.take().unwrap(),
+            cancellation,
+        )?;
+        match outcome {
+            MainWindowComposerDispatchOutcome::MutationEvidence(
+                ComposerHostMutationEvidenceOutcome::Pending(key),
+            ) => request = Some(ComposerHostMutationEvidenceRequest::Advance(key)),
+            outcome => return Ok(outcome),
+        }
+    }
+    panic!("composer mutation evidence exceeded its bounded work budget")
 }
 
 fn settle_edit(
@@ -1529,9 +1778,13 @@ fn settle_edit(
             cancellation,
         ) {
             Ok(MainWindowComposerDispatchOutcome::Mutation { outcome, .. }) => return outcome,
+            Ok(MainWindowComposerDispatchOutcome::MutationWorkPending) => {}
             Err(MainWindowComposerDispatchError::Host(ComposerHostError::MutationWorkPending)) => {}
-            Ok(_) => panic!("composer mutation returned a non-terminal outcome"),
-            Err(error) => panic!("composer mutation did not settle: {error:?}"),
+            Ok(other) => panic!(
+                "composer mutation returned a non-terminal outcome: {:?}",
+                std::mem::discriminant(&other)
+            ),
+            Err(error) => panic!("composer mutation {key:?} did not settle: {error:?}"),
         }
     }
     panic!("composer mutation remained pending")

@@ -3,7 +3,6 @@ use beryl_app::composer_host::{
     ComposerHostFlushCapture, ComposerHostFlushFailure, ComposerHostFlushPurpose,
 };
 use beryl_home_store::CommandCancellation;
-use beryl_state::BerylState;
 use syndic_storage::SyndicTimestamp;
 
 use super::{base, composer, publication, started_flush};
@@ -12,8 +11,9 @@ use super::{base, composer, publication, started_flush};
 fn marker_noncommit_ends_each_autosave_stage_once_and_rearms() {
     for (index, normal_advances) in [0, 1, 2].into_iter().enumerate() {
         let seed = 10_u8.wrapping_add((index as u8).wrapping_mul(12));
-        let (_home, mut store, storage, thread) = base::fixture("marker-autosave-noncommit", seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread) =
+            base::fixture_with_state("marker-autosave-noncommit", seed);
+        let assets = state.assets();
         let asset = publication::publish_image_asset(&store, assets.clone(), &[seed; 16]);
         let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, empty) =
@@ -67,8 +67,9 @@ fn marker_noncommit_ends_each_autosave_stage_once_and_rearms() {
 fn marker_noncommit_ends_each_flush_stage_once_and_rearms() {
     for (index, normal_advances) in [0, 1, 2].into_iter().enumerate() {
         let seed = 50_u8.wrapping_add((index as u8).wrapping_mul(12));
-        let (_home, mut store, storage, thread) = base::fixture("marker-flush-noncommit", seed);
-        let assets = BerylState::register(&mut store).unwrap().assets();
+        let (_home, store, state, storage, thread) =
+            base::fixture_with_state("marker-flush-noncommit", seed);
+        let assets = state.assets();
         let asset = publication::publish_image_asset(&store, assets.clone(), &[seed; 16]);
         let seals = publication::service(&store, storage.clone(), assets.clone(), 1, 1);
         let (mut host, empty) =

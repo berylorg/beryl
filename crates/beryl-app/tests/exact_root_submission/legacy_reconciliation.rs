@@ -14,8 +14,9 @@ fn retired_submission_generation_reconciles_exact_success_without_waking_a_repla
 fn reconciled_acceptance(retired: bool) {
     use beryl_home_store::test_faults::FaultPoint;
 
-    let (_home, mut store, storage, thread, faults) = base::fault_fixture("indeterminate-new", 111);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, faults) =
+        base::fault_fixture_with_state("indeterminate-new", 111);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 112, 113);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "once", 4, 1);
@@ -140,8 +141,9 @@ fn definite_noncommit_preserves_the_draft_without_entering_reconciliation() {
     use beryl_home_store::{CommandOutcome, HomeCommand};
     use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 
-    let (_home, mut store, storage, thread, _faults) = base::fault_fixture("exact-old", 121);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, _faults) =
+        base::fault_fixture_with_state("exact-old", 121);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 122, 123);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "preserved", 4, 1);
@@ -220,8 +222,9 @@ fn definite_noncommit_releases_submission_custody_after_concurrent_draft_deletio
     use beryl_home_store::{CommandOutcome, HomeCommand};
     use syndic_storage::test_faults::{FixtureBatch, FixtureDelete};
 
-    let (_home, mut store, storage, thread, _faults) = base::fault_fixture("collision", 131);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread, _faults) =
+        base::fault_fixture_with_state("collision", 131);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 132, 133);
     let edited = commit_text(&mut host, &store, empty, 1, 0, 0, "collision", 4, 1);

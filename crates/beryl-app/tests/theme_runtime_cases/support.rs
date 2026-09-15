@@ -13,7 +13,9 @@ use beryl_app::theme_runtime::{
 };
 use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
 use beryl_model::DomainRevision;
-use beryl_state::{PreparedThemeAppearance, ThemeDraftIdentity, ThemeDraftRevision, ThemeService};
+use beryl_state::{
+    BerylState, PreparedThemeAppearance, ThemeDraftIdentity, ThemeDraftRevision, ThemeService,
+};
 
 pub struct StateFixture {
     _directory: tempfile::TempDir,
@@ -24,11 +26,17 @@ pub struct StateFixture {
 impl StateFixture {
     pub fn new() -> Self {
         let directory = tempfile::tempdir().expect("temporary Beryl home");
-        let store = HomeStore::open(HomeOpenOptions::new(
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .expect("open Beryl home");
+        BerylState::register(&mut store).expect("register Beryl state");
+        let store = store
+            .prepare_publication(BerylState::required_domains().expect("Beryl requirements"))
+            .expect("prepare home publication")
+            .publish()
+            .expect("publish home");
         let service = ThemeService::acquire(&store).expect("acquire theme service");
         Self {
             _directory: directory,

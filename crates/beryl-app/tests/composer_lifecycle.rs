@@ -10,7 +10,7 @@ use beryl_app::{
     composer_marker_seal::DraftMarkerSealService,
 };
 use beryl_home_store::CommandCancellation;
-use beryl_state::{AssetState, BerylState};
+use beryl_state::AssetState;
 use syndic_storage::SyndicTimestamp;
 
 #[path = "syndic_composer_host/support.rs"]
@@ -35,14 +35,14 @@ mod lifecycle_reconciliation;
 #[path = "composer_lifecycle/service_disposal.rs"]
 mod lifecycle_service_disposal;
 
-use base::fixture;
+use base::fixture_with_state;
 use composer::{activated, commit_text, operation_id};
 use publication::service;
 
 #[test]
 fn first_dirty_arms_once_and_committed_settings_replace_the_generation() {
-    let (_home, mut store, storage, thread) = fixture("autosave-generation", 1);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("autosave-generation", 1);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 2, 3);
 
@@ -88,8 +88,8 @@ fn first_dirty_arms_once_and_committed_settings_replace_the_generation() {
 
 #[test]
 fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
-    let (_home, mut store, storage, thread) = fixture("autosave-outcomes", 11);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("autosave-outcomes", 11);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 12, 13);
     let dirty = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -179,8 +179,8 @@ fn autosave_success_and_noncommit_apply_exact_rearm_rules() {
 
 #[test]
 fn joined_flush_repeats_to_the_newest_frontier_without_waiter_retention() {
-    let (_home, mut store, storage, thread) = fixture("joined-flush", 21);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("joined-flush", 21);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 22, 23);
     let first = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -243,8 +243,8 @@ fn joined_flush_repeats_to_the_newest_frontier_without_waiter_retention() {
 
 #[test]
 fn cancelled_flush_ends_unsatisfied_and_rearms_without_retaining_the_barrier() {
-    let (_home, mut store, storage, thread) = fixture("cancelled-flush", 25);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("cancelled-flush", 25);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 26, 27);
     let _ = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -277,8 +277,8 @@ fn cancelled_flush_ends_unsatisfied_and_rearms_without_retaining_the_barrier() {
 
 #[test]
 fn lifecycle_release_disposes_only_after_clean_flush_and_rejects_stale_work() {
-    let (_home, mut store, storage, thread) = fixture("release", 31);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("release", 31);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 32, 33);
     let binding = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);
@@ -336,8 +336,8 @@ fn lifecycle_release_disposes_only_after_clean_flush_and_rejects_stale_work() {
 
 #[test]
 fn service_disposal_releases_all_host_lifecycle_and_publication_custody() {
-    let (_home, mut store, storage, thread) = fixture("service-disposal", 41);
-    let assets = BerylState::register(&mut store).unwrap().assets();
+    let (_home, store, state, storage, thread) = fixture_with_state("service-disposal", 41);
+    let assets = state.assets();
     let seals = service(&store, storage.clone(), assets.clone(), 1, 1);
     let (mut host, empty) = activated(storage.clone(), &store, thread, 42, 43);
     let _ = commit_text(&mut host, &store, empty, 1, 0, 0, "a", 1, 1);

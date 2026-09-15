@@ -15,7 +15,7 @@ use beryl_state::{
     CreateRuntimeWithHomeRoot, InitializeThreadlessWindow, RememberedTarget, ReplaceWindowClaim,
     RootRegistration, RuntimeRegistration, UnixMillis,
 };
-use syndic_storage::{CreateThread, SyndicStorage, SyndicTimestamp};
+use syndic_storage::{CreateThread, DraftEditHistoryPolicyV1, SyndicStorage, SyndicTimestamp};
 
 struct Fixture {
     _directory: tempfile::TempDir,
@@ -30,13 +30,23 @@ struct Fixture {
 impl Fixture {
     fn new(binding_path: &str) -> Self {
         let directory = tempfile::tempdir().expect("temp home");
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .expect("open home");
         let state = BerylState::register(&mut store).expect("register Beryl state");
         let syndic = SyndicStorage::register(&mut store).expect("register Syndic");
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .expect("Beryl requirements")
+                    .merge(SyndicStorage::required_domains().expect("Syndic requirements"))
+                    .expect("merge requirements"),
+            )
+            .expect("prepare home publication")
+            .publish()
+            .expect("publish home");
         let runtime_id = RuntimeId::from_bytes([1; 16]);
         let root_id = RootId::from_bytes([2; 16]);
         let thread_id = SyndicThreadId::from_bytes([3; 16]);
@@ -66,6 +76,7 @@ impl Fixture {
             SyndicDraftId::from_bytes([4; 16]),
             ExecutionBinding::new(runtime_id, root_id, native_path(mode, binding_path)),
             SyndicTimestamp::from_unix_millis(3),
+            DraftEditHistoryPolicyV1::new(65_536, 1).expect("history policy"),
         );
         let mut command = HomeCommand::new(store.home_revision().expect("home revision"));
         command
@@ -186,8 +197,8 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     let window_id = fixture.claim_thread();
     let missing = prepare_thread_catalog_projection(
         &fixture.store,
-        fixture.syndic,
-        fixture.state.clone(),
+        &fixture.syndic,
+        &fixture.state,
         SyndicThreadId::from_bytes([9; 16]),
     )
     .expect("prepare missing thread");
@@ -198,8 +209,8 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
 
     let command = match prepare_thread_catalog_projection(
         &fixture.store,
-        fixture.syndic,
-        fixture.state.clone(),
+        &fixture.syndic,
+        &fixture.state,
         fixture.thread_id,
     )
     .expect("prepare initial projection")
@@ -248,8 +259,8 @@ fn projection_publishes_once_then_converges_to_an_exact_no_op() {
     assert!(row.sources().claim().is_some());
     let exact = prepare_thread_catalog_projection(
         &fixture.store,
-        fixture.syndic,
-        fixture.state.clone(),
+        &fixture.syndic,
+        &fixture.state,
         fixture.thread_id,
     )
     .expect("prepare current projection");
@@ -264,8 +275,8 @@ fn projection_rejects_a_syndic_binding_that_disagrees_with_the_root_authority() 
     let fixture = Fixture::new(r"C:\Work\Elsewhere");
     let error = prepare_thread_catalog_projection(
         &fixture.store,
-        fixture.syndic,
-        fixture.state.clone(),
+        &fixture.syndic,
+        &fixture.state,
         fixture.thread_id,
     )
     .err()

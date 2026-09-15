@@ -66,13 +66,23 @@ fn service() -> (
     ProjectionConnectionService,
 ) {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = ProjectionConnectionService::new(
         Default::default(),
         home,
@@ -355,13 +365,23 @@ fn startup_consumes_provider_stop_without_ordinary_replay_and_preserves_accepted
 
     let (directory, running) = source.into_service();
     running.close().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = ProjectionConnectionService::new(
         Default::default(),
         home,

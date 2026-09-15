@@ -50,13 +50,23 @@ impl Fixture {
             .tempdir()
             .unwrap();
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let state = BerylState::register(&mut store).unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let runtime_id = RuntimeId::from_bytes([seed; 16]);
         let root_id = RootId::from_bytes([seed.wrapping_add(1); 16]);
         let selected_thread = SyndicThreadId::from_bytes([seed.wrapping_add(2); 16]);

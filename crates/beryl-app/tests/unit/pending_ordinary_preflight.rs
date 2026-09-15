@@ -48,13 +48,23 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
 #[test]
 fn canonical_content_removed_during_preflight_is_concurrent_change() {
     let directory = tempfile::tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
     let assets = BerylState::register(&mut store).unwrap().assets();
+    let store = store
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([61; 16]);
     let binding = ExecutionBinding::new(
         RuntimeId::from_bytes([61; 16]),

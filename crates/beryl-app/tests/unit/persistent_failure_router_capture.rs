@@ -1,10 +1,14 @@
 #[test]
 fn zero_worker_failure_cut_seals_targets_without_retaining_dispatch_guards() {
     let directory = tempfile::tempdir().unwrap();
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(beryl_home_store::HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),
@@ -39,10 +43,14 @@ fn zero_worker_failure_cut_seals_targets_without_retaining_dispatch_guards() {
 #[test]
 fn retired_failure_cut_preserves_targets_as_nondispatch_without_guards() {
     let directory = tempfile::tempdir().unwrap();
-    let home = HomeStore::open(HomeOpenOptions::new(
+    let home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(beryl_home_store::HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let identity = PersistentFailureCutIdentity::new(
         home.home_id(),

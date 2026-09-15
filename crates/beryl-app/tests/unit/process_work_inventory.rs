@@ -9,9 +9,7 @@ use crate::{
     },
     lifecycle_attention::{LifecycleAttentionAdmission, LifecycleAttentionWorkError},
 };
-use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicTurnId,
@@ -45,13 +43,23 @@ fn fixture() -> (
     ScheduledExecutionSessions,
 ) {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     for (seed, activity) in [(1, 20), (2, 30), (3, 20), (4, 10)] {
         let mut command = HomeCommand::new(home.home_revision().unwrap());
         command

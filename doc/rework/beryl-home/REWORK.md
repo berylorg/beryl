@@ -377,8 +377,7 @@
 - [x] Established private initial-home candidates and production typed registration adapters with [bounded acceptance](../../failures/target-bootstrap-composition.md#initial-candidate-boundary).
 - [x] Qualified Beryl-state candidate fixtures with [complete registration, failure and identity evidence](../../failures/target-bootstrap-composition.md#beryl-state-candidate-qualification).
 - [x] Qualified Syndic candidate fixtures with [complete registration and regression evidence](../../failures/target-bootstrap-composition.md#syndic-candidate-qualification).
-- [ ] Qualify application consumers of initial-home candidates before service preparation;
-  [runtime qualification resumes after the separate marker-fold correction](../../failures/syndic-text-insertion-marker-fold.md#accepted-correction).
+- [x] Qualified application initial-candidate fixtures with [complete publication and runtime evidence](../../failures/target-bootstrap-composition.md#app-candidate-qualification).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

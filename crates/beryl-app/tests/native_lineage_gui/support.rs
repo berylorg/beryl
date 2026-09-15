@@ -6,11 +6,10 @@ use beryl_home_store::{CommandCancellation, HomeStore};
 use beryl_model::{AssetId, ImageLabelOrdinal, SyndicDraftMarkerId};
 use gpui_text_input::{
     ByteOffset, InlineObjectGap, InlineObjectId, InlineObjectNeighbor, InlineObjectOrder,
-    LogicalExtent, MutationBeginRequest, MutationCommitRequest, MutationCursor,
-    MutationFinishInput, MutationIdentity, MutationKind, MutationLane, MutationPage,
-    MutationPageItem, MutationPageKey, MutationPageRequest, MutationPositions, MutationProposal,
-    MutationStreamFinish, MutationTotals, ObjectChange, SourcePosition, SourceRange,
-    SuccessorObject,
+    MutationBeginRequest, MutationCommitRequest, MutationCursor, MutationFinishInput,
+    MutationIdentity, MutationKind, MutationLane, MutationPage, MutationPageItem, MutationPageKey,
+    MutationPageRequest, MutationPositions, MutationProposal, MutationStreamFinish, MutationTotals,
+    ObjectChange, SourcePosition, SourceRange, SuccessorObject,
 };
 use syndic_storage::{
     DraftEditorCandidateSessionReadOutcomeV1, DraftMarkerAdmissionOperationIdV1,
@@ -97,11 +96,7 @@ pub fn insert_published_marker_with_readiness(
     host.stage_mutation_page(
         store,
         MutationPageRequest::new(page),
-        Box::from([ComposerHostImageMarkerMetadata::new(
-            object,
-            ImageLabelOrdinal::new(1).unwrap(),
-            asset,
-        )]),
+        Box::from([ComposerHostImageMarkerMetadata::new(object, asset)]),
     )
     .unwrap();
     let after = SourcePosition::new(
@@ -119,7 +114,7 @@ pub fn insert_published_marker_with_readiness(
                 totals: MutationTotals::default(),
             },
             finish,
-            LogicalExtent::new(0, 1),
+            binding.range_binding().extent(),
             MutationPositions::collapsed(after),
         ),
     )
@@ -131,9 +126,6 @@ pub fn insert_published_marker_with_readiness(
             &CommandCancellation::new(),
         ) {
             Ok(ComposerHostMutationOutcome::Committed { binding, .. }) => {
-                storage
-                    .release_settled_draft_marker_writer(store, owner)
-                    .unwrap();
                 return binding;
             }
             Err(ComposerHostError::MutationWorkPending) => {}

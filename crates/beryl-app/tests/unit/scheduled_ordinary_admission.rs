@@ -8,7 +8,7 @@ use std::{
 use beryl_backend::{
     DynamicToolCallResponse, ManagedBackendClientConnector, ThreadStartOptions, TurnStartOptions,
 };
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     CasProcessGeneration, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
     RuntimeNativePath, SyndicThreadId,
@@ -214,13 +214,23 @@ fn request_policy_preserves_every_explicit_late_bound_input() {
 #[test]
 fn exact_lease_protects_steering_and_returns_session_and_flight() {
     let directory = tempfile::tempdir().unwrap();
-    let mut home = HomeStore::open(HomeOpenOptions::new(
+    let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut home).unwrap();
     let state = BerylState::register(&mut home).unwrap();
+    let home = home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let slot = Arc::new(Mutex::new(None));
     let provider_assets = Arc::new(Mutex::new(state.assets()));
     let provider = CheckoutProvider {
@@ -255,13 +265,23 @@ fn exact_lease_protects_steering_and_returns_session_and_flight() {
 
     let thread_id = SyndicThreadId::from_bytes([93; 16]);
     let foreign_directory = tempfile::tempdir().unwrap();
-    let mut foreign_home = HomeStore::open(HomeOpenOptions::new(
+    let mut foreign_home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         foreign_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let foreign_storage = SyndicStorage::register(&mut foreign_home).unwrap();
     let foreign_state = BerylState::register(&mut foreign_home).unwrap();
+    let foreign_home = foreign_home
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let foreign_assets = foreign_state.assets();
     let foreign_slot = Arc::new(Mutex::new(None));
     let foreign_provider = CheckoutProvider {

@@ -84,13 +84,23 @@ impl Fixture {
     fn with_worker_capacity(pending: bool, worker_capacity: u64) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let faults = beryl_home_store::test_faults::FaultController::new();
-        let mut home = HomeStore::open_with_faults(
+        let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut home).unwrap();
         let assets = BerylState::register(&mut home).unwrap().assets();
+        let home = home
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread = SyndicThreadId::from_bytes([71; 16]);
         let binding = ExecutionBinding::new(
             RuntimeId::from_bytes([71; 16]),

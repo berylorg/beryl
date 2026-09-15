@@ -1,31 +1,36 @@
 include!("../../syndic-storage/tests/durable_builder/support.rs");
 
+#[path = "support/durable_marker_home.rs"]
+mod marker_home;
+
 use std::num::NonZeroU64;
 
 use beryl_home_store::{SidecarByteLimit, SidecarNamespace};
 use beryl_model::{AssetId, AssetReferenceSetId, SealedAssetReferenceSetProof};
 use beryl_state::{
     AppendAssetReferencePage, AssetMediaType, AssetOwner, AssetOwnerHeadAssertion,
-    AssetOwnerHeadUpdate, AssetReferencePageEntry, BeginAssetReferenceSet, BerylState,
-    PublishAssetMetadata, SealAssetReferenceSet, UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
+    AssetOwnerHeadUpdate, AssetReferencePageEntry, AssetReferenceSetStagingAuthority,
+    BeginAssetReferenceSet, BerylState, PublishAssetMetadata, SealAssetReferenceSet,
+    UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
 };
 
 #[test]
 fn syndic_root_marker_proofs_seal_and_validate_asset_owner_heads_exactly() {
-    let (_home, mut store, storage, thread) = fixture("app-marker-proof", 220);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
+    let (_home, store, state, storage, thread) =
+        marker_home::fixture_with_state("app-marker-proof", 220);
+    let durable = current(&storage, &store, thread);
     let empty_seal = seal_root(&storage, &store, durable.draft().piece_root(), 221);
     let empty_proof = seal_reference_set(
         &store,
         &state,
         AssetReferenceSetId::from_bytes([221; 16]),
+        221,
         empty_seal.sequential(),
         empty_seal.ordered_assets(),
         Box::new([]),
     );
 
-    let mut session = open_session(storage, &store, &durable, 222, 223);
+    let mut session = open_session(&storage, &store, &durable, 222, 223);
     session = complete_staged(
         &storage,
         &store,
@@ -62,6 +67,7 @@ fn syndic_root_marker_proofs_seal_and_validate_asset_owner_heads_exactly() {
         &store,
         &state,
         AssetReferenceSetId::from_bytes([227; 16]),
+        227,
         marker_source,
         marker_seal.ordered_assets(),
         Box::from([AssetReferencePageEntry::new(
@@ -146,7 +152,7 @@ fn syndic_root_marker_proofs_seal_and_validate_asset_owner_heads_exactly() {
     )
     .unwrap();
     let set = AssetReferenceSetId::from_bytes([230; 16]);
-    let begin = BeginAssetReferenceSet::new(set);
+    let begin = BeginAssetReferenceSet::new(AssetReferenceSetStagingAuthority::new(set, [230; 32]));
     let authority = begin.staging_authority();
     committed(execute(
         &store,
@@ -246,10 +252,10 @@ fn syndic_root_marker_proofs_seal_and_validate_asset_owner_heads_exactly() {
 
 #[test]
 fn syndic_marker_seal_streams_each_authenticated_page_into_asset_staging_atomically() {
-    let (_home, mut store, storage, thread) = fixture("app-marker-stream", 240);
-    let state = BerylState::register(&mut store).unwrap();
-    let durable = current(storage, &store, thread);
-    let mut session = open_session(storage, &store, &durable, 241, 242);
+    let (_home, store, state, storage, thread) =
+        marker_home::fixture_with_state("app-marker-stream", 240);
+    let durable = current(&storage, &store, thread);
+    let mut session = open_session(&storage, &store, &durable, 241, 242);
     session = complete_staged(
         &storage,
         &store,
@@ -287,7 +293,10 @@ fn syndic_marker_seal_streams_each_authenticated_page_into_asset_staging_atomica
     let begin_seal = storage
         .prepare_draft_marker_seal_begin(&store, request)
         .unwrap();
-    let begin_set = BeginAssetReferenceSet::new(AssetReferenceSetId::from_bytes([249; 16]));
+    let begin_set = BeginAssetReferenceSet::new(AssetReferenceSetStagingAuthority::new(
+        AssetReferenceSetId::from_bytes([249; 16]),
+        [249; 32],
+    ));
     let staging = begin_set.staging_authority();
     let mut begin = HomeCommand::new(store.home_revision().unwrap());
     begin
@@ -472,11 +481,15 @@ fn seal_reference_set(
     store: &HomeStore,
     state: &BerylState,
     set: AssetReferenceSetId,
+    authority_seed: u8,
     source: beryl_model::SequentialMarkerSummaryV1,
     ordered_assets: beryl_model::OrderedMarkerAssetSummaryV1,
     entries: Box<[AssetReferencePageEntry]>,
 ) -> SealedAssetReferenceSetProof {
-    let begin = BeginAssetReferenceSet::new(set);
+    let begin = BeginAssetReferenceSet::new(AssetReferenceSetStagingAuthority::new(
+        set,
+        [authority_seed; 32],
+    ));
     let authority = begin.staging_authority();
     committed(execute(
         store,

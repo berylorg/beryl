@@ -51,13 +51,23 @@ impl Fixture {
     fn new(seed: u8) -> Self {
         let directory = tempfile::tempdir().expect("temp home");
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .expect("open home");
         let state = BerylState::register(&mut store).expect("register Beryl state");
         let syndic = SyndicStorage::register(&mut store).expect("register Syndic");
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .expect("Beryl requirements")
+                    .merge(SyndicStorage::required_domains().expect("Syndic requirements"))
+                    .expect("merge requirements"),
+            )
+            .expect("prepare home publication")
+            .publish()
+            .expect("publish home");
         let runtime_id = RuntimeId::from_bytes([seed; 16]);
         let root_id = RootId::from_bytes([seed.wrapping_add(1); 16]);
         let mode = RuntimeMode::host();
@@ -392,13 +402,23 @@ fn acknowledgement_loss_reconciles_exact_new_and_reopens_from_the_natural_seed()
     };
     store.close().expect("close old home generation");
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         _directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .expect("reopen home");
     let state = BerylState::register(&mut reopened).expect("re-register Beryl state");
     let syndic = SyndicStorage::register(&mut reopened).expect("re-register Syndic");
+    let reopened = reopened
+        .prepare_publication(
+            BerylState::required_domains()
+                .expect("Beryl requirements")
+                .merge(SyndicStorage::required_domains().expect("Syndic requirements"))
+                .expect("merge requirements"),
+        )
+        .expect("prepare reopened home publication")
+        .publish()
+        .expect("publish reopened home");
     let fresh =
         RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
     assert!(matches!(
@@ -431,13 +451,23 @@ fn exact_acquired_seed_rearms_only_after_true_same_home_reopen() {
     };
     store.close().expect("close exact-acquired home");
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         _directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .expect("reopen exact-acquired home");
     let state = BerylState::register(&mut reopened).expect("re-register Beryl state");
     let syndic = SyndicStorage::register(&mut reopened).expect("re-register Syndic");
+    let reopened = reopened
+        .prepare_publication(
+            BerylState::required_domains()
+                .expect("Beryl requirements")
+                .merge(SyndicStorage::required_domains().expect("Syndic requirements"))
+                .expect("merge requirements"),
+        )
+        .expect("prepare reopened home publication")
+        .publish()
+        .expect("publish reopened home");
     let store = Arc::new(reopened);
     let fresh =
         RuntimeBackedWindowAcquisitionService::new(&process, Arc::clone(&store), state, syndic);
