@@ -57,6 +57,15 @@ semantic review. The unchanged same-service app scale workload passed in 300.575
 repeated 128-image input. [Admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
 records acceptance with original limits, inputs, service lifetime, real pins and recovery guarantees.
 
+# Phase 434: Diagnose Failure-Taxonomy Polling After Persistent Failure (finished)
+
+The original terminal fault produced a `Finished` failure cut with one retained target and an
+empty open queue. The fixture joins execution before failed-service disposal and incorrectly expects
+a new durable stream-loss terminal after home failure. [Diagnosis](failures/ordinary-capture-persistent-failure-polling.md)
+records the source chain, bounded runtime evidence and correction boundary. Temporary probes and
+their process/home are gone; the restored integration target compiles. Production retirement
+completion remains untested by this run.
+
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
 Apply the [app public boundary](../crates/beryl-app/doc/design.md#public-boundary) and
@@ -86,11 +95,12 @@ now permit the complete unchanged scale workload, including repeated 128-image i
 run passed in 300.575 seconds with original limits and one service lifetime. Compilation and focused
 independent fixture reviews passed; this does not accept the remaining failure qualification.
 
-The failure-taxonomy rerun also remains unqualified. After both test barriers were released,
-ordinary execution continued polling an open target queue with no ingester or failure coordinator
-remaining. The precise failure-capture exit is unresolved; preserve the
-[captured wait evidence](failures/target-bootstrap-composition.md#qualification-after-marker-authority-correction)
-without inventing a fixture workaround. Candidate recovery and later bootstrap phases remain pending.
+The failure-taxonomy case remains unqualified. Its failure coordinator finished; the fixture's
+ordinary stream-loss expectation conflicts with failed-home publication fencing. Reconcile the
+fixture with typed failed-service disposal, first verifying that existing retirement settles the
+waiting execution and preserves failure evidence. The [diagnosis](failures/ordinary-capture-persistent-failure-polling.md)
+does not establish a production recovery liveness defect. Candidate recovery and later bootstrap
+phases remain pending.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 
