@@ -170,6 +170,28 @@ local shortcut: current clear replay invalidates the persisted watermark and cle
 tree. A plain persisted-sequence filter can skip records using state that a replayed clear destroys.
 That alternative would require its own clear-aware admission and replay authority and proof.
 
-Dependent implementation is stopped under the Operator's technically-invalid-plan rule. Complete
-the recovery-aware admission design before activating root phase 431 and Fjall phase 108. App
-qualification remains paused. No aggregate-admission production changes were made.
+The Operator subsequently authorized recovery-aware admission with an explicit clean-architecture
+constraint. [Fjall authority](../../../fjall-fork/doc/design.md#atomicity-and-durability) selects one
+conservative total-history byte/record counter and one complete checkpoint, retaining existing raw
+recovery semantics. Flushing, clear and ordinary rotations do not decrement the counter. A bounded
+full flush sweep precedes durable retirement of all old journals, active rotation and final retirement;
+the complete-flush proof avoids relying on table sequence maxima that compaction can lower.
+
+Using the final discounted raw replay charge as the live counter seed was rejected: clear and
+ordinary last-level tombstone compaction can remove the persisted coverage that justified those
+discounts. Oversized conservative totals therefore normalize before workers start, using zero-GC
+flushing. Before any mutation, oversized histories with replayed clears also recheck their exact
+admitted prefixes with those keyspaces' initial persisted coverage removed. Unsafe candidates return
+typed refusal without changing files, preventing a failed clear-publication prefix from becoming
+unreopenable. This design needs no per-record ledger or new persistent recovery metadata.
+
+The complete checkpoint component is accepted separately from initialization and live admission:
+ten focused and all 265 dependency tests, normal compilation, formatting and independent review passed.
+The tests cover full two-file capacity, real pins in both budget dimensions, lowered persisted maxima,
+concurrent record/clear exclusion, pre/post-flush failures and journal creation/removal/sync failures.
+Committed clear completion failures retain a terminal before releasing the journal writer. Existing
+ordinary journal backpressure remains outside the new exclusion so clear can still release capacity;
+worker-wait failures report unknown selected-flush commitment instead of asserting noncommit.
+
+Recovery initialization and live admission remain separate root phases 433 and 431 / Fjall phases
+110 and 108. App qualification remains paused until their acceptance.

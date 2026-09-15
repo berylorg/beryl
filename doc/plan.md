@@ -50,27 +50,33 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 430: Establish Exact Snapshot History Retirement Floor (finished)
-
-Accepted the exact exclusive snapshot-history floor separately from record GC in the
-[Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability). Eight focused and all 255
-dependency cases, normal compilation, formatting and independent review passed, including zero,
-clone/backing pins and immediate post-flush physical reuse through the test-fault boundary with an
-explicit journal cut. Ordinary aggregate admission and app qualification remain pending.
-
 # Phase 431: Establish Bounded Aggregate Batch Capacity Progress (pending)
 
-Complete owning authority for the recovery journal cut, bounded maintenance selection and completion,
-then implement explicit capacity progress before actual record reservation and journal publication.
-Preserve hard limits and typed refusal when pins or supported failures prevent release. Rerun the
-unchanged app workload after dependency acceptance.
+Integrate the accepted complete checkpoint and recovery-initialized replay counter into direct and
+batch admission under [Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability).
+Enforce prospective replay charge and physical capacity before actual reservation and journal
+publication. Preserve hard limits, genuine pins and typed uncommitted refusal. Verify compressed
+overwrite and distributed active pressure, concurrent operations and recovery; rerun the unchanged
+app workload after dependency acceptance.
 
-Blocked at readiness review: a physical-pressure-only trigger misses journal replay charge already
-released by ordinary background maintenance. A late journal cut cannot repair an earlier within-file
-replay peak. The [recovery blocker](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-records the independently reviewed source counterexample. Notify the Operator before replacing the
-proposed approach; recommended next work is bounded replay-capacity accounting independent of physical
-residency, preserving existing recovery and clear semantics. No admission integration is implemented.
+The Operator authorized the recommended correction and explicitly required clean, simple architecture.
+Owning authority selects one conservative counter and one complete checkpoint. The earlier
+[recovery blocker](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
+is resolved in target design; its separate component boundaries below precede live integration.
+
+# Phase 432: Establish Complete Flush And Journal Retirement (finished)
+
+Accepted Fjall's complete checkpoint component and record/clear exclusion. Ten focused and all 265
+dependency cases, normal compilation, formatting and independent review passed, including genuine
+pins, full two-file capacity, clear progress, lowered persisted maxima and supported failure prefixes.
+The [admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
+records the target boundary; recovery initialization and live capacity admission remain pending.
+
+# Phase 433: Initialize Replay Capacity Before Worker Publication (pending)
+
+Accept Fjall's conservative raw-history accounting, pre-mutation clear-prefix safety admission and
+oversized-history normalization before workers start. Verify safe refusal, same-policy reopening and
+bounded recovery-progress failures before connecting the counter to live admission.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
