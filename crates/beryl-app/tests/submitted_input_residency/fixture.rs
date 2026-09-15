@@ -101,7 +101,7 @@ impl PreparedExecution {
                 let mut lifecycle = NoopLifecycle;
                 let mut branch = NoopBranch;
                 coordinator.execute_ordinary_turn(
-                    &*fixture.home(),
+                    fixture.store.home_for_shutdown_test(),
                     &fixture.storage,
                     &fixture.state.assets(),
                     projection,
@@ -114,6 +114,96 @@ impl PreparedExecution {
             execution.join().unwrap()
         });
         CompletedExecution { result, session }
+    }
+
+    pub fn execute_with_failed_service_disposal(
+        self,
+        fixture: Fixture,
+        request: &OrdinaryTurnExecutionRequest,
+        while_running: impl FnOnce(&AdmittedProjectionSession),
+    ) -> (CompletedExecution, tempfile::TempDir) {
+        use beryl_app::cas_projection::{
+            PersistentFailureCutCompletion, PersistentFailureCutState,
+            ProjectionConnectionServiceCloseOutcome,
+            test_faults::capture_provider_broker_snapshot_reader,
+        };
+        let Self {
+            coordinator,
+            session,
+            projection,
+        } = self;
+        let home = fixture.store.retain_home_for_shutdown_test();
+        let storage = fixture.storage.clone();
+        let assets = fixture.state.assets();
+        let cancellation = fixture.cancellation.clone();
+        let (directory, service) = fixture.into_service();
+        let home_id = service.home_id();
+        let home_generation = service.home_generation();
+        let service_generation = service.service_generation();
+        let retirement = session.connection_retirement_handle_for_test();
+        let broker_metrics = capture_provider_broker_snapshot_reader(&session);
+        let result = thread::scope(|scope| {
+            let execution = scope.spawn(|| {
+                let mut lifecycle = NoopLifecycle;
+                let mut branch = NoopBranch;
+                coordinator.execute_ordinary_turn(
+                    &home,
+                    &storage,
+                    &assets,
+                    projection,
+                    &cancellation,
+                    request,
+                    noop_handlers(&mut lifecycle, &mut branch),
+                )
+            });
+            while_running(&session);
+            let deadline = std::time::Instant::now() + TIMEOUT;
+            while service.persistent_failure_cut_snapshot().state()
+                != PersistentFailureCutState::Finished
+            {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "failure cut did not finish"
+                );
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+            let ProjectionConnectionServiceCloseOutcome::PersistentFailure(evidence) =
+                service.close().unwrap()
+            else {
+                panic!("failed-home disposal did not return persistent-failure evidence")
+            };
+            assert_eq!(evidence.home_id(), home_id);
+            assert_eq!(evidence.home_generation(), home_generation);
+            assert_eq!(evidence.service_generation(), service_generation);
+            assert_eq!(
+                evidence.completion(),
+                PersistentFailureCutCompletion::Finished
+            );
+            assert_eq!(
+                evidence.cut_snapshot().state(),
+                PersistentFailureCutState::Finished
+            );
+            assert!(retirement.is_retired());
+            assert!(retirement.is_detached());
+            let deadline = std::time::Instant::now() + TIMEOUT;
+            while !execution.is_finished() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "execution did not return after failed-service disposal"
+                );
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+            execution.join().unwrap()
+        });
+        let broker = broker_metrics.snapshot();
+        assert_eq!(broker.in_flight().current(), 0);
+        assert_eq!(broker.submitted(), broker.acked());
+        assert_eq!(broker.staged_fragments().current(), 0);
+        assert_eq!(broker.checked_user_publications().activity().current(), 0);
+        let pages = session.provider_page_diagnostics();
+        assert_eq!(pages.leased, 0);
+        assert_eq!(pages.available, pages.page_count);
+        (CompletedExecution { result, session }, directory)
     }
 }
 

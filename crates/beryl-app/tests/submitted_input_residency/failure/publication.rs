@@ -1,26 +1,30 @@
 use beryl_app::cas_projection::{
-    LiveEventTargetCloseReason, OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionOutcome,
+    OrdinaryTurnExecutionError, OrdinaryTurnExecutionFailure, ProjectionCoordinatorError,
     test_faults::install_checked_user_publication_barrier,
 };
 use beryl_backend::{TurnStartOptions, UserMessageEchoLifecycle};
-use beryl_home_store::test_faults::{FaultController, FaultPoint};
-use syndic_storage::TurnEndStatus;
+use beryl_home_store::{
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    test_faults::{FaultController, FaultPoint},
+};
+use beryl_model::{SyndicThreadId, SyndicTurnId};
+use beryl_state::BerylState;
+use syndic_storage::{
+    SourceEventPayload, SourceEventSequence, SyndicStorage, TurnEndStatus, TurnLifecycle,
+};
 
 use crate::{
     content::{LogicalInput, seed_submitted_input},
     fixture::{CompletedExecution, PreparedExecution, close_execution},
     server::{RawCasServer, ServerScenario, TIMEOUT},
-    syndic::Fixture,
-    verification::assert_durable_success,
+    syndic::{Fixture, point_limit},
     wire::RequestOutcome,
 };
 
-use super::common;
-
 #[derive(Clone, Copy)]
-enum ExpectedTerminalResult {
-    DefinitiveFailure,
-    Reconciled,
+enum ExpectedTerminalCommit {
+    NotCommitted,
+    Committed,
 }
 
 pub fn definitive_terminal_publication_failure() {
@@ -28,7 +32,7 @@ pub fn definitive_terminal_publication_failure() {
         145,
         35,
         FaultPoint::BeforeCommit,
-        ExpectedTerminalResult::DefinitiveFailure,
+        ExpectedTerminalCommit::NotCommitted,
     );
 }
 
@@ -37,7 +41,7 @@ pub fn ambiguous_terminal_publication() {
         146,
         36,
         FaultPoint::AfterPersist,
-        ExpectedTerminalResult::Reconciled,
+        ExpectedTerminalCommit::Committed,
     );
 }
 
@@ -45,7 +49,7 @@ fn run_terminal_publication_fault(
     seed: u8,
     run_id: u64,
     point: FaultPoint,
-    expected: ExpectedTerminalResult,
+    expected: ExpectedTerminalCommit,
 ) {
     let faults = FaultController::new();
     let mut fixture = Fixture::with_faults(seed, faults.clone());
@@ -61,7 +65,7 @@ fn run_terminal_publication_fault(
         TurnStartOptions::default(),
         TIMEOUT,
     );
-    let CompletedExecution { result, session } = prepared.execute(&fixture, &request, |session| {
+    let release_fault = |session: &beryl_app::cas_projection::AdmittedProjectionSession| {
         let RequestOutcome::Complete(_) = server.wait_for_request() else {
             panic!("terminal-publication request aborted before lifecycle publication")
         };
@@ -80,38 +84,94 @@ fn run_terminal_publication_fault(
         assert!(completed_cut.wait_until_reached(TIMEOUT));
         faults.fail_next_in_scope(point, scope);
         completed_cut.release();
-    });
+    };
+    let (CompletedExecution { result, session }, directory) =
+        prepared.execute_with_failed_service_disposal(fixture, &request, release_fault);
+    assert!(
+        matches!(
+            result,
+            Err(OrdinaryTurnExecutionFailure::AfterActivation {
+                source: OrdinaryTurnExecutionError::Coordinator(
+                    ProjectionCoordinatorError::ProjectionWorkerStopped
+                ),
+            })
+        ),
+        "failed-service execution returned an unexpected result: {result:?}"
+    );
+    close_execution(session, server);
+    assert_reopened_terminal(directory.path(), thread, seeded.submitted.turn, expected);
+    drop(directory);
+}
 
+fn assert_reopened_terminal(
+    path: &std::path::Path,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    expected: ExpectedTerminalCommit,
+) {
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let storage = SyndicStorage::register(&mut candidate).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let home = candidate
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let turn_state = storage
+        .turn_state(&home, turn, point_limit())
+        .unwrap()
+        .unwrap();
+    let header = storage.turn(&home, turn, point_limit()).unwrap().unwrap();
+    assert_eq!(header.origin_thread_id(), thread);
+    assert_eq!(turn_state.turn_id(), turn);
+    assert_eq!(turn_state.item_count(), 1);
+    assert_eq!(turn_state.finalized_item_count(), 0);
+    assert_eq!(turn_state.open_item_count(), 0);
+    assert_eq!(turn_state.incomplete_reason(), None);
+    let terminal = storage
+        .source_event(
+            &home,
+            turn,
+            SourceEventSequence::new(4).unwrap(),
+            point_limit(),
+        )
+        .unwrap();
     match expected {
-        ExpectedTerminalResult::DefinitiveFailure => {
-            match result.unwrap() {
-                OrdinaryTurnExecutionOutcome::Incomplete {
-                    reason:
-                        OrdinaryTurnCaptureLoss::TargetClosed(
-                            LiveEventTargetCloseReason::SourcePublicationFailed,
-                        ),
-                } => {}
-                other => panic!(
-                    "definitive terminal-publication failure lost its target taxonomy: {other:?}"
-                ),
-            }
-            common::assert_durable_stream_loss(&fixture, thread, seeded.submitted.turn, 4);
+        ExpectedTerminalCommit::NotCommitted => {
+            assert_eq!(turn_state.lifecycle(), TurnLifecycle::Active);
+            assert_eq!(turn_state.source_event_count(), 3);
+            assert_eq!(turn_state.end_status(), None);
+            assert!(terminal.is_none());
         }
-        ExpectedTerminalResult::Reconciled => {
-            let (projection, status) = match result.unwrap() {
-                OrdinaryTurnExecutionOutcome::Terminal { projection, status } => {
-                    (projection, status)
-                }
-                other => panic!(
-                    "post-persist terminal publication did not reconcile to terminal: {other:?}"
-                ),
-            };
-            assert_eq!(status, TurnEndStatus::complete());
-            drop(projection);
-            assert_durable_success(&fixture, thread, seeded.submitted.turn, status);
+        ExpectedTerminalCommit::Committed => {
+            assert_eq!(turn_state.lifecycle(), TurnLifecycle::Complete);
+            assert_eq!(turn_state.source_event_count(), 4);
+            assert_eq!(turn_state.end_status(), Some(TurnEndStatus::complete()));
+            let terminal = terminal.unwrap();
+            assert!(terminal.source().is_some());
+            assert!(
+                matches!(terminal.payload(), SourceEventPayload::TurnEnded(status) if *status == TurnEndStatus::complete())
+            );
         }
     }
-    common::assert_released(&session);
-    close_execution(session, server);
-    common::finish_fixture(fixture);
+    assert!(
+        storage
+            .source_event(
+                &home,
+                turn,
+                SourceEventSequence::new(5).unwrap(),
+                point_limit()
+            )
+            .unwrap()
+            .is_none()
+    );
+    drop(state);
+    drop(storage);
+    home.close().unwrap();
 }

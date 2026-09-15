@@ -51,15 +51,32 @@ publication while the failed gate is closed and makes the last committed lifecyc
 recovery starting point. Thus forcing ordinary source-loss closure and a new durable stream-loss
 terminal is not an acceptable way to satisfy this fixture.
 
-Reconcile the fixture with failed-generation lifecycle and typed disposal evidence. First verify
-whether existing failed-service retirement settles the waiting execution while retaining the
-required evidence. The captured run does not exercise retirement and does not establish that
-production recovery cannot settle the target. Any production completion correction requires its
-own demonstrated gap and acceptance boundary; do not infer one solely from this fixture's join.
+The corrected fixture retains only a test home owner while execution runs and consumes the real
+service close before joining execution. It asserts exact home/service identity and finished failure
+evidence, retired and detached connection state, execution return, and released broker/page custody.
+All old home owners leave scope before a fresh candidate registers its domains and publishes the
+storage-only fixture. No failed authority is reused and no recovery convergence is implied.
 
-Independent semantic review confirmed the fixture/authority contradiction and traced existing
-failed-service close through terminal connection shutdown. Whether that disposal releases the
-last target sender and settles this execution remains a focused qualification requirement.
+## Disposal Qualification
 
-App qualification remains pending. The post-persist ambiguity case was not reached in this
-diagnostic run and must be qualified separately against the same failed-home contracts.
+The original-order disposal probe `b9e989e1-9419-4c62-adaf-c9eeaf00d927` returned successful
+persistent-failure close evidence and retired/detached connection state. Ordinary execution then
+returned `AfterActivation` with `Coordinator(ProjectionWorkerStopped)`. Terminal shutdown removes
+the forwarding attachment; its router and target sender can then drop. The disconnected receiver
+enters loss handling, whose first router lookup fails before attempting durable publication.
+Thus the earlier polling did not demonstrate a production recovery deadlock.
+
+The accepted full `submitted_input_failures_preserve_taxonomy_and_release` run
+`6e737584-da24-4f18-ba46-779a709c7c28` passed in 79.386 seconds, including both terminal fault cases
+and the later target-abandonment case, under a 120-second nextest process bound. Fresh reads prove
+three source events and an active turn without a terminal after `BeforeCommit`, versus four events
+and a source-backed completed terminal after `AfterPersist`. Neither has a fifth event. Both retain
+one captured item, zero open items and zero finalized items. The first revised assertion incorrectly
+expected finalized count one; source review confirmed that provider completion only closes capture,
+while canonical finalization requires a separate later mutation. The final assertion preserves this
+distinction rather than claiming a terminal-history fixed point.
+
+Normal app compilation, focused formatting and diff checks passed. Independent semantic review
+accepted the test topology, exact failure taxonomy, fresh-handle persistence checks and finalization
+distinction. No production runtime behavior changed. Temporary probes and diagnostic resources were
+removed. Aggregate app construction acceptance and later candidate recovery remain separate gates.

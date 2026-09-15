@@ -368,6 +368,15 @@ impl ProjectionConnectionService {
             .expect("unsettled test service owns its opened home")
     }
 
+    #[cfg(feature = "test-faults")]
+    pub fn retain_home_for_shutdown_test(&self) -> Arc<HomeStore> {
+        Arc::clone(
+            self.home
+                .as_ref()
+                .expect("unsettled test service owns its home"),
+        )
+    }
+
     #[cfg(test)]
     pub(in crate::cas_projection) fn registered_connection_count_for_test(&self) -> usize {
         self.connections

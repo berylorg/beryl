@@ -50,21 +50,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (finished)
+# Phase 435: Qualify Ordinary Execution During Failed-Service Disposal (finished)
 
-Accepted Fjall `9c1ed45` with all 280 dependency cases, normal compilation, formatting and independent
-semantic review. The unchanged same-service app scale workload passed in 300.575 seconds, including
-repeated 128-image input. [Admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-records acceptance with original limits, inputs, service lifetime, real pins and recovery guarantees.
-
-# Phase 434: Diagnose Failure-Taxonomy Polling After Persistent Failure (finished)
-
-The original terminal fault produced a `Finished` failure cut with one retained target and an
-empty open queue. The fixture joins execution before failed-service disposal and incorrectly expects
-a new durable stream-loss terminal after home failure. [Diagnosis](failures/ordinary-capture-persistent-failure-polling.md)
-records the source chain, bounded runtime evidence and correction boundary. Temporary probes and
-their process/home are gone; the restored integration target compiles. Production retirement
-completion remains untested by this run.
+Existing consuming failed-service close retires the connection and releases ordinary execution.
+The corrected complete failure-taxonomy test passed in 79.386 seconds with original fault ordering
+and fresh-handle persistence assertions for both terminal cases. Normal compilation, formatting
+and independent semantic review passed. [Disposal evidence](failures/ordinary-capture-persistent-failure-polling.md)
+records the fixture correction; no production runtime change or recovery-convergence claim was needed.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
@@ -95,12 +87,11 @@ now permit the complete unchanged scale workload, including repeated 128-image i
 run passed in 300.575 seconds with original limits and one service lifetime. Compilation and focused
 independent fixture reviews passed; this does not accept the remaining failure qualification.
 
-The failure-taxonomy case remains unqualified. Its failure coordinator finished; the fixture's
-ordinary stream-loss expectation conflicts with failed-home publication fencing. Reconcile the
-fixture with typed failed-service disposal, first verifying that existing retirement settles the
-waiting execution and preserves failure evidence. The [diagnosis](failures/ordinary-capture-persistent-failure-polling.md)
-does not establish a production recovery liveness defect. Candidate recovery and later bootstrap
-phases remain pending.
+The complete failure-taxonomy case now passes after the accepted failed-service fixture correction.
+Typed disposal releases execution, and fresh reads distinguish an absent precommit terminal from a
+persisted terminal without claiming finalized history. The [qualification](failures/ordinary-capture-persistent-failure-polling.md)
+removes that runtime blocker. Complete the aggregate construction-fixture acceptance review before
+accepting this phase; candidate recovery and later bootstrap phases remain pending.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 
