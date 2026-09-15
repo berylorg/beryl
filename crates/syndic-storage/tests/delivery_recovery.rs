@@ -2,6 +2,9 @@
 
 mod support;
 
+#[path = "delivery_recovery/candidate_pages.rs"]
+mod candidate_pages;
+
 #[path = "delivery_recovery/authority_lost_context.rs"]
 mod authority_lost_context;
 #[path = "delivery_recovery/classification.rs"]

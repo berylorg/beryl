@@ -3,6 +3,7 @@ use beryl_home_store::{CursorReadLimits, HomeStore};
 use crate::{InputGateState, SyndicPointReadLimit, SyndicReadError, domain::SyndicStorage};
 
 use super::*;
+use crate::read::access::ReadAccess;
 
 impl SyndicStorage {
     pub fn delivery_recovery_startup_page(
@@ -11,25 +12,57 @@ impl SyndicStorage {
         cursor: Option<DeliveryRecoveryStartupCursor>,
         limits: CursorReadLimits,
     ) -> Result<DeliveryRecoveryStartupPage, SyndicReadError> {
+        self.delivery_recovery_startup_page_with_access(ReadAccess::Ordinary(store), cursor, limits)
+    }
+
+    pub fn delivery_recovery_startup_page_candidate(
+        &self,
+        store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        cursor: Option<DeliveryRecoveryStartupCursor>,
+        limits: CursorReadLimits,
+    ) -> Result<DeliveryRecoveryStartupPage, SyndicReadError> {
+        self.delivery_recovery_startup_page_with_access(
+            ReadAccess::Candidate(store),
+            cursor,
+            limits,
+        )
+    }
+
+    fn delivery_recovery_startup_page_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        cursor: Option<DeliveryRecoveryStartupCursor>,
+        limits: CursorReadLimits,
+    ) -> Result<DeliveryRecoveryStartupPage, SyndicReadError> {
         let revision = match cursor {
             Some(cursor) => cursor.source.source_revision(),
-            None => self.revision(store)?,
+            None => self.revision_with_access(store)?,
         };
         let page = self
-            .non_idle_gate_source_page(store, revision, cursor.map(|c| c.source), limits)
+            .non_idle_gate_source_page_with_access(
+                store,
+                revision,
+                cursor.map(|c| c.source),
+                limits,
+            )
             .map_err(startup_error)?;
         let point_limit = SyndicPointReadLimit::new(DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES)
             .expect("fixed startup point limit is nonzero");
         let mut records = Vec::with_capacity(page.records().len());
         for source in page.records() {
-            let gate = self.resolve_non_idle_gate_source(store, revision, *source, point_limit)?;
+            let gate = self.resolve_non_idle_gate_source_with_access(
+                store,
+                revision,
+                *source,
+                point_limit,
+            )?;
             records.push(DeliveryRecoverySource {
                 home_id: store.home_id(),
                 home_generation: self.home_generation,
                 gate,
             });
         }
-        if self.revision(store)? != revision {
+        if self.revision_with_access(store)? != revision {
             return Err(SyndicReadError::StaleNonIdleGateSourceScan);
         }
         Ok(DeliveryRecoveryStartupPage {
@@ -50,6 +83,19 @@ impl SyndicStorage {
         self.rebase_non_idle_gate_source_cursor(store, cursor.source)
             .map(|source| DeliveryRecoveryStartupCursor { source })
             .map_err(startup_error)
+    }
+
+    pub fn rebase_delivery_recovery_startup_cursor_candidate(
+        &self,
+        store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        cursor: DeliveryRecoveryStartupCursor,
+    ) -> Result<DeliveryRecoveryStartupCursor, SyndicReadError> {
+        self.rebase_non_idle_gate_source_cursor_with_access(
+            ReadAccess::Candidate(store),
+            cursor.source,
+        )
+        .map(|source| DeliveryRecoveryStartupCursor { source })
+        .map_err(startup_error)
     }
 
     pub fn recovered_pending_page(

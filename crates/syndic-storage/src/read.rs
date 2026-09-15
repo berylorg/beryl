@@ -1,6 +1,7 @@
 mod accepted_delivery;
 mod accepted_next;
 mod accepted_ready;
+mod access;
 mod admission;
 mod binding;
 mod capture;
@@ -585,14 +586,6 @@ impl SyndicStorage {
         key: F::Key,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<F::Value>, SyndicReadError> {
-        #[cfg(feature = "test-faults")]
-        crate::test_faults::metrics::record_syndic_point_read();
-        store
-            .read_point::<crate::domain::SyndicDomain, ExactCodec<F>>(
-                &self.handle,
-                &key,
-                PointReadLimit::new(limit.max_bytes()).expect("point bound is nonzero"),
-            )
-            .map_err(Into::into)
+        self.point_with_access::<F>(access::ReadAccess::Ordinary(store), key, limit)
     }
 }

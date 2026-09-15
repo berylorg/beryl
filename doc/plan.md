@@ -50,30 +50,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 439: Qualify Remaining Recovery Publication Callers (finished)
+# Phase 436: Establish Syndic Candidate Startup Discovery (finished)
 
-Qualified remaining conditional Syndic/app fixtures for checked recovered publication, settling
-original pending custody through candidate access. All test targets compile; 70 selected app cases
-and 205 selected Syndic cases have passing evidence after focused corrections. Independent review
-accepted preserved outcomes and generation fences. [Evidence](failures/target-bootstrap-composition.md#recovery-publication-fixture-qualification).
-
-# Phase 436: Establish Syndic Candidate Startup Discovery (wip)
-
-Implement explicit candidate variants of startup source paging and forward-cursor rebase under the
-[compact-source contract](../crates/syndic-storage/doc/design-history-storage.md#non-idle-gate-discovery).
-Share the ordinary traversal, exact gate resolution, codec reads, limits and revision checks through
-private explicit read access. Preserve the ordinary API and gate; expose no raw store or new command
-authority. Do not implement classifier, convergence or service construction in this boundary.
-
-Verify initial/reopened candidate discovery, empty and paged sources, item/byte bounds, drift and
-stale/foreign handles/cursors, ordinary refusal before publication, and equivalent discovery after
-publication. Existing source corruption and no-broad-scan tests must pass through the shared path.
-Run focused discovery and package read regression checks, normal compilation and independent review
-of identity, bounds and admission before acceptance.
-
-The shared reader and candidate page/rebase methods are implemented; normal compilation, focused
-candidate/source/read regressions and independent review passed. Record the separate acceptance
-and commit after the recovered-publication fixture phase.
+Accepted explicit candidate startup paging and cursor rebase through the shared bounded reader.
+Initial/reopened access, identity fences, limits, drift, corruption and ordinary refusal passed
+with 41 selected discovery/source/read cases, normal compilation and independent review.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-discovery).
 
 # Phase 437: Establish Syndic Candidate Recovery Classification (pending)
 

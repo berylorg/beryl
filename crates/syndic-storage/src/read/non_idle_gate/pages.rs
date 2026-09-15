@@ -1,3 +1,4 @@
+use crate::read::access::ReadAccess;
 use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeGeneration};
 use beryl_model::{BerylHomeId, DomainRevision};
 
@@ -51,6 +52,21 @@ impl SyndicStorage {
     pub fn non_idle_gate_source_page(
         &self,
         store: &HomeStore,
+        expected_revision: DomainRevision,
+        cursor: Option<NonIdleGateSourceCursor>,
+        limits: CursorReadLimits,
+    ) -> Result<NonIdleGateSourcePage, SyndicReadError> {
+        self.non_idle_gate_source_page_with_access(
+            ReadAccess::Ordinary(store),
+            expected_revision,
+            cursor,
+            limits,
+        )
+    }
+
+    pub(crate) fn non_idle_gate_source_page_with_access(
+        &self,
+        store: ReadAccess<'_>,
         expected_revision: DomainRevision,
         cursor: Option<NonIdleGateSourceCursor>,
         limits: CursorReadLimits,
@@ -122,9 +138,17 @@ impl SyndicStorage {
         store: &HomeStore,
         cursor: NonIdleGateSourceCursor,
     ) -> Result<NonIdleGateSourceCursor, SyndicReadError> {
+        self.rebase_non_idle_gate_source_cursor_with_access(ReadAccess::Ordinary(store), cursor)
+    }
+
+    pub(crate) fn rebase_non_idle_gate_source_cursor_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        cursor: NonIdleGateSourceCursor,
+    ) -> Result<NonIdleGateSourceCursor, SyndicReadError> {
         self.validate_non_idle_cursor(store, cursor)?;
         Ok(NonIdleGateSourceCursor {
-            source_revision: self.revision(store)?,
+            source_revision: self.revision_with_access(store)?,
             ..cursor
         })
     }
@@ -136,11 +160,30 @@ impl SyndicStorage {
         source: NonIdleGateSourceRecord,
         limit: SyndicPointReadLimit,
     ) -> Result<InputGateRecord, SyndicReadError> {
+        self.resolve_non_idle_gate_source_with_access(
+            ReadAccess::Ordinary(store),
+            expected_revision,
+            source,
+            limit,
+        )
+    }
+
+    pub(crate) fn resolve_non_idle_gate_source_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        expected_revision: DomainRevision,
+        source: NonIdleGateSourceRecord,
+        limit: SyndicPointReadLimit,
+    ) -> Result<InputGateRecord, SyndicReadError> {
         self.check_non_idle_revision(store, expected_revision)?;
         let result = (|| {
-            let current =
-                self.point::<NonIdleGateSourcesFamily>(store, source.thread_id(), limit)?;
-            let gate = self.point::<InputGatesFamily>(store, source.thread_id(), limit)?;
+            let current = self.point_with_access::<NonIdleGateSourcesFamily>(
+                store,
+                source.thread_id(),
+                limit,
+            )?;
+            let gate =
+                self.point_with_access::<InputGatesFamily>(store, source.thread_id(), limit)?;
             if current != Some(source)
                 || !non_idle_gate_source_matches(
                     source.thread_id(),
@@ -162,7 +205,7 @@ impl SyndicStorage {
 
     fn validate_non_idle_cursor(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         cursor: NonIdleGateSourceCursor,
     ) -> Result<(), SyndicReadError> {
         if cursor.home_id != store.home_id() || cursor.home_generation != self.home_generation {
@@ -173,10 +216,10 @@ impl SyndicStorage {
 
     fn check_non_idle_revision(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         expected: DomainRevision,
     ) -> Result<(), SyndicReadError> {
-        if self.revision(store)? != expected {
+        if self.revision_with_access(store)? != expected {
             return Err(SyndicReadError::StaleNonIdleGateSourceScan);
         }
         Ok(())

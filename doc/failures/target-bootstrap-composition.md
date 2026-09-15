@@ -239,3 +239,18 @@ set passed seven cases initially and its remaining four after exact-new/setup co
 Family deletion, malformed-record decoding, semantic corruption, read bounds, reconciliation,
 marker custody and stop recovery retained their original assertions. Phase 439 is accepted;
 candidate discovery and service composition retain their separate acceptance boundaries.
+
+## Candidate Startup Discovery
+
+Phase 436 accepted explicit borrowed candidate startup paging and forward-cursor rebasing. The
+ordinary and candidate paths share compact-source traversal, exact gate resolution, codec reads,
+revision checks and item/byte limits. Sources remain discovery facts; classification and service
+publication are separate boundaries.
+
+Acceptance includes 41 selected discovery/source/read cases across the broad run and corrected
+candidate rerun recorded above. The three new candidate cases cover empty and paged initial access,
+reopened generations, identity fences, exact byte limits, revision drift and explicit rebase,
+foreign cursors, ordinary refusal, stable missing-gate corruption and post-publication parity.
+Existing compact-source corruption, bounded paging and typed recovery-read checks passed. Normal
+package compilation, changed Rust formatting and diff checks passed; independent review accepted
+the shared reader and the corrected explicit read-fault recovery setup.

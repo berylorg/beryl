@@ -275,11 +275,18 @@ membership disagreement is corruption; concurrent domain or selected-gate change
 Pages and point resolution contain compact facts only and retain no live execution authority.
 
 A mutating recovery/scheduler traversal may explicitly rebase its existing forward bookmark to a
-fresh domain revision in the same healthy home generation. Rebase grants no carried candidate
+fresh domain revision in the same explicitly admitted home generation, through ordinary healthy
+access or unpublished candidate recovery access. Rebase grants no carried candidate
 authority or consistent whole-scan snapshot. The owning traversal must restart from the beginning
 when a change can create eligible work behind that bookmark. Startup convergence fences new
 execution admission while it consumes its sources; live scheduling retains its existing typed
 fresh-scan wakes. Neither traversal uses broad input-gate or history-family scans.
+
+`delivery_recovery_startup_page_candidate` and
+`rebase_delivery_recovery_startup_cursor_candidate` accept explicit borrowed home-store candidate
+recovery access. They share compact-source traversal, exact gate resolution, revision checks,
+cursor identity and item/byte limits with the ordinary methods. Returned sources are discovery
+facts only; classification, convergence and service publication retain their separate authority.
 
 ## Privacy And Diagnostics
 
