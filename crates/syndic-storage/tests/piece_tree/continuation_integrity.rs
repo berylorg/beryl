@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "marker_reshaping.rs"]
+mod marker_reshaping;
+
 use beryl_home_store::HomeHealthState;
 use beryl_home_store::test_faults::{FaultController, FaultPoint};
 use syndic_storage::test_faults::{

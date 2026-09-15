@@ -315,5 +315,4 @@ fn text_insertion(
         && before.marker_order_height() == after.marker_order_height()
         && before.marker_commitment() == after.marker_commitment()
         && before.sequence_summary().marker_count() == after.sequence_summary().marker_count()
-        && before.sequence_summary().marker_digest() == after.sequence_summary().marker_digest()
 }
