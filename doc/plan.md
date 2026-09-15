@@ -50,13 +50,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 427: Diagnose Aggregate Memtable Capacity During App Qualification (finished)
+# Phase 428: Retire Snapshot-Safe History Under Memtable Pressure (finished)
 
-Accepted [capacity diagnosis](failures/syndic-draft-build-memtable-capacity.md#accepted-diagnosis):
-eligible version history retains an exactly accounted 67,110,708-byte flushed memtable after the
-snapshot watermark advances. Two unchanged-workload captures and independent source/evidence
-review passed the diagnostic boundary; temporary probes were removed. Recommend a separate
-bounded snapshot-safe history-retirement correction before resuming app qualification.
+Accepted Fjall correction `a035895`: one bounded snapshot-safe history pass before batch journal
+admission, preserving physical limits and pinned readers. Focused 6/6 and full 253/253 dependency
+tests, normal compilation, formatting and independent semantic review passed. The unchanged app
+workload completes the first 128-image input but reaches a later capacity refusal during the repeat;
+[correction evidence and remaining boundary](failures/syndic-draft-build-memtable-capacity.md#accepted-retirement-correction)
+preserve the result without accepting app qualification.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
@@ -91,9 +92,10 @@ now permits valid marker-bearing text reshaping. The original scale workload com
 64-image case, then source construction for the first 128-image input reached a safe
 [aggregate memtable-capacity refusal](failures/syndic-draft-build-memtable-capacity.md).
 Independent review found no supported fixture-only remedy preserving the workload and same-service
-evidence. The accepted diagnosis above identifies eligible flushed-memtable history retention.
-Production correction remains a separate design/implementation boundary; do not raise limits or
-reopen between cases. This fixture phase remains paused until that correction is accepted.
+evidence. The accepted history-retirement correction now permits the first 128-image input, but
+the repeated 128-image input reaches a safe capacity refusal at marker 34. This fixture phase
+remains paused for diagnosis of the remaining pressure. Do not assume active-table accumulation
+without evidence, raise limits, reopen between cases, or extend the accepted correction silently.
 
 The failure-taxonomy rerun also remains unqualified. After both test barriers were released,
 ordinary execution continued polling an open target queue with no ingester or failure coordinator

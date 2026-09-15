@@ -55,16 +55,45 @@ The [dependency investigation](../memory/github.com/berylorg/fjall-fork/commit/0
 preserves exact counters, source identities, dirty LSM-tree source hashes and the proof boundary.
 Temporary probes were removed and the Fjall source again matches its baseline.
 
-## Recommended Correction
+## Accepted Retirement Correction
 
-Define and implement bounded snapshot-safe version-history retirement under physical memtable
-pressure, using the owned dependency's existing maintenance custody before journal admission.
-Preserve genuine pins, hard limits, bounded metadata traversal and typed refusal when reclamation
-cannot provide capacity. Reassess aggregate active-table rotation only if pressure remains after
-eligible history retirement; that broader mechanism is not yet justified by this reproduction.
+The Operator authorized the correction on 2026-09-15. Fjall commit `a035895` adds one supervisor-owned
+snapshot-safe history-retirement pass when prospective batch bytes or records exceed physical
+headroom, before acquiring the journal writer. It refreshes the safe watermark, visits metadata
+and each admitted application keyspace once, and uses existing dependency version locks. Actual
+record preparation still enforces both physical limits. Pins remain charged until backing leases
+are destroyed; retirement errors preserve their cause and return `NotCommitted` before journal
+mutation. The correction covers batch admission and does not change direct keyspace mutations.
+
+Focused tests passed 6/6 (`72ca7b4d-5760-4c38-abfd-48682cd609cc`), including both byte and record
+pressure, readable pinned snapshots, release followed by successful same-database admission, and
+recovery after success or injected retirement failure. Full Fjall test-fault verification passed
+253/253 (`c3566319-4f11-48e4-9b67-6e43b18778fa`, 14.204 seconds). Normal Beryl-resolved
+`cargo check -p fjall --locked`, formatting and diff checks passed. Independent semantic review
+accepted snapshot safety, lock ordering, physical custody and pre-journal classification.
+
+Dependency tests ran from the Fjall checkout with an offline-generated temporary lockfile, one
+Cargo job, LLVM linking, no normal debug information and no incremental compilation. The temporary
+lockfile was removed after verification. Nested LSM-tree source was unchanged. Tests inject failure
+at the metadata entry; partial-pass filesystem errors and concurrent interleavings were reviewed
+semantically. Traversal is bounded; filesystem and lock latency are not given a wall-clock bound.
+
+## Remaining Qualification Boundary
+
+The unchanged app scale run `75acd1b0-1a57-4fff-8c50-3dfce71b68f3` completed the first 128-image
+input, then failed after 229.274 seconds while constructing the repeated 128-image input. Draft
+seed 158, session seed 47, operation 68 attempts marker 34 after predecessor generation 67
+(33 markers, 101 pieces and 178,432 UTF-8 bytes). The build is complete but its adoption remains
+pending. The refusal is `PolicyDenied(MemtablePayloadBytes)`, requested 268,444,350 bytes against
+268,435,456, with `NotCommitted`.
+
+History retirement is accepted, but it is insufficient to complete the whole workload. This run
+does not distinguish aggregate active-table accumulation from remaining pinned or other retained
+backing. Diagnose that later pressure before choosing another production mechanism; aggregate
+pressure rotation remains a candidate, not an established remedy.
 
 Preserve input sizes, image counts, repeated payloads, storage limits and service lifetime. Do not
 raise the limit, reopen between cases, retry without evidence of pending progress, or reshape the
-payload merely to pass qualification. Diagnosis is accepted; the production correction requires
-its separate design and implementation boundary. App qualification, candidate recovery and
-executable bootstrap remain unaccepted.
+payload merely to pass qualification. Further production changes require their own design and
+implementation boundary. App qualification, candidate recovery and executable bootstrap remain
+unaccepted.
