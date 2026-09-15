@@ -4,6 +4,9 @@ mod support;
 #[path = "compaction_storage/admission.rs"]
 mod admission;
 #[cfg(feature = "test-faults")]
+#[path = "compaction_storage/candidate_recovery.rs"]
+mod candidate_recovery;
+#[cfg(feature = "test-faults")]
 #[path = "compaction_storage/candidate_stop.rs"]
 mod candidate_stop;
 #[path = "compaction_storage/support.rs"]

@@ -1,4 +1,5 @@
-use beryl_home_store::HomeStore;
+use super::access::ReadAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 use beryl_model::{
     BerylHomeId, BindingRevision, CasLoadedSessionGeneration, CasThreadId, InputGateRevision,
     RuntimeId, SyndicThreadId,
@@ -218,6 +219,24 @@ impl SyndicStorage {
         operation_id: CompactionOperationId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<CompactionRecoveryCase>, SyndicReadError> {
+        self.compaction_recovery_read_with_access(ReadAccess::Ordinary(store), operation_id, limit)
+    }
+
+    pub fn compaction_recovery_read_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        operation_id: CompactionOperationId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<CompactionRecoveryCase>, SyndicReadError> {
+        self.compaction_recovery_read_with_access(ReadAccess::Candidate(store), operation_id, limit)
+    }
+
+    fn compaction_recovery_read_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        operation_id: CompactionOperationId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<CompactionRecoveryCase>, SyndicReadError> {
         let first = self.compaction_recovery_pass(store, operation_id, limit)?;
         let second = self.compaction_recovery_pass(store, operation_id, limit)?;
         if first != second {
@@ -230,20 +249,35 @@ impl SyndicStorage {
 
     fn compaction_recovery_pass(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         operation_id: CompactionOperationId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<(CompactionOperationRecord, Option<InputGateRecord>)>, SyndicReadError> {
-        self.with_current_gate_source(store, operation_id.thread_id(), limit, || {
-            let Some(operation) = self.compaction_operation(store, operation_id, limit)? else {
+        self.with_current_gate_source_with_access(store, operation_id.thread_id(), limit, || {
+            let Some(operation) =
+                self.point_with_access::<CompactionOperationsFamily>(store, operation_id, limit)?
+            else {
                 return Ok(None);
             };
-            let gate = self.input_gate(store, operation_id.thread_id(), limit)?;
-            let receipt = self.compaction_settlement_receipt(store, operation_id, limit)?;
-            let turn = self.turn(store, operation.target().turn_id(), limit)?;
-            let state = self.turn_state(store, operation.target().turn_id(), limit)?;
-            let snapshot =
-                self.execution_snapshot(store, operation.target().snapshot_id(), limit)?;
+            let gate =
+                self.point_with_access::<InputGatesFamily>(store, operation_id.thread_id(), limit)?;
+            let receipt = self.point_with_access::<CompactionSettlementReceiptsFamily>(
+                store,
+                operation_id,
+                limit,
+            )?;
+            let turn =
+                self.point_with_access::<TurnsFamily>(store, operation.target().turn_id(), limit)?;
+            let state = self.point_with_access::<TurnStatesFamily>(
+                store,
+                operation.target().turn_id(),
+                limit,
+            )?;
+            let snapshot = self.point_with_access::<ExecutionSnapshotsFamily>(
+                store,
+                operation.target().snapshot_id(),
+                limit,
+            )?;
             if turn.as_ref().is_none_or(|turn| {
                 turn.id() != operation.target().turn_id()
                     || turn.origin_thread_id() != operation.target().thread_id()

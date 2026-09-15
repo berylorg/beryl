@@ -236,6 +236,11 @@ through fresh handles but cannot fill missing stages or authorize another histor
 
 ## Provider-Operation Finalization Reads
 
+`compaction_recovery_read_candidate` classifies one exact retained operation through borrowed
+candidate access and the ordinary two-pass recovery reader. Gate/source, provider turn, snapshot
+and consumed-receipt checks remain bounded and unchanged. Its result authorizes only the existing
+exact durable convergence choice; it cannot recreate a dispatch claim or release publication.
+
 `stop_admission_read_candidate` shares the ordinary two-pass stop-admission classifier through
 explicit borrowed candidate recovery access. Exact target, selected route, provider-finalization
 and retained live-stop observations keep their existing bounded authentication and drift/corruption

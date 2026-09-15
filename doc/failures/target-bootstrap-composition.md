@@ -298,3 +298,14 @@ pending/active/finalizing and ordinary/provider stopping/deferred compaction, fo
 sources/handles, ordinary refusal, point limits and source drift versus stable corruption. Normal
 package compilation, formatting and diff checks passed; independent review accepted bounded
 authority, admission and shared classification semantics.
+
+## Candidate Compaction Recovery
+
+Phase 442 accepted candidate compaction recovery through the ordinary exact two-pass classifier.
+Operation, gate/source, provider turn, snapshot and consumed-receipt successor checks remain shared;
+classification does not recreate dispatch custody. All 62 compaction tests passed in 82.308 seconds
+(run `b0383d34-61b4-4962-9327-b4969b06e0b1`); the final expanded foreign/retired-handle parity case
+passed in 5.856 seconds (run `44499eb7-6223-40aa-b087-a7806a752bf5`). New cases cover initial and
+reopened undispatched, possible-dispatch, finalizing and consumed results, ordinary refusal, point
+limits, missing snapshot/consumed receipt and dispatch change between passes. Normal compilation,
+formatting and diff checks passed; independent review accepted boundedness, fences and outcome truth.

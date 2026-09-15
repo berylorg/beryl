@@ -50,16 +50,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 437: Establish Syndic Candidate Recovery Classification (finished)
+# Phase 442: Establish Candidate Compaction Recovery Reads (finished)
 
-Accepted explicit candidate classification through shared stabilized facts and exact provider-stop
-authority. All 86 focused regressions passed with normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-recovery-classification).
-
-# Phase 442: Establish Candidate Compaction Recovery Reads (pending)
-
-Share the bounded exact compaction recovery reader through candidate access, preserving operation,
-gate, turn, snapshot and consumed-receipt authority and two-pass convergence classification.
+Accepted candidate compaction recovery through shared exact bounded observations and the unchanged
+classifier. All 62 compaction tests plus the final identity case passed with normal compilation and
+independent review. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-compaction-recovery).
 
 # Phase 443: Establish Candidate Compaction Admission Reads (pending)
 
