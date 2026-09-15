@@ -1,3 +1,4 @@
+use crate::read::access::ReadAccess;
 use beryl_home_store::HomeStore;
 use beryl_model::SyndicThreadId;
 
@@ -8,8 +9,10 @@ use crate::{
     PendingDispatchEvidence, StopOperationId, StopOperationRecord, SyndicCurrentBinding,
     SyndicPointReadLimit, SyndicReadError, TurnRecord, TurnStateRecord,
     codec::{
-        AcceptedRouteGenerationHeadsFamily, AcceptedRouteGenerationsFamily, BindingKey,
-        BindingsFamily, CompactionOperationsFamily, StopOperationsFamily, ThreadRouteKey,
+        AcceptedRouteGenerationHeadsFamily, AcceptedRouteGenerationsFamily, ActiveCasTurnsFamily,
+        BindingKey, BindingsFamily, CompactionOperationsFamily, ExecutionSnapshotsFamily,
+        HistorySummariesFamily, InputGatesFamily, StopOperationsFamily, ThreadRouteKey,
+        TurnStatesFamily, TurnsFamily,
     },
     domain::SyndicStorage,
 };
@@ -38,35 +41,45 @@ pub(in crate::read) fn read(
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<RecoveryFacts, SyndicReadError> {
-    let gate = storage.input_gate(store, thread_id, limit)?;
+    read_with_access(storage, ReadAccess::Ordinary(store), thread_id, limit)
+}
+
+pub(in crate::read) fn read_with_access(
+    storage: &SyndicStorage,
+    store: ReadAccess<'_>,
+    thread_id: SyndicThreadId,
+    limit: SyndicPointReadLimit,
+) -> Result<RecoveryFacts, SyndicReadError> {
+    let gate = storage.point_with_access::<InputGatesFamily>(store, thread_id, limit)?;
     let state = match gate
         .as_ref()
         .and_then(|gate| gate.state().blocking_turn_id())
     {
-        Some(turn_id) => storage.turn_state(store, turn_id, limit)?,
+        Some(turn_id) => storage.point_with_access::<TurnStatesFamily>(store, turn_id, limit)?,
         None => None,
     };
     let turn = match gate
         .as_ref()
         .and_then(|gate| gate.state().blocking_turn_id())
     {
-        Some(turn_id) => storage.turn(store, turn_id, limit)?,
+        Some(turn_id) => storage.point_with_access::<TurnsFamily>(store, turn_id, limit)?,
         None => None,
     };
     let summary = if gate.is_some() {
-        storage.history_summary(store, thread_id, limit)?
+        storage.point_with_access::<HistorySummariesFamily>(store, thread_id, limit)?
     } else {
         None
     };
     let binding = if gate.is_some() {
-        storage.current_binding(store, thread_id, limit)?
+        storage.current_binding_with_access(store, thread_id, limit)?
     } else {
         None
     };
     let (route_head, route) = match gate.as_ref().and_then(InputGateRecord::selected_route) {
         Some(proof) => (
-            storage.point::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?,
-            storage.point::<AcceptedRouteGenerationsFamily>(
+            storage
+                .point_with_access::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?,
+            storage.point_with_access::<AcceptedRouteGenerationsFamily>(
                 store,
                 ThreadRouteKey {
                     thread: thread_id,
@@ -95,7 +108,7 @@ pub(in crate::read) fn read(
             .compaction_operation_nonce()
             .map(|nonce| CompactionOperationId::new(thread_id, nonce))
     }) {
-        Some(id) => storage.point::<CompactionOperationsFamily>(store, id, limit)?,
+        Some(id) => storage.point_with_access::<CompactionOperationsFamily>(store, id, limit)?,
         None => None,
     };
     let compaction_snapshot = compaction
@@ -103,11 +116,15 @@ pub(in crate::read) fn read(
         .map(|operation| operation.target().snapshot_id());
     let snapshot_id = active_snapshot.or(lost_snapshot).or(compaction_snapshot);
     let snapshot = match snapshot_id {
-        Some(snapshot_id) => storage.execution_snapshot(store, snapshot_id, limit)?,
+        Some(snapshot_id) => {
+            storage.point_with_access::<ExecutionSnapshotsFamily>(store, snapshot_id, limit)?
+        }
         None => None,
     };
     let active_turn = match snapshot_id {
-        Some(snapshot_id) => storage.active_cas_turn(store, snapshot_id, limit)?,
+        Some(snapshot_id) => {
+            storage.point_with_access::<ActiveCasTurnsFamily>(store, snapshot_id, limit)?
+        }
         None => None,
     };
     let prior_binding = match route.as_ref().and_then(|route| match route.target() {
@@ -119,7 +136,7 @@ pub(in crate::read) fn read(
         | AcceptedRouteTarget::AwaitingTerminal(_)
         | AcceptedRouteTarget::NextTurn(_) => None,
     }) {
-        Some(revision) => storage.point::<BindingsFamily>(
+        Some(revision) => storage.point_with_access::<BindingsFamily>(
             store,
             BindingKey {
                 thread: thread_id,
@@ -134,14 +151,14 @@ pub(in crate::read) fn read(
             .stop_operation_nonce()
             .map(|nonce| StopOperationId::new(thread_id, nonce))
     }) {
-        Some(id) => storage.point::<StopOperationsFamily>(store, id, limit)?,
+        Some(id) => storage.point_with_access::<StopOperationsFamily>(store, id, limit)?,
         None => None,
     };
     let pending = if gate.as_ref().is_some_and(|gate| {
         matches!(gate.state(), crate::InputGateState::PendingTurn(_))
             && gate.selected_route().is_none()
     }) {
-        storage.pending_dispatch_evidence(store, thread_id, limit)?
+        storage.read_pending_dispatch_evidence_with_access(store, thread_id, limit, || {})?
     } else {
         None
     };

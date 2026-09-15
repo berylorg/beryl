@@ -1,4 +1,5 @@
-use beryl_home_store::HomeStore;
+use super::access::ReadAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 use beryl_model::{InputGateRevision, SyndicThreadId, SyndicTurnId};
 
 use crate::{
@@ -201,6 +202,24 @@ impl SyndicStorage {
         thread_id: SyndicThreadId,
         limit: SyndicPointReadLimit,
     ) -> Result<StopAdmissionRead, SyndicReadError> {
+        self.stop_admission_read_with_access(ReadAccess::Ordinary(store), thread_id, limit)
+    }
+
+    pub fn stop_admission_read_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<StopAdmissionRead, SyndicReadError> {
+        self.stop_admission_read_with_access(ReadAccess::Candidate(store), thread_id, limit)
+    }
+
+    pub(in crate::read) fn stop_admission_read_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<StopAdmissionRead, SyndicReadError> {
         let first = read_pass(self, store, thread_id, limit)?;
         let second = read_pass(self, store, thread_id, limit)?;
         if first != second {
@@ -214,11 +233,11 @@ impl SyndicStorage {
 
 fn read_pass(
     storage: &SyndicStorage,
-    store: &HomeStore,
+    store: ReadAccess<'_>,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<StopAdmissionPass, SyndicReadError> {
-    let facts = facts::read(storage, store, thread_id, limit)?;
+    let facts = facts::read_with_access(storage, store, thread_id, limit)?;
     let discovered = discover_target(&facts);
     let target = discovered.as_ref().map(|(_, target)| target.clone());
     let authority =

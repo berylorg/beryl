@@ -270,3 +270,19 @@ affected candidate/ordinary pending tests passed in 19.305 seconds (run
 parity, retired handles, ordinary refusal, absent targets, byte limits, cancellation provenance and
 mutation drift versus stable missing input. Normal package compilation, formatting and diff checks
 passed; independent adversarial review accepted stabilization, boundedness and capability semantics.
+
+## Candidate Stop Evidence
+
+Phase 441 accepted explicit candidate stop-admission reads through shared recovery facts, exact
+stop observations and the existing two-pass classifier. Stop targets, selected routes, retained
+records, provider authority and deferred compaction finalization retain their original checks.
+Candidate results do not release publication fences or provide ordinary execution, provider
+dispatch or cleanup custody.
+
+All 115 selected stop-admission, stop-storage, delivery-recovery and provider/finalization tests
+passed in 177.083 seconds (run `913dd64a-7f4f-4d8c-b3aa-b8d8d0cad86d`). The additional provider
+candidate test passed in 2.786 seconds (run `56d77140-3e83-4dd4-9aff-8f196be44db4`). New cases
+cover initial/reopened admissible and stopping authority, pending/finalizing ineligibility, ordinary
+refusal, retired handles, point limits, missing selected stop, concurrent stop revision and provider
+finalization parity. Normal package compilation, formatting and diff checks passed; independent
+semantic/adversarial review accepted boundedness, authority and candidate admission.

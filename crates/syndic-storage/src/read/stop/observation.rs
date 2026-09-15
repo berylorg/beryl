@@ -1,3 +1,4 @@
+use crate::read::access::ReadAccess;
 use beryl_home_store::HomeStore;
 
 use crate::{
@@ -90,17 +91,24 @@ impl SyndicStorage {
 impl StopObservation {
     pub(in crate::read) fn read_current_stop(
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         operation_id: StopOperationId,
         target: &StopOperationTarget,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, SyndicReadError> {
-        Self::read(storage, store, operation_id, target, limit)
+        Self::read_keyed(
+            storage,
+            store,
+            operation_id.thread_id(),
+            Some(operation_id),
+            target,
+            limit,
+        )
     }
 
     pub(in crate::read) fn read_current_target(
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         thread_id: beryl_model::SyndicThreadId,
         target: &StopOperationTarget,
         limit: SyndicPointReadLimit,
@@ -117,7 +125,7 @@ impl StopObservation {
     ) -> Result<Self, SyndicReadError> {
         Self::read_keyed(
             storage,
-            store,
+            ReadAccess::Ordinary(store),
             operation_id.thread_id(),
             Some(operation_id),
             target,
@@ -127,25 +135,25 @@ impl StopObservation {
 
     fn read_keyed(
         storage: &SyndicStorage,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         thread_id: beryl_model::SyndicThreadId,
         operation_id: Option<StopOperationId>,
         target: &StopOperationTarget,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, SyndicReadError> {
-        storage.with_current_gate_source(store, thread_id, limit, || {
+        storage.with_current_gate_source_with_access(store, thread_id, limit, || {
             let stop = operation_id
-                .map(|id| storage.point::<StopOperationsFamily>(store, id, limit))
+                .map(|id| storage.point_with_access::<StopOperationsFamily>(store, id, limit))
                 .transpose()?
                 .flatten();
-            let gate = storage.point::<InputGatesFamily>(store, thread_id, limit)?;
-            let route_head =
-                storage.point::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?;
+            let gate = storage.point_with_access::<InputGatesFamily>(store, thread_id, limit)?;
+            let route_head = storage
+                .point_with_access::<AcceptedRouteGenerationHeadsFamily>(store, thread_id, limit)?;
             let route = gate
                 .as_ref()
                 .and_then(InputGateRecord::selected_route)
                 .map(|proof| {
-                    storage.point::<AcceptedRouteGenerationsFamily>(
+                    storage.point_with_access::<AcceptedRouteGenerationsFamily>(
                         store,
                         ThreadRouteKey {
                             thread: thread_id,
@@ -160,7 +168,7 @@ impl StopObservation {
                 .as_ref()
                 .and_then(|record| record.admission().successor_stopped_route_option())
                 .map(|proof| {
-                    storage.point::<AcceptedRouteGenerationsFamily>(
+                    storage.point_with_access::<AcceptedRouteGenerationsFamily>(
                         store,
                         ThreadRouteKey {
                             thread: thread_id,
@@ -179,23 +187,28 @@ impl StopObservation {
                         generation: proof.generation(),
                     });
             let ready_source = selected_route_key
-                .map(|key| storage.point::<AcceptedReadySourcesFamily>(store, key, limit))
+                .map(|key| {
+                    storage.point_with_access::<AcceptedReadySourcesFamily>(store, key, limit)
+                })
                 .transpose()?
                 .flatten();
             let next_source = selected_route_key
-                .map(|key| storage.point::<AcceptedNextSourcesFamily>(store, key, limit))
+                .map(|key| {
+                    storage.point_with_access::<AcceptedNextSourcesFamily>(store, key, limit)
+                })
                 .transpose()?
                 .flatten();
             let successor_revision = stop
                 .as_ref()
                 .and_then(|_| target.binding_revision().checked_next().ok());
-            let turn_state = storage.point::<TurnStatesFamily>(store, target.turn_id(), limit)?;
+            let turn_state =
+                storage.point_with_access::<TurnStatesFamily>(store, target.turn_id(), limit)?;
             let latest_event = turn_state
                 .as_ref()
                 .filter(|state| state.source_event_count() > 0)
                 .and_then(|state| crate::SourceEventSequence::new(state.source_event_count()).ok())
                 .map(|sequence| {
-                    storage.point::<SourceEventsFamily>(
+                    storage.point_with_access::<SourceEventsFamily>(
                         store,
                         TurnEventKey {
                             owner: target.turn_id(),
@@ -218,9 +231,10 @@ impl StopObservation {
                 admission_route,
                 ready_source,
                 next_source,
-                thread: storage.point::<ThreadsFamily>(store, thread_id, limit)?,
-                binding_head: storage.point::<BindingHeadsFamily>(store, thread_id, limit)?,
-                binding: storage.point::<BindingsFamily>(
+                thread: storage.point_with_access::<ThreadsFamily>(store, thread_id, limit)?,
+                binding_head: storage
+                    .point_with_access::<BindingHeadsFamily>(store, thread_id, limit)?,
+                binding: storage.point_with_access::<BindingsFamily>(
                     store,
                     BindingKey {
                         thread: thread_id,
@@ -230,7 +244,7 @@ impl StopObservation {
                 )?,
                 successor_binding: successor_revision
                     .map(|revision| {
-                        storage.point::<BindingsFamily>(
+                        storage.point_with_access::<BindingsFamily>(
                             store,
                             BindingKey {
                                 thread: thread_id,
@@ -241,12 +255,12 @@ impl StopObservation {
                     })
                     .transpose()?
                     .flatten(),
-                reservation: storage.point::<CasThreadIndexFamily>(
+                reservation: storage.point_with_access::<CasThreadIndexFamily>(
                     store,
                     CasThreadKey::Record(target.cas_thread_id().clone()),
                     limit,
                 )?,
-                membership: storage.point::<CasThreadBindingIndexFamily>(
+                membership: storage.point_with_access::<CasThreadBindingIndexFamily>(
                     store,
                     CasThreadBindingKey::Record(
                         target.cas_thread_id().clone(),
@@ -256,7 +270,7 @@ impl StopObservation {
                 )?,
                 successor_membership: successor_revision
                     .map(|revision| {
-                        storage.point::<CasThreadBindingIndexFamily>(
+                        storage.point_with_access::<CasThreadBindingIndexFamily>(
                             store,
                             CasThreadBindingKey::Record(target.cas_thread_id().clone(), revision),
                             limit,
@@ -264,7 +278,7 @@ impl StopObservation {
                     })
                     .transpose()?
                     .flatten(),
-                cas_turn: storage.point::<CasTurnIndexFamily>(
+                cas_turn: storage.point_with_access::<CasTurnIndexFamily>(
                     store,
                     CasTurnKey::Record(
                         target.cas_thread_id().clone(),
@@ -272,29 +286,30 @@ impl StopObservation {
                     ),
                     limit,
                 )?,
-                snapshot: storage.point::<ExecutionSnapshotsFamily>(
+                snapshot: storage.point_with_access::<ExecutionSnapshotsFamily>(
                     store,
                     target.snapshot_id(),
                     limit,
                 )?,
-                active_turn: storage.point::<ActiveCasTurnsFamily>(
+                active_turn: storage.point_with_access::<ActiveCasTurnsFamily>(
                     store,
                     target.snapshot_id(),
                     limit,
                 )?,
-                turn: storage.point::<TurnsFamily>(store, target.turn_id(), limit)?,
+                turn: storage.point_with_access::<TurnsFamily>(store, target.turn_id(), limit)?,
                 turn_state,
                 latest_event,
-                compaction: storage.point::<CompactionOperationsFamily>(
+                compaction: storage.point_with_access::<CompactionOperationsFamily>(
                     store,
                     compaction_id,
                     limit,
                 )?,
-                compaction_receipt: storage.point::<CompactionSettlementReceiptsFamily>(
-                    store,
-                    compaction_id,
-                    limit,
-                )?,
+                compaction_receipt: storage
+                    .point_with_access::<CompactionSettlementReceiptsFamily>(
+                        store,
+                        compaction_id,
+                        limit,
+                    )?,
             })
         })
     }

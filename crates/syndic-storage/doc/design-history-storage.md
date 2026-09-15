@@ -236,6 +236,12 @@ through fresh handles but cannot fill missing stages or authorize another histor
 
 ## Provider-Operation Finalization Reads
 
+`stop_admission_read_candidate` shares the ordinary two-pass stop-admission classifier through
+explicit borrowed candidate recovery access. Exact target, selected route, provider-finalization
+and retained live-stop observations keep their existing bounded authentication and drift/corruption
+semantics. These facts may guide fenced candidate convergence; they do not release the startup
+fence or authorize ordinary execution, provider dispatch or cleanup.
+
 A compacting gate may still select its exact operation after provider terminal publication and
 before final compaction settlement. The provider turn is terminal, but this is deferred compaction
 authority rather than settled ordinary history. Delivery recovery retains its deferred-compaction

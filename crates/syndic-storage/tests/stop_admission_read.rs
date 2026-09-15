@@ -2,6 +2,9 @@
 mod support;
 
 #[cfg(feature = "test-faults")]
+#[path = "stop_admission_read/candidate.rs"]
+mod candidate;
+#[cfg(feature = "test-faults")]
 #[path = "delivery_recovery/finalizing_history_support.rs"]
 mod finalizing_history_support;
 #[cfg(feature = "test-faults")]
