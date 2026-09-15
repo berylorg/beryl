@@ -342,3 +342,13 @@ initial/recovered/publication parity, foreign/retired handles, ordinary refusal 
 every added reader. Normal compilation, formatting and diff checks passed; independent review
 accepted family/key selection, fences, bounds and semantic guards. This boundary does not accept
 history coherence or replace consumer-owned multi-record confirmation.
+
+## Candidate Turn-Item Pages
+
+Phase 446 accepted candidate turn-item pages through the existing exact owner range and bounded
+cursor path. All three selected candidate and ordinary ordered-read regressions passed in 12.504
+seconds (run `6d70347e-6b8f-4888-b11e-4af696d999cd`). The candidate case covers neighboring owners,
+exclusive continuation, first/tail/empty pages, item limits, exact byte accounting and tiny-limit
+failure, initial/recovered/publication parity, foreign/retired handles and ordinary refusal. Normal
+compilation, formatting and diff checks passed; independent review accepted range, bounds and
+capability semantics. Ordinal positions do not replace surrounding consumer state confirmation.

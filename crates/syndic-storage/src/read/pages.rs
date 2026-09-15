@@ -157,6 +157,21 @@ impl SyndicStorage {
         )
     }
 
+    pub fn turn_items_candidate(
+        &self,
+        store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        turn: SyndicTurnId,
+        after: Option<crate::TurnItemOrdinal>,
+        limits: CursorReadLimits,
+    ) -> Result<SyndicPage<crate::TurnItemIndexRecord>, SyndicReadError> {
+        self.turn_items_with_access(
+            super::access::ReadAccess::Candidate(store),
+            turn,
+            after,
+            limits,
+        )
+    }
+
     pub(in crate::read) fn turn_items_with_access(
         &self,
         store: super::access::ReadAccess<'_>,

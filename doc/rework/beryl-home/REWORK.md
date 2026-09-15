@@ -387,6 +387,7 @@
 - [x] Accepted candidate compaction admission with [binding, CAS ownership and stabilization evidence](../../failures/target-bootstrap-composition.md#candidate-compaction-admission).
 - [x] Accepted candidate terminal-history evidence with [fixed-point, lifecycle and generation checks](../../failures/target-bootstrap-composition.md#candidate-terminal-history-evidence).
 - [x] Accepted candidate history metadata with [exact family, generation and bounded-read evidence](../../failures/target-bootstrap-composition.md#candidate-history-metadata).
+- [x] Accepted candidate turn-item pages with [owner isolation, continuation and exact-byte evidence](../../failures/target-bootstrap-composition.md#candidate-turn-item-pages).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

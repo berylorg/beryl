@@ -245,6 +245,12 @@ ownerless/unsealed guard remains shared. These point reads do not stabilize a mu
 the owning convergence reader retains its existing confirmation checks. They confer no ordinary
 execution, publication, dispatch or cleanup custody.
 
+`turn_items_candidate` supplies the ordinary owner-qualified forward page through candidate access.
+The exact turn range, exclusive ordinal continuation, caller item/byte bounds, page byte accounting
+and `has_more` semantics remain shared. An ordinal is a position, not a revision-bound authority;
+consumers retain their existing surrounding state confirmation. Old or foreign storage handles
+remain invalid, and the read does not release ordinary admission.
+
 ## Provider-Operation Finalization Reads
 
 `compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission
