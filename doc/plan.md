@@ -65,6 +65,13 @@ then implement explicit capacity progress before actual record reservation and j
 Preserve hard limits and typed refusal when pins or supported failures prevent release. Rerun the
 unchanged app workload after dependency acceptance.
 
+Blocked at readiness review: a physical-pressure-only trigger misses journal replay charge already
+released by ordinary background maintenance. A late journal cut cannot repair an earlier within-file
+replay peak. The [recovery blocker](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
+records the independently reviewed source counterexample. Notify the Operator before replacing the
+proposed approach; recommended next work is bounded replay-capacity accounting independent of physical
+residency, preserving existing recovery and clear semantics. No admission integration is implemented.
+
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
 Apply the [app public boundary](../crates/beryl-app/doc/design.md#public-boundary) and

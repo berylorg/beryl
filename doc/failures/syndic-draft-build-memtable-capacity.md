@@ -133,3 +133,43 @@ raise the limit, reopen between cases, retry without evidence of pending progres
 payload merely to pass qualification. Further production changes require their own design and
 implementation boundary. App qualification, candidate recovery and executable bootstrap remain
 unaccepted.
+
+## Aggregate Admission Recovery Blocker
+
+The exact snapshot-floor component is accepted in Fjall `1f4d863` and Beryl `6b5f8318`.
+Eight focused and all 255 dependency cases, normal compilation, formatting and independent review
+passed. Ordinary aggregate admission remains pending; the component test establishes recovery with
+an explicit journal cut and does not prove that a physical-pressure trigger is sufficient.
+
+Read-only recovery review invalidated that proposed trigger. Raw recovery admission accumulates
+journal-derived payload and record charge, checks each complete prospective batch, and discards
+persisted-covered charge only after a sealed journal ends (`src/recovery/journal_admission.rs`).
+Prepared replay follows the same boundary (`src/recovery/journal_replay.rs`). A late journal cut
+cannot remove a replay peak already present inside the file.
+
+A supported source-derived counterexample uses default LZ4 compression and repeated ordinary
+single-record batches overwriting a one-byte key with a compressible 1 MiB value. Every 64 records
+crosses the 64 MiB individual memtable threshold while encoded journal size remains far below the
+64,000,000-byte journal threshold. With workers completing between chunks, subsequent rotations
+refresh GC and retire the previous flushed history through ordinary
+`src/keyspace/maintenance.rs`. Live physical charge can remain around two chunks, below 256 MiB,
+while 256 records in one journal require 256 MiB plus 256 key bytes during raw recovery admission.
+This is semantic source evidence, not a newly executed reproduction. No test-only retirement or
+raised limit is needed for the schedule.
+
+Therefore a cut and write exclusion only when current physical charge is insufficient cannot
+establish same-policy reopenability. Even the ordinary background path can release charge before
+the capacity predicate runs. A recovery-aware admission boundary must account for journal-derived
+replay charge independently of physical residency, before the batch that would exceed either limit.
+The recommended next design preserves existing recovery semantics and adds bounded replay-capacity
+accounting and progress selection before aggregate flushing. Exact snapshot retirement, real pins,
+hard limits and pre-journal failure classification remain required.
+
+Filtering persisted-covered records during recovery is a separate architectural alternative, not a
+local shortcut: current clear replay invalidates the persisted watermark and clears the prepared
+tree. A plain persisted-sequence filter can skip records using state that a replayed clear destroys.
+That alternative would require its own clear-aware admission and replay authority and proof.
+
+Dependent implementation is stopped under the Operator's technically-invalid-plan rule. Complete
+the recovery-aware admission design before activating root phase 431 and Fjall phase 108. App
+qualification remains paused. No aggregate-admission production changes were made.
