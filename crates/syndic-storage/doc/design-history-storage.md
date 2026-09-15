@@ -234,6 +234,17 @@ copying all resource records, or doing sidecar I/O. The final command and its re
 remain fixed-size in media count. Fresh recovery can seal or select a fully staged durable candidate
 through fresh handles but cannot fill missing stages or authorize another historical request.
 
+## Candidate History Metadata
+
+Named candidate counterparts of `thread`, `turn`, `turn_state`, `input_gate`, `canonical_item`,
+`content_manifest`, `resource`, `item_projection_head`, `item_projection_set`,
+`item_projection_build`, `transcript_view_head` and `transcript_build` supply exact bounded
+metadata for candidate history convergence. Each uses borrowed candidate recovery access and the
+ordinary typed family, key, codec, byte limit and absence/error semantics. The content-manifest
+ownerless/unsealed guard remains shared. These point reads do not stabilize a multi-record snapshot;
+the owning convergence reader retains its existing confirmation checks. They confer no ordinary
+execution, publication, dispatch or cleanup custody.
+
 ## Provider-Operation Finalization Reads
 
 `compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission

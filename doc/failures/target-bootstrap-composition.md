@@ -329,3 +329,16 @@ authentication, and domain-revision drift precedence. All 45 delivery-recovery t
 publication parity, unfinished history, foreign/retired handles, ordinary refusal, point bounds,
 missing state or projection and mutation between confirmations. Normal compilation, formatting and
 diff checks passed; independent review accepted identity, fixed-point semantics and boundedness.
+
+## Candidate History Metadata
+
+Phase 445 accepted 12 named candidate history metadata reads through existing bounded point
+acquisition, exact generation keys and the shared ownerless/unsealed manifest guard. Three selected
+ordinary-bound/parity and candidate-manifest tests passed in run
+`a4a35ee5-caa0-4b47-a0a9-3a636b7c5f5e`. The all-reader lifecycle case passed in 14.043 seconds
+(run `3aa46ea4-d4b2-4bfd-bbc7-038c1c83d131`) after explicitly seeding resource and retained-build
+metadata omitted by the populated fixture. It verifies populated/absent results, exact generations,
+initial/recovered/publication parity, foreign/retired handles, ordinary refusal and byte limits for
+every added reader. Normal compilation, formatting and diff checks passed; independent review
+accepted family/key selection, fences, bounds and semantic guards. This boundary does not accept
+history coherence or replace consumer-owned multi-record confirmation.

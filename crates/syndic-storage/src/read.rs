@@ -4,6 +4,7 @@ mod accepted_ready;
 pub(crate) mod access;
 mod admission;
 mod binding;
+mod candidate_history;
 mod capture;
 mod capture_text;
 mod catalog_summary;

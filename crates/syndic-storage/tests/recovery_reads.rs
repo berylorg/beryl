@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "recovery_reads/candidate_history.rs"]
+mod candidate_history;
 #[path = "recovery_reads/ordered.rs"]
 mod ordered;
 mod support;

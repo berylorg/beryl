@@ -50,11 +50,16 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 444: Establish Candidate Terminal History Evidence (finished)
+# Phase 445: Establish Candidate History Metadata Reads (finished)
 
-Accepted candidate terminal-history evidence through the shared bounded fixed-point verifier.
-All 45 delivery-recovery tests passed with normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-terminal-history-evidence).
+Accepted 12 exact candidate history metadata reads with shared bounded acquisition and manifest
+validation. Four focused tests passed after fixture correction, with normal compilation and
+independent review. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-history-metadata).
+
+# Phase 446: Establish Candidate Turn-Item Pages (pending)
+
+Expose the bounded owner-qualified turn-item page used by terminal-history convergence through
+candidate access, retaining ordering, cursor bounds, revision checks and ordinary parity.
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)
 
