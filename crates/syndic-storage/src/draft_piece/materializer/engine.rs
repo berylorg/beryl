@@ -5,15 +5,13 @@ use beryl_home_store::{
     ReconciliationReservation,
 };
 use beryl_model::{ContentRevision, DomainRevision, SyndicContentDigest, SyndicContentId};
-use sha2::{Digest, Sha256};
 
 use crate::{
-    ComposerAtomOrdinal, ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord,
-    ContentEncoding, ContentLifecycle, ContentManifestRecord, ContentPieceOrdinal,
-    ContentPieceRecord, ContentReference, ContentSummary, ContentTextSpanRecord,
-    DraftPieceLeafValueV1, InputMarkerOrdinal, SyndicMutationError, SyndicPointReadLimit,
-    SyndicStorage, advance_content_chain, content_chain_seed,
-    draft_piece::read_materialization_page,
+    ContentByteSpanRecord, ContentChunkOrdinal, ContentChunkRecord, ContentEncoding,
+    ContentLifecycle, ContentManifestRecord, ContentPieceOrdinal, ContentPieceRecord,
+    ContentReference, ContentSummary, ContentTextSpanRecord, DraftPieceLeafValueV1,
+    SyndicMutationError, SyndicPointReadLimit, SyndicStorage, advance_content_chain,
+    content_chain_seed, draft_piece::read_materialization_page,
 };
 use crate::{
     codec::{
@@ -26,6 +24,9 @@ use crate::{
 };
 
 use super::{codec::*, model::*};
+
+mod drain;
+use drain::drain_record;
 
 #[derive(Clone)]
 pub struct PreparedDraftComposerStepV1 {
@@ -730,45 +731,7 @@ impl SyndicStorage {
             .pieces()
             .first()
             .ok_or(DraftComposerMaterializationErrorV1::InvalidBuild)?;
-        let drained = drain_record(&build, piece)?;
-        let Some((next_frontier, text_span, output_piece)) = drained else {
-            let next_frontier = DraftComposerRecordFrontierV1::new(
-                frontier.cursor(),
-                frontier.encoded_bytes(),
-                frontier.logical_utf8_bytes(),
-                frontier.piece_count(),
-                frontier.marker_count(),
-                frontier.marker_digest(),
-                frontier.maximum_image_label(),
-                build.output_encoded_bytes(),
-                checked_next(frontier.chunk_ordinal())?,
-                frontier.break_before(),
-            );
-            let next = copy_build(
-                &build,
-                build.encoder().clone(),
-                next_frontier,
-                build.output(),
-                build.output_revision(),
-                build.output_chunk_count(),
-                build.output_encoded_bytes(),
-                build.output_chain_digest(),
-                DraftComposerBuildLifecycleV1::Open(DraftComposerBuildPhaseV1::Writing),
-            );
-            return prepared(
-                build,
-                next,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                page.records_read(),
-                page.payload_bytes(),
-            );
-        };
+        let (next_frontier, text_span, output_piece) = drain_record(&build, piece)?;
         let drained_all = next_frontier.encoded_bytes() == build.output_encoded_bytes();
         let phase = if drained_all {
             if final_chunk && next_frontier.cursor().piece_index() == source.summary().piece_count()
@@ -815,7 +778,7 @@ impl SyndicStorage {
             None,
             None,
             text_span,
-            Some(output_piece),
+            output_piece,
             None,
             page.records_read(),
             page.payload_bytes(),
@@ -1073,155 +1036,6 @@ fn advance_marker_atom(
         work.break_before = true;
     }
     Ok(complete)
-}
-
-type DrainedRecord = (
-    DraftComposerRecordFrontierV1,
-    Option<ContentTextSpanRecord>,
-    ContentPieceRecord,
-);
-
-fn drain_record(
-    build: &DraftComposerBuildRecordV1,
-    source: &DraftPieceLeafValueV1,
-) -> Result<Option<DrainedRecord>, DraftComposerMaterializationErrorV1> {
-    let content = build
-        .output()
-        .ok_or(DraftComposerMaterializationErrorV1::InvalidBuild)?;
-    let frontier = build.records();
-    let rank = frontier.cursor().piece_index();
-    let atom_ordinal = ComposerAtomOrdinal::new(checked_next(rank)?)
-        .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-    match source {
-        DraftPieceLeafValueV1::Text(text) => {
-            let offset = usize::try_from(frontier.cursor().atom_encoded_offset())
-                .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            if offset > text.len() || !text.is_char_boundary(offset) {
-                return Err(DraftComposerMaterializationErrorV1::InvalidBuild);
-            }
-            let encoded_start = if offset == 0 {
-                frontier
-                    .encoded_bytes()
-                    .checked_add(9)
-                    .ok_or(DraftComposerMaterializationErrorV1::LengthOverflow)?
-            } else {
-                frontier.encoded_bytes()
-            };
-            if encoded_start >= build.output_encoded_bytes() {
-                return Ok(None);
-            }
-            let available = build.output_encoded_bytes() - encoded_start;
-            let mut take = usize::try_from(available)
-                .unwrap_or(usize::MAX)
-                .min(text.len() - offset);
-            while take != 0 && !text.is_char_boundary(offset + take) {
-                take -= 1;
-            }
-            if take == 0 {
-                return Ok(None);
-            }
-            let logical_end = frontier
-                .logical_utf8_bytes()
-                .checked_add(take as u64)
-                .ok_or(DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let encoded_end = encoded_start
-                .checked_add(take as u64)
-                .ok_or(DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let piece_count = checked_next(frontier.piece_count())?;
-            let piece_ordinal = ContentPieceOrdinal::new(piece_count)
-                .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let chunk_ordinal = ContentChunkOrdinal::new(frontier.chunk_ordinal())
-                .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let digest: [u8; 32] = Sha256::digest(&text.as_bytes()[offset..offset + take]).into();
-            let span = ContentTextSpanRecord::new(
-                content.id(),
-                piece_ordinal,
-                chunk_ordinal,
-                frontier.chunk_start(),
-                frontier.logical_utf8_bytes(),
-                logical_end,
-                encoded_start,
-                encoded_end,
-                frontier.break_before(),
-                digest,
-            )
-            .map_err(|_| DraftComposerMaterializationErrorV1::InvalidOutput)?;
-            let complete = offset + take == text.len();
-            let cursor = if complete {
-                DraftComposerSourceCursorV1::new(checked_next(rank)?, 0)
-            } else {
-                DraftComposerSourceCursorV1::new(rank, (offset + take) as u64)
-            };
-            let next = DraftComposerRecordFrontierV1::new(
-                cursor,
-                encoded_end,
-                logical_end,
-                piece_count,
-                frontier.marker_count(),
-                frontier.marker_digest(),
-                frontier.maximum_image_label(),
-                frontier.chunk_start(),
-                frontier.chunk_ordinal(),
-                false,
-            );
-            Ok(Some((next, Some(span), ContentPieceRecord::text(span))))
-        }
-        DraftPieceLeafValueV1::Marker(marker) => {
-            let encoded_start = frontier.encoded_bytes();
-            let encoded_end = encoded_start
-                .checked_add(25)
-                .ok_or(DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            if encoded_end > build.output_encoded_bytes() {
-                return Ok(None);
-            }
-            let marker_count = checked_next(frontier.marker_count())?;
-            let marker_ordinal = InputMarkerOrdinal::new(marker_count)
-                .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let piece_count = checked_next(frontier.piece_count())?;
-            let piece_ordinal = ContentPieceOrdinal::new(piece_count)
-                .map_err(|_| DraftComposerMaterializationErrorV1::LengthOverflow)?;
-            let mut encoded = [0_u8; 25];
-            encoded[0] = 1;
-            encoded[1..17].copy_from_slice(marker.marker_id().as_bytes());
-            encoded[17..].copy_from_slice(&marker.label().get().to_be_bytes());
-            let piece = ContentPieceRecord::image_marker(
-                content.id(),
-                piece_ordinal,
-                atom_ordinal,
-                marker_ordinal,
-                frontier.logical_utf8_bytes(),
-                encoded_start,
-                encoded_end,
-                marker.marker_id(),
-                marker.label(),
-                Sha256::digest(encoded).into(),
-            )
-            .map_err(|_| DraftComposerMaterializationErrorV1::InvalidOutput)?;
-            let digest = beryl_model::advance_sequential_marker_digest(
-                frontier.marker_digest(),
-                marker.marker_id(),
-                marker.label(),
-            );
-            let maximum = Some(
-                frontier
-                    .maximum_image_label()
-                    .map_or(marker.label(), |current| current.max(marker.label())),
-            );
-            let next = DraftComposerRecordFrontierV1::new(
-                DraftComposerSourceCursorV1::new(checked_next(rank)?, 0),
-                encoded_end,
-                frontier.logical_utf8_bytes(),
-                piece_count,
-                marker_count,
-                digest,
-                maximum,
-                frontier.chunk_start(),
-                frontier.chunk_ordinal(),
-                true,
-            );
-            Ok(Some((next, None, piece)))
-        }
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

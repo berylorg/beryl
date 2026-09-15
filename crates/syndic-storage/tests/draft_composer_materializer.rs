@@ -44,6 +44,9 @@ use syndic_storage::{
 #[path = "support/syndic_command_fixture.rs"]
 mod syndic_command_fixture;
 
+#[path = "draft_composer_materializer/chunk_frontiers.rs"]
+mod chunk_frontiers;
+
 #[cfg(feature = "test-faults")]
 #[path = "support/composer_asset_fixture.rs"]
 mod composer_asset_fixture;
@@ -1944,8 +1947,6 @@ fn apply_replacement(
     operation: u8,
     replacement: DraftPieceReplacementV1,
 ) -> syndic_storage::DraftPieceRootReferenceV1 {
-    let current = candidate_head(&storage, store, thread);
-    let predecessor_positions = fixture_positions(&current);
     let caret = if replacement
         .inserted()
         .iter()
@@ -1955,6 +1956,19 @@ fn apply_replacement(
     } else {
         point(0)
     };
+    apply_replacement_with_caret(storage, store, thread, operation, replacement, caret)
+}
+
+fn apply_replacement_with_caret(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    thread: SyndicThreadId,
+    operation: u8,
+    replacement: DraftPieceReplacementV1,
+    caret: DraftCompositePositionV1,
+) -> syndic_storage::DraftPieceRootReferenceV1 {
+    let current = candidate_head(&storage, store, thread);
+    let predecessor_positions = fixture_positions(&current);
     let replacements = vec![replacement];
     let header = DraftPieceEditHeaderV1::new(
         current.draft_id(),

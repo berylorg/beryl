@@ -50,12 +50,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 418: Qualify Syndic Storage Initial Candidates (finished)
+# Phase 424: Correct Resumable Materializer Chunk Frontiers (finished)
 
-Accepted explicit Syndic fixture publication, exact mixed-domain declarations and fresh physical
-registration, preserving failure and recovery semantics. All 1,009 cases, normal and test
-compilation, formatting and independent review passed; [acceptance evidence](failures/target-bootstrap-composition.md#syndic-candidate-qualification)
-retains the fixture corrections and scope. Production behavior was unchanged.
+Accepted bounded encoded-atom record cursors across split headers and markers, preserving canonical
+bytes, chunk ownership, strict state closure and sealed-only publication. All 16 materializer
+cases passed, including 40 boundary variants with physical reopen after every step. Normal
+compilation, formatting and independent adversarial review passed; the
+[acceptance evidence](failures/syndic-materializer-chunk-frontier.md#accepted-correction) retains
+the correction and its scope.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (wip)
 
@@ -75,7 +77,15 @@ to app-owned fixture construction.
   with bounded test concurrency, and run normal compilation, formatting and independent review of
   changed composition and failure evidence before acceptance.
 
-Syndic qualification is accepted. App conversion and verification have not started.
+App fixture conversion is in place. Normal compilation, all integration-target compilation, 360
+library cases and 24 marker-service cases passed. Runtime qualification and its outstanding fixture
+corrections are recorded in [app candidate evidence](failures/target-bootstrap-composition.md#app-candidate-qualification).
+This phase is not accepted or committed.
+
+The [materializer chunk-frontier correction](failures/syndic-materializer-chunk-frontier.md) passed
+separate acceptance on 2026-09-15. Resume the remaining runtime and fixture checks with that
+correction; preserve semantic descriptor counts and authentic marker-label provenance. Candidate
+recovery and later bootstrap phases remain pending.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 

@@ -135,3 +135,37 @@ text edits. The former absolute 64-read ceiling was not an authoritative limit; 
 edit types require different compact receipt evidence. The corrected comparison preserves marker
 growth and history independence without weakening structural reuse, publication, replay or restart
 assertions. App fixtures, candidate recovery access and complete service publication remain pending.
+
+## App Candidate Qualification
+
+Application fixtures now explicitly prepare and publish their complete package-owned candidate
+declarations. Generic openers retain candidates; fixed mixed-domain composers register both state
+and Syndic before publication. Fresh physical opens rebuild live handles, and same-home recovery
+retains its separate publication path. Production app behavior was not changed.
+
+Qualification is incomplete. Normal app compilation, all app test-target compilation, 360 library
+cases and 24 marker-service cases passed. The first representative integration run passed 312 of
+330 cases and exposed stale fixture setup. All five accepted-promotion cases subsequently passed
+with authentic fresh image-label allocation; clipboard scenarios passed on the normal stack after
+splitting two independent fixtures. The final runtime corrections have not all passed acceptance,
+and the interrupted combined run is not success evidence.
+
+Mutation fixtures require replayable evidence admission before staging. The large submitted-input
+fixture's original 41-byte durable fragments exhausted the production 256 MiB memtable payload
+budget after real build progress. Bounded text coalescing preserves the logical payload while
+limiting each page's actual owned bytes; it exposed the confirmed
+[materializer chunk-frontier defect](syndic-materializer-chunk-frontier.md), which temporarily
+blocked this fixture-only phase. Its separate correction passed acceptance on 2026-09-15, allowing
+qualification to resume without raising storage limits or avoiding the header boundary.
+
+Remaining fixture work includes current-selection recapture after flush publication, final GUI and
+low-history terminal verification, native retry evidence, and submitted-input descriptor/label
+reconciliation. Marker-free replay emits one logical text descriptor regardless of stored text
+atom count. Repeated fresh references to one AssetId share an allocated label within one mutation;
+the image-scaling fixture needs authentic distinct-operation label provenance to retain its
+intended distinct-image assertions. Do not replace those assertions with repeated-label behavior.
+
+The reported flush synchronization suspicion was disproved: publication completion updates the
+slot identity and dispatcher, and callers must honor `CaptureRequired` using the current selection.
+The separately corrected production blocker was the materializer producer/decoder contradiction.
+No candidate recovery, prepared service graph, executable startup or phase acceptance is claimed.

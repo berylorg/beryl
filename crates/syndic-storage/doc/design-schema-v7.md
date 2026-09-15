@@ -421,6 +421,13 @@ canonical byte comparison of the point-read target closure.
   materialization operation identity. Its V1 value stores the source composite cursor, output
   `ComposerV1` manifest frontier, encoder state, exact input/output summaries, and closed `Open`,
   `Cancelled`, `Failed`, `Superseded(successor operation)`, or `Sealed` lifecycle.
+  Encoder and record cursors both count encoded bytes within the current source atom, including
+  its header. A record cursor may stop inside a text header or marker atom without emitting a
+  content piece; its encoded frontier still consumes exactly the emitted chunk boundary before
+  returning to `Writing`. Text spans cover only nonempty UTF-8 payload within their owning chunk.
+  A marker piece is emitted only after all 25 encoded bytes are available and retains the atom's
+  original encoded start across chunks. Reopening retains these partial-atom cursors without
+  changing canonical bytes, chunk boundaries, summaries or publication eligibility.
   `draft-composer-materializations` is keyed only by exact source combined root and format version
   and stores the immutable sealed content reference, source combined-root digest/summary, and exact
   canonical Composer summary/digest. A second disagreeing sealed result is a collision.
