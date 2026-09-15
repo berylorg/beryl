@@ -50,14 +50,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 424: Correct Resumable Materializer Chunk Frontiers (finished)
+# Phase 425: Reuse Canonical Materialized Content Through Cooperative Replay (finished)
 
-Accepted bounded encoded-atom record cursors across split headers and markers, preserving canonical
-bytes, chunk ownership, strict state closure and sealed-only publication. All 16 materializer
-cases passed, including 40 boundary variants with physical reopen after every step. Normal
-compilation, formatting and independent adversarial review passed; the
-[acceptance evidence](failures/syndic-materializer-chunk-frontier.md#accepted-correction) retains
-the correction and its scope.
+Accepted bounded cooperative replay of matching ownerless building or sealed content, preserving
+independent root proof, exact record closure, monotonic shared progress and sealed immutability.
+All 25 materializer cases passed, including nine new reuse/custody cases and the 40 existing
+physical-reopen boundary variants. Normal compilation, formatting and independent adversarial
+review passed. The [acceptance evidence](failures/syndic-draft-materializer-content-identity.md#accepted-cooperative-replay)
+retains this separate production correction; app qualification resumes below.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (wip)
 
@@ -83,9 +83,13 @@ corrections are recorded in [app candidate evidence](failures/target-bootstrap-c
 This phase is not accepted or committed.
 
 The [materializer chunk-frontier correction](failures/syndic-materializer-chunk-frontier.md) passed
-separate acceptance on 2026-09-15. Resume the remaining runtime and fixture checks with that
-correction; preserve semantic descriptor counts and authentic marker-label provenance. Candidate
-recovery and later bootstrap phases remain pending.
+separate acceptance as `28c17be9` on 2026-09-15. Qualification then reproduced the existing
+[repeated-content collision](failures/syndic-draft-materializer-content-identity.md#app-qualification-reproduction):
+the fourth scale case submits the same canonical bytes from a different draft and encounters the
+already sealed manifest. Independent review confirmed that this is separate from the accepted
+chunk correction. The Operator-selected bounded cooperative-replay correction passed separate
+acceptance in phase 425; resume qualification without altering repeated payloads to avoid it.
+Candidate recovery and later bootstrap phases remain pending.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 

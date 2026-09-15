@@ -1378,7 +1378,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   total materialization I/O is proportional to that exact combined root.
 - A materialization never changes the current draft, candidate session, or autosave backing. It
   starts for submission only after the required flush selects its exact source root. A cancelled,
-  failed, or explicitly superseded build before seal leaves only unreachable staging; a crash
+  failed, or explicitly superseded build before seal publishes no mapping for that operation; shared
+  canonical output may remain usable by other builds under the package's bounded cooperative-replay
+  contract. A crash
   retains exact-root-bound resumable state. Retry and recovery bind to the exact combined root and
   materialization identity; a later candidate adoption or current-draft publication does not
   conflict with, supersede, or rewrite
@@ -1387,7 +1389,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   Materialization remains exact-root-bound until it is cancelled, fails, is explicitly superseded,
   or seals; a
   sealed exact result remains reusable by other canonical consumers naming that root, while a later
-  draft root requires a distinct result.
+  draft root requires its own complete root-bound proof and mapping. Identical canonical bytes may
+  reuse the same immutable content reference through bounded exact-record replay; digest equality
+  alone does not authorize reuse or repair missing sealed content.
 - Submission validates that the active candidate session is clean at the same published root used
   by its materialization, independently validates the sealed content identity/full digest and
   root-bound opaque draft-marker seal proof, requires the embedded `SequentialMarkerSummaryV1` and

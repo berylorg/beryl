@@ -587,6 +587,26 @@ sealed content reference. Its resumable build retains only the source root, boun
 output frontier, streaming encoder state, checked totals, and chain commitments. Only `Sealed`
 publishes the mapping. Cancellation, failure, and explicit same-root supersession publish none.
 
+Content identity is the canonical content digest, independent of the draft root and build operation.
+Builds producing identical canonical bytes use bounded cooperative replay over the same ownerless
+content manifest. Each root retains its own encoder and record cursors and independently proves its
+complete mapping; finding a sealed manifest or matching digest is not that proof. Competing operations
+for the same root may use the first complete, validated exact-root mapping.
+
+A build replays already published chunk prefixes by exact canonical record equality, including byte
+spans, text spans and pieces. The shared manifest never moves backwards to a build's private frontier.
+Appending a chunk requires exact agreement with the current building manifest's frontier and revision;
+another build may complete missing building indexes from the same canonical source. Cancelled, failed
+or superseded builds leave their partial shared output available to a later exact replay without
+retaining exclusive writer ownership.
+
+Sealed content is immutable. Reuse requires every generated chunk and index record to exist exactly;
+missing or contradictory sealed records fail closed and are never repaired by reuse. A successful
+replay retains the actual sealed reference and revision, then atomically seals its own complete build
+and publishes its root mapping. Every prepared step that observes a shared manifest revalidates that
+exact manifest during command preparation, including steps that write no manifest. Concurrent drift
+refuses the stale step without partial publication; callers may prepare a fresh bounded step.
+
 Exact-root text and marker reads name the complete immutable root. Text demands are 4 through 65,536
 bytes. Marker pages request 1 through 256 objects and 1 through 65,536 retained canonical bytes.
 Draft text, marker, piece, validation, and materialization input pages contain at most 256 records and

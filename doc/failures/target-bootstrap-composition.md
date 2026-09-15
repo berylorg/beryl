@@ -169,3 +169,25 @@ The reported flush synchronization suspicion was disproved: publication completi
 slot identity and dispatcher, and callers must honor `CaptureRequired` using the current selection.
 The separately corrected production blocker was the materializer producer/decoder contradiction.
 No candidate recovery, prepared service graph, executable startup or phase acceptance is claimed.
+
+After chunk-frontier acceptance, the resumed 30-case runtime run passed 27 cases, including all 11
+native retry cases and the current-selection flush corrections. The final all-app test-target
+compilation and exact-file formatting passed. Marker-free replay expectations now use the logical
+descriptor count instead of stored atom count; the first three scale inputs completed before the
+fourth repeated input exposed the separately documented
+[sealed-content reuse blocker](syndic-draft-materializer-content-identity.md#app-qualification-reproduction).
+Production implementation stopped for Operator review; no repeated-payload workaround was made.
+The Operator subsequently selected bounded cooperative replay, which passed
+[separate production acceptance](syndic-draft-materializer-content-identity.md#accepted-cooperative-replay)
+with 25 materializer cases and independent adversarial review. App qualification resumes with
+its original repeated payloads; that acceptance does not close the remaining fixture checks.
+
+The end-marker GUI fixtures now use the actual anchor and an inclusive marker-demand scope; the
+cancelled-removal case passed. The marker menu/preview case reaches its replacement mutation but
+still fails exact host translation and remains unclassified. The five-outcome edit fixture's
+earlier `InvalidRoot` was operation 58, the two-empty-text-fragment rejection setup, not the
+history-limited case. Independent review identified the unsupported empty continuation. Its new
+multibyte-boundary rejection setup has compiled, but the combined test overflowed its normal stack;
+split fixture frames, retain valid predecessor/intended caret positions, and verify all outcomes
+before acceptance. Distinct-operation image-label seeding has compiled but remains runtime
+unverified because the repeat-content blocker occurs before the marker-aware scale series.

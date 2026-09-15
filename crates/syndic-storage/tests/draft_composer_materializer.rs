@@ -48,6 +48,10 @@ mod syndic_command_fixture;
 mod chunk_frontiers;
 
 #[cfg(feature = "test-faults")]
+#[path = "draft_composer_materializer/reuse.rs"]
+mod reuse;
+
+#[cfg(feature = "test-faults")]
 #[path = "support/composer_asset_fixture.rs"]
 mod composer_asset_fixture;
 

@@ -71,3 +71,50 @@ policy in owning draft-storage authority before planning its implementation. Acc
 cover distinct-root sealed reuse, interleaved same-content builds, abandoned partial output,
 stale prepared mutations, same-root competing operations, and missing or contradictory immutable
 records. The existing distinct-text shutdown fixtures remain scoped isolation, not a repair.
+
+## App Qualification Reproduction
+
+After the independent chunk-frontier correction was accepted as `28c17be9`, app candidate
+qualification reproduced the existing sealed-content collision on 2026-09-15. In
+`submitted_input_logical_work_scales_and_local_capacity_releases`, threads 150, 151 and 152
+completed the 2,048-, 8,192- and 16,384-repetition marker-free cases, including wire and three-pass
+replay assertions. Thread 153 repeats the 16,384-repetition shape and failed before execution with
+`Materialization(InvalidOutput)`. The fixture's diagnostic identifies
+`syndic_thread_99999999999999999999999999999999`, the hexadecimal encoding of seed 153.
+
+Independent review confirmed that both repeated shapes contain the same 256 bounded text atoms
+and canonical chunks. The digest-derived content id reaches the existing sealed manifest rejected
+by `prepare_plan_step`; the chunk-frontier correction did not change that planning or reuse path.
+Changing the repeated fixture payload would evade its repeatability assertion and is not an
+acceptable correction. App qualification remains blocked pending the separate production scope
+and contention-policy decision described above. The new distinct-operation image-label fixture
+has compiled but has not yet reached its marker-aware runtime checks.
+
+## Accepted Cooperative Replay
+
+On 2026-09-15 the Operator selected bounded cooperative replay, and phase 425 passed separate
+production acceptance. Owning draft-storage, V7 frontier and Syndic history authorities now
+distinguish each root's private proof from append-only shared content progress. No persisted
+record shape or canonical content identity changed.
+
+Planning retains a matching shared manifest's actual revision. Each build independently replays
+its source and output records, compares occupied records exactly, and appends only at the observed
+building frontier. Every step revalidates its observed manifest during mutation preparation,
+including steps without a manifest write. Exact occupied records are omitted from writes;
+missing chunk-prefix records and missing sealed records refuse rather than being repaired.
+Building indexes may be completed. Seal retains the actual immutable reference and publishes a
+root mapping only after that build's complete encoder and record proof. Same-root competitors
+converge on the first complete valid mapping.
+
+All 25 materializer tests passed with two test threads and one compiler job, including nine new
+reuse/custody cases: distinct-root sealed reuse, interleaved progress, cancelled/failed/superseded
+prefix adoption after physical reopen, stale planning/append/replay/drain/seal preparations,
+same-root competition, indeterminate commits at every replay step, required building prefix
+closure and index completion, and refusal of corrupt or missing sealed output. The existing
+40 split-header/marker variants still reopen after every committed step and verify canonical
+bytes and bounded work. Normal library/test compilation, exact-file formatting and independent
+adversarial review passed; no blocking review findings remained.
+
+App qualification must now rerun its original repeated payloads and remaining fixture checks.
+This production acceptance does not accept app candidate composition or the separate bootstrap
+and service-graph checkpoints.

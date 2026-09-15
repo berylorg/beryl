@@ -428,6 +428,10 @@ canonical byte comparison of the point-read target closure.
   A marker piece is emitted only after all 25 encoded bytes are available and retains the atom's
   original encoded start across chunks. Reopening retains these partial-atom cursors without
   changing canonical bytes, chunk boundaries, summaries or publication eligibility.
+  Its output counts and chain are the build's independently replayed prefix, which may lag the
+  shared ownerless manifest. Its output revision is an observed manifest revision, never an
+  exclusive writer lease. Progress cannot move the shared manifest backwards; sealed completion
+  retains the actual sealed content reference. These meanings use the existing V1 fields.
   `draft-composer-materializations` is keyed only by exact source combined root and format version
   and stores the immutable sealed content reference, source combined-root digest/summary, and exact
   canonical Composer summary/digest. A second disagreeing sealed result is a collision.
