@@ -8,6 +8,8 @@ mod candidate_classification;
 mod candidate_pages;
 #[path = "delivery_recovery/candidate_pending.rs"]
 mod candidate_pending;
+#[path = "delivery_recovery/candidate_terminal.rs"]
+mod candidate_terminal;
 
 #[path = "delivery_recovery/authority_lost_context.rs"]
 mod authority_lost_context;

@@ -50,11 +50,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 443: Establish Candidate Compaction Admission Reads (finished)
+# Phase 444: Establish Candidate Terminal History Evidence (finished)
 
-Accepted candidate compaction admission through shared bounded observations and the unchanged
-two-pass classifier. All 65 compaction tests passed with normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-compaction-admission).
+Accepted candidate terminal-history evidence through the shared bounded fixed-point verifier.
+All 45 delivery-recovery tests passed with normal compilation and independent review.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-terminal-history-evidence).
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)
 

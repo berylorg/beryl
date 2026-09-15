@@ -86,6 +86,9 @@ The package exposes grouped typed operations rather than raw record mechanics:
   revision after the idle gate and the same bounded fixed point used by terminal-history release
   are established. Complete and authority-loss incomplete history remain distinct lifecycle
   outcomes. This read likewise grants no live cleanup or process-shutdown authority.
+- `terminal_history_evidence_candidate` shares those exact fixed-point, gate/source and revision
+  checks through borrowed candidate recovery access. Initial and reopened candidates retain the
+  same bounded evidence and lifecycle distinction without releasing ordinary execution or custody.
 - Opaque proof preparation, command dispatch custody, receipt consumption, and targeted
   reconciliation for package operations that participate in HomeStore composition.
 

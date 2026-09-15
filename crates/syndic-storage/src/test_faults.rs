@@ -43,7 +43,30 @@ pub fn terminal_history_evidence_with_confirmation_hook(
     limit: SyndicPointReadLimit,
     before_confirmation: impl FnOnce(),
 ) -> Result<Option<TerminalHistoryEvidence>, SyndicReadError> {
-    storage.read_terminal_history_evidence(store, thread_id, turn_id, limit, before_confirmation)
+    storage.read_terminal_history_evidence_with_access(
+        crate::read::access::ReadAccess::Ordinary(store),
+        thread_id,
+        turn_id,
+        limit,
+        before_confirmation,
+    )
+}
+
+pub fn terminal_history_evidence_candidate_with_confirmation_hook(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    thread_id: beryl_model::SyndicThreadId,
+    turn_id: beryl_model::SyndicTurnId,
+    limit: SyndicPointReadLimit,
+    before_confirmation: impl FnOnce(),
+) -> Result<Option<TerminalHistoryEvidence>, SyndicReadError> {
+    storage.read_terminal_history_evidence_with_access(
+        crate::read::access::ReadAccess::Candidate(store),
+        thread_id,
+        turn_id,
+        limit,
+        before_confirmation,
+    )
 }
 
 mod build_mapping_custody;

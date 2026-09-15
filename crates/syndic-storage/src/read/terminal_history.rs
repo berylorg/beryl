@@ -1,12 +1,16 @@
-use beryl_home_store::{HomeGeneration, HomeStore, PointReadLimit, ReadError};
+use beryl_home_store::{
+    HomeCandidateRecoveryAccess, HomeGeneration, HomeStore, PointReadLimit, ReadError,
+};
 use beryl_model::{BerylHomeId, DomainRevision, InputGateRevision, SyndicThreadId, SyndicTurnId};
 
 use crate::{
     BindingState, InputGateState, SelectedPathProof, SyndicPointReadLimit, SyndicReadError,
     SyndicStorage, TurnLifecycle, TurnStateRevision,
-    codec::{ExactCodec, Family},
+    codec::{ExactCodec, Family, InputGatesFamily, ThreadsFamily, TurnStatesFamily},
     terminal_history::TerminalHistoryReader,
 };
+
+use super::access::ReadAccess;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TerminalHistoryEvidence {
@@ -59,73 +63,100 @@ impl SyndicStorage {
         turn_id: SyndicTurnId,
         limit: SyndicPointReadLimit,
     ) -> Result<Option<TerminalHistoryEvidence>, SyndicReadError> {
-        self.read_terminal_history_evidence(store, thread_id, turn_id, limit, || {})
+        self.read_terminal_history_evidence_with_access(
+            ReadAccess::Ordinary(store),
+            thread_id,
+            turn_id,
+            limit,
+            || {},
+        )
     }
 
-    pub(crate) fn read_terminal_history_evidence(
+    pub fn terminal_history_evidence_candidate(
         &self,
-        store: &HomeStore,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<TerminalHistoryEvidence>, SyndicReadError> {
+        self.read_terminal_history_evidence_with_access(
+            ReadAccess::Candidate(store),
+            thread_id,
+            turn_id,
+            limit,
+            || {},
+        )
+    }
+
+    pub(crate) fn read_terminal_history_evidence_with_access(
+        &self,
+        store: ReadAccess<'_>,
         thread_id: SyndicThreadId,
         turn_id: SyndicTurnId,
         limit: SyndicPointReadLimit,
         before_confirmation: impl FnOnce(),
     ) -> Result<Option<TerminalHistoryEvidence>, SyndicReadError> {
-        let revision = self.revision(store)?;
-        self.with_current_gate_source(store, thread_id, limit, || {
-            let read =
-                || {
-                    let thread =
-                        self.thread(store, thread_id, limit)?
-                            .ok_or(SyndicReadError::Invariant(
-                                "terminal history thread is missing",
-                            ))?;
-                    let gate = self.input_gate(store, thread_id, limit)?.ok_or(
-                        SyndicReadError::Invariant("terminal history gate is missing"),
-                    )?;
-                    if thread.committed_tail() != Some(turn_id)
-                        || !matches!(gate.state(), InputGateState::Idle)
-                    {
-                        return Ok(None);
-                    }
-                    let state = self.turn_state(store, turn_id, limit)?.ok_or(
-                        SyndicReadError::Invariant("terminal history turn state is missing"),
-                    )?;
-                    let binding = self.current_binding(store, thread_id, limit)?.ok_or(
-                        SyndicReadError::Invariant("terminal history binding is missing"),
-                    )?;
-                    if matches!(binding.binding().state(), BindingState::Active(_)) {
-                        return Err(SyndicReadError::Invariant(
-                            "idle terminal history retains active binding",
-                        ));
-                    }
-                    let reader = TerminalRead {
-                        storage: self,
-                        store,
-                        limit,
-                    };
-                    if !crate::terminal_history::is_complete(&reader, &thread, &state, None)? {
-                        return Ok(None);
-                    }
-                    Ok(Some(TerminalHistoryEvidence {
-                        home_id: store.home_id(),
-                        home_generation: self.home_generation,
-                        source_revision: revision,
-                        thread_id,
-                        turn_id,
-                        selected_path: SelectedPathProof::new(
-                            thread.committed_tail(),
-                            thread.revision(),
-                            thread.selected_path_digest(),
-                        ),
-                        gate_revision: gate.revision(),
-                        state_revision: state.revision(),
-                        lifecycle: state.lifecycle(),
-                    }))
+        let revision = self.revision_with_access(store)?;
+        self.with_current_gate_source_with_access(store, thread_id, limit, || {
+            let read = || {
+                let thread = self
+                    .point_with_access::<ThreadsFamily>(store, thread_id, limit)?
+                    .ok_or(SyndicReadError::Invariant(
+                        "terminal history thread is missing",
+                    ))?;
+                let gate = self
+                    .point_with_access::<InputGatesFamily>(store, thread_id, limit)?
+                    .ok_or(SyndicReadError::Invariant(
+                        "terminal history gate is missing",
+                    ))?;
+                if thread.committed_tail() != Some(turn_id)
+                    || !matches!(gate.state(), InputGateState::Idle)
+                {
+                    return Ok(None);
+                }
+                let state = self
+                    .point_with_access::<TurnStatesFamily>(store, turn_id, limit)?
+                    .ok_or(SyndicReadError::Invariant(
+                        "terminal history turn state is missing",
+                    ))?;
+                let binding = self
+                    .current_binding_with_access(store, thread_id, limit)?
+                    .ok_or(SyndicReadError::Invariant(
+                        "terminal history binding is missing",
+                    ))?;
+                if matches!(binding.binding().state(), BindingState::Active(_)) {
+                    return Err(SyndicReadError::Invariant(
+                        "idle terminal history retains active binding",
+                    ));
+                }
+                let reader = TerminalRead {
+                    storage: self,
+                    store,
+                    limit,
                 };
+                if !crate::terminal_history::is_complete(&reader, &thread, &state, None)? {
+                    return Ok(None);
+                }
+                Ok(Some(TerminalHistoryEvidence {
+                    home_id: store.home_id(),
+                    home_generation: self.home_generation,
+                    source_revision: revision,
+                    thread_id,
+                    turn_id,
+                    selected_path: SelectedPathProof::new(
+                        thread.committed_tail(),
+                        thread.revision(),
+                        thread.selected_path_digest(),
+                    ),
+                    gate_revision: gate.revision(),
+                    state_revision: state.revision(),
+                    lifecycle: state.lifecycle(),
+                }))
+            };
             let first = read();
             before_confirmation();
             let second = read();
-            if self.revision(store)? != revision {
+            if self.revision_with_access(store)? != revision {
                 return Err(SyndicReadError::ConcurrentChange {
                     operation: "terminal history evidence",
                 });
@@ -143,7 +174,7 @@ impl SyndicStorage {
 
 struct TerminalRead<'a> {
     storage: &'a SyndicStorage,
-    store: &'a HomeStore,
+    store: ReadAccess<'a>,
     limit: SyndicPointReadLimit,
 }
 

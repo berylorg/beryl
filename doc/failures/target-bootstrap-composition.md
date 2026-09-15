@@ -319,3 +319,13 @@ reopened admissible/existing results, missing-thread ineligibility, publication 
 handles, ordinary refusal, point limits, missing owner/operation and gate drift between passes.
 Normal compilation, formatting and diff checks passed; independent review accepted identity,
 stabilization, boundedness and unchanged capability semantics.
+
+## Candidate Terminal History Evidence
+
+Phase 444 accepted candidate terminal-history evidence through the ordinary bounded fixed-point
+verifier, preserving complete versus authority-loss incomplete history, binding and gate/source
+authentication, and domain-revision drift precedence. All 45 delivery-recovery tests passed in
+89.736 seconds (run `96c8e8c8-0f04-4c19-8d50-65466a54374d`). New cases cover initial/reopened
+publication parity, unfinished history, foreign/retired handles, ordinary refusal, point bounds,
+missing state or projection and mutation between confirmations. Normal compilation, formatting and
+diff checks passed; independent review accepted identity, fixed-point semantics and boundedness.
