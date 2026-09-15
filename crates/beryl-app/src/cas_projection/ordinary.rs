@@ -7,7 +7,9 @@ mod model;
 pub(in crate::cas_projection) mod preflight;
 
 pub(crate) use converge::TerminalHistoryCompletion;
-pub(in crate::cas_projection) use converge::converge_terminal_history;
+pub(in crate::cas_projection) use converge::{
+    converge_terminal_history, converge_terminal_history_candidate,
+};
 
 #[cfg(feature = "test-faults")]
 #[doc(hidden)]

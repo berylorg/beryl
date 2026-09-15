@@ -1,4 +1,5 @@
-use beryl_home_store::{CursorReadLimits, HomeStore};
+use super::access::HistoryAccess;
+use beryl_home_store::CursorReadLimits;
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     CanonicalItemRecord, ContentLifecycle, ContentManifestRecord, ItemProjectionBuildRecord,
@@ -32,17 +33,17 @@ pub(super) struct TurnFrontierSnapshot {
 }
 
 pub(super) fn terminal_turn(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
 ) -> Result<TerminalTurnSnapshot, OrdinaryTurnExecutionError> {
-    let thread = storage.thread(store, thread_id, limit)?;
-    let state = storage.turn_state(store, turn_id, limit)?;
-    let turn = storage.turn(store, turn_id, limit)?;
-    let confirmed_thread = storage.thread(store, thread_id, limit)?;
-    let confirmed_state = storage.turn_state(store, turn_id, limit)?;
+    let thread = store.thread(storage, thread_id, limit)?;
+    let state = store.turn_state(storage, turn_id, limit)?;
+    let turn = store.turn(storage, turn_id, limit)?;
+    let confirmed_thread = store.thread(storage, thread_id, limit)?;
+    let confirmed_state = store.turn_state(storage, turn_id, limit)?;
     if confirmed_thread != thread || confirmed_state != state {
         return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
     }
@@ -68,7 +69,7 @@ pub(super) fn terminal_turn(
 }
 
 pub(super) fn turn_frontier(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
@@ -76,35 +77,35 @@ pub(super) fn turn_frontier(
 ) -> Result<TurnFrontierSnapshot, OrdinaryTurnExecutionError> {
     let cursor_limits =
         CursorReadLimits::new(1, limit.max_bytes()).expect("a Syndic point-read limit is nonzero");
-    let state = storage.turn_state(store, turn_id, limit)?;
+    let state = store.turn_state(storage, turn_id, limit)?;
     let index = next_item_index(store, storage, turn_id, state.as_ref(), cursor_limits)?;
     let item = match index.as_ref() {
-        Some(index) => storage.canonical_item(store, index.item_id(), limit)?,
+        Some(index) => store.canonical_item(storage, index.item_id(), limit)?,
         None => None,
     };
     let provider_manifest = match item
         .as_ref()
         .and_then(CanonicalItemRecord::provider_content)
     {
-        Some(content) => storage.content_manifest(store, content.id(), limit)?,
+        Some(content) => store.content_manifest(storage, content.id(), limit)?,
         None => None,
     };
     let projection_manifest = match item
         .as_ref()
         .and_then(CanonicalItemRecord::projection_source)
     {
-        Some(source) => storage.content_manifest(store, source.content_id(), limit)?,
+        Some(source) => store.content_manifest(storage, source.content_id(), limit)?,
         None => None,
     };
     let resource = match item
         .as_ref()
         .and_then(|item| item.presentation().resource_id())
     {
-        Some(resource_id) => storage.resource(store, resource_id, limit)?,
+        Some(resource_id) => store.resource(storage, resource_id, limit)?,
         None => None,
     };
     let confirmed_item = match index.as_ref() {
-        Some(index) => storage.canonical_item(store, index.item_id(), limit)?,
+        Some(index) => store.canonical_item(storage, index.item_id(), limit)?,
         None => None,
     };
     let confirmed_provider_manifest = reread_manifest(store, storage, &provider_manifest, limit)?;
@@ -117,7 +118,7 @@ pub(super) fn turn_frontier(
         || confirmed_projection_manifest != projection_manifest
         || confirmed_resource != resource
         || confirmed_index != index
-        || storage.turn_state(store, turn_id, limit)? != state
+        || store.turn_state(storage, turn_id, limit)? != state
     {
         return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
     }
@@ -133,16 +134,16 @@ pub(super) fn turn_frontier(
 }
 
 fn next_item_index(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     turn_id: SyndicTurnId,
     state: Option<&TurnStateRecord>,
     limits: CursorReadLimits,
 ) -> Result<Option<TurnItemIndexRecord>, OrdinaryTurnExecutionError> {
     match state {
-        Some(state) if state.finalized_item_count() < state.item_count() => Ok(storage
+        Some(state) if state.finalized_item_count() < state.item_count() => Ok(store
             .turn_items(
-                store,
+                storage,
                 turn_id,
                 ordinal_after(state.finalized_item_count()),
                 limits,
@@ -155,25 +156,25 @@ fn next_item_index(
 }
 
 fn reread_manifest(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     manifest: &Option<ContentManifestRecord>,
     limit: SyndicPointReadLimit,
 ) -> Result<Option<ContentManifestRecord>, OrdinaryTurnExecutionError> {
     match manifest {
-        Some(manifest) => Ok(storage.content_manifest(store, manifest.id(), limit)?),
+        Some(manifest) => Ok(store.content_manifest(storage, manifest.id(), limit)?),
         None => Ok(None),
     }
 }
 
 fn reread_resource(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     resource: &Option<ResourceMetadataRecord>,
     limit: SyndicPointReadLimit,
 ) -> Result<Option<ResourceMetadataRecord>, OrdinaryTurnExecutionError> {
     match resource {
-        Some(resource) => Ok(storage.resource(store, resource.id(), limit)?),
+        Some(resource) => Ok(store.resource(storage, resource.id(), limit)?),
         None => Ok(None),
     }
 }
@@ -307,48 +308,48 @@ pub(super) struct ProjectionSnapshot {
 }
 
 pub(super) fn item_projection(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     item_id: SyndicItemId,
     limit: SyndicPointReadLimit,
 ) -> Result<ProjectionSnapshot, OrdinaryTurnExecutionError> {
-    let item = storage.canonical_item(store, item_id, limit)?;
+    let item = store.canonical_item(storage, item_id, limit)?;
     let provider_manifest = match item
         .as_ref()
         .and_then(CanonicalItemRecord::provider_content)
     {
-        Some(content) => storage.content_manifest(store, content.id(), limit)?,
+        Some(content) => store.content_manifest(storage, content.id(), limit)?,
         None => None,
     };
     let projection_manifest = match item
         .as_ref()
         .and_then(CanonicalItemRecord::projection_source)
     {
-        Some(source) => storage.content_manifest(store, source.content_id(), limit)?,
+        Some(source) => store.content_manifest(storage, source.content_id(), limit)?,
         None => None,
     };
-    let head = storage.item_projection_head(store, item_id, limit)?;
+    let head = store.item_projection_head(storage, item_id, limit)?;
     let generation = projection_generation(head.as_ref());
     let (build, set) = match generation {
         Some(generation) => (
-            storage.item_projection_build(store, item_id, generation, limit)?,
-            storage.item_projection_set(store, item_id, generation, limit)?,
+            store.item_projection_build(storage, item_id, generation, limit)?,
+            store.item_projection_set(storage, item_id, generation, limit)?,
         ),
         None => (None, None),
     };
     let (confirmed_build, confirmed_set) = match generation {
         Some(generation) => (
-            storage.item_projection_build(store, item_id, generation, limit)?,
-            storage.item_projection_set(store, item_id, generation, limit)?,
+            store.item_projection_build(storage, item_id, generation, limit)?,
+            store.item_projection_set(storage, item_id, generation, limit)?,
         ),
         None => (None, None),
     };
     let confirmed_provider_manifest = reread_manifest(store, storage, &provider_manifest, limit)?;
     let confirmed_projection_manifest =
         reread_manifest(store, storage, &projection_manifest, limit)?;
-    let confirmed_head = storage.item_projection_head(store, item_id, limit)?;
-    let confirmed_item = storage.canonical_item(store, item_id, limit)?;
+    let confirmed_head = store.item_projection_head(storage, item_id, limit)?;
+    let confirmed_item = store.canonical_item(storage, item_id, limit)?;
     if confirmed_build != build
         || confirmed_set != set
         || confirmed_provider_manifest != provider_manifest
@@ -444,21 +445,21 @@ pub(super) struct TranscriptSnapshot {
 }
 
 pub(super) fn transcript(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
 ) -> Result<TranscriptSnapshot, OrdinaryTurnExecutionError> {
-    let thread = storage.thread(store, thread_id, limit)?;
-    let head = storage.transcript_view_head(store, thread_id, limit)?;
+    let thread = store.thread(storage, thread_id, limit)?;
+    let head = store.transcript_view_head(storage, thread_id, limit)?;
     let build = match head.as_ref() {
-        Some(head) => storage.transcript_build(store, thread_id, head.generation(), limit)?,
+        Some(head) => store.transcript_build(storage, thread_id, head.generation(), limit)?,
         None => None,
     };
-    let confirmed_thread = storage.thread(store, thread_id, limit)?;
-    let confirmed_head = storage.transcript_view_head(store, thread_id, limit)?;
+    let confirmed_thread = store.thread(storage, thread_id, limit)?;
+    let confirmed_head = store.transcript_view_head(storage, thread_id, limit)?;
     let confirmed_build = match head.as_ref() {
-        Some(head) => storage.transcript_build(store, thread_id, head.generation(), limit)?,
+        Some(head) => store.transcript_build(storage, thread_id, head.generation(), limit)?,
         None => None,
     };
     if confirmed_thread != thread || confirmed_head != head || confirmed_build != build {

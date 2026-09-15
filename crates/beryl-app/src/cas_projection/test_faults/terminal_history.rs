@@ -8,6 +8,43 @@ use beryl_model::SyndicThreadId;
 
 use super::NEXT_TOKEN;
 
+pub fn converge_terminal_history_candidate(
+    store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    storage: &syndic_storage::SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    turn: beryl_model::SyndicTurnId,
+    observed_at: syndic_storage::SyndicTimestamp,
+    limit: syndic_storage::SyndicPointReadLimit,
+) -> Result<(), crate::cas_projection::OrdinaryTurnExecutionError> {
+    crate::cas_projection::ordinary::converge_terminal_history_candidate(
+        store,
+        storage,
+        thread,
+        turn,
+        observed_at,
+        limit,
+    )
+}
+
+pub fn converge_terminal_history(
+    store: &beryl_home_store::HomeStore,
+    storage: &syndic_storage::SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    turn: beryl_model::SyndicTurnId,
+    observed_at: syndic_storage::SyndicTimestamp,
+    limit: syndic_storage::SyndicPointReadLimit,
+) -> Result<(), crate::cas_projection::OrdinaryTurnExecutionError> {
+    crate::cas_projection::ordinary::converge_terminal_history(
+        store,
+        storage,
+        thread,
+        turn,
+        observed_at,
+        limit,
+        None,
+    )
+}
+
 pub struct TerminalCompletionProbe(
     pub(crate) crate::cas_projection::service::TerminalCompletionObserver,
 );

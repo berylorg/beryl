@@ -62,6 +62,7 @@ pub use target::{LiveEventTargetAbandonmentController, install_live_event_target
 pub(crate) use terminal_history::pause_terminal_history;
 pub use terminal_history::{
     TerminalCompletionProbe, TerminalHistoryBarrierController, TerminalHistoryBarrierStage,
+    converge_terminal_history, converge_terminal_history_candidate,
     install_terminal_history_barrier,
 };
 

@@ -1,4 +1,5 @@
-use beryl_home_store::{HomeGeneration, HomeStore};
+use super::access::HistoryAccess;
+use beryl_home_store::HomeGeneration;
 use beryl_model::{BerylHomeId, HomeRevision, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     CompleteTerminalHistory, InputGateRecord, InputGateState, SyndicPointReadLimit, SyndicStorage,
@@ -48,7 +49,7 @@ struct CompletionSnapshot {
 }
 
 pub(super) fn complete(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
@@ -101,23 +102,23 @@ pub(super) fn complete(
 }
 
 fn snapshot(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
 ) -> Result<CompletionSnapshot, OrdinaryTurnExecutionError> {
-    let gate = storage.input_gate(store, thread_id, limit)?.ok_or(
+    let gate = store.input_gate(storage, thread_id, limit)?.ok_or(
         OrdinaryTurnExecutionError::Invariant("terminal-history completion gate is missing"),
     )?;
     let state =
-        storage
-            .turn_state(store, turn_id, limit)?
+        store
+            .turn_state(storage, turn_id, limit)?
             .ok_or(OrdinaryTurnExecutionError::Invariant(
                 "terminal-history completion turn state is missing",
             ))?;
-    let transcript = storage
-        .transcript_view_head(store, thread_id, limit)?
+    let transcript = store
+        .transcript_view_head(storage, thread_id, limit)?
         .ok_or(OrdinaryTurnExecutionError::Invariant(
             "terminal-history completion transcript head is missing",
         ))?;

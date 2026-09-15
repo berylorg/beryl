@@ -22,6 +22,8 @@ mod submission_fixture {
     ));
 }
 
+#[path = "normal_terminal/candidate_history.rs"]
+mod candidate_history;
 #[path = "normal_terminal/compaction_custody.rs"]
 mod compaction_custody;
 #[path = "normal_terminal/completion.rs"]

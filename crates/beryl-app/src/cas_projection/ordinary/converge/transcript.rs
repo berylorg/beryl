@@ -1,4 +1,5 @@
-use beryl_home_store::HomeStore;
+use super::access::HistoryAccess;
+
 use beryl_model::SyndicThreadId;
 use syndic_storage::{
     AdvanceTranscriptBuild, ProjectionLifecycle, StartTranscriptBuild, SyndicPointReadLimit,
@@ -9,7 +10,7 @@ use super::super::OrdinaryTurnExecutionError;
 use super::{command, snapshot};
 
 pub(super) fn converge_selected_transcript(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     limit: SyndicPointReadLimit,
@@ -85,7 +86,7 @@ fn active_build(current: &snapshot::TranscriptSnapshot, build: &TranscriptBuildR
 }
 
 fn start_build(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     _limit: SyndicPointReadLimit,
@@ -97,7 +98,7 @@ fn start_build(
 }
 
 fn advance_build(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     _limit: SyndicPointReadLimit,

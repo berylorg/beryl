@@ -55,6 +55,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
   creation and attachment also complete behind the startup fence before publication; workers
   retain their exact shutdown/join custody while waiting. A construction error or cancellation
   closes their admission and joins them before the candidate can be discarded.
+- Candidate terminal-history convergence uses the ordinary item-freeze/finalize, item-projection,
+  selected-transcript and gate-release algorithm through borrowed candidate access. Exact bounded
+  metadata/page reads retain their surrounding confirmation checks, and current-domain commands
+  retain their exact record fences, receipts and failure outcomes. An indeterminate command installs
+  its existing reconciliation custody and aborts convergence; it never reports successful recovery.
+  This candidate entry accepts no live terminal-completion publisher, creates no worker or external
+  dispatch, and cannot release ordinary admission or publish the app graph.
 - Only the complete private prepared graph can consume app publication. It publishes the same
   candidate generation and graph under one outer transition, then releases ordinary workers.
   Consumers receive a published graph or a typed failure, never a builder, partial handle tuple,

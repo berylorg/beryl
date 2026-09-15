@@ -50,11 +50,22 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 446: Establish Candidate Turn-Item Pages (finished)
+# Phase 447: Converge Candidate Terminal History (finished)
 
-Accepted candidate turn-item pages through the shared owner-qualified bounded reader. All three
-focused tests passed with normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-turn-item-pages).
+Accepted candidate terminal-history convergence through the shared ordinary algorithm and exact
+command outcomes. Four focused tests plus the two final fixture checks passed with normal app
+compilation and independent review. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-terminal-history-convergence).
+
+# Phase 448: Publish Candidate Source-Less Terminal Events (pending)
+
+Adapt the existing stabilized source frontier and exact abandonment/event publication helpers to
+candidate access, preserving time/sequence bounds, command outcomes and reconciliation custody.
+
+# Phase 449: Connect Candidate Startup Recovery (pending)
+
+Connect accepted candidate discovery/classification, terminal-history convergence and source-less
+publication to the sequential startup recovery pass, including deferred compaction settlement and
+bounded cursor restart/rebase. Do not construct or publish CAS services in this boundary.
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)
 

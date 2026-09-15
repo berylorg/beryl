@@ -1,4 +1,5 @@
-use beryl_home_store::HomeStore;
+use super::access::HistoryAccess;
+
 use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     AdvanceItemProjectionBuild, ContentLifecycle, FinalizeNextTurnItem, FreezeNextTurnItem,
@@ -11,7 +12,7 @@ use super::super::OrdinaryTurnExecutionError;
 use super::{command, snapshot};
 
 pub(super) fn converge_turn_items(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
@@ -122,7 +123,7 @@ fn require_terminal(
 
 #[allow(clippy::too_many_arguments)]
 fn freeze_live_item(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
@@ -261,7 +262,7 @@ fn next_is(before: u64, after: u64) -> bool {
 
 #[allow(clippy::too_many_arguments)]
 fn finalize_item(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     turn_id: SyndicTurnId,
@@ -285,7 +286,7 @@ fn finalize_item(
 }
 
 fn converge_item_projection(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
@@ -381,7 +382,7 @@ fn valid_parsing_build(
 }
 
 fn start_projection(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,
@@ -394,7 +395,7 @@ fn start_projection(
 }
 
 fn advance_projection(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     storage: &SyndicStorage,
     thread_id: SyndicThreadId,
     source: &snapshot::CanonicalSnapshot,

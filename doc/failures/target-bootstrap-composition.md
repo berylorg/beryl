@@ -352,3 +352,17 @@ exclusive continuation, first/tail/empty pages, item limits, exact byte accounti
 failure, initial/recovered/publication parity, foreign/retired handles and ordinary refusal. Normal
 compilation, formatting and diff checks passed; independent review accepted range, bounds and
 capability semantics. Ordinal positions do not replace surrounding consumer state confirmation.
+
+## Candidate Terminal History Convergence
+
+Phase 447 accepted candidate terminal-history convergence through the shared item/projection,
+transcript and gate-release algorithm. Candidate entry cannot supply a live completion publisher;
+bounded reads, exact commands, receipts and indeterminate reconciliation installation remain shared.
+Four candidate/ordinary completion tests passed in 19.535 seconds (run
+`66a2554c-cfe4-411c-8f8f-c3ae785d7385`); the final two candidate tests passed in 12.397 seconds
+(run `10c36371-8ed1-487c-88fc-9173bdff2a6f`) after requiring clean fixture service closure. Cases
+cover complete/incomplete history, initial/recovered/publication parity, stale handles, ordinary
+refusal, noncommit/indeterminate/committed failure, publication rejection and explicit reconciliation
+before resumed convergence. New fixtures use user items; assistant/resource branches retain shared
+implementation and prior typed-read evidence. Normal app compilation, formatting and diff checks
+passed; independent review accepted fixed-point behavior, failure truth and candidate isolation.

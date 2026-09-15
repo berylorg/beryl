@@ -1,4 +1,5 @@
-use beryl_home_store::{CommandOutcome, CommitReceipt, CurrentDomainCommand, HomeStore};
+use super::access::HistoryAccess;
+use beryl_home_store::{CommandOutcome, CommitReceipt, CurrentDomainCommand};
 
 use crate::cas_projection::OrdinaryTurnExecutionError;
 
@@ -8,14 +9,14 @@ use crate::cas_projection::OrdinaryTurnExecutionError;
 /// Every execute failure is returned so the caller can reconcile its exact mutation before
 /// deciding whether to surface it.
 pub(super) fn dispatch(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     command: CurrentDomainCommand,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     dispatch_with_receipt(store, command).map(|_| ())
 }
 
 pub(super) fn dispatch_with_receipt(
-    store: &HomeStore,
+    store: HistoryAccess<'_>,
     command: CurrentDomainCommand,
 ) -> Result<CommitReceipt, OrdinaryTurnExecutionError> {
     match store.execute_current(command) {

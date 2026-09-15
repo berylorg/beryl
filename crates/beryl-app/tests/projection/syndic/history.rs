@@ -33,6 +33,20 @@ impl Fixture {
         source
     }
 
+    pub fn publish_terminal_without_convergence(
+        &mut self,
+        submitted: SubmittedTurn,
+        source: &CasTurnSource,
+        status: TurnEndStatus,
+    ) {
+        self.admit(
+            self.thread,
+            submitted.turn,
+            source,
+            SourceEventPayload::TurnEnded(status),
+        );
+    }
+
     pub fn complete_active_without_assistant(
         &mut self,
         submitted: SubmittedTurn,
