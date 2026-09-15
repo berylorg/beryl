@@ -563,7 +563,7 @@ fn scrub_rejects_but_routine_recovery_ignores_a_dormant_malformed_envelope() {
 
     let candidate = store.recover_same_home().unwrap();
     let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     assert!(matches!(
         recovered.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
             &alpha,

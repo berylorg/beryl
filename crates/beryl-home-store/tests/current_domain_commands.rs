@@ -150,7 +150,7 @@ fn scoped_writer_fault_ignores_other_typed_current_commands() {
 
     let candidate = store.recover_same_home().unwrap();
     let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
 
     committed(
         store.execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(

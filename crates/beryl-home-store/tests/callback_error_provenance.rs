@@ -294,7 +294,7 @@ fn storage_access_from_either_callback_stage_fails_closed_with_provenance() {
         assert_eq!(store.health().state(), HomeHealthState::Failed);
         let candidate = store.recover_same_home().unwrap();
         let domain = candidate.domain_handle::<AccessDomain>().unwrap();
-        let store = candidate.publish();
+        let store = candidate.publish().unwrap();
         assert_eq!(store.home_revision().unwrap(), home_before);
         assert_eq!(store.domain_revision(&domain).unwrap(), domain_before);
         committed(execute(&store, &domain, put(b"committed")));

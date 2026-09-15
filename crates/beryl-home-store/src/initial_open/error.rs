@@ -26,6 +26,8 @@ pub enum HomeCandidateError {
     DomainMismatch { domain: &'static str },
     #[error("domain `{domain}` has no active runtime attachment")]
     AttachmentUnavailable { domain: &'static str },
+    #[error("candidate publication is blocked by {count} unsettled reconciliation scopes")]
+    PendingReconciliation { count: usize },
     #[error("opening candidate could not confirm storage health: {source}")]
     StorageHealth {
         #[source]
@@ -40,7 +42,7 @@ pub struct HomeCandidateFailure<C> {
 }
 
 impl<C> HomeCandidateFailure<C> {
-    pub(super) fn new(error: HomeCandidateError, candidate: C) -> Self {
+    pub(crate) fn new(error: HomeCandidateError, candidate: C) -> Self {
         Self { error, candidate }
     }
 

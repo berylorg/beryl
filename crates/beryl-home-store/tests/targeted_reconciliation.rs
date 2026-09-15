@@ -442,13 +442,24 @@ fn exact_old_after_reopen_releases_the_gate_without_fabricating_a_receipt() {
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(store.home_revision().is_err());
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let store = store.recover_same_home().unwrap().publish();
+    let candidate = store.recover_same_home().unwrap();
+    let failure = candidate.publish().unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        beryl_home_store::HomeCandidateError::PendingReconciliation { count: 1 }
+    ));
+    let mut candidate = failure.into_parts().1;
     let validation_before = VALIDATION_CALLS.load(Ordering::SeqCst);
 
     assert_eq!(
-        store.reconcile(&handle).unwrap(),
+        candidate
+            .recovery_access()
+            .unwrap()
+            .reconcile(&handle)
+            .unwrap(),
         ReconciliationResolution::ExactOld
     );
+    let store = candidate.publish().unwrap();
     assert_eq!(VALIDATION_CALLS.load(Ordering::SeqCst), validation_before);
     assert!(store.pending_reconciliations().is_empty());
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
@@ -1049,12 +1060,14 @@ fn structural_hook_access_evidence_fails_health_and_retains_scope() {
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     assert_eq!(store.pending_reconciliations().len(), 1);
 
-    let store = store.recover_same_home().unwrap().publish();
+    let mut candidate = store.recover_same_home().unwrap();
     STRUCTURAL_FAIL_HOOKS.store(false, Ordering::SeqCst);
-    let retry = store.pending_reconciliations().pop().unwrap();
+    let access = candidate.recovery_access().unwrap();
+    let retry = access.pending_reconciliations().pop().unwrap();
     assert!(matches!(
-        store.retry_reconciliation(&retry).unwrap(),
+        access.retry_reconciliation(&retry).unwrap(),
         ReconciliationResolution::ExactNew { .. }
     ));
+    let store = candidate.publish().unwrap();
     store.close().unwrap();
 }

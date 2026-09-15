@@ -396,7 +396,7 @@ fn direct_outcomes_release_their_exact_registry_reservations() {
     let domain = recovery
         .domain_handle::<AggregateReservationDomain>()
         .unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert!(matches!(
         store.execute_current(domain.current_command(AggregateReservationPut(1))),
         beryl_home_store::CommandOutcome::Committed {
@@ -599,10 +599,17 @@ fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
         Err(ReadError::Storage { .. })
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     assert_eq!(recovery.generation().get(), generation.get() + 1);
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    for handle in access.pending_reconciliations() {
+        assert_eq!(
+            access.reconcile(&handle).unwrap(),
+            beryl_home_store::ReconciliationResolution::Collision
+        );
+    }
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap().get(), 1);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 1);
     assert_eq!(read_value(&store, &alpha, 42), None);
@@ -662,10 +669,17 @@ fn owned_fjall_buffer_committed_failure_stays_indeterminate_until_sync_all() {
     drop(reconciliation);
 
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let recovery = store.recover_same_home().unwrap();
+    let mut recovery = store.recover_same_home().unwrap();
     assert_eq!(recovery.generation().get(), generation.get() + 1);
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
-    let store = recovery.publish();
+    let access = recovery.recovery_access().unwrap();
+    for handle in access.pending_reconciliations() {
+        assert_eq!(
+            access.reconcile(&handle).unwrap(),
+            beryl_home_store::ReconciliationResolution::Collision
+        );
+    }
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
@@ -716,7 +730,7 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     assert_eq!(recovery.generation().get(), generation_before.get() + 1);
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let beta = recovery.domain_handle::<BetaDomain>().unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap(), home_before);
     assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
     assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);
@@ -762,7 +776,7 @@ fn controlled_commit_boundary_panics_fail_closed_and_recover_old_or_new() {
         let receipt = store.recover_same_home().unwrap();
         assert_eq!(receipt.generation().get(), original_generation.get() + 1);
         let alpha = receipt.domain_handle::<AlphaDomain>().unwrap();
-        let store = receipt.publish();
+        let store = receipt.publish().unwrap();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         assert_recovered_state(&store, alpha, expected);
     }
@@ -801,7 +815,7 @@ fn exact_io_error_kinds_surface_at_the_commit_boundary() {
         let recovery = store.recover_same_home().unwrap();
         assert_eq!(recovery.generation().get(), generation.get() + 1);
         let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
-        let store = recovery.publish();
+        let store = recovery.publish().unwrap();
         assert_eq!(store.home_revision().unwrap().get(), 1);
         assert_eq!(read_value(&store, &alpha, 9), None);
     }
@@ -845,7 +859,7 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     let recovery = store.recover_same_home().unwrap();
     assert_eq!(recovery.generation().get(), generation.get() + 1);
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
@@ -906,7 +920,7 @@ fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
     let recovery = store.recover_same_home().unwrap();
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let beta = recovery.domain_handle::<BetaDomain>().unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap().get(), home_before.get() + 1);
     assert_eq!(
         store.domain_revision(&alpha).unwrap().get(),
@@ -962,7 +976,7 @@ fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
     let recovery = store.recover_same_home().unwrap();
     assert_eq!(recovery.generation().get(), generation.get() + 1);
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
-    let store = recovery.publish();
+    let store = recovery.publish().unwrap();
     assert_eq!(store.home_revision().unwrap().get(), 2);
     assert_eq!(store.domain_revision(&alpha).unwrap().get(), 2);
     assert_eq!(
@@ -1020,7 +1034,7 @@ fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds()
     let receipt = store.recover_same_home().unwrap();
     assert_eq!(receipt.generation().get(), original_generation.get() + 1);
     let alpha = receipt.domain_handle::<AlphaDomain>().unwrap();
-    let store = receipt.publish();
+    let store = receipt.publish().unwrap();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     committed(store.execute(put_command(&store, &alpha, 2, b"writer usable")));

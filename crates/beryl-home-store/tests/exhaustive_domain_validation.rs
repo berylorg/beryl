@@ -346,7 +346,7 @@ fn routine_recovery_ignores_raw_corruption_but_explicit_scrub_rejects_it() {
     raw_insert(directory.path(), &[42], &valid_value(7));
     block.release();
 
-    let recovered = worker.join().unwrap().unwrap().publish();
+    let recovered = worker.join().unwrap().unwrap().publish().unwrap();
     assert!(matches!(
         recovered
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)

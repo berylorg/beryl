@@ -356,7 +356,20 @@ impl HomeStore {
         receipt: &CommitReceipt,
         handle: &DomainHandle<D>,
     ) -> Result<Option<DomainRevision>, CommitReceiptError> {
-        let admission = self.health.admit()?;
+        self.receipt_domain_revision_with_access(
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            receipt,
+            handle,
+        )
+    }
+
+    pub(crate) fn receipt_domain_revision_with_access<D: StorageDomain>(
+        &self,
+        access: crate::candidate_access::StoreOperationAccess,
+        receipt: &CommitReceipt,
+        handle: &DomainHandle<D>,
+    ) -> Result<Option<DomainRevision>, CommitReceiptError> {
+        let admission = access.admit(&self.health)?;
         let generation_guard = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

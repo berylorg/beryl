@@ -224,6 +224,16 @@ impl HomeOpenCandidate {
 }
 
 impl HomeOpenPublication {
+    pub fn recovery_access(
+        &mut self,
+    ) -> Result<crate::HomeCandidateRecoveryAccess<'_>, HomeCandidateError> {
+        crate::HomeCandidateRecoveryAccess::new(
+            &self.initial.store,
+            crate::HomeHealthState::Opening,
+            self.initial.generation,
+        )
+    }
+
     pub fn home_id(&self) -> BerylHomeId {
         self.initial.store.home_id()
     }
@@ -254,6 +264,10 @@ impl HomeOpenPublication {
 
     pub fn publish(self) -> Result<HomeStore, HomeCandidateFailure<Self>> {
         let result = self.initial.validate(&self.requirements).and_then(|()| {
+            let count = self.initial.store.reconciliation.pending_scope_count();
+            if count != 0 {
+                return Err(HomeCandidateError::PendingReconciliation { count });
+            }
             self.initial
                 .store
                 .health
@@ -263,7 +277,9 @@ impl HomeOpenPublication {
         match result {
             Ok(()) => Ok(self.initial.store),
             Err(error) => {
-                self.initial.fail();
+                if !matches!(error, HomeCandidateError::PendingReconciliation { .. }) {
+                    self.initial.fail();
+                }
                 Err(HomeCandidateFailure::new(error, self))
             }
         }

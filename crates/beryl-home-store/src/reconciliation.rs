@@ -183,6 +183,26 @@ impl HomeStore {
         &self,
         handle: &ReconciliationHandle,
     ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        self.reconcile_with_access(
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            handle,
+        )
+    }
+
+    pub(crate) fn reconcile_with_access(
+        &self,
+        access: crate::candidate_access::StoreOperationAccess,
+        handle: &ReconciliationHandle,
+    ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        access
+            .admit(&self.health)
+            .and_then(|admission| admission.confirm())
+            .map_err(|error| {
+                failure(ReconciliationFailureInner::HookAccess {
+                    domain: "home",
+                    source: DomainCallbackSource::Read(ReadError::HealthGate(error)),
+                })
+            })?;
         let Some(inner) = handle.registry.upgrade() else {
             return Err(failure(ReconciliationFailureInner::StaleScope));
         };
@@ -212,7 +232,7 @@ impl HomeStore {
         }
         drop(flight);
 
-        let result = self.run_reconciliation(handle, &inner);
+        let result = self.run_reconciliation(access, handle, &inner);
         let mut flight = handle
             .flight
             .state
@@ -227,6 +247,26 @@ impl HomeStore {
         &self,
         handle: &ReconciliationHandle,
     ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        self.retry_reconciliation_with_access(
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            handle,
+        )
+    }
+
+    pub(crate) fn retry_reconciliation_with_access(
+        &self,
+        access: crate::candidate_access::StoreOperationAccess,
+        handle: &ReconciliationHandle,
+    ) -> Result<ReconciliationResolution, ReconciliationFailure> {
+        access
+            .admit(&self.health)
+            .and_then(|admission| admission.confirm())
+            .map_err(|error| {
+                failure(ReconciliationFailureInner::HookAccess {
+                    domain: "home",
+                    source: DomainCallbackSource::Read(ReadError::HealthGate(error)),
+                })
+            })?;
         let Some(inner) = handle.registry.upgrade() else {
             return Err(failure(ReconciliationFailureInner::StaleScope));
         };
@@ -234,28 +274,30 @@ impl HomeStore {
             return Err(failure(ReconciliationFailureInner::ForeignScope));
         }
         match self.reconciliation.retry_handle(handle) {
-            Some(RetryHandle::Current(retry)) => self.reconcile(&retry),
-            Some(RetryHandle::Terminal) => self.reconcile(handle),
+            Some(RetryHandle::Current(retry)) => self.reconcile_with_access(access, &retry),
+            Some(RetryHandle::Terminal) => self.reconcile_with_access(access, handle),
             None => Err(failure(ReconciliationFailureInner::StaleScope)),
         }
     }
 
     fn run_reconciliation(
         &self,
+        access: crate::candidate_access::StoreOperationAccess,
         handle: &ReconciliationHandle,
         inner: &Arc<RegistryInner>,
     ) -> SharedResult {
         acquire_worker(inner, handle)?;
-        let execution = self.execute_reconciliation_hook(handle, inner);
+        let execution = self.execute_reconciliation_hook(access, handle, inner);
         finish_worker(inner, handle, execution)
     }
 
     fn execute_reconciliation_hook(
         &self,
+        access: crate::candidate_access::StoreOperationAccess,
         handle: &ReconciliationHandle,
         inner: &Arc<RegistryInner>,
     ) -> Result<ReconciliationExecution, ReconciliationFailure> {
-        let admission = self.health.admit().map_err(|error| {
+        let admission = access.admit(&self.health).map_err(|error| {
             failure(ReconciliationFailureInner::HookAccess {
                 domain: "home",
                 source: DomainCallbackSource::Read(ReadError::HealthGate(error)),

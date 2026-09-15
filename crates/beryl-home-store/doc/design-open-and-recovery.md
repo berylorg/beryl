@@ -66,11 +66,19 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
   conversion. Its authority is an explicit input, not ambient or thread-local state. Ordinary and
   candidate operations share the same underlying codecs, limits, writer, durability and outcome
   classification; candidate access cannot weaken a command or grant a second writer.
+- `HomeOpenPublication::recovery_access` and `HomeRecoveryCandidate::recovery_access` borrow their
+  owner exclusively and return `HomeCandidateRecoveryAccess`. Each operation checks the owner's
+  opening or reopening generation. Same-home recovery assigns the fresh generation while remaining
+  reopening; ordinary admission begins only after checked publication.
 - Candidate access and publication are exclusive. Publication consumes one capability after all
   admitted candidate work has settled, all required attachments remain live and the relevant
   storage health check succeeds. A pending or indeterminate candidate command prevents publication
   until its exact custody has reached the owning system's permitted settlement. The outer system
   couples this transition to publication of its already prepared complete service stack.
+- Both publication paths return `HomeCandidateFailure` with the original candidate on rejection.
+  `PendingReconciliation` preserves candidate access for exact settlement and publication retry;
+  failed storage health permits cleanup rather than further candidate work. A recovered candidate
+  retains its existing explicit `abort` path and conservative lock custody on destruction.
 - Failed initial construction or cancellation closes registration and candidate admission, joins
   dependent work and retires the candidate before releasing its database and home lock. Successful
   durable registration or recovery writes are not rolled back, deleted or treated as uncommitted;

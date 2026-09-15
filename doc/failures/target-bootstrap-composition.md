@@ -187,3 +187,28 @@ backpressure fixture's self-held publication-lock wait without changing producti
 App candidate fixture acceptance does not accept explicit candidate recovery access, a prepared
 service graph, restored windows, or native process-entry composition. Those remain separate
 implementation-plan and rework gates.
+
+## Candidate Recovery Admission
+
+Adding a candidate entry path to the existing writer and readers did not alone make the whole
+lifecycle candidate-aware. Cached reconciliation results originally returned before admission,
+and structural failure signaling omitted `reopening`. The extended recovered-candidate read-fault
+test demonstrated that a failed operation still allowed another candidate access. Both omissions
+could bypass the unpublished-candidate contract despite unchanged command durability machinery.
+
+Explicit operation access now checks ordinary or exact candidate admission before cached/joined
+reconciliation and its hook. Structural failure closes opening, healthy and reopening work.
+Checked publication refuses failed health and unresolved custody while retaining candidate ownership;
+pending-custody rejection allows exact settlement and retry. Recovery assigns fresh generation while
+remaining unpublished. Durable writes survive candidate close, and failed recovered candidates retain
+the home lock until explicit abort/close. A late structural failure during old-work draining may reject
+that recovery attempt rather than revive failed health; retained authority permits a later retry.
+
+Phase 420 acceptance passed all 253 home-store tests in 33.167 seconds (run
+`54ba5ea7-1f9e-48b1-9f23-1ee0450094af`), including four candidate cases and the existing shared-writer
+cancellation, waiting, reentry, atomic outcomes and custody tests. The final focused candidate/health
+set passed 11 tests. Beryl-state recovery passed with exact prepublication reconciliation; all 12
+Syndic draft-publication cases passed in 25.514 seconds. Normal app compilation passed in 14.30
+seconds, changed Rust formatting and diff checks passed, and independent lifecycle/persistence review
+accepted both the shared access path and reopened structural-failure correction. This boundary does
+not accept typed startup recovery consumers or complete service-graph preparation/publication.

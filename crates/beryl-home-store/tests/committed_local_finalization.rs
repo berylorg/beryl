@@ -244,7 +244,7 @@ fn foreign_store_and_recovered_generation_are_rejected_without_callback() {
         committed_with_local(third.execute(command(&third, &third_alpha, 7)));
     let candidate = third.recover_same_home().unwrap();
     let recovered_alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     let stale_invoked = Cell::new(false);
     assert!(matches!(
         recovered.with_committed_local_finalization(
@@ -281,7 +281,7 @@ fn finalization_uses_generation_identity_when_writer_identity_has_diverged() {
     let failed = store.recover_same_home().unwrap_err().into_store();
     let candidate = failed.recover_same_home().unwrap();
     let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
 
     faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
     let (receipt, local_finalization) =

@@ -378,6 +378,7 @@
 - [x] Qualified Beryl-state candidate fixtures with [complete registration, failure and identity evidence](../../failures/target-bootstrap-composition.md#beryl-state-candidate-qualification).
 - [x] Qualified Syndic candidate fixtures with [complete registration and regression evidence](../../failures/target-bootstrap-composition.md#syndic-candidate-qualification).
 - [x] Qualified application initial-candidate fixtures with [complete publication and runtime evidence](../../failures/target-bootstrap-composition.md#app-candidate-qualification).
+- [x] Accepted explicit borrowed home-candidate recovery access and checked publication with [failure, custody and regression evidence](../../failures/target-bootstrap-composition.md#candidate-recovery-admission).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

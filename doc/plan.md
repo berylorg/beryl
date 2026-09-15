@@ -58,11 +58,19 @@ runtime qualification and formatting passed. [Acceptance evidence](failures/targ
 includes unchanged scale, failed-service disposal and exact-root submission; production candidate
 recovery and service-graph publication remain separate gates.
 
-# Phase 420: Establish Explicit Candidate Recovery Access (pending)
+# Phase 420: Establish Home-Store Candidate Recovery Access (finished)
 
-Implement the distinct candidate recovery access and its typed consumers with ordinary command,
-durability, receipt and reconciliation semantics. Preserve exclusive publication and candidate
-custody; separate independently verifiable package boundaries when activating this work.
+Accepted explicit borrowed initial/reopened access and checked publication with retained failure
+ownership. Shared reads, writer, receipts and reconciliation preserve limits and outcome truth;
+ordinary admission stays closed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-recovery-admission)
+records 253 home-store regressions, downstream recovery checks, normal app compilation and
+independent persistence/lifecycle review. Typed startup consumers remain the next boundary.
+
+# Phase 436: Connect Typed Candidate Recovery Consumers (pending)
+
+Adapt the exact Beryl-state and Syndic recovery consumers to explicit candidate access, preserving
+their compact discovery, bounded mutations, receipt and reconciliation semantics. Separate any
+independently verifiable consumer boundaries before activation; do not publish healthy services.
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

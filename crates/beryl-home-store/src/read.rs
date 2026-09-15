@@ -19,6 +19,7 @@ use crate::{
 
 mod execute;
 
+use crate::candidate_access::StoreOperationAccess;
 pub(crate) use execute::{
     decode_record_envelope, decode_value, encode_stored_key, encode_value,
     validate_physical_family, validate_record_envelope,
@@ -369,7 +370,14 @@ impl<'a> ReadFamilies<'a> {
 impl HomeStore {
     /// Reads the exact current home revision from one short-lived snapshot.
     pub fn home_revision(&self) -> Result<HomeRevision, ReadError> {
-        self.execute_read(|generation| {
+        self.home_revision_with_access(StoreOperationAccess::Ordinary)
+    }
+
+    pub(crate) fn home_revision_with_access(
+        &self,
+        access: StoreOperationAccess,
+    ) -> Result<HomeRevision, ReadError> {
+        self.execute_read(access, |generation| {
             let snapshot = generation
                 .database
                 .snapshot()
@@ -383,7 +391,15 @@ impl HomeStore {
         &self,
         handle: &DomainHandle<D>,
     ) -> Result<DomainRevision, ReadError> {
-        self.execute_read(|generation| {
+        self.domain_revision_with_access(StoreOperationAccess::Ordinary, handle)
+    }
+
+    pub(crate) fn domain_revision_with_access<D: StorageDomain>(
+        &self,
+        access: StoreOperationAccess,
+        handle: &DomainHandle<D>,
+    ) -> Result<DomainRevision, ReadError> {
+        self.execute_read(access, |generation| {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
@@ -403,7 +419,17 @@ impl HomeStore {
         key: &R::Key,
         limit: PointReadLimit,
     ) -> Result<Option<R::Value>, ReadError> {
-        self.execute_read(|generation| {
+        self.read_point_with_access::<D, R>(StoreOperationAccess::Ordinary, handle, key, limit)
+    }
+
+    pub(crate) fn read_point_with_access<D: StorageDomain, R: RecordCodec<D>>(
+        &self,
+        access: StoreOperationAccess,
+        handle: &DomainHandle<D>,
+        key: &R::Key,
+        limit: PointReadLimit,
+    ) -> Result<Option<R::Value>, ReadError> {
+        self.execute_read(access, |generation| {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
@@ -423,7 +449,24 @@ impl HomeStore {
         direction: CursorDirection,
         limits: CursorReadLimits,
     ) -> Result<CursorPage<R::Key, R::Value>, ReadError> {
-        self.execute_read(|generation| {
+        self.read_cursor_with_access::<D, R>(
+            StoreOperationAccess::Ordinary,
+            handle,
+            range,
+            direction,
+            limits,
+        )
+    }
+
+    pub(crate) fn read_cursor_with_access<D: StorageDomain, R: RecordCodec<D>>(
+        &self,
+        access: StoreOperationAccess,
+        handle: &DomainHandle<D>,
+        range: &CursorRange<R::Key>,
+        direction: CursorDirection,
+        limits: CursorReadLimits,
+    ) -> Result<CursorPage<R::Key, R::Value>, ReadError> {
+        self.execute_read(access, |generation| {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
@@ -443,9 +486,10 @@ impl HomeStore {
 
     fn execute_read<T>(
         &self,
+        access: StoreOperationAccess,
         operation: impl FnOnce(&StoreGeneration) -> Result<T, ReadError>,
     ) -> Result<T, ReadError> {
-        let admission = self.health.admit()?;
+        let admission = access.admit(&self.health)?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

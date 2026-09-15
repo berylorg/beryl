@@ -264,11 +264,18 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         Err(ReadError::HealthGate(_))
     ));
 
-    let candidate = store.recover_same_home().unwrap();
+    let mut candidate = store.recover_same_home().unwrap();
     let recovery = candidate.receipt();
     assert!(recovery.generation() > prior_generation);
     let current_state = BerylState::reacquire_candidate(&candidate).unwrap();
-    let store = candidate.publish();
+    assert!(matches!(
+        candidate
+            .recovery_access()
+            .unwrap()
+            .reconcile(&reconciliation),
+        Ok(beryl_home_store::ReconciliationResolution::ExactNew { .. })
+    ));
+    let store = candidate.publish().unwrap();
     assert_eq!(store.home_id(), home_id);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 

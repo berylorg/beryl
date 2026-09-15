@@ -160,6 +160,20 @@ impl ReconciliationRegistry {
         })
     }
 
+    pub(crate) fn pending_scope_count(&self) -> usize {
+        self.inner
+            .lock_state()
+            .scopes
+            .iter()
+            .filter(|scope| {
+                matches!(
+                    scope,
+                    ScopeState::Reserved { .. } | ScopeState::Verifying { .. }
+                )
+            })
+            .count()
+    }
+
     pub(crate) fn begin_close(&self) -> usize {
         let mut state = self.inner.lock_state();
         state.accepting_reservations = false;

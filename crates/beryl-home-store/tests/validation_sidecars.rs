@@ -127,7 +127,7 @@ fn validator_failure_drops_retained_sidecar_command_and_allows_later_reference()
                 let candidate = store.recover_same_home().unwrap();
                 let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
                 let beta = candidate.domain_handle::<BetaDomain>().unwrap();
-                (candidate.publish(), alpha, beta)
+                (candidate.publish().unwrap(), alpha, beta)
             }
         };
         assert_eq!(store.home_revision().unwrap(), home_before);

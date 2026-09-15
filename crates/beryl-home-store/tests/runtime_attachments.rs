@@ -626,7 +626,7 @@ fn recovery_retires_old_attachment_and_rejects_stale_views() {
         .unwrap();
     assert_ne!(old_identity, fresh_identity);
 
-    let recovered = candidate.publish();
+    let recovered = candidate.publish().unwrap();
     assert!(matches!(
         recovered.with_domain_attachment(&stale_capability, |_| ()),
         Err(DomainAttachmentAccessError::StaleOrForeign)

@@ -1316,7 +1316,7 @@ fn stale_executable_is_rejected_after_same_home_generation_recovery() {
         compose(&store, command(&store, &alpha, Role::agreeing([12; 16]))),
         Err(ProofCompositionError::DomainRegistrationInvariant { domain: "alpha" })
     ));
-    let recovered = store.recover_same_home().unwrap().publish();
+    let recovered = store.recover_same_home().unwrap().publish().unwrap();
     assert!(matches!(
         recovered.compose_proof(stale),
         Err(ProofCompositionError::StaleGeneration)

@@ -109,6 +109,47 @@ impl std::fmt::Debug for HomeRecoveryCandidate {
 }
 
 impl HomeRecoveryCandidate {
+    pub fn recovery_access(
+        &mut self,
+    ) -> Result<crate::HomeCandidateRecoveryAccess<'_>, crate::HomeCandidateError> {
+        crate::HomeCandidateRecoveryAccess::new(
+            self.store.as_ref().expect("candidate store is present"),
+            HomeHealthState::Reopening,
+            self.receipt.generation,
+        )
+    }
+
+    fn validate_publication(&self) -> Result<(), crate::HomeCandidateError> {
+        let store = self.store.as_ref().expect("candidate store is present");
+        let admission = store
+            .health
+            .admit_candidate(HomeHealthState::Reopening, self.receipt.generation)?;
+        let generation = store
+            .generation
+            .read()
+            .map_err(|_| crate::HomeCandidateError::GenerationUnavailable)?;
+        let generation = generation
+            .as_ref()
+            .ok_or(crate::HomeCandidateError::GenerationUnavailable)?;
+        for domain in generation.registry.iter() {
+            if !domain.attachment.is_active() {
+                return Err(crate::HomeCandidateError::AttachmentUnavailable {
+                    domain: domain.name,
+                });
+            }
+        }
+        admission.confirm_database(&generation.database, |source| {
+            crate::HomeCandidateError::StorageHealth {
+                source: Box::new(source),
+            }
+        })?;
+        let count = store.reconciliation.pending_scope_count();
+        if count != 0 {
+            return Err(crate::HomeCandidateError::PendingReconciliation { count });
+        }
+        Ok(())
+    }
+
     /// Returns the durable identity of the retained same home.
     #[must_use]
     pub fn home_id(&self) -> beryl_model::BerylHomeId {
@@ -189,13 +230,19 @@ impl HomeRecoveryCandidate {
 
     /// Publishes the candidate as the new healthy store generation.
     #[must_use]
-    pub fn publish(mut self) -> HomeStore {
+    pub fn publish(mut self) -> Result<HomeStore, crate::HomeCandidateFailure<Self>> {
+        if let Err(error) = self.validate_publication() {
+            return Err(crate::HomeCandidateFailure::new(error, self));
+        }
         let maintenance = self
             .maintenance
-            .take()
+            .as_mut()
             .expect("candidate maintenance authority is present");
-        maintenance.finish_healthy(self.receipt.generation);
-        self.store.take().expect("candidate store is present")
+        if let Err(error) = maintenance.publish_candidate(self.receipt.generation) {
+            return Err(crate::HomeCandidateFailure::new(error.into(), self));
+        }
+        drop(self.maintenance.take());
+        Ok(self.store.take().expect("candidate store is present"))
     }
 
     /// Aborts unpublished stack construction and returns failed authority for
@@ -289,6 +336,15 @@ impl HomeStore {
             Ok((store, receipt)) => {
                 self.recovery_transferred = true;
                 drop(self);
+                if let Err(error) = maintenance.prepare_candidate(receipt.generation) {
+                    maintenance.finish_failed();
+                    return Err(HomeRecoveryFailure {
+                        store,
+                        error: HomeRecoveryError::InvalidState {
+                            state: error.state(),
+                        },
+                    });
+                }
                 Ok(HomeRecoveryCandidate {
                     store: Some(store),
                     maintenance: Some(maintenance),

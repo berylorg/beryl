@@ -129,7 +129,7 @@ fn same_home_recovery_revokes_old_tokens_before_reopening_the_generation() {
     assert_eq!(observer.observe().unwrap_err(), ObservationError::Closed);
     assert_eq!(token.try_elect(|| ()), Err(ObservationError::Closed));
     pause.release();
-    let recovered = worker.join().unwrap().unwrap().publish();
+    let recovered = worker.join().unwrap().unwrap().publish().unwrap();
     let (fresh, _) = observe(&recovered);
     assert_eq!(fresh.observe().unwrap().try_elect(|| ()), Ok(()));
     assert_eq!(token.try_elect(|| ()), Err(ObservationError::Closed));

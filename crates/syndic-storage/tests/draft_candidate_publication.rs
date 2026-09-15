@@ -1305,7 +1305,7 @@ fn recover_if_failed(store: HomeStore, storage: SyndicStorage) -> (HomeStore, Sy
     if store.health().state() == HomeHealthState::Failed {
         let recovery = store.recover_same_home().unwrap();
         let storage = SyndicStorage::reacquire_candidate(&recovery).unwrap();
-        (recovery.publish(), storage)
+        (recovery.publish().unwrap(), storage)
     } else {
         (store, storage)
     }

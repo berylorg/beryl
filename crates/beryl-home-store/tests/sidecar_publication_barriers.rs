@@ -147,7 +147,7 @@ fn retry_after_post_rename_failure_repairs_the_final_barrier_before_token() {
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     let store = Arc::try_unwrap(store).expect("sidecar caller released store");
-    let store = Arc::new(store.recover_same_home().unwrap().publish());
+    let store = Arc::new(store.recover_same_home().unwrap().publish().unwrap());
 
     let blocks = barrier_points().map(|point| faults.block_next(point));
     let worker_store = Arc::clone(&store);

@@ -301,7 +301,7 @@ fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
         }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let recovered = store.recover_same_home().unwrap().publish();
+    let recovered = store.recover_same_home().unwrap().publish().unwrap();
     assert!(matches!(
         recovered
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)

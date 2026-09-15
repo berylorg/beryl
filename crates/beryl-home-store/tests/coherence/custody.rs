@@ -163,7 +163,7 @@ fn failed_health_and_stale_generation_never_invoke_election() {
         store.try_elect_coherent(original, || panic!("failed health was missed")),
         Err(HomeCoherenceError::Unhealthy(HomeHealthState::Failed))
     );
-    let recovered = store.recover_same_home().unwrap().publish();
+    let recovered = store.recover_same_home().unwrap().publish().unwrap();
     assert_eq!(
         recovered.try_elect_coherent(original, || panic!("old generation was admitted")),
         Err(HomeCoherenceError::StaleGeneration)

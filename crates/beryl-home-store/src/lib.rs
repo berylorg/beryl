@@ -74,6 +74,7 @@
 //!
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod candidate_access;
 mod codec;
 mod coherence;
 mod command;
@@ -101,6 +102,7 @@ mod theme;
 mod turn_start_admission;
 mod writer;
 
+pub use candidate_access::HomeCandidateRecoveryAccess;
 pub use codec::{
     CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainSchemaVersion,
     KeyspaceSchemaVersion, PointReadLimit, RECORD_VERSION_BYTES, ReadLimitError, RecordCodec,

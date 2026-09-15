@@ -282,6 +282,26 @@ impl HealthGate {
         self.admit_state(HomeHealthState::Opening)
     }
 
+    pub(crate) fn admit_candidate(
+        &self,
+        state: HomeHealthState,
+        generation: HomeGeneration,
+    ) -> Result<HealthAdmission<'_>, HealthGateError> {
+        debug_assert!(matches!(
+            state,
+            HomeHealthState::Opening | HomeHealthState::Reopening
+        ));
+        let admission = self.admit_state(state)?;
+        if admission.generation != generation {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            return Err(gate_error(&inner));
+        }
+        Ok(admission)
+    }
+
     fn admit_state(
         &self,
         expected_state: HomeHealthState,
@@ -325,7 +345,10 @@ impl HealthGate {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         match (inner.state, severity) {
-            (HomeHealthState::Healthy | HomeHealthState::Opening, FailureSeverity::Structural) => {
+            (
+                HomeHealthState::Healthy | HomeHealthState::Opening | HomeHealthState::Reopening,
+                FailureSeverity::Structural,
+            ) => {
                 inner.state = HomeHealthState::Failed;
             }
             _ => {}
@@ -513,18 +536,47 @@ pub(crate) struct HealthMaintenance {
 }
 
 impl HealthMaintenance {
-    pub(crate) fn finish_healthy(mut self, generation: HomeGeneration) {
+    pub(crate) fn prepare_candidate(
+        &self,
+        generation: HomeGeneration,
+    ) -> Result<(), HealthGateError> {
         let mut inner = self
             .gate
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        debug_assert_eq!(inner.maintenance, Some(self.maintenance));
+        if inner.state != HomeHealthState::Reopening
+            || inner.maintenance != Some(self.maintenance)
+            || inner.active != 0
+        {
+            return Err(gate_error(&inner));
+        }
+        inner.generation = generation;
+        Ok(())
+    }
+
+    pub(crate) fn publish_candidate(
+        &mut self,
+        generation: HomeGeneration,
+    ) -> Result<(), HealthGateError> {
+        let mut inner = self
+            .gate
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if inner.state != HomeHealthState::Reopening
+            || inner.generation != generation
+            || inner.maintenance != Some(self.maintenance)
+            || inner.active != 0
+        {
+            return Err(gate_error(&inner));
+        }
         inner.state = HomeHealthState::Healthy;
         inner.generation = generation;
         inner.maintenance = None;
         self.finished = true;
         self.gate.drained.notify_all();
+        Ok(())
     }
 
     pub(crate) fn finish_failed(mut self) {

@@ -132,6 +132,17 @@ impl HomeStore {
     /// validation, assembly, batch commit, and `SyncAll` complete as one
     /// synchronous result so a caller cannot abandon an indeterminate success.
     pub fn execute(&self, command: HomeCommand) -> CommandOutcome {
+        self.execute_with_access(
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            command,
+        )
+    }
+
+    pub(crate) fn execute_with_access(
+        &self,
+        access: crate::candidate_access::StoreOperationAccess,
+        command: HomeCommand,
+    ) -> CommandOutcome {
         let cancellation = command.cancellation.clone();
         if cancellation.is_cancelled() {
             return not_committed(CommandError::CancelledBeforeAdmission);
@@ -154,6 +165,7 @@ impl HomeStore {
             Err(error) => return not_committed(error),
         };
         self.execute_serialized(
+            access,
             cancellation,
             reservation,
             |generation, health_generation, reservation| {
@@ -175,6 +187,17 @@ impl HomeStore {
     /// removes only conflicts caused by unrelated commits between caller preparation and writer
     /// admission; it never retries a rejected mutation.
     pub fn execute_current(&self, command: CurrentDomainCommand) -> CommandOutcome {
+        self.execute_current_with_access(
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            command,
+        )
+    }
+
+    pub(crate) fn execute_current_with_access(
+        &self,
+        access: crate::candidate_access::StoreOperationAccess,
+        command: CurrentDomainCommand,
+    ) -> CommandOutcome {
         let cancellation = command.cancellation.clone();
         if cancellation.is_cancelled() {
             return not_committed(CommandError::CancelledBeforeAdmission);
@@ -187,6 +210,7 @@ impl HomeStore {
             Err(error) => return not_committed(error),
         };
         self.execute_serialized(
+            access,
             cancellation,
             reservation,
             |generation, health_generation, reservation| {
@@ -256,6 +280,7 @@ impl HomeStore {
 
     fn execute_serialized(
         &self,
+        access: crate::candidate_access::StoreOperationAccess,
         cancellation: crate::CommandCancellation,
         reservation: CommandReservation,
         operation: impl FnOnce(
@@ -287,7 +312,7 @@ impl HomeStore {
         if cancelled {
             return not_committed(CommandError::CancelledBeforeAdmission);
         }
-        let admission = match self.health.admit() {
+        let admission = match access.admit(&self.health) {
             Ok(admission) => admission,
             Err(error) => return not_committed(CommandError::HealthGate(error)),
         };

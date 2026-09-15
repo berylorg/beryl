@@ -179,7 +179,7 @@ fn failed_temporary_flush_leaves_inert_bytes_and_gates_metadata_commands() {
 
     let temporary_count = count_temporary_files(directory.path());
     assert_eq!(temporary_count, 1);
-    let store = store.recover_same_home().unwrap().publish();
+    let store = store.recover_same_home().unwrap().publish().unwrap();
     assert_eq!(count_temporary_files(directory.path()), temporary_count);
     store.close().unwrap();
 }
@@ -206,7 +206,7 @@ fn failure_after_atomic_rename_retains_unreferenced_final_bytes() {
     let final_files = final_sidecar_files(directory.path());
     assert_eq!(final_files.len(), 1);
     assert_eq!(fs::read(&final_files[0]).unwrap(), b"renamed orphan");
-    let store = store.recover_same_home().unwrap().publish();
+    let store = store.recover_same_home().unwrap().publish().unwrap();
     assert!(final_files[0].exists());
     store.close().unwrap();
 }
@@ -234,7 +234,7 @@ fn rename_and_directory_flush_failures_never_publish_a_metadata_token() {
             Err(SidecarError::Storage { .. })
         ));
         assert_eq!(store.health().state(), HomeHealthState::Failed);
-        let store = store.recover_same_home().unwrap().publish();
+        let store = store.recover_same_home().unwrap().publish().unwrap();
         assert_eq!(store.health().state(), HomeHealthState::Healthy);
         store.close().unwrap();
     }
@@ -278,7 +278,7 @@ fn sidecar_token_from_an_obsolete_generation_cannot_authorize_metadata() {
     assert!(store.home_revision().is_err());
     let candidate = store.recover_same_home().unwrap();
     let alpha = candidate.domain_handle::<AlphaDomain>().unwrap();
-    let store = candidate.publish();
+    let store = candidate.publish().unwrap();
 
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.require_sidecar(sidecar).unwrap();

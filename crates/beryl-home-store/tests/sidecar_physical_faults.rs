@@ -197,7 +197,7 @@ fn fault_targets_the_final_post_rename_containing_directory_sync() {
     let final_path = shard.join(digest_hex);
     assert_eq!(fs::read(final_path).unwrap(), bytes);
     assert_eq!(store.health().state(), HomeHealthState::Failed);
-    let store = store.recover_same_home().unwrap().publish();
+    let store = store.recover_same_home().unwrap().publish().unwrap();
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 }
 
@@ -234,6 +234,6 @@ fn final_sidecar_verification_fault_surfaces_before_reading_the_final_file() {
     }
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
-    let store = store.recover_same_home().unwrap().publish();
+    let store = store.recover_same_home().unwrap().publish().unwrap();
     assert!(store.verify_sidecar(&address, limit()).is_ok());
 }
