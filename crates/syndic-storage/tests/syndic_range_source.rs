@@ -516,10 +516,7 @@ fn stage_and_build(storage: &SyndicStorage, store: &HomeStore, transaction: &Tra
             break;
         };
         previous = Some(advance.frontier());
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
 }
 
@@ -534,9 +531,17 @@ fn execution() -> ExecutionBinding {
 
 fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(

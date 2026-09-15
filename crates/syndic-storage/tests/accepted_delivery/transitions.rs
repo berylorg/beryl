@@ -59,8 +59,13 @@ fn every_delivery_transition_executes_current_and_persists_exact_aggregates() {
         );
         store.close().unwrap();
 
-        let mut reopened = open(home.path());
-        let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(home.path());
+        let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             operation.status(&reopened, &reopened_storage),
             AcceptedInputDeliveryTransitionStatus::Exact

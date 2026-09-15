@@ -5,6 +5,11 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     let home = TestHome::new("activity-publication-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     let item = SyndicItemId::from_bytes([12; 16]);
@@ -116,6 +121,11 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

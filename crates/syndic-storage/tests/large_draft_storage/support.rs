@@ -120,10 +120,7 @@ fn complete_staged_bounded(
     {
         assert!(advance.records_read() <= DRAFT_PIECE_BUILD_WINDOW_MAX_READS as u64);
         assert!(advance.staged_record_count() <= DRAFT_PIECE_STAGE_MAX_RECORDS);
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

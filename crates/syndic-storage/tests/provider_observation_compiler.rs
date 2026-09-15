@@ -44,8 +44,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn limit() -> SyndicPointReadLimit {

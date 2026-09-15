@@ -248,8 +248,13 @@ fn promotion_after_a_deep_tail_derives_child_digest_depth_and_deterministic_skip
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_storage
             .accepted_input_promotion_status(&reopened, &request, limit())

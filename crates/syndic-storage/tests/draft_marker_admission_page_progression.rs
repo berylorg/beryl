@@ -64,9 +64,17 @@ fn page_quanta_advance_once_resume_after_reopen_and_reclaim_replay_state() {
 
     drop(storage);
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     publish_page_quantum(
         &storage,
@@ -374,15 +382,7 @@ fn final_eof_is_durable_before_source_order_assignment() {
     committed(
         store.execute_current(publication(operation_owner, 113).current_command(&storage, prefix)),
     );
-    let eof = proven_page(
-        &storage,
-        &store,
-        operation_owner,
-        114,
-        2,
-        true,
-        Vec::new(),
-    );
+    let eof = proven_page(&storage, &store, operation_owner, 114, 2, true, Vec::new());
     committed(
         store.execute_current(publication(operation_owner, 114).current_command(&storage, eof)),
     );
@@ -419,18 +419,10 @@ fn separate_empty_eof_preserves_the_prefix_and_rejects_successors() {
     );
     assert_progress(&storage, &store, operation_owner, 1, 2, 0);
 
-    let eof = proven_page(
-        &storage,
-        &store,
-        operation_owner,
-        125,
-        2,
-        true,
-        Vec::new(),
+    let eof = proven_page(&storage, &store, operation_owner, 125, 2, true, Vec::new());
+    committed(
+        store.execute_current(publication(operation_owner, 125).current_command(&storage, eof)),
     );
-    committed(store.execute_current(
-        publication(operation_owner, 125).current_command(&storage, eof),
-    ));
     let snapshot = storage
         .draft_marker_admission_publication_snapshot_for_test(&store, operation_owner, &[])
         .unwrap();
@@ -466,10 +458,13 @@ fn separate_empty_eof_preserves_the_prefix_and_rejects_successors() {
         true,
         vec![association(127, &session, marker.marker_id())],
     );
-    let error = not_committed(store.execute_current(
-        publication(operation_owner, 125).current_command(&storage, changed),
-    ));
-    assert!(error.contains("Collision") || error.contains("ObsoletePage"), "{error}");
+    let error = not_committed(
+        store.execute_current(publication(operation_owner, 125).current_command(&storage, changed)),
+    );
+    assert!(
+        error.contains("Collision") || error.contains("ObsoletePage"),
+        "{error}"
+    );
     assert_durable_identity(&storage, &store, operation_owner, before);
 }
 

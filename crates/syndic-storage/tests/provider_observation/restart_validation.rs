@@ -6,6 +6,11 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
     let identity = ProviderObservationId::from_bytes([90; 16]);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     {
         let mut callback = commit_callback(&store, &storage);
         let mut stager = clean_stage(
@@ -56,6 +61,11 @@ fn restart_preserves_discriminant_and_duplicate_rejection_state() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut stager = storage
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()

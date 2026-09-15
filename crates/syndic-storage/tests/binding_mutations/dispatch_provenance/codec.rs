@@ -3,8 +3,13 @@ use super::*;
 #[test]
 fn old_turn_state_record_is_rejected_without_inferred_provenance() {
     let home = TestHome::new("turn-state-legacy-version");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (_, _, turn, _) = same_home_pending_path(&store, &storage, 170);
     let prior = state(&store, &storage, turn);
     assert_eq!(

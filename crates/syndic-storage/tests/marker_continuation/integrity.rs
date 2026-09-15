@@ -94,9 +94,17 @@ fn pending_root_leaf_option_and_tag_substitutions_fail_closed_after_reopen() {
             );
         }
         drop(store);
-        let mut store =
-            HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(
             storage
                 .prepare_draft_piece_build_advance(
@@ -159,9 +167,17 @@ fn cancelling_each_partial_insert_boundary_preserves_the_candidate_and_terminal_
             storage.cancel_draft_piece_edit(storage.revision(&store).unwrap(), prepared.clone()),
         ));
         drop(store);
-        let mut store =
-            HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             active_session(&storage, &store, session.draft_id(), session.session_id())
                 .newest_root(),

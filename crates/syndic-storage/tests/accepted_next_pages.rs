@@ -29,8 +29,13 @@ fn seeded(
         })
         .collect::<Vec<_>>();
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for current_draft in current_drafts {
         let root_history = seed_detached_canonical_draft_backing(
             &store,
@@ -298,8 +303,13 @@ fn candidate_cursor_from_another_source_is_rejected() {
 fn projection_lost_routed_input_stays_ineligible_while_gate_is_not_idle() {
     let thread = id(40);
     let home = TestHome::new("next-projection-lost");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     accepted_fixtures::seed_mixed_abandonment(&store, storage.clone());
     let request = accepted_fixtures::abandonment_request(&store, &storage);
     assert!(matches!(

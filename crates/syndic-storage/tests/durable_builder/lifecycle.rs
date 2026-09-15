@@ -70,14 +70,20 @@ fn cancellation_during_an_effect_and_between_effects_preserves_candidate_state()
                 )
                 .unwrap()
                 .unwrap();
-            committed(execute(
-                &store,
-                storage.advance_draft_piece_edit(advance),
-            ));
+            committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         }
         drop(store);
-        store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-        storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let reopened = open_build_fragments(&storage, &store, &prepared, &fragments);
         if cancel_between {
             assert_eq!(

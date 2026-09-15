@@ -216,6 +216,11 @@ fn route_generation_above_the_old_cap_pages_and_abandons_without_member_rewrites
     let home = TestHome::new("large-route-generation");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_large_route(&store, &storage, INPUT_COUNT);
 
     let thread = id(40);
@@ -266,6 +271,11 @@ fn route_pages_reject_stale_revisions_and_cross_revision_cursors() {
     let home = TestHome::new("route-page-revision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_large_route(&store, &storage, 302);
 
     let thread = id(40);
@@ -321,6 +331,11 @@ fn projection_loss_resolves_mixed_leaves_from_one_compact_generation_transition(
     let home = TestHome::new("mixed-route-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_mixed_abandonment(&store, &storage);
 
     execute(
@@ -402,6 +417,11 @@ fn scrub_rejects_route_generation_high_water_drift() {
     let home = TestHome::new("route-generation-high-water-drift");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let gate = storage
         .input_gate(
@@ -428,6 +448,11 @@ fn scrub_rejects_route_generation_high_water_drift() {
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -443,6 +468,11 @@ fn scrub_rejects_a_gap_in_monotonic_route_generations() {
     let home = TestHome::new("route-generation-gap");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let gate = storage
         .input_gate(
@@ -493,6 +523,11 @@ fn scrub_rejects_a_gap_in_monotonic_route_generations() {
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

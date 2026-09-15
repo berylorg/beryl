@@ -8,6 +8,11 @@ fn completed_activity_store(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
@@ -145,6 +150,11 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     let home = TestHome::new("activity-bounded-retirement");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
@@ -330,6 +340,11 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     store.close().unwrap();
     let mut reopened = open(home.path());
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened_head = reopened_storage
         .activity_query_head(&reopened, thread, limit())
         .unwrap()

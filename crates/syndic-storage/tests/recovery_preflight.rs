@@ -136,6 +136,11 @@ fn empty_current_path_is_native_fresh_without_model_metadata_or_state_change() {
     let home = TestHome::new("recovery-current-empty");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(41);
     seed_canonical_empty_thread(&store, storage.clone(), thread, draft_id(42));
     let thread_record = storage
@@ -209,6 +214,11 @@ fn current_preflight_equals_the_later_pending_parent_projection_without_state_ch
     let home = TestHome::new("recovery-current-pending-equivalence");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(210);
     let draft = draft_id(211);
     let completed = SyndicTurnId::from_bytes([212; 16]);
@@ -416,6 +426,11 @@ fn cursor_and_ready_proof_reject_source_revision_drift_before_emitting_text() {
     let home = TestHome::new("recovery-cursor-revision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(200);
     let turn = SyndicTurnId::from_bytes([201; 16]);
     let item = SyndicItemId::from_bytes([202; 16]);

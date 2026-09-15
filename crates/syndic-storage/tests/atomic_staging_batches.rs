@@ -332,9 +332,17 @@ fn reopen_preserves_complete_target_and_finish_transfer_and_builder_drain() {
     let home_path = fixture.home.0.clone();
     let identity = fixture.identity;
     drop(fixture.store);
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&home_path, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home_path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .reconcile_draft_mutation_staging_page_batch(&reopened, &replay)

@@ -37,8 +37,13 @@ fn publish_live_event(
 #[test]
 fn pending_root_cannot_authenticate_the_undelivered_turn_as_represented_history() {
     let home = TestHome::new("pending-root-prefix");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 190, false) else {
         unreachable!()
     };
@@ -79,8 +84,13 @@ fn pending_root_cannot_authenticate_the_undelivered_turn_as_represented_history(
 #[test]
 fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
     let home = TestHome::new("pending-child-prefix");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 210, true)
     else {
         unreachable!()
@@ -201,8 +211,13 @@ fn pending_non_root_accepts_only_its_exact_authenticated_parent_prefix() {
 #[test]
 fn live_and_unknown_terminal_tails_reject_ordinary_full_prefix_bindings() {
     let home = TestHome::new("live-and-unknown-tail-prefix");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 214, false) else {
         unreachable!()
     };

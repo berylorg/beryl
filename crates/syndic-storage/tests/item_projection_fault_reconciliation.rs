@@ -32,8 +32,11 @@ fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -211,6 +214,11 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let pending = prepare_final_publication(&store, &storage);
 
         let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -262,6 +270,11 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             store.close().unwrap();
             let mut reopened = open(home.path());
             let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+            let reopened = reopened
+                .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             reopened
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
                 .unwrap();
@@ -278,7 +291,7 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
             assert!(
-                HomeStore::open(HomeOpenOptions::new(
+                beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
                     home.path(),
                     HomeSchemaVersion::CURRENT
                 ))
@@ -290,6 +303,11 @@ fn final_item_projection_publication_reconciles_to_wholly_old_or_wholly_new() {
 
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         reopened
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();

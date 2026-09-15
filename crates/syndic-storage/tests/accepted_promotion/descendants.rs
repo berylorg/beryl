@@ -62,8 +62,13 @@ fn promotion_reconciliation_accepts_a_later_current_draft_revision() {
         AcceptedInputPromotionStatus::Exact
     );
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_storage
             .accepted_input_promotion_status(&reopened, &request, limit())
@@ -107,8 +112,13 @@ fn promotion_reconciliation_accepts_a_later_accepted_generation() {
     assert_eq!(sources.records().len(), 1);
     assert_eq!(sources.records()[0].generation(), newer.newer_generation);
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_storage
             .accepted_input_promotion_status(&reopened, &request, limit())

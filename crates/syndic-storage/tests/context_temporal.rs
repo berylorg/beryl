@@ -255,8 +255,13 @@ fn context_record_with_projection_revision(
 
 fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -279,8 +284,13 @@ fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) 
     SyndicStorage::reacquire(&recovered).unwrap();
     recovered.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -295,7 +305,7 @@ fn assert_context_rejection(name: &str, expected: &str, mutation: FixtureBatch) 
         }
         other => panic!("expected context registration rejection, got {other:?}"),
     }
-    reopened.close().unwrap();
+    drop(reopened);
 }
 
 fn assert_seeded_context_rejection(
@@ -304,8 +314,13 @@ fn assert_seeded_context_rejection(
     mutation: impl Fn(&beryl_home_store::HomeStore, &SyndicStorage) -> FixtureBatch,
 ) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -318,8 +333,13 @@ fn assert_seeded_context_rejection(
     assert!(error.to_string().contains(expected), "{error}");
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 
     let mut reopened = open(home.path());
@@ -328,7 +348,7 @@ fn assert_seeded_context_rejection(
         Err(error) => error,
     };
     assert!(error.to_string().contains(expected), "{error}");
-    reopened.close().unwrap();
+    drop(reopened);
 }
 
 fn validate_seeded_and_reopen(
@@ -336,8 +356,13 @@ fn validate_seeded_and_reopen(
     mutation: impl FnOnce(&beryl_home_store::HomeStore, &SyndicStorage) -> FixtureBatch,
 ) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -349,8 +374,13 @@ fn validate_seeded_and_reopen(
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

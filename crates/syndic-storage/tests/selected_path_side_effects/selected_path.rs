@@ -5,6 +5,11 @@ fn selected_path_finalization_stales_transcript_and_updates_history_summary() {
     let home = TestHome::new("selected-path-finalization");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let selected = seed_terminal_turn_with_open_assistant(&store, &storage);
     let before_head = head(&store, &storage, selected.thread);
     let before_summary = summary(&store, &storage, selected.thread);
@@ -63,6 +68,11 @@ fn selected_path_finalization_stales_transcript_and_updates_history_summary() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

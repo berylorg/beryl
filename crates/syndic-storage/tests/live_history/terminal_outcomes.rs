@@ -23,6 +23,11 @@ fn every_proven_terminal_outcome_persists_its_exact_gate_semantics() {
         let home = TestHome::new(&format!("terminal-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let (thread, turn) = seed_pending_turn(&store, &storage);
         let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
         admit(
@@ -69,6 +74,11 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
     let home = TestHome::new("active-unknown-terminal-awaiting");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
 

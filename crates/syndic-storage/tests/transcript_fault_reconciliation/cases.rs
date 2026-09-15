@@ -23,6 +23,11 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let target = prepare_final_publication(&store, &storage);
         let unpublished = observe(&store, &storage, &target);
         assert!(unpublished.entries.is_empty() && unpublished.build.entry_count() == 0);
@@ -85,6 +90,11 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             store.close().unwrap();
             let mut reopened = open(home.path());
             let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+            let reopened = reopened
+                .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             let durable = observe(&reopened, &reopened_storage, &target);
             assert_state(&durable, &unpublished, &published, expected);
             reopened
@@ -104,7 +114,7 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
             assert!(
-                HomeStore::open(HomeOpenOptions::new(
+                beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
                     home.path(),
                     HomeSchemaVersion::CURRENT
                 ))
@@ -116,6 +126,11 @@ fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
 
         let mut reopened = open(home.path());
         let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let durable = observe(&reopened, &reopened_storage, &target);
         assert_eq!(durable, recovered);
         assert_state(&durable, &unpublished, &published, expected);

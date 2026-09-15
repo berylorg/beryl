@@ -66,8 +66,13 @@ fn provider_operation_seed(
 #[test]
 fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
     let home = TestHome::new("provider-depth-native-count");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(110);
     let draft = draft_id(111);
     let turn = SyndicTurnId::from_bytes([112; 16]);

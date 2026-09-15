@@ -5,6 +5,11 @@ fn divergent_nonempty_prefix_selects_the_exact_inclusive_ancestor() {
     let home = TestHome::new("native-divergent-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let child = id(114);
     let parent = support::populated::source_turn();
@@ -36,6 +41,11 @@ fn divergent_nonempty_prefix_selects_the_exact_inclusive_ancestor() {
 
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let before_revision = storage.revision(&store).unwrap();
 
     let NativeProjectionPlan::Fork {

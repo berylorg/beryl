@@ -32,6 +32,11 @@ fn untouched_empty_and_published_nonzero_openings_are_saved_without_publication(
         drop(store);
         let mut store = open(&home);
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(current(&storage, &store, thread), durable);
         let opened = open_session(&storage, &store, &durable, 16, 17);
         assert_eq!(opened.newest_root(), durable.draft().piece_root());

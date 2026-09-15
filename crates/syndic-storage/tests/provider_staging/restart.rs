@@ -117,12 +117,17 @@ pub(super) fn narrative_ahead_prepared() -> PreparedProviderFrame {
 #[test]
 fn content_ahead_partial_build_reopens_and_resumes() {
     let home = TestHome::new("content-ahead");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let text = "r".repeat(CONTENT_CHUNK_MAX_BYTES * (CONTENT_APPEND_MAX_CHUNKS + 3));
     let prepared = prepare_first(agent_start("content-ahead", text), 9);
     let narrative_seed = prepared.initial_build().staged_narrative().unwrap();
@@ -161,12 +166,17 @@ fn content_ahead_partial_build_reopens_and_resumes() {
     assert_eq!(committed.lifecycle(), ProviderItemBuildLifecycle::Staging);
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let durable = reopened_storage
         .provider_item_build(
             &reopened,
@@ -220,12 +230,17 @@ fn content_ahead_partial_build_reopens_and_resumes() {
     assert_eq!(final_build.lifecycle(), ProviderItemBuildLifecycle::Sealed);
     reopened.close().unwrap();
 
-    let mut verified = HomeStore::open(HomeOpenOptions::new(
+    let mut verified = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let verified_storage = SyndicStorage::register(&mut verified).unwrap();
+    let verified = verified
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened_build = verified_storage
         .provider_item_build(
             &verified,
@@ -241,12 +256,17 @@ fn content_ahead_partial_build_reopens_and_resumes() {
 #[test]
 fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
     let home = TestHome::new("narrative-ahead");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let prepared = narrative_ahead_prepared();
     match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
         CommandOutcome::Committed {
@@ -287,12 +307,17 @@ fn narrative_ahead_content_incomplete_partial_build_reopens_and_resumes() {
     assert_eq!(committed.lifecycle(), ProviderItemBuildLifecycle::Staging);
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let durable = reopened_storage
         .provider_item_build(
             &reopened,

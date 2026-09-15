@@ -73,15 +73,20 @@ fn rightward_move_preserves_following_frontier_across_restart() {
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     while let Some(advance) = storage
         .prepare_draft_piece_build_advance(
             &store,
@@ -91,10 +96,7 @@ fn rightward_move_preserves_following_frontier_across_restart() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -198,15 +200,20 @@ fn same_id_replacement_preserves_following_frontier_across_restart() {
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     while let Some(advance) = storage
         .prepare_draft_piece_build_advance(
             &store,
@@ -216,10 +223,7 @@ fn same_id_replacement_preserves_following_frontier_across_restart() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -296,10 +300,7 @@ fn earlier_inner_anchor_preserves_later_inner_frontier() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,

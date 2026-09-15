@@ -19,8 +19,13 @@ fn recovered_proof(
 #[test]
 fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() {
     let home = TestHome::new("recovered-injection-process");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, Some(parent), turn, selected) = fault_pending_path(&store, &storage, 170, true)
     else {
         unreachable!()
@@ -148,8 +153,13 @@ fn recovered_lineage_activation_requires_its_process_and_preserves_chronology() 
 #[test]
 fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
     let home = TestHome::new("recovered-lineage-redefinition");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 180, true)
     else {
         unreachable!()
@@ -231,8 +241,13 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
 #[test]
 fn active_cas_turn_rejects_pre_start_and_reconciles_exact_or_colliding_publication() {
     let home = TestHome::new("active-cas-turn-collisions");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 184, false) else {
         unreachable!()
     };

@@ -57,8 +57,13 @@ fn reopen_requires_creation_time_unbound_binding_revision() {
 #[test]
 fn reopen_rejects_persisted_binding_that_claims_the_pending_tail() {
     let home = TestHome::new("persisted-pending-claim");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 57, false) else {
         unreachable!()
     };
@@ -130,8 +135,13 @@ fn reopen_rejects_persisted_binding_that_claims_the_pending_tail() {
 #[test]
 fn reopen_rejects_first_cas_membership_established_at_another_prefix() {
     let home = TestHome::new("first-membership-establishment");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 60, true) else {
         unreachable!()
     };

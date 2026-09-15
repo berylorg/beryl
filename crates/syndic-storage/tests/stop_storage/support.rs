@@ -69,8 +69,12 @@ impl Drop for TestHome {
     }
 }
 
-pub fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+pub fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 pub fn timestamp(value: u64) -> SyndicTimestamp {
@@ -202,6 +206,11 @@ pub fn pending_turn_fixture(name: &str) -> PendingTurnFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([111; 16]);
     execute(
         &store,

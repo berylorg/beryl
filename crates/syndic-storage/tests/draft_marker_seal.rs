@@ -76,9 +76,17 @@ fn marker_free_seal_is_restartable_replayable_and_opaque_until_eof() {
     );
 
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         storage
             .draft_marker_seal_status(&store, request.key())
@@ -432,9 +440,17 @@ fn ordered_markers_fold_incrementally_into_the_opaque_proof() {
     ));
 
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let second_page = storage
         .prepare_draft_marker_seal_advance_with_limit(&store, request.key(), 1)
         .unwrap()
@@ -514,10 +530,7 @@ fn complete_marker_edit_for_seal(
         )
         .unwrap_or_else(|error| panic!("marker operation {operation} failed: {error:?}"))
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,

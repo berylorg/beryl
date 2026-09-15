@@ -434,6 +434,11 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
     let home = TestHome::new("recovery-exact-order");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let entries = [
         ("complete root", TurnLifecycle::Complete),
         ("interrupted middle", TurnLifecycle::Interrupted),
@@ -466,6 +471,11 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened_projection = prepare_ready(&reopened, &storage, &fixture, Some(100_000));
     assert_eq!(reopened_projection.sequence_digest(), digest);
     assert_eq!(replay(&storage, &reopened, reopened_projection), expected);
@@ -477,6 +487,11 @@ fn caller_page_limit_preserves_utf8_progress_and_returns_the_exact_lease() {
     let home = TestHome::new("recovery-caller-page");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_recovery_fixture(
         &store,
         &storage,
@@ -544,6 +559,11 @@ fn recovery_sequence_digest_matches_the_fixed_v1_vector() {
     let home = TestHome::new("recovery-digest-vector");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_user_assistant_fixture(&store, &storage, "u");
     let projection = prepare_ready(&store, &storage, &fixture, Some(100_000));
     assert_eq!(
@@ -572,6 +592,11 @@ fn recovery_crosses_content_chunks_and_emits_more_pages_than_items() {
     let home = TestHome::new("recovery-cross-chunk-pages");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let text = "z".repeat(CONTENT_CHUNK_MAX_BYTES + 37);
     let fixture = seed_recovery_fixture(
         &store,
@@ -624,6 +649,11 @@ fn absolute_utf8_ceiling_accepts_exactly_and_rejects_plus_one() {
         let home = TestHome::new(name);
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let text = "a".repeat(length);
         let fixture = seed_recovery_fixture(
             &store,
@@ -664,6 +694,11 @@ fn half_window_budget_and_missing_or_zero_metadata_are_exact() {
     let home = TestHome::new("recovery-model-window");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_recovery_fixture(
         &store,
         &storage,
@@ -709,6 +744,11 @@ fn canonical_itemless_terminal_history_fails_closed_and_reopens_deterministicall
     let home = TestHome::new("recovery-incomplete-root");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     support::seed_populated(&store, storage.clone());
     let thread = id(30);
     let selected = selected_path(&store, &storage, thread);
@@ -724,6 +764,11 @@ fn canonical_itemless_terminal_history_fails_closed_and_reopens_deterministicall
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         storage.prepare_recovery_projection(
             &reopened,
@@ -741,6 +786,11 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
         let home = TestHome::new(name);
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = seed_recovery_fixture(
             &store,
             &storage,
@@ -795,6 +845,11 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
     let home = TestHome::new("recovery-incomplete-finalization");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_recovery_fixture(
         &store,
         &storage,
@@ -834,6 +889,11 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
     let home = TestHome::new("recovery-operational");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     support::seed_populated(&store, storage.clone());
     let thread = id(40);
     let turn = support::populated::active_turn();
@@ -904,6 +964,11 @@ fn stale_selected_path_is_rejected_before_history_assembly() {
     let home = TestHome::new("recovery-stale-path");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_recovery_fixture(
         &store,
         &storage,

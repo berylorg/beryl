@@ -75,8 +75,13 @@ fn abandonment_reconciles_every_atomic_fault_cut() {
         }
         let expected = head(&storage, &store, &opened);
         drop(store);
-        let mut store = open(&home);
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(&home);
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(head(&storage, &store, &opened), expected);
         drop(home);
     }
@@ -130,8 +135,13 @@ fn reconciliation_collision_is_typed_retained_and_does_not_fabricate_receipt() {
     drop(retry);
     store.close().unwrap();
 
-    let mut reopened = open(&home);
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(reopened.pending_reconciliations().is_empty());
     assert!(matches!(
         storage

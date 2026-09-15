@@ -50,37 +50,32 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 417: Qualify Beryl State Initial Candidates (finished)
+# Phase 418: Qualify Syndic Storage Initial Candidates (finished)
 
-Accepted explicit complete-state fixture registration and publication, exact custom-domain
-declarations and preserved schema, failure, recovery and theme behavior. All 152 state cases,
-normal and test compilation, formatting and independent review passed; [acceptance evidence](failures/target-bootstrap-composition.md#beryl-state-candidate-qualification)
-retains the scope. Production state behavior was unchanged.
+Accepted explicit Syndic fixture publication, exact mixed-domain declarations and fresh physical
+registration, preserving failure and recovery semantics. All 1,009 cases, normal and test
+compilation, formatting and independent review passed; [acceptance evidence](failures/target-bootstrap-composition.md#syndic-candidate-qualification)
+retains the fixture corrections and scope. Production behavior was unchanged.
 
-# Phase 418: Qualify Syndic Storage Initial Candidates (wip)
+# Phase 419: Restore App Construction Evidence With Initial Candidates (wip)
 
-Apply the [Syndic public boundary](../crates/syndic-storage/doc/design.md#public-boundary) and its
-inherited persistent-state-integrity contract to Syndic-owned fixtures.
+Apply the [app public boundary](../crates/beryl-app/doc/design.md#public-boundary) and
+[initial publication contract](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication)
+to app-owned fixture construction.
 
-- Convert shared and direct fixture opening to `HomeOpenCandidate`, exact package-owned Syndic
-  registration and `required_domains` before explicit publication. Fixed typed fixture composers
-  may own the complete sequence; generic openers must retain the unpublished candidate.
-- Merge exact state, Syndic and test-domain declarations where a fixture composes them. Rebuild
-  live registrations on every fresh physical open, preserving recovered cleanup attachment custody
-  and distinguishing ordinary initial opening from same-home recovery candidates.
-- Preserve routine versus exhaustive validation, compact recovery sources, V7 record behavior,
-  typed failures and rejected candidate cleanup. Adapt pre-existing library-test setup where needed;
-  remove obsolete source examples of the replaced opening API.
-- Compile affected test targets and run the Syndic suite with required fault features, keeping
-  concurrent test resource use bounded. Run normal compilation and focused independent review of
-  changed composition and failure assertions. This does not accept candidate recovery access or
-  application service publication.
+- Convert shared, direct and library-test fixtures to unpublished candidates with complete exact
+  Beryl-state, Syndic and applicable test-domain registration before explicit publication. Generic
+  openers retain candidates; fixed complete fixture composers may publish their declared graph.
+- Rebuild live handles on each fresh physical open, preserve initial versus same-home recovery
+  distinctions, and keep rejected candidate cleanup and typed failure assertions intact.
+- Preserve each fixture's services, identity, initial state and fault behavior. Reconcile existing
+  source and test setup with accepted APIs without treating fixture publication as production
+  bootstrap or complete service-graph acceptance.
+- Compile affected app targets, run representative construction, runtime and window regressions
+  with bounded test concurrency, and run normal compilation, formatting and independent review of
+  changed composition and failure evidence before acceptance.
 
-# Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
-
-Convert app fixtures to declared complete candidate registration and explicit publication, preserving
-their exact services and initial conditions. Compile affected app targets and run representative
-construction, runtime and window regressions; do not claim production bootstrap from fixtures.
+Syndic qualification is accepted. App conversion and verification have not started.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 

@@ -1,6 +1,4 @@
-use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion};
 use syndic_storage::test_faults::PersistedProviderNarrativeCorruption;
 
 use super::{restart::*, *};
@@ -26,12 +24,17 @@ fn provable_partial_narrative_corruption_is_rejected_by_scrub() {
         ),
     ] {
         let home = TestHome::new(&format!("corrupt-{corruption:?}"));
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             home.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let prepared = narrative_ahead_prepared();
         match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
             CommandOutcome::Committed {
@@ -102,12 +105,17 @@ fn provable_partial_narrative_corruption_is_rejected_by_scrub() {
         }
         store.close().unwrap();
 
-        let mut reopened = HomeStore::open(HomeOpenOptions::new(
+        let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             home.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         SyndicStorage::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let error = reopened
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap_err();

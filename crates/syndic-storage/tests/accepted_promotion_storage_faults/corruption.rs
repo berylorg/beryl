@@ -79,6 +79,11 @@ fn routine_reopen_defers_a_removed_promoted_leaf_witness_to_explicit_scrub() {
     let mut reopened = open(home.path());
     let _storage = SyndicStorage::register(&mut reopened)
         .expect("routine reopen must validate declarations without scanning application records");
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

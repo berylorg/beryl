@@ -23,8 +23,11 @@ fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -168,6 +171,16 @@ fn durable_job_success_and_intrinsic_archive_publish_atomically() {
     let mut store = open_with_faults(home.path(), FaultController::new());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let job_id = prepare_parent_active_job(&store, &state, syndic.clone());
 
     match store.execute(terminal_command(&store, &state, syndic.clone(), job_id)) {
@@ -205,6 +218,16 @@ fn commit_fault_leaves_both_job_and_archive_at_their_pre_success_state() {
     let mut store = open_with_faults(home.path(), faults.clone());
     let state = BerylState::register(&mut store).unwrap();
     let syndic = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let job_id = prepare_parent_active_job(&store, &state, syndic.clone());
 
     faults.fail_next(FaultPoint::BeforeCommit);

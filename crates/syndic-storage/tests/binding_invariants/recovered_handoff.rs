@@ -110,8 +110,13 @@ fn stale_from_usable(
 #[test]
 fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
     let home = TestHome::new("recovered-stale-process");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = establish_recovered_valid(
         &store,
         &storage,
@@ -163,8 +168,13 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -222,8 +232,13 @@ fn recovered_stale_generation_may_advance_only_inside_the_injection_process() {
 #[test]
 fn recovered_abandonment_retains_exact_active_snapshot_generation() {
     let home = TestHome::new("recovered-abandonment-generation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = establish_recovered_valid(
         &store,
         &storage,
@@ -316,8 +331,13 @@ fn recovered_abandonment_retains_exact_active_snapshot_generation() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

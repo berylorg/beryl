@@ -76,12 +76,17 @@ pub fn execution_binding() -> ExecutionBinding {
 
 pub fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     let creation = CreateThread::ordinary(

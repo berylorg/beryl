@@ -5,6 +5,11 @@ fn terminal_history_converges_before_replacement_changes_the_selected_path() {
     let home = TestHome::new("off-path-finalization");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let old = seed_terminal_turn_with_open_assistant(&store, &storage);
     assert_eq!(
         assistant_content_lifecycle(&store, &storage, old),
@@ -48,6 +53,11 @@ fn terminal_history_converges_before_replacement_changes_the_selected_path() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

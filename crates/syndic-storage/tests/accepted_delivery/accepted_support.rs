@@ -23,32 +23,52 @@ pub fn limit() -> SyndicPointReadLimit {
 
 pub fn seeded(name: &str, records: Vec<FixtureRecord>) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(&store, storage.clone(), batch(records));
     (home, store, storage)
 }
 
 pub fn seeded_populated(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     (home, store, storage)
 }
 
 pub fn seeded_mixed(name: &str) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_mixed_abandonment(&store, storage.clone());
     (home, store, storage)
 }
 
 pub fn seeded_large_ready(name: &str, last_ordinal: u64) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_large_ready_generation(&store, &storage, last_ordinal);
     (home, store, storage)
 }
@@ -67,8 +87,13 @@ pub fn seeded_operation(
     operation: AcceptedOperation,
 ) -> (TestHome, HomeStore, SyndicStorage) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_operation(&store, &storage, operation);
     (home, store, storage)
 }

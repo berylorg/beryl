@@ -45,6 +45,11 @@ fn atomic_publication_is_exact_sealed_and_reusable_without_revision_advance() {
     store.close().unwrap();
     let mut reopened = crate::support::open(home.path());
     let storage = syndic_storage::SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_exact(&reopened, &storage, ContentRevision::new(1).unwrap());
     assert_eq!(snapshot(&reopened, &storage), records);
     reopened.close().unwrap();

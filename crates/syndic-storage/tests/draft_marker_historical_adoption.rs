@@ -45,12 +45,17 @@ fn fault_fixture(
 ) {
     let home = TestHome::new(name);
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = beryl_model::SyndicThreadId::from_bytes([seed; 16]);
     committed(execute(
         &store,
@@ -79,9 +84,17 @@ fn fault_fixture(
 
 fn reopen(home: &TestHome, store: HomeStore) -> (HomeStore, SyndicStorage) {
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, storage)
 }
 

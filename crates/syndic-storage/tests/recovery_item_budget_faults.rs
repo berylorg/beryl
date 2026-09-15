@@ -60,6 +60,11 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread = id(30);
     let root = SyndicTurnId::from_bytes([29; 16]);

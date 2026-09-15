@@ -204,8 +204,13 @@ fn seed_unselected_accepted_input(
 #[test]
 fn consecutive_empty_active_epochs_allocate_distinct_route_generations() {
     let home = TestHome::new("consecutive-empty-route-generations");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 120, false) else {
         unreachable!()
     };
@@ -265,8 +270,13 @@ fn consecutive_empty_active_epochs_allocate_distinct_route_generations() {
 #[test]
 fn unselected_generations_and_later_activation_share_one_route_allocator() {
     let home = TestHome::new("route-generation-interleaving");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 130, false) else {
         unreachable!()
     };
@@ -354,8 +364,13 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -365,8 +380,13 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
 #[test]
 fn route_generation_exhaustion_rejects_without_overwrite() {
     let home = TestHome::new("route-generation-exhaustion");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, None, turn, selected) = fault_pending_path(&store, &storage, 230, false) else {
         unreachable!()
     };

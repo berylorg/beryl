@@ -105,8 +105,17 @@ fn markerless_nonempty_ranges_reject_without_implicit_marker_deletion() {
         );
 
         drop(store);
-        store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-        storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(matches!(
             storage.prepare_draft_piece_build_advance(
                 &store,

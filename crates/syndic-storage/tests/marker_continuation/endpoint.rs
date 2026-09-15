@@ -137,9 +137,17 @@ fn secondary_source_proof_cannot_replace_an_unambiguous_primary_result() {
     };
     inject_coordinated_draft_marker_secondary_for_test(&store, &storage, &build);
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         storage
             .prepare_draft_piece_build_advance(

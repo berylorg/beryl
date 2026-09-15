@@ -99,6 +99,11 @@ fn memory_citation_thread_text_and_agent_state_keys_remain_generic() {
     let home = TestHome::new("provider-observation-generic-thread-text");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
     let generic = generic_text();
 

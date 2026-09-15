@@ -209,10 +209,7 @@ fn complete_staged(
         )
         .unwrap_or_else(|error| panic!("operation {operation} failed to advance: {error:?}"))
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         store,
@@ -233,10 +230,9 @@ fn advance_error(
             identity.session_id(),
             identity.operation_id().as_piece_operation(),
         ) {
-            Ok(Some(advance)) => committed(execute(
-                store,
-                storage.advance_draft_piece_edit(advance),
-            )),
+            Ok(Some(advance)) => {
+                committed(execute(store, storage.advance_draft_piece_edit(advance)))
+            }
             Ok(None) => panic!("invalid effect unexpectedly completed"),
             Err(error) => return error,
         }
@@ -299,9 +295,17 @@ fn prepare_one_page(
 
 fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(
@@ -336,12 +340,17 @@ fn fixture_with_faults(
     faults: FaultController,
 ) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults,
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(

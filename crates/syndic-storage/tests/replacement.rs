@@ -353,6 +353,11 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
     let home = TestHome::new("replacement-roundtrip");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(90);
     let (turn, selected, entry) =
         seed_local_user_replacement_target(&store, &storage, thread, draft_id(91));
@@ -387,6 +392,11 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register_with_schema_validation(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let draft = storage
         .draft(
             &reopened,

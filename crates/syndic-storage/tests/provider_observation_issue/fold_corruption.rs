@@ -94,6 +94,11 @@ fn assert_current_and_reopen_reject(fixture: Fixture) {
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopen_error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

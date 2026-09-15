@@ -25,9 +25,17 @@ pub(super) fn assert_terminal_receipt_fault_remains_inert(
     compact_terminal_without_retaining(&storage, &store, admission, seed.wrapping_add(6));
     drop(storage);
     drop(store);
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let before = snapshot(&storage, &reopened, admission);
     let head_digest = before.head().unwrap().digest();
     let capacity_digest = before.capacity().unwrap().digest();

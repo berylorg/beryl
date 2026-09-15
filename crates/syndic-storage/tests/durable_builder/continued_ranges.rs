@@ -69,10 +69,7 @@ fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_
             )
         })
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     let completed = complete_continued_build(&storage, &store, &prepared, &fragments);
     assert_eq!(completed.frontier(), DraftPieceBuildFrontierV1::Complete);
@@ -80,9 +77,17 @@ fn nonempty_replacement_continuations_consume_source_once_across_marker_effects_
     assert_eq!(replayed, completed);
 
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         complete_continued_build(&storage, &store, &prepared, &fragments),
         completed

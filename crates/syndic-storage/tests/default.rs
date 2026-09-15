@@ -33,22 +33,36 @@ impl Drop for TestHome {
     }
 }
 
-fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 #[test]
 fn normal_features_register_reopen_and_read_an_empty_domain() {
     let home = TestHome::new();
-    let mut store = open(home.path());
-    SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let missing = SyndicThreadId::from_bytes([1; 16]);
     let limit = SyndicPointReadLimit::new(1_024).unwrap();
     assert!(storage.thread(&reopened, missing, limit).unwrap().is_none());

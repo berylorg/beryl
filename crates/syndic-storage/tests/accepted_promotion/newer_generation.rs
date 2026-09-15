@@ -136,8 +136,13 @@ fn promoting_generation_one_preserves_a_newer_same_thread_route_head() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_newer_authority(
         &reopened,
         &reopened_storage,

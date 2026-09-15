@@ -5,6 +5,11 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     let home = TestHome::new("transcript-multi-batch");
     let mut store = open(home.path());
     let mut storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&store, storage.clone());
 
     let root = submit_text(
@@ -90,8 +95,13 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     );
 
     store.close().unwrap();
-    store = open(home.path());
+    let mut store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -150,8 +160,13 @@ fn multi_batch_publication_resumes_and_orders_root_to_tail() {
     assert_unpublished_head(&store, storage.clone(), thread, generation);
 
     store.close().unwrap();
-    store = open(home.path());
+    let mut store = open(home.path());
     storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

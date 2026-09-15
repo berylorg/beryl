@@ -178,6 +178,11 @@ fn arbitrary_utf8_fragmentation_is_canonical_and_cursor_has_exact_eof() {
     let home = TestHome::new("provider-observation-canonical");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bytes = "héllo \u{1f980}".as_bytes();
 
     let first = {
@@ -242,6 +247,11 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
     let identity = ProviderObservationId::from_bytes([3; 16]);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     {
         let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_agent(identity, &mut callback).unwrap();
@@ -268,6 +278,11 @@ fn partial_build_reopens_resumes_and_exact_batches_reconcile() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut stager = storage
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
@@ -321,6 +336,11 @@ fn identity_collision_route_mismatch_and_abandonment_are_explicit() {
     let home = TestHome::new("provider-observation-authority");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let identity = ProviderObservationId::from_bytes([70; 16]);
     let sealed = {
         let mut callback = commit_callback(&store, &storage);
@@ -392,6 +412,11 @@ fn large_observation_stays_bounded_and_missing_chunk_is_rejected() {
     let home = TestHome::new("provider-observation-large-fault");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let identity = ProviderObservationId::from_bytes([71; 16]);
     let sealed = {
         let mut callback = commit_callback(&store, &storage);
@@ -459,6 +484,11 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
     let home = TestHome::new("provider-observation-digest-fault");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let identity = ProviderObservationId::from_bytes([72; 16]);
     {
         let mut callback = commit_callback(&store, &storage);

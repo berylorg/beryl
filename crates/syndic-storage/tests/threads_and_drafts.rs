@@ -38,8 +38,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(home: &TestHome) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(home: &TestHome) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn execution() -> ExecutionBinding {
@@ -154,6 +158,11 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
     let home = TestHome::new("ordinary");
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread_id, draft_id) = ids(1);
     let creation = CreateThread::ordinary(
         thread_id,
@@ -201,6 +210,11 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
 
     let mut reopened = open(&home);
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .thread_creation_status(&reopened, &creation, limit())
@@ -215,6 +229,11 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
     let home = TestHome::new("cancel-collision");
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread_id, draft_id) = ids(10);
     let creation = CreateThread::ordinary(
         thread_id,

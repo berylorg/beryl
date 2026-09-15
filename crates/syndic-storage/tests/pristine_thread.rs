@@ -136,6 +136,11 @@ fn eligible_noncanonical_empty_current_draft_and_exact_identity_are_exposed() {
     let home = TestHome::new("pristine-type-delete-shape");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(20);
     let creation = create(&store, &storage, 21, binding.clone());
 
@@ -167,6 +172,11 @@ fn restart_audit_distinguishes_missing_exact_conflict_and_reopened_exact() {
     let home = TestHome::new("pristine-restart-audit");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(30);
     let thread_id = id(31);
     assert!(matches!(
@@ -197,6 +207,11 @@ fn restart_audit_distinguishes_missing_exact_conflict_and_reopened_exact() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened_audit = reopened_storage
         .audit_pristine_thread(&reopened, thread_id, &binding)
         .unwrap();
@@ -212,6 +227,11 @@ fn restart_audit_reports_present_partial_closure_as_conflict() {
     let home = TestHome::new("pristine-partial-audit");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(35);
     let creation = create(&store, &storage, 36, binding.clone());
     let mut batch = FixtureBatch::new();
@@ -241,6 +261,11 @@ fn submitted_dirty_marker_and_nonordinary_threads_are_ineligible() {
         let home = TestHome::new(&format!("pristine-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let binding = execution(logical_utf8_bytes as u8 + marker_count as u8 + 50);
         let creation = create(&store, &storage, 52, binding.clone());
         replace_current_payload(
@@ -262,6 +287,11 @@ fn submitted_dirty_marker_and_nonordinary_threads_are_ineligible() {
     let home = TestHome::new("pristine-submitted");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(60);
     let creation = create(&store, &storage, 61, binding.clone());
     let thread = storage
@@ -316,6 +346,11 @@ fn submitted_dirty_marker_and_nonordinary_threads_are_ineligible() {
     let home = TestHome::new("pristine-nonordinary");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(70);
     let creation = create(&store, &storage, 71, binding.clone());
     let thread = storage
@@ -386,6 +421,11 @@ fn non_idle_and_live_input_gate_facts_are_ineligible() {
         let home = TestHome::new(&format!("pristine-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let binding = execution(80);
         let creation = create(&store, &storage, 81, binding.clone());
         let mut batch = FixtureBatch::new();
@@ -405,6 +445,11 @@ fn writer_validation_rejects_a_stale_candidate() {
     let home = TestHome::new("pristine-stale");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(90);
     let creation = create(&store, &storage, 91, binding.clone());
     let candidate = storage
@@ -429,6 +474,11 @@ fn created_pristine_thread_deletes_the_exact_complete_closure_and_audits_removed
     let home = TestHome::new("pristine-created-delete");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(100);
     let creation = create(&store, &storage, 101, binding.clone());
     let candidate = storage
@@ -482,6 +532,11 @@ fn orphan_source_blocks_pristine_deletion_without_implicit_repair() {
     let home = TestHome::new("pristine-orphan-source");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(100);
     let creation = create(&store, &storage, 101, binding.clone());
     let candidate = storage
@@ -533,6 +588,11 @@ fn noncanonical_reused_candidate_is_validation_only_and_cannot_be_deleted() {
     let home = TestHome::new("pristine-reused-release");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(110);
     let creation = create(&store, &storage, 111, binding.clone());
     replace_current_payload(&store, &storage, creation.thread_id(), 0, 0, true);
@@ -568,6 +628,11 @@ fn stale_or_partial_created_candidate_never_deletes_and_audits_collision() {
     let home = TestHome::new("pristine-stale-partial");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = execution(120);
     let creation = create(&store, &storage, 121, binding.clone());
     let candidate = storage
@@ -615,6 +680,11 @@ fn advanced_or_active_binding_head_rejects_pristine_authority() {
         let home = TestHome::new(&format!("pristine-binding-{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let binding = execution(130);
         let creation = create(&store, &storage, 131, binding.clone());
         let candidate = storage

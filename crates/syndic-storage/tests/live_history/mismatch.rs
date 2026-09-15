@@ -92,6 +92,11 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     let home = TestHome::new("segmented-completion-mismatch");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
@@ -291,6 +296,11 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

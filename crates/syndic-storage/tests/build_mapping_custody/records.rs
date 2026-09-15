@@ -38,9 +38,17 @@ fn initial_mapping_is_implicit_and_partial_mapping_reopens_before_cancellation()
     assert_unadopted(&storage, &store, &session);
     drop(storage);
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         storage
             .draft_mutation_staging_status(&store, identity)

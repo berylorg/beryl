@@ -38,8 +38,11 @@ fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(READ_BYTES).unwrap()
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )

@@ -163,8 +163,17 @@ fn run_reopening(
             }
         }
         drop(store);
-        store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-        storage = SyndicStorage::register(&mut store).unwrap();
+        let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        storage = SyndicStorage::register(&mut candidate).unwrap();
+        store = candidate
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let reopened = observed_build(&storage, &store, prepared, fragments);
         assert_eq!(reopened, after);
     }

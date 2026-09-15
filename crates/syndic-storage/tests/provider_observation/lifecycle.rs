@@ -164,6 +164,11 @@ fn all_status_bearing_kinds_accept_legal_started_and_completed_statuses() {
     let home = TestHome::new("provider-observation-status-positive");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
     for (index, kind) in STATUS_KINDS.into_iter().enumerate() {
         let mut started = begin(
@@ -208,6 +213,11 @@ fn completed_in_progress_status_is_rejected_for_all_six_kinds_after_restart() {
     let home = TestHome::new("provider-observation-status-restart-negative");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     {
         let mut callback = commit_callback(&store, &storage);
         for (index, kind) in STATUS_KINDS.into_iter().enumerate() {
@@ -230,6 +240,11 @@ fn completed_in_progress_status_is_rejected_for_all_six_kinds_after_restart() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for (index, kind) in STATUS_KINDS.into_iter().enumerate() {
         let identity = ProviderObservationId::from_bytes([142 + index as u8; 16]);
         let mut stager = storage

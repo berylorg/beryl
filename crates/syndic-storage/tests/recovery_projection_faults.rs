@@ -14,8 +14,11 @@ use syndic_storage::{
 
 use support::{TestHome, id, seed_populated};
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -32,6 +35,11 @@ fn recovery_assembly_read_fault_preserves_state_for_same_home_recovery() {
     let faults = FaultController::new();
     let mut store = open_with_faults(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread_id = id(30);
     let before = storage

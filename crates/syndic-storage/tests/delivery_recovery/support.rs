@@ -45,8 +45,13 @@ pub fn ordered_draft(value: u64) -> SyndicDraftId {
 
 pub fn pending_home(name: &str, value: u64) -> RecoveryHome {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = ordered_id(value);
     seed_canonical_empty_thread(
         &store,

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn same_anchor_marker_pages_restart_seal_and_materialize_without_registry_residency() {
-    let (home, mut store, mut storage, thread) = marker_fixture("same-anchor", 190);
+    let (home, store, mut storage, thread) = marker_fixture("same-anchor", 190);
     let durable = current(&storage, &store, thread);
     let mut session = open_session(&storage, &store, &durable, 191, 192);
     session = complete_staged_bounded(
@@ -61,8 +61,17 @@ fn same_anchor_marker_pages_restart_seal_and_materialize_without_registry_reside
     assert_marker_edges(&storage, &store, root);
 
     drop(store);
-    store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-    storage = SyndicStorage::register(&mut store).unwrap();
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    storage = SyndicStorage::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_marker_pages(&storage, &store, root, DraftPieceMarkerDirectionV1::Forward);
 
     let seal = seal_with_page_limit(&storage, &store, root, 193, MARKER_PAGE);
@@ -249,9 +258,17 @@ fn marker_bearing_third_full_window_charges_the_complete_acquisition_maximum() {
 
 fn marker_fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let storage = SyndicStorage::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(

@@ -21,8 +21,13 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
     assert_eq!(names[26], "draft-composer-materializations");
 
     let home = TestHome::new("canonical-empty");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&storage, &store, 1, 4_096);
     let before = current(&storage, &store, thread);
     assert_eq!(before.draft().history().candidate_generation(), 0);
@@ -38,13 +43,23 @@ fn family_order_and_canonical_empty_creation_replay_reopen_are_exact() {
     assert_eq!(current(&storage, &store, thread), before);
     drop(store);
 
-    let mut reopened = open(&home);
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(current(&reopened_storage, &reopened, thread), before);
 
     let collision_home = TestHome::new("canonical-empty-collision");
-    let mut collision_store = open(&collision_home);
-    let collision_storage = SyndicStorage::register(&mut collision_store).unwrap();
+    let mut collision_candidate = open(&collision_home);
+    let collision_storage = SyndicStorage::register(&mut collision_candidate).unwrap();
+    let collision_store = collision_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let collision_request = create_request(2, 4_096);
     committed(execute(
         &collision_store,

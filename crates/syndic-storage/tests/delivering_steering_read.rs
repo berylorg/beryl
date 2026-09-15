@@ -327,8 +327,13 @@ fn seed_large_delivering_generation(
 #[test]
 fn exact_delivering_input_resolves_with_fixed_point_work_on_a_large_generation() {
     let home = TestHome::new("exact-delivering-steering");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_large_delivering_generation(&store, storage.clone(), 384);
 
     reset_delivering_steering_read_metrics();
@@ -385,8 +390,13 @@ fn exact_delivering_input_resolves_with_fixed_point_work_on_a_large_generation()
 #[test]
 fn missing_and_non_delivering_inputs_are_not_eligible() {
     let home = TestHome::new("ineligible-delivering-steering");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
 
     assert!(
@@ -413,8 +423,13 @@ fn missing_and_non_delivering_inputs_are_not_eligible() {
 #[test]
 fn inconsistent_active_cas_turn_relationship_is_an_invariant_failure() {
     let home = TestHome::new("corrupt-delivering-steering");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_mixed_abandonment(&store, storage.clone());
     commit(
         &store,

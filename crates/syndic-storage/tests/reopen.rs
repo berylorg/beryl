@@ -24,6 +24,11 @@ fn empty_and_populated_domains_reopen_authoritatively() {
     let home = TestHome::new("reopen");
     let mut store = open(home.path());
     let _storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -31,6 +36,11 @@ fn empty_and_populated_domains_reopen_authoritatively() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_canonical_empty_thread(&reopened, storage.clone(), id(1), draft_id(2));
     commit(
         &reopened,
@@ -45,6 +55,11 @@ fn empty_and_populated_domains_reopen_authoritatively() {
 
     let mut final_open = open(home.path());
     let storage = SyndicStorage::register(&mut final_open).unwrap();
+    let final_open = final_open
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(storage.revision(&final_open).unwrap(), expected_revision);
     final_open
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -58,6 +73,11 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
     let home = TestHome::new("large-history");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
 
     let thread_a = id(10);
@@ -203,11 +223,21 @@ fn large_shared_and_unreachable_history_validates_with_bounded_pages() {
     let mut reopened = open(home.path());
     reset_validation_page_metrics();
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(validation_page_metrics().page_count(), 0);
     reopened.close().unwrap();
 
     let mut scrubbed = open(home.path());
     SyndicStorage::register(&mut scrubbed).unwrap();
+    let scrubbed = scrubbed
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     scrubbed
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

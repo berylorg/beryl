@@ -31,8 +31,13 @@ fn seeded_fixture(
     Fixture,
 ) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let _ = seed_detached_draft_backing(
         &store,
         storage.clone(),
@@ -173,8 +178,13 @@ fn promotion_creates_one_exact_pending_turn_and_preserves_the_current_draft() {
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_storage
             .accepted_input_promotion_status(&reopened, &request, limit())

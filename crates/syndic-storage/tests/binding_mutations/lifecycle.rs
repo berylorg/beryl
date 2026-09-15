@@ -73,8 +73,13 @@ fn complete_active_terminal(
 #[test]
 fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
     let home = TestHome::new("current-binding-activation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, _, turn, selected) = same_home_pending_path(&store, &storage, 70);
     let cas_thread = CasThreadId::new("current-activation").unwrap();
     let valid = valid_request(&store, &storage, thread, selected, cas_thread);
@@ -145,8 +150,13 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .binding_activation_status(&reopened, &activation, point_limit())
@@ -162,8 +172,13 @@ fn activation_reconciles_prior_then_exact_and_reopens_cleanly() {
 #[test]
 fn queued_admission_descendant_preserves_activation_reconciliation() {
     let home = TestHome::new("current-queued-descendant-activation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, _, turn, projected_path) = same_home_pending_path(&store, &storage, 80);
     let valid = valid_request(
         &store,
@@ -244,8 +259,13 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
 #[test]
 fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
     let home = TestHome::new("current-activation-cancellation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 100, false);
     let cancellation = CancelBindingActivation::new(
         fixture.thread,
@@ -301,8 +321,13 @@ fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .cancelled_binding_activation_status(&reopened, &cancellation, point_limit())
@@ -318,8 +343,13 @@ fn cancelled_activation_reconciles_prior_then_exact_and_survives_reopen() {
 #[test]
 fn cancellation_rejects_after_cas_turn_publication() {
     let home = TestHome::new("current-cancellation-after-cas-turn");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 110, true);
     let before_binding = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -375,8 +405,13 @@ fn cancellation_rejects_after_cas_turn_publication() {
 #[test]
 fn exact_terminal_cas_authority_advances_native_count_once() {
     let home = TestHome::new("current-terminal-cas-authority");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 120, false);
     let source_less = terminal_event(
         &store,
@@ -476,8 +511,13 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let binding = storage
         .current_binding(&reopened, fixture.thread, point_limit())
         .unwrap()
@@ -492,8 +532,13 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
 #[test]
 fn source_less_terminal_requires_projection_unbinding() {
     let home = TestHome::new("current-source-less-terminal");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, _, turn, selected) = same_home_pending_path(&store, &storage, 130);
     let valid = valid_request(
         &store,
@@ -581,16 +626,26 @@ fn source_less_terminal_requires_projection_unbinding() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 }
 
 #[test]
 fn reopen_rejects_terminal_valid_successor_with_wrong_native_count() {
     let home = TestHome::new("terminal-native-count-corruption");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = complete_active_terminal(&store, &storage, 160);
     let current = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -620,8 +675,13 @@ fn reopen_rejects_terminal_valid_successor_with_wrong_native_count() {
     );
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -637,8 +697,13 @@ fn reopen_rejects_terminal_valid_successor_with_wrong_native_count() {
 #[test]
 fn reopen_rejects_source_less_event_claiming_external_activity() {
     let home = TestHome::new("source-less-external-corruption");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = complete_active_terminal(&store, &storage, 170);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -668,8 +733,13 @@ fn reopen_rejects_source_less_event_claiming_external_activity() {
     );
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -685,8 +755,13 @@ fn reopen_rejects_source_less_event_claiming_external_activity() {
 #[test]
 fn post_terminal_continuation_preserves_profile_and_reconciliation_history() {
     let home = TestHome::new("post-terminal-continuation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = complete_active_terminal(&store, &storage, 180);
     let terminal_binding = storage
         .current_binding(&store, fixture.thread, point_limit())
@@ -785,8 +860,13 @@ fn post_terminal_continuation_preserves_profile_and_reconciliation_history() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .valid_binding_publication_status(&reopened, &continuation, point_limit())

@@ -15,8 +15,13 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     assert_eq!(marker_free.sequential().maximum_image_label(), None);
 
     let home = TestHome::new("content-marker-summary");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let marker_a = SyndicDraftMarkerId::from_bytes([103; 16]);
     let marker_b = SyndicDraftMarkerId::from_bytes([104; 16]);
@@ -57,8 +62,13 @@ fn sealed_content_retains_exact_cross_domain_marker_summary_after_reopen() {
     assert_eq!(manifest.lifecycle(), ContentLifecycle::Sealed);
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let stored = reopened_storage
         .content_manifest(&reopened, content.id(), point_limit())
         .unwrap()

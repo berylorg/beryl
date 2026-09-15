@@ -227,9 +227,17 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         storage.advance_draft_piece_edit(first_advance),
     ));
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     while let Some(advance) = storage
         .prepare_draft_piece_build_advance(
             &store,
@@ -239,10 +247,7 @@ fn large_continued_edit_advances_only_the_named_candidate() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -301,9 +306,17 @@ fn large_continued_edit_advances_only_the_named_candidate() {
     assert_eq!(current(&storage, &store, thread), durable_before);
 
     drop(store);
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         current(&reopened_storage, &reopened, thread),
         durable_before
@@ -787,12 +800,17 @@ fn terminal_first_rejects_a_clean_session_generation_race_before_claim() {
 fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_identity() {
     let home = TestHome::new("fault-cuts");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&storage, &store, 70);
     let durable = current(&storage, &store, thread);
     let session = open_session(&storage, &store, &durable, 71, 72);
@@ -839,10 +857,7 @@ fn indeterminate_begin_fragment_advance_and_adoption_reconcile_from_durable_iden
         .unwrap()
     {
         faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-        let outcome = execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        );
+        let outcome = execute(&store, storage.advance_draft_piece_edit(advance));
         assert!(matches!(outcome, CommandOutcome::Indeterminate { .. }));
     }
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
@@ -1401,10 +1416,7 @@ fn realistic_in_range_build_phase_jumps_fail_progress_authentication() {
                 )
                 .unwrap_or_else(|error| panic!("{case} failed before corruption: {error:?}"))
                 .unwrap();
-            committed(execute(
-                &store,
-                storage.advance_draft_piece_edit(advance),
-            ));
+            committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         }
         committed(execute(
             &store,
@@ -1933,10 +1945,7 @@ fn advance_replay_rejects_codec_valid_session_generation_inflation() {
             session.session_id(),
         ),
     ));
-    not_committed(execute(
-        &store,
-        storage.advance_draft_piece_edit(advance),
-    ));
+    not_committed(execute(&store, storage.advance_draft_piece_edit(advance)));
 }
 
 #[cfg(feature = "test-faults")]
@@ -2061,10 +2070,7 @@ fn begin_stage_build(storage: &SyndicStorage, store: &HomeStore, transaction: &T
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
 }
 
@@ -2097,10 +2103,9 @@ fn build_and_reject(
             transaction.prepared.header().session_id(),
             transaction.prepared.header().operation_id(),
         ) {
-            Ok(Some(advance)) => committed(execute(
-                store,
-                storage.advance_draft_piece_edit(advance),
-            )),
+            Ok(Some(advance)) => {
+                committed(execute(store, storage.advance_draft_piece_edit(advance)))
+            }
             Err(DraftPiecePrepareErrorV1::Rejected(reason)) => break reason,
             Ok(None) => panic!("invalid marker edit unexpectedly completed"),
             Err(error) => panic!("unexpected marker edit build error: {error:?}"),
@@ -2265,9 +2270,17 @@ fn open_session(
 
 fn fixture(name: &str, seed: u8) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&storage, &store, seed);
     (home, store, storage, thread)
 }

@@ -19,8 +19,8 @@ use syndic_storage::{
 
 use support::{TestHome, draft_id, id};
 
-fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open(path: &std::path::Path, faults: FaultController) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -81,6 +81,11 @@ fn exact_old_and_exact_new_classify_from_only_descriptor_records() {
     let faults = FaultController::new();
     let mut store = open(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let old = index(1, 2, 1);
     let new = index(1, 3, 2);
@@ -124,6 +129,11 @@ fn provider_observation_build_and_chunk_records_classify_exact_new() {
     let faults = FaultController::new();
     let mut store = open(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = |batch: &ProviderObservationStageBatch| {
         store.execute_current(storage.current_stage_provider_observation_batch(batch.clone()))
     };
@@ -178,6 +188,11 @@ fn mixed_and_neither_descriptor_records_seal_collision() {
     let faults = FaultController::new();
     let mut store = open(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let first_old = index(10, 11, 1);
     let second_old = index(12, 13, 1);

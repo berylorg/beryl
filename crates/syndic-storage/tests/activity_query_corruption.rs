@@ -98,8 +98,13 @@ fn scrub_rejects_handoff_entry_fact_that_disagrees_with_membership() {
         outcome => panic!("expected committed activity corruption, got {outcome:?}"),
     }
     fixture.store.close().unwrap();
-    let mut reopened = open(fixture.home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(fixture.home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

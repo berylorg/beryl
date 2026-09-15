@@ -99,6 +99,11 @@ fn exact_scalar_enum_and_value_controls_reject_substitutions() {
     let home = TestHome::new("provider-observation-value-grammar");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
 
     let mut agent = clean_stage(
@@ -248,6 +253,11 @@ fn duplicates_and_other_placement_are_rejected_while_completion_only_start_seals
     let home = TestHome::new("provider-observation-conflicts");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
 
     let mut agent = begin_item(
@@ -330,6 +340,11 @@ fn malformed_nesting_context_depth_and_indices_are_rejected() {
     let home = TestHome::new("provider-observation-structure-grammar");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
 
     let mut hook = begin_item(

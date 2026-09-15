@@ -3,12 +3,17 @@ use super::*;
 #[test]
 fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
     let home = TestHome::new("large-content");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let payload = huge_boundary_payload();
     assert!(payload.utf8_bytes() > 10_000_000);
@@ -37,8 +42,13 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
         .unwrap();
     store.close().unwrap();
 
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     while let Some(next) = append_one_batch(&store, storage.clone(), &manifest, &content) {
         manifest = next;
     }
@@ -102,8 +112,13 @@ fn multi_million_token_scale_content_stages_reopens_and_reads_exactly() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let stored = storage
         .content_manifest(&reopened, content.id(), point_limit())
         .unwrap()

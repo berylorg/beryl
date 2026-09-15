@@ -19,13 +19,23 @@ fn immediate_predecessor_record_versions_have_no_compatibility_decoder() {
         ),
     ] {
         let home = TestHome::new(&format!("awaiting-terminal-retired-{name}"));
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         inject_awaiting_terminal_predecessor(&store, storage, family).unwrap();
         store.close().unwrap();
 
-        let mut reopened = open(home.path());
-        SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(home.path());
+        SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(
             reopened
                 .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

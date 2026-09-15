@@ -44,6 +44,10 @@ use syndic_storage::{
 #[path = "support/syndic_command_fixture.rs"]
 mod syndic_command_fixture;
 
+#[cfg(feature = "test-faults")]
+#[path = "support/composer_asset_fixture.rs"]
+mod composer_asset_fixture;
+
 use syndic_command_fixture::{
     TestHome, assert_committed as committed, execute_contribution as execute,
     execution_binding as execution, fixture,
@@ -63,15 +67,29 @@ fn fixture_with_faults(
     SyndicStorage,
     SyndicThreadId,
     FaultController,
+    beryl_state::AssetState,
 ) {
     let home = TestHome::new(name);
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let assets = beryl_state::BerylState::register(&mut store)
+        .unwrap()
+        .assets();
+    let store = store
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(beryl_state::BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let creation = CreateThread::ordinary(
         thread,
@@ -84,7 +102,7 @@ fn fixture_with_faults(
         &store,
         storage.create_thread(storage.revision(&store).unwrap(), creation),
     ));
-    (home, store, storage, thread, faults)
+    (home, store, storage, thread, faults, assets)
 }
 
 fn seal_root(
@@ -287,7 +305,8 @@ fn install_protection(
 #[cfg(feature = "test-faults")]
 #[test]
 fn image_first_acceptance_atomically_advances_the_independent_head_and_origin() {
-    let (_home, store, storage, thread, faults) = fixture_with_faults("image-first-acceptance", 31);
+    let (_home, store, storage, thread, faults, _assets) =
+        fixture_with_faults("image-first-acceptance", 31);
     let label = ImageLabelOrdinal::FIRST;
     let marker = DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes([32; 16]),
@@ -565,14 +584,14 @@ fn direct_marker_free_first_acceptance_leaves_the_independent_head_unchanged() {
 #[cfg(feature = "test-faults")]
 #[test]
 fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origin() {
-    let (_home, store, storage, thread, faults) =
+    let (_home, store, storage, thread, faults, assets) =
         fixture_with_faults("queued-image-acceptance", 62);
     let label = ImageLabelOrdinal::FIRST;
     let marker = DraftPieceMarkerV1::new(
         SyndicDraftMarkerId::from_bytes([63; 16]),
         1,
         label,
-        AssetId::sha256_v1([64; 32], std::num::NonZeroU64::MIN),
+        composer_asset_fixture::publish_asset(&store, &assets),
     );
     let root = apply_replacement(
         &storage,
@@ -589,14 +608,13 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
             )),
     );
     let seal_proof = seal_root(&storage, &store, root, 66);
-    let asset_reference_set = SealedAssetReferenceSetProof::new(
-        AssetReferenceSetId::from_bytes([67; 16]),
-        seal_proof.sequential(),
-        seal_proof.ordered_assets(),
-        seal_proof.sequential().marker_count(),
-        AssetReferenceSetDigest::from_bytes([68; 32]),
-    )
-    .unwrap();
+    let asset_reference_set = composer_asset_fixture::admit_draft_set(
+        &store,
+        &assets,
+        marker,
+        seal_proof,
+        SyndicDraftId::from_bytes([63; 16]),
+    );
     publish_candidate(
         &storage,
         &store,
@@ -656,14 +674,41 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         .unwrap()
         .unwrap();
 
+    let draft_owner = beryl_state::AssetOwner::CurrentDraft(acceptance.draft_id());
+    let accepted_owner = beryl_state::AssetOwner::AcceptedInput(acceptance.accepted_input_id());
+    let draft_asset_head = assets.owner_head(&store, draft_owner).unwrap().unwrap();
+    let execute_acceptance = |request| {
+        let mut command = beryl_home_store::HomeCommand::new(store.home_revision().unwrap());
+        command
+            .add(storage.first_acceptance(storage.revision(&store).unwrap(), request))
+            .unwrap();
+        command
+            .add(
+                assets.update_owner_heads(
+                    assets.revision(&store).unwrap(),
+                    beryl_state::UpdateAssetOwnerHeads::new(Box::from([
+                        beryl_state::AssetOwnerHeadUpdate::replace(
+                            draft_owner,
+                            Some(draft_asset_head.expectation()),
+                            None,
+                        ),
+                        beryl_state::AssetOwnerHeadUpdate::replace(
+                            accepted_owner,
+                            None,
+                            Some(asset_reference_set),
+                        ),
+                    ]))
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        store.execute(command)
+    };
     let wrong_head = head.advanced(head.permanent()).unwrap();
     let noncommitting = acceptance_with_head(&acceptance, wrong_head);
     let revision_before = store.home_revision().unwrap();
     assert!(matches!(
-        execute(
-            &store,
-            storage.first_acceptance(storage.revision(&store).unwrap(), noncommitting),
-        ),
+        execute_acceptance(noncommitting),
         CommandOutcome::NotCommitted { .. }
     ));
     assert_eq!(store.home_revision().unwrap(), revision_before);
@@ -680,14 +725,26 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
             .is_none()
     );
 
+    assert_eq!(
+        assets.owner_head(&store, draft_owner).unwrap(),
+        Some(draft_asset_head.clone())
+    );
+    assert!(assets.owner_head(&store, accepted_owner).unwrap().is_none());
+
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    assert!(matches!(
-        execute(
-            &store,
-            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
-        ),
-        CommandOutcome::Indeterminate { .. }
-    ));
+    match execute_acceptance(acceptance.clone()) {
+        CommandOutcome::Indeterminate { .. } => {}
+        other => panic!("expected indeterminate acceptance, got {other:?}"),
+    }
+    assert!(assets.owner_head(&store, draft_owner).unwrap().is_none());
+    assert_eq!(
+        assets
+            .owner_head(&store, accepted_owner)
+            .unwrap()
+            .unwrap()
+            .set(),
+        asset_reference_set
+    );
     let advanced = storage
         .image_label_authority_head(&store, thread, read_limit())
         .unwrap()
@@ -718,10 +775,7 @@ fn queued_image_first_acceptance_atomically_advances_the_head_and_accepted_origi
         FirstAcceptanceStatus::ExactNew(FirstAcceptanceKind::Accepted)
     );
     assert!(matches!(
-        execute(
-            &store,
-            storage.first_acceptance(storage.revision(&store).unwrap(), acceptance.clone()),
-        ),
+        execute_acceptance(acceptance.clone()),
         CommandOutcome::NotCommitted { .. }
     ));
     assert_eq!(
@@ -970,12 +1024,16 @@ fn multi_page_utf8_source_reopens_at_every_durable_frontier() {
         if reopened_phases & phase_bit == 0 {
             reopened_phases |= phase_bit;
             drop(store);
-            store = HomeStore::open(HomeOpenOptions::new(
-                home.path(),
-                HomeSchemaVersion::CURRENT,
-            ))
+            let mut store_candidate = beryl_home_store::HomeOpenCandidate::open(
+                HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
+            )
             .unwrap();
-            storage = SyndicStorage::register(&mut store).unwrap();
+            storage = SyndicStorage::register(&mut store_candidate).unwrap();
+            store = store_candidate
+                .prepare_publication(SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
         }
         assert!(steps < 4096);
     };
@@ -1246,12 +1304,17 @@ fn corrupted_authenticated_source_is_rejected_before_output_publication() {
 fn indeterminate_writer_custody_resumes_from_each_committed_record() {
     let home = TestHome::new("custody");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([92; 16]);
     committed(execute(
         &store,
@@ -1401,12 +1464,17 @@ fn ownerless_partial_output_is_unreachable_until_atomic_seal() {
 fn advancing_step_has_not_committed_and_indeterminate_custody() {
     let home = TestHome::new("step-custody");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([106; 16]);
     committed(execute(
         &store,

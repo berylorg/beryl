@@ -53,6 +53,11 @@ fn ordinary_creation_publishes_all_properties_and_reconciles_execution_exactly()
     let home = TestHome::new("ordinary-properties");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(1);
     let draft = draft_id(2);
     let execution = crate::support::exact_cas::execution_binding();
@@ -129,6 +134,11 @@ fn from_tail_inherits_the_source_canonical_execution() {
     let home = TestHome::new("inherited-execution");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     crate::support::seed_populated(&store, storage.clone());
     let source = storage
         .thread_tail(&store, id(30), limit())
@@ -166,6 +176,11 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     let home = TestHome::new("missing-property");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let creation = CreateThread::ordinary(
         id(10),
         draft_id(11),
@@ -191,6 +206,11 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     let orphan_home = TestHome::new("orphan-property");
     let mut orphan_store = open(orphan_home.path());
     let orphan_storage = SyndicStorage::register(&mut orphan_store).unwrap();
+    let orphan_store = orphan_store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     commit(
         &orphan_store,
         orphan_storage,
@@ -207,6 +227,11 @@ fn missing_or_orphan_properties_and_child_execution_disagreement_are_rejected() 
     let child_home = TestHome::new("child-execution-conflict");
     let mut child_store = open(child_home.path());
     let child_storage = SyndicStorage::register(&mut child_store).unwrap();
+    let child_store = child_store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     crate::support::seed_populated(&child_store, child_storage.clone());
     commit(
         &child_store,
@@ -245,6 +270,11 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
         let home = TestHome::new(&format!("{name}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         execute(
             &store,
             storage.create_thread(
@@ -269,6 +299,11 @@ fn impossible_property_revisions_and_future_catalog_witnesses_are_rejected() {
     let home = TestHome::new("future-catalog-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     execute(
         &store,
         storage.create_thread(
@@ -325,6 +360,11 @@ fn exact_catalog_history_revision_requires_matching_semantic_provenance() {
     let home = TestHome::new("corrupt-catalog-history-provenance");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     execute(
         &store,
         storage.create_thread(
@@ -381,6 +421,11 @@ fn generated_catalog_title_requires_a_current_canonical_attributes_source() {
     let home = TestHome::new("orphan-generated-catalog-title");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     execute(
         &store,
         storage.create_thread(

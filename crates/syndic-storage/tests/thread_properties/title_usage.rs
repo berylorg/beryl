@@ -3,9 +3,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-};
+use beryl_home_store::{CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion};
 #[cfg(feature = "test-faults")]
 use beryl_model::SyndicItemId;
 use beryl_model::{
@@ -64,8 +62,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn id(byte: u8) -> SyndicThreadId {
@@ -142,6 +144,11 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
     let home = TestHome::new("title-historical-source");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(40);
     execute(
         &store,
@@ -262,6 +269,11 @@ fn accepted_generated_title_survives_later_thread_revision_and_reopen() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .thread_attributes(&reopened, thread, limit())
@@ -309,6 +321,11 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
     let home = TestHome::new("usage-historical-binding");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(50);
     execute(
         &store,
@@ -448,6 +465,11 @@ fn usage_survives_binding_advance_and_reopen_while_wrong_routes_are_rejected() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .thread_usage(&reopened, thread, limit())

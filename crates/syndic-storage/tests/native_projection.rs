@@ -44,6 +44,11 @@ fn exact_current_projection_reuses_the_matching_native_binding() {
     let home = TestHome::new("native-current");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = fixtures::seed_root_pending(&store, &storage, 70, true);
     let before_revision = storage.revision(&store).unwrap();
 
@@ -85,6 +90,11 @@ fn root_pending_turn_selects_fresh_native_lineage() {
     let home = TestHome::new("native-fresh");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = fixtures::seed_root_pending(&store, &storage, 74, false);
     let before_revision = storage.revision(&store).unwrap();
 
@@ -120,6 +130,11 @@ fn exact_terminal_parent_selects_native_resume() {
     let home = TestHome::new("native-resume");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let fixture = fixtures::append_pending(
         &store,
@@ -164,6 +179,11 @@ fn compatible_thread_revision_descendant_preserves_exact_native_resume() {
     let home = TestHome::new("native-compatible-descendant");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let fixture = fixtures::append_pending(
         &store,
@@ -230,6 +250,11 @@ fn inclusive_fork_and_cross_execution_mismatch_use_the_exact_ancestor() {
     let home = TestHome::new("native-inclusive-fork");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let child = id(94);
     let child_draft = SyndicDraftId::from_bytes([95; 16]);
@@ -305,6 +330,11 @@ fn exact_current_projection_with_another_tool_profile_is_unavailable() {
     let home = TestHome::new("native-profile-mismatch");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = fixtures::seed_root_pending(&store, &storage, 98, true);
     let different_profile = CasConversationToolProfile::v1([0x7b; 32]);
     let before_revision = storage.revision(&store).unwrap();
@@ -345,6 +375,11 @@ fn canonical_native_binding_preserves_exact_identity_and_count_across_reopen() {
     let home = TestHome::new("native-binding-reopen");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread_id = id(30);
     let selected = selected_path(&store, &storage, thread_id);
@@ -373,6 +408,11 @@ fn canonical_native_binding_preserves_exact_identity_and_count_across_reopen() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .current_binding(&reopened, thread_id, point_limit())
@@ -388,6 +428,11 @@ fn terminal_selected_tail_rejects_native_planning_without_mutation_after_reopen(
     let home = TestHome::new("native-terminal-tail");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread_id = id(30);
     let selected = selected_path(&store, &storage, thread_id);
@@ -414,6 +459,11 @@ fn terminal_selected_tail_rejects_native_planning_without_mutation_after_reopen(
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         storage.prepare_native_projection(&reopened, &request, point_limit()),
         Err(NativeProjectionError::CurrentTailNotPendingOrdinaryUser)
@@ -426,6 +476,11 @@ fn stale_selected_path_fails_closed_before_native_binding_selection() {
     let home = TestHome::new("native-stale-path");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread_id = id(30);
     let selected = selected_path(&store, &storage, thread_id);
@@ -468,6 +523,11 @@ fn context_bearing_thread_requires_its_exact_context_projection() {
     let home = TestHome::new("native-discussion-context");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread_id = id(36);
     let before_revision = storage.revision(&store).unwrap();

@@ -224,10 +224,7 @@ fn leading_marker_and_following_text_delete_in_one_atomic_build() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -306,10 +303,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
         if open_build_fragments(&storage, &store, &prepared, &fragments)
             .marker_effect_continuation()
             .active()
@@ -319,9 +313,17 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
         }
     }
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         open_build_fragments(&storage, &store, &prepared, &fragments)
             .marker_effect_continuation()
@@ -342,10 +344,7 @@ fn later_interleaved_marker_effect_survives_following_fragments_and_restart() {
             )
         })
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,
@@ -435,10 +434,7 @@ fn later_marker_effects_complete_in_canonical_fragment_order() {
             )
             .unwrap()
             .unwrap();
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     while let Some(advance) = storage
         .prepare_draft_piece_build_advance(
@@ -449,10 +445,7 @@ fn later_marker_effects_complete_in_canonical_fragment_order() {
         )
         .unwrap()
     {
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     committed(execute(
         &store,

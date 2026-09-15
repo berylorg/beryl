@@ -140,6 +140,11 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
     let home = TestHome::new("named-rejection-abandonment");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let request = seed(&store, &storage);
     let generic = generic_request(&request);
 
@@ -228,6 +233,11 @@ fn exact_unverdictable_rejection_is_preserved_while_sibling_delivery_becomes_unk
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&reopened, &request, limit())
@@ -251,6 +261,11 @@ fn named_rejection_reconciliation_rejects_leaf_and_route_drift() {
     let home = TestHome::new("named-rejection-collision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let request = seed(&store, &storage);
 
     let wrong_leaf = AbandonActiveBinding::after_exact_rejection(
@@ -292,6 +307,11 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
     let home = TestHome::new("generic-abandonment-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let named = seed(&store, &storage);
     let generic = generic_request(&named);
 
@@ -357,6 +377,11 @@ fn generic_abandonment_witness_rejects_named_reconciliation_and_authority_drift(
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&reopened, &generic, limit())
@@ -396,12 +421,17 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
     ] {
         let home = TestHome::new(name);
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let request = seed(&store, &storage);
 
         faults.fail_next(point);
@@ -441,7 +471,7 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
             assert!(
-                HomeStore::open(HomeOpenOptions::new(
+                beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
                     home.path(),
                     HomeSchemaVersion::CURRENT
                 ))
@@ -453,6 +483,11 @@ fn named_rejection_abandonment_fault_cuts_reconcile_old_or_exact() {
             drop(store);
             let mut reopened = open(home.path());
             let storage = SyndicStorage::register(&mut reopened).unwrap();
+            let reopened = reopened
+                .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             assert_eq!(
                 storage
                     .abandoned_active_binding_publication_status(&reopened, &request, limit())
@@ -489,12 +524,17 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
     ] {
         let home = TestHome::new(name);
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         seed_mixed_abandonment(&store, storage.clone());
         let request = abandonment_request(&store, &storage);
 
@@ -521,7 +561,7 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
             assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
             drop(close_error);
             assert!(
-                HomeStore::open(HomeOpenOptions::new(
+                beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
                     home.path(),
                     HomeSchemaVersion::CURRENT
                 ))
@@ -533,6 +573,11 @@ fn generic_abandonment_fault_cuts_reconcile_old_or_exact() {
             drop(store);
             let mut reopened = open(home.path());
             let storage = SyndicStorage::register(&mut reopened).unwrap();
+            let reopened = reopened
+                .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             assert_eq!(
                 storage
                     .abandoned_active_binding_publication_status(&reopened, &request, limit())

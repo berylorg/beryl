@@ -9,6 +9,11 @@ pub fn fixture(name: &str) -> (crate::support::TestHome, HomeStore, SyndicStorag
     let home = crate::support::TestHome::new(&format!("lifecycle-content-{name}"));
     let mut store = crate::support::open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     (home, store, storage)
 }
 

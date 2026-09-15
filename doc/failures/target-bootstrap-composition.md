@@ -107,3 +107,31 @@ compilation passed. Exact-file formatting, diff checks and independent semantic 
 the shared fixture composers, direct setup and failure paths, including the three pre-existing
 library-test setups. Production state behavior was unchanged. Syndic and app qualification,
 candidate recovery access and service-graph publication remain separate work.
+
+## Syndic Candidate Qualification
+
+Syndic-owned fixtures now open unpublished candidates, register exact package-owned declarations
+and publish explicitly. Shared generic openers retain candidates; fixed complete fixture composers
+publish their declared graph. Mixed fixtures merge complete Beryl-state and Syndic requirements,
+and every initial physical reopen reconstructs live registration and attachment custody. Negative
+schema fixtures retain unpublished candidates through rejection and cleanup. The obsolete opening
+example was removed.
+
+The complete 1,009-case Syndic suite passed across bounded nextest qualification runs with
+`--features test-faults --no-fail-fast --test-threads 8`. All 44 cases in the four binaries containing
+the five repaired regressions passed after their applicable corrections. Normal compilation,
+test-target compilation, exact-file formatting, diff checks and independent semantic review passed.
+Production behavior was unchanged; source changes are confined to fault-fixture helpers.
+
+The regression corrections preserve valid setup before the intended failure. Corruption helpers
+retain authenticated build continuations and admission evidence before injecting target damage;
+the divergent native fixture retains dispatch provenance for its active binding. Queued image
+acceptance composes a real sealed Asset set and atomic CurrentDraft-to-AcceptedInput owner transfer,
+preserving wrong-head rejection, injected indeterminate commit, exact accepted origin, replay
+refusal and collision checks. A Syndic-only command cannot establish that mixed-domain outcome.
+
+Publication work is checked by comparing one-marker and two-marker candidates with matching terminal
+text edits. The former absolute 64-read ceiling was not an authoritative limit; different terminal
+edit types require different compact receipt evidence. The corrected comparison preserves marker
+growth and history independence without weakening structural reuse, publication, replay or restart
+assertions. App fixtures, candidate recovery access and complete service publication remain pending.

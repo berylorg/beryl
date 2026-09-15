@@ -113,8 +113,13 @@ fn cumulative_keys_and_oldest_first_floor_repeat_at_exact_saturation() {
     }
 
     drop(store);
-    let mut reopened = open(&home);
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         reopened_storage
             .draft_editor_candidate_session(&reopened, head.draft_id(), head.session_id())
@@ -283,8 +288,13 @@ fn cumulative_seek_spans_a_nonempty_session_fork_and_reopens() {
     ));
 
     drop(store);
-    let mut reopened = open(&home);
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         reopened_storage
             .draft_editor_candidate_session(

@@ -33,8 +33,13 @@ fn composer(text: &str) -> PreparedContent {
 
 fn seed(name: &str, prepared: &PreparedContent) -> Fixture {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (content, records) = prepared_content_records(prepared);
     commit(&store, storage.clone(), batch(records));
     Fixture {
@@ -45,8 +50,11 @@ fn seed(name: &str, prepared: &PreparedContent) -> Fixture {
     }
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -230,8 +238,13 @@ fn text_only_boundary_rejects_marker_bearing_content() {
 #[test]
 fn missing_and_inexact_content_references_are_distinct() {
     let home = TestHome::new("content-text-missing");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let missing = composer("missing").reference(ContentRevision::new(1).unwrap());
     assert!(
         storage
@@ -344,8 +357,13 @@ fn payload_limit_and_out_of_range_offset_are_typed() {
 fn manifest_change_during_page_assembly_is_concurrent_state() {
     let home = TestHome::new("content-text-concurrent");
     let faults = FaultController::new();
-    let mut store = open_with_faults(home.path(), faults.clone());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open_with_faults(home.path(), faults.clone());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let prepared = composer(&"concurrent".repeat(10_000));
     let (content, records) = prepared_content_records(&prepared);
     commit(&store, storage.clone(), batch(records));
@@ -390,8 +408,13 @@ fn manifest_change_during_page_assembly_is_concurrent_state() {
 #[test]
 fn sealed_manifest_identity_must_remain_content_addressed() {
     let home = TestHome::new("content-text-corrupt-manifest");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let prepared = PreparedContent::utf8("corrupt identity").unwrap();
     let original = prepared.reference(ContentRevision::new(1).unwrap());
     let corrupt_id = SyndicContentId::from_bytes([0x44; 16]);

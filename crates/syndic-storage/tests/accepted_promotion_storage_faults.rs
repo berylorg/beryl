@@ -38,8 +38,11 @@ fn page_limits() -> CursorReadLimits {
     CursorReadLimits::new(256, ACCEPTED_NEXT_PAGE_MAX_BYTES).unwrap()
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -59,8 +62,13 @@ fn seed(
         })
         .expect("promotion fixture owns its current draft");
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let root_history = seed_detached_draft_backing(
         &store,
         storage.clone(),
@@ -158,8 +166,13 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
     ] {
         let home = TestHome::new(&format!("promotion-fault-{cut_name}"));
         let faults = FaultController::new();
-        let mut store = open_with_faults(home.path(), faults.clone());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open_with_faults(home.path(), faults.clone());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = promotion_fixture(90, id(90));
         let root_history = seed_detached_draft_backing(
             &store,
@@ -244,8 +257,13 @@ fn promotion_fault_cuts_reconcile_to_durable_prior_or_exact_across_reopen() {
         }
         store.close().unwrap();
 
-        let mut reopened = open(home.path());
-        let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(home.path());
+        let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             reopened_storage
                 .accepted_input_promotion_status(&reopened, &request, limit())

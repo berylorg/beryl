@@ -41,9 +41,17 @@ mod production {
         ));
         std::fs::create_dir(&path).unwrap();
         let result = (|| {
-            let mut store =
-                HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT)).unwrap();
+            let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+                &path,
+                HomeSchemaVersion::CURRENT,
+            ))
+            .unwrap();
             let storage = SyndicStorage::register(&mut store).unwrap();
+            let store = store
+                .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             let thread = SyndicThreadId::from_bytes([74; 16]);
             let draft = SyndicDraftId::from_bytes([75; 16]);
             let creation = CreateThread::ordinary(

@@ -47,8 +47,13 @@ impl CaptureFrontiers {
 
 fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut builder = Builder::new(&store, storage.clone(), 71);
     let predecessor = if marker {
         builder.submit_marker()
@@ -224,8 +229,13 @@ fn exact_source_less_authority_lost_parent_replays_after_reopen_as_context() {
     let path = fixture.home.path().to_path_buf();
     fixture.store.close().unwrap();
 
-    let mut reopened = open(&path);
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&path);
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let expected = vec![(
         RecoveryItemSequenceRole::UserInputText,
         "interrupted request".to_owned(),
@@ -434,8 +444,13 @@ fn incomplete_capture_frontiers_and_unsupported_items_remain_ineligible() {
 #[test]
 fn authority_lost_context_is_allowed_only_at_the_immediate_predecessor() {
     let home = TestHome::new("authority-lost-not-immediate");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut builder = Builder::new(&store, storage.clone(), 72);
     let older = builder.submit_text("older interrupted request");
     builder.complete_without_assistant(older, TurnTerminalOutcome::Failed);

@@ -2,15 +2,15 @@ use super::*;
 
 use beryl_home_store::HomeHealthState;
 use beryl_home_store::test_faults::{FaultController, FaultPoint};
-use syndic_storage::{
-    DraftPieceBuildFrontierV1, DraftPieceOperationStatusV1, DraftPieceReconciledCommandV1,
-    DraftPieceSettlementKeyV1, DraftPieceSettlementOutcomeV1, DraftPieceTransactionOutcomeV1,
-};
 use syndic_storage::test_faults::{
     DraftPieceFragmentCorruption, DraftPieceProgressReceiptCorruption,
     DraftPieceProgressRootCorruption, inject_draft_piece_fragment_corruption,
-    inject_miskeyed_draft_piece_build_for_test,
     inject_draft_piece_progress_receipt_corruption, inject_draft_piece_progress_root_corruption,
+    inject_miskeyed_draft_piece_build_for_test,
+};
+use syndic_storage::{
+    DraftPieceBuildFrontierV1, DraftPieceOperationStatusV1, DraftPieceReconciledCommandV1,
+    DraftPieceSettlementKeyV1, DraftPieceSettlementOutcomeV1, DraftPieceTransactionOutcomeV1,
 };
 
 #[test]
@@ -93,12 +93,18 @@ fn markers_outside_an_ordinary_range_keep_their_exact_authorities() {
     run_transaction(&storage, &store, &edit, 208);
 
     let root_after = current(&storage, &store, thread).draft().piece_root();
-    assert_eq!(root_after.marker_index_root(), root_before.marker_index_root());
+    assert_eq!(
+        root_after.marker_index_root(),
+        root_before.marker_index_root()
+    );
     assert_eq!(
         root_after.marker_index_summary(),
         root_before.marker_index_summary()
     );
-    assert_eq!(root_after.marker_order_root(), root_before.marker_order_root());
+    assert_eq!(
+        root_after.marker_order_root(),
+        root_before.marker_order_root()
+    );
     assert_eq!(
         root_after.marker_order_height(),
         root_before.marker_order_height()
@@ -163,13 +169,12 @@ fn cancellation_after_partial_applying_retains_nonadoption_and_releases_custody(
     assert_eq!(current.draft().piece_root(), base.draft().piece_root());
     assert!(current.session.active_operation().is_none());
     assert!(matches!(
-        storage
-            .prepare_draft_piece_build_advance(
-                &store,
-                base.draft().id(),
-                edit.session,
-                edit.operation,
-            ),
+        storage.prepare_draft_piece_build_advance(
+            &store,
+            base.draft().id(),
+            edit.session,
+            edit.operation,
+        ),
         Err(DraftPiecePrepareErrorV1::InvalidRoot)
     ));
 }
@@ -202,17 +207,21 @@ fn selected_or_predecessor_progress_corruption_refuses_another_applying_command(
             inject_draft_piece_progress_receipt_corruption(&store, &storage, key, corruption),
         ));
         let revision = storage.revision(&store).unwrap();
-        assert!(storage
-            .prepare_draft_piece_build_advance(
-                &store,
-                base.draft().id(),
-                edit.session,
-                edit.operation,
-            )
-            .is_err());
-        assert!(storage
-            .draft_piece_operation_status_page(&store, &edit.prepared, 1, &edit.fragments)
-            .is_err());
+        assert!(
+            storage
+                .prepare_draft_piece_build_advance(
+                    &store,
+                    base.draft().id(),
+                    edit.session,
+                    edit.operation,
+                )
+                .is_err()
+        );
+        assert!(
+            storage
+                .draft_piece_operation_status_page(&store, &edit.prepared, 1, &edit.fragments)
+                .is_err()
+        );
         assert_eq!(storage.revision(&store).unwrap(), revision);
     }
 }
@@ -231,9 +240,16 @@ fn selected_root_and_fragment_corruption_refuse_another_applying_command_without
             DraftPieceProgressRootCorruption::PublishedSequence,
         ),
     ));
-    assert!(storage
-        .prepare_draft_piece_build_advance(&store, base.draft().id(), edit.session, edit.operation)
-        .is_err());
+    assert!(
+        storage
+            .prepare_draft_piece_build_advance(
+                &store,
+                base.draft().id(),
+                edit.session,
+                edit.operation
+            )
+            .is_err()
+    );
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 
     let (_home, store, storage, thread) = fixture("ordinary-range-corruption-fragment", 245);
@@ -245,9 +261,16 @@ fn selected_root_and_fragment_corruption_refuse_another_applying_command_without
         DraftPieceFragmentCorruption::ChainDigest,
     )
     .unwrap();
-    assert!(storage
-        .prepare_draft_piece_build_advance(&store, base.draft().id(), edit.session, edit.operation)
-        .is_err());
+    assert!(
+        storage
+            .prepare_draft_piece_build_advance(
+                &store,
+                base.draft().id(),
+                edit.session,
+                edit.operation
+            )
+            .is_err()
+    );
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 }
 
@@ -255,12 +278,17 @@ fn selected_root_and_fragment_corruption_refuse_another_applying_command_without
 fn indeterminate_applying_command_reconciles_its_exact_durable_target_without_resubmission() {
     let home = TestHome::new("ordinary-range-reconciliation");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([250; 16]);
     let draft = SyndicDraftId::from_bytes([251; 16]);
     committed(execute(
@@ -342,8 +370,11 @@ fn applying_preparation_rejects_a_valid_build_stored_under_another_build_key() {
         DraftEditorCandidateSessionReadOutcomeV1::Active(session) => session,
         other => panic!("second Applying build lost its active session: {other:?}"),
     };
-    let first_key =
-        DraftPieceSettlementKeyV1::new(first_base.draft().id(), first_edit.session, first_edit.operation);
+    let first_key = DraftPieceSettlementKeyV1::new(
+        first_base.draft().id(),
+        first_edit.session,
+        first_edit.operation,
+    );
     let second_key = DraftPieceSettlementKeyV1::new(
         second_base.draft().id(),
         second_edit.session,
@@ -384,12 +415,15 @@ fn marker_transaction(
 ) -> Transaction {
     let session = current.session.session_id();
     let operation = DraftPieceOperationIdV1::from_bytes([operation; 16]);
-    let replacement = DraftPieceReplacementV1::new(position, position, vec![DraftPieceV1::Marker(marker)])
-        .with_marker_effect(DraftPieceMarkerEffectV1::Insert(DraftPieceMarkerInsertionV1::new(
-            position.utf8_offset(),
-            marker,
-            DraftPieceMarkerEffectChargesV1::for_marker(marker),
-        )));
+    let replacement =
+        DraftPieceReplacementV1::new(position, position, vec![DraftPieceV1::Marker(marker)])
+            .with_marker_effect(DraftPieceMarkerEffectV1::Insert(
+                DraftPieceMarkerInsertionV1::new(
+                    position.utf8_offset(),
+                    marker,
+                    DraftPieceMarkerEffectChargesV1::for_marker(marker),
+                ),
+            ));
     let replacements = vec![replacement];
     let header = DraftPieceEditHeaderV1::new(
         current.draft().id(),
@@ -496,10 +530,18 @@ fn partial_applying_transaction(
     for step in 0..32 {
         let before = open_build(storage, store, &edit);
         let advance = storage
-            .prepare_draft_piece_build_advance(store, base.draft().id(), edit.session, edit.operation)
+            .prepare_draft_piece_build_advance(
+                store,
+                base.draft().id(),
+                edit.session,
+                edit.operation,
+            )
             .unwrap_or_else(|error| panic!("preparation at step {step} failed: {error:?}"))
             .unwrap();
-        let applying = matches!(before.frontier(), DraftPieceBuildFrontierV1::Applying { .. });
+        let applying = matches!(
+            before.frontier(),
+            DraftPieceBuildFrontierV1::Applying { .. }
+        );
         committed(execute(store, storage.advance_draft_piece_edit(advance)));
         if applying {
             return (base, edit);

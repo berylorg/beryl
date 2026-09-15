@@ -144,8 +144,13 @@ fn replace_provenance(
 #[test]
 fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance() {
     let home = TestHome::new("repeated-dispatch-cancellation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (mut fixture, item) = activate_submitted_pending(&store, &storage);
     let original_input = storage
         .canonical_item(&store, item, point_limit())
@@ -249,8 +254,13 @@ fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance
         .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
         .unwrap();
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(state(&reopened, &storage, fixture.turn), final_state);
     assert_eq!(
         storage
@@ -273,8 +283,13 @@ fn repeated_cancellations_preserve_turn_and_content_and_advance_exact_provenance
 fn dispatch_state_rejects_erasure_foreign_anchors_and_false_cancellation() {
     for case in 0..5 {
         let home = TestHome::new("dispatch-provenance-corruption");
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = activate_pending(&store, &storage, 170, false);
         let foreign = activate_pending(&store, &storage, 180, false);
         let anchor = TurnDispatchAnchor::new(
@@ -308,8 +323,13 @@ fn dispatch_state_rejects_erasure_foreign_anchors_and_false_cancellation() {
 #[test]
 fn abandoned_activation_without_provider_identity_cannot_become_safe_by_rebinding() {
     let home = TestHome::new("unidentified-dispatch-rebinding");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 170, false);
     let original = state(&store, &storage, fixture.turn);
     let request = abandonment(&store, &storage, fixture.thread, false);
@@ -382,8 +402,13 @@ fn abandoned_activation_without_provider_identity_cannot_become_safe_by_rebindin
 #[test]
 fn cancelled_anchor_substitution_cannot_authorize_another_attempt() {
     let home = TestHome::new("cancelled-anchor-substitution");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 170, false);
     let foreign = activate_pending(&store, &storage, 180, false);
     for candidate in [&fixture, &foreign] {

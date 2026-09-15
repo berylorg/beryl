@@ -66,8 +66,13 @@ fn terminal_evidence_requires_the_same_fixed_point_as_gate_release() {
             None
         );
         fixture.store.close().unwrap();
-        let mut reopened = open(fixture.home.path());
-        let storage = SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(fixture.home.path());
+        let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let after = storage
             .terminal_history_evidence(&reopened, fixture.thread, fixture.turn, point_limit())
             .unwrap()

@@ -97,6 +97,11 @@ fn every_item_and_delta_item_id_uses_exact_cas_item_identity_validation() {
     let home = TestHome::new("provider-observation-all-item-identities");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
     for (index, kind) in ITEM_KINDS.into_iter().enumerate() {
         let mut stager = begin_item(160 + index as u8, kind, &mut callback);
@@ -143,6 +148,11 @@ fn item_identity_enforces_exact_empty_length_trim_and_control_contract() {
     let home = TestHome::new("provider-observation-item-identity-contract");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
 
     let exact = vec![b'a'; 256];
@@ -195,6 +205,11 @@ fn identity_byte_frontier_is_persisted_and_enforced_after_restart() {
     let identity = ProviderObservationId::from_bytes([195; 16]);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     {
         let mut callback = commit_callback(&store, &storage);
         let mut stager = begin_item(
@@ -225,6 +240,11 @@ fn identity_byte_frontier_is_persisted_and_enforced_after_restart() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut stager = storage
         .resume_provider_observation(&reopened, identity, limit())
         .unwrap()
@@ -308,6 +328,11 @@ fn only_closed_collaboration_and_subagent_thread_fields_use_thread_identity_rule
     let home = TestHome::new("provider-observation-thread-identities");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut callback = commit_callback(&store, &storage);
 
     let mut sender = prepare_collab(196, &mut callback);

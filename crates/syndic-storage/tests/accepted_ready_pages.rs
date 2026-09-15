@@ -415,8 +415,13 @@ fn seed_terminal_heavy(store: &beryl_home_store::HomeStore, storage: &SyndicStor
 #[test]
 fn candidate_pages_advance_across_terminal_history_and_preserve_accepted_order() {
     let home = TestHome::new("terminal-heavy-ready");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_terminal_heavy(&store, &storage);
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -516,8 +521,13 @@ fn assert_reopen_rejects(
     expected: &str,
 ) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     corruption(storage, &store);
     let error = store
@@ -526,8 +536,13 @@ fn assert_reopen_rejects(
     assert!(error.to_string().contains(expected), "{error}");
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let _storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let _storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

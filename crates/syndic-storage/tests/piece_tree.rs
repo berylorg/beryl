@@ -157,10 +157,7 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
         )
         .unwrap()
         .unwrap();
-    committed(execute(
-        &store,
-        storage.advance_draft_piece_edit(first),
-    ));
+    committed(execute(&store, storage.advance_draft_piece_edit(first)));
     assert_eq!(
         current(&storage, &store, thread).draft().piece_root(),
         base.draft().piece_root()
@@ -170,12 +167,17 @@ fn fresh_process_resumes_only_from_durable_head_fragments_and_records() {
     drop(staged_transaction);
     drop(store);
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     advance_until_complete_for(
         &storage,
         &reopened,
@@ -514,10 +516,7 @@ fn one_64k_text_piece_resumes_at_durable_byte_offsets() {
             saw_intra_text_offset = true;
         }
         assert!(advance.staged_record_count() <= 256);
-        committed(execute(
-            &store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(&store, storage.advance_draft_piece_edit(advance)));
     }
     assert!(saw_intra_text_offset);
     committed(execute(
@@ -613,12 +612,17 @@ fn candidate_read_detects_selector_drift_after_exact_traversal() {
 fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
     let home = TestHome::new("writer-custody");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([150; 16]);
     let draft = SyndicDraftId::from_bytes([151; 16]);
     committed(execute(
@@ -658,10 +662,7 @@ fn writer_outcomes_reconcile_to_pending_or_exact_terminal_state() {
         .unwrap()
         .unwrap();
     faults.fail_next(FaultPoint::AfterCommitBeforePersist);
-    let indeterminate = execute(
-        &store,
-        storage.advance_draft_piece_edit(advance),
-    );
+    let indeterminate = execute(&store, storage.advance_draft_piece_edit(advance));
     assert!(matches!(
         &indeterminate,
         CommandOutcome::Indeterminate { .. }
@@ -837,10 +838,7 @@ fn advance_until_complete_for(
         };
         assert!(advance.staged_record_count() <= 256);
         preceding = Some(advance.frontier());
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
     panic!("draft-piece build did not make bounded progress")
 }

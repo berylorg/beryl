@@ -5,6 +5,11 @@ fn pending_continuation_recovers_only_its_completed_prefix_across_reopen() {
     let home = TestHome::new("continuation-pending-prefix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = seed_recovery_fixture_with_kind(
         &store,
         &storage,
@@ -30,6 +35,11 @@ fn pending_continuation_recovers_only_its_completed_prefix_across_reopen() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let recovered = prepare_ready(&reopened, &storage, &fixture, Some(100_000));
     assert_eq!(recovered.sequence_digest(), projection.sequence_digest());
     assert_eq!(replay(&storage, &reopened, recovered), expected);
@@ -42,6 +52,11 @@ fn provider_operation_is_not_a_pending_execution_or_replayable_conversation() {
         let home = TestHome::new("provider-operation-recovery-rejection");
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = seed_recovery_fixture_with_kind(
             &store,
             &storage,

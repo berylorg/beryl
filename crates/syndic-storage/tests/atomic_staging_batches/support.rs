@@ -55,7 +55,11 @@ pub struct ReceivingFixture {
 
 pub fn receiving_fixture(name: &str, seed: u8) -> ReceivingFixture {
     let home = TestHome::new(name);
-    let store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     receiving_fixture_in(home, store, seed)
 }
 
@@ -66,7 +70,7 @@ pub fn receiving_fault_fixture(
     faults: beryl_home_store::test_faults::FaultController,
 ) -> ReceivingFixture {
     let home = TestHome::new(name);
-    let store = HomeStore::open_with_faults(
+    let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -74,8 +78,17 @@ pub fn receiving_fault_fixture(
     receiving_fixture_in(home, store, seed)
 }
 
-fn receiving_fixture_in(home: TestHome, mut store: HomeStore, seed: u8) -> ReceivingFixture {
+fn receiving_fixture_in(
+    home: TestHome,
+    mut store: beryl_home_store::HomeOpenCandidate,
+    seed: u8,
+) -> ReceivingFixture {
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(

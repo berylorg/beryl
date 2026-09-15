@@ -755,14 +755,22 @@ pub(super) fn advance_source_to_divergent_prefix(
                 selected.digest(),
                 support::timestamp(21),
             )),
-            FixtureRecord::TurnState(support::fixture_turn_state(
-                turn,
-                TurnStateRevision::FIRST,
-                TurnLifecycle::Complete,
-                1,
-                0,
-                support::timestamp(21),
-            )),
+            FixtureRecord::TurnState(
+                TurnStateRecord::new(
+                    turn,
+                    TurnStateRevision::FIRST,
+                    TurnLifecycle::Complete,
+                    1,
+                    0,
+                    Some(TurnEndStatus::complete()),
+                    support::timestamp(21),
+                    TurnDispatchProvenance::Activated(TurnDispatchAnchor::new(
+                        snapshot,
+                        active_binding_revision,
+                    )),
+                )
+                .unwrap(),
+            ),
             FixtureRecord::TurnChild(TurnChildIndexRecord::new(
                 parent_id,
                 turn,

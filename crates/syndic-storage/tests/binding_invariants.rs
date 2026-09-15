@@ -404,8 +404,13 @@ fn publish_valid(store: &HomeStore, storage: &SyndicStorage, request: PublishVal
 #[test]
 fn immutable_binding_history_and_current_head_survive_reopen() {
     let home = TestHome::new("immutable-binding-history");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let thread = id(30);
     let expected: Vec<_> = (1..=4)
@@ -428,8 +433,13 @@ fn immutable_binding_history_and_current_head_survive_reopen() {
     assert_eq!(head.binding(), expected.last().unwrap());
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for (index, expected) in expected.iter().enumerate() {
         assert_eq!(
             storage
@@ -458,8 +468,13 @@ fn immutable_binding_history_and_current_head_survive_reopen() {
 #[test]
 fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
     let home = TestHome::new("permanent-cas-thread-reservation");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let owner = id(70);
     let contender = id(80);
     create_thread(&store, &storage, owner, draft_id(71));
@@ -542,8 +557,13 @@ fn cas_thread_reservation_survives_stale_unbound_history_and_reopen() {
     ));
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let request = valid_request(
         &reopened,
         &storage,

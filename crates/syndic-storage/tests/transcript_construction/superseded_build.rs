@@ -5,6 +5,11 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
     let home = TestHome::new("transcript-release-build");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&store, storage.clone());
     let root = submit_text(
         &store,
@@ -68,6 +73,11 @@ fn selected_tail_advance_preserves_the_completed_release_build() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

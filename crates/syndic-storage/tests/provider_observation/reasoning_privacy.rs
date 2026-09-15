@@ -31,6 +31,11 @@ fn reasoning_text_observed_seals_only_identity_and_content_index() {
     let home = TestHome::new("provider-observation-private-reasoning");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let identity = ProviderObservationId::from_bytes([120; 16]);
     let sealed = {
         let mut callback = commit_callback(&store, &storage);
@@ -99,6 +104,11 @@ fn reasoning_text_observed_rejects_text_substitution_duplicate_and_missing_index
     let home = TestHome::new("provider-observation-private-reasoning-negative");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let mut callback = commit_callback(&store, &storage);
     let mut exact = begin(121, &mut callback);

@@ -3,7 +3,7 @@ use beryl_model::{SyndicItemId, SyndicTurnId};
 use syndic_storage::{
     ACCEPTED_NEXT_PAGE_MAX_BYTES, AcceptedRouteEffectiveState, AcceptedRouteRevision,
     CompleteTerminalHistory, DeliveryRecoveryCase, InputGateRecord, InputGateState, NextTurnReason,
-    PromoteAcceptedInput, SyndicMutationError,
+    PromoteAcceptedInput, SyndicMutationError, SyndicStorage,
 };
 
 use crate::{
@@ -41,6 +41,11 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
 
     let mut store = open(&path);
     let storage = syndic_storage::SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         storage.classify_delivery_recovery(
             &store,
@@ -123,6 +128,11 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
 
     let mut store = open(&path);
     let storage = syndic_storage::SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -159,8 +169,13 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         .unwrap();
     store.close().unwrap();
 
-    let mut store = open(&path);
-    syndic_storage::SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&path);
+    SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -370,8 +385,13 @@ fn stale_completion_proof_consumes_multiple_queued_admission_descendants() {
         .unwrap();
     recovery.store.close().unwrap();
 
-    let mut reopened = open(&path);
-    syndic_storage::SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&path);
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -487,6 +507,11 @@ fn successful_completed_history_stays_complete_across_queued_admission_and_relea
 
     let mut reopened = open(&path);
     let storage = syndic_storage::SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         storage
             .history_summary(&reopened, recovery.thread, point_limit())

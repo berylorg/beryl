@@ -219,6 +219,11 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
     let home = TestHome::new("from-tail");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source_thread = id(1);
     let source_draft = draft_id(2);
     let turn = SyndicTurnId::from_bytes([3; 16]);
@@ -297,6 +302,11 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .thread_creation_status(&reopened, &creation, limit())
@@ -311,6 +321,11 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
     let home = TestHome::new("shared-tail");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source_thread = id(10);
     let turn = SyndicTurnId::from_bytes([11; 16]);
     source_history(&store, &storage, source_thread, draft_id(12), turn);
@@ -366,6 +381,11 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
     let home = TestHome::new("stale-tail");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source_thread = id(20);
     let turn = SyndicTurnId::from_bytes([21; 16]);
     source_history(&store, &storage, source_thread, draft_id(22), turn);

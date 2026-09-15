@@ -153,12 +153,17 @@ fn indeterminate_seal_custody(
 fn indeterminate_seal_retains_stager_until_custody_installation() {
     let home = TestHome::new("provider-observation-seal-custody");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (custody, lifetime) = indeterminate_seal_custody(&store, &storage, &faults, 100);
 
     assert!(lifetime.is_retained());
@@ -170,12 +175,17 @@ fn indeterminate_seal_retains_stager_until_custody_installation() {
 fn dropping_indeterminate_seal_guard_installs_before_releasing_stager() {
     let home = TestHome::new("provider-observation-seal-drop-custody");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (custody, lifetime) = indeterminate_seal_custody(&store, &storage, &faults, 101);
 
     assert!(lifetime.is_retained());
@@ -186,7 +196,7 @@ fn dropping_indeterminate_seal_guard_installs_before_releasing_stager() {
     assert_eq!(close_error.pending_reconciliation_scopes(), Some(1));
     drop(close_error);
     assert!(
-        HomeStore::open(HomeOpenOptions::new(
+        beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             home.path(),
             HomeSchemaVersion::CURRENT,
         ))

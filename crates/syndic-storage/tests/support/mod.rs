@@ -66,8 +66,12 @@ impl Drop for TestHome {
     }
 }
 
-pub fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+pub fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 pub fn commit(store: &HomeStore, storage: SyndicStorage, batch: FixtureBatch) {
@@ -121,6 +125,11 @@ pub fn canonical_empty_root_history_pair_for(
     let home = TestHome::new("canonical-root-history-reference");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_canonical_empty_thread(&store, storage.clone(), id(245), draft_id);
     storage
         .current_draft(

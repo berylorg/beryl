@@ -46,6 +46,11 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
     let home = TestHome::new("provider-observation-restart-matrix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     {
         let mut callback = commit_callback(&store, &storage);
         for (index, kind) in ITEMS.into_iter().enumerate() {
@@ -86,6 +91,11 @@ fn all_17_item_and_nine_delta_duplicate_states_survive_restart_unpublished() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for index in 0..ITEMS.len() {
         assert_duplicate_after_restart(
             &reopened,

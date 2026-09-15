@@ -76,13 +76,23 @@ struct Fixture {
 impl Fixture {
     fn new(name: &str) -> Self {
         let home = TestHome::new(name);
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             home.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let state = BerylState::register(&mut store).unwrap();
         let syndic = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .merge(SyndicStorage::required_domains().unwrap())
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let runtime = RuntimeId::from_bytes([75; 16]);
         let root = RootId::from_bytes([76; 16]);
         let thread = SyndicThreadId::from_bytes([77; 16]);
@@ -626,9 +636,23 @@ fn current_catalog_summary_and_cross_domain_row_survive_reopen() {
     let path = fixture.home.path().to_owned();
     let thread = fixture.thread;
     fixture.store.close().unwrap();
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let _state = BerylState::register(&mut reopened).unwrap();
     let syndic = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         syndic
             .prepare_thread_catalog_summary(&reopened, thread)

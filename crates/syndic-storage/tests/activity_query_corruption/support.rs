@@ -53,8 +53,13 @@ fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContributi
 
 pub fn child_handoff_candidate(name: &str, later_activity: bool) -> ChildHandoffCandidate {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     populated::seed_populated(&store, storage.clone());
     let owner = id(30);
     let child = id(36);

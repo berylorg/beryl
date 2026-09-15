@@ -44,8 +44,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(home: &TestHome) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(home: &TestHome) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn execution() -> ExecutionBinding {
@@ -95,8 +99,13 @@ fn fixture_delete(store: &HomeStore, storage: SyndicStorage, key: FixtureDelete)
 #[test]
 fn creation_installs_and_reopens_the_independent_protection_head() {
     let home = TestHome::new("creation-restart");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let creation = creation();
     let thread = creation.thread_id();
 
@@ -122,8 +131,13 @@ fn creation_installs_and_reopens_the_independent_protection_head() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(&home);
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .draft_image_label_protection_head(&reopened, thread, limit())
@@ -137,8 +151,13 @@ fn creation_installs_and_reopens_the_independent_protection_head() {
 #[test]
 fn missing_mismatched_or_malformed_protection_state_is_not_exact_creation() {
     let home = TestHome::new("corruption");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let creation = creation();
     let thread = creation.thread_id();
     execute(
@@ -174,8 +193,13 @@ fn missing_mismatched_or_malformed_protection_state_is_not_exact_creation() {
     );
 
     let home = TestHome::new("physical-corruption");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let physical_thread = SyndicThreadId::from_bytes([1; 16]);
     inject_physical_corruption(
         &store,

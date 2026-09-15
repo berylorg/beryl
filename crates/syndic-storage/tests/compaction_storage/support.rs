@@ -57,8 +57,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(path: &Path) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        path,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 pub fn timestamp(value: u64) -> SyndicTimestamp {
@@ -115,8 +119,13 @@ pub struct CompactionFixture {
 impl CompactionFixture {
     pub fn new(name: &str, id_byte: u8) -> Self {
         let home = TestHome::new(name);
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let thread = SyndicThreadId::from_bytes([id_byte; 16]);
         execute(
             &store,
@@ -319,8 +328,13 @@ impl CompactionFixture {
             thread,
         } = self;
         drop(store);
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         Self {
             home,
             store,

@@ -266,9 +266,17 @@ fn move_replace_and_remove_original_marker(
     }
     assert!(observed_activation);
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened = open_build(&storage, &store, &prepared, &fragment);
     let pending = reopened.marker_effect_continuation().active().unwrap();
     assert_eq!(reopened.working_roots(), source_roots);

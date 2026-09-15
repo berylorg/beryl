@@ -32,8 +32,13 @@ fn execute(
 #[test]
 fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages() {
     let home = TestHome::new("activity-child-handoff");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     populated::seed_populated(&store, storage.clone());
     let owner = id(30);
     let child = id(36);
@@ -339,8 +344,13 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
     store.close().unwrap();
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -416,8 +426,13 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         outcome => panic!("expected clean activity-source corruption, got {outcome:?}"),
     }
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

@@ -3,8 +3,13 @@ use super::*;
 #[test]
 fn accepted_and_canonical_owners_remain_small_metadata_records() {
     let home = TestHome::new("small-owners");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(10);
     let draft = draft_id(11);
     let input = SyndicAcceptedInputId::from_bytes([12; 16]);
@@ -202,8 +207,13 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
     assert!(content.summary().encoded_bytes() > 1_000_000);
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

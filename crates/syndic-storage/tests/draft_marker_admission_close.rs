@@ -181,9 +181,17 @@ fn compact_terminal_charge_mismatch_remains_inert_and_cannot_settle() {
     drop(storage);
     drop(store);
 
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_inert_cleanup_refuses_without_mutation(&storage, &reopened, admission, 127);
     let before_settlement = snapshot(&storage, &reopened, admission);
     let head_digest = before_settlement.head().unwrap().digest();
@@ -292,9 +300,17 @@ fn terminal_cleanup_is_bounded_reopens_and_retains_only_exact_replay_closure() {
 
     drop(storage);
     drop(store);
-    let mut reopened =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .next_inert_draft_marker_admission_cleanup(&reopened)

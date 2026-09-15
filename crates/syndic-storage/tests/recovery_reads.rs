@@ -6,7 +6,7 @@ mod support;
 
 use beryl_home_store::{
     CursorReadLimits, DomainCallbackSource, DomainRegistrationError, DomainValidationError,
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, ReadError,
     WholeHomeScrubTrigger,
     test_faults::{FaultController, FaultPoint},
 };
@@ -54,6 +54,11 @@ fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
         let home = TestHome::new(&format!("physical-{}-{corruption:?}", family.name()));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         inject_physical_corruption(&store, storage.clone(), family, corruption).unwrap();
         assert!(matches!(
             store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
@@ -81,6 +86,11 @@ fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
 
         let mut scrubbed = open(home.path());
         SyndicStorage::register(&mut scrubbed).unwrap();
+        let scrubbed = scrubbed
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(matches!(
             scrubbed.scrub_whole_home(WholeHomeScrubTrigger::Explicit),
             Err(error) if matches!(
@@ -132,6 +142,11 @@ fn strict_decoders_reject_unknown_tags_trailing_bytes_and_noncanonical_options_o
         let home = TestHome::new(&format!("strict-{corruption:?}"));
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         inject_representative_physical_corruption(&store, storage, corruption).unwrap();
         assert!(matches!(
             store.scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit),
@@ -161,6 +176,11 @@ fn routine_reopen_leaves_dormant_malformed_records_for_the_encountering_typed_re
     let home = TestHome::new("routine-reopen-dormant-threads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     inject_physical_corruption(
         &store,
         storage,
@@ -172,6 +192,11 @@ fn routine_reopen_leaves_dormant_malformed_records_for_the_encountering_typed_re
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         storage
             .thread(&reopened, id(1), SyndicPointReadLimit::new(1_024).unwrap())
@@ -196,6 +221,11 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
     let home = TestHome::new("bounded-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_canonical_empty_thread(&store, storage.clone(), id(1), draft_id(2));
     let mut records = empty_thread_records(id(1), draft_id(2));
     let final_thread_revision = ThreadRevision::new(3).unwrap();
@@ -386,6 +416,11 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
     let home = TestHome::new("populated-point-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     support::seed_populated(&store, storage.clone());
     let limit = SyndicPointReadLimit::new(65_536).unwrap();
 

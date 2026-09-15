@@ -20,8 +20,11 @@ fn limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(400_000).unwrap()
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -56,8 +59,13 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
     ] {
         let home = TestHome::new(name);
         let faults = FaultController::new();
-        let mut store = open_with_faults(home.path(), faults.clone());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open_with_faults(home.path(), faults.clone());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let creation = CreateThread::ordinary(
             id(1),
             draft_id(2),
@@ -106,8 +114,13 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
 fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
     let home = TestHome::new("current-draft-race");
     let faults = FaultController::new();
-    let mut store = open_with_faults(home.path(), faults.clone());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open_with_faults(home.path(), faults.clone());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread_id = id(10);
     let creation = CreateThread::ordinary(
         thread_id,

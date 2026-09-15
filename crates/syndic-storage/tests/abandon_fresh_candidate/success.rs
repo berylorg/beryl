@@ -75,8 +75,13 @@ fn fresh_abandonment_preserves_selector_and_replays_across_reopen() {
     assert_eq!(receipt.after_head(), &abandoned);
 
     drop(store);
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(head(&storage, &store, &opened), abandoned);
     let replay = storage
         .prepare_abandon_fresh_draft_editor_candidate_session(&store, request)

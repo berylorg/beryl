@@ -13,6 +13,11 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
     let home = TestHome::new("stale-binding-roundtrip");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(60);
     let draft = draft_id(61);
     let cas_thread = CasThreadId::new("stale-roundtrip-thread").unwrap();
@@ -89,6 +94,11 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

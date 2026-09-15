@@ -17,8 +17,13 @@ fn limits(items: usize) -> CursorReadLimits {
 #[test]
 fn startup_cursor_requires_explicit_rebase_after_earlier_gate_mutation() {
     let home = TestHome::new("startup-key-cursor");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let threads = [ordered_id(1), ordered_id(2), ordered_id(3)];
     for (index, thread) in threads.iter().enumerate() {
         seed_canonical_empty_thread(
@@ -69,8 +74,13 @@ fn startup_cursor_requires_explicit_rebase_after_earlier_gate_mutation() {
 #[test]
 fn idle_threads_contribute_no_recovery_page_work() {
     let home = TestHome::new("terminal-heavy-pages");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for value in 1..=300 {
         seed_canonical_empty_thread(
             &store,
@@ -102,8 +112,13 @@ fn idle_threads_contribute_no_recovery_page_work() {
 #[test]
 fn recovered_pending_page_proves_safe_work_and_fences_cursor_revision() {
     let home = TestHome::new("pending-revision-fence");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let threads = [ordered_id(11), ordered_id(12)];
     for (index, thread) in threads.iter().enumerate() {
         seed_canonical_empty_thread(
@@ -183,8 +198,13 @@ fn startup_cursor_from_another_home_is_rejected() {
         base: u64,
     ) -> (TestHome, beryl_home_store::HomeStore, SyndicStorage) {
         let home = TestHome::new(name);
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         for value in [base, base + 1] {
             seed_canonical_empty_thread(
                 &store,
@@ -224,8 +244,13 @@ fn recovered_pending_and_classification_survive_reopen() {
     let expected_turn = recovery.turn;
     recovery.store.close().unwrap();
 
-    let mut reopened = open(&path);
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&path);
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source_page = storage
         .delivery_recovery_startup_page(&reopened, None, limits(16))
         .unwrap();

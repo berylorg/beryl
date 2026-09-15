@@ -74,8 +74,13 @@ fn route_entry(
 #[test]
 fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_reopen() {
     let home = TestHome::new("promotion-prior-delivery-witness");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -239,8 +244,13 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_storage
             .accepted_input_promotion_status(&reopened, &promotion, super::limit())

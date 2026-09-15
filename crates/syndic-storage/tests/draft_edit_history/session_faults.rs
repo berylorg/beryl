@@ -155,9 +155,17 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
         };
         drop(store);
 
-        let mut reopened =
-            HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+        let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
         let storage = SyndicStorage::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(matches!(
             storage
                 .draft_editor_candidate_session(
@@ -225,9 +233,17 @@ fn candidate_session_point_reads_authenticate_history_after_restart() {
         ));
         drop(reopened);
 
-        let mut restarted =
-            HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+        let mut restarted = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
         let storage = SyndicStorage::register(&mut restarted).unwrap();
+        let restarted = restarted
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert!(matches!(
             storage
                 .draft_editor_candidate_session(

@@ -14,6 +14,11 @@ pub fn exercise_case(
     let registration_home = TestHome::new(&format!("{name}-registration"));
     let mut store = open(registration_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for &(thread, draft) in threads {
         seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     }
@@ -26,6 +31,11 @@ pub fn exercise_case(
 
     let mut routine_reopened = open(registration_home.path());
     SyndicStorage::register(&mut routine_reopened).unwrap();
+    let routine_reopened = routine_reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     routine_reopened.close().unwrap();
 
     let mut reopened = open(registration_home.path());
@@ -45,6 +55,11 @@ pub fn exercise_case(
     let recovery_home = TestHome::new(&format!("{name}-recovery"));
     let mut store = open(recovery_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for &(thread, draft) in threads {
         seed_canonical_empty_thread(&store, storage.clone(), thread, draft);
     }
@@ -75,6 +90,11 @@ pub fn exercise_seeded_populated_case(
     let registration_home = TestHome::new(&format!("{name}-registration"));
     let mut store = open(registration_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -84,6 +104,11 @@ pub fn exercise_seeded_populated_case(
 
     let mut routine_reopened = open(registration_home.path());
     SyndicStorage::register(&mut routine_reopened).unwrap();
+    let routine_reopened = routine_reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     routine_reopened.close().unwrap();
 
     let mut reopened = open(registration_home.path());
@@ -97,6 +122,11 @@ pub fn exercise_seeded_populated_case(
     let recovery_home = TestHome::new(&format!("{name}-recovery"));
     let mut store = open(recovery_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

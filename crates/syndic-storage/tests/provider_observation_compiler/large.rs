@@ -5,6 +5,11 @@ fn multi_page_text_replays_with_bounded_compiler_batches() {
     let home = TestHome::new("large-replay");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let text_bytes = vec![b'x'; CONTENT_CHUNK_MAX_BYTES * (CONTENT_APPEND_MAX_CHUNKS + 2)];
     let pieces = text_bytes
         .chunks(PROVIDER_OBSERVATION_CHUNK_MAX_BYTES)

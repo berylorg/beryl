@@ -20,8 +20,13 @@ fn limits(items: usize) -> CursorReadLimits {
 #[test]
 fn compact_pages_clamp_counts_and_honor_exact_stored_byte_limits() {
     let home = TestHome::new("compact-source-bounds");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     for start in (1..=300).step_by(20) {
         commit(
             &store,

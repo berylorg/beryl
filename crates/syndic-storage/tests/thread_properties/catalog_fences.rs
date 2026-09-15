@@ -42,6 +42,11 @@ fn stale_attributes_witness_cannot_justify_a_changed_catalog_payload() {
     let home = TestHome::new("current-history-stale-attributes");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let stale_catalog = current_catalog(&store, storage.clone());
     execute(

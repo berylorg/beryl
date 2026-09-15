@@ -13,6 +13,11 @@ fn expect_scrub_rejection(home: &TestHome, store: HomeStore, expected: &str) {
     store.close().unwrap();
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -36,6 +41,11 @@ fn one_completed_activity(
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(
@@ -103,6 +113,11 @@ fn scrub_rejects_a_coherently_removed_running_activity_entry() {
     let home = TestHome::new("activity-running-completeness-corruption");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(&store, storage.clone(), thread, turn, timestamp(4));
     admit(

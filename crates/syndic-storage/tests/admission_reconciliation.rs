@@ -29,8 +29,13 @@ fn limit() -> SyndicPointReadLimit {
 
 fn seeded(name: &str, fixture: Fixture) -> (TestHome, HomeStore, SyndicStorage, Fixture) {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let _ = seed_detached_canonical_draft_backing(
         &store,
         storage.clone(),
@@ -116,8 +121,13 @@ fn scrub_and_reopen_rejects_missing_transition_witness(
             .contains("transitioned accepted-route leaf is missing its witness")
     );
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let _storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let _storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -136,8 +146,13 @@ fn durable_delivery_transition_witnesses_are_required_by_scrub_and_reopen() {
         ("retryable", delivery_fixture::retryable_input()),
     ] {
         let home = TestHome::new(&format!("transition-witness-{name}"));
-        let mut store = open(home.path());
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
         scrub_and_reopen_rejects_missing_transition_witness(&home, store, storage, input);
     }
@@ -146,8 +161,13 @@ fn durable_delivery_transition_witnesses_are_required_by_scrub_and_reopen() {
 #[test]
 fn exact_projection_loss_transition_witness_is_required_by_scrub_and_reopen() {
     let home = TestHome::new("projection-loss-witness");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
     let generic = delivery_fixture::abandonment_request(&store, &storage);
     let request = AbandonActiveBinding::after_exact_rejection(
@@ -235,8 +255,13 @@ fn durable_promotion_witness_is_required_by_explicit_scrub_and_survives_routine_
             .contains("promoted accepted-route leaf is missing its successor witness")
     );
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let _storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let _storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -251,8 +276,13 @@ fn durable_promotion_witness_is_required_by_explicit_scrub_and_survives_routine_
 #[test]
 fn projection_loss_source_keeps_next_work_ineligible_while_the_gate_is_not_idle() {
     let home = TestHome::new("projection-loss");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     delivery_fixture::seed_mixed_abandonment(&store, storage.clone());
     let request = delivery_fixture::abandonment_request(&store, &storage);
     assert!(matches!(

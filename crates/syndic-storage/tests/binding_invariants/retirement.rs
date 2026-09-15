@@ -36,8 +36,13 @@ fn stale_binding(
 #[test]
 fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
     let home = TestHome::new("one-way-retirement");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = id(220);
     create_thread(&store, &storage, thread, draft_id(221));
     let selected = empty_selected_path(&store, &storage, thread);
@@ -141,8 +146,13 @@ fn retired_cas_identity_is_one_way_and_cannot_rewrite_its_execution() {
 #[test]
 fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
     let home = TestHome::new("first-stale-inclusive-fork");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, Some(parent), _, selected) = fault_pending_path(&store, &storage, 224, true)
     else {
         unreachable!()
@@ -206,8 +216,13 @@ fn first_stale_inclusive_fork_retains_exact_nonzero_provenance_after_reopen() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_provenance(&reopened, &storage);
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

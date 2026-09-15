@@ -86,6 +86,11 @@ fn delivery_changes_source_revision_atomically_and_reopens_exactly() {
         store.close().unwrap();
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register_with_schema_validation(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             storage
                 .non_idle_gate_source(&reopened, operation.thread(), limit())
@@ -164,6 +169,11 @@ fn idle_and_absent_gates_reject_orphan_sources_in_both_validation_directions() {
         let home = support::TestHome::new("orphan-source");
         let mut store = open(home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let creation = CreateThread::ordinary(
             id(240),
             support::draft_id(241),

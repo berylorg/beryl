@@ -67,6 +67,11 @@ impl ActiveStopFixture {
         drop(store);
         let mut store = open(_home.path());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         Self {
             _home,
             store,
@@ -100,7 +105,7 @@ pub fn active_stop_fixture_with_faults(
     faults: beryl_home_store::test_faults::FaultController,
 ) -> ActiveStopFixture {
     let home = TestHome::new(name);
-    let store = HomeStore::open_with_faults(
+    let store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         beryl_home_store::HomeOpenOptions::new(
             home.path(),
             beryl_home_store::HomeSchemaVersion::CURRENT,
@@ -113,10 +118,15 @@ pub fn active_stop_fixture_with_faults(
 
 fn build_active_stop_fixture(
     home: TestHome,
-    mut store: HomeStore,
+    mut store: beryl_home_store::HomeOpenCandidate,
     publish_activation: bool,
 ) -> ActiveStopFixture {
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([101; 16]);
     execute(
         &store,

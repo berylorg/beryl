@@ -345,8 +345,13 @@ fn restart_classifies_empty_awaiting_terminal_as_active_loss_authority() {
         ..
     } = fixture;
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let page = storage
         .delivery_recovery_startup_page(&reopened, None, cursor_limits())
         .unwrap();

@@ -51,6 +51,11 @@ fn arbitrary_order_agent_observation_matches_materialized_encoding_and_staging()
     let home = TestHome::new("agent-parity");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage.clone());
         started_agent_observation(1, "agent-item", "hÃ©llo 🦀".as_bytes(), &mut callback)
@@ -96,6 +101,11 @@ fn destination_item_disagreement_has_a_distinct_semantic_error() {
     let home = TestHome::new("item-mismatch");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage.clone());
         started_agent_observation(2, "observed-item", b"text", &mut callback)

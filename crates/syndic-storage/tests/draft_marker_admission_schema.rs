@@ -61,8 +61,12 @@ impl Drop for TestHome {
     }
 }
 
-fn open(home: &TestHome) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap()
+fn open(home: &TestHome) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
@@ -595,8 +599,13 @@ fn assigning_fixture(
 
 fn persist_and_scrub(name: &str, snapshot: DraftMarkerAdmissionFixtureSnapshotV1) -> bool {
     let home = TestHome::new(name);
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     execute(
         &store,
         draft_marker_admission_fixture_contribution(
@@ -835,8 +844,13 @@ fn canonical_head_receipt_and_capacity_codecs_round_trip_and_reject_digest_damag
 #[test]
 fn explicit_validation_accepts_exact_charges_in_bounded_pages() {
     let home = TestHome::new("valid-bounded");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let provisional = settled_head(0);
     let head = settled_head(draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap());
     let capacity =
@@ -868,8 +882,13 @@ fn explicit_validation_accepts_exact_charges_in_bounded_pages() {
 #[test]
 fn explicit_validation_refuses_malformed_and_aggregate_only_capacity_state() {
     let malformed = TestHome::new("malformed");
-    let mut store = open(&malformed);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&malformed);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     inject_malformed_draft_marker_admission_capacity(&store, storage).unwrap();
     assert!(
         store
@@ -878,8 +897,13 @@ fn explicit_validation_refuses_malformed_and_aggregate_only_capacity_state() {
     );
 
     let aggregate_only = TestHome::new("aggregate-only");
-    let mut store = open(&aggregate_only);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&aggregate_only);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     execute(
         &store,
         draft_marker_admission_capacity_without_heads_contribution(
@@ -897,16 +921,31 @@ fn explicit_validation_refuses_malformed_and_aggregate_only_capacity_state() {
 #[test]
 fn registration_reconstructs_empty_and_bounded_persisted_admission_state() {
     let empty = TestHome::new("attachment-empty");
-    let mut store = open(&empty);
-    SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&empty);
+    SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     store.close().unwrap();
-    let mut reopened = open(&empty);
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&empty);
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 
     let populated = TestHome::new("attachment-populated");
-    let mut store = open(&populated);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&populated);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let provisional = settled_head(0);
     let head = settled_head(draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap());
     let capacity =
@@ -926,16 +965,26 @@ fn registration_reconstructs_empty_and_bounded_persisted_admission_state() {
         ),
     );
     store.close().unwrap();
-    let mut reopened = open(&populated);
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&populated);
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 }
 
 #[test]
 fn registration_refuses_capacity_disagreement_without_publishing_the_domain() {
     let home = TestHome::new("attachment-capacity-disagreement");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let provisional = settled_head(0);
     let head = settled_head(draft_marker_admission_head_encoded_charge_v1(&provisional).unwrap());
     let capacity = syndic_storage::DraftMarkerAdmissionCapacityV1::new(
@@ -959,8 +1008,10 @@ fn registration_refuses_capacity_disagreement_without_publishing_the_domain() {
     store.close().unwrap();
     let mut reopened = open(&home);
     assert!(SyndicStorage::register(&mut reopened).is_err());
-    assert!(SyndicStorage::reacquire(&reopened).is_err());
-    reopened.close().unwrap();
+    let failure = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap_err();
+    failure.into_parts().1.close().unwrap();
 }
 
 fn settled_heads(count: u8) -> Vec<DraftMarkerAdmissionHeadV1> {
@@ -990,8 +1041,13 @@ fn capacity_for_heads(
 #[test]
 fn registration_reconstructs_exactly_sixty_four_distinct_heads() {
     let home = TestHome::new("attachment-sixty-four-heads");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let heads = settled_heads(64);
     execute(
         &store,
@@ -1007,16 +1063,26 @@ fn registration_reconstructs_exactly_sixty_four_distinct_heads() {
         ),
     );
     store.close().unwrap();
-    let mut reopened = open(&home);
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 }
 
 #[test]
 fn registration_refuses_the_sixty_fifth_distinct_head_without_publishing() {
     let home = TestHome::new("attachment-sixty-five-heads");
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let heads = settled_heads(65);
     execute(
         &store,
@@ -1034,16 +1100,23 @@ fn registration_refuses_the_sixty_fifth_distinct_head_without_publishing() {
     store.close().unwrap();
     let mut reopened = open(&home);
     assert!(SyndicStorage::register(&mut reopened).is_err());
-    assert!(SyndicStorage::reacquire(&reopened).is_err());
-    reopened.close().unwrap();
+    let failure = reopened
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap_err();
+    failure.into_parts().1.close().unwrap();
 }
 
 #[test]
 fn registration_refuses_malformed_persisted_singleton_and_head_authority() {
     for malformed_head in [false, true] {
         let home = TestHome::new("attachment-malformed-authority");
-        let mut store = open(&home);
-        let storage = SyndicStorage::register(&mut store).unwrap();
+        let mut store_candidate = open(&home);
+        let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+        let store = store_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let head = settled_heads(1).pop().unwrap();
         execute(
             &store,
@@ -1066,8 +1139,10 @@ fn registration_refuses_malformed_persisted_singleton_and_head_authority() {
         store.close().unwrap();
         let mut reopened = open(&home);
         assert!(SyndicStorage::register(&mut reopened).is_err());
-        assert!(SyndicStorage::reacquire(&reopened).is_err());
-        reopened.close().unwrap();
+        let failure = reopened
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap_err();
+        failure.into_parts().1.close().unwrap();
     }
 }
 

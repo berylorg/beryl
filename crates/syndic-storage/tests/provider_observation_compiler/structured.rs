@@ -5,6 +5,11 @@ fn recursive_structured_values_match_materialized_provider_encoding() {
     let home = TestHome::new("structured-parity");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage.clone());
         let mut stager = committed_stage_value(
@@ -165,6 +170,11 @@ fn variant_fields_may_precede_their_discriminant_without_changing_encoding() {
     let home = TestHome::new("variant-order");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let bound = {
         let mut callback = observation_callback(&store, storage.clone());
         let mut stager = committed_stage_value(

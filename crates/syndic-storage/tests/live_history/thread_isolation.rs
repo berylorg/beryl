@@ -5,6 +5,11 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
     let home = TestHome::new("cross-thread-rejection");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (first_thread, first_turn) = seed_pending_turn(&store, &storage);
     let source = establish_turn(
         &store,

@@ -34,8 +34,13 @@ fn restart_classifies_awaiting_terminal_as_active_possible_dispatch_and_abandons
         ..
     } = fixture;
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source = recovery_source(&reopened, &storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
@@ -141,8 +146,13 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
         ..
     } = fixture;
     store.close().unwrap();
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let source = recovery_source(&reopened, &storage, thread);
     let DeliveryRecoveryCase::Active(active) = storage
         .classify_delivery_recovery(&reopened, &source, point_limit())
@@ -329,8 +339,13 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();
         store.close().unwrap();
-        let mut reopened = open(home.path());
-        let storage = SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(home.path());
+        let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             assert_uncertain_transition_whole(&reopened, &storage, thread, turn),
             exact

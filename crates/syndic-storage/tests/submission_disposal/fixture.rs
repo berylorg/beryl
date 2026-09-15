@@ -48,8 +48,13 @@ impl Fixture {
                 populated
             );
             drop(store);
-            store = open(&home);
-            storage = SyndicStorage::register(&mut store).unwrap();
+            let mut candidate = open(&home);
+            storage = SyndicStorage::register(&mut candidate).unwrap();
+            store = candidate
+                .prepare_publication(SyndicStorage::required_domains().unwrap())
+                .unwrap()
+                .publish()
+                .unwrap();
             let opened = open_session(&storage, &store, &durable, seed + 11, seed + 12);
             assert_eq!(opened.newest_root(), opened.published_root());
             assert_ne!(opened.newest_history(), opened.published_history());
@@ -151,8 +156,13 @@ impl Fixture {
 
     pub fn reopen(mut self) -> Self {
         drop(self.store);
-        self.store = open(&self.home);
-        self.storage = SyndicStorage::register(&mut self.store).unwrap();
+        let mut candidate = open(&self.home);
+        self.storage = SyndicStorage::register(&mut candidate).unwrap();
+        self.store = candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         self
     }
 }

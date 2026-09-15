@@ -87,6 +87,11 @@ fn exercise_deletion(case: DeletionCase) {
     let registration_home = TestHome::new(&format!("delete-{}-registration", case.family.name()));
     let mut store = open(registration_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -109,6 +114,11 @@ fn exercise_deletion(case: DeletionCase) {
     let recovery_home = TestHome::new(&format!("delete-{}-recovery", case.family.name()));
     let mut store = open(recovery_home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -136,6 +146,11 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
     let home = TestHome::new(&format!("delete-{}-accepted", family.name()));
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     commit(&store, storage.clone(), deletion_batch(delete));
     store
@@ -145,6 +160,11 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -210,6 +230,11 @@ fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let home = TestHome::new("populated-family-matrix");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
@@ -218,6 +243,11 @@ fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
 
     let mut reopened = open(home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -256,6 +286,11 @@ fn reverse_index_getters_expose_every_stored_correlation() {
     let home = TestHome::new("reverse-index-getters");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let limit = SyndicPointReadLimit::new(1_000_000).unwrap();
 

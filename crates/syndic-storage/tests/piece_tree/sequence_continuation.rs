@@ -641,12 +641,17 @@ fn partial_ordinary_range_repair_reopens_and_continues_from_persisted_progress()
     );
     drop(store);
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(open_build(&storage, &reopened, &edit), persisted);
     advance_until_complete_for(
         &storage,

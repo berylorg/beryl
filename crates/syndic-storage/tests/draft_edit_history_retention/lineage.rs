@@ -93,8 +93,13 @@ fn sibling_at_the_threshold_cannot_redirect_selected_lineage_floor() {
     ));
 
     drop(store);
-    let mut reopened = open(&home);
-    let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(&home);
+    let reopened_storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         reopened_storage
             .draft_editor_candidate_session(

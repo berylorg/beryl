@@ -19,9 +19,17 @@ impl Home {
             std::env::temp_dir().join(format!("beryl-build-mapping-{name}-{}", std::process::id()));
         assert!(!path.exists());
         std::fs::create_dir_all(&path).unwrap();
-        let mut store =
-            HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT)).unwrap();
+        let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &path,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         (Self(path), store, storage)
     }
 }

@@ -120,6 +120,46 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
     assert!(first_root.marker_order_height() > 0);
     assert!(first_root.marker_order_root().is_some());
 
+    session = complete_staged(
+        &storage,
+        &store,
+        &session,
+        234,
+        DraftPieceReplacementV1::new(point(3), point(3), vec![DraftPieceV1::Text("x".to_owned())]),
+        DraftLogicalExtentV1::new(4, 1),
+    );
+    assert_eq!(session.newest_root().marker_commitment(), first_commitment);
+    assert_eq!(
+        session.newest_root().marker_order_root(),
+        first_root.marker_order_root()
+    );
+
+    let first_seal = seal_root(&storage, &store, session.newest_root(), 230);
+    let first_asset_proof = SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([231; 16]),
+        first_seal.sequential(),
+        first_seal.ordered_assets(),
+        first_seal.sequential().marker_count(),
+        AssetReferenceSetDigest::from_bytes([232; 32]),
+    )
+    .unwrap();
+    let first_request = publication_request(
+        &durable,
+        &session,
+        233,
+        2,
+        DraftEditorCandidatePublicationEvidenceV1::ChangedNonempty {
+            seal_proof: first_seal,
+            asset_proof: first_asset_proof,
+        },
+    );
+    let first_source = capture_publication_source(&storage, &store, first_request);
+    reset_syndic_point_read_count();
+    storage
+        .prepare_draft_editor_candidate_publication(&store, first_source, first_request.evidence())
+        .unwrap();
+    let first_publication_point_reads = syndic_point_read_count();
+
     let second = marker(186, 6, 9);
     let before_all = DraftCompositePositionV1::new(1, DraftCompositeGapWitnessV1::BeforeAll);
     session = complete_marker_edit(
@@ -152,8 +192,8 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
         &store,
         &session,
         188,
-        DraftPieceReplacementV1::new(point(3), point(3), vec![DraftPieceV1::Text("z".to_owned())]),
-        DraftLogicalExtentV1::new(4, 1),
+        DraftPieceReplacementV1::new(point(4), point(4), vec![DraftPieceV1::Text("z".to_owned())]),
+        DraftLogicalExtentV1::new(5, 1),
     );
     assert_ne!(session.newest_root(), before_text_root);
     assert_eq!(session.newest_root().marker_commitment(), ordered);
@@ -183,10 +223,7 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
         .prepare_draft_editor_candidate_publication(&store, source, request.evidence())
         .unwrap();
     let publication_point_reads = syndic_point_read_count();
-    assert!(
-        publication_point_reads <= 64,
-        "publication used {publication_point_reads} point reads"
-    );
+    assert_eq!(publication_point_reads, first_publication_point_reads);
     assert_eq!(prepared.marker_commitment(), ordered);
     let command_outcome = execute(
         &store,
@@ -217,9 +254,17 @@ fn marker_order_commitment_is_structural_reused_published_and_restart_visible() 
     assert_eq!(receipt.marker_commitment(), ordered);
 
     drop(store);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened = current(&storage, &store, thread).draft().piece_root();
     assert_eq!(reopened.marker_commitment(), ordered);
     assert_eq!(
@@ -414,9 +459,17 @@ fn fixture_with_marker_limit(
     maximum_markers: u64,
 ) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([seed; 16]);
     let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
     committed(execute(

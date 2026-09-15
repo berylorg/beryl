@@ -15,6 +15,11 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         seed_populated(&store, storage.clone());
         let item = SyndicItemId::from_bytes([71; 16]);
         let cas_item = CasItemId::new("fault-item").unwrap();
@@ -120,6 +125,11 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
 
         let mut reopened = open(home.path());
         let storage = SyndicStorage::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         reopened
             .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
             .unwrap();

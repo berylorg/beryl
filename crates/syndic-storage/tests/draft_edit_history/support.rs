@@ -72,8 +72,12 @@ pub(super) struct Transaction {
     pub(super) fragments: Vec<DraftPieceBuildFragmentV1>,
 }
 
-pub(super) fn open(home: &TestHome) -> HomeStore {
-    HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap()
+pub(super) fn open(home: &TestHome) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap()
 }
 
 pub(super) fn fixture(
@@ -82,8 +86,13 @@ pub(super) fn fixture(
     budget: u64,
 ) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new(name);
-    let mut store = open(&home);
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(&home);
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&storage, &store, seed, budget);
     (home, store, storage, thread)
 }
@@ -101,12 +110,17 @@ pub(super) fn fault_fixture(
 ) {
     let home = TestHome::new(name);
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&storage, &store, seed, budget);
     (home, store, storage, faults, thread)
 }
@@ -308,10 +322,7 @@ pub(super) fn build(storage: &SyndicStorage, store: &HomeStore, transaction: &Tr
         )
         .unwrap()
     {
-        committed(execute(
-            store,
-            storage.advance_draft_piece_edit(advance),
-        ));
+        committed(execute(store, storage.advance_draft_piece_edit(advance)));
     }
 }
 

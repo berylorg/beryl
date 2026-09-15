@@ -5,6 +5,11 @@ fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
     let home = TestHome::new("populated-ordered-reads");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     super::support::seed_populated(&store, storage.clone());
     let one = CursorReadLimits::new(1, 65_536).unwrap();
 
@@ -97,12 +102,17 @@ fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
 fn successful_recovery_requires_old_handle_reacquisition() {
     let home = TestHome::new("reacquire");
     let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
     .unwrap();
     let old = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     super::support::seed_canonical_empty_thread(&store, old.clone(), id(1), draft_id(2));
     commit(
         &store,

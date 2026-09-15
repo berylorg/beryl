@@ -85,12 +85,17 @@ fn history_limited_fixture(
     faults: FaultController,
 ) -> (TestHome, HomeStore, SyndicStorage, SyndicThreadId) {
     let home = TestHome::new("outcome-dynamic-settlement");
-    let mut store = HomeStore::open_with_faults(
+    let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
         faults,
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([151; 16]);
     committed(execute(
         &store,

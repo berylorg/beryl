@@ -65,6 +65,11 @@ fn assert_published_issue_corruption_detected(
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopen_error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
@@ -197,6 +202,11 @@ fn arbitrarily_large_referenced_observation_issue_publishes_and_reopens() {
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

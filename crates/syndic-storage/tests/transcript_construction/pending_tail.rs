@@ -5,6 +5,11 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     let home = TestHome::new("transcript-complete-tail-gate");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&store, storage.clone());
     let authored = format!(
         "```text\n{}\n```\n",
@@ -340,6 +345,11 @@ fn pending_tail_stays_out_of_public_entries_until_its_frontier_is_finalized() {
     store.close().unwrap();
     let mut reopened = open(home.path());
     let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

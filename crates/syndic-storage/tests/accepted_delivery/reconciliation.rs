@@ -210,8 +210,13 @@ fn assert_witness_corruption_rejected(name: &str, corruption: WitnessCorruption)
     assert!(storage.revision(&recovered).is_ok());
     recovered.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened.close().unwrap();
 }
 

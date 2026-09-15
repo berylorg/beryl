@@ -5,6 +5,11 @@ fn operational_event_refreshes_current_path_snapshot_without_invalidating_transc
     let home = TestHome::new("operational-current-path-snapshot");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = create_thread(&store, storage.clone());
     let submitted = submit_text(
         &store,

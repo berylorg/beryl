@@ -84,8 +84,11 @@ fn typed_error(error: &CommandError) -> &SyndicMutationError {
     source.downcast_ref().expect("Syndic mutation error")
 }
 
-fn open_with_faults(path: &std::path::Path, faults: FaultController) -> HomeStore {
-    HomeStore::open_with_faults(
+fn open_with_faults(
+    path: &std::path::Path,
+    faults: FaultController,
+) -> beryl_home_store::HomeOpenCandidate {
+    beryl_home_store::HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
@@ -357,6 +360,11 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     let home = TestHome::new("external-identity");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_populated(&store, storage.clone());
     let item = SyndicItemId::from_bytes([70; 16]);
     let cas_item = CasItemId::new("exact-item").unwrap();

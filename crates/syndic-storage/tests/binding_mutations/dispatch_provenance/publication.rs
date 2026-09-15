@@ -5,12 +5,17 @@ fn indeterminate_activation_and_cancellation_reconcile_the_complete_publication(
     for cancel in [false, true] {
         let home = TestHome::new("dispatch-indeterminate-publication");
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = activate_pending(&store, &storage, 170, false);
         let cancellation = cancellation(&store, &storage, &fixture);
         if !cancel {
@@ -56,8 +61,13 @@ fn indeterminate_activation_and_cancellation_reconcile_the_complete_publication(
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
             .unwrap();
         store.close().unwrap();
-        let mut reopened = open(home.path());
-        SyndicStorage::register(&mut reopened).unwrap();
+        let mut reopened_candidate = open(home.path());
+        SyndicStorage::register(&mut reopened_candidate).unwrap();
+        let reopened = reopened_candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         reopened
             .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
             .unwrap();
@@ -70,12 +80,17 @@ fn indeterminate_dispatch_publication_rejects_a_mixed_turn_state() {
     for cancel in [false, true] {
         let home = TestHome::new("dispatch-indeterminate-mixed-state");
         let faults = FaultController::new();
-        let mut store = HomeStore::open_with_faults(
+        let mut store = beryl_home_store::HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
         .unwrap();
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let fixture = activate_pending(&store, &storage, 170, false);
         let cancellation = cancellation(&store, &storage, &fixture);
         if !cancel {

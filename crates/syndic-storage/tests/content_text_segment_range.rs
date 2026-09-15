@@ -39,8 +39,13 @@ fn prepared(atoms: Vec<ComposerAtom>) -> PreparedContent {
 
 fn seed(name: &str, prepared: &PreparedContent) -> Fixture {
     let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (content, records) = prepared_content_records(prepared);
     commit(&store, storage.clone(), batch(records));
     Fixture {
@@ -377,8 +382,13 @@ fn cursor_offsets_limits_references_and_absence_are_typed() {
 
     let missing = source.reference(ContentRevision::new(1).unwrap());
     let home = TestHome::new("content-segments-missing");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         storage
             .prove_sealed_content_text_segment(&store, missing, None)

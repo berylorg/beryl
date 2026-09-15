@@ -23,11 +23,7 @@ impl AcceptedFixture {
     }
 
     fn build(name: &str, seed: u8, faults: Option<FaultController>) -> Self {
-        let (home, mut store, storage, thread) = match faults {
-            Some(faults) => fixture_with_faults(name, seed, faults),
-            None => fixture(name, seed),
-        };
-        let state = BerylState::register(&mut store).unwrap();
+        let (home, store, storage, state, thread) = fixture_with_state(name, seed, faults);
         let label = ImageLabelOrdinal::new(7).unwrap();
         let marker = SyndicDraftMarkerId::from_bytes([seed.wrapping_add(20); 16]);
         let asset_id = publish_metadata(&store, &state, &[seed; 13]);
@@ -97,6 +93,74 @@ impl AcceptedFixture {
                 .draft_marker_label_readiness_witness_factory(),
         )
     }
+}
+
+fn fixture_with_state(
+    name: &str,
+    seed: u8,
+    faults: Option<FaultController>,
+) -> (
+    TestHome,
+    HomeStore,
+    SyndicStorage,
+    BerylState,
+    SyndicThreadId,
+) {
+    let home = TestHome::new(name);
+    let root_path = if faults.is_some() {
+        "C:\\syndic-faults"
+    } else {
+        "C:\\syndic-"
+    };
+    let mut candidate = match faults {
+        Some(faults) => beryl_home_store::HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT),
+            faults,
+        )
+        .unwrap(),
+        None => beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            &home.0,
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap(),
+    };
+    let storage = SyndicStorage::register(&mut candidate).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(
+            SyndicStorage::required_domains()
+                .unwrap()
+                .merge(BerylState::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let thread = SyndicThreadId::from_bytes([seed; 16]);
+    let draft = SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]);
+    committed(execute(
+        &store,
+        storage.create_thread(
+            storage.revision(&store).unwrap(),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                ExecutionBinding::new(
+                    RuntimeId::from_bytes([171; 16]),
+                    RootId::from_bytes([172; 16]),
+                    RuntimeNativePath::from_admitted(
+                        RuntimeMode::host(),
+                        PathFlavor::Windows,
+                        root_path,
+                    )
+                    .unwrap(),
+                ),
+                SyndicTimestamp::from_unix_millis(1),
+                syndic_storage::DraftEditHistoryPolicyV1::new(65_536, 1).unwrap(),
+            ),
+        ),
+    ));
+    (home, store, storage, state, thread)
 }
 
 pub(super) fn execute_asset(

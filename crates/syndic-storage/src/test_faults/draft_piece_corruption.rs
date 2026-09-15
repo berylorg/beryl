@@ -971,7 +971,11 @@ pub fn inject_draft_piece_occupied_stage_target(
             None,
             None,
             DraftPieceBuildLifecycleV1::Open,
-        ),
+        )
+        .with_durable_continuation(build.durable_continuation())
+        .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_mapping(build.mapping())
+        .with_writer_admission(build.writer_admission()),
         Some(build.progress_receipt()),
         Some(canonical_fragment_endpoint(&fragment)),
     )
@@ -1161,7 +1165,11 @@ pub fn inject_draft_piece_coordinated_stage_target_replacement(
             build.successor(),
             build.build_digest(),
             build.lifecycle(),
-        ),
+        )
+        .with_durable_continuation(build.durable_continuation())
+        .with_marker_effect_continuation(build.marker_effect_continuation())
+        .with_mapping(build.mapping())
+        .with_writer_admission(build.writer_admission()),
         receipt.previous(),
         receipt.fragment_endpoint(),
     )

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn multi_megabyte_draft_stages_traverses_adopts_publishes_reopens_and_materializes_boundedly() {
-    let (home, mut store, mut storage, thread) = fixture("large-draft", 184);
+    let (home, store, mut storage, thread) = fixture("large-draft", 184);
     let durable = current(&storage, &store, thread);
     let mut session = open_session(&storage, &store, &durable, 185, 186);
 
@@ -105,8 +105,17 @@ fn multi_megabyte_draft_stages_traverses_adopts_publishes_reopens_and_materializ
     assert_eq!(mapping.source_marker_count(), 0);
 
     drop(store);
-    store = HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap();
-    storage = SyndicStorage::register(&mut store).unwrap();
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        &home.0,
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    storage = SyndicStorage::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let reopened = current(&storage, &store, thread).draft().piece_root();
     assert_eq!(reopened, edited_root);
     assert_sparse_text(

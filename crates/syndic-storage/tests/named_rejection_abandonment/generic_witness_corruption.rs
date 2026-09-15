@@ -5,6 +5,11 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
     let home = TestHome::new("generic-abandonment-corrupt-gate-witness");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     seed_mixed_abandonment(&store, storage.clone());
     let source = syndic_storage::test_faults::accepted_route_generation(
         &store,
@@ -72,6 +77,11 @@ fn generic_abandonment_reopen_rejects_nonprior_gate_witness() {
 
     let mut reopened = open(home.path());
     let _storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

@@ -46,6 +46,11 @@ fn ordinary_opening_disposal_preserves_the_selector_and_replays_the_normalized_h
         drop(store);
         let mut store = open(&home);
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let store = store
+            .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(head(&storage, &store, &opened), terminal);
         assert_receipt_replay(&storage, &store, request, &opened, &terminal);
         assert_eq!(current(&storage, &store, thread), durable);

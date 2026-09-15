@@ -47,6 +47,11 @@ fn setup(name: &str) -> Fixture {
     let home = TestHome::new(name);
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([1; 16]);
     committed_command(execute(
         &store,
@@ -542,6 +547,11 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     fixture.store.close().unwrap();
     let mut reopened = open(fixture.home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

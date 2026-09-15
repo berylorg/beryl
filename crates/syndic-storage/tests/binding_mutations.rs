@@ -904,8 +904,13 @@ fn abandonment(
 #[test]
 fn invalid_abandonment_preserves_the_exact_active_binding_and_route() {
     let home = TestHome::new("invalid-abandonment-preserves-state");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 40, false);
     let thread = fixture.thread;
     let before_revision = storage.revision(&store).unwrap();
@@ -953,8 +958,13 @@ fn invalid_abandonment_preserves_the_exact_active_binding_and_route() {
 #[test]
 fn exact_active_abandonment_is_reconcilable_and_survives_reopen() {
     let home = TestHome::new("exact-active-abandonment");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 50, false);
     let thread = fixture.thread;
     let request = abandonment(&store, &storage, thread, false);
@@ -995,8 +1005,13 @@ fn exact_active_abandonment_is_reconcilable_and_survives_reopen() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .abandoned_active_binding_publication_status(&reopened, &request, point_limit())
@@ -1018,8 +1033,13 @@ fn exact_active_abandonment_is_reconcilable_and_survives_reopen() {
 #[test]
 fn retired_projection_rejects_late_activation_and_source_less_complete() {
     let home = TestHome::new("retired-projection-rejects-late-events");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 55, true);
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
@@ -1185,8 +1205,13 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         storage
             .current_binding(&reopened, fixture.thread, point_limit())
@@ -1220,8 +1245,13 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
 #[test]
 fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
     let home = TestHome::new("queued-active-abandonment-retry");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 60, true);
     let accepted = seed_active_queued_input(&store, &storage, fixture.thread, draft_id(73));
     store
@@ -1363,8 +1393,13 @@ fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -1374,8 +1409,13 @@ fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
 #[test]
 fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
     let home = TestHome::new("abandoned-idle-gate-corruption");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut store_candidate = open(home.path());
+    let storage = SyndicStorage::register(&mut store_candidate).unwrap();
+    let store = store_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let fixture = activate_pending(&store, &storage, 150, true);
     let state = storage
         .turn_state(&store, fixture.turn, point_limit())
@@ -1478,8 +1518,13 @@ fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
     );
     store.close().unwrap();
 
-    let mut reopened = open(home.path());
-    SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(home.path());
+    SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();

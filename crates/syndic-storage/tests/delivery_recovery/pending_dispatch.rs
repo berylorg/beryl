@@ -74,8 +74,13 @@ fn exact_pending_identity_survives_cancellation_retirement_and_reopen() {
         assert_eq!(evidence.selected_path(), untouched.selected_path());
     }
     fixture.store.close().unwrap();
-    let mut reopened = open(fixture.home.path());
-    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let mut reopened_candidate = open(fixture.home.path());
+    let storage = SyndicStorage::register(&mut reopened_candidate).unwrap();
+    let reopened = reopened_candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let recovered = storage
         .pending_dispatch_evidence(&reopened, fixture.thread, point_limit())
         .unwrap()

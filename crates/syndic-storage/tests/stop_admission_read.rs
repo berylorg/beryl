@@ -280,6 +280,11 @@ fn idle_and_pending_gates_are_typed_ineligible() {
     let home = TestHome::new("stop-admission-idle-pending");
     let mut store = open(home.path());
     let storage = syndic_storage::SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let thread = SyndicThreadId::from_bytes([0x6e; 16]);
     execute(
         &store,

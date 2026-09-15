@@ -68,6 +68,11 @@ fn deep_thread_lineage_is_top_to_bottom_fixed_page_and_revision_bound() {
     let home = TestHome::new("deep-thread-lineage");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let mut records: Vec<ThreadRecord> = Vec::new();
     let mut fixture_batch = FixtureBatch::new();
 
@@ -189,6 +194,11 @@ fn inherited_label_origin_and_activity_pages_keep_compact_revision_authority() {
     let home = TestHome::new("label-activity-query");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let parent_id = support::id(30);
     let child_id = support::id(36);
     support::seed_populated(&store, storage.clone());

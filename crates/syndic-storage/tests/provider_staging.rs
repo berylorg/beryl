@@ -142,12 +142,17 @@ fn stage_collect(
     prepared: &PreparedProviderFrame,
 ) -> (ProviderItemBuildRecord, Vec<ProviderFrameStageBatch>) {
     let home = restart::TestHome::new("stage-collect");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     match store.execute_current(storage.current_begin_provider_frame_build(prepared)) {
         CommandOutcome::Committed {
             later_failure: None,
@@ -532,12 +537,17 @@ fn build_with_staged_narrative(
 #[test]
 fn empty_start_deltas_append_and_completion_preserves_narrative_pending_equality() {
     let home = restart::TestHome::new("narrative-lifecycle");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     support::seed_populated(&store, storage.clone());
 
     let thread = support::id(40);
@@ -722,12 +732,17 @@ fn batch_state_classification_and_uncommitted_expected_retry_are_exact() {
     let text = "b".repeat(CONTENT_CHUNK_MAX_BYTES * (CONTENT_APPEND_MAX_CHUNKS + 2));
     let prepared = prepare_first(agent_start("batch-state", text), 10);
     let home = restart::TestHome::new("batch-state");
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
         home.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let stale_home_revision = store.home_revision().unwrap();
     match store.execute_current(storage.current_begin_provider_frame_build(&prepared)) {
         CommandOutcome::Committed {

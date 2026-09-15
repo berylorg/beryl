@@ -5,6 +5,11 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     let home = TestHome::new("replay-terminal-finalization");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let (thread, turn) = seed_pending_turn(&store, &storage);
     let assistant = SyndicItemId::from_bytes([20; 16]);
     let cas_assistant = CasItemId::new("replay-assistant").unwrap();
@@ -284,6 +289,11 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
 
     let mut reopened = open(home.path());
     let storage = SyndicStorage::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(syndic_storage::SyndicStorage::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     reopened
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
