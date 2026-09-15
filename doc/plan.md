@@ -50,15 +50,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 426: Preserve Marker Authority Across Text-Only Sequence Reshaping (finished)
+# Phase 427: Diagnose Aggregate Memtable Capacity During App Qualification (finished)
 
-Accepted text-only insertion and removal across sequence reshaping while preserving independent
-marker authority and exact local sequence authentication. All 57 selected storage regressions,
-normal compilation, formatting and independent adversarial review passed. The
-[acceptance evidence](failures/syndic-text-insertion-marker-fold.md#accepted-correction) preserves
-the reproduction, retained proof boundary and physical-reopen coverage.
+Accepted [capacity diagnosis](failures/syndic-draft-build-memtable-capacity.md#accepted-diagnosis):
+eligible version history retains an exactly accounted 67,110,708-byte flushed memtable after the
+snapshot watermark advances. Two unchanged-workload captures and independent source/evidence
+review passed the diagnostic boundary; temporary probes were removed. Recommend a separate
+bounded snapshot-safe history-retirement correction before resuming app qualification.
 
-# Phase 419: Restore App Construction Evidence With Initial Candidates (wip)
+# Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
 Apply the [app public boundary](../crates/beryl-app/doc/design.md#public-boundary) and
 [initial publication contract](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication)
@@ -87,9 +87,19 @@ All 19 cases across the GPUI and main-window composer targets passed, and the co
 backpressure case passed. Compilation and focused independent fixture reviews passed.
 
 The separately accepted [marker-fold correction](failures/syndic-text-insertion-marker-fold.md)
-now permits valid marker-bearing text reshaping. Resume the original submitted-input scale
-workload and diagnose the remaining failure-taxonomy wait. Both remain unqualified at this
-milestone. Candidate recovery and later bootstrap phases remain pending.
+now permits valid marker-bearing text reshaping. The original scale workload completed the
+64-image case, then source construction for the first 128-image input reached a safe
+[aggregate memtable-capacity refusal](failures/syndic-draft-build-memtable-capacity.md).
+Independent review found no supported fixture-only remedy preserving the workload and same-service
+evidence. The accepted diagnosis above identifies eligible flushed-memtable history retention.
+Production correction remains a separate design/implementation boundary; do not raise limits or
+reopen between cases. This fixture phase remains paused until that correction is accepted.
+
+The failure-taxonomy rerun also remains unqualified. After both test barriers were released,
+ordinary execution continued polling an open target queue with no ingester or failure coordinator
+remaining. The precise failure-capture exit is unresolved; preserve the
+[captured wait evidence](failures/target-bootstrap-composition.md#qualification-after-marker-authority-correction)
+without inventing a fixture workaround. Candidate recovery and later bootstrap phases remain pending.
 
 # Phase 420: Establish Explicit Candidate Recovery Access (pending)
 
