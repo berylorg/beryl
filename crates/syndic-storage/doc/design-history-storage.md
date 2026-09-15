@@ -294,6 +294,11 @@ recovery access. They share compact-source traversal, exact gate resolution, rev
 cursor identity and item/byte limits with the ordinary methods. Returned sources are discovery
 facts only; classification, convergence and service publication retain their separate authority.
 
+`classify_delivery_recovery_candidate` consumes one such source through the same stabilized bounded
+classifier as ordinary recovery. It preserves home/generation and selected-source fences, two-pass
+dependent facts, provider-stop authentication and the distinction between drift and stable corruption.
+Its result guides exact fenced convergence only; publication and ordinary execution remain separate.
+
 ## Privacy And Diagnostics
 
 Persisted provider observations retain normalized kinds, identifiers, timing, counters, digests, and

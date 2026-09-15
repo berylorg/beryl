@@ -54,7 +54,35 @@ fn candidate_provider_stop_preserves_live_and_finalizing_authority() {
                 .unwrap(),
             expected
         );
+        let access = publication.recovery_access().unwrap();
+        let source = storage
+            .delivery_recovery_startup_page_candidate(
+                &access,
+                None,
+                beryl_home_store::CursorReadLimits::new(1, 65_536).unwrap(),
+            )
+            .unwrap()
+            .records()[0]
+            .clone();
+        let candidate_case = storage
+            .classify_delivery_recovery_candidate(&access, &source, point_limit())
+            .unwrap();
+        assert!(
+            matches!(
+                &candidate_case,
+                syndic_storage::DeliveryRecoveryCase::DeferredCompaction { .. } if finalizing
+            ) || matches!(
+                &candidate_case,
+                syndic_storage::DeliveryRecoveryCase::Stopping(_) if !finalizing
+            )
+        );
         let store = publication.publish().unwrap();
+        assert_eq!(
+            storage
+                .classify_delivery_recovery(&store, &source, point_limit())
+                .unwrap(),
+            candidate_case
+        );
         assert_eq!(
             storage
                 .stop_admission_read(&store, fixture.thread, point_limit())

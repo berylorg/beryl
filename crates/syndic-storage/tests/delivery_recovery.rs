@@ -2,6 +2,8 @@
 
 mod support;
 
+#[path = "delivery_recovery/candidate_classification.rs"]
+mod candidate_classification;
 #[path = "delivery_recovery/candidate_pages.rs"]
 mod candidate_pages;
 #[path = "delivery_recovery/candidate_pending.rs"]

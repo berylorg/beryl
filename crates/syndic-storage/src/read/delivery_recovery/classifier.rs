@@ -2,7 +2,8 @@ mod abandonment;
 pub(super) mod active;
 mod compaction;
 
-use beryl_home_store::HomeStore;
+use crate::read::access::ReadAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 
 use crate::{
     AcceptedRouteGenerationRecord, BindingState, HistorySummaryRecord, InputGateRecord,
@@ -25,14 +26,32 @@ impl SyndicStorage {
         source: &DeliveryRecoverySource,
         limit: SyndicPointReadLimit,
     ) -> Result<DeliveryRecoveryCase, DeliveryRecoveryClassificationError> {
+        self.classify_delivery_recovery_with_access(ReadAccess::Ordinary(store), source, limit)
+    }
+
+    pub fn classify_delivery_recovery_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        source: &DeliveryRecoverySource,
+        limit: SyndicPointReadLimit,
+    ) -> Result<DeliveryRecoveryCase, DeliveryRecoveryClassificationError> {
+        self.classify_delivery_recovery_with_access(ReadAccess::Candidate(store), source, limit)
+    }
+
+    fn classify_delivery_recovery_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        source: &DeliveryRecoverySource,
+        limit: SyndicPointReadLimit,
+    ) -> Result<DeliveryRecoveryCase, DeliveryRecoveryClassificationError> {
         if source.home_id != store.home_id() || source.home_generation != self.home_generation {
             return Err(DeliveryRecoveryClassificationError::SourceDrift);
         }
         let (first, second) =
-            self.with_current_gate_source(store, source.thread_id(), limit, || {
+            self.with_current_gate_source_with_access(store, source.thread_id(), limit, || {
                 Ok((
-                    facts::read(self, store, source.thread_id(), limit)?,
-                    facts::read(self, store, source.thread_id(), limit)?,
+                    facts::read_with_access(self, store, source.thread_id(), limit)?,
+                    facts::read_with_access(self, store, source.thread_id(), limit)?,
                 ))
             })?;
         if first != second {
@@ -58,7 +77,7 @@ impl SyndicStorage {
             else {
                 return corruption("provider stop is not selected by a stopping recovery source");
             };
-            return match self.stop_admission_read(store, source.thread_id(), limit)? {
+            return match self.stop_admission_read_with_access(store, source.thread_id(), limit)? {
                 StopAdmissionRead::Stopping(live)
                     if live.operation_id()
                         == StopOperationId::new(source.thread_id(), *operation_nonce)

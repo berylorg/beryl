@@ -286,3 +286,15 @@ cover initial/reopened admissible and stopping authority, pending/finalizing ine
 refusal, retired handles, point limits, missing selected stop, concurrent stop revision and provider
 finalization parity. Normal package compilation, formatting and diff checks passed; independent
 semantic/adversarial review accepted boundedness, authority and candidate admission.
+
+## Candidate Recovery Classification
+
+Phase 437 accepted explicit candidate delivery-recovery classification through the shared source
+fences, stabilized facts and provider-stop reader. It does not introduce a second classifier or
+ordinary execution, publication or cleanup capability. All 86 focused delivery-recovery,
+stop-admission and provider/finalization regressions passed in 138.409 seconds (run
+`3ca9eb1c-9725-4629-83e6-c78e8ba1932a`). Candidate tests cover initial/reopened/publication parity,
+pending/active/finalizing and ordinary/provider stopping/deferred compaction, foreign and stale
+sources/handles, ordinary refusal, point limits and source drift versus stable corruption. Normal
+package compilation, formatting and diff checks passed; independent review accepted bounded
+authority, admission and shared classification semantics.

@@ -1,5 +1,4 @@
 use crate::read::access::ReadAccess;
-use beryl_home_store::HomeStore;
 use beryl_model::SyndicThreadId;
 
 use crate::{
@@ -33,15 +32,6 @@ pub(in crate::read) struct RecoveryFacts {
     pub(in crate::read) prior_binding: Option<BindingRecord>,
     pub(in crate::read) stop: Option<StopOperationRecord>,
     pub(in crate::read) compaction: Option<CompactionOperationRecord>,
-}
-
-pub(in crate::read) fn read(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    thread_id: SyndicThreadId,
-    limit: SyndicPointReadLimit,
-) -> Result<RecoveryFacts, SyndicReadError> {
-    read_with_access(storage, ReadAccess::Ordinary(store), thread_id, limit)
 }
 
 pub(in crate::read) fn read_with_access(

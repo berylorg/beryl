@@ -50,17 +50,21 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 441: Establish Candidate Stop-Admission Evidence (finished)
+# Phase 437: Establish Syndic Candidate Recovery Classification (finished)
 
-Accepted candidate stop evidence through shared bounded facts, exact observations and the existing
-two-pass classifier. All 115 focused regressions and the provider candidate test passed, alongside
-normal compilation and independent adversarial review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-stop-evidence).
+Accepted explicit candidate classification through shared stabilized facts and exact provider-stop
+authority. All 86 focused regressions passed with normal compilation and independent review.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-recovery-classification).
 
-# Phase 437: Establish Syndic Candidate Recovery Classification (pending)
+# Phase 442: Establish Candidate Compaction Recovery Reads (pending)
 
-Connect bounded stabilized delivery-recovery classification to explicit candidate access, retaining
-exact source anchors, stop/provider authority, drift/corruption distinctions and shared classifiers.
+Share the bounded exact compaction recovery reader through candidate access, preserving operation,
+gate, turn, snapshot and consumed-receipt authority and two-pass convergence classification.
+
+# Phase 443: Establish Candidate Compaction Admission Reads (pending)
+
+Share stabilized compaction admission/current-operation discovery through candidate access,
+preserving selected binding, CAS ownership, current gate and exact operation checks.
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)
 
