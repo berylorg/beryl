@@ -50,14 +50,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 428: Retire Snapshot-Safe History Under Memtable Pressure (finished)
+# Phase 429: Diagnose Remaining Memtable Pressure After History Retirement (finished)
 
-Accepted Fjall correction `a035895`: one bounded snapshot-safe history pass before batch journal
-admission, preserving physical limits and pinned readers. Focused 6/6 and full 253/253 dependency
-tests, normal compilation, formatting and independent semantic review passed. The unchanged app
-workload completes the first 128-image input but reaches a later capacity refusal during the repeat;
-[correction evidence and remaining boundary](failures/syndic-draft-build-memtable-capacity.md#accepted-retirement-correction)
-preserve the result without accepting app qualification.
+Accepted [remaining-pressure diagnosis](failures/syndic-draft-build-memtable-capacity.md#accepted-remaining-pressure-diagnosis):
+physical charge equals aggregate active memtables plus the prepared batch prefix, with no pending
+rotation, flush or compaction. Two unchanged-workload captures and independent review passed;
+temporary probes were removed. Further correction must cover bounded aggregate-pressure progress
+and snapshot-safe reclamation without depending on another application write. No production remedy
+or app qualification is accepted by this diagnostic result.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
@@ -94,8 +94,10 @@ now permits valid marker-bearing text reshaping. The original scale workload com
 Independent review found no supported fixture-only remedy preserving the workload and same-service
 evidence. The accepted history-retirement correction now permits the first 128-image input, but
 the repeated 128-image input reaches a safe capacity refusal at marker 34. This fixture phase
-remains paused for diagnosis of the remaining pressure. Do not assume active-table accumulation
-without evidence, raise limits, reopen between cases, or extend the accepted correction silently.
+remains paused at the separate aggregate-pressure design and implementation boundary identified by
+the accepted diagnosis above. Preserve hard limits, genuine pins, exact maintenance completion and
+pre-journal failure semantics; do not raise limits or reopen between cases. Flush completion alone
+does not yet guarantee physical reclamation under the existing sequence fence.
 
 The failure-taxonomy rerun also remains unqualified. After both test barriers were released,
 ordinary execution continued polling an open target queue with no ingester or failure coordinator

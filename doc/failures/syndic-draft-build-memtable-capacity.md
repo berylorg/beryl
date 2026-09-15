@@ -87,10 +87,46 @@ seed 158, session seed 47, operation 68 attempts marker 34 after predecessor gen
 pending. The refusal is `PolicyDenied(MemtablePayloadBytes)`, requested 268,444,350 bytes against
 268,435,456, with `NotCommitted`.
 
-History retirement is accepted, but it is insufficient to complete the whole workload. This run
-does not distinguish aggregate active-table accumulation from remaining pinned or other retained
-backing. Diagnose that later pressure before choosing another production mechanism; aggregate
-pressure rotation remains a candidate, not an established remedy.
+History retirement is accepted, but it is insufficient to complete the whole workload. The original
+run did not identify the remaining physical owner; the bounded follow-up below resolves that gap.
+
+## Accepted Remaining-Pressure Diagnosis
+
+Two unchanged-workload captures account for all remaining charge at the refusal: active memtables
+hold 268,423,612 bytes / 122,859 internal records across all 115 keyspaces; the prepared batch prefix
+holds 4,967 bytes / four records. Their exact sum is physical charge of 268,428,579 bytes / 122,863
+records. Metadata charge is zero, every latest sealed-table count is zero and every history has
+one version. There are zero live snapshots and no maintenance terminal. The second capture also
+confirms rotation, flush, compaction and metadata progress are complete and idle with no waiters.
+
+The earlier retirement correction releases 67,110,708 and 67,111,708 bytes in its first two pressure
+passes, then releases zero at this later cut. The remaining cause is aggregate active-memtable
+accumulation, with no unexplained additional charged historical or pinned backing. Active charge
+includes internal MVCC versions and tombstones, not only current application-visible values.
+Every active keyspace remains below the 67,108,864-byte individual rotation threshold; the largest
+holds 66,771,824 bytes. Individual rotation therefore does not supply aggregate headroom here.
+
+Runs `9e736b80-6a2d-4c4a-bac1-6e96220594d7` and `a311d92d-2f78-4e70-b67c-a0da0c874761` reproduce
+the safe refusal after 238.516 and 230.852 seconds. The repeat adds the distinct rotation-progress
+counter omitted from the first capture. Independent review reconciled every row and accepted the
+diagnosis. Temporary probes were removed; Fjall again exactly matches `a035895`.
+These expected failures provide diagnostic evidence, not app qualification.
+
+## Recommended Aggregate-Pressure Correction
+
+Define and implement bounded aggregate-pressure maintenance with snapshot-safe physical reclamation
+that can finish without future application writes. Preserve genuine pins, hard limits, exact
+supervisor-owned progress and pre-journal failure classification.
+
+Rotation alone is not sufficient under current source semantics: a flush publication at sequence
+`S` advances visible sequence to `S + 1`, while idle snapshot GC reaches watermark `S`. Existing
+predecessor retirement requires the replacement version's sequence to be strictly below that
+watermark, so waiting for the flush and refreshing GC alone can leave its predecessor charged.
+The correction must resolve this progress boundary in owning design authority; do not fake a write,
+raise a watermark without proof, or substitute polling for reclamation progress.
+
+The [dependency investigation](../memory/github.com/berylorg/fjall-fork/commit/a035895a5cb694bcbfb53d0ae68c8bcd1bd7f5b1/remaining-active-memtable-pressure.md)
+preserves counters, exact source identity, sequence reasoning and evidence limitations.
 
 Preserve input sizes, image counts, repeated payloads, storage limits and service lifetime. Do not
 raise the limit, reopen between cases, retry without evidence of pending progress, or reshape the
