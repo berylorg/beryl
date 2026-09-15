@@ -65,6 +65,25 @@ fn open(path: &Path) -> beryl_home_store::HomeOpenCandidate {
     .unwrap()
 }
 
+#[cfg(feature = "test-faults")]
+pub(super) fn open_candidate(
+    path: &std::path::Path,
+    faults: beryl_home_store::test_faults::FaultController,
+) -> (beryl_home_store::HomeOpenPublication, SyndicStorage) {
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
+        faults,
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut candidate).unwrap();
+    (
+        candidate
+            .prepare_publication(SyndicStorage::required_domains().unwrap())
+            .unwrap(),
+        storage,
+    )
+}
+
 pub fn timestamp(value: u64) -> SyndicTimestamp {
     SyndicTimestamp::from_unix_millis(value)
 }

@@ -309,3 +309,13 @@ passed in 5.856 seconds (run `44499eb7-6223-40aa-b087-a7806a752bf5`). New cases 
 reopened undispatched, possible-dispatch, finalizing and consumed results, ordinary refusal, point
 limits, missing snapshot/consumed receipt and dispatch change between passes. Normal compilation,
 formatting and diff checks passed; independent review accepted boundedness, fences and outcome truth.
+
+## Candidate Compaction Admission
+
+Phase 443 accepted candidate compaction admission through the ordinary two-pass classifier, retaining
+exact binding, CAS ownership/membership, gate and selected-operation checks. All 65 compaction tests
+passed in 91.026 seconds (run `e7b649b2-1012-461b-bf11-2b9ebfe96a72`). New cases cover initial and
+reopened admissible/existing results, missing-thread ineligibility, publication parity, stale/foreign
+handles, ordinary refusal, point limits, missing owner/operation and gate drift between passes.
+Normal compilation, formatting and diff checks passed; independent review accepted identity,
+stabilization, boundedness and unchanged capability semantics.

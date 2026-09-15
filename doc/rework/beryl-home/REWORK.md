@@ -384,6 +384,7 @@
 - [x] Accepted candidate stop-admission evidence with [exact authority, provider finalization and regression evidence](../../failures/target-bootstrap-composition.md#candidate-stop-evidence).
 - [x] Accepted candidate delivery-recovery classification with [source fences, stabilization and provider authority evidence](../../failures/target-bootstrap-composition.md#candidate-recovery-classification).
 - [x] Accepted candidate compaction recovery with [exact outcome, consumed-receipt and generation evidence](../../failures/target-bootstrap-composition.md#candidate-compaction-recovery).
+- [x] Accepted candidate compaction admission with [binding, CAS ownership and stabilization evidence](../../failures/target-bootstrap-composition.md#candidate-compaction-admission).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

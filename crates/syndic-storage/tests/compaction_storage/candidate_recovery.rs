@@ -1,6 +1,6 @@
-use super::compaction_support::{CompactionFixture, point_limit};
+use super::compaction_support::{CompactionFixture, open_candidate, point_limit};
 use beryl_home_store::{
-    CommandOutcome, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    CommandOutcome,
     test_faults::{FaultController, FaultPoint},
 };
 use std::{thread, time::Duration};
@@ -9,24 +9,6 @@ use syndic_storage::{
     SyndicReadError, SyndicStorage,
     test_faults::{FixtureBatch, FixtureDelete},
 };
-
-fn open_candidate(
-    path: &std::path::Path,
-    faults: FaultController,
-) -> (beryl_home_store::HomeOpenPublication, SyndicStorage) {
-    let mut candidate = HomeOpenCandidate::open_with_faults(
-        HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
-        faults,
-    )
-    .unwrap();
-    let storage = SyndicStorage::register(&mut candidate).unwrap();
-    (
-        candidate
-            .prepare_publication(SyndicStorage::required_domains().unwrap())
-            .unwrap(),
-        storage,
-    )
-}
 
 fn settle(fixture: &CompactionFixture, id: syndic_storage::CompactionOperationId) {
     assert!(matches!(

@@ -202,6 +202,24 @@ impl SyndicStorage {
         thread_id: SyndicThreadId,
         limit: SyndicPointReadLimit,
     ) -> Result<CompactionAdmissionRead, SyndicReadError> {
+        self.compaction_admission_read_with_access(ReadAccess::Ordinary(store), thread_id, limit)
+    }
+
+    pub fn compaction_admission_read_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<CompactionAdmissionRead, SyndicReadError> {
+        self.compaction_admission_read_with_access(ReadAccess::Candidate(store), thread_id, limit)
+    }
+
+    fn compaction_admission_read_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        thread_id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<CompactionAdmissionRead, SyndicReadError> {
         let first = self.compaction_admission_pass(store, thread_id, limit)?;
         let second = self.compaction_admission_pass(store, thread_id, limit)?;
         if first != second {
@@ -315,13 +333,13 @@ impl SyndicStorage {
 
     fn compaction_admission_pass(
         &self,
-        store: &HomeStore,
+        store: ReadAccess<'_>,
         thread_id: SyndicThreadId,
         limit: SyndicPointReadLimit,
     ) -> Result<AdmissionPass, SyndicReadError> {
-        let thread = self.thread(store, thread_id, limit)?;
-        let gate = self.input_gate(store, thread_id, limit)?;
-        let binding = self.current_binding(store, thread_id, limit)?;
+        let thread = self.point_with_access::<ThreadsFamily>(store, thread_id, limit)?;
+        let gate = self.point_with_access::<InputGatesFamily>(store, thread_id, limit)?;
+        let binding = self.current_binding_with_access(store, thread_id, limit)?;
         let (owner, membership) = match binding.as_ref().and_then(|current| {
             if let BindingState::Valid(usable) = current.binding().state() {
                 Some((usable.cas_thread_id().clone(), current.binding().revision()))
@@ -330,8 +348,12 @@ impl SyndicStorage {
             }
         }) {
             Some((cas_thread, revision)) => (
-                self.cas_thread_owner(store, cas_thread.clone(), limit)?,
-                self.point::<CasThreadBindingIndexFamily>(
+                self.point_with_access::<CasThreadIndexFamily>(
+                    store,
+                    CasThreadKey::Record(cas_thread.clone()),
+                    limit,
+                )?,
+                self.point_with_access::<CasThreadBindingIndexFamily>(
                     store,
                     CasThreadBindingKey::Record(cas_thread, revision),
                     limit,
@@ -342,7 +364,7 @@ impl SyndicStorage {
         let selected_operation = match gate.as_ref().map(InputGateRecord::state) {
             Some(InputGateState::Compacting {
                 operation_nonce, ..
-            }) => self.compaction_operation(
+            }) => self.point_with_access::<CompactionOperationsFamily>(
                 store,
                 CompactionOperationId::new(thread_id, *operation_nonce),
                 limit,

@@ -236,6 +236,11 @@ through fresh handles but cannot fill missing stages or authorize another histor
 
 ## Provider-Operation Finalization Reads
 
+`compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission
+reader through borrowed candidate access. It preserves exact selected binding, CAS owner/membership,
+gate and operation observations. Returned facts neither create an operation nor release ordinary
+dispatch; any candidate convergence command retains the existing exact mutation contract.
+
 `compaction_recovery_read_candidate` classifies one exact retained operation through borrowed
 candidate access and the ordinary two-pass recovery reader. Gate/source, provider turn, snapshot
 and consumed-receipt checks remain bounded and unchanged. Its result authorizes only the existing
