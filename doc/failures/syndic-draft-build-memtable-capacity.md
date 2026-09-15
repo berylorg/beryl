@@ -216,5 +216,10 @@ the complete-flush proof permits progress without depending on clear to release 
 Evidence covers distributed active pressure, compressed overwrites whose physical prospective charge
 fits while replay charge requires retirement, retained genuine backing pins, impossible empty-budget
 requests, concurrent direct/batch/clear, committed maintenance causes with uncommitted pending writes,
-and same-policy reopening. The root integration phase remains active for the unchanged app workload
-rerun; dependency evidence alone does not accept app qualification.
+and same-policy reopening.
+
+The unchanged app scale workload subsequently passed in 300.575 seconds
+(`e4f171a2-d231-485a-a86f-a72e855fc14a`) after a successful app-target rebuild. This includes the
+repeated 128-image workload that previously failed, with every input size, repeated payload, image
+count, storage limit and service lifetime preserved. The aggregate-capacity integration boundary is
+accepted. The separate failure-taxonomy polling issue remains unqualified under app fixture work.

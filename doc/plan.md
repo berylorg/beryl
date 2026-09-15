@@ -50,25 +50,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (wip)
+# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (finished)
 
-Fjall `9c1ed45` accepts direct and batch admission using the initialized conservative replay counter
-and complete checkpoint under [Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability).
-Seven focused and all 280 dependency cases, normal compilation, formatting and independent semantic
-review passed. The [admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-records hard limits, real pins, pre-journal failure and same-policy recovery qualification.
-
-Rerun the unchanged same-service app scale workload before accepting this root integration boundary.
-Preserve every input size, repeated payload, image count and storage limit. If it exposes another
-material blocker, retain the accepted dependency correction and record the precise remaining cause.
-
-# Phase 433: Initialize Replay Capacity Before Worker Publication (finished)
-
-Accepted Fjall's conservative raw-history seeding, clear-prefix safety admission and normalization
-before workers, including deferred compaction follow-up and exact failure progress. Eight focused
-and all 273 dependency cases, normal compilation, formatting and independent semantic review passed.
-The [admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-records recovery acceptance; live capacity admission remains the next boundary.
+Accepted Fjall `9c1ed45` with all 280 dependency cases, normal compilation, formatting and independent
+semantic review. The unchanged same-service app scale workload passed in 300.575 seconds, including
+repeated 128-image input. [Admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
+records acceptance with original limits, inputs, service lifetime, real pins and recovery guarantees.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 
@@ -93,22 +80,11 @@ library cases and 24 marker-service cases passed. Runtime qualification and its 
 corrections are recorded in [app candidate evidence](failures/target-bootstrap-composition.md#app-candidate-qualification).
 This phase is not accepted or committed.
 
-The separately accepted chunk-frontier (`28c17be9`) and cooperative-reuse (`1ccd6cb1`) corrections
-now allow the original repeated marker-free inputs and the 16-image scale input to complete.
-All 19 cases across the GPUI and main-window composer targets passed, and the corrected
-backpressure case passed. Compilation and focused independent fixture reviews passed.
-
-The separately accepted [marker-fold correction](failures/syndic-text-insertion-marker-fold.md)
-now permits valid marker-bearing text reshaping. The original scale workload completed the
-64-image case, then source construction for the first 128-image input reached a safe
-[aggregate memtable-capacity refusal](failures/syndic-draft-build-memtable-capacity.md).
-Independent review found no supported fixture-only remedy preserving the workload and same-service
-evidence. The accepted history-retirement correction now permits the first 128-image input, but
-the repeated 128-image input reaches a safe capacity refusal at marker 34. This fixture phase
-remains paused at the separate aggregate-pressure design and implementation boundary identified by
-the accepted diagnosis above. Preserve hard limits, genuine pins, exact maintenance completion and
-pre-journal failure semantics; do not raise limits or reopen between cases. Flush completion alone
-does not yet guarantee physical reclamation under the existing sequence fence.
+All 19 cases across the GPUI and main-window composer targets and the corrected backpressure case
+passed. Accepted chunk-frontier, cooperative-reuse, marker-fold and bounded-admission corrections
+now permit the complete unchanged scale workload, including repeated 128-image input. Its latest
+run passed in 300.575 seconds with original limits and one service lifetime. Compilation and focused
+independent fixture reviews passed; this does not accept the remaining failure qualification.
 
 The failure-taxonomy rerun also remains unqualified. After both test barriers were released,
 ordinary execution continued polling an open target queue with no ingester or failure coordinator
