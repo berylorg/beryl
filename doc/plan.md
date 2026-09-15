@@ -50,19 +50,17 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (pending)
+# Phase 431: Establish Bounded Aggregate Batch Capacity Progress (wip)
 
-Integrate the accepted complete checkpoint and recovery-initialized replay counter into direct and
-batch admission under [Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability).
-Enforce prospective replay charge and physical capacity before actual reservation and journal
-publication. Preserve hard limits, genuine pins and typed uncommitted refusal. Verify compressed
-overwrite and distributed active pressure, concurrent operations and recovery; rerun the unchanged
-app workload after dependency acceptance.
+Fjall `9c1ed45` accepts direct and batch admission using the initialized conservative replay counter
+and complete checkpoint under [Fjall authority](../../fjall-fork/doc/design.md#atomicity-and-durability).
+Seven focused and all 280 dependency cases, normal compilation, formatting and independent semantic
+review passed. The [admission evidence](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
+records hard limits, real pins, pre-journal failure and same-policy recovery qualification.
 
-The Operator authorized the recommended correction and explicitly required clean, simple architecture.
-Owning authority selects one conservative counter and one complete checkpoint. The earlier
-[recovery blocker](failures/syndic-draft-build-memtable-capacity.md#aggregate-admission-recovery-blocker)
-is resolved in target design; its separate component boundaries below precede live integration.
+Rerun the unchanged same-service app scale workload before accepting this root integration boundary.
+Preserve every input size, repeated payload, image count and storage limit. If it exposes another
+material blocker, retain the accepted dependency correction and record the precise remaining cause.
 
 # Phase 433: Initialize Replay Capacity Before Worker Publication (finished)
 

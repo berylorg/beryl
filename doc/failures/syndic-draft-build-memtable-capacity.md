@@ -206,5 +206,15 @@ durable data instead of requiring records to remain in memtables. The absent-cat
 retains advancement in the current generation; no authority requires retired journal identities to
 remain permanently reserved after reopening. Existing orphan cleanup has the same lifetime boundary.
 
-Live admission remains root phase 431 / Fjall phase 108. App qualification remains paused until its
-acceptance and the unchanged workload rerun.
+Live admission is accepted in Fjall `9c1ed45`. Seven focused and all 280 dependency cases passed
+(`7670e1cb-8e59-4c14-977a-7e5f2052308b`), with normal compilation, formatting and independent review.
+Direct inserts, removals and batches check both complete prospective replay charge and physical
+residency before ordinary dependency reservation. At most one full checkpoint replaces the previous
+history-only pressure sweep and journal-capacity wait. Clear remains excluded during the checkpoint;
+the complete-flush proof permits progress without depending on clear to release a journal slot.
+
+Evidence covers distributed active pressure, compressed overwrites whose physical prospective charge
+fits while replay charge requires retirement, retained genuine backing pins, impossible empty-budget
+requests, concurrent direct/batch/clear, committed maintenance causes with uncommitted pending writes,
+and same-policy reopening. The root integration phase remains active for the unchanged app workload
+rerun; dependency evidence alone does not accept app qualification.
