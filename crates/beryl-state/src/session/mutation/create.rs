@@ -392,8 +392,6 @@ mod tests {
     };
     use beryl_model::{RootId, RuntimeId, WindowBounds, WindowDisplayState, WindowPlacement};
 
-    use crate::session::SessionState;
-
     use super::*;
 
     struct PutWindowClaimOnly(ThreadClaimRecord);
@@ -447,12 +445,18 @@ mod tests {
     #[test]
     fn create_rejects_a_disagreeing_reverse_claim_before_window_conflict() {
         let directory = tempfile::tempdir().unwrap();
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        let session = SessionState::register(&mut store).unwrap();
+        let state = crate::BerylState::register(&mut candidate).unwrap();
+        let session = state.session();
+        let store = candidate
+            .prepare_publication(crate::BerylState::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         let initial_window = WindowId::from_bytes([1; 16]);
         assert!(matches!(
             execute(

@@ -4,9 +4,9 @@ use std::{convert::Infallible, num::NonZeroU64};
 
 use beryl_home_store::{
     CommandError, CommandOutcome, DomainMutation, DomainReader, DomainSchemaVersion, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuilder,
-    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, SidecarByteLimit,
-    SidecarNamespace, StorageDomain,
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationBuilder, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion,
+    SidecarByteLimit, SidecarNamespace, StorageDomain,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetId, ImageLabelOrdinal, OrderedMarkerAssetSummaryV1,
@@ -25,6 +25,30 @@ use tempfile::tempdir;
 
 struct ProbeDomain;
 struct ProbeRecord;
+
+fn open_probe_home(
+    path: &std::path::Path,
+) -> (
+    HomeStore,
+    BerylState,
+    beryl_home_store::DomainHandle<ProbeDomain>,
+) {
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let probe = candidate.register_domain::<ProbeDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .with_domain::<ProbeDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    (store, state, probe)
+}
 
 const PROBE_FAMILIES: &[RecordFamily<ProbeDomain>] = &[RecordFamily::new::<ProbeRecord>(
     KeyspaceSchemaVersion::new(1),

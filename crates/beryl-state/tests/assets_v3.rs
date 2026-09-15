@@ -3,8 +3,9 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarError, SidecarNamespace,
+    CommandError, CommandOutcome, CursorReadLimits, HomeCommand, HomeOpenCandidate,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarError,
+    SidecarNamespace,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,

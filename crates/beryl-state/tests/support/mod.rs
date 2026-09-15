@@ -5,8 +5,8 @@ pub mod state_fixture;
 use std::path::Path;
 
 use beryl_home_store::{
-    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    MutationContribution,
+    CommandError, CommandOutcome, HomeCommand, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, MutationContribution,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
@@ -17,9 +17,14 @@ use beryl_state::{
 };
 
 pub fn open(path: &Path) -> (HomeStore, BerylState) {
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
-    let state = BerylState::register(&mut store).unwrap();
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, state)
 }
 

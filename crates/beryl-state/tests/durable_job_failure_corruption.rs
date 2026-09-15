@@ -5,8 +5,8 @@ mod support;
 use std::path::Path;
 
 use beryl_home_store::{
-    CommandOutcome, DomainCallbackSource, DomainRegistrationError, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore,
+    CommandOutcome, DomainCallbackSource, DomainRegistrationError, HomeOpenCandidate,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore,
 };
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, ResolutionIntentId, SyndicAcceptedInputId,
@@ -68,24 +68,34 @@ fn routine_reopen_defers_every_dormant_incompatible_persisted_failure_pair_to_sc
                 let store = corrupt_home(&path, case, retryable, kind, stage);
                 store.close().unwrap();
 
-                let mut reopened =
-                    HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT))
-                        .unwrap();
-                let routine = BerylState::register(&mut reopened)
+                let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+                    &path,
+                    HomeSchemaVersion::CURRENT,
+                ))
+                .unwrap();
+                let routine = BerylState::register(&mut candidate)
                     .expect("routine reopen must not exhaustively scan durable jobs");
+                let reopened = candidate
+                    .prepare_publication(BerylState::required_domains().unwrap())
+                    .unwrap()
+                    .publish()
+                    .unwrap();
                 routine.durable_jobs().revision(&reopened).expect(
                     "routine durable-job handle must be usable before the dormant record is read",
                 );
                 reopened.close().unwrap();
 
-                let mut schema_boundary =
-                    HomeStore::open(HomeOpenOptions::new(&path, HomeSchemaVersion::CURRENT))
-                        .unwrap();
+                let mut schema_boundary = HomeOpenCandidate::open(HomeOpenOptions::new(
+                    &path,
+                    HomeSchemaVersion::CURRENT,
+                ))
+                .unwrap();
                 let error = match BerylState::register_with_schema_validation(&mut schema_boundary)
                 {
                     Ok(_) => panic!("incompatible persisted failure unexpectedly reopened"),
                     Err(error) => error,
                 };
+                schema_boundary.close().unwrap();
                 assert_registration_failure(error);
             }
         }

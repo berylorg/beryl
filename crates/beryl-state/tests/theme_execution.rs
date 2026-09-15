@@ -5,8 +5,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, ThemeFileIdentity, ThemeMutationOutcome,
-    ThemeOperationLimits,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    ThemeFileIdentity, ThemeMutationOutcome, ThemeOperationLimits,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::DomainRevision;
@@ -230,10 +230,14 @@ impl ThemeReferenceSnapshotProvider for StaticReferences {
 #[test]
 fn typed_install_and_update_publish_exact_repository_identities() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max_manifest_bytes = NonZeroU64::new(1024 * 1024).unwrap();
@@ -341,10 +345,14 @@ fn typed_install_and_update_publish_exact_repository_identities() {
 #[test]
 fn small_manifest_allowance_still_stages_a_legal_document() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let repository = service
@@ -417,10 +425,14 @@ font_family = "{family}"
 #[test]
 fn transformed_manifest_byte_cap_refuses_install_and_save_as_before_staging() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let small = NonZeroU64::new(512).unwrap();
@@ -506,10 +518,14 @@ fn transformed_manifest_byte_cap_refuses_install_and_save_as_before_staging() {
 #[test]
 fn external_manifest_growth_preserves_typed_execution_byte_limit() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let small = NonZeroU64::new(512).unwrap();
@@ -557,10 +573,14 @@ fn external_manifest_growth_preserves_typed_execution_byte_limit() {
 fn indeterminate_manifest_publication_reconciles_to_exact_new() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max_manifest_bytes = NonZeroU64::new(1024 * 1024).unwrap();
@@ -647,10 +667,14 @@ fn indeterminate_manifest_publication_reconciles_to_exact_new() {
 fn exact_old_reconciliation_reopens_the_repository_scope() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max = NonZeroU64::new(1024 * 1024).unwrap();
@@ -691,10 +715,14 @@ fn exact_old_reconciliation_reopens_the_repository_scope() {
 fn collision_reconciliation_keeps_the_repository_scope_closed() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max = NonZeroU64::new(1024 * 1024).unwrap();
@@ -755,10 +783,14 @@ fn collision_reconciliation_keeps_the_repository_scope_closed() {
 fn manifest_admission_failure_is_proven_not_committed() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max_manifest_bytes = NonZeroU64::new(1024 * 1024).unwrap();
@@ -802,10 +834,14 @@ fn manifest_admission_failure_is_proven_not_committed() {
 #[test]
 fn save_as_rewrites_the_published_id_without_mutating_the_bound_draft() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max = NonZeroU64::new(1024 * 1024).unwrap();
@@ -898,10 +934,14 @@ fn save_as_rewrites_the_published_id_without_mutating_the_bound_draft() {
 #[test]
 fn entry_cap_refuses_install_and_save_as_before_staging_or_draft_mutation() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let nearly_full = seed_dense_repository(&store, &service, 1023);
@@ -991,10 +1031,14 @@ fn entry_cap_refuses_install_and_save_as_before_staging_or_draft_mutation() {
 #[test]
 fn large_manifest_supports_document_and_repository_operations() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max = NonZeroU64::new(1024 * 1024).unwrap();
@@ -1128,10 +1172,14 @@ fn large_manifest_supports_document_and_repository_operations() {
 fn large_manifest_reconciliation_uses_the_manifest_aware_envelope() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
-    let store = HomeStore::open_with_faults(
+    let store = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
         faults.clone(),
     )
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max = NonZeroU64::new(1024 * 1024).unwrap();

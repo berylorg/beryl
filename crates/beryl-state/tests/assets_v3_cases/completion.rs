@@ -266,7 +266,7 @@ fn schema_validation_rejects_manifest_without_completion_evidence() {
     );
     store.close().unwrap();
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))

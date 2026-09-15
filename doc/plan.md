@@ -50,37 +50,31 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 416: Establish Private Initial Home Candidates (finished)
+# Phase 417: Qualify Beryl State Initial Candidates (finished)
 
-Accepted candidate-only initial registration, exact required-domain closure, ordinary admission
-denial and storage publication/cleanup ownership, with production state/Syndic adapters. All 249
-home-store cases, six normal candidate cases, package compilation and independent review passed;
-[acceptance evidence](failures/target-bootstrap-composition.md#initial-candidate-boundary) retains
-the scope and aggregate-footprint fixture correction.
+Accepted explicit complete-state fixture registration and publication, exact custom-domain
+declarations and preserved schema, failure, recovery and theme behavior. All 152 state cases,
+normal and test compilation, formatting and independent review passed; [acceptance evidence](failures/target-bootstrap-composition.md#beryl-state-candidate-qualification)
+retains the scope. Production state behavior was unchanged.
 
-# Phase 417: Qualify Beryl State Initial Candidates (wip)
+# Phase 418: Qualify Syndic Storage Initial Candidates (wip)
 
-Apply the [state boundary](../crates/beryl-state/doc/design.md#public-boundary) and its inherited
-persistent-state-integrity contract to state-owned fixtures.
+Apply the [Syndic public boundary](../crates/syndic-storage/doc/design.md#public-boundary) and its
+inherited persistent-state-integrity contract to Syndic-owned fixtures.
 
-- Convert shared complete-state fixture composition and direct initial opens to `HomeOpenCandidate`,
-  complete `BerylState` registration and its exact `required_domains` declaration before publication.
-  Fixed typed fixture composers may own that explicit sequence; no generic healthy opener or
-  registration inference may conceal the candidate boundary.
-- Preserve routine versus exhaustive validation, state and theme identities, exact failure
-  provenance, rejected candidate cleanup and same-home recovery. Every fresh physical open must
-  register its live domain set even when durable domain metadata already exists.
-- Preserve cross-package fixture registration where required, merging exact package declarations
-  before publication. Keep isolated physical theme fixtures explicit about their required domains.
-- Run the state package suite with required fault features, normal compilation and focused
-  independent review of changed setup and failure assertions. Accept neither candidate recovery
-  access nor app service composition from fixture qualification.
-
-# Phase 418: Qualify Syndic Storage Initial Candidates (pending)
-
-Convert Syndic fixtures to the package-owned declaration, candidate-bound handle/attachment
-acquisition and explicit registration and publication. Preserve reconstructed
-attachment custody, compact recovery sources and the V7 storage contract.
+- Convert shared and direct fixture opening to `HomeOpenCandidate`, exact package-owned Syndic
+  registration and `required_domains` before explicit publication. Fixed typed fixture composers
+  may own the complete sequence; generic openers must retain the unpublished candidate.
+- Merge exact state, Syndic and test-domain declarations where a fixture composes them. Rebuild
+  live registrations on every fresh physical open, preserving recovered cleanup attachment custody
+  and distinguishing ordinary initial opening from same-home recovery candidates.
+- Preserve routine versus exhaustive validation, compact recovery sources, V7 record behavior,
+  typed failures and rejected candidate cleanup. Adapt pre-existing library-test setup where needed;
+  remove obsolete source examples of the replaced opening API.
+- Compile affected test targets and run the Syndic suite with required fault features, keeping
+  concurrent test resource use bounded. Run normal compilation and focused independent review of
+  changed composition and failure assertions. This does not accept candidate recovery access or
+  application service publication.
 
 # Phase 419: Restore App Construction Evidence With Initial Candidates (pending)
 

@@ -2,9 +2,10 @@ use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
     CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
-    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeDomainRequirements,
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationBuildError, MutationBuilder, ReconciliationReservation, RecordCodec, RecordFamily,
+    RecordVersion, StorageDomain,
 };
 use beryl_model::RuntimeId;
 use beryl_state::{BerylState, BerylStateRegistrationError};
@@ -166,12 +167,23 @@ impl DomainMutation<IncompleteRuntimeDomain> for SeedRuntimeWithoutHomeRoot {
 #[test]
 fn complete_routine_registration_defers_unrelated_record_validation_to_explicit_schema_boundary() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let domain = store.register_domain::<IncompleteRuntimeDomain>().unwrap();
+    let domain = candidate
+        .register_domain::<IncompleteRuntimeDomain>()
+        .unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<IncompleteRuntimeDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let runtime_id = RuntimeId::from_bytes([1; 16]);
     let executable = r"C:\Codex\codex.exe";
     let domain_revision = store.domain_revision(&domain).unwrap();
@@ -195,13 +207,18 @@ fn complete_routine_registration_defers_unrelated_record_validation_to_explicit_
     }
     store.close().unwrap();
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylState::register(&mut reopened)
+    let state = BerylState::register(&mut candidate)
         .expect("complete routine registration must not scan dormant runtime records");
+    let reopened = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         state
             .session()
@@ -215,7 +232,7 @@ fn complete_routine_registration_defers_unrelated_record_validation_to_explicit_
     assert_complete_handle_set(reacquired, &reopened);
     reopened.close().unwrap();
 
-    let mut schema_boundary = HomeStore::open(HomeOpenOptions::new(
+    let mut schema_boundary = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
@@ -224,6 +241,7 @@ fn complete_routine_registration_defers_unrelated_record_validation_to_explicit_
         Ok(_) => panic!("incomplete runtime unexpectedly passed schema validation"),
         Err(error) => error,
     };
+    schema_boundary.close().unwrap();
     assert_missing_home_root(error);
 }
 

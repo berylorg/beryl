@@ -4,8 +4,7 @@ use super::*;
 fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() {
     for stray_source in [true, false] {
         let directory = tempdir().unwrap();
-        let (mut store, state) = support::open(directory.path());
-        let probe = store.register_domain::<ProbeDomain>().unwrap();
+        let (store, state, probe) = open_probe_home(directory.path());
         let proof = sealed_set(&store, &state, publish_asset(&store, &state));
         let source = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([3; 16]));
         let destination =
@@ -214,12 +213,17 @@ fn validator_failure_is_atomic_and_present_transition_advances_exact_revision() 
         );
 
         store.close().unwrap();
-        let mut reopened = HomeStore::open(HomeOpenOptions::new(
+        let mut reopened = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
         let reopened_state = BerylState::register(&mut reopened).unwrap();
+        let reopened = reopened
+            .prepare_publication(BerylState::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         assert_eq!(
             reopened_state
                 .assets()

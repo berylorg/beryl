@@ -4,9 +4,10 @@ use std::{error::Error, fmt};
 
 use beryl_home_store::{
     CommandOutcome, CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError,
-    DomainCallbackSource, DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, PointReadLimit, ReadError, RecordCodec, RecordFamily,
-    RecordVersion, StorageDomain, WholeHomeScrubTrigger,
+    DomainCallbackSource, DomainReader, DomainSchemaVersion, HomeDomainRequirements,
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    WholeHomeScrubTrigger,
 };
 use beryl_model::{AdmittedHostPath, PathFlavor};
 use beryl_state::{
@@ -464,12 +465,21 @@ impl Error for ProbeCodecError {}
 #[test]
 fn routine_reopen_defers_an_unsupported_setting_record_version_to_explicit_scrub() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let probe = store.register_domain::<SettingsV2Probe>().unwrap();
+    let probe = candidate.register_domain::<SettingsV2Probe>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SettingsV2Probe>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     store
         .inject_persisted_corrupt_record::<SettingsV2Probe, SettingRecordV2>(
             &probe,
@@ -479,12 +489,21 @@ fn routine_reopen_defers_an_unsupported_setting_record_version_to_explicit_scrub
         .unwrap();
     store.close().unwrap();
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let probe = reopened.register_domain::<SettingsV2Probe>().unwrap();
+    let probe = candidate.register_domain::<SettingsV2Probe>().unwrap();
+    let reopened = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<SettingsV2Probe>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         reopened.read_point::<SettingsV2Probe, SettingRecordV2>(
             &probe,

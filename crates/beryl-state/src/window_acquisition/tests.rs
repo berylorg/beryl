@@ -1,6 +1,6 @@
 use beryl_home_store::{
-    CommandCancellation, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, MutationContribution,
+    CommandCancellation, CommandOutcome, HomeCommand, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, MutationContribution,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, ClaimRevision, PathFlavor, ProjectionRevision, RootId,
@@ -34,12 +34,17 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        let state = BerylState::register(&mut store).unwrap();
+        let state = BerylState::register(&mut candidate).unwrap();
+        let store = candidate
+            .prepare_publication(BerylState::required_domains().unwrap())
+            .unwrap()
+            .publish()
+            .unwrap();
         initialize_empty_session(&store, &state);
         Self {
             directory,
@@ -382,12 +387,17 @@ fn exact_committed_facts_survive_close_and_reopen() {
         ..
     } = fixture;
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylState::register(&mut reopened).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let reopened = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let WindowAcquisitionNaturalState::Committed(facts) = state
         .audit_window_acquisition(&reopened, window_id)
         .unwrap()

@@ -6,8 +6,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandError, CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    SidecarByteLimit, test_faults::FaultController,
+    CommandError, CommandOutcome, HomeCommand, HomeOpenCandidate, HomeOpenOptions,
+    HomeSchemaVersion, HomeStore, SidecarByteLimit, test_faults::FaultController,
 };
 use beryl_model::{
     AdmittedHostPath, Availability, CasThreadId, CasTurnId, ClaimRevision, DynamicToolCallId,
@@ -26,12 +26,17 @@ pub fn open_with_faults(
     path: &Path,
     faults: FaultController,
 ) -> (HomeStore, beryl_state::BerylState) {
-    let mut store = HomeStore::open_with_faults(
+    let mut candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
     .unwrap();
-    let state = beryl_state::BerylState::register(&mut store).unwrap();
+    let state = beryl_state::BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(beryl_state::BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, state)
 }
 

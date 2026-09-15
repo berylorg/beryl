@@ -47,7 +47,7 @@ fn reopen_rejects_owner_head_with_a_different_full_proof_for_the_same_set() {
     );
     store.close().unwrap();
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))

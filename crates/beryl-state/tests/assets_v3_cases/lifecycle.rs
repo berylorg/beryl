@@ -189,12 +189,17 @@ fn paged_reference_set_v3_seals_binds_reopens_and_becomes_unreachable() {
     );
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_state = BerylState::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let head = reopened_state
         .assets()
         .owner_head(&reopened, owner)

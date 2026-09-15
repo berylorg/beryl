@@ -4,9 +4,10 @@ use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
     CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
-    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
-    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeDomainRequirements,
+    HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, KeyspaceSchemaVersion,
+    MutationBuildError, MutationBuilder, PointReadLimit, ReconciliationReservation, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{RootId, RuntimeId};
 use beryl_state::{
@@ -210,9 +211,18 @@ impl DomainMutation<RawSessionDomain> for RawMutation {
 }
 
 fn write_raw(path: &std::path::Path, mutation: RawMutation) {
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
-    let raw = store.register_domain::<RawSessionDomain>().unwrap();
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let raw = candidate.register_domain::<RawSessionDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<RawSessionDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let raw_revision = store.domain_revision(&raw).unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
@@ -308,12 +318,14 @@ fn claim_bytes(
 }
 
 fn registration_error(path: &std::path::Path) -> BerylStateRegistrationError {
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
-    match BerylState::register_with_schema_validation(&mut store) {
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let error = match BerylState::register_with_schema_validation(&mut candidate) {
         Ok(_) => panic!("malformed session unexpectedly registered"),
         Err(error) => error,
-    }
+    };
+    candidate.close().unwrap();
+    error
 }
 
 fn validation_message(error: &BerylStateRegistrationError) -> String {
@@ -384,12 +396,17 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
         },
     );
 
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylState::register(&mut store).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let snapshot = state.session().minimal_bootstrap(&store).unwrap().unwrap();
     assert!(snapshot.windows().is_empty());
     match support::execute(
@@ -407,12 +424,21 @@ fn paired_stale_claims_are_readable_and_begin_restore_deletes_both_copies() {
     }
     store.close().unwrap();
 
-    let mut raw_store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let raw = raw_store.register_domain::<RawSessionDomain>().unwrap();
+    let raw = candidate.register_domain::<RawSessionDomain>().unwrap();
+    let raw_store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<RawSessionDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(
         raw_store
             .read_point::<RawSessionDomain, RawClaimByWindowCodec>(

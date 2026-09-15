@@ -1,6 +1,8 @@
 mod support;
 
-use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError};
+use beryl_home_store::{
+    CommandOutcome, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore, ReadError,
+};
 use beryl_model::{
     MonitorHint, MonitorId, RootId, RuntimeId, SyndicThreadId, WindowBounds, WindowDisplayState,
     WindowId, WindowPlacement,
@@ -42,12 +44,17 @@ fn identity(value: u128) -> [u8; 16] {
 #[test]
 fn minimal_session_discovery_after_complete_registration_accepts_all_zero_identities() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylState::register(&mut store).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(state.session().minimal_bootstrap(&store).unwrap().is_none());
 
     let monitor = MonitorHint::new(
@@ -88,12 +95,17 @@ fn minimal_session_discovery_after_complete_registration_accepts_all_zero_identi
     assert_eq!(SESSION_WINDOW_V1_BYTES, 655);
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let reopened_state = BerylState::register(&mut reopened).unwrap();
+    let reopened_state = BerylState::register(&mut candidate).unwrap();
+    let reopened = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         bootstrap(&reopened, &reopened_state.session()).windows()[0].placement(),
         &placement
@@ -648,18 +660,28 @@ fn exclusive_claims_and_exact_record_expectations_reject_stale_or_noop_commands(
 fn complete_state_handles_cannot_discover_a_different_home_session() {
     let first_directory = tempdir().unwrap();
     let second_directory = tempdir().unwrap();
-    let mut first = HomeStore::open(HomeOpenOptions::new(
+    let mut first_candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         first_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let first_state = BerylState::register(&mut first).unwrap();
-    let mut second = HomeStore::open(HomeOpenOptions::new(
+    let first_state = BerylState::register(&mut first_candidate).unwrap();
+    let first = first_candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
+    let mut second_candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         second_directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let second_state = BerylState::register(&mut second).unwrap();
+    let second_state = BerylState::register(&mut second_candidate).unwrap();
+    let second = second_candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let error = first_state
         .session()
         .minimal_bootstrap(&second)

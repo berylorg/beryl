@@ -110,12 +110,17 @@ fn every_owner_variant_round_trips_and_multi_head_rejection_is_atomic() {
         owners.map(|owner| state.assets().owner_head(&store, owner).unwrap().unwrap());
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut reopened = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_state = BerylState::register(&mut reopened).unwrap();
+    let reopened = reopened
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_state
             .assets()

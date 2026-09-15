@@ -1,6 +1,8 @@
 use std::num::NonZeroU64;
 
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_model::DomainRevision;
 use beryl_state::{
     BuiltinFallback, InstalledThemeId, PreparedThemeAppearance, ThemeAppearanceSource,
@@ -12,10 +14,14 @@ use beryl_state::{
 
 fn service() -> (tempfile::TempDir, HomeStore, ThemeService) {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     (directory, store, service)

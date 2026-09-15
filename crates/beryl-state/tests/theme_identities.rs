@@ -1,16 +1,22 @@
 use std::num::NonZeroUsize;
 
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+};
 use beryl_state::{
     InstalledThemeId, ThemeDocumentDigest, ThemeManifestGeneration, ThemePageLimits, ThemeService,
 };
 
 fn service() -> (tempfile::TempDir, HomeStore, ThemeService) {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     (directory, store, service)

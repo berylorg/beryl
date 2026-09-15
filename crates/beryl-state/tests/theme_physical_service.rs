@@ -8,8 +8,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, StableThemeFileId, ThemeFileIdentity,
-    ThemeMutationOutcome, ThemeOperationLimits,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    StableThemeFileId, ThemeFileIdentity, ThemeMutationOutcome, ThemeOperationLimits,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_state::{
@@ -123,12 +123,17 @@ fn install_fixture(
 #[test]
 fn state_service_streams_manifest_and_document_through_physical_boundary() {
     let directory = tempfile::tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let state = beryl_state::BerylState::register(&mut store).unwrap();
+    let store = store
+        .prepare_publication(beryl_state::BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     let service = state.themes();
     let max_manifest_bytes = NonZeroU64::new(1024 * 1024).unwrap();
     assert!(service.diagnostics().home_generation_present());
@@ -213,10 +218,14 @@ fn state_service_streams_manifest_and_document_through_physical_boundary() {
 #[test]
 fn subscription_diagnostics_release_after_orderly_shutdown() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let subscription = service
@@ -238,10 +247,14 @@ fn document_replacement_during_streaming_cannot_publish() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let store = Arc::new(
-        HomeStore::open_with_faults(
+        HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
+        .unwrap()
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
         .unwrap(),
     );
     let service = ThemeService::acquire(&store).unwrap();
@@ -279,10 +292,14 @@ fn manifest_replacement_after_document_streaming_cannot_publish() {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let store = Arc::new(
-        HomeStore::open_with_faults(
+        HomeOpenCandidate::open_with_faults(
             HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
             faults.clone(),
         )
+        .unwrap()
+        .prepare_publication(HomeDomainRequirements::new())
+        .unwrap()
+        .publish()
         .unwrap(),
     );
     let service = ThemeService::acquire(&store).unwrap();
@@ -311,10 +328,14 @@ fn manifest_replacement_after_document_streaming_cannot_publish() {
 #[test]
 fn invalid_physical_edit_reports_its_exact_observation_identity() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let max_manifest_bytes = NonZeroU64::new(1024 * 1024).unwrap();
@@ -388,10 +409,14 @@ fn invalid_physical_edit_reports_its_exact_observation_identity() {
 #[test]
 fn duplicate_manifest_ids_are_rejected_without_materializing_the_collection() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let manifest = b"schema_version = 1\ngeneration = 2\n\n[[theme]]\nid = \"same\"\nname = \"One\"\n\n[[theme]]\nid = \"same\"\nname = \"Two\"\n";
@@ -420,10 +445,14 @@ fn duplicate_manifest_ids_are_rejected_without_materializing_the_collection() {
 #[test]
 fn distant_duplicate_manifest_id_is_rejected() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let mut manifest = populated_manifest(257, 2);
@@ -454,10 +483,14 @@ fn distant_duplicate_manifest_id_is_rejected() {
 #[test]
 fn escaped_full_manifest_respects_clamped_and_caller_bounds() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let manifest = quoted_manifest(THEME_INSTALLED_MAX_ENTRIES, 2);
@@ -497,10 +530,14 @@ fn escaped_full_manifest_respects_clamped_and_caller_bounds() {
 #[test]
 fn manifest_entry_limit_is_enforced_across_forward_pages() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let valid = populated_manifest(THEME_INSTALLED_MAX_ENTRIES, 2);
@@ -558,10 +595,14 @@ fn manifest_entry_limit_is_enforced_across_forward_pages() {
 #[test]
 fn same_generation_manifest_rewrite_cannot_reuse_prior_page_identity() {
     let directory = tempfile::tempdir().unwrap();
-    let store = HomeStore::open(HomeOpenOptions::new(
+    let store = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .prepare_publication(HomeDomainRequirements::new())
+    .unwrap()
+    .publish()
     .unwrap();
     let service = ThemeService::acquire(&store).unwrap();
     let first = manifest_bytes(&service);

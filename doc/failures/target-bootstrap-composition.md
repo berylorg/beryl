@@ -92,3 +92,18 @@ The owner-defined production footprints and admission policy were unchanged.
 This accepts the storage candidate and production domain adapters. State, Syndic and application
 fixture qualification, explicit recovery access, prepared application services, restore discovery
 and executable mounting retain their separate acceptance boundaries.
+
+## Beryl State Candidate Qualification
+
+State-owned fixtures now register and publish the complete state declaration explicitly. Fixed
+state fixture composers retain that exact sequence; custom probe and corruption fixtures declare
+their own exact test domains. Physical-theme-only fixtures publish an explicit empty domain set
+before acquiring their theme service. Initial physical reopens reconstruct fresh live handles;
+schema-validation rejection leaves the candidate unpublished and preserves typed failure evidence.
+
+All 152 state cases across 31 binaries passed with `cargo +stable --config .cargo/local.toml nextest
+run -p beryl-state --features test-faults --no-fail-fast`. Normal state compilation and test-target
+compilation passed. Exact-file formatting, diff checks and independent semantic review accepted
+the shared fixture composers, direct setup and failure paths, including the three pre-existing
+library-test setups. Production state behavior was unchanged. Syndic and app qualification,
+candidate recovery access and service-graph publication remain separate work.

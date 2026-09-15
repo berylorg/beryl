@@ -3,8 +3,7 @@ use super::*;
 #[test]
 fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
     let directory = tempdir().unwrap();
-    let (mut store, state) = support::open(directory.path());
-    let probe = store.register_domain::<ProbeDomain>().unwrap();
+    let (store, state, probe) = open_probe_home(directory.path());
     let source = AssetOwner::CurrentDraft(SyndicDraftId::from_bytes([1; 16]));
     let destination =
         AssetOwner::AcceptedInput(beryl_model::SyndicAcceptedInputId::from_bytes([1; 16]));
@@ -61,13 +60,23 @@ fn marker_free_absence_guard_is_atomic_with_a_real_foreign_domain_mutation() {
     );
 
     store.close().unwrap();
-    let mut reopened = HomeStore::open(beryl_home_store::HomeOpenOptions::new(
+    let mut reopened = HomeOpenCandidate::open(beryl_home_store::HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     let reopened_state = BerylState::register(&mut reopened).unwrap();
     let reopened_probe = reopened.register_domain::<ProbeDomain>().unwrap();
+    let reopened = reopened
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .with_domain::<ProbeDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         reopened_state.assets().revision(&reopened).unwrap(),
         assets_before

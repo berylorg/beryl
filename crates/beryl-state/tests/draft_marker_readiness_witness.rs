@@ -2,9 +2,9 @@ use std::{convert::Infallible, num::NonZeroU64};
 
 use beryl_home_store::{
     CommandOutcome, DomainReader, DomainSchemaVersion, FixedDigestHomeProofProtocol, HomeCommand,
-    HomeOpenOptions, HomeProofCommand, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    ProofCompositionError, ProofCorrelationBytes, ProofDomain, ProofProtocolIdentity, RecordCodec,
-    RecordFamily, RecordVersion, StorageDomain,
+    HomeOpenCandidate, HomeOpenOptions, HomeProofCommand, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, ProofCompositionError, ProofCorrelationBytes, ProofDomain,
+    ProofProtocolIdentity, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{
     AssetId, AssetReferenceSetDigest, AssetReferenceSetId, ImageLabelOrdinal,
@@ -121,13 +121,23 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let directory = tempdir().unwrap();
-        let mut store = HomeStore::open(HomeOpenOptions::new(
+        let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        let source = store.register_domain::<SourceDomain>().unwrap();
-        let state = BerylState::register(&mut store).unwrap();
+        let source = candidate.register_domain::<SourceDomain>().unwrap();
+        let state = BerylState::register(&mut candidate).unwrap();
+        let store = candidate
+            .prepare_publication(
+                BerylState::required_domains()
+                    .unwrap()
+                    .with_domain::<SourceDomain>()
+                    .unwrap(),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
         let asset_id = publish_metadata(&store, &state, b"pinned-asset");
         let label = ImageLabelOrdinal::new(7).unwrap();
         let first_proof = seal_one_entry_set(

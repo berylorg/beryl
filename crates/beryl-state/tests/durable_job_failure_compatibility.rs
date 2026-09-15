@@ -1,6 +1,6 @@
 mod support;
 
-use beryl_home_store::{CommandOutcome, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion};
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicAcceptedInputId,
     SyndicDraftId, SyndicThreadId, SyndicTurnId,
@@ -105,12 +105,13 @@ fn mutation_admission_enforces_the_complete_failure_checkpoint_matrix() {
     store.close().unwrap();
     let (reopened, _) = open(directory.path());
     reopened.close().unwrap();
-    let mut schema_boundary = HomeStore::open(HomeOpenOptions::new(
+    let mut schema_boundary = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
     beryl_state::BerylState::register_with_schema_validation(&mut schema_boundary).unwrap();
+    schema_boundary.close().unwrap();
 }
 
 fn place_job(

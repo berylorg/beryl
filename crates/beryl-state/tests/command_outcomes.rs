@@ -10,7 +10,7 @@ use tempfile::tempdir;
 fn state_commands_preserve_exact_outcomes_and_project_only_committed_receipts() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
-    let mut store = beryl_home_store::HomeStore::open_with_faults(
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open_with_faults(
         beryl_home_store::HomeOpenOptions::new(
             directory.path(),
             beryl_home_store::HomeSchemaVersion::CURRENT,
@@ -18,7 +18,12 @@ fn state_commands_preserve_exact_outcomes_and_project_only_committed_receipts() 
         faults.clone(),
     )
     .unwrap();
-    let state = beryl_state::BerylState::register(&mut store).unwrap();
+    let state = beryl_state::BerylState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(beryl_state::BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
 
     let cancellation = CommandCancellation::new();
     cancellation.cancel();

@@ -4,9 +4,10 @@ use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
     CodecOperation, CommandOutcome, DomainCallbackError, DomainCallbackSource, DomainMutation,
-    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions,
-    HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
-    ReadError, ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, ReadError,
+    ReconciliationReservation, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_state::{BerylState, BerylStateRegistrationError};
 use tempfile::tempdir;
@@ -142,12 +143,21 @@ impl DomainMutation<RawSettingsDomain> for PutRawSetting {
 #[test]
 fn routine_reopen_defers_unknown_setting_schema_but_typed_read_and_explicit_validation_reject_it() {
     let directory = tempdir().unwrap();
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let raw = store.register_domain::<RawSettingsDomain>().unwrap();
+    let raw = candidate.register_domain::<RawSettingsDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<RawSettingsDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     let raw_revision = store.domain_revision(&raw).unwrap();
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
@@ -168,13 +178,18 @@ fn routine_reopen_defers_unknown_setting_schema_but_typed_read_and_explicit_vali
     }
     store.close().unwrap();
 
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let state = BerylState::register(&mut store)
+    let state = BerylState::register(&mut candidate)
         .expect("routine registration must not scan the dormant malformed setting");
+    let store = candidate
+        .prepare_publication(BerylState::required_domains().unwrap())
+        .unwrap()
+        .publish()
+        .unwrap();
     assert!(matches!(
         state
             .settings()
@@ -188,15 +203,16 @@ fn routine_reopen_defers_unknown_setting_schema_but_typed_read_and_explicit_vali
     ));
     store.close().unwrap();
 
-    let mut store = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let error = match BerylState::register_with_schema_validation(&mut store) {
+    let error = match BerylState::register_with_schema_validation(&mut candidate) {
         Err(error) => error,
         Ok(_) => panic!("unknown setting schema unexpectedly registered"),
     };
+    candidate.close().unwrap();
     let BerylStateRegistrationError::Domain { domain, source } = error else {
         panic!("expected domain registration failure, got {error}");
     };

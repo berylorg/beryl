@@ -9,8 +9,8 @@ mod catalog;
 
 use beryl_home_store::{
     CommandError, CommandOutcome, CursorReadLimits, DomainReconciliation, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, MutationContribution, ReadError,
-    ReconciliationResolution, WholeHomeScrubTrigger,
+    HomeDomainRequirements, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    MutationContribution, ReadError, ReconciliationResolution, WholeHomeScrubTrigger,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
@@ -20,7 +20,7 @@ use beryl_model::{
 use catalog::{
     CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
-    CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
+    CatalogDomain, CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
     CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery,
     CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRow,
     CatalogRowExpectation, CatalogSourceRevisions, CatalogState, CatalogTitleSource,
@@ -28,19 +28,37 @@ use catalog::{
 };
 
 fn open(path: &std::path::Path) -> (HomeStore, CatalogState) {
-    let mut store =
-        HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
-    let state = CatalogState::register(&mut store).unwrap();
+    let mut candidate =
+        HomeOpenCandidate::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let state = CatalogState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CatalogDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, state)
 }
 
 fn open_with_faults(path: &std::path::Path, faults: FaultController) -> (HomeStore, CatalogState) {
-    let mut store = HomeStore::open_with_faults(
+    let mut candidate = HomeOpenCandidate::open_with_faults(
         HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT),
         faults,
     )
     .unwrap();
-    let state = CatalogState::register(&mut store).unwrap();
+    let state = CatalogState::register(&mut candidate).unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CatalogDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     (store, state)
 }
 
@@ -839,13 +857,22 @@ fn routine_reopen_defers_a_dormant_recency_copy_disagreement_to_explicit_scrub()
     }));
     drop(store);
 
-    let mut reopened = HomeStore::open(HomeOpenOptions::new(
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
     .unwrap();
-    let routine = CatalogState::register(&mut reopened)
+    let routine = CatalogState::register(&mut candidate)
         .expect("routine catalog registration must not scan dormant recency copies");
+    let reopened = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<CatalogDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
     assert_eq!(
         routine
             .row(
