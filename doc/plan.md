@@ -69,6 +69,13 @@ with focused value tests and independent review. Resolve the exact witness repre
 owning schema authority before implementation; compose the accepted request disposition values.
 Keep gate persistence, admission, dispatch capabilities and runtime mounting separate.
 
+Blocked on 2026-09-16: the witness representation depends on an unresolved outage-evidence
+custody boundary. Repair permits authenticated sealed outage facts, but recovery disposes the
+failed service before reopening and forbids buffered-fact transfer. No authority defines the
+durable sealing owner, publication cut or authentication record. Defining only an opaque witness
+identity and digest would not establish that provenance. Resolve this in the owning system and
+schema before implementation; see [custody evidence](failures/repair-outage-witness-custody.md).
+
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
 
 Integrate the accepted repair values into canonical gate storage, bounded structural validation
