@@ -66,6 +66,15 @@ Integrate the accepted repair values, target codec, witness computation and reta
 and same-thread admission exclusion; verify exact terminal-tail correlation, stale revisions,
 corruption rejection and unrelated-thread independence before app recovery consumes the gate.
 
+Blocked on 2026-09-17: the no-reset request contract lacks a specified durable carrier after
+incomplete convergence replaces `RepairRequired` with `FinalizingHistory`. Exact terminal evidence
+and a current gate revision cannot distinguish first admission from later re-entry. Independent
+review confirmed the gap; this turn's unaccepted gate edits were removed. Define persistent resolved
+repair authority and its atomic entry exclusion in the owning schema before resuming. The concrete
+recommendation is a bounded turn-state extension retaining target, resolution and original request
+disposition, including consumed claim provenance; see
+[durable-once failure evidence](failures/cas-terminal-repair-dispatch-must-be-durable-once.md#post-gate-custody-gap).
+
 # Phase 469: Converge Unavailable Repair To Incomplete History (pending)
 
 Implement the bounded durable transition from an exact repair-required target to explicit
