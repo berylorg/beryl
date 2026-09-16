@@ -370,6 +370,13 @@ impl SyndicStorage {
         store.domain_revision(&self.handle)
     }
 
+    pub fn revision_candidate(
+        &self,
+        store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<DomainRevision, ReadError> {
+        store.domain_revision(&self.handle)
+    }
+
     /// Returns this domain's revision from a still-current successful command receipt.
     pub fn committed_revision(
         &self,

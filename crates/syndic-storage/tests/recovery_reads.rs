@@ -2,6 +2,8 @@
 
 #[path = "recovery_reads/candidate_history.rs"]
 mod candidate_history;
+#[path = "recovery_reads/candidate_revision.rs"]
+mod candidate_revision;
 #[path = "recovery_reads/candidate_turn_items.rs"]
 mod candidate_turn_items;
 #[path = "recovery_reads/ordered.rs"]

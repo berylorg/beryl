@@ -417,6 +417,16 @@ All 37 ordinary compaction and source-boundary regressions passed (run
 `31361573-17b7-4ec5-a235-09ac59099e47`). Normal app compilation, formatting and diff checks passed;
 independent semantic review found no blocking issue.
 
+## Candidate Startup Revision
+
+Phase 452 accepted `SyndicStorage::revision_candidate` for the post-convergence startup snapshot.
+It delegates to the existing exact candidate domain revision read, retaining handle provenance,
+candidate admission and read confirmation. The focused test passed (run
+`bb43f1fd-d6c5-434c-8f2d-8c8db15a9888`, 9.865 seconds), covering initial and recovered publication
+parity, persisted revision advancement, foreign and stale handles, ordinary prepublication refusal,
+and failed-candidate read/publication rejection. Normal package compilation and independent review
+passed. Connecting the snapshot to dormant CAS construction remains separate service preparation.
+
 ## Candidate Startup Integration
 
 Phase 449 accepted one sequential ordinary/candidate startup pass. Its access adapter dispatches

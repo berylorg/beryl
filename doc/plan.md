@@ -52,12 +52,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 449: Connect Candidate Startup Recovery (finished)
+# Phase 452: Read Candidate Syndic Startup Revision (finished)
 
-Accepted shared sequential ordinary/candidate startup recovery with bounded pages, one drift restart,
-cursor rebase, exact convergence and diagnostic accounting. All 80 focused and affected regression
-checks, normal compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-integration).
+Accepted exact candidate Syndic revision access with initial/recovered parity, identity and failure
+fences. Focused verification, normal compilation and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-revision).
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (wip)
 
