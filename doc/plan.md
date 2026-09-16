@@ -52,12 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 454: Adopt Service References In Ordinary CAS Ownership (finished)
+# Phase 456: Establish The Cancellable Initial Worker Fence (finished)
 
-Ordinary CAS now retains one owned home, distributes gated service references and joins shutdown
-before owner retirement. All 366 library and 82 selected integration tests passed across focused
-runs; normal and all-test compilation and independent lifecycle review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
+Accepted the private move-only release owner, irreversible cancellation and wakeup of dormant
+workers, including cancellation before partial compaction joins. Nine focused tests, ordinary
+library compilation and independent lifecycle review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

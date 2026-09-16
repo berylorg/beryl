@@ -262,6 +262,7 @@ impl ContextCompactionCoordinator {
             lifecycle_settlement_pause: Mutex::new(None),
         });
         let workers = worker_start::start_workers(
+            &initial_start,
             |index| {
                 let weak = Arc::downgrade(&coordinator);
                 let receiver = Arc::clone(&receiver);
@@ -279,6 +280,7 @@ impl ContextCompactionCoordinator {
         match coordinator.workers.lock() {
             Ok(mut retained) => *retained = workers,
             Err(_) => {
+                initial_start.cancel();
                 coordinator.request_shutdown();
                 join_all_workers(workers);
                 return Err(ContextCompactionError::Unavailable);

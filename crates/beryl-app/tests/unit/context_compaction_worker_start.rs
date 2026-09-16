@@ -10,6 +10,7 @@ fn verify_partial_failure(fail_at: usize, panic_first: bool) {
     let completed = Arc::new(AtomicUsize::new(0));
     let stop_calls = AtomicUsize::new(0);
     let result = start_workers(
+        &crate::cas_projection::initial_start::InitialStartGate::ready(),
         |index| {
             if index == fail_at {
                 return Err(io::Error::other("injected compaction worker spawn failure"));
@@ -53,6 +54,7 @@ fn a_panicking_worker_does_not_skip_remaining_partial_construction_joins() {
 fn successful_construction_transfers_all_join_handles_without_stopping() {
     let completed = Arc::new(AtomicUsize::new(0));
     let workers = start_workers(
+        &crate::cas_projection::initial_start::InitialStartGate::ready(),
         |_| {
             let completed = Arc::clone(&completed);
             std::thread::Builder::new().spawn(move || {
@@ -65,4 +67,32 @@ fn successful_construction_transfers_all_join_handles_without_stopping() {
     assert_eq!(workers.len(), COMPACTION_WORKER_CAPACITY);
     assert!(!join_all_workers(workers));
     assert_eq!(completed.load(Ordering::SeqCst), COMPACTION_WORKER_CAPACITY);
+}
+
+#[test]
+fn every_partial_spawn_failure_cancels_and_joins_dormant_workers() {
+    use crate::cas_projection::initial_start::InitialStartOwner;
+    for fail_at in 0..COMPACTION_WORKER_CAPACITY {
+        let owner = InitialStartOwner::new();
+        let gate = owner.gate();
+        let completed = Arc::new(AtomicUsize::new(0));
+        let result = start_workers(
+            &gate,
+            |index| {
+                if index == fail_at {
+                    return Err(io::Error::other("injected dormant worker spawn failure"));
+                }
+                let gate = Arc::clone(&gate);
+                let completed = Arc::clone(&completed);
+                std::thread::Builder::new().spawn(move || {
+                    assert!(!gate.wait());
+                    completed.fetch_add(1, Ordering::SeqCst);
+                })
+            },
+            || {},
+        );
+        assert!(matches!(result, Err(ContextCompactionError::Unavailable)));
+        assert_eq!(completed.load(Ordering::SeqCst), fail_at);
+        assert!(!owner.release());
+    }
 }

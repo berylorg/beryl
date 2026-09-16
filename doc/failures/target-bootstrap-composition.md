@@ -550,3 +550,18 @@ immediate joined-disposal assertions passed in `8990933b-aa21-4497-b375-0d3696d6
 runs verify 448 distinct tests: 366 library and 82 selected integration cases. Normal app library
 compilation, all app test-target compilation with `test-faults`, formatting and diff checks passed.
 Independent lifecycle review accepted the final ownership, shutdown, failure and test boundaries.
+
+## Cancellable Initial Worker Fence
+
+The former initial gate returned immediately and therefore could not fence candidate workers.
+The accepted prerequisite supplies one move-only release owner and a shared mutex/condition-variable
+gate. Waiting transitions once to released or cancelled; owner abandonment cancels, wakes all
+waiters and cannot undo a release. Ordinary ready gates retain their existing behavior.
+Partial compaction spawn or handle-retention failure cancels the gate before joining workers.
+
+Nextest run `fb9fc1bf-511e-4034-9481-3af3ffa961f5` passed nine tests covering eight waiting workers,
+release, abandonment, cancellation before waiting, terminal races, ordinary readiness and every
+partial spawn position. Ordinary app library compilation, formatting and diff checks passed.
+Independent lifecycle review found no blockers. Candidate owner cleanup ordering and complete
+graph publication remain separate preparation and integration work; this primitive alone does
+not establish those boundaries.

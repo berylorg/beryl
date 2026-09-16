@@ -3,6 +3,7 @@ use std::{io, thread::JoinHandle};
 use super::{COMPACTION_WORKER_CAPACITY, ContextCompactionError, join_all_workers};
 
 pub(super) fn start_workers(
+    initial_start: &crate::cas_projection::initial_start::InitialStartGate,
     mut spawn: impl FnMut(usize) -> io::Result<JoinHandle<()>>,
     stop: impl FnOnce(),
 ) -> Result<Vec<JoinHandle<()>>, ContextCompactionError> {
@@ -11,6 +12,7 @@ pub(super) fn start_workers(
         match spawn(index) {
             Ok(worker) => workers.push(worker),
             Err(_) => {
+                initial_start.cancel();
                 stop();
                 join_all_workers(workers);
                 return Err(ContextCompactionError::Unavailable);
