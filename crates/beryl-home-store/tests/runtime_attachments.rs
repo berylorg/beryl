@@ -536,6 +536,113 @@ fn one_slot_owns_one_attachment_across_clone_and_reacquisition() {
 }
 
 #[test]
+fn retained_service_references_do_not_delay_candidate_attachment_retirement() {
+    for publish in [false, true] {
+        reset();
+        let directory = tempdir().unwrap();
+        let mut candidate = open(directory.path(), FaultController::new());
+        let handle = candidate.register_domain::<DomainA>().unwrap();
+        let publication = candidate
+            .prepare_publication(
+                HomeDomainRequirements::new()
+                    .with_domain::<DomainA>()
+                    .unwrap(),
+            )
+            .unwrap();
+        let reference = publication.service_reference();
+        let capability = handle.attachment_capability();
+        assert!(
+            reference
+                .with_domain_attachment(&capability, |_| ())
+                .is_err()
+        );
+        if publish {
+            let store = publication.publish().unwrap();
+            reference
+                .with_domain_attachment(&capability, |_| ())
+                .unwrap();
+            drop(store);
+        } else {
+            drop(publication);
+        }
+        assert_eq!(DOMAIN_A_STATS.counts(), (1, 1, 1));
+        assert!(
+            reference
+                .with_domain_attachment(&capability, |_| ())
+                .is_err()
+        );
+        drop(reference);
+        assert_eq!(DOMAIN_A_STATS.counts(), (1, 1, 1));
+        open(directory.path(), FaultController::new())
+            .close()
+            .unwrap();
+    }
+}
+
+#[test]
+fn owner_close_drains_admitted_reference_callback_before_retiring_attachments() {
+    use std::{
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
+    reset();
+    let directory = tempdir().unwrap();
+    let mut candidate = open(directory.path(), FaultController::new());
+    let capability = candidate
+        .register_domain::<DomainA>()
+        .unwrap()
+        .attachment_capability();
+    let publication = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<DomainA>()
+                .unwrap(),
+        )
+        .unwrap();
+    let retained = publication.service_reference();
+    let reference = retained.clone();
+    let owner = publication.publish().unwrap();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let callback = thread::spawn(move || {
+        reference.with_domain_attachment(&capability, |_| {
+            entered_tx.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        })
+    });
+    entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    let (closed_tx, closed_rx) = mpsc::channel();
+    let closing = thread::spawn(move || {
+        owner.close().unwrap();
+        closed_tx.send(()).unwrap();
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while retained.health().state() == HomeHealthState::Healthy && Instant::now() < deadline {
+        thread::yield_now();
+    }
+    assert_eq!(retained.health().state(), HomeHealthState::Failed);
+    assert!(closed_rx.try_recv().is_err());
+    assert_eq!(DOMAIN_A_STATS.counts(), (1, 0, 0));
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT
+        ))
+        .is_err()
+    );
+    release_tx.send(()).unwrap();
+    let _ = callback.join().unwrap();
+    closing.join().unwrap();
+    closed_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(DOMAIN_A_STATS.counts(), (1, 1, 1));
+    assert!(retained.home_revision().is_err());
+    open(directory.path(), FaultController::new())
+        .close()
+        .unwrap();
+}
+
+#[test]
 fn committed_local_finalization_resolves_the_exact_live_attachment() {
     reset();
     let directory = tempdir().unwrap();

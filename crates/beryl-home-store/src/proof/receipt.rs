@@ -167,7 +167,7 @@ impl crate::HomeStore {
         &self,
         receipt: &HomeProofReceipt<P>,
     ) -> Result<(), ProofReceiptError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation_guard = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

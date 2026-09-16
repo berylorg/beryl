@@ -224,6 +224,10 @@ impl HomeOpenCandidate {
 }
 
 impl HomeOpenPublication {
+    pub fn service_reference(&self) -> crate::HomeServiceReference {
+        self.initial.store.service_reference()
+    }
+
     pub fn recovery_access(
         &mut self,
     ) -> Result<crate::HomeCandidateRecoveryAccess<'_>, HomeCandidateError> {

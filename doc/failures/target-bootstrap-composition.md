@@ -468,3 +468,29 @@ loading and session discovery are explicitly postpublication under the app lifec
 Independent source review accepted this closure against the component verification recorded above;
 no source changed and no additional test run was needed. This accepts the consumer boundary only,
 not dormant service construction or complete graph publication.
+
+## Gated Service References
+
+Phase 453 accepted `HomeServiceReference` from registration-complete initial and recovered
+candidates and published stores. Clones share the exact backing but cannot acquire owned close or
+recovery authority. Ordinary operations check the original generation; publication still returns
+an owned `HomeStore`. Owner retirement drains admitted work and takes the shared generation,
+retiring attachments even while service references remain. Existing reserved or indeterminate
+reconciliation destruction retains conservative lock custody; failed construction still joins
+dependent work before owner disposal.
+
+Review found two stale-generation paths outside ordinary read admission: poisoned-writer failure
+signalling and scrub-flight joining. Writer failure signals now require exact admission. Recovery
+creates a fresh scrub coordinator, with exact admission checks before joining and before successful
+return. An initial unconditional post-scrub check masked concrete validation errors after health
+failed; regression verification caught this and original failure provenance is now preserved.
+The full suite also caught removal of the writer reset on failed reopen attempts; that existing
+behavior was restored with a fresh shared mutex while old references retain their fenced mutex.
+
+Tests cover opening refusal, same-generation publication, failed publication and cancellation,
+reconciliation lock custody, owner close with retained references, synchronous attachment retirement,
+admitted-callback draining, stale scrub-flight isolation and stale poisoned-writer isolation.
+Final nextest run `453b3083-4642-4f63-8965-78044830ac23` passed all 260 storage tests across 44
+binaries in 30.008 seconds using `--features test-faults --test-threads 1`. Normal `beryl-app --lib`
+compilation, formatting and diff checks passed. Independent ownership review accepted the final
+boundary. Ordinary CAS reference adoption remains a separate prerequisite to dormant construction.

@@ -5,7 +5,7 @@ use crate::{
     CursorPage, CursorRange, CursorReadLimits, DomainHandle, HomeCandidateError, HomeCommand,
     HomeGeneration, HomeHealthState, HomeStore, PointReadLimit, ReadError, ReconciliationFailure,
     ReconciliationHandle, ReconciliationResolution, RecordCodec, StorageDomain,
-    health::{HealthAdmission, HealthGate, HealthGateError},
+    health::{HealthAdmission, HealthGateError},
 };
 
 #[derive(Clone, Copy)]
@@ -18,10 +18,12 @@ pub(crate) enum StoreOperationAccess {
 }
 
 impl StoreOperationAccess {
-    pub(crate) fn admit(self, gate: &HealthGate) -> Result<HealthAdmission<'_>, HealthGateError> {
+    pub(crate) fn admit(self, store: &HomeStore) -> Result<HealthAdmission<'_>, HealthGateError> {
         match self {
-            Self::Ordinary => gate.admit(),
-            Self::Candidate { state, generation } => gate.admit_candidate(state, generation),
+            Self::Ordinary => store.health.admit_generation(store.admitted_generation),
+            Self::Candidate { state, generation } => {
+                store.health.admit_candidate(state, generation)
+            }
         }
     }
 }
@@ -39,7 +41,7 @@ impl<'a> HomeCandidateRecoveryAccess<'a> {
         generation: HomeGeneration,
     ) -> Result<Self, HomeCandidateError> {
         let access = StoreOperationAccess::Candidate { state, generation };
-        access.admit(&store.health)?.confirm()?;
+        access.admit(store)?.confirm()?;
         Ok(Self {
             store,
             access,

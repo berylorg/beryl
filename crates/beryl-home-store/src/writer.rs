@@ -298,7 +298,9 @@ impl HomeStore {
         let _writer = match self.acquire_writer() {
             Ok(writer) => writer,
             Err(error) => {
-                self.health.signal_failure(FailureSeverity::Structural);
+                if let Ok(admission) = access.admit(self) {
+                    admission.fail(FailureSeverity::Structural);
+                }
                 return not_committed(error);
             }
         };
@@ -312,7 +314,7 @@ impl HomeStore {
         if cancelled {
             return not_committed(CommandError::CancelledBeforeAdmission);
         }
-        let admission = match access.admit(&self.health) {
+        let admission = match access.admit(self) {
             Ok(admission) => admission,
             Err(error) => return not_committed(CommandError::HealthGate(error)),
         };

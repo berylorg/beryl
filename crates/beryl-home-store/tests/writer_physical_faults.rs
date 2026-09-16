@@ -720,6 +720,8 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
         .add_validation(beta.validation(beta_before, PanicValidator))
         .unwrap();
 
+    let retained = store.service_reference();
+
     let panicked = catch_unwind(AssertUnwindSafe(|| {
         let _ = store.execute(command);
     }));
@@ -731,6 +733,13 @@ fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
     let alpha = recovery.domain_handle::<AlphaDomain>().unwrap();
     let beta = recovery.domain_handle::<BetaDomain>().unwrap();
     let store = recovery.publish().unwrap();
+    assert!(matches!(
+        retained.execute_current(
+            alpha.current_command(PutBytes::<AlphaDomain>::new(41, b"stale".to_vec()))
+        ),
+        beryl_home_store::CommandOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
     assert_eq!(store.home_revision().unwrap(), home_before);
     assert_eq!(store.domain_revision(&alpha).unwrap(), alpha_before);
     assert_eq!(store.domain_revision(&beta).unwrap(), beta_before);

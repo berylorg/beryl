@@ -31,7 +31,7 @@ impl HomeStore {
         &self,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeRepositorySnapshot, ThemeRepositoryError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = self
             .generation
             .read()
@@ -67,7 +67,7 @@ impl HomeStore {
         max_bytes: NonZeroUsize,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeFileRange, ThemeRepositoryError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = self.validate_snapshot(snapshot, limits)?;
         if max_bytes.get() as u64 > limits.max_source_bytes() {
             return Err(ThemeRepositoryError::LimitExceeded);
@@ -115,7 +115,7 @@ impl HomeStore {
         selector: &ThemeFileSelector,
         limits: ThemeOperationLimits,
     ) -> Result<ThemeFileIdentity, ThemeRepositoryError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         let identity = observe_required(
             &selector_path(self.canonical_path(), selector),
@@ -144,7 +144,7 @@ impl HomeStore {
             .theme_mutation
             .lock()
             .map_err(|_| ThemeRepositoryError::LockPoisoned)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         require_evidence_bounds(2, &[expected_document, Some(intended_document)], limits)?;
         let final_path = document_path(self.canonical_path(), id);
@@ -285,7 +285,7 @@ impl HomeStore {
             .theme_mutation
             .lock()
             .map_err(|_| ThemeRepositoryError::LockPoisoned)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         require_evidence_bounds(
             4,
@@ -400,7 +400,7 @@ impl HomeStore {
             .theme_mutation
             .lock()
             .map_err(|_| ThemeRepositoryError::LockPoisoned)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         let document_path = document_path(self.canonical_path(), id);
         require_identity(&document_path, Some(expected_document), limits)?;
@@ -455,7 +455,7 @@ impl HomeStore {
         if evidence.home_id != self.home_id() {
             return Err(ThemeRepositoryError::ForeignEvidence);
         }
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = self.current_database()?;
         let operation = &evidence.operation;
         require_evidence_bounds(
@@ -586,7 +586,7 @@ impl HomeStore {
             .theme_mutation
             .lock()
             .map_err(|_| ThemeRepositoryError::LockPoisoned)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let database = self.validate_snapshot(snapshot, limits)?;
         let outcome =
             self.publish_manifest_inner(snapshot, document, intended_manifest, source, limits)?;

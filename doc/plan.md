@@ -52,30 +52,26 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 438: Connect Typed Candidate Convergence Consumers (finished)
+# Phase 453: Establish Gated Candidate Service References (finished)
 
-Accepted the complete scoped candidate startup consumer set. Independent closure review confirmed
-the accepted component evidence and separated service ownership from persisted convergence.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-consumer-closure).
+Accepted cloneable generation-gated references with owned publication and exclusive retirement
+custody. All 260 storage tests, normal app compilation and independent ownership review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#gated-service-references).
 
-# Phase 453: Establish Gated Candidate Service References (wip)
+# Phase 454: Adopt Service References In Ordinary CAS Ownership (wip)
 
-Implement the registration-complete candidate's shared service references required by
-[home opening](../crates/beryl-home-store/doc/design-open-and-recovery.md#unpublished-open-candidates).
-Preserve the owned `HomeOpenPublication::publish` result and sole owner authority over close,
-recovery, attachment retirement and home-lock custody. Retained service references must remain
-subject to ordinary opening and generation gates; candidate recovery stays explicitly borrowed.
-Do not change publication into a shared-owner result or construct CAS services in this phase.
+Adapt ordinary CAS consumers from shared owning store handles to the accepted gated service
+references, preserving one owned store and explicit shutdown/join custody under
+[service lifecycle](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication).
+Keep worker, runtime-interest, stop, compaction and failure-coordinator references non-owning;
+the composition owner alone retains close and recovery authority. Reference counts cannot substitute
+for completed worker shutdown. Candidate construction and startup-fence integration remain phase 421.
 
-Verify retained references reject ordinary access before publication, admit the same generation
-after publication, and reject failed or retired generations. Cover publication rejection,
-candidate cancellation, reference release, attachment retirement and unresolved reconciliation
-without weakening lock custody. Run focused storage lifecycle tests, normal dependent compilation
-and independent ownership review. Split further independent consumer adaptation before activation.
-
-Readiness review identified the existing exclusive `HomeStore` representation and CAS
-`Arc<HomeStore>` retention as the missing prerequisite. The authority already requires gated
-shared references; preserve its ownership contract while implementing that boundary.
+Verify ordinary service construction, commands, reference release, shutdown ordering and failure
+outcomes, including retained references after retirement and unresolved reconciliation custody.
+Run focused CAS ownership/shutdown regressions, normal compilation and independent lifecycle review.
+Readiness review confirmed this consumer adaptation is independently implementable using the
+accepted storage primitive; split any further independent service prerequisite before activation.
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

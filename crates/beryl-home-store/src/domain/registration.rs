@@ -76,13 +76,24 @@ impl HomeStore {
         &self,
         trigger: crate::WholeHomeScrubTrigger,
     ) -> Result<(), WholeHomeScrubError> {
-        self.scrub
+        self.confirm_scrub_generation()?;
+        let result = self
+            .scrub
             .run(trigger, || self.scrub_registered_domains_once())
-            .map_err(WholeHomeScrubError::new)
+            .map_err(WholeHomeScrubError::new);
+        result?;
+        self.confirm_scrub_generation()
+    }
+
+    fn confirm_scrub_generation(&self) -> Result<(), WholeHomeScrubError> {
+        self.health
+            .admit_generation(self.admitted_generation)
+            .and_then(|admission| admission.confirm())
+            .map_err(|error| WholeHomeScrubError::new(std::sync::Arc::new(error.into())))
     }
 
     fn scrub_registered_domains_once(&self) -> Result<(), DomainValidationError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {
@@ -112,7 +123,7 @@ impl HomeStore {
 
     /// Reacquires one typed domain handle for the current healthy generation.
     pub fn domain_handle<D: StorageDomain>(&self) -> Result<DomainHandle<D>, DomainHandleError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         self.domain_handle_admitted(admission)
     }
 

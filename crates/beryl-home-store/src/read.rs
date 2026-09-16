@@ -489,7 +489,7 @@ impl HomeStore {
         access: StoreOperationAccess,
         operation: impl FnOnce(&StoreGeneration) -> Result<T, ReadError>,
     ) -> Result<T, ReadError> {
-        let admission = access.admit(&self.health)?;
+        let admission = access.admit(self)?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

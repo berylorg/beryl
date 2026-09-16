@@ -195,7 +195,7 @@ impl HomeStore {
         handle: &ReconciliationHandle,
     ) -> Result<ReconciliationResolution, ReconciliationFailure> {
         access
-            .admit(&self.health)
+            .admit(self)
             .and_then(|admission| admission.confirm())
             .map_err(|error| {
                 failure(ReconciliationFailureInner::HookAccess {
@@ -259,7 +259,7 @@ impl HomeStore {
         handle: &ReconciliationHandle,
     ) -> Result<ReconciliationResolution, ReconciliationFailure> {
         access
-            .admit(&self.health)
+            .admit(self)
             .and_then(|admission| admission.confirm())
             .map_err(|error| {
                 failure(ReconciliationFailureInner::HookAccess {
@@ -297,7 +297,7 @@ impl HomeStore {
         handle: &ReconciliationHandle,
         inner: &Arc<RegistryInner>,
     ) -> Result<ReconciliationExecution, ReconciliationFailure> {
-        let admission = access.admit(&self.health).map_err(|error| {
+        let admission = access.admit(self).map_err(|error| {
             failure(ReconciliationFailureInner::HookAccess {
                 domain: "home",
                 source: DomainCallbackSource::Read(ReadError::HealthGate(error)),

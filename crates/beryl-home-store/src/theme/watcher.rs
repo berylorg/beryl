@@ -153,7 +153,7 @@ impl HomeStore {
         &self,
         limits: ThemeWatchLimits,
     ) -> Result<ThemeWatchSubscription, ThemeWatchError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation_guard = self
             .generation
             .read()

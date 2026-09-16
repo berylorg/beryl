@@ -138,11 +138,13 @@ impl HomeStore {
             return Err(PersistedCorruptionError::ReentrantWriter);
         }
         let _writer = self.acquire_writer().map_err(|_| {
-            self.health.signal_failure(FailureSeverity::Structural);
+            if let Ok(admission) = self.health.admit_generation(self.admitted_generation) {
+                admission.fail(FailureSeverity::Structural);
+            }
             PersistedCorruptionError::WriterPoisoned
         })?;
         let _active = ActiveWriter::enter(self.writer_id);
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let _fail_closed_on_panic = FailClosedOnPanic { store: self };
         let generation = match self.generation.read() {
             Ok(generation) => generation,

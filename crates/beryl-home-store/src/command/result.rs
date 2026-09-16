@@ -369,7 +369,7 @@ impl HomeStore {
         receipt: &CommitReceipt,
         handle: &DomainHandle<D>,
     ) -> Result<Option<DomainRevision>, CommitReceiptError> {
-        let admission = access.admit(&self.health)?;
+        let admission = access.admit(self)?;
         let generation_guard = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

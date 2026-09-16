@@ -25,6 +25,9 @@ use crate::{
 
 mod opening;
 mod profile;
+mod service_reference;
+
+pub use service_reference::HomeServiceReference;
 
 use opening::create_fresh_database;
 pub(crate) use opening::open_existing_database;
@@ -147,12 +150,12 @@ impl HomeOpenOptions {
 /// Dropping this value releases disposable Fjall state. It releases process
 /// ownership only when no retained reconciliation scope remains.
 pub struct HomeStore {
-    pub(crate) generation: RwLock<Option<StoreGeneration>>,
-    pub(crate) registrations: Mutex<Vec<DomainBlueprint>>,
-    pub(crate) writer: Mutex<()>,
+    pub(crate) generation: Arc<RwLock<Option<StoreGeneration>>>,
+    pub(crate) registrations: Arc<Mutex<Vec<DomainBlueprint>>>,
+    pub(crate) writer: Arc<Mutex<()>>,
     pub(crate) mutation_boundary: Arc<crate::mutation_observation::MutationBoundary>,
-    pub(crate) theme_mutation: Mutex<()>,
-    pub(crate) theme_watcher: crate::theme::ThemeWatcherCoordinator,
+    pub(crate) theme_mutation: Arc<Mutex<()>>,
+    pub(crate) theme_watcher: Arc<crate::theme::ThemeWatcherCoordinator>,
     pub(crate) writer_id: StoreInstanceId,
     pub(crate) health: Arc<HealthGate>,
     pub(crate) faults: FaultController,
@@ -164,6 +167,8 @@ pub struct HomeStore {
     pub(crate) home_id: BerylHomeId,
     pub(crate) schema: HomeSchemaVersion,
     pub(crate) recovery_transferred: bool,
+    pub(crate) owns_lifecycle: bool,
+    pub(crate) admitted_generation: crate::HomeGeneration,
 }
 
 impl HomeStore {
@@ -239,17 +244,17 @@ impl HomeStore {
             Arc::clone(&lifecycle),
         );
         Ok(Self {
-            generation: RwLock::new(Some(StoreGeneration {
+            generation: Arc::new(RwLock::new(Some(StoreGeneration {
                 database: opened.database,
                 control: opened.control,
                 registry: DomainRegistry::default(),
                 instance_id,
-            })),
-            registrations: Mutex::new(Vec::new()),
-            writer: Mutex::new(()),
+            }))),
+            registrations: Arc::new(Mutex::new(Vec::new())),
+            writer: Arc::new(Mutex::new(())),
             mutation_boundary: Arc::new(crate::mutation_observation::MutationBoundary::default()),
-            theme_mutation: Mutex::new(()),
-            theme_watcher: crate::theme::ThemeWatcherCoordinator::default(),
+            theme_mutation: Arc::new(Mutex::new(())),
+            theme_watcher: Arc::new(crate::theme::ThemeWatcherCoordinator::default()),
             writer_id,
             health,
             faults,
@@ -261,6 +266,8 @@ impl HomeStore {
             home_id: opened.header.home_id,
             schema: opened.header.schema,
             recovery_transferred: false,
+            owns_lifecycle: true,
+            admitted_generation: crate::HomeGeneration::INITIAL,
         })
     }
 
@@ -340,9 +347,12 @@ impl HomeStore {
     }
 
     fn release_disposable(&mut self) {
+        if !self.recovery_transferred {
+            self.health.retire_generation(self.admitted_generation);
+        }
         self.theme_watcher.shutdown();
         self.registrations
-            .get_mut()
+            .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
         self.retire_generation();
@@ -352,7 +362,7 @@ impl HomeStore {
         self.mutation_boundary.close();
         let generation = self
             .generation
-            .get_mut()
+            .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take();
         drop(generation);
@@ -390,6 +400,9 @@ impl fmt::Debug for HomeStore {
 
 impl Drop for HomeStore {
     fn drop(&mut self) {
+        if !self.owns_lifecycle {
+            return;
+        }
         if self.recovery_transferred {
             self.release_disposable();
             return;

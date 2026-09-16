@@ -274,8 +274,37 @@ impl HealthGate {
         }
     }
 
-    pub(crate) fn admit(&self) -> Result<HealthAdmission<'_>, HealthGateError> {
-        self.admit_state(HomeHealthState::Healthy)
+    pub(crate) fn admit_generation(
+        &self,
+        generation: HomeGeneration,
+    ) -> Result<HealthAdmission<'_>, HealthGateError> {
+        let admission = self.admit_state(HomeHealthState::Healthy)?;
+        if admission.generation != generation {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            return Err(gate_error(&inner));
+        }
+        Ok(admission)
+    }
+
+    pub(crate) fn retire_generation(&self, generation: HomeGeneration) {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if inner.generation != generation {
+            return;
+        }
+        inner.state = HomeHealthState::Failed;
+        self.drained.notify_all();
+        while inner.active != 0 {
+            inner = self
+                .drained
+                .wait(inner)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
     }
 
     pub(crate) fn admit_opening(&self) -> Result<HealthAdmission<'_>, HealthGateError> {

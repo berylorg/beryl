@@ -29,7 +29,7 @@ impl HomeStore {
             actual: u64::MAX,
         })?;
         ensure_bound(actual, limit)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {
@@ -73,7 +73,7 @@ impl HomeStore {
         limit: SidecarByteLimit,
     ) -> Result<VerifiedSidecar, SidecarError> {
         ensure_bound(address.length, limit)?;
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {

@@ -59,6 +59,13 @@ structural lifecycle and health, same-home recovery, and whole-home scrub. It is
 - A registration-complete candidate exposes exact metadata and non-owning typed handles for
   dependent-service construction. Shared references retained by those services remain subject to
   the ordinary opening gate. Neither a clone nor a constructor makes them healthy.
+- `HomeOpenPublication`, `HomeRecoveryCandidate` and the published `HomeStore` expose
+  `service_reference`, returning a cloneable `HomeServiceReference` with borrowed ordinary-store
+  access. It cannot become an owned store or acquire close or recovery authority. Its operations
+  remain bound to its original generation across publication and later recovery. Releasing a
+  reference does not retire the home; owner cleanup drains admitted work and synchronously retires
+  attachments and disposable storage even when references remain. Unresolved reconciliation retains
+  the existing conservative lock custody.
 - Candidate recovery uses a distinct borrowed access object bound to the same candidate, closed
   registration set and generation. It supports the bounded typed reads, revision-checked commands,
   candidate receipt interpretation and exact reconciliation needed by the owning recovery sequence.

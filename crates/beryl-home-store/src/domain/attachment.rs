@@ -289,7 +289,7 @@ impl HomeStore {
         capability: &DomainAttachmentCapability<D>,
         callback: impl FnOnce(&D::RuntimeAttachment) -> R,
     ) -> Result<R, DomainAttachmentAccessError> {
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         self.with_domain_attachment_admitted(admission, capability, callback)
     }
 

@@ -23,6 +23,49 @@ static FIRST_RUN: LazyLock<(Mutex<bool>, Condvar)> =
     LazyLock::new(|| (Mutex::new(false), Condvar::new()));
 static SERIAL: Mutex<()> = Mutex::new(());
 
+#[cfg(feature = "test-faults")]
+#[test]
+fn stale_service_reference_cannot_join_a_recovered_scrub_flight() {
+    use beryl_home_store::test_faults::{FaultController, FaultPoint};
+    use beryl_home_store::{
+        HomeHealthState, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion,
+    };
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut candidate = HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    candidate.register_domain::<support::AlphaDomain>().unwrap();
+    let store = candidate
+        .prepare_publication(
+            HomeDomainRequirements::new()
+                .with_domain::<support::AlphaDomain>()
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    let old = store.service_reference();
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(store.home_revision().is_err());
+    let store = store.recover_same_home().unwrap().publish().unwrap();
+    let fresh = store.service_reference();
+    let terminal = store.block_next_scrub_terminal_decision();
+    let worker = thread::spawn(move || fresh.scrub_whole_home(WholeHomeScrubTrigger::Explicit));
+    assert!(terminal.wait_until_reached(Duration::from_secs(10)));
+    assert!(
+        old.scrub_whole_home(WholeHomeScrubTrigger::CorruptionEvidence)
+            .is_err()
+    );
+    assert_eq!(store.scrub_test_requests_entered(), 1);
+    terminal.release();
+    worker.join().unwrap().unwrap();
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    store.close().unwrap();
+}
+
 struct ScrubDomain;
 
 impl StorageDomain for ScrubDomain {

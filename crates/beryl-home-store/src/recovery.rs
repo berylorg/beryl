@@ -109,6 +109,13 @@ impl std::fmt::Debug for HomeRecoveryCandidate {
 }
 
 impl HomeRecoveryCandidate {
+    pub fn service_reference(&self) -> crate::HomeServiceReference {
+        self.store
+            .as_ref()
+            .expect("candidate store is present")
+            .service_reference()
+    }
+
     pub fn recovery_access(
         &mut self,
     ) -> Result<crate::HomeCandidateRecoveryAccess<'_>, crate::HomeCandidateError> {
@@ -374,8 +381,7 @@ impl HomeStore {
             .lock()
             .map_err(|_| HomeRecoveryError::LockPoisoned)?
             .clone();
-        let old_writer = std::mem::replace(&mut self.writer, std::sync::Mutex::new(()));
-        drop(old_writer);
+        self.writer = std::sync::Arc::new(std::sync::Mutex::new(()));
         self.mutation_boundary.close();
         let mut generation_slot = self
             .generation
@@ -422,25 +428,27 @@ impl HomeStore {
             })?;
         let writer_id = crate::store::next_writer_instance();
         let recovered = HomeStore {
-            generation: std::sync::RwLock::new(Some(generation)),
-            registrations: std::sync::Mutex::new(registrations),
-            writer: std::sync::Mutex::new(()),
+            generation: std::sync::Arc::new(std::sync::RwLock::new(Some(generation))),
+            registrations: std::sync::Arc::new(std::sync::Mutex::new(registrations)),
+            writer: std::sync::Arc::new(std::sync::Mutex::new(())),
             mutation_boundary: std::sync::Arc::new(
                 crate::mutation_observation::MutationBoundary::default(),
             ),
-            theme_mutation: std::sync::Mutex::new(()),
-            theme_watcher: crate::theme::ThemeWatcherCoordinator::default(),
+            theme_mutation: std::sync::Arc::new(std::sync::Mutex::new(())),
+            theme_watcher: std::sync::Arc::new(crate::theme::ThemeWatcherCoordinator::default()),
             writer_id,
             health: std::sync::Arc::clone(&self.health),
             faults: self.faults.clone(),
             reconciliation: self.reconciliation.clone(),
-            scrub: std::sync::Arc::clone(&self.scrub),
+            scrub: std::sync::Arc::new(crate::scrub::ScrubCoordinator::default()),
             lifecycle: std::sync::Arc::clone(&self.lifecycle),
             storage_profile: self.storage_profile,
             database_path: self.database_path.clone(),
             home_id: self.home_id,
             schema: self.schema,
             recovery_transferred: false,
+            owns_lifecycle: true,
+            admitted_generation: next,
         };
         Ok((recovered, RecoveryReceipt { generation: next }))
     }

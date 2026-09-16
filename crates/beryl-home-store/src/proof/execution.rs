@@ -14,7 +14,7 @@ impl crate::HomeStore {
         if ActiveWriter::already_active(self.writer_id) {
             return Err(ProofCompositionError::ReentrantWriter);
         }
-        let admission = self.health.admit()?;
+        let admission = self.health.admit_generation(self.admitted_generation)?;
         if cancellation.is_cancelled() {
             return Err(ProofCompositionError::CancelledBeforeAdmission);
         }
