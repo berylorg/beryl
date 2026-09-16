@@ -183,8 +183,9 @@ fn converge_case(
             diagnostics.deferred_compactions = diagnostics.deferred_compactions.saturating_add(1);
         }
         DeliveryRecoveryCase::Settled { .. } => {}
-        DeliveryRecoveryCase::DeferredRepair { .. } => {
-            return Err(ProjectionCoordinatorError::TerminalRepairRecoveryUnavailable);
+        DeliveryRecoveryCase::DeferredRepair { thread_id, turn_id } => {
+            home.converge_repair(storage, thread_id, turn_id)?;
+            diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
         }
     }
     Ok(())

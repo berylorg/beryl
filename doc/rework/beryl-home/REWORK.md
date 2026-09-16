@@ -438,12 +438,12 @@
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
 - [x] Established exact pinned evidence requiring unavailable repair for the current supported thread population, with the [source limitation](../../failures/cas-terminal-repair-full-view-is-not-completeness.md) retained.
-- [ ] Accept non-GUI recovery through the existing explicit-incomplete outcome before branch services and complete graph publication, retaining separate product-mounting acceptance.
+- [x] Accepted ordinary and candidate startup recovery through explicit incomplete history, with retained repair provenance, bounded finalization, reconciliation custody and gate release. Product mounting and fresh-service replacement remain separate.
 - [ ] Add the private bounded exact terminal-turn backend adapter only after new exact source evidence proves eligibility, with no cursor traversal or history fallback.
 - [ ] Add snapshot-specific paged Syndic repair records and atomic repaired snapshot selection only when repair eligibility is proven, without making those conditional components prerequisites of unavailable-repair recovery.
-- [ ] Enforce repair-required successor gates before mounting dispatch while unrelated threads
+- [x] Enforce repair-required successor gates before mounting dispatch while unrelated threads
   remain independent.
-- [ ] Accept bounded explicit-incomplete finalization and coherent publication before releasing repair-required gates while preserving durable request disposition.
+- [x] Accepted bounded explicit-incomplete finalization and coherent publication before releasing repair-required gates while preserving durable request disposition; storage and startup regression evidence passed independent semantic review.
 - [ ] Implement the durable target-scoped request claim and repaired finalization path only after repair eligibility is proven, without runtime dispatch mounting.
 - [ ] Add the prioritized outage buffer for already-active exact targets without making buffered
   content canonical history.

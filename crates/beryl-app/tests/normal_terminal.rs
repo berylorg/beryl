@@ -38,6 +38,8 @@ mod loss;
 mod ordinary_custody;
 #[path = "normal_terminal/permission_work.rs"]
 mod permission_work;
+#[path = "accepted_delivery_recovery/repair_startup.rs"]
+mod repair_startup;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "normal_terminal/steering_loss.rs"]

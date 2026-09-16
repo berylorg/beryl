@@ -1,9 +1,10 @@
-use beryl_home_store::{HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, BindingRevision, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AbandonActiveBinding, AbandonStopOperation, DeliveryRecoveryCase,
+    AbandonActiveBinding, AbandonStopOperation, ConvergeRepairIncomplete, DeliveryRecoveryCase,
     DeliveryRecoveryClassificationError, DeliveryRecoverySource, DeliveryRecoveryStartupCursor,
-    DeliveryRecoveryStartupPage, SyndicReadError, SyndicStorage, SyndicTimestamp,
+    DeliveryRecoveryStartupPage, InputGateState, SyndicReadError, SyndicStorage, SyndicTimestamp,
+    TurnIncompleteReason,
 };
 
 use super::{point_limit, startup_page_limits};
@@ -18,6 +19,77 @@ pub(super) enum StartupAccess<'a> {
 }
 
 impl StartupAccess<'_> {
+    pub(super) fn converge_repair(
+        self,
+        storage: &SyndicStorage,
+        thread: SyndicThreadId,
+        turn: SyndicTurnId,
+    ) -> Result<(), ProjectionCoordinatorError> {
+        let (gate, state) = match self {
+            Self::Ordinary(home, ..) => (
+                storage.input_gate(home, thread, point_limit()),
+                storage.turn_state(home, turn, point_limit()),
+            ),
+            Self::Candidate(home) => (
+                storage.input_gate_candidate(home, thread, point_limit()),
+                storage.turn_state_candidate(home, turn, point_limit()),
+            ),
+        };
+        let gate = gate
+            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
+            .ok_or(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant)?;
+        let state = state
+            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
+            .ok_or(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant)?;
+        let InputGateState::RepairRequired(target) = gate.state() else {
+            return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant);
+        };
+        if target.turn_id() != turn {
+            return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant);
+        }
+        let observed_at = super::system_timestamp_at_least(state.updated_at())?;
+        let command = storage.current_converge_repair_incomplete(ConvergeRepairIncomplete::new(
+            thread,
+            gate.revision(),
+            state.revision(),
+            target.clone(),
+            TurnIncompleteReason::AuthorityLost,
+            observed_at,
+        ));
+        let outcome = match self {
+            Self::Ordinary(home, ..) => home.execute_current(command),
+            Self::Candidate(home) => home.execute_current(command),
+        };
+        match outcome {
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            } => {}
+            CommandOutcome::NotCommitted { evidence } => {
+                return Err(ProjectionCoordinatorError::CommandNotCommitted(evidence));
+            }
+            CommandOutcome::Committed {
+                receipt,
+                later_failure: Some(later_failure),
+                ..
+            } => {
+                return Err(ProjectionCoordinatorError::CommandCommitted {
+                    receipt,
+                    later_failure,
+                });
+            }
+            CommandOutcome::Indeterminate {
+                failure,
+                reconciliation,
+            } => {
+                reconciliation.install();
+                return Err(ProjectionCoordinatorError::CommandIndeterminate { failure });
+            }
+        }
+        self.converge_history(storage, thread, turn, observed_at)
+            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)
+    }
+
     pub(super) fn page(
         self,
         storage: &SyndicStorage,

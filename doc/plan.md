@@ -52,21 +52,35 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 469: Converge Unavailable Repair To Incomplete History (finished)
+# Phase 470: Integrate Unavailable-Repair Startup Recovery (finished)
 
-Accepted exact incomplete convergence with immutable target/disposition retention, original source
-preservation, atomic projection invalidation and later-successor provenance validation. Corrected
-the active transcript-build supersession revision check. The 154-case storage regression run and
-65-case repair/transcript run passed, including acknowledgement reconciliation, reopen, queue
-preservation and gate release. Storage/app checks, formatting, Markdown reconciliation and
-independent integrity review passed. Startup recovery integration remains below.
+Accepted ordinary and candidate startup convergence through explicit incomplete history, bounded
+finalization and coherent gate release. Request disposition and original terminal evidence survive
+restart; ambiguous command outcomes retain reconciliation custody. Three new recovery tests,
+63 existing app regressions and 49 storage tests passed, along with the app check, formatting,
+Markdown reconciliation and independent semantic review. Outage capture and fresh-service
+replacement remain separate below.
 
-# Phase 470: Integrate Unavailable-Repair Startup Recovery (pending)
+# Phase 478: Implement Bounded Outage Fact Retention (pending)
 
-Connect accepted gate classification and incomplete convergence to ordinary and candidate startup
-recovery, preserving bounded finalization, coherent publication and gate release without backend
-history requests or replay of possible-dispatch work. Outage capture and whole-service replacement
-remain separate tracker slices before branch services and complete graph publication.
+Implement the app-owned fixed-capacity outage buffer from the CAS-live and live-capture contracts:
+already-active exact targets, bounded normalized facts, retention priorities and explicit gap
+tracking. Verify count, encoded-byte, field and target bounds and priority eviction. Buffered
+facts remain transient and cannot establish repair authority. Live failure routing remains below.
+
+# Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
+
+Route ordinary durable-store failures through the accepted outage buffer and admission fence,
+preserving exact active-target custody and bounded teardown without transferring buffered facts
+or process-local authority to replacement. Verify failure, overflow and retirement cuts before
+accepting this non-GUI integration.
+
+# Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
+
+Resolve the concrete component boundaries for the backend-runtime system's ordered fresh-service
+recovery protocol, using accepted candidate convergence and service ownership. Derive bounded
+implementation phases for disposal, same-home reopening, supervisor attachment and publication
+custody before branch services. Complete-stack publication and product mounting remain separate.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

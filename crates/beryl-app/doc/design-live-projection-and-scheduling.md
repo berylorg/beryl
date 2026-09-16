@@ -234,6 +234,12 @@ topology and typed execution surfaces.
 - The unpublished fresh stack performs bounded durable pending, stop, compaction, terminal-history,
   and repair convergence off the GPUI thread before scheduler, projection acquisition, admission,
   or execution wakes open.
+- Ordinary and candidate startup recovery resolve a durable repair-required gate through Syndic's
+  exact incomplete-convergence command when the pinned repair source is unavailable. They retain
+  the original target and request disposition, record `AuthorityLost`, and finish bounded canonical
+  and transcript publication before releasing the gate. Command failure prevents recovery success;
+  indeterminate outcomes install home reconciliation custody. Restart resumes from the durable
+  repair or finalizing-history state without recreating backend request authority.
 - A sealed recovery-ready handoff is consumed only after supervisor attachment and atomic whole-
   stack publication, opening fresh lanes and projection establishment from durable authority.
 - Old-generation schedulers, connections, flights, leases, workers, projections, and route
