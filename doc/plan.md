@@ -52,26 +52,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 451: Converge Candidate Deferred Compaction (finished)
+# Phase 449: Connect Candidate Startup Recovery (finished)
 
-Accepted shared ordinary/candidate compaction restart convergence with exact settlement decisions,
-outcomes and custody. Four focused tests, 37 ordinary regressions, normal compilation and independent
-review passed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-deferred-compaction-convergence).
+Accepted shared sequential ordinary/candidate startup recovery with bounded pages, one drift restart,
+cursor rebase, exact convergence and diagnostic accounting. All 80 focused and affected regression
+checks, normal compilation and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-integration).
 
-# Phase 449: Connect Candidate Startup Recovery (wip)
-
-Connect accepted candidate discovery/classification, terminal-history convergence and source-less
-publication to the sequential startup recovery pass, including accepted deferred compaction settlement and
-bounded cursor restart/rebase. Do not construct or publish CAS services in this boundary.
-
-Preserve the shared sequential case decisions, bounded source pages, single source-drift restart,
-cursor rebase, exact terminal-history and compaction outcomes, and diagnostic accounting. Verify
-initial/recovered candidate recovery across pending, active, stopping, post-abandonment, finalizing,
-deferred-compaction and settled cases, including source drift and failure custody. Run focused
-candidate/startup regressions and normal compilation; independently review ordering, identity,
-no-replay and prepublication isolation before acceptance.
-
-# Phase 438: Connect Typed Candidate Convergence Consumers (pending)
+# Phase 438: Connect Typed Candidate Convergence Consumers (wip)
 
 Adapt remaining exact Beryl-state and Syndic startup recovery reads, mutations, receipt interpretation
 and reconciliation required by service preparation. Split independently verifiable consumer boundaries

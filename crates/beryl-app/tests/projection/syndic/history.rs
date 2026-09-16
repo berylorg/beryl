@@ -120,7 +120,7 @@ impl Fixture {
                 user_observed_at,
             );
         }
-        let item = SyndicItemId::from_bytes([self.next_item; 16]);
+        let item = SyndicItemId::from_bytes(super::counter_identity(self.next_item));
         self.next_item = self.next_item.checked_add(1).unwrap();
         let cas_item = CasItemId::new(format!("item-{item}")).unwrap();
         let agent_value = |text: &str| {

@@ -1,10 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod compaction_access;
+mod startup_access;
 
 use beryl_home_store::{CursorReadLimits, HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
 use compaction_access::CompactionAccess;
+use startup_access::StartupAccess;
 use syndic_storage::{
     AbandonCompactionOperation, AbandonStopOperation, CompactionAbandonmentReason,
     CompactionAdmissionRead, CompactionOperationState, CompactionRecoveryCase,
@@ -20,7 +22,6 @@ use super::{
     accepted_input_scheduler::StartupRecoveryDiagnostics,
     live_source::{LiveSourceFrontier, LiveSourceTarget, publish_reconciled},
     ordinary::converge_terminal_history,
-    publication,
 };
 
 const STALE_REASON: &str = "restart lost active CAS projection authority";
@@ -32,12 +33,28 @@ pub(super) fn recover_startup(
     home_generation: HomeGeneration,
     storage: &SyndicStorage,
 ) -> Result<StartupRecoveryDiagnostics, ProjectionCoordinatorError> {
+    recover_startup_with_access(
+        StartupAccess::Ordinary(home, home_id, home_generation),
+        storage,
+    )
+}
+
+pub(super) fn recover_startup_candidate(
+    home: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+) -> Result<StartupRecoveryDiagnostics, ProjectionCoordinatorError> {
+    recover_startup_with_access(StartupAccess::Candidate(home), storage)
+}
+
+fn recover_startup_with_access(
+    home: StartupAccess<'_>,
+    storage: &SyndicStorage,
+) -> Result<StartupRecoveryDiagnostics, ProjectionCoordinatorError> {
     let mut diagnostics = StartupRecoveryDiagnostics::default();
     let mut cursor = None;
     let mut source_restart_used = false;
     'scan: loop {
-        let page = match storage.delivery_recovery_startup_page(home, cursor, startup_page_limits())
-        {
+        let page = match home.page(storage, cursor) {
             Ok(page) => page,
             Err(
                 syndic_storage::SyndicReadError::StaleNonIdleGateSourceScan
@@ -55,7 +72,12 @@ pub(super) fn recover_startup(
         diagnostics.page_reads = diagnostics.page_reads.saturating_add(1);
         for source in page.records() {
             diagnostics.cases = diagnostics.cases.saturating_add(1);
-            let case = match storage.classify_delivery_recovery(home, source, point_limit()) {
+            #[cfg(feature = "test-faults")]
+            super::test_faults::pause_startup_classification(
+                source.thread_id(),
+                diagnostics.page_reads,
+            );
+            let case = match home.classify(storage, source) {
                 Ok(case) => case,
                 Err(DeliveryRecoveryClassificationError::SourceDrift) if !source_restart_used => {
                     source_restart_used = true;
@@ -72,20 +94,12 @@ pub(super) fn recover_startup(
                     return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead);
                 }
             };
-            converge_case(
-                home,
-                home_id,
-                home_generation,
-                &storage,
-                case,
-                &mut diagnostics,
-            )?;
+            converge_case(home, storage, case, &mut diagnostics)?;
         }
         match page.next_cursor() {
             Some(next) => {
                 cursor = Some(
-                    storage
-                        .rebase_delivery_recovery_startup_cursor(home, next)
+                    home.rebase(storage, next)
                         .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?,
                 );
             }
@@ -95,9 +109,7 @@ pub(super) fn recover_startup(
 }
 
 fn converge_case(
-    home: &HomeStore,
-    home_id: BerylHomeId,
-    home_generation: HomeGeneration,
+    home: StartupAccess<'_>,
     storage: &SyndicStorage,
     case: DeliveryRecoveryCase,
     diagnostics: &mut StartupRecoveryDiagnostics,
@@ -111,25 +123,10 @@ fn converge_case(
             let request = active
                 .generic_abandonment(STALE_REASON, observed_at)
                 .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant)?;
-            publication::abandon_active_reconciled(
-                home,
-                home_id,
-                home_generation,
-                storage,
-                &request,
-                point_limit(),
-            )
-            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
+            home.abandon_active(storage, &request)
+                .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             diagnostics.active_convergences = diagnostics.active_convergences.saturating_add(1);
-            publish_source_less_terminal(
-                home,
-                home_id,
-                home_generation,
-                storage,
-                active.thread_id(),
-                active.turn_id(),
-                observed_at,
-            )?;
+            home.publish_terminal(storage, active.thread_id(), active.turn_id(), observed_at)?;
             diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
         }
         DeliveryRecoveryCase::Stopping(stopping) => {
@@ -150,25 +147,15 @@ fn converge_case(
                 stopping.startup_abandonment_reason(),
                 stale,
             );
-            publication::abandon_stop_reconciled(
-                home,
-                home_id,
-                home_generation,
-                storage,
-                &request,
-                point_limit(),
-            )
-            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
+            home.abandon_stop(storage, &request)
+                .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             diagnostics.active_convergences = diagnostics.active_convergences.saturating_add(1);
             if !provider_operation {
-                converge_terminal_history(
-                    home,
+                home.converge_history(
                     storage,
                     stopping.target().thread_id(),
                     stopping.target().turn_id(),
                     observed_at,
-                    point_limit(),
-                    None,
                 )
                 .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             }
@@ -179,15 +166,7 @@ fn converge_case(
             turn_id,
             minimum_timestamp,
         } => {
-            publish_source_less_terminal(
-                home,
-                home_id,
-                home_generation,
-                storage,
-                thread_id,
-                turn_id,
-                minimum_timestamp,
-            )?;
+            home.publish_terminal(storage, thread_id, turn_id, minimum_timestamp)?;
             diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
         }
         DeliveryRecoveryCase::FinalizingHistory {
@@ -195,20 +174,12 @@ fn converge_case(
             turn_id,
             minimum_timestamp,
         } => {
-            converge_terminal_history(
-                home,
-                storage,
-                thread_id,
-                turn_id,
-                minimum_timestamp,
-                point_limit(),
-                None,
-            )
-            .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
+            home.converge_history(storage, thread_id, turn_id, minimum_timestamp)
+                .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryPublication)?;
             diagnostics.terminal_convergences = diagnostics.terminal_convergences.saturating_add(1);
         }
         DeliveryRecoveryCase::DeferredCompaction { thread_id, turn_id } => {
-            converge_compaction_restart(home, storage, thread_id, turn_id)?;
+            home.converge_compaction(storage, thread_id, turn_id)?;
             diagnostics.deferred_compactions = diagnostics.deferred_compactions.saturating_add(1);
         }
         DeliveryRecoveryCase::Settled { .. } => {}

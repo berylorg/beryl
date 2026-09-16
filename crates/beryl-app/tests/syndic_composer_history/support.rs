@@ -34,8 +34,24 @@ pub fn activated(
     session: u8,
     operation: u8,
 ) -> (SyndicComposerHost, ComposerHostBinding) {
+    activated_with_ids(
+        storage,
+        store,
+        thread,
+        DraftEditorCandidateSessionIdV1::from_bytes([session; 16]),
+        DraftPieceOperationIdV1::from_bytes([operation; 16]),
+    )
+}
+
+pub fn activated_with_ids(
+    storage: SyndicStorage,
+    store: &HomeStore,
+    thread: beryl_model::SyndicThreadId,
+    session: DraftEditorCandidateSessionIdV1,
+    operation: DraftPieceOperationIdV1,
+) -> (SyndicComposerHost, ComposerHostBinding) {
     let mut host = SyndicComposerHost::new(storage);
-    let binding = reactivate(&mut host, store, thread, session, operation);
+    let binding = reactivate_with_ids(&mut host, store, thread, session, operation);
     (host, binding)
 }
 
@@ -46,10 +62,26 @@ pub fn reactivate(
     session: u8,
     operation: u8,
 ) -> ComposerHostBinding {
-    let request = ComposerHostActivationRequest::new(
+    reactivate_with_ids(
+        host,
+        store,
         thread,
         DraftEditorCandidateSessionIdV1::from_bytes([session; 16]),
         DraftPieceOperationIdV1::from_bytes([operation; 16]),
+    )
+}
+
+pub fn reactivate_with_ids(
+    host: &mut SyndicComposerHost,
+    store: &HomeStore,
+    thread: beryl_model::SyndicThreadId,
+    session: DraftEditorCandidateSessionIdV1,
+    operation: DraftPieceOperationIdV1,
+) -> ComposerHostBinding {
+    let request = ComposerHostActivationRequest::new(
+        thread,
+        session,
+        operation,
         NonZeroU64::MIN,
         None,
         Box::new([]),

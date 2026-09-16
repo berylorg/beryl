@@ -26,6 +26,8 @@ mod submission_fixture {
 mod candidate_abandonment;
 #[path = "normal_terminal/candidate_history.rs"]
 mod candidate_history;
+#[path = "accepted_delivery_recovery/candidate_startup.rs"]
+mod candidate_startup;
 #[path = "normal_terminal/compaction_custody.rs"]
 mod compaction_custody;
 #[path = "normal_terminal/completion.rs"]

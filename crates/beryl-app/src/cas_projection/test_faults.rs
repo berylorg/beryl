@@ -44,16 +44,18 @@ pub(crate) use promotion::{
 };
 pub use provider::*;
 pub use publication::{
-    abandon_active_candidate, abandon_stop_candidate, converge_compaction_restart,
-    converge_compaction_restart_candidate,
+    StartupRecoverySnapshot, abandon_active_candidate, abandon_stop_candidate,
+    converge_compaction_restart, converge_compaction_restart_candidate, recover_startup,
+    recover_startup_candidate,
 };
 pub use recovery::{
     RecoverySourceBarrierController, install_compaction_recovery_confirmation_barrier,
     install_recovery_cursor_open_barrier, install_recovery_page_handoff_barrier,
-    install_recovery_source_barrier,
+    install_recovery_source_barrier, install_startup_classification_barrier,
 };
 pub(crate) use recovery::{
     pause_compaction_recovery_confirmation, pause_recovery_page_handoff, pause_recovery_source,
+    pause_startup_classification,
 };
 pub use scheduler::AcceptedInputSchedulerPanicController;
 #[cfg(test)]

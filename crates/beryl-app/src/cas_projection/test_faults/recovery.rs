@@ -24,6 +24,26 @@ enum RecoveryBarrierStage {
     BeforeRead,
     PageHandoff,
     CompactionConfirmation,
+    StartupClassification,
+}
+
+pub fn install_startup_classification_barrier(
+    thread_id: SyndicThreadId,
+    page_reads: u64,
+) -> RecoverySourceBarrierController {
+    install_barrier(
+        thread_id,
+        page_reads,
+        RecoveryBarrierStage::StartupClassification,
+    )
+}
+
+pub(crate) fn pause_startup_classification(thread_id: SyndicThreadId, page_reads: u64) {
+    pause_recovery_barrier(
+        thread_id,
+        page_reads,
+        RecoveryBarrierStage::StartupClassification,
+    );
 }
 
 pub fn install_compaction_recovery_confirmation_barrier(

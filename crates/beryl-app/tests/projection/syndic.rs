@@ -77,8 +77,8 @@ pub struct Fixture {
     pub state: BerylState,
     pub cancellation: ProjectionCancellationToken,
     pub thread: SyndicThreadId,
-    next_draft: u8,
-    next_item: u8,
+    next_draft: u16,
+    next_item: u16,
     clock: u64,
 }
 
@@ -305,21 +305,22 @@ impl Fixture {
             beryl_app::composer_host::ComposerHostBinding,
         ) -> beryl_app::composer_host::ComposerHostBinding,
     ) -> (FirstAcceptanceKind, SyndicDraftId) {
-        let seed = self.next_draft;
-        let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
+        let counter = self.next_draft;
+        let seed = self.next_draft.to_le_bytes()[0];
+        let next_draft = SyndicDraftId::from_bytes(counter_identity(self.next_draft));
         self.next_draft = self.next_draft.checked_add(1).unwrap();
-        let user_item = SyndicItemId::from_bytes([self.next_item; 16]);
+        let user_item = SyndicItemId::from_bytes(counter_identity(self.next_item));
         self.next_item = self.next_item.checked_add(1).unwrap();
         let admitted_at = self.tick();
         let command_home = self.store.live_home_command().unwrap();
         let home = command_home.home();
         let assets = self.state.assets();
-        let (mut host, binding) = composer_support::activated(
+        let (mut host, binding) = composer_support::activated_with_ids(
             self.storage.clone(),
             home,
             thread,
-            seed,
-            seed.wrapping_add(1),
+            DraftEditorCandidateSessionIdV1::from_bytes(counter_identity(counter)),
+            DraftPieceOperationIdV1::from_bytes(counter_identity(counter.wrapping_add(1))),
         );
         let edited = edit(&mut host, home, binding);
         let source_draft = edited.candidate().draft_id();
@@ -331,8 +332,10 @@ impl Fixture {
                 beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
                 next_draft,
                 user_item,
-                DraftComposerMaterializationOperationIdV1::from_bytes([seed.wrapping_add(2); 16]),
-                DraftPieceOperationIdV1::from_bytes([seed.wrapping_add(3); 16]),
+                DraftComposerMaterializationOperationIdV1::from_bytes(counter_identity(
+                    counter.wrapping_add(2),
+                )),
+                DraftPieceOperationIdV1::from_bytes(counter_identity(counter.wrapping_add(3))),
                 admitted_at,
                 Self::submission_admission_requirement(),
             ))
@@ -344,7 +347,7 @@ impl Fixture {
                     ticket,
                     assets.clone(),
                     &seals,
-                    composer_support::operation_id(u64::from(seed) + 1_000),
+                    composer_support::operation_id(u64::from(counter) + 1_000),
                     marker_authority,
                     admitted_at,
                     &CommandCancellation::new(),
@@ -499,7 +502,17 @@ impl Fixture {
     }
 
     pub fn create_ordinary(&mut self, seed: u8) -> SyndicThreadId {
-        let thread = SyndicThreadId::from_bytes([seed; 16]);
+        self.create_ordinary_with_ids(
+            SyndicThreadId::from_bytes([seed; 16]),
+            SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+        )
+    }
+
+    pub fn create_ordinary_with_ids(
+        &mut self,
+        thread: SyndicThreadId,
+        draft: SyndicDraftId,
+    ) -> SyndicThreadId {
         let created_at = self.tick();
         let command_home = self.store.live_home_command().unwrap();
         let home = command_home.home();
@@ -509,7 +522,7 @@ impl Fixture {
                 self.storage.revision(home).unwrap(),
                 CreateThread::ordinary(
                     thread,
-                    SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+                    draft,
                     execution_binding(),
                     created_at,
                     history_policy(),
@@ -517,6 +530,11 @@ impl Fixture {
             ),
         );
         thread
+    }
+
+    pub fn set_submission_identity_counter(&mut self, counter: u16) {
+        self.next_draft = counter;
+        self.next_item = counter;
     }
 
     pub fn advance_unrelated_syndic_revision(&self, seed: u8) {
@@ -546,6 +564,16 @@ impl Fixture {
         self.clock = self.clock.checked_add(1).unwrap();
         SyndicTimestamp::from_unix_millis(value)
     }
+}
+
+fn counter_identity(counter: u16) -> [u8; 16] {
+    if let Ok(byte) = u8::try_from(counter) {
+        return [byte; 16];
+    }
+    let mut bytes = [counter.to_le_bytes()[0]; 16];
+    bytes[14] = counter.to_le_bytes()[1];
+    bytes[15] = !counter.to_le_bytes()[0];
+    bytes
 }
 
 pub fn point_limit() -> SyndicPointReadLimit {

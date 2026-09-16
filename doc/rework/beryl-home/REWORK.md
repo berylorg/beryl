@@ -392,6 +392,7 @@
 - [x] Accepted candidate source-less terminal publication with [stabilization, outcome and authority evidence](../../failures/target-bootstrap-composition.md#candidate-source-less-terminal-publication).
 - [x] Accepted candidate active-binding and stop-operation abandonment with [exact outcome and custody evidence](../../failures/target-bootstrap-composition.md#candidate-abandonment-commands).
 - [x] Accepted candidate deferred-compaction convergence with [settlement, confirmation and custody evidence](../../failures/target-bootstrap-composition.md#candidate-deferred-compaction-convergence).
+- [x] Accepted sequential candidate startup recovery with [case, paging, drift and custody evidence](../../failures/target-bootstrap-composition.md#candidate-startup-integration).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

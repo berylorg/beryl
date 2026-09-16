@@ -416,3 +416,27 @@ outcomes are inspected through a fresh candidate; tests settle reconciliation be
 All 37 ordinary compaction and source-boundary regressions passed (run
 `31361573-17b7-4ec5-a235-09ac59099e47`). Normal app compilation, formatting and diff checks passed;
 independent semantic review found no blocking issue.
+
+## Candidate Startup Integration
+
+Phase 449 accepted one sequential ordinary/candidate startup pass. Its access adapter dispatches
+the accepted bounded discovery, classification, abandonment, source-less publication, terminal-history
+and deferred-compaction operations while preserving case ordering, saturating diagnostics, one shared
+source-drift restart budget and forward cursor rebase. It constructs no CAS service, starts no worker,
+dispatches no provider operation and grants no ordinary admission or app publication authority.
+
+Five integration tests cover initial and recovered candidates across pending, active, ordinary and
+provider stopping, post-abandonment, finalizing, deferred-compaction and settled fixtures. They verify
+exact diagnostics, failed-command and installed reconciliation custody, publication refusal,
+foreign/stale handle rejection before fresh success, one classification-drift restart and refusal
+of a second drift. A 258-source scan verifies active-turn convergence followed by cursor rebase and
+exactly one visit to each of 257 pending turns across two pages.
+
+The bulk fixture initially reused byte-sized composer identities; merely widening draft/item counters
+did not remove wrapped session and mutation identities. Test helpers now carry full typed IDs through
+activation and submission, preserve existing small-fixture identities and use disjoint extended IDs.
+The final nextest run `b6cad0d0-cd2e-4eff-aa98-8280948b7afc` passed all 80 tests in 258.763 seconds
+across normal-terminal, compaction, compaction-source-boundary and composer-history targets. Normal
+app compilation, formatting and diff checks passed. Independent review accepted ordering, identity,
+no-replay, custody, prepublication isolation and the final test-helper correction. Service preparation
+and complete graph publication retain their later acceptance boundaries.
