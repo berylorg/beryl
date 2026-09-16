@@ -717,3 +717,21 @@ ordinary admission, unchanged published records and confirmation failure prevent
 Normal app library compilation, formatting, diff checks and independent review passed. Candidate
 managed-session configuration remains a separate prerequisite before complete graph integration;
 the remaining factory inventory is still open.
+
+## Candidate Managed Session Configuration
+
+Phase 462 closes the configuration gap identified above. The private prepared CAS owner consumes
+its custody while configuring runtime interest and the exact attached process-session provider.
+Shared validation uses candidate runtime-record and Asset-revision reads during preparation and
+retains the ordinary healthy-only entry. Policy, capacity, token mode/path/uniqueness and attached
+service ownership checks remain unchanged. Retained admission and tool authority require no
+healthy reads; configuration only notifies the already-fenced scheduler. Any error cancels and
+joins services before the owner discards its candidate.
+
+Nextest run `86428aaf-8edb-4b0b-9c29-4b1e2ac313c3` passed all 12 startup tests, including new dormant
+configuration and foreign-owner/assets, missing-runtime, capacity and confirmation rejection cases.
+Run `b0d4ff0a-f15b-4726-8a83-179649fdfd2f` passed all 29 managed-session regressions, including real
+process launch, execution without views, runtime retirement and joined shutdown. Normal app library
+compilation, exact-file formatting, diff checks and independent completion review passed. This
+accepts the configuration factory; complete graph publication still requires the remaining factory
+inventory and its separate integration boundary.

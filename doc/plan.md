@@ -52,18 +52,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 461: Read Exact Runtime Records During Candidate Preparation (finished)
+# Phase 462: Prepare Managed Session Configuration Before Publication (finished)
 
-Accepted bounded candidate runtime-record reads with unchanged provenance, decoding and
-confirmation. All 12 focused state tests, normal app compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-runtime-record-validation).
-
-# Phase 462: Prepare Managed Session Configuration Before Publication (pending)
-
-Adapt the accepted managed-session configuration to candidate validation and private CAS custody,
-including runtime-interest configuration, exact session owner attachment, immutable bounds and
-ordinary tool authority. Preserve dormant startup and joined failure cleanup. Accept this factory
-separately before complete graph integration; finish the remaining factory inventory afterward.
+Accepted private candidate session configuration with shared ordinary validation and joined failure
+cleanup. All 12 startup tests, 29 managed-session regressions, normal app compilation and independent
+review passed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-managed-session-configuration).
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 
@@ -71,7 +64,7 @@ After every required service factory is independently accepted, compose and publ
 private graph with the same home generation, then release ordinary workers. Verify last-constructor
 failure, cancellation, startup convergence and publication rejection with full cleanup ownership.
 This integration cannot absorb missing service implementations or accept restored GUI visibility.
-Theme preparation is accepted; managed-session configuration still requires the prerequisite above.
+Theme preparation and candidate managed-session configuration are accepted.
 Finish the remaining graph-factory inventory before activating this phase.
 
 # Phase 415: Specify Restore-Set Startup Composition (pending)

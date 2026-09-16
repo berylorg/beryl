@@ -55,6 +55,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   creation and attachment also complete behind the startup fence before publication; workers
   retain their exact shutdown/join custody while waiting. A construction error or cancellation
   closes their admission and joins them before the candidate can be discarded.
+- Private CAS preparation configures runtime interest and the exact attached execution-session
+  owner through candidate runtime-record and Asset-revision validation. It preserves ordinary
+  policy, capacity, token-directory and owner checks while leaving ordinary admission closed.
+  Configuration only retains immutable preparation context and notifies the fenced scheduler;
+  it starts no runtime or session discovery. Failure consumes private service custody and joins
+  workers before candidate disposal.
 - Candidate terminal-history convergence uses the ordinary item-freeze/finalize, item-projection,
   selected-transcript and gate-release algorithm through borrowed candidate access. Exact bounded
   metadata/page reads retain their surrounding confirmation checks, and current-domain commands

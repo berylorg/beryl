@@ -64,6 +64,17 @@ fn candidate() -> (
     SyndicStorage,
     FaultController,
 ) {
+    let (directory, candidate, storage, faults, _) = candidate_with_state();
+    (directory, candidate, storage, faults)
+}
+
+fn candidate_with_state() -> (
+    tempfile::TempDir,
+    HomeOpenPublication,
+    SyndicStorage,
+    FaultController,
+    BerylState,
+) {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let mut candidate = HomeOpenCandidate::open_with_faults(
@@ -72,7 +83,7 @@ fn candidate() -> (
     )
     .unwrap();
     let storage = SyndicStorage::register(&mut candidate).unwrap();
-    BerylState::register(&mut candidate).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
     let candidate = candidate
         .prepare_publication(
             BerylState::required_domains()
@@ -81,7 +92,14 @@ fn candidate() -> (
                 .unwrap(),
         )
         .unwrap();
-    (directory, candidate, storage, faults)
+    (directory, candidate, storage, faults, state)
+}
+
+mod managed_sessions {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/initial_managed_sessions.rs"
+    ));
 }
 
 fn config() -> ProjectionServiceConfig {

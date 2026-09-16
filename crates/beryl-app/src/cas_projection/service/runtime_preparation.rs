@@ -16,6 +16,16 @@ impl ProjectionConnectionService {
     ) -> Result<(), RuntimeSessionPreparationError> {
         self.ensure_current()
             .map_err(|_| RuntimeSessionPreparationError::ServiceUnavailable)?;
+        self.configure_runtime_session_preparation_with_access(sessions, config, attention, None)
+    }
+
+    pub(super) fn configure_runtime_session_preparation_with_access(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        config: RuntimeSessionPreparationConfig,
+        attention: &Arc<ProcessLifecycleAttentionPool>,
+        candidate: Option<&beryl_home_store::HomeCandidateRecoveryAccess<'_>>,
+    ) -> Result<(), RuntimeSessionPreparationError> {
         let owner = self
             .runtime_interest
             .as_ref()
@@ -30,11 +40,14 @@ impl ProjectionConnectionService {
             return Err(RuntimeSessionPreparationError::InvalidConfiguration);
         }
         for (index, tokens) in config.token_directories.iter().enumerate() {
-            let runtime = config
-                .runtime_roots
-                .runtime(home, tokens.runtime_id)
-                .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?
-                .ok_or(RuntimeSessionPreparationError::InvalidConfiguration)?;
+            let runtime = match candidate {
+                Some(access) => config
+                    .runtime_roots
+                    .runtime_candidate(access, tokens.runtime_id),
+                None => config.runtime_roots.runtime(home, tokens.runtime_id),
+            }
+            .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?
+            .ok_or(RuntimeSessionPreparationError::InvalidConfiguration)?;
             if tokens.runtime.mode() != runtime.mode()
                 || (matches!(runtime.mode(), beryl_model::RuntimeMode::Host)
                     && tokens.host.as_str() != tokens.runtime.as_str())
@@ -45,10 +58,11 @@ impl ProjectionConnectionService {
                 return Err(RuntimeSessionPreparationError::InvalidConfiguration);
             }
         }
-        config
-            .assets
-            .revision(home)
-            .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?;
+        match candidate {
+            Some(access) => config.assets.revision_candidate(access),
+            None => config.assets.revision(home),
+        }
+        .map_err(|_| RuntimeSessionPreparationError::InvalidConfiguration)?;
         sessions.configure_preparation(PreparationContext {
             config,
             home: Arc::clone(home),

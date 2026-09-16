@@ -406,7 +406,8 @@
 - [x] Accepted dormant physical theme watchers with exact-generation release and joined cancellation; [acceptance evidence](../../failures/target-bootstrap-composition.md#dormant-physical-theme-watchers).
 - [x] Accepted typed theme subscription preparation with candidate qualification and joined activity custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#typed-theme-subscription-preparation).
 - [x] Accepted private app theme-runtime preparation and shared postpublication loading with exact-generation fencing; [acceptance evidence](../../failures/target-bootstrap-composition.md#app-theme-runtime-preparation). Complete graph composition remains open.
-- [x] Accepted bounded candidate runtime-record validation for managed-session preparation; [acceptance evidence](../../failures/target-bootstrap-composition.md#candidate-runtime-record-validation). Candidate session configuration and complete graph composition remain open.
+- [x] Accepted bounded candidate runtime-record validation for managed-session preparation; [acceptance evidence](../../failures/target-bootstrap-composition.md#candidate-runtime-record-validation).
+- [x] Accepted private candidate managed-session configuration with dormant scheduler attachment and joined failure cleanup; [acceptance evidence](../../failures/target-bootstrap-composition.md#candidate-managed-session-configuration). Complete graph composition and its remaining factory inventory remain open.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.

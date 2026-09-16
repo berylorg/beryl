@@ -15,9 +15,36 @@ pub(crate) enum CasPreparationError {
     Candidate(#[from] HomeCandidateError),
     #[error("initial CAS service preparation failed: {0}")]
     Service(#[from] ProjectionCoordinatorError),
+    #[error("initial runtime-interest configuration failed: {0}")]
+    RuntimeInterest(#[from] crate::cas_projection::RuntimeInterestError),
+    #[error("initial managed-session configuration failed: {0}")]
+    Session(#[from] crate::cas_projection::RuntimeSessionPreparationError),
 }
 
 impl PreparedCasServices {
+    pub(crate) fn configure_managed_sessions(
+        mut self,
+        sessions: &crate::cas_projection::ScheduledExecutionSessions,
+        interest: crate::cas_projection::RuntimeInterestConfig,
+        config: crate::cas_projection::RuntimeSessionPreparationConfig,
+        attention: &Arc<crate::lifecycle_attention::ProcessLifecycleAttentionPool>,
+    ) -> Result<Self, CasPreparationError> {
+        let service = self.service.as_mut().expect("prepared CAS service custody");
+        service.configure_runtime_interest(interest)?;
+        let access = self
+            .candidate
+            .as_mut()
+            .expect("prepared candidate custody")
+            .recovery_access()?;
+        service.configure_runtime_session_preparation_with_access(
+            sessions,
+            config,
+            attention,
+            Some(&access),
+        )?;
+        Ok(self)
+    }
+
     pub(crate) fn prepare(
         process: crate::process_admission::ProcessAdmissionGate,
         mut candidate: HomeOpenPublication,
