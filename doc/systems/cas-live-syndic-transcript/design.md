@@ -398,6 +398,11 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   uses only a complete durable staged candidate or converges incomplete. Only `ExactOld` may
   authorize the same claim command again. A consumed disposition is never reset by cancellation,
   response loss, process loss, recovery, or incomplete convergence.
+- Repair resolution survives gate exit as immutable authority on the exact Syndic turn. The
+  transition to `FinalizingHistory` atomically retains the original target, capture-gap evidence,
+  request disposition and closed resolution. Gate release, later turns and service replacement
+  preserve it. A resolved turn cannot enter repair again, including when unavailable repair
+  resolved an `Available` request without dispatch. Resolution is never a dispatch capability.
 - Consuming that non-cloneable capability sends exactly one experimental `thread/turns/list` request using the generated
   `ThreadTurnsListParams`: the authenticated `threadId`, no request cursor,
   `limit=1`, `sortDirection=desc`, and `itemsView=full`. It accepts only the generated

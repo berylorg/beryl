@@ -1543,6 +1543,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   claim revision transition before any backend dispatch capability exists. Response loss, process
   loss, recovery, or incomplete convergence never restores `Available`; recovery of `Consumed`
   without a complete staged response converges incomplete without another historical request.
+- Exiting repair atomically retains immutable resolved-repair authority on the existing turn state
+  before the gate can be released. It preserves the exact original target, gap witnesses, request
+  disposition and closed resolution. Every subsequent turn-state update preserves this authority;
+  the same turn can never be admitted for repair again. An unavailable repair retains `Available`
+  as historical provenance, not permission for a later request. Incomplete convergence preserves
+  the observed terminal outcome and records its independent closed history-incomplete reason;
+  it does not rewrite the original terminal source event.
 - A selected repair snapshot is canonical authority for one exact already-correlated terminal
   turn. A staged or merely sealed snapshot is not canonical authority, a source-event replay,
   imported conversation, catalog record, or general CAS history cache.

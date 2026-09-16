@@ -12,7 +12,7 @@ change persisted bytes.
   V1 and one exact package-owned record version selected per family. `source-events`,
   and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
   record V5;
-  `accepted-route-generations`, `turns`, and `turn-states` use record V3; `threads`, `drafts`,
+  `accepted-route-generations` and `turns` use record V3; `turn-states` uses record V4; `threads`, `drafts`,
   `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
@@ -576,13 +576,47 @@ canonical byte comparison of the point-read target closure.
 - Index values retain the authoritative identity plus the revision or digest needed to prove agreement. Empty marker values are not sufficient index authority.
 - Binding records are immutable revisioned history keyed by thread and binding revision. `binding-heads` selects exactly one current record per thread. `cas-thread-bindings` records immutable ordered membership for every CAS-bearing binding revision, while `cas-thread-index` permanently assigns each CAS thread identity to one Syndic thread, its first and latest binding revisions, and one-way retirement at the first stale or abandoned revision. A scoped binding read requires its membership sequence, binding history, and reservation frontiers to agree exactly within the named thread/CAS natural closure. After retirement, that CAS thread cannot authorize execution for either the original owner or another thread. Only agreement with the current valid or active binding head and a non-retired reverse record authorizes execution; a retired index entry is provenance, not live authorization.
 - Immutable turn topology and mutable lifecycle/frontier facts occupy separate `turns` and `turn-states` families so later event commits cannot rewrite parentage through a lifecycle update.
-- A V3 `turn-states` value appends one closed dispatch-provenance field after its existing
+- A V4 `turn-states` value retains one closed dispatch-provenance field after its existing
   timestamp. Tag `0` is unattempted; tag `1` is activated; tag `2` is cancelled; tag `3` is
   provider-operation. Tags `1` and `2` are followed by the 16-byte execution-snapshot identity and
   nonzero 64-bit active binding revision, using the canonical identity and integer encodings.
   Tags `0` and `3` have no payload. Unknown tags, truncated anchors, zero binding revisions and
-  trailing bytes are rejected. V2 turn-state records are rejected without inferred provenance,
-  compatibility decoding or migration. The family inventory and key remain unchanged.
+  malformed following fields are rejected. Prior turn-state versions are rejected without inferred
+  provenance, compatibility decoding or migration. The family inventory and key remain unchanged.
+- After dispatch provenance, V4 `turn-states` appends one optional resolved-repair field. Tag 0 is
+  absent; tag 1 is followed by the exact embedded repair-target encoding defined above, then the
+  closed resolution. Resolution tag 0 is `Incomplete`, followed by the existing canonical
+  `TurnIncompleteReason` encoding. No other resolution tag is admitted. Unknown optional or
+  resolution tags, malformed targets/reasons, truncation and trailing bytes are invalid encoding.
+  This is one bounded value on the existing turn, not a new family, snapshot or asset reference.
+  A future eligible snapshot-selection implementation must explicitly define its resolution
+  encoding and structural proof before admitting a successful-repair outcome.
+- A resolved target's turn identity equals its containing turn-state key and value. The target's
+  original terminal sequence equals the retained source-event frontier. The containing lifecycle
+  and terminal outcome remain the target's observed proven-terminal outcome; its independent
+  history-incomplete reason equals the resolution's closed reason. The original terminal event,
+  status, CAS correlation and optional issue witness remain unchanged and authenticate the
+  embedded target. Validation distinguishes that original source status from the resolved state's
+  history-incomplete reason; it does not require rewriting a source event to make them equal.
+- Only exact repair exit installs resolved authority, atomically with the checked next turn-state
+  revision, explicit incomplete status and `FinalizingHistory` successor gate. Installation
+  copies the current repair target and its `Available` or `Consumed` disposition exactly; it
+  cannot reset, consume or fabricate a claim. Existing resolved authority is immutable. All
+  later turn-state reconstruction, item/frontier finalization, projection work and gate release
+  preserve it. A conflicting attempted resolution rejects without publication.
+- Repair entry checks the target turn state for absence of resolved authority in the same admitted
+  domain read that authenticates the terminal target and current gate revision. Presence rejects
+  entry regardless of gate state, later gate revision, process lifetime or the retained request
+  disposition. Resolution replay authenticates the same exact target, disposition and resolution;
+  acknowledgement loss cannot replace a consumed claim with available provenance or create another
+  repair admission. An indeterminate transition retains ordinary home-store reconciliation custody
+  and supplies no backend capability.
+- Resolved-repair validation uses only the named turn, containing state, CAS reverse indexes,
+  original terminal and optional issue event and sealed issue-build metadata. It requires the
+  ordinary turn's origin ownership but not that the resolved turn remain the current tail: a later
+  successor is legitimate after gate release. It grants no permission to reopen repair. Routine
+  open and unrelated-thread mutations perform no repair scan. Explicit validation detects malformed
+  resolved references, while admitted updates preserve existing authority without broad traversal.
 - Dispatch provenance agrees with the immutable turn kind: ordinary-user and lifecycle-continuation
   turns cannot carry the provider-operation marker, and provider-operation turns must carry it.
   Anchored provenance names an ordinary execution snapshot and its exact active binding for that

@@ -52,13 +52,18 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 475: Validate Retained Repair Target Structure (finished)
+# Phase 476: Specify Repair Resolution Custody After Gate Exit (finished)
 
-Accepted the admitted-domain-reader check for exact terminal-tail ownership, ordinary turn,
-terminal frontier/status, CAS reverse indexes, source witnesses and sealed issue-build metadata.
-It uses six or eight bounded point reads and grants no request authority. All seven retained-store
-cases and 31 related regression cases passed, along with formatting/diff checks, Markdown
-reconciliation and independent integrity review. Gate persistence and admission remain phase 468.
+Specified the approved V4 turn-state resolution extension, immutable request provenance, atomic
+gate exit and permanent re-entry exclusion across the owning contracts. Independent lifecycle and
+persistence review, diff checks and Markdown reconciliation passed. Storage implementation follows.
+
+# Phase 477: Persist Resolved Repair In Turn State (pending)
+
+Implement the bounded incomplete-resolution value and V4 turn-state codec. Preserve the immutable
+extension through existing state reconstruction and validate its local identity/status/frontier
+invariants. Verify round trips, malformed bytes, preserved available/consumed provenance and later
+frontier updates. This component grants no repair entry, exit or backend authority.
 
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
 
@@ -66,20 +71,17 @@ Integrate the accepted repair values, target codec, witness computation and reta
 and same-thread admission exclusion; verify exact terminal-tail correlation, stale revisions,
 corruption rejection and unrelated-thread independence before app recovery consumes the gate.
 
-Blocked on 2026-09-17: the no-reset request contract lacks a specified durable carrier after
-incomplete convergence replaces `RepairRequired` with `FinalizingHistory`. Exact terminal evidence
-and a current gate revision cannot distinguish first admission from later re-entry. Independent
-review confirmed the gap; this turn's unaccepted gate edits were removed. Define persistent resolved
-repair authority and its atomic entry exclusion in the owning schema before resuming. The concrete
-recommendation is a bounded turn-state extension retaining target, resolution and original request
-disposition, including consumed claim provenance; see
-[durable-once failure evidence](failures/cas-terminal-repair-dispatch-must-be-durable-once.md#post-gate-custody-gap).
+Consume the accepted turn-state resolution component to reject resolved-target re-entry in the
+same admitted read. The Operator approved the missing custody correction on 2026-09-17; see
+[durable-once evidence](failures/cas-terminal-repair-dispatch-must-be-durable-once.md#post-gate-custody-gap).
 
 # Phase 469: Converge Unavailable Repair To Incomplete History (pending)
 
 Implement the bounded durable transition from an exact repair-required target to explicit
 incomplete authority and `FinalizingHistory`, selecting no snapshot or repair asset; verify
 publication ambiguity, replay and request-disposition preservation before app integration.
+Atomically install the exact immutable turn-state resolution, preserve original source evidence
+and validate resolved provenance after later successors without requiring the old turn to remain tail.
 
 # Phase 470: Integrate Unavailable-Repair Startup Recovery (pending)
 

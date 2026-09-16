@@ -55,7 +55,7 @@ Independent review confirmed the gap. The unfinished gate integration was remove
 witness, codec and retained-target components remain intact. No repair entry or dispatch API was
 published by this attempt.
 
-The recommended correction, pending Operator decision, is a bounded optional resolved-repair
+The Operator approved the correction on 2026-09-17: a bounded optional resolved-repair
 extension in the existing turn-state authority. It retains the exact original target and capture-gap
 witnesses, the closed resolution and original `Available` or `Consumed` disposition, including
 the consumed attempt nonce and claim revisions. Gate exit installs it atomically with
@@ -63,8 +63,8 @@ the consumed attempt nonce and claim revisions. Gate exit installs it atomically
 rejects a turn with resolved repair authority, even if its original disposition remained `Available`
 because the adapter was unavailable. No snapshot or asset is invented for incomplete resolution.
 
-The owning schema must specify this representation, revision/codec rules, retained-evidence
-validation and replay behavior before implementation resumes. Verification must prove no re-entry
+The owning schema now specifies the V4 turn-state representation, revision/codec rules,
+retained-evidence validation and replay behavior. Verification must prove no re-entry
 after resolution, reopen or acknowledgement loss, exact disposition preservation, and atomic
-outcome/gate publication. This decision gates phases 468 and 469; it does not authorize a new
+outcome/gate publication. Implement the turn-state component before phases 468 and 469; this does not authorize a new
 backend route or weaken the at-most-once contract.

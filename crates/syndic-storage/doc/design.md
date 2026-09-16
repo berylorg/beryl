@@ -77,6 +77,11 @@ The package exposes grouped typed operations rather than raw record mechanics:
   `SourceEventRecord::repair_witness` computes a descriptive sequence/digest witness over the
   schema-defined domain and canonical source-event payload. It neither reads storage nor proves
   that the record is retained, eligible repair evidence or current gate authority.
+- Resolved repair belongs to the existing turn-state authority. Its bounded immutable extension
+  preserves the original `RepairRequiredTarget`, request disposition and closed incomplete
+  resolution after gate exit. The package atomically installs it with incomplete convergence and
+  preserves it through later state updates. Its presence excludes repair re-entry for that turn;
+  descriptive construction or decoding grants no mutation or request authority.
 - Domain registration, fresh typed-handle acquisition, and explicit schema validation.
 - The complete typed declaration of the Syndic domain, candidate-only initial registration and
   fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store
