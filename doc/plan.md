@@ -67,6 +67,14 @@ This integration cannot absorb missing service implementations or accept restore
 Theme preparation and candidate managed-session configuration are accepted.
 Finish the remaining graph-factory inventory before activating this phase.
 
+Blocked on 2026-09-16: the required durable-job coordinator is not implemented. The current
+ordinary tool dispatcher explicitly refuses branch resolution; typed durable-job records and
+read-only process-work inventory do not implement handoff recovery or execution. The rework gate
+places branch handoff after Checkpoint 5 recovery, while complete graph publication is required
+in Checkpoint 4. Resolve this dependency cycle before scheduling the missing coordinator; do not
+publish a partial graph or substitute an inert service. See
+[factory readiness evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
+
 # Phase 415: Specify Restore-Set Startup Composition (pending)
 
 Resolve exact restoration custody, complete-set first visibility, threadless empty-session startup,

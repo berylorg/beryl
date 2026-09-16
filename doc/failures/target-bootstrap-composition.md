@@ -40,6 +40,35 @@ bootstrap or crash-reporter mounting.
 Readiness inspection and independent restore-boundary review were source-only. No executable
 startup, whole-stack publication or restored GUI behavior is claimed.
 
+## Durable Job Factory Readiness
+
+The remaining graph inventory on 2026-09-16 disproved the assumption that accepted CAS, marker,
+theme and managed-session preparation leave only constructor wiring. The
+[initial graph contract](../../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication)
+requires durable-job coordination before publication. In
+`crates/beryl-app/src/cas_projection/process_tools.rs`, the ordinary dispatcher still installs
+`UnavailableBranchResolution`. `DurableJobState` supplies typed records and transitions, but
+the app has no handoff recovery scanner, bounded ready-job coordinator or parent-delivery owner.
+The existing `process_work/durable.rs` scans execution work for observation; it does not execute
+branch jobs. Production app code does not call the durable-job admission or parent-handoff APIs.
+
+The [handoff system](../systems/branch-discussion-handoff/design.md#restart-recovery) requires
+validated recovery page/byte limits, reconciliation slots, ready-job capacity, exact restart
+convergence and owned cancellation. A handle bundle or dormant placeholder cannot satisfy it.
+The [rework tracker](../rework/beryl-home/REWORK.md#checkpoint-5-add-terminal-repair-and-fresh-same-home-recovery)
+requires Checkpoint 4 product acceptance before Checkpoint 5, and Checkpoint 5 recovery acceptance
+before Checkpoint 6 branch implementation. Complete graph publication is itself in Checkpoint 4.
+That dependency cycle needs explicit reconciliation before the missing coordinator can be planned.
+
+Keep phase 423 pending. Independent read-only review confirmed the missing coordinator and the
+recovery-before-branch gate. First assess whether bounded non-GUI recovery prerequisites, followed
+by handoff service acceptance, can be scheduled before publication while preserving that gate.
+Ordinary phase reordering is already authorized; changing the recovery gate or weakening complete
+graph publication is not an ordering-only correction. Preserve the complete graph contract and
+derive separate implementation phases for the missing components. This inspection does not accept
+catalog, activity or settings factory completeness, and changes no production code or target
+startup behavior.
+
 ## Session-Only Facade Removal
 
 Complete routine `BerylState::register` now acquires every required state and theme handle in one
