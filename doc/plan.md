@@ -52,21 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 463: Reconcile Service Prerequisites With Product Mounting (finished)
+# Phase 464: Establish Exact Pinned Terminal Repair Evidence (finished)
 
-Accepted the Operator-approved prerequisite order with separate recovery component, complete graph,
-full-stack recovery and product-mounting gates. Independent review, link/diff checks and Markdown
-index reconciliation passed. [Evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
-
-# Phase 464: Establish Exact Pinned Terminal Repair Evidence (pending)
-
-Resolve the remaining exact 0.146.0 processor/reducer proof required by the
-[repair contract](systems/cas-live-syndic-transcript/design.md#exact-terminal-turn-historical-repair).
-Inspect exact pinned source and generated schemas for one descending full-item terminal turn,
-identity synthesis, terminal-status normalization, cursors and generated media; distinguish proven
-semantic final state from live-event evidence. Update the existing pinned repair investigation,
-obtain independent source review, and classify the authorized route as proven or unavailable.
-This evidence boundary authorizes no adapter, backend request or history fallback.
+Accepted the source-backed unavailable outcome: exact pinned legacy history omits operational
+items and synthesizes identities; Beryl has no paginated-only admission. Independent source and
+artifact review, link/diff checks and Markdown reconciliation passed. No production behavior or
+backend request was added. [Evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md).
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -75,6 +66,11 @@ bounded one-request adapter with exact target/capability admission, streaming cl
 and typed failure. Verify no successor race, cursor follow, retry, alternate history route or
 partial publication; keep durable dispatch custody and runtime mounting separate. Remaining
 recovery and branch components continue to feed bounded phases from the rework tracker before 423.
+
+Blocked on 2026-09-16: exact source does not satisfy the complete semantic item and identity proof
+for Beryl's supported thread population. The existing design requires unavailable repair. Resume
+only after separately authorized prerequisites prove the route; do not substitute a history
+fallback or silently select a new history mode.
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 

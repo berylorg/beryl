@@ -13,7 +13,14 @@ history browsing, change the controlling design, or add implementation sequencin
 
 ## Evidence Boundary
 
-Exact pinned evidence consists of the retained `codex-cli 0.146.0` executable, its SHA-256, fresh
+Refreshed 2026-09-16 against exact commit `e363b08c9175ac1cbe5893615dd2cb9ddf95043b`
+using local Git objects, not the fork's working tree. The authorized route is **unavailable for
+Beryl's current supported thread population**: legacy reconstruction does not preserve the full
+public item view or exact original item identities. A `full` response is not a completeness proof.
+The paginated path differs materially, but Beryl does not establish that prerequisite for its
+targets. No live request, executable rebuild, or new schema generation was performed in this refresh.
+
+The original pinned evidence consisted of the retained `codex-cli 0.146.0` executable, its SHA-256,
 stable and experimental schema generation from that executable, and the already retained
 commit-identity note in this memory scope. Those generated schemas are exact for the admitted
 executable but do not by themselves prove runtime processor behavior or the reducer's identity and
@@ -25,6 +32,53 @@ source must not be attributed to the pinned source commit
 `e363b08c9175ac1cbe5893615dd2cb9ddf95043b`. Exact older release notes for 0.144.1 and live 0.137
 evidence are useful lineage evidence, but they also are not substitutes for 0.146.0 source or live
 behavior.
+
+## Exact Processor And Persistence Findings
+
+`thread_turns_list_response_inner` first reads stored thread metadata. A paginated thread goes
+through `paginated_thread_turns_list_response`; otherwise the processor loads rollout history and
+reconstructs all turns before response pagination. The legacy branch merges an active snapshot
+when available. Descending pagination reverses the ordered turn vector and truncates to the
+requested page size; with no cursor and limit one it returns the latest materialized turn.
+`Full` preserves that vector's items, whereas summary selects first user and last agent messages.
+Neither option validates whether legacy persistence retained every public item.
+
+The decisive loss occurs before pagination. `build_legacy_api_turns_from_rollout_items` filters
+records through `is_persisted_rollout_item(..., Legacy)`. The pinned rollout policy retains only
+plan and sleep-extension `ItemCompleted` records in legacy mode. Dynamic-tool request/response,
+command begin/end, image-view and collaboration lifecycle events are transient. The history
+builder's raw `ResponseItem` handler only reconstructs hook prompts from user messages; it does
+not recover those missing operational items from function calls or outputs. Thus a completed turn
+containing a dynamic tool can return a full-looking item array with that item absent. A response
+validator cannot reject an omission for which the response supplies no completeness witness.
+
+Legacy user and agent messages receive sequential `item-N` identities, even when other lifecycle
+representations carried original identities. Missing turn identities become rollout-position ids
+or UUIDs. Exact `TurnStarted` ids are preserved; completion and abort handlers prefer an exact
+turn match but fall back to the current turn when unmatched. The processor changes reconstructed
+`inProgress` to `interrupted` when the resolved thread is not active. These facts prove semantic
+reconstruction, not original notification identities, cause, or event ordering. A separately
+authenticated terminal outcome remains necessary but cannot repair the missing item evidence.
+
+The paginated branch asks the store for turn shells and, for `Full`, internally enumerates that
+turn's item pages in ascending creation ordinal until exhausted. It deserializes each stored
+public item and normalizes stale status afterward. Its canonical rollout projection converts
+`ItemCompleted` directly and retains the event's turn identity. This is a distinct source path,
+not evidence that legacy threads are lossless. The exact `thread/items/list` processor delegates
+to store listing and returns method-not-found on store `Unsupported`; it is not the unconditional
+unsupported renamed route observed in the newer checkout. Beryl may not call it as a fallback.
+
+Beryl's `ThreadStartParams` has no `historyMode` field. The pinned core resolves an omitted mode
+through persisted conversation metadata or the store default; the pinned store trait defaults to
+legacy, and the local store does not override that default. The response's full-item flag cannot
+authenticate a paginated-only target. A change to admitted history modes, supported backend or
+identity/completeness guarantees therefore needs separate owning authority and verification.
+
+Legacy generated-image completion copies `result`, `savedPath`, status and revised prompt into
+the public item; begin records can have empty result and no path. The previously retained
+schema and saved-path-only admission constraints below still apply. Their validity does not
+restore unrelated missing operational items. Provider-side rollout reconstruction and internal
+item hydration also are not bounded in memory by the response's one-turn limit.
 
 ## Exact Pinned Stable And Experimental Schemas
 
@@ -57,8 +111,8 @@ optionally accept cursor, limit, and sort direction; its response pages `{ turnI
 No 0.146.0 live probe was run here, so schema presence does not prove that route works. Retained
 0.137 live evidence and exact 0.144.1 source evidence found the item-list implementation
 unsupported, while the separate checkout hard-codes JSON-RPC method-not-found for the renamed
-`thread/turns/items/list` route. The spelling and runtime-support discrepancy is an exact-source
-refresh requirement, not permission to depend on either route.
+`thread/turns/items/list` route. The exact-source refresh above resolves the pinned dispatch
+behavior; neither spelling authorizes a Beryl fallback.
 
 ## Bounded One-Turn Repair Shape
 
@@ -86,12 +140,12 @@ single-target projection, not permission to complete adjacent pages. The schema 
 a byte or item-count maximum on `Turn.items`, so Beryl's fixed incoming response, item, field, and
 media limits remain mandatory even with `limit: 1`.
 
-The separate checkout corroborates a default page size of 25, maximum 100, clamping of a supplied
+The earlier separate checkout corroborated a default page size of 25, maximum 100, clamping of a supplied
 zero to one, descending and summary defaults, and a cursor internally anchored by turn id plus an
 include-anchor flag. It also corroborates that `itemsView = "full"` leaves the complete
 materialized item vector for that turn, while summary keeps only the first user message and final
-agent message. These processor details are not exact pinned proof and must be rechecked at the
-pinned source commit before implementation relies on them.
+agent message. Exact pinned inspection now confirms the legacy direction, truncation, cursor and
+item-view mechanics; it also exposes the persistence loss described above.
 
 ## Terminal Status And Identity Limits
 
@@ -118,10 +172,9 @@ delta boundaries. Consequently:
 - missing identity, status disagreement, unknown variants, malformed required fields, or
   unrepresentable content makes the repair incomplete rather than partially publishable.
 
-The separate checkout also normalizes reconstructed `inProgress` to `interrupted` when no live
-active thread remains. That is corroboration of a materialized-history hazard, not exact pinned
-proof. Until the pinned processor and reducer are inspected or probed, an `interrupted` history
-status must not be treated as exact interruption-cause or ordering evidence.
+Exact pinned `normalize_thread_turns_status` confirms the earlier newer-checkout observation:
+reconstructed `inProgress` becomes `interrupted` when the resolved thread is not active. An
+`interrupted` history status is not exact interruption-cause or ordering evidence.
 
 ## Exact Pinned Item Union And Generated Images
 
@@ -151,32 +204,24 @@ value as the provider image's base64 payload, and the separate checkout maps bot
 
 ## Design And Plan Impact
 
-The retained evidence supports the controlling design only as a narrow, fail-closed adapter:
+Any future proven adapter would still be constrained by the controlling design:
 
 - stable `thread/read(includeTurns = true)` is excluded because it reads the whole thread;
-- experimental `thread/turns/list` must be called with one authenticated thread, `limit: 1`, and
+- experimental `thread/turns/list` would require one authenticated thread, `limit: 1`, and
   `itemsView: "full"` under fixed response bounds;
-- the same-thread repair barrier must ensure the correlated repair target is still the last turn,
-  or the adapter must possess a source-backed authenticated cursor that can address it without
-  reading adjacent turns;
+- the same-thread repair barrier must ensure the correlated repair target is still the last turn;
+  the controlling contract admits no request cursor;
 - response admission must prove exactly one matching terminal turn, a full item view, the closed
   item union, required identity and content, and usable generated media before atomic publication;
   and
 - the adapter must never follow history cursors, enumerate threads, fill other turns, or expose CAS
   history as a catalog or transcript read surface.
 
-The stable/experimental method-name discrepancy and lack of exact 0.146.0 processor/reducer source
-in the local checkout mean implementation may not assume an item-list hydration route or exact
-cursor/status semantics from the separate checkout. If exact targeting cannot be established under
-the last-turn barrier, the repair must converge incomplete rather than use whole-thread read or
-page through history.
-
-`doc/plan.md` Phase 105 owns exact processor/reducer evidence as an independent acceptance
-boundary. Phase 106 may implement the adapter only if that evidence proves the required last-turn,
-full-item, identity, and terminal semantics. Its acceptance tests need exact stable/experimental
-schema fixtures, method registration and unsupported-route coverage, one-turn cursor adversaries,
-terminal/status disagreement, every item discriminant, oversized response rejection, and
-`savedPath`-only generated-media admission.
+The exact source fails the complete-item and identity evidence gate for legacy history, even
+when latest-turn targeting succeeds. The existing design's unavailable outcome applies. A
+paginated-only admission contract or backend change would require a new investigation of its
+complete persistence, finalization, identity, storage and lineage behavior; this note neither
+authorizes that change nor claims that paginated support alone would resolve every prerequisite.
 
 ## Refresh Triggers
 
@@ -184,7 +229,6 @@ Refresh this note in a new commit scope when the supported CAS release or source
 Refresh the current scope before implementation if any of these occur:
 
 - the admitted `codex.exe` SHA-256 changes or regenerated stable/experimental schemas differ;
-- an exact local snapshot of commit `e363b08c9175ac1cbe5893615dd2cb9ddf95043b` becomes available;
 - exact pinned processor or focused test evidence establishes the 0.146.0 result for
   `thread/items/list` or `thread/turns/items/list`;
 - exact pinned processor source changes the list defaults, cursor construction, active-turn merge,
@@ -219,9 +263,37 @@ Refresh the current scope before implementation if any of these occur:
   `codex-rs/app-server-protocol/src/protocol/v2/turn.rs`,
   `codex-rs/app-server-protocol/src/protocol/v2/item.rs`,
   `codex-rs/app-server-protocol/src/protocol/thread_history.rs`, and
-  `codex-rs/app-server/src/request_processors/thread_processor.rs`. Their exact e363b08 bodies were
-  not present in the local checkout during this investigation; source-level behavior beyond the
-  generated schema is deliberately not attributed to them here.
+  `codex-rs/app-server/src/request_processors/thread_processor.rs`. Their bodies were unavailable
+  during the original 2026-08-10 investigation; the processor and relevant protocol/reducer bodies
+  were inspected at the exact commit in the 2026-09-16 refresh.
+
+## Exact Source Refresh
+
+Canonical upstream remains `https://github.com/openai/codex`. `git cat-file -t` verified the exact
+commit object; `git ls-tree`, `git show <commit>:<path>` and scoped `git grep` read immutable source
+without checking out or modifying the fork. Accessed 2026-09-16. No upstream tests were run.
+
+- [Processor](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server/src/request_processors/thread_processor.rs):
+  `thread_turns_list_response_inner` (2463), paginated response/full-item hydration (2608, 2681),
+  item listing (2822), pagination (4611), item-view selection (4756), reconstruction/status
+  normalization (4794, 4812), stored item deserialization and turn conversion (4857, 4868).
+- [Legacy filtering wrapper](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server/src/request_processors.rs#L669)
+  and [persistence policy](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/rollout/src/policy.rs#L98):
+  legacy completed-item allowlist and dropped operational events.
+- [History builder](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/thread_history.rs):
+  raw response handling (446), synthesized message ids (472, 491, 1470), lifecycle filtering
+  (598), image fields (855, 866), terminal fallback (1204, 1247), turn ids (1347).
+- [Paginated projection](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs#L23):
+  canonical completion conversion and terminal metadata.
+- [Protocol registration](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/common.rs#L659)
+  and [request/response types](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs#L1390):
+  experimental method names, parameters and cursors match retained schema evidence.
+- [Core mode resolution](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/core/src/session/mod.rs#L650)
+  and [store default](https://github.com/openai/codex/blob/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/codex-rs/thread-store/src/store.rs#L48):
+  omitted history-mode behavior. Scoped source search found no local-store override.
+- Beryl `crates/beryl-backend/src/session/bounded_request/wire.rs:148` defines thread-start
+  parameters without history-mode selection; repository source search found no history-mode
+  admission in `crates/beryl-backend/src`.
 
 ## Retained Lineage And Local Corroboration
 
