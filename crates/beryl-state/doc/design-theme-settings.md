@@ -24,6 +24,12 @@ theme repository service and Beryl-owned typed scalar settings only.
   are reread through the physical range API. Commands and rereads use the same parser, validator,
   and resolver. Invalid live edits retain the last coherent typed input; invalid startup content
   uses the built-in fallback input. Hints are never byte, revision, or commit proof.
+- Initial and recovered candidates can prepare a typed change subscription for the matching
+  service home and generation with fixed physical watcher limits. Preparation retains the
+  service's subscription activity and dormant physical worker without repository reads. Consuming
+  release requires publication of that exact physical generation and transfers the same activity
+  to the ordinary typed subscription. Failed release or abandonment cancels and joins the worker
+  before releasing activity custody. Composition drops subscriptions before disposing candidates.
 - Install, rename, delete, reorder, update, Save, and Save As are revision-checked typed commands
   with exact `NotCommitted`, `Committed`, or `Indeterminate` outcomes and `ExactOld`, `ExactNew`,
   or `Collision` reconciliation. Before physical admission, a fixed-capacity shared clone registry

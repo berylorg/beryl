@@ -664,3 +664,16 @@ initial publication, candidate recovery access and service references. Final run
 blocked-observation joined-destruction case. Together they cover 27 distinct tests. Normal app
 library compilation, exact-file formatting, diff checks and independent lifecycle review passed.
 Typed theme subscription preparation and app runtime loading separation remain subsequent phases.
+
+## Typed Theme Subscription Preparation
+
+Phase 459 accepts initial and recovered ThemeService preparation using fixed validated physical
+watcher limits. Foreign/stale qualification fails before worker allocation. The prepared owner
+retains the originating service activity; consuming release moves that same activity into the
+ordinary subscription. Failed release and abandonment join physical cleanup before activity drops.
+
+Nextest run `da9b6f4b-f1f2-4b02-b556-f7eb9929b78f` passed three new lifecycle tests and 22 existing
+physical-service/execution regressions. Final run `33f4597b-6f8e-4236-af10-88eb26bc012d` passed all
+four preparation tests, including activity remaining counted during blocked worker destruction.
+Normal app library compilation, exact-file formatting, diff checks and independent ownership
+review passed. App runtime preparation and complete graph composition remain separate boundaries.

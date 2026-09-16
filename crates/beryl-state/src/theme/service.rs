@@ -17,6 +17,7 @@ use beryl_home_store::{
 use beryl_model::BerylHomeId;
 
 use super::manifest::ThemeManifestDecoder;
+mod preparation;
 use super::{
     InstalledThemeId, InstalledThemeSelection, ThemeDocument, ThemeDocumentDigest,
     ThemeDocumentError, ThemeDocumentIdentity, ThemeDocumentRevision, ThemeHomeIdentity,
@@ -29,6 +30,7 @@ use super::{
     },
     runtime::{ThemeActivityGuard, ThemeActivityKind, ThemeOperationScope, ThemeServiceRuntime},
 };
+pub use preparation::PreparedThemeChangeSubscription;
 
 /// Fresh generation-bound typed entry point for theme-domain work.
 static NEXT_THEME_DOCUMENT_REVISION: AtomicU64 = AtomicU64::new(1);

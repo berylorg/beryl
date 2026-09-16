@@ -62,9 +62,10 @@ pub use schema::{
     canonical_theme_schema,
 };
 pub use service::{
-    ThemeChangeHint, ThemeChangeSubscription, ThemeChangeSubscriptionError, ThemeDocumentLoadError,
-    ThemeManifestSession, ThemeObservedDocument, ThemeRepositoryLoadError,
-    ThemeRepositoryObservation, ThemeService, ThemeServiceError,
+    PreparedThemeChangeSubscription, ThemeChangeHint, ThemeChangeSubscription,
+    ThemeChangeSubscriptionError, ThemeDocumentLoadError, ThemeManifestSession,
+    ThemeObservedDocument, ThemeRepositoryLoadError, ThemeRepositoryObservation, ThemeService,
+    ThemeServiceError,
 };
 pub use startup::{
     BuiltinFallback, PreparedThemeAppearance, ThemeAppearanceSource, ThemeLiveEditFailure,

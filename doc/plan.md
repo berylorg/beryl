@@ -52,17 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 458: Prepare Dormant Physical Theme Watchers (finished)
+# Phase 459: Adapt Typed Theme Subscription Preparation (finished)
 
-Accepted candidate-qualified dormant watcher construction, exact-generation release and joined
-abandonment. Seven new lifecycle tests and 20 existing watcher/candidate regressions passed;
-normal app compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#dormant-physical-theme-watchers).
-
-# Phase 459: Adapt Typed Theme Subscription Preparation (pending)
-
-Connect the accepted dormant physical watcher to candidate-qualified ThemeService subscription
-ownership, preserving exact identity, immutable limits and joined cancellation.
+Accepted initial/recovered typed subscription preparation, exact candidate qualification and
+activity custody through publication, release and joined destruction. Four new lifecycle tests
+and 22 existing regressions passed; normal app compilation and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#typed-theme-subscription-preparation).
 
 # Phase 460: Prepare Theme Runtime Before Initial Publication (pending)
 
