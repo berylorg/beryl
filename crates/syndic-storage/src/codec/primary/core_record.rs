@@ -247,6 +247,11 @@ pub(super) fn encode_turn_state(value: &TurnStateRecord) -> Result<Vec<u8>, Code
     enc_opt(&mut e, value.end_status(), enc_turn_end_status);
     enc_timestamp(&mut e, value.updated_at());
     enc_turn_dispatch_provenance(&mut e, value.dispatch_provenance());
+    enc_opt(
+        &mut e,
+        value.resolved_repair(),
+        crate::codec::parts::repair::enc_resolved_repair,
+    );
     Ok(e.finish())
 }
 
@@ -271,6 +276,17 @@ pub(super) fn decode_turn_state(bytes: &[u8]) -> Result<TurnStateRecord, CodecEr
         dec_turn_dispatch_provenance(&mut d)?,
     )
     .map_err(|source| invalid("turn state", source))?;
+    let resolved = dec_opt(
+        &mut d,
+        "resolved repair",
+        crate::codec::parts::repair::dec_resolved_repair,
+    )?;
+    let value = match resolved {
+        Some(resolved) => value
+            .with_resolved_repair(resolved)
+            .map_err(|source| invalid("resolved repair", source))?,
+        None => value,
+    };
     d.finish()?;
     Ok(value)
 }

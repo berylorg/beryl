@@ -65,6 +65,8 @@ pub enum SyndicRecordError {
     InvalidProviderItemLifecycle,
     #[error("turn capture aggregates or incomplete reason disagree")]
     InvalidTurnCaptureFrontier,
+    #[error("resolved repair disagrees with immutable turn resolution authority")]
+    InvalidResolvedRepair,
     #[error("context-compaction authority or fixed observation frontiers disagree")]
     InvalidCompactionOperation,
     #[error("thread image-label inherited frontier exceeds its current frontier")]

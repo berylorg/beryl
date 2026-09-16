@@ -232,6 +232,34 @@ pub enum RepairRequestDisposition {
     Consumed(ConsumedRepairRequest),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepairResolution {
+    Incomplete(crate::TurnIncompleteReason),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedRepair {
+    target: RepairRequiredTarget,
+    resolution: RepairResolution,
+}
+
+impl ResolvedRepair {
+    #[must_use]
+    pub const fn new(target: RepairRequiredTarget, resolution: RepairResolution) -> Self {
+        Self { target, resolution }
+    }
+
+    #[must_use]
+    pub const fn target(&self) -> &RepairRequiredTarget {
+        &self.target
+    }
+
+    #[must_use]
+    pub const fn resolution(&self) -> RepairResolution {
+        self.resolution
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum RepairRequestDispositionError {
     #[error("repair request claim must advance the gate revision exactly once")]

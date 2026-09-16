@@ -6,3 +6,4 @@ mod lifecycle_matrix;
 mod rejections;
 mod repair_authentication;
 mod repair_retained;
+mod resolved_repair;

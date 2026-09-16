@@ -52,18 +52,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 476: Specify Repair Resolution Custody After Gate Exit (finished)
+# Phase 477: Persist Resolved Repair In Turn State (finished)
 
-Specified the approved V4 turn-state resolution extension, immutable request provenance, atomic
-gate exit and permanent re-entry exclusion across the owning contracts. Independent lifecycle and
-persistence review, diff checks and Markdown reconciliation passed. Storage implementation follows.
-
-# Phase 477: Persist Resolved Repair In Turn State (pending)
-
-Implement the bounded incomplete-resolution value and V4 turn-state codec. Preserve the immutable
-extension through existing state reconstruction and validate its local identity/status/frontier
-invariants. Verify round trips, malformed bytes, preserved available/consumed provenance and later
-frontier updates. This component grants no repair entry, exit or backend authority.
+Accepted bounded resolution values, the V4 turn-state codec, checked immutable attachment and
+preservation through existing state reconstruction. All 165 focused and regression cases passed,
+including exact available/consumed persistence through finalization and reopen. Storage/app library
+checks, formatting/diff checks, Markdown reconciliation and independent integrity review passed.
+Gate entry and atomic repair exit remain the following separate integration boundaries.
 
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
 

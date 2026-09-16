@@ -26,6 +26,8 @@ pub fn inject_turn_state_without_dispatch_provenance(
     );
     let mut encoded = versioned_value::<TurnStatesFamily>(state);
     encoded[..4].copy_from_slice(&2_u32.to_be_bytes());
+    assert!(state.resolved_repair().is_none());
+    encoded.pop();
     encoded.pop();
     inject_encoded::<TurnStatesFamily>(store, storage, state.turn_id(), encoded)
 }

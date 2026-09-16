@@ -225,7 +225,8 @@ fn settlement_turn_effect(
         Some(status),
         current.updated_at(),
         current.dispatch_provenance(),
-    )?;
+    )?
+    .preserve_resolved_repair(&current)?;
     Ok((Some(event), Some(state)))
 }
 

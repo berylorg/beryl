@@ -72,6 +72,32 @@ fn enc_witness(e: &mut Encoder, witness: RepairSourceEventWitness) {
     e.fixed32(witness.digest().as_bytes());
 }
 
+pub(crate) fn enc_resolved_repair(e: &mut Encoder, resolved: &crate::ResolvedRepair) {
+    enc_repair_target(e, resolved.target());
+    match resolved.resolution() {
+        crate::RepairResolution::Incomplete(reason) => {
+            e.u8(0);
+            enc_turn_incomplete_reason(e, reason);
+        }
+    }
+}
+
+pub(crate) fn dec_resolved_repair(
+    d: &mut Decoder<'_>,
+) -> Result<crate::ResolvedRepair, CodecError> {
+    let target = dec_repair_target(d)?;
+    let resolution = match d.u8()? {
+        0 => crate::RepairResolution::Incomplete(dec_turn_incomplete_reason(d)?),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "repair resolution",
+                tag,
+            });
+        }
+    };
+    Ok(crate::ResolvedRepair::new(target, resolution))
+}
+
 fn dec_witness(d: &mut Decoder<'_>) -> Result<RepairSourceEventWitness, CodecError> {
     Ok(RepairSourceEventWitness::new(
         dec_source_seq(d)?,

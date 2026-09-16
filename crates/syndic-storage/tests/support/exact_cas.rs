@@ -1127,7 +1127,7 @@ fn generated_media_is_waiting(
     )
 }
 
-fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id: SyndicItemId) {
+pub fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id: SyndicItemId) {
     let item = storage
         .canonical_item(store, item_id, point_limit())
         .unwrap()

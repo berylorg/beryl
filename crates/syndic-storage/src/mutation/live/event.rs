@@ -198,7 +198,8 @@ impl LiveSourceEventMutation {
             end_status,
             request.observed_at,
             current.dispatch_provenance(),
-        )?;
+        )?
+        .preserve_resolved_repair(&current)?;
         let (transcript_head, transcript_build) = if transcript_dirty {
             crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?
         } else {

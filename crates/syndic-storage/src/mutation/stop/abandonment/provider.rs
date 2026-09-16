@@ -206,7 +206,8 @@ pub(super) fn provider_abandonment_records(
         Some(status),
         request.stale.observed_at(),
         current_state.dispatch_provenance(),
-    )?;
+    )?
+    .preserve_resolved_repair(&current_state)?;
     let gate_revision = current_gate.revision().checked_next()?;
     let gate = InputGateRecord::new(
         current_gate.thread_id(),

@@ -12,6 +12,7 @@ use crate::{
 };
 
 mod accepted;
+mod repair;
 mod thread;
 
 pub use accepted::*;
@@ -261,6 +262,7 @@ pub struct TurnStateRecord {
     end_status: Option<TurnEndStatus>,
     updated_at: SyndicTimestamp,
     dispatch_provenance: TurnDispatchProvenance,
+    resolved_repair: Option<crate::ResolvedRepair>,
 }
 
 impl TurnStateRecord {
@@ -383,6 +385,7 @@ impl TurnStateRecord {
             end_status,
             updated_at,
             dispatch_provenance,
+            resolved_repair: None,
         })
     }
 

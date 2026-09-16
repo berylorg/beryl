@@ -77,7 +77,12 @@ The package exposes grouped typed operations rather than raw record mechanics:
   `SourceEventRecord::repair_witness` computes a descriptive sequence/digest witness over the
   schema-defined domain and canonical source-event payload. It neither reads storage nor proves
   that the record is retained, eligible repair evidence or current gate authority.
-- Resolved repair belongs to the existing turn-state authority. Its bounded immutable extension
+- `ResolvedRepair` pairs the original target with `RepairResolution::Incomplete`, carrying a
+  closed `TurnIncompleteReason`. `TurnStateRecord::resolved_repair` exposes the optional retained
+  value; `with_resolved_repair` checks local identity, frontier and status agreement and refuses
+  replacement of an existing different resolution. These are descriptive record operations;
+  neither construction nor attachment publishes a mutation or authenticates retained evidence.
+  Resolved repair belongs to the existing turn-state authority. Its bounded immutable extension
   preserves the original `RepairRequiredTarget`, request disposition and closed incomplete
   resolution after gate exit. The package atomically installs it with incomplete convergence and
   preserves it through later state updates. Its presence excludes repair re-entry for that turn;

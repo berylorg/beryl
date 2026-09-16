@@ -100,7 +100,8 @@ impl FinalizeNextTurnItemMutation {
             current.end_status(),
             request.updated_at,
             current.dispatch_provenance(),
-        )?;
+        )?
+        .preserve_resolved_repair(&current)?;
         let next_activity = summary.last_activity_at().max(request.updated_at);
         let summary =
             if selected && (summary.complete() || next_activity != summary.last_activity_at()) {

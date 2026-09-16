@@ -5,6 +5,7 @@ use beryl_model::SyndicThreadId;
 pub enum RepairTargetReplacementForTest {
     Thread(ThreadRecord),
     Turn(TurnRecord),
+    State(TurnStateRecord),
     CasThread(CasThreadIndexRecord),
     CasTurn(CasTurnIndexRecord),
 }
@@ -63,6 +64,9 @@ impl DomainMutation<SyndicDomain> for ReplaceRepairFact {
             RepairTargetReplacementForTest::Turn(_) => {
                 reservation.reserve_records::<TurnsCodec>(1)?
             }
+            RepairTargetReplacementForTest::State(_) => {
+                reservation.reserve_records::<TurnStatesCodec>(1)?
+            }
             RepairTargetReplacementForTest::CasThread(_) => {
                 reservation.reserve_records::<CasThreadIndexCodec>(1)?
             }
@@ -82,6 +86,9 @@ impl DomainMutation<SyndicDomain> for ReplaceRepairFact {
             }
             RepairTargetReplacementForTest::Turn(value) => {
                 builder.put::<TurnsCodec>(&request.target.turn_id(), &value)?
+            }
+            RepairTargetReplacementForTest::State(value) => {
+                builder.put::<TurnStatesCodec>(&request.target.turn_id(), &value)?
             }
             RepairTargetReplacementForTest::CasThread(value) => builder
                 .put::<CasThreadIndexCodec>(

@@ -1,7 +1,7 @@
 use super::*;
 use syndic_storage::test_faults::{ProviderObservationCorruption, RepairTargetFactForTest};
 
-fn terminal_target(fixture: &Fixture, with_issue: bool) -> RepairRequiredTarget {
+pub(super) fn terminal_target(fixture: &Fixture, with_issue: bool) -> RepairRequiredTarget {
     let issue = if with_issue {
         admit_agent_start(fixture);
         let (_, event) = super::corruption::publish_duplicate_start_issue(

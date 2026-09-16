@@ -59,7 +59,7 @@ fn dispatch_codec_has_closed_tags_and_exact_nonzero_anchors() {
             Some(state)
         );
         let anchor_bytes = if tag == 1 || tag == 2 { 24 } else { 0 };
-        let tag_offset = encoded.len() - anchor_bytes - 1;
+        let tag_offset = encoded.len() - anchor_bytes - 2;
         assert_eq!(encoded[tag_offset], tag);
         let mut bad_tag = encoded.clone();
         bad_tag[tag_offset] = 4;
@@ -73,7 +73,7 @@ fn dispatch_codec_has_closed_tags_and_exact_nonzero_anchors() {
         if anchor_bytes != 0 {
             let mut zero_revision = encoded.clone();
             let length = zero_revision.len();
-            zero_revision[length - 8..].fill(0);
+            zero_revision[length - 9..length - 1].fill(0);
             assert!(test_faults::decode_turn_state_for_test(&zero_revision).is_none());
         }
     }
