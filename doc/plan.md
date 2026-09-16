@@ -22,6 +22,8 @@ The former window-owned stop/wait plan is superseded. Previously accepted exact-
 continuation-cancellation, draft-flush and session primitives are reusable evidence, not authority
 for stopping a background thread when a nonfinal view closes.
 
+Continue in the current conversation thread; do not request new-thread handoffs.
+
 At every phase boundary, explain any blocker directly to the Operator and suggest concrete next
 steps. Evidence links supplement that explanation rather than replacing it.
 
@@ -50,25 +52,24 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 450: Establish Candidate Abandonment Commands (finished)
+# Phase 451: Converge Candidate Deferred Compaction (finished)
 
-Accepted candidate active-binding and stop-operation abandonment with shared exact command outcome
-handling and distinct pending versus terminal results. Four focused candidate tests, five ordinary
-regressions, normal compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-abandonment-commands).
+Accepted shared ordinary/candidate compaction restart convergence with exact settlement decisions,
+outcomes and custody. Four focused tests, 37 ordinary regressions, normal compilation and independent
+review passed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-deferred-compaction-convergence).
 
-# Phase 451: Converge Candidate Deferred Compaction (pending)
-
-Adapt the ordinary deferred-compaction restart convergence through candidate reads and exact commands,
-preserving its settlement decision, consumed-operation fixed point, typed outcomes and reconciliation
-custody. Verify this independent consumer before startup integration; never reconstruct continuation
-intent or dispatch provider work.
-
-# Phase 449: Connect Candidate Startup Recovery (pending)
+# Phase 449: Connect Candidate Startup Recovery (wip)
 
 Connect accepted candidate discovery/classification, terminal-history convergence and source-less
 publication to the sequential startup recovery pass, including accepted deferred compaction settlement and
 bounded cursor restart/rebase. Do not construct or publish CAS services in this boundary.
+
+Preserve the shared sequential case decisions, bounded source pages, single source-drift restart,
+cursor rebase, exact terminal-history and compaction outcomes, and diagnostic accounting. Verify
+initial/recovered candidate recovery across pending, active, stopping, post-abandonment, finalizing,
+deferred-compaction and settled cases, including source drift and failure custody. Run focused
+candidate/startup regressions and normal compilation; independently review ordering, identity,
+no-replay and prepublication isolation before acceptance.
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)
 

@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "context_compaction/candidate_recovery.rs"]
+mod candidate_recovery;
 #[path = "context_compaction/process_admission.rs"]
 mod process_admission;
 #[path = "context_compaction/stopping.rs"]
@@ -36,16 +38,15 @@ use beryl_model::{
 };
 use beryl_state::BerylState;
 use syndic_storage::{
-    ClaimCompactionDispatch, CompactionAbandonmentReason, CompactionAdmissionRead,
-    CompactionAttemptNonce, CompactionOperationId, CompactionOperationNonce,
-    CompactionOperationState, CompactionProviderEvent, CompactionProviderSequence,
-    CompactionRequestDisposition, CompactionSettlement, ContentLifecycle,
-    PublishCompactionProviderEvent, StopAdmissionRead, StopCause, StopCauseSet, StopOperationNonce,
-    StopOperationState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    prepare_lifecycle_continuation_content,
+    prepare_lifecycle_continuation_content, ClaimCompactionDispatch, CompactionAbandonmentReason,
+    CompactionAdmissionRead, CompactionAttemptNonce, CompactionOperationId,
+    CompactionOperationNonce, CompactionOperationState, CompactionProviderEvent,
+    CompactionProviderSequence, CompactionRequestDisposition, CompactionSettlement,
+    ContentLifecycle, PublishCompactionProviderEvent, StopAdmissionRead, StopCause, StopCauseSet,
+    StopOperationNonce, StopOperationState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
 };
 
-use support::{LifecycleFixture, point_limit};
+use support::{point_limit, LifecycleFixture};
 
 struct UnavailableProvider;
 

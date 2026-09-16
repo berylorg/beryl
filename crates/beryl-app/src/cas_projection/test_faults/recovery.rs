@@ -23,6 +23,17 @@ struct RecoverySourceBarrier {
 enum RecoveryBarrierStage {
     BeforeRead,
     PageHandoff,
+    CompactionConfirmation,
+}
+
+pub fn install_compaction_recovery_confirmation_barrier(
+    thread_id: SyndicThreadId,
+) -> RecoverySourceBarrierController {
+    install_barrier(thread_id, 0, RecoveryBarrierStage::CompactionConfirmation)
+}
+
+pub(crate) fn pause_compaction_recovery_confirmation(thread_id: SyndicThreadId) {
+    pause_recovery_barrier(thread_id, 0, RecoveryBarrierStage::CompactionConfirmation);
 }
 
 /// One exact test-only pause in a recovery source after a chosen page count.

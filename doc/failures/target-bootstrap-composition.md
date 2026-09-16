@@ -398,3 +398,21 @@ Five ordinary terminal/stop regressions passed (run `4a85b95b-0ad5-4b7c-a3e5-779
 app compilation, formatting and diff checks passed. Independent review accepted command semantics,
 outcome truth and corrected fencing evidence. Deferred-compaction convergence remains a separate
 candidate consumer before sequential startup integration.
+
+## Candidate Deferred Compaction Convergence
+
+Phase 451 accepted one ordinary/candidate restart algorithm using the same bounded admission and
+recovery reads, exact settlement/abandonment commands and command outcome handling. Candidate access
+changes admission only; it does not reconstruct continuation intent, dispatch provider work or release
+ordinary admission. The consumed-operation no-command arm preserves the ordinary inter-read fixed
+point, not arbitrary idempotent invocation after the gate becomes idle.
+
+The seven-decision ordinary/candidate parity matrix passed (run
+`9496cd53-c7b0-4b9a-826f-df6054adedf5`). Three final fault/recovery tests passed (run
+`c2a67c33-311e-4127-8bd5-4623b9ca3c14`), covering noncommit, committed failure, indeterminate
+publication rejection and exact reconciliation, clean-commit confirmation-read failure, recovered
+publication and wrong/stale/foreign authority refusal before valid convergence. Failed-generation
+outcomes are inspected through a fresh candidate; tests settle reconciliation before closing.
+All 37 ordinary compaction and source-boundary regressions passed (run
+`31361573-17b7-4ec5-a235-09ac59099e47`). Normal app compilation, formatting and diff checks passed;
+independent semantic review found no blocking issue.

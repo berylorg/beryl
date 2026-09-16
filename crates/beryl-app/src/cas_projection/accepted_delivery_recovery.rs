@@ -1,7 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use beryl_home_store::{CursorReadLimits, HomeGeneration, HomeStore};
+mod compaction_access;
+
+use beryl_home_store::{CursorReadLimits, HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
+use compaction_access::CompactionAccess;
 use syndic_storage::{
     AbandonCompactionOperation, AbandonStopOperation, CompactionAbandonmentReason,
     CompactionAdmissionRead, CompactionOperationState, CompactionRecoveryCase,
@@ -213,14 +216,42 @@ fn converge_case(
     Ok(())
 }
 
-fn converge_compaction_restart(
+pub(super) fn converge_compaction_restart(
     home: &HomeStore,
     storage: &SyndicStorage,
     thread_id: beryl_model::SyndicThreadId,
     turn_id: beryl_model::SyndicTurnId,
 ) -> Result<(), ProjectionCoordinatorError> {
-    let operation = match storage
-        .compaction_admission_read(home, thread_id, point_limit())
+    converge_compaction_with_access(
+        CompactionAccess::Ordinary(home),
+        storage,
+        thread_id,
+        turn_id,
+    )
+}
+
+pub(super) fn converge_compaction_restart_candidate(
+    home: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    thread_id: beryl_model::SyndicThreadId,
+    turn_id: beryl_model::SyndicTurnId,
+) -> Result<(), ProjectionCoordinatorError> {
+    converge_compaction_with_access(
+        CompactionAccess::Candidate(home),
+        storage,
+        thread_id,
+        turn_id,
+    )
+}
+
+fn converge_compaction_with_access(
+    home: CompactionAccess<'_>,
+    storage: &SyndicStorage,
+    thread_id: beryl_model::SyndicThreadId,
+    turn_id: beryl_model::SyndicTurnId,
+) -> Result<(), ProjectionCoordinatorError> {
+    let operation = match home
+        .admission(storage, thread_id, point_limit())
         .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
     {
         CompactionAdmissionRead::Existing(operation) if operation.target().turn_id() == turn_id => {
@@ -232,8 +263,8 @@ fn converge_compaction_restart(
             return Err(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant);
         }
     };
-    let recovery = storage
-        .compaction_recovery_read(home, operation.id(), point_limit())
+    let recovery = home
+        .recovery(storage, operation.id(), point_limit())
         .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
         .ok_or(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant)?;
     let operation_id = operation.id();
@@ -311,8 +342,10 @@ fn converge_compaction_restart(
             return Err(ProjectionCoordinatorError::CommandIndeterminate { failure });
         }
     }
-    let settled = storage
-        .compaction_recovery_read(home, operation_id, point_limit())
+    #[cfg(feature = "test-faults")]
+    crate::cas_projection::test_faults::pause_compaction_recovery_confirmation(thread_id);
+    let settled = home
+        .recovery(storage, operation_id, point_limit())
         .map_err(|_| ProjectionCoordinatorError::AcceptedDeliveryRecoveryRead)?
         .ok_or(ProjectionCoordinatorError::AcceptedDeliveryRecoveryInvariant)?;
     if !matches!(settled, CompactionRecoveryCase::Settled(_)) {
