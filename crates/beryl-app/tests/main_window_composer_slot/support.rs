@@ -177,7 +177,7 @@ impl Fixture {
     }
 
     pub fn marker_seals(&self) -> DraftMarkerSealService {
-        DraftMarkerSealService::new(
+        DraftMarkerSealService::test_new(
             &self.store,
             self.store.health().generation().unwrap(),
             self.storage.clone(),

@@ -115,7 +115,7 @@ pub(super) fn new_service(
     assets: beryl_state::AssetState,
     flights: usize,
 ) -> DraftMarkerSealService {
-    DraftMarkerSealService::new(
+    DraftMarkerSealService::test_new(
         store,
         store.health().generation().unwrap(),
         storage.clone(),

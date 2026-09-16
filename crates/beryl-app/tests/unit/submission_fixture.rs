@@ -65,7 +65,7 @@ pub fn submit_atoms(
     };
     let binding = commit_atoms(&mut host, store, &assets, binding, atoms);
     let source_draft = binding.candidate().draft_id();
-    let seals = DraftMarkerSealService::new(
+    let seals = DraftMarkerSealService::test_new(
         store,
         store.health().generation().unwrap(),
         storage,

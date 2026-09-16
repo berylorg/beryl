@@ -39,7 +39,7 @@ pub fn services(fixture: &Fixture) -> (Arc<MainWindowCreationServices>, Arc<Appe
         )
         .map_err(|error| format!("{error:?}"))
     });
-    let seals = DraftMarkerSealService::new(
+    let seals = DraftMarkerSealService::test_new(
         &fixture.store,
         fixture.store.health().generation().unwrap(),
         fixture.storage.clone(),

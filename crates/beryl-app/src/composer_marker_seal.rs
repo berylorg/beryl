@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, OnceLock, Weak},
-};
+use std::sync::{Arc, Mutex};
 
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::BerylHomeId;
@@ -11,6 +8,7 @@ use syndic_storage::{DraftMarkerSealFailureReasonV1, DraftMarkerSealProofV1, Syn
 mod admission;
 mod drive;
 mod durability;
+pub(crate) mod initial_preparation;
 mod terminal;
 mod types;
 
@@ -24,13 +22,6 @@ pub struct DraftMarkerSealService {
     inner: Arc<Mutex<ServiceState>>,
     home_id: BerylHomeId,
 }
-
-#[derive(Default)]
-struct SharedHomeRegistry {
-    homes: HashMap<BerylHomeId, Weak<Mutex<ServiceState>>>,
-}
-
-static SHARED_HOME_STATES: OnceLock<Mutex<SharedHomeRegistry>> = OnceLock::new();
 
 struct ServiceState {
     home_id: BerylHomeId,
@@ -116,7 +107,8 @@ struct ReconcileFault(
 struct ReconcileFault;
 
 impl DraftMarkerSealService {
-    pub fn new(
+    #[cfg(feature = "test-faults")]
+    pub fn test_new(
         store: &HomeStore,
         home_generation: HomeGeneration,
         storage: SyndicStorage,
@@ -127,8 +119,8 @@ impl DraftMarkerSealService {
             return Err(DraftMarkerSealServiceConstructionError::HomeGenerationMismatch);
         }
         let home_id = store.home_id();
-        let inner =
-            acquire_shared_home_state(store, home_id, home_generation, storage, assets, limits)?;
+        validate_construction_authority(store, &storage, &assets)?;
+        let inner = new_shared_home_state(home_id, home_generation, storage, assets, limits);
         Ok(Self { inner, home_id })
     }
 
@@ -319,121 +311,6 @@ impl Clone for DraftMarkerSealService {
     }
 }
 
-impl Drop for DraftMarkerSealService {
-    fn drop(&mut self) {
-        let registry = SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
-        let mut registry = registry
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if Arc::strong_count(&self.inner) == 1 {
-            let is_current = registry
-                .homes
-                .get(&self.home_id)
-                .is_some_and(|current| Weak::ptr_eq(current, &Arc::downgrade(&self.inner)));
-            if is_current {
-                registry.homes.remove(&self.home_id);
-            }
-        }
-    }
-}
-
-fn acquire_shared_home_state(
-    store: &HomeStore,
-    home_id: BerylHomeId,
-    home_generation: HomeGeneration,
-    storage: SyndicStorage,
-    assets: AssetState,
-    limits: DraftMarkerSealServiceLimits,
-) -> Result<Arc<Mutex<ServiceState>>, DraftMarkerSealServiceConstructionError> {
-    validate_construction_authority(store, &storage, &assets)?;
-    loop {
-        let existing = {
-            let registry =
-                SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
-            let mut registry = registry
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry.homes.retain(|_, state| state.strong_count() > 0);
-            registry.homes.get(&home_id).and_then(Weak::upgrade)
-        };
-        let Some(existing) = existing else {
-            let state = new_shared_home_state(
-                home_id,
-                home_generation,
-                storage.clone(),
-                assets.clone(),
-                limits,
-            );
-            let registry =
-                SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
-            let mut registry = registry
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry
-                .homes
-                .retain(|_, current| current.strong_count() > 0);
-            if registry
-                .homes
-                .get(&home_id)
-                .and_then(Weak::upgrade)
-                .is_none()
-            {
-                registry.homes.insert(home_id, Arc::downgrade(&state));
-                return Ok(state);
-            }
-            continue;
-        };
-
-        let (existing_generation, existing_storage, existing_assets, existing_limits, terminal) = {
-            let state = lock_state(&existing);
-            (
-                state.home_generation,
-                state.storage.clone(),
-                state.assets.clone(),
-                state.limits,
-                state.flights.is_empty()
-                    && matches!(
-                        state.lifecycle,
-                        ServiceLifecycle::Disposed | ServiceLifecycle::Retired(_)
-                    ),
-            )
-        };
-        if !terminal {
-            if existing_generation != home_generation {
-                return Err(DraftMarkerSealServiceConstructionError::HomeGenerationMismatch);
-            }
-            if existing_limits != limits {
-                return Err(DraftMarkerSealServiceConstructionError::LimitsMismatch);
-            }
-            validate_construction_authority(store, &existing_storage, &existing_assets)?;
-            return Ok(existing);
-        }
-
-        let replacement = new_shared_home_state(
-            home_id,
-            home_generation,
-            storage.clone(),
-            assets.clone(),
-            limits,
-        );
-        let registry = SHARED_HOME_STATES.get_or_init(|| Mutex::new(SharedHomeRegistry::default()));
-        let mut registry = registry
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        registry
-            .homes
-            .retain(|_, current| current.strong_count() > 0);
-        let is_current = registry
-            .homes
-            .get(&home_id)
-            .is_some_and(|current| Weak::ptr_eq(current, &Arc::downgrade(&existing)));
-        if is_current {
-            registry.homes.insert(home_id, Arc::downgrade(&replacement));
-            return Ok(replacement);
-        }
-    }
-}
-
 fn new_shared_home_state(
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
@@ -461,6 +338,7 @@ fn new_shared_home_state(
     }))
 }
 
+#[cfg(feature = "test-faults")]
 fn validate_construction_authority(
     store: &HomeStore,
     storage: &SyndicStorage,

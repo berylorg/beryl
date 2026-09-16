@@ -52,17 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 457: Validate Asset Handles Through Candidate Access (finished)
+# Phase 422: Establish Explicit Home Marker-Service Ownership (finished)
 
-Accepted the asset candidate revision prerequisite for marker-service construction. All 16 focused
-state tests, ordinary library compilation and independent review passed, preserving provenance,
-read confirmation and publication fences.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-asset-revision).
-
-# Phase 422: Establish Explicit Home Marker-Service Ownership (pending)
-
-Construct one marker-seal service from candidate identity and immutable limits, inject shared clones
-from the home owner and remove global discovery while preserving flight and retirement custody.
+Accepted exclusive private candidate-owned marker preparation, removing global discovery and
+ordinary consumer construction. All 88 marker/consumer regressions and five final preparation
+tests passed, along with normal compilation and independent review.
+[Acceptance evidence](failures/target-bootstrap-composition.md#initial-marker-service-ownership).
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 

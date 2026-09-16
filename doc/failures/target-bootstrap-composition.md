@@ -606,3 +606,26 @@ noninitial persisted revision continuity, ordinary admission remaining closed, a
 failure preventing publication in both candidate states. Normal state library compilation,
 formatting, diff checks and independent review passed. Marker-service ownership and complete graph
 publication remain their separate pending acceptance boundaries.
+
+## Initial Marker Service Ownership
+
+Phase 422 removes the process-global marker registry and ordinary public constructor. Repeated
+consumer construction cannot establish the target graph's exclusive generation ownership;
+consumers now receive shared clones, with isolated construction available only under test-faults.
+The private preparation owner consumes the registration-complete candidate, validates Syndic and
+Asset handles through candidate revision reads, then allocates one flight registry with immutable
+limits. It exposes neither a service nor candidate before complete-graph integration. Abandonment
+explicitly retires shared marker state before candidate destruction; dropping a clone does not
+pretend to dispose flights. Existing admission, drive, disposal and active-drive retirement
+algorithms remain unchanged.
+
+The focused app nextest suite passed 88 tests in 153.033 seconds across marker preparation,
+marker service/lifecycle, initial composer, window shell/creation/slot and composer publication.
+Final preparation run `8e02932d-2973-4395-9c2d-fc306e9d576e` passed all five cases, including
+foreign and stale handles, failure at either domain's confirmation read, unchanged candidate
+identity and closed ordinary admission, explicit shared-state retirement, and home reopening.
+Normal app library compilation, formatting, diff checks and independent lifecycle review passed.
+
+This accepts the marker factory and exclusive private custody. Phase 423 must compose it with
+the accepted CAS preparation owner, publish the complete graph, distribute clones and mount
+graph disposal/replacement. No standalone marker publication or partial graph is supplied.

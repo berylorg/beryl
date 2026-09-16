@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 include!("../../syndic-storage/tests/durable_builder/support.rs");
 
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
@@ -302,7 +304,7 @@ fn not_committed_supersession_replay_after_successor_drift() {
 }
 
 #[test]
-fn construction_rejects_a_new_generation_while_old_home_authority_is_live() {
+fn construction_rejects_a_stale_generation() {
     let faults = FaultController::new();
     let (_home, store, state, storage, _) =
         fixture_with_state_and_faults("app-construction-generation", 146, faults.clone());
@@ -316,9 +318,9 @@ fn construction_rejects_a_new_generation_while_old_home_authority_is_live() {
     let current_generation = store.health().generation().unwrap();
     assert_ne!(current_generation, old_generation);
     assert!(matches!(
-        DraftMarkerSealService::new(
+        DraftMarkerSealService::test_new(
             &store,
-            current_generation,
+            old_generation,
             storage,
             state.assets(),
             DraftMarkerSealServiceLimits::new(
@@ -348,7 +350,7 @@ fn holding_one_home_state_does_not_block_other_home_construction_or_drop() {
         .recv_timeout(Duration::from_secs(5))
         .unwrap();
 
-    let service_b = DraftMarkerSealService::new(
+    let service_b = DraftMarkerSealService::test_new(
         &store_b,
         store_b.health().generation().unwrap(),
         storage_b,

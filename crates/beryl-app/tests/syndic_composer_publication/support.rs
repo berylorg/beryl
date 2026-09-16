@@ -34,7 +34,7 @@ pub fn service(
     flights: usize,
     page: usize,
 ) -> DraftMarkerSealService {
-    DraftMarkerSealService::new(
+    DraftMarkerSealService::test_new(
         store,
         store.health().generation().unwrap(),
         storage,

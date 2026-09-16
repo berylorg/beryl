@@ -33,7 +33,7 @@ fn prepared_transfer_uses_real_hidden_host_and_preserves_post_native_failure_cus
                     ),
                 );
                 let appearance = coordinator.current();
-                let seals = DraftMarkerSealService::new(
+                let seals = DraftMarkerSealService::test_new(
                     &fixture.store,
                     fixture.store.health().generation().unwrap(),
                     fixture.storage.clone(),

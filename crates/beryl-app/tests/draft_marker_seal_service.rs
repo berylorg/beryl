@@ -1,3 +1,5 @@
+#![cfg(feature = "test-faults")]
+
 include!("../../syndic-storage/tests/durable_builder/support.rs");
 
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -468,7 +470,7 @@ fn staging_authority_never_remints_from_a_set_id_and_debug_redacts_its_secret() 
 }
 
 #[test]
-fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marker_retraversal() {
+fn shared_clone_resumes_building_and_replays_a_sealed_asset_proof_without_marker_retraversal() {
     let (_home, store, state, storage, thread) = fixture_with_state("app-fresh", 210);
     let session = published_marker_session(&storage, &store, &state, thread, 211);
     let request = request(&session, 212, 213);
@@ -479,13 +481,13 @@ fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marke
         DraftMarkerSealDriveOutcome::Progress
     );
 
-    let resumed = new_service(&store, &storage, state.assets(), 1, 1);
+    let resumed = initial.clone();
     let resumed_flight = match resumed
         .admit(&store, request, &CommandCancellation::new())
         .unwrap()
     {
         DraftMarkerSealAdmission::Coalesced(flight) => flight,
-        other => panic!("fresh service did not coalesce the retained flight: {other:?}"),
+        other => panic!("shared clone did not coalesce the retained flight: {other:?}"),
     };
     assert_eq!(
         resumed.drive(&store, resumed_flight).unwrap(),
@@ -496,7 +498,7 @@ fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marke
         DraftMarkerSealDriveOutcome::ChangedNonempty { .. }
     ));
 
-    let replay = new_service(&store, &storage, state.assets(), 1, 1);
+    let replay = initial.clone();
     let replay_flight = admitted(&replay, &store, request);
     assert!(matches!(
         replay.drive(&store, replay_flight).unwrap(),
@@ -505,12 +507,12 @@ fn fresh_service_resumes_building_and_replays_a_sealed_asset_proof_without_marke
 }
 
 #[test]
-fn independent_services_share_same_home_capacity_and_release_registry_ownership() {
+fn injected_clones_share_capacity_and_disposal() {
     let (_home, store, state, storage, thread) = fixture_with_state("app-shared-home", 215);
     let durable = current(&storage, &store, thread);
     let session = open_session(&storage, &store, &durable, 216, 217);
     let first = new_service(&store, &storage, state.assets(), 1, 1);
-    let second = new_service(&store, &storage, state.assets(), 1, 1);
+    let second = first.clone();
     let first_request = request(&session, 218, 219);
     let flight = admitted(&first, &store, first_request);
     assert_eq!(
@@ -557,17 +559,16 @@ fn independent_services_share_same_home_capacity_and_release_registry_ownership(
         beryl_app::composer_marker_seal::DraftMarkerSealDisposeOutcome::Disposed
     );
 
-    let reopened = new_service(&store, &storage, state.assets(), 1, 1);
     assert!(matches!(
-        reopened.admit(&store, first_request, &CommandCancellation::new()),
-        Ok(DraftMarkerSealAdmission::Admitted(_))
+        first.admit(&store, first_request, &CommandCancellation::new()),
+        Err(beryl_app::composer_marker_seal::DraftMarkerSealServiceError::ServiceDisposed)
     ));
     drop(first);
     drop(second);
 }
 
 #[test]
-fn shared_home_construction_requires_exact_limits_and_domain_authority() {
+fn clones_preserve_immutable_limits_and_fixture_rejects_foreign_authority() {
     let (_home, store, state, storage, thread) = fixture_with_state("app-construction", 227);
     let durable = current(&storage, &store, thread);
     let session = open_session(&storage, &store, &durable, 228, 229);
@@ -575,36 +576,14 @@ fn shared_home_construction_requires_exact_limits_and_domain_authority() {
     admitted(&service, &store, request(&session, 230, 231));
     admitted(&service, &store, request(&session, 232, 233));
 
-    for limits in [
-        DraftMarkerSealServiceLimits::new(
-            NonZeroUsize::new(1).unwrap(),
-            NonZeroUsize::new(1).unwrap(),
-        )
-        .unwrap(),
-        DraftMarkerSealServiceLimits::new(
-            NonZeroUsize::new(2).unwrap(),
-            NonZeroUsize::new(2).unwrap(),
-        )
-        .unwrap(),
-    ] {
-        assert!(matches!(
-            DraftMarkerSealService::new(
-                &store,
-                store.health().generation().unwrap(),
-                storage.clone(),
-                state.assets(),
-                limits,
-            ),
-            Err(
-                beryl_app::composer_marker_seal::DraftMarkerSealServiceConstructionError::LimitsMismatch
-            )
-        ));
-    }
+    let shared = service.clone();
+    assert_eq!(shared.diagnostics().configured_flight_limit(), 2);
+    assert_eq!(shared.diagnostics().current_flights(), 2);
 
     let (_other_home, _other_store, _other_state, other_storage, _) =
         fixture_with_state("app-construction-other", 234);
     assert!(matches!(
-        DraftMarkerSealService::new(
+        DraftMarkerSealService::test_new(
             &store,
             store.health().generation().unwrap(),
             other_storage,

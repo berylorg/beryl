@@ -114,9 +114,10 @@
   and repair families join in their owning phases rather than existing as empty placeholders.
 - Recovery discovery uses accepted compact sources; new inventory composition must preserve
   source-only discovery and cannot reintroduce broad input-gate or history sweeps.
-- Marker-seal construction retains its current shared registry until validated-home bootstrap
-  enforces single construction and injects shared clones; that slice removes discovery without
-  permitting duplicate home-level flight capacity.
+- Marker-seal construction consumes the private home candidate and exposes no ordinary constructor
+  or global discovery. Complete-graph composition must retain that single construction owner and
+  distribute its shared clones only after publication; isolated test construction grants no
+  production replacement or duplicate-capacity authority.
 - Replacing immediately healthy initial open intentionally breaks typed consumers until their
   candidate registration and publication boundaries are rebuilt; no alternate healthy opener or
   automatic-publication substitute may conceal that gap.
@@ -401,6 +402,7 @@
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
+- [x] Accepted private candidate-owned marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership). Complete-graph publication and clone distribution remain open.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.
@@ -482,7 +484,7 @@
 
 - [x] Named live code, tests, fixtures, and configuration by behavior and verified the complete live naming surface.
 - [x] Completed the accepted duplicate-implementation and bounded-theme simplification batch, retaining its recorded verification limits.
-- [ ] Replace marker-service global discovery with explicit shared home ownership when bootstrap composition is assembled.
+- [ ] Integrate the accepted private marker owner into complete bootstrap publication and graph retirement, distributing shared clones only from the published graph.
 - [ ] Share only the duplicated persistent-tree rebalancing mechanics after editor behavior stabilizes.
 - [ ] Remove every remaining shim, obsolete export, test, key, diagnostic, role, archived-source
   membership edge, and forbidden API reference.

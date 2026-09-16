@@ -93,7 +93,7 @@ pub(super) fn new_service(
     flights: usize,
     page: usize,
 ) -> DraftMarkerSealService {
-    DraftMarkerSealService::new(
+    DraftMarkerSealService::test_new(
         store,
         store.health().generation().unwrap(),
         storage.clone(),

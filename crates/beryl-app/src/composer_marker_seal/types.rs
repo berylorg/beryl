@@ -27,8 +27,6 @@ pub enum DraftMarkerSealServiceConstructionError {
         "the requested marker seal service domain authority differs from the shared home authority"
     )]
     DomainAuthorityMismatch,
-    #[error("the requested marker seal service limits differ from the shared home limits")]
-    LimitsMismatch,
 }
 
 impl DraftMarkerSealServiceLimits {

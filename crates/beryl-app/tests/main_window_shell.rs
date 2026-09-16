@@ -60,7 +60,7 @@ impl ShellFixture {
     fn new(seed: u8) -> Self {
         let (directory, store, state, storage, faults) = support::open_home(seed);
         let window_id = beryl_model::WindowId::from_bytes([seed; 16]);
-        let marker_seals = DraftMarkerSealService::new(
+        let marker_seals = DraftMarkerSealService::test_new(
             &store,
             store.health().generation().unwrap(),
             storage.clone(),
