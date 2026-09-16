@@ -631,6 +631,9 @@ fn validate_gate_turn(
     let turn = require::<TurnsFamily>(reader, &turn_id, "input-gate turn is missing")?;
     let state = require::<TurnStatesFamily>(reader, &turn_id, "input-gate turn state is missing")?;
     let valid_lifecycle = match gate.state() {
+        InputGateState::RepairRequired(target) => {
+            crate::record::repair::retained_repair_target_matches(reader, thread.id(), target)?
+        }
         InputGateState::FinalizingHistory(_) => state.lifecycle().is_proven_terminal(),
         InputGateState::AwaitingTerminal(_) => {
             state.lifecycle() == crate::TurnLifecycle::UnknownTerminal
@@ -656,6 +659,7 @@ fn validate_gate_head(
                 | InputGateState::PendingTurn(_)
                 | InputGateState::Compacting { .. }
                 | InputGateState::FinalizingHistory(_)
+                | InputGateState::RepairRequired(_)
         ) || provider_stopping
         {
             Ok(())
@@ -698,6 +702,7 @@ fn validate_gate_head(
             AcceptedRouteTarget::NextTurn(_) | AcceptedRouteTarget::ProjectionLost(_)
         ) | (InputGateState::Compacting { .. }, _)
             | (InputGateState::FinalizingHistory(_), _)
+            | (InputGateState::RepairRequired(_), _)
             | (InputGateState::Idle, _)
     ) || provider_stopping;
     compatible

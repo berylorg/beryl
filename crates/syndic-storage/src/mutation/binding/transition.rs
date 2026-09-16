@@ -38,6 +38,7 @@ impl PublishBindingMutation {
     ) -> Result<PublishBindingRecords, SyndicMutationError> {
         match self {
             Self::Valid(request) => {
+                crate::mutation::repair::exclude_repair(reader, request.thread_id, None)?;
                 validate_canonical_execution(reader, request.thread_id, &request.execution)?;
                 let base = transition_base(
                     reader,

@@ -95,6 +95,10 @@ impl StopAdmissionCandidate {
 /// Stable reason why one current thread cannot admit a stop operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StopAdmissionIneligibility {
+    RepairRequired {
+        turn_id: SyndicTurnId,
+        current_gate_revision: InputGateRevision,
+    },
     /// The thread has no blocking operation.
     Idle {
         /// Current idle gate revision.
@@ -171,6 +175,10 @@ impl StopAdmissionIneligibility {
                 ..
             }
             | Self::FinalizingHistory {
+                current_gate_revision,
+                ..
+            }
+            | Self::RepairRequired {
                 current_gate_revision,
                 ..
             }
@@ -357,6 +365,12 @@ fn classify_current(
             turn_id,
             thread_id: _,
         } => classify_compacting(&facts, target.as_ref(), gate, turn_id),
+        DeliveryRecoveryCase::DeferredRepair { turn_id, .. } => Ok(StopAdmissionRead::Ineligible(
+            StopAdmissionIneligibility::RepairRequired {
+                turn_id,
+                current_gate_revision: gate.revision(),
+            },
+        )),
         DeliveryRecoveryCase::Settled { thread_id: _ } => Ok(StopAdmissionRead::Ineligible(
             StopAdmissionIneligibility::Idle {
                 current_gate_revision: gate.revision(),
@@ -426,7 +440,8 @@ fn discover_target(
         | InputGateState::PendingTurn(_)
         | InputGateState::AwaitingSteering(_)
         | InputGateState::AwaitingTerminal(_)
-        | InputGateState::FinalizingHistory(_) => None,
+        | InputGateState::FinalizingHistory(_)
+        | InputGateState::RepairRequired(_) => None,
     }
 }
 

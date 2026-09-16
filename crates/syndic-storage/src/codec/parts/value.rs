@@ -134,6 +134,10 @@ pub(crate) fn enc_input_gate_state(e: &mut Encoder, value: &crate::InputGateStat
             e.u8(7);
             enc_turn(e, *turn);
         }
+        crate::InputGateState::RepairRequired(target) => {
+            e.u8(8);
+            super::repair::enc_repair_target(e, target);
+        }
     }
 }
 
@@ -155,6 +159,7 @@ pub(crate) fn dec_input_gate_state(
         )),
         6 => dec_turn(d).map(crate::InputGateState::FinalizingHistory),
         7 => dec_turn(d).map(crate::InputGateState::AwaitingTerminal),
+        8 => super::repair::dec_repair_target(d).map(crate::InputGateState::RepairRequired),
         tag => Err(CodecError::InvalidTag {
             kind: "input-gate state",
             tag,

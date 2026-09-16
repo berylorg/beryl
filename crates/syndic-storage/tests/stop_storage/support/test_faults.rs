@@ -156,7 +156,9 @@ pub fn admit_queued_text(
                 NextTurnReason::Stop
             })
         }
-        InputGateState::FinalizingHistory(_) => Some(NextTurnReason::TerminalHistory),
+        InputGateState::FinalizingHistory(_) | InputGateState::RepairRequired(_) => {
+            Some(NextTurnReason::TerminalHistory)
+        }
         InputGateState::AwaitingTerminal(_) => Some(NextTurnReason::UnknownTerminal),
         InputGateState::AwaitingSteering(_) | InputGateState::Steerable(_) => None,
         InputGateState::Idle => panic!("queued fixture requires a non-idle gate"),

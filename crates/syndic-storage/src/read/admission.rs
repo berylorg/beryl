@@ -356,6 +356,7 @@ fn exact_route_leaf_matches(
             | crate::InputGateState::Compacting { .. }
             | crate::InputGateState::Stopping { .. }
             | crate::InputGateState::FinalizingHistory(_)
+            | crate::InputGateState::RepairRequired(_)
             | crate::InputGateState::AwaitingTerminal(_) => {
                 matches!(leaf.state(), AcceptedRouteLeafState::NextTurn(_))
             }

@@ -501,6 +501,10 @@ canonical byte comparison of the point-read target closure.
   `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
   `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V7
   domain is replacement authority.
+- The repair gate uses state tag 8 followed by the embedded target payload. A repair gate retains
+  zero live steering inputs. A consumed request's successor revision cannot exceed the containing
+  gate revision; later queued-input admission may advance that revision without changing the
+  consumed request. These local checks apply during construction and decoding.
 - Repair provenance uses only durable `source-events` in the exact target turn. A witness is a
   nonzero per-turn `SourceEventSequence` and an exact 32-byte SHA-256 digest. The owning target's
   Syndic turn identity scopes that sequence; neither the digest nor a sequence alone is identity.

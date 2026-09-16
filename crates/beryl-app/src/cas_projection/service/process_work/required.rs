@@ -156,9 +156,9 @@ pub(super) fn gate_work_facts(state: &InputGateState) -> ProcessWorkFacts {
         InputGateState::AwaitingSteering(_) | InputGateState::Steerable(_) => {
             facts.executing = true
         }
-        InputGateState::AwaitingTerminal(_) | InputGateState::FinalizingHistory(_) => {
-            facts.terminal_settlement = true
-        }
+        InputGateState::AwaitingTerminal(_)
+        | InputGateState::FinalizingHistory(_)
+        | InputGateState::RepairRequired(_) => facts.terminal_settlement = true,
         InputGateState::Compacting { .. } => facts.compacting = true,
         InputGateState::Stopping { .. } => facts.stopping = true,
     }

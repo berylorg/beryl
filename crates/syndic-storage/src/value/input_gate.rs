@@ -100,6 +100,7 @@ pub enum InputGateState {
         operation_nonce: crate::StopOperationNonce,
     },
     FinalizingHistory(SyndicTurnId),
+    RepairRequired(crate::RepairRequiredTarget),
 }
 
 impl InputGateState {
@@ -138,6 +139,7 @@ impl InputGateState {
             | Self::FinalizingHistory(turn) => Some(*turn),
             Self::Compacting { turn_id, .. } => Some(*turn_id),
             Self::Stopping { turn_id, .. } => Some(*turn_id),
+            Self::RepairRequired(target) => Some(target.turn_id()),
         }
     }
 

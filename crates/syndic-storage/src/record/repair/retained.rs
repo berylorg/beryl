@@ -30,6 +30,7 @@ pub(crate) fn retained_repair_target_matches(
         return Ok(false);
     };
     if state.turn_id() != target.turn_id()
+        || state.resolved_repair().is_some()
         || !state.lifecycle().is_proven_terminal()
         || state.end_status() != Some(target.gap().status())
         || state.source_event_count() != target.gap().terminal().sequence().get()

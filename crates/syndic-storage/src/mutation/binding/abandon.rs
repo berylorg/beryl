@@ -438,7 +438,8 @@ fn validate_active_gate(
         | InputGateState::PendingTurn(_)
         | InputGateState::Compacting { .. }
         | InputGateState::Stopping { .. }
-        | InputGateState::FinalizingHistory(_) => {
+        | InputGateState::FinalizingHistory(_)
+        | InputGateState::RepairRequired(_) => {
             return Err(SyndicMutationError::InputGateStateConflict);
         }
     };

@@ -97,6 +97,9 @@ pub(in crate::mutation::live) fn terminal_gate_effect(
         return Err(SyndicMutationError::InputGateStateConflict);
     }
     let state = match (lifecycle.is_proven_terminal(), current.state()) {
+        (_, InputGateState::RepairRequired(_)) => {
+            return Err(SyndicMutationError::InputGateStateConflict);
+        }
         (true, _) => InputGateState::FinalizingHistory(turn),
         (false, InputGateState::PendingTurn(_)) => InputGateState::PendingTurn(turn),
         (false, InputGateState::Compacting { .. }) => {
@@ -370,6 +373,6 @@ fn gate_targets_turn(state: &InputGateState, turn: SyndicTurnId) -> bool {
             *target == turn
         }
         InputGateState::Stopping { turn_id, .. } => *turn_id == turn,
-        InputGateState::Idle => false,
+        InputGateState::Idle | InputGateState::RepairRequired(_) => false,
     }
 }

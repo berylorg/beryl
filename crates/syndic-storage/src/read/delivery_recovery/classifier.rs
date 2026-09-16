@@ -131,6 +131,21 @@ pub(in crate::read) fn classify(
     }
 
     match gate.state() {
+        InputGateState::RepairRequired(target) => {
+            let state = required(facts.state.as_ref(), "repair target state is missing")?;
+            if state.turn_id() != target.turn_id()
+                || state.end_status() != Some(target.gap().status())
+                || state.source_event_count() != target.gap().terminal().sequence().get()
+                || state.resolved_repair().is_some()
+                || summary.committed_tail() != Some(target.turn_id())
+            {
+                return corruption("repair gate and terminal target disagree");
+            }
+            Ok(DeliveryRecoveryCase::DeferredRepair {
+                thread_id,
+                turn_id: target.turn_id(),
+            })
+        }
         InputGateState::Idle => Ok(DeliveryRecoveryCase::Settled { thread_id }),
         InputGateState::Compacting { turn_id, .. } => {
             compaction::validate(facts, gate, *turn_id)?;

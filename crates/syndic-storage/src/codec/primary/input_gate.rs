@@ -7,7 +7,7 @@ impl Family for InputGatesFamily {
     type Key = SyndicThreadId;
     type Value = InputGateRecord;
     const NAME: &'static str = "input-gates";
-    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(4);
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(5);
     const MAX_KEY_BYTES: usize = 16;
     const MAX_VALUE_BYTES: usize = SMALL_MAX;
 

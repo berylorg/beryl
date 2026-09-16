@@ -867,7 +867,8 @@ fn window_close_ineligible_status(
         StopAdmissionIneligibility::PendingTurn { turn_id, .. }
         | StopAdmissionIneligibility::AwaitingTerminal { turn_id, .. }
         | StopAdmissionIneligibility::Compacting { turn_id, .. }
-        | StopAdmissionIneligibility::FinalizingHistory { turn_id, .. } => {
+        | StopAdmissionIneligibility::FinalizingHistory { turn_id, .. }
+        | StopAdmissionIneligibility::RepairRequired { turn_id, .. } => {
             Ok(if turn_id == target_turn_id {
                 WindowCloseStopBarrierStatus::Waiting
             } else {

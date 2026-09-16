@@ -126,7 +126,9 @@ pub(super) fn records(
             *turn_id,
             *operation_nonce,
         )?),
-        InputGateState::FinalizingHistory(_) => Some(NextTurnReason::TerminalHistory),
+        InputGateState::FinalizingHistory(_) | InputGateState::RepairRequired(_) => {
+            Some(NextTurnReason::TerminalHistory)
+        }
         InputGateState::AwaitingTerminal(_) => Some(NextTurnReason::UnknownTerminal),
         InputGateState::AwaitingSteering(_) | InputGateState::Steerable(_) => None,
         InputGateState::Idle => return Err(SyndicMutationError::InputGateStateConflict),

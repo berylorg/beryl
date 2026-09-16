@@ -106,8 +106,8 @@ mod lifecycle_content;
 mod non_idle_gate;
 pub use dispatch_provenance::{decode_turn_state_for_test, turn_state_codec_bytes};
 pub use non_idle_gate::{
-    decode_non_idle_gate_source_for_test, non_idle_gate_source_codec_bytes,
-    non_idle_gate_source_codec_limits,
+    decode_input_gate_for_test, decode_non_idle_gate_source_for_test, input_gate_codec_bytes,
+    non_idle_gate_source_codec_bytes, non_idle_gate_source_codec_limits,
 };
 pub(crate) mod metrics;
 mod physical;

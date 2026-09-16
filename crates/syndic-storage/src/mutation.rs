@@ -28,6 +28,8 @@ use input_gate::{current_input_gate, put_input_gate, reserve_input_gate};
 mod live;
 pub(crate) mod projection;
 mod promotion;
+mod repair;
+pub use repair::RequireTerminalRepair;
 mod provider_frame;
 mod provider_observation;
 mod stop;
@@ -351,6 +353,11 @@ fn validate_source_tail(
     source: &SyndicThreadTail,
     created_at: SyndicTimestamp,
 ) -> Result<(), SyndicMutationError> {
+    repair::exclude_repair(reader, source.thread_id(), None)?;
+    if let Some(tail) = source.selected_path().tail() {
+        let turn = required::<TurnsFamily>(reader, &tail)?;
+        repair::exclude_repair(reader, turn.origin_thread_id(), Some(tail))?;
+    }
     if created_at < source.last_activity_at() {
         return Err(SyndicMutationError::TimestampPrecedesSourceActivity);
     }

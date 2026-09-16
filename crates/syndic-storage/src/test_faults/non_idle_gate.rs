@@ -2,6 +2,17 @@ use beryl_home_store::{RecordCodec, RecordVersion};
 
 use crate::{NonIdleGateSourceRecord, codec::*, domain::SyndicDomain};
 
+pub fn input_gate_codec_bytes(gate: &crate::InputGateRecord) -> (RecordVersion, Vec<u8>) {
+    (
+        InputGatesFamily::RECORD_VERSION,
+        InputGatesFamily::encode_value(gate).unwrap(),
+    )
+}
+
+pub fn decode_input_gate_for_test(payload: &[u8]) -> Option<crate::InputGateRecord> {
+    InputGatesFamily::decode_value(payload).ok()
+}
+
 pub fn non_idle_gate_source_codec_bytes(source: NonIdleGateSourceRecord) -> (Vec<u8>, Vec<u8>) {
     (
         NonIdleGateSourcesFamily::encode_key(&source.thread_id()).expect("fixed key"),

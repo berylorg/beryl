@@ -324,6 +324,8 @@ pub enum ProjectionCoordinatorError {
     /// Restart delivery convergence could not prove its exact durable publication.
     #[error("accepted-delivery restart recovery could not converge durable authority")]
     AcceptedDeliveryRecoveryPublication,
+    #[error("terminal repair recovery is unavailable")]
+    TerminalRepairRecoveryUnavailable,
     /// Restart delivery convergence could not construct a non-regressing durable timestamp.
     #[error("accepted-delivery restart recovery could not construct a durable timestamp")]
     AcceptedDeliveryRecoveryClock,

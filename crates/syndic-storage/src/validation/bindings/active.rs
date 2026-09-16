@@ -227,7 +227,8 @@ pub(super) fn validate_current_active_gate(
         crate::InputGateState::Idle
         | crate::InputGateState::PendingTurn(_)
         | crate::InputGateState::Compacting { .. }
-        | crate::InputGateState::FinalizingHistory(_) => {
+        | crate::InputGateState::FinalizingHistory(_)
+        | crate::InputGateState::RepairRequired(_) => {
             return invariant("current active binding has no active gate correlation");
         }
     };

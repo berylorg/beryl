@@ -12,6 +12,12 @@ pub(crate) fn current_input_gate(
     if !non_idle_gate_source_matches(*thread_id, gate.as_ref(), source.as_ref()) {
         return Err(SyndicMutationError::NonIdleGateSourceMismatch);
     }
+    if let Some(gate) = &gate
+        && let crate::InputGateState::RepairRequired(target) = gate.state()
+        && !crate::record::repair::retained_repair_target_matches(reader, *thread_id, target)?
+    {
+        return Err(SyndicMutationError::RepairTargetConflict);
+    }
     Ok(gate)
 }
 

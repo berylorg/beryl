@@ -1019,7 +1019,7 @@ pub fn converge_and_release_terminal_history(
     );
 }
 
-fn converge_items(
+pub fn converge_items(
     store: &HomeStore,
     storage: SyndicStorage,
     thread_id: SyndicThreadId,
@@ -1182,7 +1182,7 @@ pub fn project_item_if_needed(store: &HomeStore, storage: SyndicStorage, item_id
     panic!("bounded item-projection convergence did not finish")
 }
 
-fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id: SyndicThreadId) {
+pub fn converge_transcript(store: &HomeStore, storage: SyndicStorage, thread_id: SyndicThreadId) {
     let thread = storage
         .thread(store, thread_id, point_limit())
         .unwrap()

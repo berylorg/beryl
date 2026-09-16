@@ -246,7 +246,8 @@ fn abandonment_prior_matches(
         | InputGateState::PendingTurn(_)
         | InputGateState::Compacting { .. }
         | InputGateState::Stopping { .. }
-        | InputGateState::FinalizingHistory(_) => false,
+        | InputGateState::FinalizingHistory(_)
+        | InputGateState::RepairRequired(_) => false,
     };
     let Some(route) = gate.selected_route() else {
         return false;

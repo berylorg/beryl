@@ -52,23 +52,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 477: Persist Resolved Repair In Turn State (finished)
+# Phase 468: Persist And Enforce The Repair-Required Gate (finished)
 
-Accepted bounded resolution values, the V4 turn-state codec, checked immutable attachment and
-preservation through existing state reconstruction. All 165 focused and regression cases passed,
-including exact available/consumed persistence through finalization and reopen. Storage/app library
-checks, formatting/diff checks, Markdown reconciliation and independent integrity review passed.
-Gate entry and atomic repair exit remain the following separate integration boundaries.
-
-# Phase 468: Persist And Enforce The Repair-Required Gate (pending)
-
-Integrate the accepted repair values, target codec, witness computation and retained-target validation into canonical gate storage, bounded structural validation
-and same-thread admission exclusion; verify exact terminal-tail correlation, stale revisions,
-corruption rejection and unrelated-thread independence before app recovery consumes the gate.
-
-Consume the accepted turn-state resolution component to reject resolved-target re-entry in the
-same admitted read. The Operator approved the missing custody correction on 2026-09-17; see
-[durable-once evidence](failures/cas-terminal-repair-dispatch-must-be-durable-once.md#post-gate-custody-gap).
+Accepted V5 gate encoding, exact authenticated admission and resolved-target exclusion, bounded
+structural validation, fork/replacement/binding exclusion and preserved queued input without
+promotion. All 191 focused and regression cases passed, including reopen, corruption and real
+admission controls. Storage/app library checks, formatting, Markdown reconciliation and independent
+integrity review passed. Deferred repair now stops startup explicitly; convergence remains below.
 
 # Phase 469: Converge Unavailable Repair To Incomplete History (pending)
 

@@ -77,6 +77,13 @@ The package exposes grouped typed operations rather than raw record mechanics:
   `SourceEventRecord::repair_witness` computes a descriptive sequence/digest witness over the
   schema-defined domain and canonical source-event payload. It neither reads storage nor proves
   that the record is retained, eligible repair evidence or current gate authority.
+- `RequireTerminalRepair` admits an available target only from its exact `FinalizingHistory`
+  gate revision. `require_terminal_repair` and `current_require_terminal_repair` authenticate
+  retained target evidence and absence of resolution in the admitted read, preserve queued input
+  accounting, and atomically advance the gate and non-idle source. Admission grants no dispatch
+  capability. Repair gates exclude successor and lineage publication across the blocked target.
+  Deferred repair startup classification is descriptive; convergence must authenticate retained
+  evidence again in its mutation before permitting publication.
 - `ResolvedRepair` pairs the original target with `RepairResolution::Incomplete`, carrying a
   closed `TurnIncompleteReason`. `TurnStateRecord::resolved_repair` exposes the optional retained
   value; `with_resolved_repair` checks local identity, frontier and status agreement and refuses

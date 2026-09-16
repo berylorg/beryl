@@ -699,10 +699,10 @@ pub use mutation::{
     ProviderFrameStageCallback, ProviderFrameStageError, ProviderFrameStageOutcome,
     ProviderObservationMutationError, PublishActiveCasTurn, PublishActivityChildHandoff,
     PublishCompactionProviderEvent, PublishCompactionRequestDisposition, PublishStaleBinding,
-    PublishThreadUsage, PublishUnboundBinding, PublishValidBinding, RetryAcceptedInputDelivery,
-    SafelyReopenStopOperation, SettleCompactionOperation, SettleLifecycleCompaction,
-    StartItemProjectionBuild, StartTranscriptBuild, SteeringRejection, SyndicMutationError,
-    ThreadCreationStatus, prepare_provider_frame, stage_provider_frame,
+    PublishThreadUsage, PublishUnboundBinding, PublishValidBinding, RequireTerminalRepair,
+    RetryAcceptedInputDelivery, SafelyReopenStopOperation, SettleCompactionOperation,
+    SettleLifecycleCompaction, StartItemProjectionBuild, StartTranscriptBuild, SteeringRejection,
+    SyndicMutationError, ThreadCreationStatus, prepare_provider_frame, stage_provider_frame,
 };
 pub use native_projection::{
     NativeProjectionBasis, NativeProjectionError, NativeProjectionPlan, NativeProjectionRequest,

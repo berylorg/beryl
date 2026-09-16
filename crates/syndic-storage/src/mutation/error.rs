@@ -100,6 +100,7 @@ pub enum SyndicMutationError {
     GeneratedMediaResourceCollision,
     CanonicalFinalizationConflict,
     TerminalHistoryCompletionConflict,
+    RepairTargetConflict,
     ProjectionBuildConflict,
     ProjectionAlreadyCurrent,
     ProjectionIdentityCollision,
@@ -285,6 +286,7 @@ impl fmt::Display for SyndicMutationError {
             Self::TerminalHistoryCompletionConflict => formatter.write_str(
                 "terminal history is not at the exact durable convergence fixed point",
             ),
+            Self::RepairTargetConflict => formatter.write_str("terminal repair target authority conflicts"),
             Self::ProjectionBuildConflict => {
                 formatter.write_str("item projection build frontier disagrees")
             }

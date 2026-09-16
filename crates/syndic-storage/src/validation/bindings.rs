@@ -159,6 +159,8 @@ fn validate_current_abandoned_gate(
         }
         match gate.state() {
             crate::InputGateState::FinalizingHistory(turn) if *turn == active.turn_id() => {}
+            crate::InputGateState::RepairRequired(target)
+                if target.turn_id() == active.turn_id() => {}
             crate::InputGateState::Idle
                 if crate::terminal_history::is_complete(reader, &thread, &state, None)? => {}
             crate::InputGateState::Idle => {

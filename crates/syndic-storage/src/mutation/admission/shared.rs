@@ -467,6 +467,7 @@ pub(super) fn validate_replacement_intent(
         return Err(SyndicMutationError::ReplacementTargetConflict);
     }
     let target = required::<TurnsFamily>(reader, &intent.target_turn_id())?;
+    crate::mutation::repair::exclude_repair(reader, target.origin_thread_id(), Some(target.id()))?;
     if target.kind() != crate::TurnKind::OrdinaryUser {
         return Err(SyndicMutationError::ReplacementTargetConflict);
     }

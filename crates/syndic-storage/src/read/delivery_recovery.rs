@@ -317,6 +317,10 @@ impl ActiveDeliveryRecovery {
 /// Closed stabilized restart classification for one startup source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeliveryRecoveryCase {
+    DeferredRepair {
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+    },
     /// Existing ordinary work is proven not to have crossed the dispatch boundary.
     Pending {
         thread_id: SyndicThreadId,

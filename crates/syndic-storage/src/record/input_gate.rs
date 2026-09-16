@@ -32,6 +32,13 @@ impl InputGateRecord {
         live_next_turn_count: u64,
         live_logical_utf8_bytes: u64,
     ) -> Result<Self, SyndicRecordError> {
+        if let InputGateState::RepairRequired(target) = &state
+            && (live_steering_count != 0
+                || matches!(target.request(), crate::RepairRequestDisposition::Consumed(claim)
+                    if claim.successor_gate_revision() > revision))
+        {
+            return Err(SyndicRecordError::InvalidRepairGate);
+        }
         live_steering_count
             .checked_add(live_next_turn_count)
             .ok_or(SyndicRecordError::LengthOverflow {
