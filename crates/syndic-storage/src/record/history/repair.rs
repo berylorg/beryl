@@ -1,6 +1,12 @@
 use crate::{RepairResolution, ResolvedRepair, SyndicRecordError, TurnStateRecord};
 
 impl TurnStateRecord {
+    pub(crate) fn source_end_status(&self) -> Option<crate::TurnEndStatus> {
+        self.resolved_repair()
+            .map(|resolved| resolved.target().gap().status())
+            .or(self.end_status())
+    }
+
     #[must_use]
     pub const fn resolved_repair(&self) -> Option<&ResolvedRepair> {
         self.resolved_repair.as_ref()

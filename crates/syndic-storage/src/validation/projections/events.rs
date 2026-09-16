@@ -109,6 +109,20 @@ pub(super) fn validate(
         first_issue,
     )?;
     scan::<TurnStatesFamily>(reader, |_, state| {
+        if let Some(resolved) = state.resolved_repair() {
+            let turn = require::<TurnsFamily>(
+                reader,
+                &state.turn_id(),
+                "resolved repair turn is missing",
+            )?;
+            if !crate::record::repair::resolved_repair_target_matches(
+                reader,
+                turn.origin_thread_id(),
+                resolved.target(),
+            )? {
+                return invariant("resolved repair provenance disagrees");
+            }
+        }
         let key = TurnEventKey {
             owner: state.turn_id(),
             ordinal: crate::SourceEventSequence::FIRST,
@@ -141,7 +155,7 @@ pub(super) fn validate(
             if !matches!(
                 event.payload(),
                 crate::SourceEventPayload::TurnEnded(status)
-                    if state.end_status() == Some(*status)
+                    if state.source_end_status() == Some(*status)
             ) {
                 return invariant(
                     "proven-terminal turn does not end with its terminal source event",
@@ -164,7 +178,7 @@ fn finish_turn_events(
     };
     let state = require::<TurnStatesFamily>(reader, &turn, "event owner state is missing")?;
     if state.source_event_count() != observed
-        || state.end_status() != latest_end_status
+        || state.source_end_status() != latest_end_status
         || state.provider_observation_issue() != first_issue
     {
         return invariant("turn source-event frontier, issue, or exact end status disagrees");

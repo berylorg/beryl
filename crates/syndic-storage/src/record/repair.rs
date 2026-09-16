@@ -3,7 +3,7 @@ use beryl_model::SyndicTurnId;
 use crate::{RepairRequiredTarget, SourceEventPayload, SourceEventRecord, SourceEventSequence};
 
 mod retained;
-pub(crate) use retained::retained_repair_target_matches;
+pub(crate) use retained::{resolved_repair_target_matches, retained_repair_target_matches};
 
 pub(crate) fn repair_source_events_match<E>(
     target: &RepairRequiredTarget,

@@ -249,7 +249,7 @@ fn finalizing_successor_matches(
         && state.source_event_count() == event.sequence().get()
         && matches!(
             event.payload(),
-            SourceEventPayload::TurnEnded(status) if state.end_status() == Some(*status)
+            SourceEventPayload::TurnEnded(status) if state.source_end_status() == Some(*status)
         )
         && lifecycle_matches
         && route_sources_match(observed, gate, route)

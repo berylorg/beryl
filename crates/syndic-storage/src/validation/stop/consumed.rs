@@ -221,7 +221,7 @@ fn validate_terminal_descendant(
     )?;
     let terminal_matches = matches!(
         event.payload(),
-        SourceEventPayload::TurnEnded(status) if state.end_status() == Some(*status)
+        SourceEventPayload::TurnEnded(status) if state.source_end_status() == Some(*status)
     );
     let source_matches = if authority_lost {
         event.source().is_none()

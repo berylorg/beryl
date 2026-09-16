@@ -292,7 +292,7 @@ fn validate_terminal_event_authority(
     };
     let terminal_matches = matches!(
         event.payload(),
-        SourceEventPayload::TurnEnded(status) if state.end_status() == Some(*status)
+        SourceEventPayload::TurnEnded(status) if state.source_end_status() == Some(*status)
     );
     if event.turn_id() != active.turn_id()
         || event.sequence() != sequence

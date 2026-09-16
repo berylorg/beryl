@@ -289,7 +289,7 @@ fn matching_terminal_exact(
         && matches!(
             event.payload(),
             SourceEventPayload::TurnEnded(status)
-                if turn_state.end_status() == Some(*status)
+                if turn_state.source_end_status() == Some(*status)
         )
 }
 

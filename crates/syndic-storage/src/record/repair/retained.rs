@@ -11,10 +11,28 @@ pub(crate) fn retained_repair_target_matches(
     thread_id: SyndicThreadId,
     target: &RepairRequiredTarget,
 ) -> Result<bool, ReadError> {
+    retained_target_matches(reader, thread_id, target, false)
+}
+
+pub(crate) fn resolved_repair_target_matches(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+    target: &RepairRequiredTarget,
+) -> Result<bool, ReadError> {
+    retained_target_matches(reader, thread_id, target, true)
+}
+
+fn retained_target_matches(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+    target: &RepairRequiredTarget,
+    resolved: bool,
+) -> Result<bool, ReadError> {
     let Some(thread) = point::<ThreadsFamily>(reader, &thread_id)? else {
         return Ok(false);
     };
-    if thread.id() != thread_id || thread.committed_tail() != Some(target.turn_id()) {
+    if thread.id() != thread_id || (!resolved && thread.committed_tail() != Some(target.turn_id()))
+    {
         return Ok(false);
     }
     let Some(turn) = point::<TurnsFamily>(reader, &target.turn_id())? else {
@@ -30,9 +48,15 @@ pub(crate) fn retained_repair_target_matches(
         return Ok(false);
     };
     if state.turn_id() != target.turn_id()
-        || state.resolved_repair().is_some()
+        || if resolved {
+            state
+                .resolved_repair()
+                .is_none_or(|value| value.target() != target)
+        } else {
+            state.resolved_repair().is_some()
+        }
         || !state.lifecycle().is_proven_terminal()
-        || state.end_status() != Some(target.gap().status())
+        || state.source_end_status() != Some(target.gap().status())
         || state.source_event_count() != target.gap().terminal().sequence().get()
     {
         return Ok(false);

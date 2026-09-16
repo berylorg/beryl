@@ -181,7 +181,7 @@ pub(super) fn validate_abandoned_active_source_history(
                 && matches!(
                     event.payload(),
                     crate::SourceEventPayload::TurnEnded(status)
-                        if state.end_status() == Some(*status)
+                        if state.source_end_status() == Some(*status)
                             && status.outcome() != crate::TurnTerminalOutcome::Complete
                 );
             if key.owner != active.turn_id()

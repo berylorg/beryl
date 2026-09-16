@@ -29,7 +29,7 @@ mod live;
 pub(crate) mod projection;
 mod promotion;
 mod repair;
-pub use repair::RequireTerminalRepair;
+pub use repair::{ConvergeRepairIncomplete, RequireTerminalRepair};
 mod provider_frame;
 mod provider_observation;
 mod stop;

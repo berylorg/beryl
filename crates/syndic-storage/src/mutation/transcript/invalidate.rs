@@ -84,7 +84,8 @@ pub(in crate::mutation) fn invalidate_transcript_projection(
     }
     let build = supersede_active_transcript_build(reader, thread)?;
     if let Some(active) = &build
-        && (active.generation() != head.generation() || active.revision() != head.revision())
+        && (active.generation() != head.generation()
+            || active.revision() != head.revision().checked_next()?)
     {
         return Err(SyndicMutationError::TranscriptBuildConflict);
     }

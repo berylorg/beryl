@@ -84,6 +84,16 @@ The package exposes grouped typed operations rather than raw record mechanics:
   capability. Repair gates exclude successor and lineage publication across the blocked target.
   Deferred repair startup classification is descriptive; convergence must authenticate retained
   evidence again in its mutation before permitting publication.
+- `ConvergeRepairIncomplete` names the exact repair target, gate and turn-state revisions, closed
+  incomplete reason and monotonic timestamp. `converge_repair_incomplete` and
+  `current_converge_repair_incomplete` authenticate the retained gate target in the admitted read,
+  then atomically retain its unchanged request disposition in the resolved turn state, advance
+  the gate to `FinalizingHistory`, preserve queue accounting and invalidate transcript publication.
+  They preserve original terminal and issue records and select no repair snapshot or asset.
+  Stale replay cannot rewrite the resolution; ambiguous publication uses the home-store exact
+  reconciliation reservation for the state, gate/source, summary and affected transcript records.
+  Resolved provenance validation authenticates the original evidence and origin thread without
+  requiring that turn to remain its thread's current tail.
 - `ResolvedRepair` pairs the original target with `RepairResolution::Incomplete`, carrying a
   closed `TurnIncompleteReason`. `TurnStateRecord::resolved_repair` exposes the optional retained
   value; `with_resolved_repair` checks local identity, frontier and status agreement and refuses

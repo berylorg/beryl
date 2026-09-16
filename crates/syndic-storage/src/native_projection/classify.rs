@@ -226,7 +226,7 @@ impl SyndicStorage {
         if !matches!(
             event.payload(),
             SourceEventPayload::TurnEnded(status)
-                if state.end_status() == Some(*status)
+                if state.source_end_status() == Some(*status)
         ) {
             return Err(NativeProjectionError::Invariant(
                 "native target terminal event outcome disagrees",

@@ -116,7 +116,7 @@ fn validate_snapshot_source_frontier(
         && !matches!(
             last.payload(),
             crate::SourceEventPayload::TurnEnded(status)
-                if state.end_status() == Some(*status)
+                if state.source_end_status() == Some(*status)
         )
     {
         return invariant("terminal transcript path snapshot source frontier disagrees");

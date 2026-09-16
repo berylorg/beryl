@@ -4,6 +4,9 @@ use beryl_model::InputGateRevision;
 use super::*;
 use crate::{InputGateState, RepairRequestDisposition, RepairRequiredTarget};
 
+mod incomplete;
+pub use incomplete::ConvergeRepairIncomplete;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RequireTerminalRepair {
     thread_id: SyndicThreadId,

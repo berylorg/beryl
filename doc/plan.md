@@ -52,21 +52,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 468: Persist And Enforce The Repair-Required Gate (finished)
+# Phase 469: Converge Unavailable Repair To Incomplete History (finished)
 
-Accepted V5 gate encoding, exact authenticated admission and resolved-target exclusion, bounded
-structural validation, fork/replacement/binding exclusion and preserved queued input without
-promotion. All 191 focused and regression cases passed, including reopen, corruption and real
-admission controls. Storage/app library checks, formatting, Markdown reconciliation and independent
-integrity review passed. Deferred repair now stops startup explicitly; convergence remains below.
-
-# Phase 469: Converge Unavailable Repair To Incomplete History (pending)
-
-Implement the bounded durable transition from an exact repair-required target to explicit
-incomplete authority and `FinalizingHistory`, selecting no snapshot or repair asset; verify
-publication ambiguity, replay and request-disposition preservation before app integration.
-Atomically install the exact immutable turn-state resolution, preserve original source evidence
-and validate resolved provenance after later successors without requiring the old turn to remain tail.
+Accepted exact incomplete convergence with immutable target/disposition retention, original source
+preservation, atomic projection invalidation and later-successor provenance validation. Corrected
+the active transcript-build supersession revision check. The 154-case storage regression run and
+65-case repair/transcript run passed, including acknowledgement reconciliation, reopen, queue
+preservation and gate release. Storage/app checks, formatting, Markdown reconciliation and
+independent integrity review passed. Startup recovery integration remains below.
 
 # Phase 470: Integrate Unavailable-Repair Startup Recovery (pending)
 
