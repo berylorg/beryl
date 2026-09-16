@@ -590,3 +590,19 @@ including all startup classifications, multi-page rebasing, source drift and com
 The initial regression invocation used a directory name rather than its `normal_terminal` Cargo
 test target; the corrected target supplied the recorded evidence. Normal app library compilation,
 formatting and diff checks passed. Independent lifecycle review found no blockers.
+
+## Candidate Asset Revision
+
+Marker-service construction previously validated asset handles through ordinary healthy-store
+revision reads. That path cannot qualify an unpublished candidate. Phase 457 supplies
+`AssetState::revision_candidate` through the existing explicit candidate recovery access, matching
+the accepted Syndic revision boundary. It delegates exact home/generation qualification, persisted
+revision reading and confirmation to home-store without translating errors or publishing authority.
+
+Nextest run `450cb843-d88e-4797-991d-af88bc1712ba` passed all 16 tests across
+`asset_candidate_revision`, `recovery`, `assets_v3`, `commit_receipts` and `command_outcomes` in
+`beryl-state`. New cases verify opening and recovery provenance, foreign and stale rejection,
+noninitial persisted revision continuity, ordinary admission remaining closed, and confirmation
+failure preventing publication in both candidate states. Normal state library compilation,
+formatting, diff checks and independent review passed. Marker-service ownership and complete graph
+publication remain their separate pending acceptance boundaries.

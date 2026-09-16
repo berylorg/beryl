@@ -53,6 +53,9 @@ This entry point governs these bounded normative supplements:
 - `BerylState::required_domains` returns that complete declaration. `BerylState::register` and
   `register_with_schema_validation` consume a mutable `HomeOpenCandidate` reference and preserve
   their routine versus exhaustive validation distinction.
+- `AssetState::revision_candidate` reads only the asset-domain revision through borrowed explicit
+  candidate recovery access. It preserves exact home/generation handle qualification and read
+  confirmation failures; it neither grants ordinary admission nor publishes the candidate.
 
 ## Outcomes, Reconciliation, And Validation
 

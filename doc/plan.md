@@ -52,12 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 421: Prepare CAS Services Before Initial Publication (finished)
+# Phase 457: Validate Asset Handles Through Candidate Access (finished)
 
-Accepted private candidate recovery and dormant CAS construction with cancellation and joined
-disposal before candidate retirement. All 26 focused lifecycle/recovery tests, ordinary library
-compilation and independent review passed. Complete graph publication remains separate.
-[Acceptance evidence](failures/target-bootstrap-composition.md#initial-cas-service-preparation).
+Accepted the asset candidate revision prerequisite for marker-service construction. All 16 focused
+state tests, ordinary library compilation and independent review passed, preserving provenance,
+read confirmation and publication fences.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-asset-revision).
 
 # Phase 422: Establish Explicit Home Marker-Service Ownership (pending)
 

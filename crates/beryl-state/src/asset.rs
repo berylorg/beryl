@@ -196,6 +196,13 @@ impl AssetState {
         store.domain_revision(&self.handle)
     }
 
+    pub fn revision_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    ) -> Result<DomainRevision, ReadError> {
+        access.domain_revision(&self.handle)
+    }
+
     pub fn committed_revision(
         &self,
         store: &HomeStore,
