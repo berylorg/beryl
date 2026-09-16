@@ -695,3 +695,25 @@ spawn failure, abandonment, invalid bounds, early release, foreign home, stale r
 and runtime retirement. Normal app library compilation, exact-file formatting, diff checks and
 independent lifecycle review passed. This accepts the initial factory only; complete graph
 publication and the remaining graph-factory readiness inventory remain open.
+
+## Candidate Runtime Record Validation
+
+The remaining factory inventory found that managed-session configuration still calls
+`ensure_current`, reads runtime records and Asset revision through ordinary healthy admission,
+and builds its admission context through the ordinary service path. It cannot be deferred until
+after complete graph publication while claiming the scheduler's session preparation is configured.
+Runtime-interest allocation itself is dormant; session configuration stores its context and wakes
+the scheduler, whose accepted initial fence already controls ordinary work.
+
+Phase 461 supplies the missing exact runtime-record candidate read. `RuntimeRootState::runtime_candidate`
+delegates to explicit candidate access with the same domain, codec, key and fixed point limit as
+the ordinary read. It preserves home/generation qualification, decoding, confirmation and typed
+errors without granting ordinary admission or publication authority.
+
+Nextest run `0db706dc-d68e-4f37-943d-5a1a5226c797` passed all 12 tests across
+`runtime_candidate_read`, `runtime_root`, `asset_candidate_revision` and `recovery`. New cases cover
+missing and persisted records in initial/recovered candidates, foreign and stale handles, closed
+ordinary admission, unchanged published records and confirmation failure preventing publication.
+Normal app library compilation, formatting, diff checks and independent review passed. Candidate
+managed-session configuration remains a separate prerequisite before complete graph integration;
+the remaining factory inventory is still open.

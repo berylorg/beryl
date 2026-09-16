@@ -371,6 +371,18 @@ impl RuntimeRootState {
         store.receipt_domain_revision(receipt, &self.handle)
     }
 
+    pub fn runtime_candidate(
+        &self,
+        access: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        runtime_id: RuntimeId,
+    ) -> Result<Option<RuntimeRecord>, ReadError> {
+        access.read_point::<RuntimeRootDomain, RuntimeRecordCodec>(
+            &self.handle,
+            &runtime_id,
+            point_limit(RUNTIME_RECORD_LIMIT),
+        )
+    }
+
     pub fn runtime(
         &self,
         store: &HomeStore,

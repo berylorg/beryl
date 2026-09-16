@@ -5,6 +5,9 @@ runtime/root, session/window, and thread-claim durable state.
 
 ## Runtime and root records
 
+- Exact runtime-record reads are also available through explicit candidate recovery access for
+  service preparation. They retain ordinary point-read limits, decoding, exact home/generation
+  qualification and confirmation, without opening ordinary admission or publishing the candidate.
 - A runtime records its stable id, canonical absolute Codex CLI executable identity, derived exact
   Host or WSL-distribution mode, runtime-native executable path, environment label, creation facts,
   availability summary, and nonzero monotonic record revision. A root records its stable id,
