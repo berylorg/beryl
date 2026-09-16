@@ -399,7 +399,7 @@
 - [x] Accepted gated candidate service references with exclusive retirement ownership and [lifecycle evidence](../../failures/target-bootstrap-composition.md#gated-service-references).
 - [x] Joined partial ordinary compaction-worker construction before owner disposal; [acceptance evidence](../../failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
 - [x] Adapted ordinary CAS consumers to non-owning service references with exclusive owner retirement and explicit joined shutdown; [acceptance evidence](../../failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
-- [ ] Publish the complete initialized process service graph before restore discovery and native startup.
+- [ ] Publish the complete initialized process service graph after prerequisite recovery and handoff service acceptance, before restore discovery and native startup.
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 - [x] Accepted private candidate-owned marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership). Complete-graph publication and clone distribution remain open.
@@ -432,11 +432,11 @@
   mount realized-frame rendering, anchors, selection, nested widgets, and resource demand.
 - [ ] Verify diagnostic child activation uses ordinary coherent transcript publication and subsequent
   bounded media preparation without a stronger readiness gate.
-- [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release
-  before Checkpoint 5.
+- [ ] Gate: confirm the Checkpoint 4 product flows, configured limits, and owned-resource release before later product mounting, allowing prerequisite non-GUI service acceptance first.
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
+- [ ] Establish exact pinned repair-route evidence and accept the non-GUI recovery components before branch services and complete graph publication, retaining separate product-mounting acceptance.
 - [ ] Add the private bounded exact terminal-turn backend adapter; accept and discard bounded cursor
   metadata without following it and provide no adjacent-turn, item-history, or whole-thread
   fallback.
@@ -449,13 +449,13 @@
   gate release.
 - [ ] Add the prioritized outage buffer for already-active exact targets without making buffered
   content canonical history.
-- [ ] Rebuild running-session same-home recovery through old-service disposal, an unpublished fresh
-  candidate stack, valid-successor-aware durable convergence, supervisor attachment, and atomic publication.
-- [ ] Gate: verify terminal repair, fail-closed successor gating, outage capture, and fresh same-home
-  recovery before branch-discussion implementation begins.
+- [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
+- [ ] Gate: verify terminal repair, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
+- [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
 
+- [ ] Accept non-GUI handoff coordination after the recovery service gate and before complete graph publication, without accepting branch GUI mounting.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

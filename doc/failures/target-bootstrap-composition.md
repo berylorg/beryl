@@ -55,19 +55,33 @@ branch jobs. Production app code does not call the durable-job admission or pare
 The [handoff system](../systems/branch-discussion-handoff/design.md#restart-recovery) requires
 validated recovery page/byte limits, reconciliation slots, ready-job capacity, exact restart
 convergence and owned cancellation. A handle bundle or dormant placeholder cannot satisfy it.
-The [rework tracker](../rework/beryl-home/REWORK.md#checkpoint-5-add-terminal-repair-and-fresh-same-home-recovery)
-requires Checkpoint 4 product acceptance before Checkpoint 5, and Checkpoint 5 recovery acceptance
-before Checkpoint 6 branch implementation. Complete graph publication is itself in Checkpoint 4.
-That dependency cycle needs explicit reconciliation before the missing coordinator can be planned.
+The former rework sequence required Checkpoint 4 product acceptance before Checkpoint 5, and
+Checkpoint 5 recovery acceptance before Checkpoint 6 branch implementation, although complete
+graph publication itself belongs to Checkpoint 4.
 
-Keep phase 423 pending. Independent read-only review confirmed the missing coordinator and the
-recovery-before-branch gate. First assess whether bounded non-GUI recovery prerequisites, followed
-by handoff service acceptance, can be scheduled before publication while preserving that gate.
-Ordinary phase reordering is already authorized; changing the recovery gate or weakening complete
-graph publication is not an ordering-only correction. Preserve the complete graph contract and
-derive separate implementation phases for the missing components. This inspection does not accept
-catalog, activity or settings factory completeness, and changes no production code or target
-startup behavior.
+The Operator approved the recommended reconciliation on 2026-09-16. The
+[rework sequence](../rework/beryl-home/REWORK.md#checkpoint-5-add-terminal-repair-and-fresh-same-home-recovery)
+now permits prerequisite non-GUI recovery acceptance, then branch service acceptance, before
+complete graph publication; product-mounting gates remain separate. Recovery-before-branch and
+complete graph publication remain required. Component fixtures cannot certify graph publication,
+restored windows or visible recovery. Phase 423 remains pending until every required service is
+accepted; catalog, activity and settings factory completeness remains unverified.
+
+The pre-branch gate covers terminal repair, successor gating, outage capture and fresh-recovery
+component protocols. Full-stack same-home recovery integration retains its own acceptance after
+complete graph publication and before recovery product mounting; it is not satisfied by the
+component gate. This distinction removes the remaining circular dependence on an already
+published complete graph during prerequisite component acceptance.
+
+Independent review accepted the corrected order, with link and diff checks and a Current Markdown
+index with zero failed or blocked chunks. This was documentation-only acceptance; no production
+code changed and no executable or recovery behavior was claimed.
+
+The next bounded prerequisite is exact pinned repair-route evidence. The
+[existing investigation](../memory/github.com/openai/codex/commit/e363b08c9175ac1cbe5893615dd2cb9ddf95043b/terminal-turn-repair-history-surface.md)
+distinguishes exact generated schemas from newer-checkout processor/reducer corroboration; it
+does not yet establish the exact 0.146.0 source semantics required by CAS-live authority. Preserve
+that proof gate before adapter implementation, including the permitted unavailable outcome.
 
 ## Session-Only Facade Removal
 

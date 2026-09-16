@@ -52,11 +52,29 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 462: Prepare Managed Session Configuration Before Publication (finished)
+# Phase 463: Reconcile Service Prerequisites With Product Mounting (finished)
 
-Accepted private candidate session configuration with shared ordinary validation and joined failure
-cleanup. All 12 startup tests, 29 managed-session regressions, normal app compilation and independent
-review passed. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-managed-session-configuration).
+Accepted the Operator-approved prerequisite order with separate recovery component, complete graph,
+full-stack recovery and product-mounting gates. Independent review, link/diff checks and Markdown
+index reconciliation passed. [Evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
+
+# Phase 464: Establish Exact Pinned Terminal Repair Evidence (pending)
+
+Resolve the remaining exact 0.146.0 processor/reducer proof required by the
+[repair contract](systems/cas-live-syndic-transcript/design.md#exact-terminal-turn-historical-repair).
+Inspect exact pinned source and generated schemas for one descending full-item terminal turn,
+identity synthesis, terminal-status normalization, cursors and generated media; distinguish proven
+semantic final state from live-event evidence. Update the existing pinned repair investigation,
+obtain independent source review, and classify the authorized route as proven or unavailable.
+This evidence boundary authorizes no adapter, backend request or history fallback.
+
+# Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
+
+After phase 464 proves the route and its implementation prerequisites are ready, implement the
+bounded one-request adapter with exact target/capability admission, streaming closed-item output
+and typed failure. Verify no successor race, cursor follow, retry, alternate history route or
+partial publication; keep durable dispatch custody and runtime mounting separate. Remaining
+recovery and branch components continue to feed bounded phases from the rework tracker before 423.
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 
@@ -67,11 +85,11 @@ This integration cannot absorb missing service implementations or accept restore
 Theme preparation and candidate managed-session configuration are accepted.
 Finish the remaining graph-factory inventory before activating this phase.
 
-Blocked on 2026-09-16: the required durable-job coordinator is not implemented. The current
+Prerequisite gap identified on 2026-09-16: the required durable-job coordinator is not implemented. The current
 ordinary tool dispatcher explicitly refuses branch resolution; typed durable-job records and
 read-only process-work inventory do not implement handoff recovery or execution. The rework gate
-places branch handoff after Checkpoint 5 recovery, while complete graph publication is required
-in Checkpoint 4. Resolve this dependency cycle before scheduling the missing coordinator; do not
+now admits non-GUI recovery prerequisites before branch handoff and complete graph publication,
+separately from product mounting. Finish those service gates before activating this phase; do not
 publish a partial graph or substitute an inert service. See
 [factory readiness evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
 
