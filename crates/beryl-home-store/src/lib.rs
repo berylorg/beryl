@@ -172,11 +172,12 @@ pub use successor::{
     FirstAcceptancePromotionObservation, FirstAcceptancePromotionSource,
 };
 pub use theme::{
-    StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence, ThemeFileIdentity,
-    ThemeFileRange, ThemeFileSelector, ThemeMutationOutcome, ThemeOperationLimits,
-    ThemeOperationLimitsError, ThemeReconciliationEvidence, ThemeReconciliationOutcome,
-    ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStage, ThemeWatchError,
-    ThemeWatchHint, ThemeWatchLimits, ThemeWatchLimitsError, ThemeWatchSubscription,
+    PreparedThemeWatchSubscription, StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence,
+    ThemeFileIdentity, ThemeFileRange, ThemeFileSelector, ThemeMutationOutcome,
+    ThemeOperationLimits, ThemeOperationLimitsError, ThemeReconciliationEvidence,
+    ThemeReconciliationOutcome, ThemeRepositoryError, ThemeRepositorySnapshot,
+    ThemeRepositoryStage, ThemeWatchError, ThemeWatchHint, ThemeWatchLimits, ThemeWatchLimitsError,
+    ThemeWatchSubscription,
 };
 pub use turn_start_admission::{
     DURABLE_START_ADMISSION_BUDGET_BYTES, MinimumTurnCaptureReserve, TurnStartAdmissionRequirement,

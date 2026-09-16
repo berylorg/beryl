@@ -52,12 +52,23 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 422: Establish Explicit Home Marker-Service Ownership (finished)
+# Phase 458: Prepare Dormant Physical Theme Watchers (finished)
 
-Accepted exclusive private candidate-owned marker preparation, removing global discovery and
-ordinary consumer construction. All 88 marker/consumer regressions and five final preparation
-tests passed, along with normal compilation and independent review.
-[Acceptance evidence](failures/target-bootstrap-composition.md#initial-marker-service-ownership).
+Accepted candidate-qualified dormant watcher construction, exact-generation release and joined
+abandonment. Seven new lifecycle tests and 20 existing watcher/candidate regressions passed;
+normal app compilation and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#dormant-physical-theme-watchers).
+
+# Phase 459: Adapt Typed Theme Subscription Preparation (pending)
+
+Connect the accepted dormant physical watcher to candidate-qualified ThemeService subscription
+ownership, preserving exact identity, immutable limits and joined cancellation.
+
+# Phase 460: Prepare Theme Runtime Before Initial Publication (pending)
+
+Separate accepted app theme-runtime construction and dormant subscription custody from
+postpublication settings/repository loading. Preserve startup fallback, typed failure provenance
+and generation retirement. Accept this factory independently before complete graph integration.
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 
@@ -65,6 +76,8 @@ After every required service factory is independently accepted, compose and publ
 private graph with the same home generation, then release ordinary workers. Verify last-constructor
 failure, cancellation, startup convergence and publication rejection with full cleanup ownership.
 This integration cannot absorb missing service implementations or accept restored GUI visibility.
+The readiness audit found theme preparation prerequisites above; finish the remaining graph-factory
+inventory before activating this phase.
 
 # Phase 415: Specify Restore-Set Startup Composition (pending)
 

@@ -33,6 +33,7 @@ impl ThemeWatcherCoordinator {
 struct QueueState {
     queue: VecDeque<ThemeWatchHint>,
     shutdown: bool,
+    released: bool,
 }
 
 pub(crate) struct WatchShared {
@@ -42,15 +43,41 @@ pub(crate) struct WatchShared {
 }
 
 impl WatchShared {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize, released: bool) -> Self {
         Self {
             state: Mutex::new(QueueState {
                 queue: VecDeque::new(),
                 shutdown: false,
+                released,
             }),
             changed: Condvar::new(),
             capacity,
         }
+    }
+
+    pub(crate) fn release(&self) -> Result<(), ThemeWatchError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ThemeWatchError::LockPoisoned)?;
+        if state.shutdown {
+            return Err(ThemeWatchError::ShutDown);
+        }
+        state.released = true;
+        self.changed.notify_all();
+        Ok(())
+    }
+
+    fn wait_for_release(&self) -> bool {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = self
+            .changed
+            .wait_while(state, |state| !state.released && !state.shutdown)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        !state.shutdown
     }
 
     fn push(&self, hint: ThemeWatchHint) {
@@ -153,7 +180,20 @@ impl HomeStore {
         &self,
         limits: ThemeWatchLimits,
     ) -> Result<ThemeWatchSubscription, ThemeWatchError> {
-        let admission = self.health.admit_generation(self.admitted_generation)?;
+        self.subscribe_theme_changes_with_access(
+            limits,
+            crate::candidate_access::StoreOperationAccess::Ordinary,
+            false,
+        )
+    }
+
+    pub(crate) fn subscribe_theme_changes_with_access(
+        &self,
+        limits: ThemeWatchLimits,
+        access: crate::candidate_access::StoreOperationAccess,
+        dormant: bool,
+    ) -> Result<ThemeWatchSubscription, ThemeWatchError> {
+        let admission = access.admit(self)?;
         let generation_guard = self
             .generation
             .read()
@@ -166,7 +206,7 @@ impl HomeStore {
         admission.confirm_database(&database, |_| ThemeWatchError::LockPoisoned)?;
         drop(generation_guard);
 
-        let shared = Arc::new(WatchShared::new(limits.queue_capacity().get()));
+        let shared = Arc::new(WatchShared::new(limits.queue_capacity().get(), !dormant));
         {
             let mut active = self
                 .theme_watcher
@@ -179,16 +219,35 @@ impl HomeStore {
             *active = Some(Arc::downgrade(&shared));
         }
         let root = self.canonical_path().join("themes");
-        let previous = observe(&root, limits);
-        if previous.is_err() {
+        let previous = (!dormant).then(|| observe(&root, limits, &self.faults));
+        if previous.as_ref().is_some_and(Result::is_err) {
             shared.push(ThemeWatchHint::Overflow);
         }
         let health = Arc::clone(&self.health);
         let worker_shared = Arc::clone(&shared);
+        self.faults
+            .check(crate::fault::FaultPoint::BeforeThemeWatchSpawn)
+            .map_err(|_| ThemeWatchError::ShutDown)?;
+        let faults = self.faults.clone();
         let worker = thread::Builder::new()
             .name("beryl-theme-watch".into())
             .spawn(move || {
-                let mut previous = previous;
+                if !worker_shared.wait_for_release() {
+                    return;
+                }
+                let current_health = health.snapshot();
+                if current_health.state() != HomeHealthState::Healthy
+                    || current_health.generation() != Some(health_generation)
+                {
+                    worker_shared.shutdown();
+                    return;
+                }
+                let mut previous = previous.unwrap_or_else(|| {
+                    let observed = observe(&root, limits, &faults);
+                    // A postpublication load may precede this first observation.
+                    worker_shared.push(ThemeWatchHint::Overflow);
+                    observed
+                });
                 loop {
                     if worker_shared.wait_interval(limits.interval()) {
                         break;
@@ -200,7 +259,7 @@ impl HomeStore {
                         worker_shared.shutdown();
                         break;
                     }
-                    let current = observe(&root, limits);
+                    let current = observe(&root, limits, &faults);
                     match (&previous, &current) {
                         (Ok(old), Ok(new)) => emit_changes(&worker_shared, old, new),
                         _ => worker_shared.push(ThemeWatchHint::Overflow),
@@ -216,7 +275,14 @@ impl HomeStore {
     }
 }
 
-fn observe(root: &Path, limits: ThemeWatchLimits) -> Result<Observation, ()> {
+fn observe(
+    root: &Path,
+    limits: ThemeWatchLimits,
+    faults: &crate::fault::FaultController,
+) -> Result<Observation, ()> {
+    faults
+        .check(crate::fault::FaultPoint::BeforeThemeWatchObservation)
+        .map_err(|_| ())?;
     let maximum = limits.max_entries_per_poll().get();
     let manifest = stamp(&root.join("manifest.toml"), limits)?;
     let mut documents = HashMap::with_capacity(maximum.min(64));

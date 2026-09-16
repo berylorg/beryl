@@ -2,8 +2,11 @@
 
 mod operations;
 mod platform;
+mod preparation;
 mod types;
 mod watcher;
+
+pub use preparation::PreparedThemeWatchSubscription;
 
 pub use types::{
     StableThemeFileId, StableThemeFileIdError, ThemeCommitEvidence, ThemeFileIdentity,

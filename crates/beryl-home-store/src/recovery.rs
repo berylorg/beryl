@@ -109,6 +109,18 @@ impl std::fmt::Debug for HomeRecoveryCandidate {
 }
 
 impl HomeRecoveryCandidate {
+    pub fn prepare_theme_changes(
+        &mut self,
+        limits: crate::ThemeWatchLimits,
+    ) -> Result<crate::PreparedThemeWatchSubscription, crate::ThemeWatchError> {
+        crate::PreparedThemeWatchSubscription::prepare(
+            self.service_reference(),
+            HomeHealthState::Reopening,
+            self.receipt.generation,
+            limits,
+        )
+    }
+
     pub fn service_reference(&self) -> crate::HomeServiceReference {
         self.store
             .as_ref()

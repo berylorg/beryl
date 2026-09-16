@@ -224,6 +224,18 @@ impl HomeOpenCandidate {
 }
 
 impl HomeOpenPublication {
+    pub fn prepare_theme_changes(
+        &mut self,
+        limits: crate::ThemeWatchLimits,
+    ) -> Result<crate::PreparedThemeWatchSubscription, crate::ThemeWatchError> {
+        crate::PreparedThemeWatchSubscription::prepare(
+            self.service_reference(),
+            crate::HomeHealthState::Opening,
+            self.generation(),
+            limits,
+        )
+    }
+
     pub fn service_reference(&self) -> crate::HomeServiceReference {
         self.initial.store.service_reference()
     }

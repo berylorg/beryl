@@ -40,6 +40,15 @@ interpretation and product behavior remain with the
   evidence. Duplicate, reordered, and overflow signals require a bounded coherent refresh. Store
   failure, shutdown, and same-home recovery release the old generation's queue and subscription
   rather than adopting them.
+- Registration-complete initial and recovered candidates can prepare that one watcher through
+  `prepare_theme_changes`. `PreparedThemeWatchSubscription` owns the created worker and bounded
+  queue without reading repository files or polling. Its consuming `release` checks the exact
+  retained home generation has published before enabling observation and returning the ordinary
+  subscription. A premature or failed release cancels and joins; it grants no publication authority.
+  Prepared abandonment cancels and joins without requiring publication. Candidate retirement
+  signals cancellation, including a worker still waiting for release; the composition owner joins
+  dependent subscriptions before disposing its candidate. Ordinary subscriptions retain their
+  immediate initial observation and bounded polling behavior.
 
 ## Sidecar Publication
 

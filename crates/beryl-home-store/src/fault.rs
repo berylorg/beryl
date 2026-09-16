@@ -36,6 +36,8 @@ pub enum FaultPoint {
     BeforeSidecarVerification,
     BeforeThemeVerification,
     BeforeThemeRead,
+    BeforeThemeWatchSpawn,
+    BeforeThemeWatchObservation,
     BeforeThemeDocumentWrite,
     BeforeThemeDocumentSync,
     BeforeThemeDocumentReplace,

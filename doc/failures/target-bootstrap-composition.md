@@ -629,3 +629,38 @@ Normal app library compilation, formatting, diff checks and independent lifecycl
 This accepts the marker factory and exclusive private custody. Phase 423 must compose it with
 the accepted CAS preparation owner, publish the complete graph, distribute clones and mount
 graph disposal/replacement. No standalone marker publication or partial graph is supplied.
+
+## Theme Preparation Prerequisite
+
+Complete graph publication cannot yet compose the ordinary theme runtime constructor.
+`ThemeRuntime::start` reads the repository and loads the appearance before subscribing.
+`ThemeService::subscribe_changes` delegates to `HomeStore::subscribe_theme_changes`, which requires
+healthy admission, observes files synchronously and then spawns a polling worker. App initial
+publication instead requires worker creation behind the fence and repository loading afterward.
+Deferring the existing constructor until publication would leave a required worker constructor
+fallible after the complete graph was claimed ready.
+
+Independent source review confirmed an implementation gap under existing lifecycle authority.
+Prepare the dormant physical watcher first, adapt its typed subscription, then split app runtime
+preparation from postpublication loading before phase 423. Other graph factories still require
+readiness inventory; this finding does not certify their completeness or restored GUI startup.
+
+## Dormant Physical Theme Watchers
+
+Phase 458 accepts initial and recovered candidate watcher preparation through one retained
+generation-bound service reference. The prepared owner creates the bounded worker and reserves the
+generation's single subscription without file observation. Consuming release requires that exact
+generation to be healthy; early or failed release and abandonment cancel and join. Candidate
+retirement wakes dormant cancellation without turning the reference into home-lock ownership.
+Composition remains responsible for joining dependent subscriptions before disposing the candidate.
+
+Ordinary subscriptions retain synchronous initial observation. A released prepared subscription
+emits one coalesced Overflow after its initial observation so a preceding postpublication app load
+cannot silently miss changes before the watcher established its baseline.
+
+Nextest run `c0fe1a6d-3c83-44b4-b0fb-3f5e494898ce` passed 26 tests across prepared/ordinary watchers,
+initial publication, candidate recovery access and service references. Final run
+`0f46fbdd-d47a-47c2-8a45-f5abb2dc6ab4` passed all seven preparation tests, including the added
+blocked-observation joined-destruction case. Together they cover 27 distinct tests. Normal app
+library compilation, exact-file formatting, diff checks and independent lifecycle review passed.
+Typed theme subscription preparation and app runtime loading separation remain subsequent phases.
