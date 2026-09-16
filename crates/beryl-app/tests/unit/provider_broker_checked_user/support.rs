@@ -33,8 +33,8 @@ use beryl_backend::{
     OrderedTurnStreamSink, UserMessageEchoLifecycle, lifecycle_test_support::checked_user_message,
 };
 use beryl_home_store::{
-    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
-    test_faults::FaultController,
+    CursorReadLimits, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeServiceReference,
+    HomeStore, test_faults::FaultController,
 };
 use beryl_model::{
     CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding,
@@ -61,7 +61,8 @@ const EXECUTION_ROOT: &str = r"C:\work\beryl-checked-user-test";
 
 pub(super) struct CheckedUserFixture {
     directory: tempfile::TempDir,
-    pub(super) home: Arc<HomeStore>,
+    owner: HomeStore,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) storage: SyndicStorage,
     worker_pool: ProjectionWorkerPool,
     pub(super) sink: Option<Box<dyn OrderedTurnStreamSink>>,
@@ -267,7 +268,8 @@ impl CheckedUserFixture {
 
         let home_generation = home.health().generation().unwrap();
         let home_id = home.home_id();
-        let home = Arc::new(home);
+        let owner = home;
+        let home = Arc::new(owner.service_reference());
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
                 &home,
@@ -352,6 +354,7 @@ impl CheckedUserFixture {
 
         Self {
             directory,
+            owner,
             home,
             storage,
             worker_pool,
@@ -472,6 +475,7 @@ impl CheckedUserFixture {
     pub(super) fn close(self) {
         let Self {
             directory,
+            owner,
             home,
             storage: _,
             worker_pool,
@@ -510,9 +514,8 @@ impl CheckedUserFixture {
         router.retire(LiveEventTargetCloseReason::WorkerStopped);
         drop(router);
         drop(authority);
-        let home =
-            Arc::try_unwrap(home).unwrap_or_else(|_| panic!("broker retained the test home"));
-        home.close().unwrap();
+        drop(home);
+        owner.close().unwrap();
         drop(directory);
         assert_eq!(worker_pool.diagnostics().active(), 0);
     }

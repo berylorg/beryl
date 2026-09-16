@@ -327,9 +327,8 @@ pub enum ProjectionCoordinatorError {
     /// Restart delivery convergence could not construct a non-regressing durable timestamp.
     #[error("accepted-delivery restart recovery could not construct a durable timestamp")]
     AcceptedDeliveryRecoveryClock,
-    /// The consuming service close found a store-bearing Arc after all workers joined.
-    #[error("projection service shutdown left an unexpected Beryl-home owner")]
-    HomeOwnershipLeaked,
+    #[error("the projection service home reference is unavailable")]
+    HomeServiceUnavailable,
     /// The sole connection worker stopped before completing a queued command.
     #[error("the CAS projection connection worker is stopped")]
     ProjectionWorkerStopped,

@@ -23,7 +23,7 @@ pub(in crate::cas_projection) use notification::persistent_failure_notification_
 
 #[cfg(test)]
 pub(in crate::cas_projection) fn test_failure_notification(
-    home: &std::sync::Arc<beryl_home_store::HomeStore>,
+    home: &std::sync::Arc<beryl_home_store::HomeServiceReference>,
     home_id: beryl_model::BerylHomeId,
     home_generation: beryl_home_store::HomeGeneration,
 ) -> PersistentFailureNotification {

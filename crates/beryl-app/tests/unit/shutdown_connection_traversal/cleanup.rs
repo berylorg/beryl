@@ -148,7 +148,7 @@ fn opportunistic_cleanup_defers_contention_and_membership_changes() {
 }
 
 #[test]
-fn implicit_shutdown_signals_all_connections_without_taking_poisoned_registry_custody() {
+fn implicit_shutdown_drains_registry_and_joins_connections_when_registry_is_poisoned() {
     let fixture = Fixture::with_worker_capacity(false, 8);
     let first_server = NormalTerminalServer::spawn_admission_only();
     let first = admit(&fixture, &first_server, 73_104);
@@ -166,12 +166,10 @@ fn implicit_shutdown_signals_all_connections_without_taking_poisoned_registry_cu
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .len(),
-        2
+        0
     );
     drop(first);
     drop(second);
-    first_connection.shutdown().unwrap();
-    second_connection.shutdown().unwrap();
     assert!(first_connection.is_detached());
     assert!(second_connection.is_detached());
     drop(first_connection);

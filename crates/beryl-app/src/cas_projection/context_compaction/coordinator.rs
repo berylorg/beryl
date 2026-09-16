@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::{
     collections::HashMap,
     sync::{
@@ -17,7 +18,7 @@ use crate::cas_projection::{
     stop::StopCoordinator,
 };
 use beryl_backend::{CompactThreadDisposition, CompactionAttemptCorrelation};
-use beryl_home_store::{CommandOutcome, HomeGeneration, HomeStore};
+use beryl_home_store::{CommandOutcome, HomeGeneration};
 use beryl_model::{BerylHomeId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     BindingState, ClaimCompactionDispatch, CompactionAbandonmentReason,
@@ -99,7 +100,7 @@ const COMPACTION_QUEUE_CAPACITY: usize = 64;
 const COMPACTION_WORKER_CAPACITY: usize = 8;
 
 pub(in crate::cas_projection) struct ContextCompactionCoordinator {
-    home: Arc<HomeStore>,
+    home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
@@ -193,7 +194,7 @@ impl CompactionWork {
 
 impl ContextCompactionCoordinator {
     pub(in crate::cas_projection) fn new(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         storage: SyndicStorage,
@@ -217,7 +218,7 @@ impl ContextCompactionCoordinator {
 
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection) fn new_with_initial_start(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         storage: SyndicStorage,

@@ -509,3 +509,44 @@ Nextest run `f4fffb7c-cc6e-460b-a296-18d3fbe7f234` passed all five focused const
 regressions, including every one of the eight bounded spawn failure positions. Normal app library
 compilation, formatting and diff checks passed. Independent lifecycle review accepted the ordinary
 queue-disconnection wake path, complete joins, error preservation and ownership transfer.
+
+## Ordinary CAS Home Ownership
+
+Phase 454 replaced ordinary CAS shared owning home handles with generation-gated service
+references. The service retains one owned store; connections, scheduler, runtime preparation,
+stop, compaction and persistent-failure consumers retain only references. Explicit shutdown joins
+the existing components and drains admitted commands before closing the owned store. Retained
+references no longer produce an ownership-leak error or delay retirement. A pending reconciliation
+close error still returns the sole owned store and keeps the home locked until reconciliation and
+final close. Supervisor service-ownership failure remains a distinct error.
+
+The former ordinary service destructor only requested stop and relied on worker-held owning handles
+to delay home destruction. That approach cannot satisfy sole-owner joined retirement. Implicit drop
+now uses the same joined close path, and construction installs private service custody before later
+compaction, provider attachment and scheduler construction can fail. Provider attachment unwind
+therefore shuts down the created components before owner retirement. Partial compaction worker
+creation was accepted separately above; dormant startup fencing remains phase 421.
+
+Verification exposed a scoped-command lifetime gap: Rust's nonlexical borrow ending allowed a
+consuming service close while a command guard's permit remained alive in the same scope. Explicit
+command draining then waited on that permit. `LiveHomeCommand` now has a destructor so drop checking
+retains the home borrow until permit release; affected callers explicitly release guards before
+moving the service. All app test targets compile with that stronger lifetime constraint. The obsolete
+signal-only connection retirement method was removed after its only caller was replaced.
+
+Tests cover retained-reference retirement and reopen, an admitted command delaying close, constructor
+unwind cleanup and pending reconciliation returning recoverable owner custody. Existing runtime and
+poisoned-registry tests now require completed joins. Cancellation can itself complete paused network
+preparation before an explicit release; tests accept that only when the process is stopped and all
+workers, tokens and retained sessions are already gone when drop returns. A graceful-shutdown test
+also stopped assuming that dropping one reservation guarantees immediate reopening: bounded polling
+preserves the exact cancellation outcome until all admission and coherent-home checks permit reopen.
+
+Nextest run `0d054006-e1d4-4e5f-a346-18f6c9529441` passed 79 of 81 selected tests; its command-guard
+deadlock and old nonblocking-drop expectation were corrected. Run
+`3ecf435b-74bf-4e3f-a92e-06dbf24e6393` passed all 366 library tests and five affected integration
+cases; the remaining preparation test incorrectly required cancellation to stay blocked. Corrected
+immediate joined-disposal assertions passed in `8990933b-aa21-4497-b375-0d3696d671ec`. Together these
+runs verify 448 distinct tests: 366 library and 82 selected integration cases. Normal app library
+compilation, all app test-target compilation with `test-faults`, formatting and diff checks passed.
+Independent lifecycle review accepted the final ownership, shutdown, failure and test boundaries.

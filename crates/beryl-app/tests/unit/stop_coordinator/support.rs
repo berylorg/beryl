@@ -8,7 +8,8 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeServiceReference,
+    HomeStore,
 };
 use beryl_model::{
     BindingRevision, CasThreadId, CasTurnId, InputGateRevision, SyndicDraftId,
@@ -282,7 +283,8 @@ fn stage_prepared_content(home: &HomeStore, storage: SyndicStorage, content: &Pr
 
 struct StopFixture {
     _directory: tempfile::TempDir,
-    home: Arc<HomeStore>,
+    owner: HomeStore,
+    home: Arc<HomeServiceReference>,
     storage: SyndicStorage,
     coordinator: Arc<StopCoordinator>,
     command_gate: crate::cas_projection::persistent_failure::MasterCommandGate,
@@ -349,7 +351,8 @@ impl StopFixture {
         };
         let home_id = home.home_id();
         let home_generation = home.health().generation().unwrap();
-        let home = Arc::new(home);
+        let owner = home;
+        let home = Arc::new(owner.service_reference());
         let command_gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
             Default::default(),
             crate::cas_projection::persistent_failure::ProjectionServiceGeneration::allocate()
@@ -407,6 +410,7 @@ impl StopFixture {
             .unwrap();
         Self {
             _directory: directory,
+            owner,
             home,
             storage,
             coordinator,

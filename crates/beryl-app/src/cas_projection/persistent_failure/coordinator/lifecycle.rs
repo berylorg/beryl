@@ -1,9 +1,10 @@
 use super::*;
+use beryl_home_store::HomeServiceReference;
 
 impl PersistentFailureCoordinator {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection) fn start(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         service_generation: ProjectionServiceGeneration,
@@ -31,7 +32,7 @@ impl PersistentFailureCoordinator {
 
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection) fn start_with_initial_start(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         service_generation: ProjectionServiceGeneration,

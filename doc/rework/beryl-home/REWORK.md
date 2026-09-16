@@ -397,7 +397,7 @@
 - [x] Closed the typed candidate convergence consumer boundary with [independent scope review](../../failures/target-bootstrap-composition.md#candidate-consumer-closure).
 - [x] Accepted gated candidate service references with exclusive retirement ownership and [lifecycle evidence](../../failures/target-bootstrap-composition.md#gated-service-references).
 - [x] Joined partial ordinary compaction-worker construction before owner disposal; [acceptance evidence](../../failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
-- [ ] Adapt ordinary CAS consumers to non-owning service references while retaining explicit owner shutdown and join custody before dormant construction.
+- [x] Adapted ordinary CAS consumers to non-owning service references with exclusive owner retirement and explicit joined shutdown; [acceptance evidence](../../failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

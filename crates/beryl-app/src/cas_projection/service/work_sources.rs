@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::sync::Weak;
 
 use super::*;
@@ -6,7 +7,7 @@ use crate::cas_projection::context_compaction::ContextCompactionCoordinator;
 #[derive(Clone)]
 pub(in crate::cas_projection) struct ProcessWorkSources {
     mutation_observer: beryl_home_store::HomeMutationObserver,
-    home: Weak<HomeStore>,
+    home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
@@ -19,7 +20,7 @@ pub(in crate::cas_projection) struct ProcessWorkSources {
 }
 
 pub(super) struct ProcessWorkRead {
-    pub(super) home: Option<Arc<HomeStore>>,
+    pub(super) home: Option<Arc<HomeServiceReference>>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
     pub(super) storage: SyndicStorage,

@@ -1,6 +1,7 @@
+use beryl_home_store::HomeServiceReference;
 use std::sync::{Arc, Mutex, Weak, mpsc};
 
-use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
+use beryl_home_store::{HomeGeneration, HomeHealthState};
 use beryl_model::BerylHomeId;
 
 use super::{
@@ -24,7 +25,7 @@ pub enum PersistentFailureNotificationStatus {
 /// Cloneable, nonblocking notification handle for exact typed home failure.
 #[derive(Clone, Debug)]
 pub struct PersistentFailureNotification {
-    home: Weak<HomeStore>,
+    home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     signal: mpsc::SyncSender<()>,
@@ -112,7 +113,7 @@ impl PersistentFailureNotification {
 }
 
 pub(in crate::cas_projection) fn persistent_failure_notification_channel(
-    home: &Arc<HomeStore>,
+    home: &Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     service_generation: ProjectionServiceGeneration,

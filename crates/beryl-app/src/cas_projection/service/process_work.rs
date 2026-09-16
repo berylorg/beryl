@@ -56,7 +56,11 @@ impl ProjectionConnectionService {
 
 impl ProcessWorkInventory<'_> {
     fn home(&self) -> Result<&beryl_home_store::HomeStore, ProcessWorkError> {
-        self.service.home.as_deref().ok_or(ProcessWorkError::Closed)
+        self.service
+            .home
+            .as_deref()
+            .map(|home| &**home)
+            .ok_or(ProcessWorkError::Closed)
     }
 
     pub fn revision(&self) -> Result<ProcessWorkRevision, ProcessWorkError> {

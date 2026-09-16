@@ -5,7 +5,7 @@ use std::{
 };
 
 use beryl_backend::ProviderObservationAbandonReason;
-use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeStore};
+use beryl_home_store::{HomeOpenOptions, HomeSchemaVersion, HomeServiceReference, HomeStore};
 use beryl_model::{CasProcessGeneration, RuntimeId};
 use beryl_stream::{SendError, fixed_channel};
 use syndic_storage::SyndicStorage;
@@ -37,7 +37,8 @@ struct BrokerBuildFixture {
     commands: LiveCommandAuthorizer,
     failure_notification: PersistentFailureNotification,
     workers: ProjectionWorkerPool,
-    home: Arc<HomeStore>,
+    owner: Option<HomeStore>,
+    home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     _directory: tempfile::TempDir,
@@ -59,7 +60,8 @@ impl BrokerBuildFixture {
             .unwrap();
         let home_id = home.home_id();
         let home_generation = home.health().generation().unwrap();
-        let home = Arc::new(home);
+        let owner = home;
+        let home = Arc::new(owner.service_reference());
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
                 &home,
@@ -114,6 +116,7 @@ impl BrokerBuildFixture {
             commands,
             failure_notification,
             workers: ProjectionWorkerPool::new(NonZeroUsize::new(3).unwrap()),
+            owner: Some(owner),
             home,
             home_id,
             home_generation,
@@ -176,6 +179,7 @@ impl BrokerBuildFixture {
 impl Drop for BrokerBuildFixture {
     fn drop(&mut self) {
         self.compaction.shutdown().unwrap();
+        self.owner.take().unwrap().close().unwrap();
     }
 }
 

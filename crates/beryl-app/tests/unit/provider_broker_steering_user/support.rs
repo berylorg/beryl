@@ -9,8 +9,8 @@ use beryl_backend::{
     UserMessageEchoLifecycle, lifecycle_test_support::decode_provider_json_for_test,
 };
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit,
-    SidecarNamespace,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeServiceReference,
+    HomeStore, SidecarByteLimit, SidecarNamespace,
 };
 use beryl_model::{
     AssetId, CasItemId, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
@@ -60,7 +60,8 @@ enum FixtureInput {
 
 pub(super) struct SteeringFixture {
     directory: tempfile::TempDir,
-    pub(super) home: Arc<HomeStore>,
+    owner: HomeStore,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) storage: SyndicStorage,
     worker_pool: ProjectionWorkerPool,
     sink: Option<Box<dyn OrderedTurnStreamSink>>,
@@ -335,7 +336,8 @@ impl SteeringFixture {
 
         let home_generation = home.health().generation().unwrap();
         let home_id = home.home_id();
-        let home = Arc::new(home);
+        let owner = home;
+        let home = Arc::new(owner.service_reference());
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
                 &home,
@@ -433,6 +435,7 @@ impl SteeringFixture {
 
         Self {
             directory,
+            owner,
             home,
             storage,
             worker_pool,
@@ -685,6 +688,7 @@ impl SteeringFixture {
     pub(super) fn close(self) {
         let Self {
             directory,
+            owner,
             home,
             storage: _,
             worker_pool,
@@ -722,9 +726,8 @@ impl SteeringFixture {
         router.retire(LiveEventTargetCloseReason::WorkerStopped);
         drop(router);
         drop(authority);
-        let home =
-            Arc::try_unwrap(home).unwrap_or_else(|_| panic!("broker retained the test home"));
-        home.close().unwrap();
+        drop(home);
+        owner.close().unwrap();
         drop(directory);
         assert_eq!(worker_pool.diagnostics().active(), 0);
     }

@@ -38,15 +38,16 @@ use beryl_model::{
 };
 use beryl_state::BerylState;
 use syndic_storage::{
-    prepare_lifecycle_continuation_content, ClaimCompactionDispatch, CompactionAbandonmentReason,
-    CompactionAdmissionRead, CompactionAttemptNonce, CompactionOperationId,
-    CompactionOperationNonce, CompactionOperationState, CompactionProviderEvent,
-    CompactionProviderSequence, CompactionRequestDisposition, CompactionSettlement,
-    ContentLifecycle, PublishCompactionProviderEvent, StopAdmissionRead, StopCause, StopCauseSet,
-    StopOperationNonce, StopOperationState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    ClaimCompactionDispatch, CompactionAbandonmentReason, CompactionAdmissionRead,
+    CompactionAttemptNonce, CompactionOperationId, CompactionOperationNonce,
+    CompactionOperationState, CompactionProviderEvent, CompactionProviderSequence,
+    CompactionRequestDisposition, CompactionSettlement, ContentLifecycle,
+    PublishCompactionProviderEvent, StopAdmissionRead, StopCause, StopCauseSet, StopOperationNonce,
+    StopOperationState, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    prepare_lifecycle_continuation_content,
 };
 
-use support::{point_limit, LifecycleFixture};
+use support::{LifecycleFixture, point_limit};
 
 struct UnavailableProvider;
 
@@ -240,6 +241,7 @@ fn lifecycle_continuation_staging_is_fixed_ownerless_and_idempotent() {
     assert_eq!(manifest.owner(), None);
     assert_eq!(manifest.sealed_reference(), Some(first));
 
+    drop(live_home);
     service.close().unwrap();
     drop(directory);
 }

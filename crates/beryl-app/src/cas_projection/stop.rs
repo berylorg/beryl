@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -83,7 +84,7 @@ struct StopCoordinatorState {
 }
 
 pub(in crate::cas_projection) struct StopCoordinator {
-    home: Weak<HomeStore>,
+    home: Weak<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
@@ -372,7 +373,7 @@ impl StopCoordinator {
     }
 
     pub(in crate::cas_projection) fn new(
-        home: &Arc<HomeStore>,
+        home: &Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         storage: SyndicStorage,
@@ -398,7 +399,7 @@ impl StopCoordinator {
 
     #[cfg(test)]
     pub(in crate::cas_projection) fn new_for_test(
-        home: &Arc<HomeStore>,
+        home: &Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         storage: SyndicStorage,
@@ -786,7 +787,7 @@ impl StopCoordinator {
         self.current_home().map(drop)
     }
 
-    fn current_home(&self) -> Result<Arc<HomeStore>, StopCoordinationError> {
+    fn current_home(&self) -> Result<Arc<HomeServiceReference>, StopCoordinationError> {
         let home = self
             .home
             .upgrade()

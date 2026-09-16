@@ -1,4 +1,5 @@
 use super::*;
+use beryl_home_store::HomeServiceReference;
 
 impl ProviderBrokerBuildError {
     pub(super) fn new(
@@ -120,7 +121,7 @@ impl ProviderBrokerBuildFault {
 impl ProviderBroker {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection::connection) fn prepare(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         authority: Arc<ConnectionRegistryAuthority>,
@@ -150,7 +151,7 @@ impl ProviderBroker {
 
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection::connection) fn prepare_with_initial_start(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         authority: Arc<ConnectionRegistryAuthority>,
@@ -185,7 +186,7 @@ impl ProviderBroker {
     #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection::connection) fn prepare_with_spawn_failure_for_test(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         authority: Arc<ConnectionRegistryAuthority>,
@@ -217,7 +218,7 @@ impl ProviderBroker {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare_with_initial_start_inner(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         authority: Arc<ConnectionRegistryAuthority>,
@@ -344,7 +345,7 @@ impl ProviderBroker {
 
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection::connection) fn start(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         authority: Arc<ConnectionRegistryAuthority>,

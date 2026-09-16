@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::{
     collections::HashMap,
     path::Path,
@@ -93,14 +94,15 @@ pub(in crate::cas_projection) use flight_registry::TerminalCompletionPublisher;
 
 struct PreparedProjectionSessionAdmission {
     command: super::LiveCommandPermit,
-    home: Arc<HomeStore>,
+    home: Arc<HomeServiceReference>,
     worker_permits: ProjectionWorkerPermitPair,
     _acquisition: super::acquisition::ProjectionAcquisition,
 }
 
 /// Process-owned admission and shutdown boundary for projection connections.
 pub struct ProjectionConnectionService {
-    home: Option<Arc<HomeStore>>,
+    owned_home: Option<HomeStore>,
+    home: Option<Arc<HomeServiceReference>>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
@@ -132,6 +134,12 @@ pub struct ProjectionConnectionService {
 pub struct LiveHomeCommand<'a> {
     home: &'a HomeStore,
     _permit: super::persistent_failure::LiveCommandPermit,
+}
+
+impl Drop for LiveHomeCommand<'_> {
+    fn drop(&mut self) {
+        // Drop checking must retain the home borrow until the permit is released.
+    }
 }
 
 /// Consuming close result for one projection-service generation.
@@ -166,10 +174,12 @@ pub enum ProjectionConnectionServiceCloseError {
     ContextCompactionShutdown,
     #[error("the persistent-failure cut worker failed or panicked during shutdown")]
     PersistentFailureWorkerShutdown,
+    #[error("the live-command gate could not confirm drained shutdown")]
+    CommandDrain,
     #[error("persistent-failure authority could not be terminally disposed")]
     PersistentFailureDisposal,
-    #[error("a joined projection connection still owns the Beryl home")]
-    HomeOwnershipLeaked,
+    #[error("the projection service could not regain exclusive shutdown ownership")]
+    ServiceOwnershipUnavailable,
     #[error("the owned Beryl home failed explicit close: {0}")]
     HomeClose(#[source] HomeCloseError),
 }
@@ -190,6 +200,14 @@ mod lifecycle_test_admission_tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/unit/lifecycle_test_admission.rs"
+    ));
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+mod home_ownership_tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/service_home_ownership.rs"
     ));
 }
 

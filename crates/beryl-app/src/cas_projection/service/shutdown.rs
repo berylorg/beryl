@@ -121,6 +121,7 @@ impl ProjectionConnectionService {
                 }
             });
         drop(self.home.take());
+        drop(self.owned_home.take());
 
         if disposition_failed {
             return Err(ProjectionConnectionServiceCloseError::PersistentFailureDisposal);
@@ -208,7 +209,9 @@ impl ProjectionConnectionService {
                 }
             });
         let persistent_failure_failed = persistent_failure.join().is_err();
-        let Some(home) = self.home.take() else {
+        let drain_failed = self.command_gate.wait_until_drained().is_err();
+        drop(self.home.take());
+        let Some(home) = self.owned_home.take() else {
             return if connection_failed {
                 Err(ProjectionConnectionServiceCloseError::ConnectionShutdown)
             } else if scheduler_failed {
@@ -219,12 +222,12 @@ impl ProjectionConnectionService {
                 Err(ProjectionConnectionServiceCloseError::ContextCompactionShutdown)
             } else if persistent_failure_failed {
                 Err(ProjectionConnectionServiceCloseError::PersistentFailureWorkerShutdown)
+            } else if drain_failed {
+                Err(ProjectionConnectionServiceCloseError::CommandDrain)
             } else {
                 Ok(())
             };
         };
-        let home = Arc::try_unwrap(home)
-            .map_err(|_| ProjectionConnectionServiceCloseError::HomeOwnershipLeaked)?;
         let close_result = home
             .close()
             .map_err(ProjectionConnectionServiceCloseError::HomeClose);
@@ -243,51 +246,15 @@ impl ProjectionConnectionService {
         if persistent_failure_failed {
             return Err(ProjectionConnectionServiceCloseError::PersistentFailureWorkerShutdown);
         }
+        if drain_failed {
+            return Err(ProjectionConnectionServiceCloseError::CommandDrain);
+        }
         close_result
-    }
-
-    fn request_implicit_ordinary_shutdown(&mut self) {
-        self.settled = true;
-        if let Some(owner) = self.runtime_interest.take() {
-            owner.request_shutdown();
-        }
-        if let Some(persistent_failure) = self.persistent_failure.as_ref() {
-            persistent_failure.request_shutdown();
-        }
-        if let Some(scheduler) = self.scheduler.as_ref() {
-            scheduler.request_shutdown();
-        } else {
-            self.scheduler_signal.request_shutdown();
-        }
-        if let Some(context_compaction) = self.context_compaction.as_ref() {
-            context_compaction.request_shutdown();
-        }
-        let _ = self.connections.visit_cleanup_connections(
-            crate::cas_projection::service_registry::ConnectionCleanupMode::Dispose,
-            None,
-            |connection| {
-                connection.request_ordinary_retirement_after_service_shutdown();
-                Ok(crate::cas_projection::service_registry::ConnectionCleanupDisposition::Retain)
-            },
-        );
     }
 }
 
 impl Drop for ProjectionConnectionService {
     fn drop(&mut self) {
-        if self.settled {
-            return;
-        }
-        match self.command_gate.close_for_shutdown() {
-            MasterCommandGateCloseOwner::OrdinaryShutdown => {
-                self.request_implicit_ordinary_shutdown();
-            }
-            MasterCommandGateCloseOwner::PersistentFailure(failure_generation) => {
-                if let Some(owner) = self.runtime_interest.take() {
-                    let _ = owner.shutdown();
-                }
-                let _ = self.persistent_failure_shutdown_inner(failure_generation);
-            }
-        }
+        let _ = self.close_inner();
     }
 }

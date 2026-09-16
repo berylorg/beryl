@@ -1,4 +1,5 @@
 use super::*;
+use beryl_home_store::HomeServiceReference;
 
 /// Stable phase of the process-local persistent-failure safety cut.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -174,7 +175,7 @@ impl std::fmt::Debug for PersistentFailureTerminalDisposer {
 }
 
 pub(super) struct WorkerContext {
-    pub(super) home: Arc<HomeStore>,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
     pub(super) service_generation: ProjectionServiceGeneration,

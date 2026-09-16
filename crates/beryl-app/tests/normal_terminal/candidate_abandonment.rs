@@ -168,6 +168,7 @@ fn stopping_home() -> (
             .unwrap(),
     );
     let thread = fixture.thread;
+    drop(command);
     let (directory, service) = fixture.into_service();
     let _ = service.close().unwrap();
     (directory, thread, submitted.turn, request)

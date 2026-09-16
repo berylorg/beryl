@@ -1,6 +1,7 @@
+use beryl_home_store::HomeServiceReference;
 use std::sync::{Arc, Mutex};
 
-use beryl_home_store::{HomeGeneration, HomeStore};
+use beryl_home_store::HomeGeneration;
 use beryl_model::BerylHomeId;
 use syndic_storage::SyndicStorage;
 
@@ -26,7 +27,7 @@ pub(in crate::cas_projection) struct ConnectionAttachmentIdentity {
 /// Complete immutable execution attachment owned by one connection.
 pub(super) struct ConnectionAttachment {
     pub(super) identity: ConnectionAttachmentIdentity,
-    pub(super) home: Arc<HomeStore>,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) storage: SyndicStorage,
     pub(super) router: Arc<EventRouter>,
     pub(super) broker: Arc<ProviderBrokerControl>,

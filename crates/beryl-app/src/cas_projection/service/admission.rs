@@ -1,4 +1,5 @@
 use super::*;
+use beryl_home_store::HomeServiceReference;
 
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../tests/unit/projection_acquisition.rs"]
@@ -7,7 +8,7 @@ mod tests;
 #[derive(Clone)]
 pub(in crate::cas_projection) struct ProjectionAdmissionContext {
     acquisition: Option<super::super::acquisition::ProjectionAcquisition>,
-    home: Option<Arc<HomeStore>>,
+    home: Option<Arc<HomeServiceReference>>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: SyndicStorage,
@@ -80,7 +81,7 @@ impl ProjectionConnectionService {
         let persistent_failure = self
             .persistent_failure
             .as_ref()
-            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+            .ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?;
         Ok(ProjectionAdmissionContext {
             acquisition: None,
             home: self.home.clone(),
@@ -95,7 +96,7 @@ impl ProjectionConnectionService {
             context_compaction: Arc::clone(
                 self.context_compaction
                     .as_ref()
-                    .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?,
+                    .ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?,
             ),
             scheduler_signal: self.scheduler_signal.clone(),
             failure_notification: persistent_failure.notification(),
@@ -443,12 +444,12 @@ impl ProjectionAdmissionContext {
 }
 
 fn ensure_current_home(
-    home: Option<&HomeStore>,
+    home: Option<&HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     storage: &SyndicStorage,
 ) -> Result<(), ProjectionCoordinatorError> {
-    let home = home.ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+    let home = home.ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?;
     if home.home_id() != home_id {
         return Err(ProjectionCoordinatorError::HomeIdentityMismatch {
             expected: home_id,

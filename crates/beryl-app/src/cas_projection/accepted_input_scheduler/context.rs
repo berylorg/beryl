@@ -1,6 +1,7 @@
+use beryl_home_store::HomeServiceReference;
 use std::sync::{Arc, Mutex};
 
-use beryl_home_store::{CommandError, CommitReceipt, HomeGeneration, HomeStore};
+use beryl_home_store::{CommandError, CommitReceipt, HomeGeneration};
 use beryl_model::BerylHomeId;
 use syndic_storage::SyndicStorage;
 
@@ -91,7 +92,7 @@ pub(super) enum WorkerDisposition {
 }
 
 pub(in crate::cas_projection) struct AcceptedInputSchedulerContext {
-    pub(super) home: Arc<HomeStore>,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
     pub(super) turn_start_admission_requirement: TurnStartAdmissionRequirement,
@@ -110,7 +111,7 @@ pub(in crate::cas_projection) struct AcceptedInputSchedulerContext {
 impl AcceptedInputSchedulerContext {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::cas_projection) fn new(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
         turn_start_admission_requirement: TurnStartAdmissionRequirement,

@@ -33,6 +33,38 @@ fn finish_pass(fixture: &Fixture, id: ShutdownAttemptId) -> ShutdownProgress {
     }
 }
 
+fn finish_failed_reopen(
+    fixture: &Fixture,
+    id: ShutdownAttemptId,
+    reason: ShutdownFailure,
+) -> ShutdownProgress {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        match poll(fixture, id) {
+            ShutdownProgress::Failed {
+                reason: observed,
+                reopened: true,
+            } => {
+                assert_eq!(observed, reason);
+                return ShutdownProgress::Failed {
+                    reason: observed,
+                    reopened: true,
+                };
+            }
+            ShutdownProgress::Failed {
+                reason: observed,
+                reopened: false,
+            } => assert_eq!(observed, reason),
+            progress => panic!("failed shutdown changed progress before reopening: {progress:?}"),
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "failed shutdown did not reopen"
+        );
+        std::thread::yield_now();
+    }
+}
+
 #[test]
 fn pending_preservation_joins_one_attempt_and_keeps_admission_fenced() {
     let fixture = Fixture::new();
@@ -115,7 +147,7 @@ fn cancelled_attempt_reopens_only_after_admission_returns_and_new_attempt_has_ne
     );
     drop(reservation);
     assert_eq!(
-        poll(&fixture, id),
+        finish_failed_reopen(&fixture, id, ShutdownFailure::Cancelled),
         ShutdownProgress::Failed {
             reason: ShutdownFailure::Cancelled,
             reopened: true

@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, mpsc},
@@ -19,7 +20,8 @@ use super::{
 pub(in crate::cas_projection::persistent_failure) struct FailedNotificationFixture {
     pub(in crate::cas_projection::persistent_failure) notification: PersistentFailureNotification,
     pub(in crate::cas_projection::persistent_failure) receiver: mpsc::Receiver<()>,
-    pub(in crate::cas_projection::persistent_failure) home: Arc<HomeStore>,
+    pub(in crate::cas_projection::persistent_failure) home: Arc<HomeServiceReference>,
+    _owned_home: HomeStore,
     _directory: tempfile::TempDir,
 }
 
@@ -72,7 +74,8 @@ impl FailedNotificationFixture {
         let home_generation = health
             .generation()
             .expect("failed home retains its exact generation");
-        let home = Arc::new(home);
+        let owned_home = home;
+        let home = Arc::new(owned_home.service_reference());
         let (notification, receiver) = persistent_failure_notification_channel(
             &home,
             home_id,
@@ -83,6 +86,7 @@ impl FailedNotificationFixture {
             notification,
             receiver,
             home,
+            _owned_home: owned_home,
             _directory: directory,
         }
     }

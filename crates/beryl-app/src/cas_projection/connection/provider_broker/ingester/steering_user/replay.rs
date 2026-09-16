@@ -1,22 +1,22 @@
+use beryl_home_store::HomeServiceReference;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use beryl_backend::{
     StreamedInputDescriptor, StreamedInputHeader, StreamedInputSource, StreamedInputSourceError,
     StreamedTextPage, StreamedTextSourceId,
 };
-use beryl_home_store::HomeStore;
 
 use crate::cas_projection::{ProjectionCancellationToken, input_replay::AcceptedInputReplaySource};
 
 pub(super) struct AcceptedSteeringReplaySource {
-    home: Arc<HomeStore>,
+    home: Arc<HomeServiceReference>,
     replay_cancellation: ProjectionCancellationToken,
     source: AcceptedInputReplaySource,
 }
 
 impl AcceptedSteeringReplaySource {
     pub(super) fn new(
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         broker_cancelled: Arc<AtomicBool>,
         source: AcceptedInputReplaySource,
     ) -> Self {

@@ -286,7 +286,7 @@ impl ProjectionConnectionService {
         let home = self
             .home
             .as_deref()
-            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+            .ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?;
         lease
             .assets()
             .revision(home)
@@ -369,7 +369,7 @@ impl ProjectionConnectionService {
     }
 
     #[cfg(feature = "test-faults")]
-    pub fn retain_home_for_shutdown_test(&self) -> Arc<HomeStore> {
+    pub fn retain_home_for_shutdown_test(&self) -> Arc<HomeServiceReference> {
         Arc::clone(
             self.home
                 .as_ref()

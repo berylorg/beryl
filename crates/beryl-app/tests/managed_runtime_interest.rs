@@ -132,29 +132,39 @@ fn persistent_failure_cut_finishes_before_runtime_retirement_detaches_its_connec
 }
 
 #[test]
-fn ordinary_service_drop_does_not_wait_for_a_pending_managed_admission() {
+fn ordinary_service_drop_waits_for_pending_managed_admission_and_retires_references() {
     let mut fixture = Fixture::new();
     fs::write(fixture.root(1).join("fixture-mode"), "pause-config").unwrap();
     let interest = fixture.acquire(1, RuntimeInterestKind::View).unwrap();
     wait_until(|| fixture.root(1).join("runtime-evidence.json").exists());
     let process = ProcessWitness::open(fixture.evidence(1)["pid"].as_u64().unwrap() as u32);
     let workers = fixture.service().worker_pool_observer_for_test();
+    let retained = fixture.home_reference.clone();
     let service = fixture.service.take().unwrap();
     let (dropped, observed) = std::sync::mpsc::sync_channel(1);
     let dropper = thread::spawn(move || {
         drop(service);
         dropped.send(()).unwrap();
     });
-    observed
-        .recv_timeout(Duration::from_secs(1))
-        .expect("ordinary Drop must not wait for admission");
-    dropper.join().unwrap();
-    assert_eq!(interest.status(), RuntimeInterestStatus::Retired);
+    assert!(observed.recv_timeout(Duration::from_secs(1)).is_err());
     assert!(process.running());
     fs::write(fixture.root(1).join("release-config"), "release").unwrap();
+    observed
+        .recv_timeout(Duration::from_secs(10))
+        .expect("ordinary Drop must join the pending admission");
+    dropper.join().unwrap();
+    assert_eq!(interest.status(), RuntimeInterestStatus::Retired);
     process.assert_exited();
     wait_until(|| fixture.token_count() == 0);
     assert_eq!(workers().active(), 0);
+    assert!(retained.home_revision().is_err());
+    let reopened =
+        beryl_home_store::HomeOpenCandidate::open(beryl_home_store::HomeOpenOptions::new(
+            fixture.home_path(),
+            beryl_home_store::HomeSchemaVersion::CURRENT,
+        ))
+        .expect("retired service reference must not retain the home lock");
+    drop(reopened);
 }
 
 #[test]

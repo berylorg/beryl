@@ -1,7 +1,8 @@
+use beryl_home_store::HomeServiceReference;
 use std::{path::Path, thread, time::Duration};
 
 use beryl_backend::ManagedBackendLaunchSpec;
-use beryl_home_store::HomeStore;
+
 use beryl_model::{AdmittedHostPath, RuntimeId, RuntimeNativePath};
 use beryl_state::RuntimeRootState;
 use syndic_storage::SyndicStorage;
@@ -47,7 +48,7 @@ pub enum RuntimeSessionPreparationError {
 
 pub(in crate::cas_projection) struct PreparationContext {
     pub(in crate::cas_projection) config: RuntimeSessionPreparationConfig,
-    pub(in crate::cas_projection) home: Arc<HomeStore>,
+    pub(in crate::cas_projection) home: Arc<HomeServiceReference>,
     pub(in crate::cas_projection) storage: SyndicStorage,
     pub(in crate::cas_projection) owner: Arc<RuntimeInterestOwner>,
     pub(in crate::cas_projection) work_sources: crate::cas_projection::service::ProcessWorkSources,

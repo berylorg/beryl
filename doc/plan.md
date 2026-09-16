@@ -52,26 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 455: Join Partial Compaction Worker Construction (finished)
+# Phase 454: Adopt Service References In Ordinary CAS Ownership (finished)
 
-Partial compaction worker creation now stops and joins all created workers before returning failure.
-All five focused regressions, normal app compilation and independent lifecycle review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
-
-# Phase 454: Adopt Service References In Ordinary CAS Ownership (wip)
-
-Adapt ordinary CAS consumers from shared owning store handles to the accepted gated service
-references, preserving one owned store and explicit shutdown/join custody under
-[service lifecycle](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication).
-Keep worker, runtime-interest, stop, compaction and failure-coordinator references non-owning;
-the composition owner alone retains close and recovery authority. Reference counts cannot substitute
-for completed worker shutdown. Candidate construction and startup-fence integration remain phase 421.
-
-Verify ordinary service construction, commands, reference release, shutdown ordering and failure
-outcomes, including retained references after retirement and unresolved reconciliation custody.
-Run focused CAS ownership/shutdown regressions, normal compilation and independent lifecycle review.
-Readiness review confirmed this consumer adaptation is independently implementable using the
-accepted storage primitive; split any further independent service prerequisite before activation.
+Ordinary CAS now retains one owned home, distributes gated service references and joins shutdown
+before owner retirement. All 366 library and 82 selected integration tests passed across focused
+runs; normal and all-test compilation and independent lifecycle review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

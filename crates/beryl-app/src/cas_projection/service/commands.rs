@@ -59,7 +59,7 @@ impl ProjectionConnectionService {
         let home = self
             .home
             .as_deref()
-            .ok_or(ProjectionCoordinatorError::HomeOwnershipLeaked)?;
+            .ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?;
         active_steering::deliver(
             home,
             self.home_id,

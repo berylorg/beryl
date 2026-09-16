@@ -1,4 +1,5 @@
 use super::*;
+use beryl_home_store::HomeServiceReference;
 
 mod retirement;
 
@@ -199,7 +200,7 @@ impl ProjectionConnection {
         mut backend: ManagedBackendSession,
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
-        home: Arc<HomeStore>,
+        home: Arc<HomeServiceReference>,
         home_id: BerylHomeId,
         home_generation: beryl_home_store::HomeGeneration,
         storage: syndic_storage::SyndicStorage,
@@ -723,29 +724,6 @@ impl ProjectionConnection {
         drop(authority);
         drop(command);
         if elected || self.authority.is_retired() {
-            self.signal_ordinary_retirement();
-        }
-    }
-
-    pub(in crate::cas_projection) fn request_ordinary_retirement_after_service_shutdown(&self) {
-        let Ok(attachment) = self.current_attachment() else {
-            return;
-        };
-        let mut authority = match self.authority.lock() {
-            Ok(authority) => authority,
-            Err(_) => {
-                if attachment.begin_ordinary_retirement() {
-                    self.signal_ordinary_retirement();
-                }
-                return;
-            }
-        };
-        let elected = attachment.begin_ordinary_retirement();
-        if elected {
-            self.authority.retire_locked(&mut authority);
-        }
-        drop(authority);
-        if elected {
             self.signal_ordinary_retirement();
         }
     }

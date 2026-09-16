@@ -13,7 +13,8 @@ use crate::cas_projection::{
 };
 
 pub(in crate::cas_projection::accepted_input_scheduler) struct LeaseValidationAuthority {
-    pub(in crate::cas_projection::accepted_input_scheduler) home: Arc<beryl_home_store::HomeStore>,
+    pub(in crate::cas_projection::accepted_input_scheduler) home:
+        Arc<beryl_home_store::HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     turn_start_admission_requirement: crate::cas_projection::TurnStartAdmissionRequirement,

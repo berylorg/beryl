@@ -44,6 +44,7 @@ impl ScheduledOrdinaryExecutionProvider for NoQueuedExecution {
 
 pub(crate) struct Fixture {
     pub(crate) service: Option<ProjectionConnectionService>,
+    pub(crate) home_reference: beryl_home_store::HomeServiceReference,
     pub(crate) process_admission: beryl_app::process_admission::ProcessAdmissionGate,
     directory: tempfile::TempDir,
     pub(crate) state: BerylState,
@@ -86,6 +87,7 @@ impl Fixture {
             .unwrap()
             .publish()
             .unwrap();
+        let home_reference = home.service_reference();
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let mut service = ProjectionConnectionService::new(
             process_admission.clone(),
@@ -112,6 +114,7 @@ impl Fixture {
             .unwrap();
         Self {
             service: Some(service),
+            home_reference,
             process_admission,
             directory,
             state,
@@ -126,6 +129,10 @@ impl Fixture {
 
     pub(crate) fn root(&self, root: u8) -> PathBuf {
         self.directory.path().join(format!("root-{root}"))
+    }
+
+    pub(crate) fn home_path(&self) -> PathBuf {
+        self.directory.path().join("home")
     }
 
     pub(crate) fn tokens(&self) -> PathBuf {

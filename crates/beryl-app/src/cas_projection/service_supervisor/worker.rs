@@ -155,7 +155,7 @@ fn settle_current_service(
     slot.wait_until_unleased();
     let (service, _state) = publication
         .into_parts()
-        .map_err(|_| ProjectionConnectionServiceCloseError::HomeOwnershipLeaked)?;
+        .map_err(|_| ProjectionConnectionServiceCloseError::ServiceOwnershipUnavailable)?;
     service.close().map(|_terminal_outcome| ())
 }
 

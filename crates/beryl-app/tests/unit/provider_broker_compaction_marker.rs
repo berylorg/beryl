@@ -7,7 +7,8 @@ use beryl_backend::{
     lifecycle_test_support::provider_observation_fragment,
 };
 use beryl_home_store::{
-    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    CommandOutcome, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeServiceReference,
+    HomeStore,
 };
 use beryl_model::{
     CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, PathFlavor,
@@ -44,7 +45,8 @@ const POINT_READ_BYTES: usize = 1_000_000;
 
 struct Fixture {
     directory: tempfile::TempDir,
-    home: Arc<HomeStore>,
+    owner: Option<HomeStore>,
+    home: Arc<HomeServiceReference>,
     storage: SyndicStorage,
     coordinator: Arc<ContextCompactionCoordinator>,
     stop_coordinator: Arc<StopCoordinator>,
@@ -196,7 +198,8 @@ impl Fixture {
 
         let home_generation = home.health().generation().unwrap();
         let home_id = home.home_id();
-        let home = Arc::new(home);
+        let owner = home;
+        let home = Arc::new(owner.service_reference());
         let failure_notification =
             crate::cas_projection::persistent_failure::test_failure_notification(
                 &home,
@@ -314,6 +317,7 @@ impl Fixture {
 
         Self {
             directory,
+            owner: Some(owner),
             home,
             storage,
             coordinator,
@@ -562,5 +566,6 @@ impl Drop for Fixture {
         drop(self.compaction_driver.take());
         let _ = &self.registration;
         let _ = &self.directory;
+        self.owner.take().unwrap().close().unwrap();
     }
 }

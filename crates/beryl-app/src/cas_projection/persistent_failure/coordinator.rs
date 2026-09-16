@@ -7,7 +7,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use beryl_home_store::{HomeGeneration, HomeStore};
+use beryl_home_store::HomeGeneration;
 use beryl_model::BerylHomeId;
 
 use super::{

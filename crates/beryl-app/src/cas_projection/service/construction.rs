@@ -8,7 +8,6 @@ impl ProjectionConnectionService {
         config: ProjectionServiceConfig,
         scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Result<Self, ProjectionCoordinatorError> {
-        let home = Arc::new(home);
         let health = home.health();
         if health.state() != HomeHealthState::Healthy {
             return Err(ProjectionCoordinatorError::HomeNotHealthy {
@@ -42,14 +41,15 @@ impl ProjectionConnectionService {
 
     fn construct(
         process: crate::process_admission::ProcessAdmissionGate,
-        home: Arc<HomeStore>,
+        owned_home: HomeStore,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
-        mut scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
+        scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
         initial_start: Arc<InitialStartGate>,
         startup_storage_revision: DomainRevision,
         recovery: StartupRecoveryDiagnostics,
     ) -> Result<Self, ProjectionCoordinatorError> {
+        let home = Arc::new(owned_home.service_reference());
         let health = home.health();
         if health.state() != HomeHealthState::Healthy {
             return Err(ProjectionCoordinatorError::HomeNotHealthy {
@@ -109,7 +109,36 @@ impl ProjectionConnectionService {
             service_generation,
             scheduler_signal.clone(),
         );
-        let context_compaction =
+        let workers = ProjectionWorkerPool::new_with_scheduler(
+            config.worker_capacity(),
+            scheduler_signal.clone(),
+        );
+        let mut service = Self {
+            home_id: home.home_id(),
+            home_generation,
+            owned_home: Some(owned_home),
+            home: Some(Arc::clone(&home)),
+            storage: storage.clone(),
+            startup_storage_revision,
+            config,
+            workers: workers.clone(),
+            service_generation,
+            command_gate: command_gate.clone(),
+            command_authorizer: command_authorizer.clone(),
+            persistent_failure: Some(persistent_failure),
+            connections: Arc::clone(&connections),
+            stop_coordinator: Arc::clone(&stop_coordinator),
+            context_compaction: None,
+            scheduler: None,
+            scheduler_signal: scheduler_signal.clone(),
+            mutation_observer,
+            native_lineage_recovery: native_lineage_recovery.clone(),
+            scheduled_ordinary_provider: Some(Arc::new(Mutex::new(scheduled_ordinary_provider))),
+            runtime_interest: None,
+            graceful_shutdown: Mutex::new(super::graceful_shutdown::ShutdownCoordinator::default()),
+            settled: false,
+        };
+        service.context_compaction = Some(
             super::super::context_compaction::ContextCompactionCoordinator::new_with_initial_start(
                 Arc::clone(&home),
                 home.home_id(),
@@ -121,24 +150,27 @@ impl ProjectionConnectionService {
                 scheduler_signal.clone(),
                 Arc::clone(&initial_start),
             )
-            .map_err(|_| ProjectionCoordinatorError::ContextCompactionCoordinatorUnavailable)?;
-        scheduled_ordinary_provider.attach(
-            super::super::process_sessions::ScheduledExecutionProviderContext::new(
-                home.home_id(),
-                home_generation,
-                service_generation,
-                config,
-                command_authorizer.clone(),
-                Arc::downgrade(&connections),
-                scheduler_signal.clone(),
-            ),
+            .map_err(|_| ProjectionCoordinatorError::ContextCompactionCoordinatorUnavailable)?,
         );
-        let scheduled_ordinary_provider = Arc::new(Mutex::new(scheduled_ordinary_provider));
-        let workers = ProjectionWorkerPool::new_with_scheduler(
-            config.worker_capacity(),
-            scheduler_signal.clone(),
-        );
-        let scheduler = AcceptedInputScheduler::start_with_initial_start(
+        let scheduled_ordinary_provider = service
+            .scheduled_ordinary_provider
+            .as_ref()
+            .expect("constructing service retains its execution provider");
+        scheduled_ordinary_provider
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .attach(
+                super::super::process_sessions::ScheduledExecutionProviderContext::new(
+                    home.home_id(),
+                    home_generation,
+                    service_generation,
+                    config,
+                    command_authorizer.clone(),
+                    Arc::downgrade(&connections),
+                    scheduler_signal.clone(),
+                ),
+            );
+        service.scheduler = Some(AcceptedInputScheduler::start_with_initial_start(
             AcceptedInputSchedulerContext::new(
                 Arc::clone(&home),
                 home.home_id(),
@@ -147,39 +179,20 @@ impl ProjectionConnectionService {
                 storage.clone(),
                 workers.clone(),
                 Arc::clone(&connections),
-                Arc::clone(&scheduled_ordinary_provider),
+                Arc::clone(scheduled_ordinary_provider),
                 command_gate.clone(),
-                persistent_failure.terminal_disposer(home.home_id(), home_generation),
+                service
+                    .persistent_failure
+                    .as_ref()
+                    .expect("constructing service retains its failure coordinator")
+                    .terminal_disposer(home.home_id(), home_generation),
                 ActiveSteeringCancellationLifecycle::new(),
                 scheduler_signal.clone(),
                 native_lineage_recovery.clone(),
             ),
             initial_start,
-        )?;
+        )?);
         scheduler_signal.hand_off_recovery(recovery);
-        Ok(Self {
-            home_id: home.home_id(),
-            home_generation,
-            home: Some(home),
-            storage,
-            startup_storage_revision,
-            config,
-            workers,
-            service_generation,
-            command_gate,
-            command_authorizer,
-            persistent_failure: Some(persistent_failure),
-            connections,
-            stop_coordinator,
-            context_compaction: Some(context_compaction),
-            scheduler: Some(scheduler),
-            scheduler_signal,
-            mutation_observer,
-            native_lineage_recovery,
-            scheduled_ordinary_provider: Some(scheduled_ordinary_provider),
-            runtime_interest: None,
-            graceful_shutdown: Mutex::new(super::graceful_shutdown::ShutdownCoordinator::default()),
-            settled: false,
-        })
+        Ok(service)
     }
 }

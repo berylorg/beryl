@@ -1,3 +1,4 @@
+use beryl_home_store::HomeServiceReference;
 use std::{
     num::NonZeroUsize,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -15,7 +16,7 @@ use beryl_backend::{
     ClientUserMessageId, OrderedTurnStreamOperation, OrderedTurnStreamRejection,
     OrderedTurnStreamSink, OrderedTurnStreamSubmitCause,
 };
-use beryl_home_store::{HomeGeneration, HomeStore};
+use beryl_home_store::HomeGeneration;
 use beryl_model::{BerylHomeId, ProviderObservationId};
 use beryl_stream::{
     ChannelBuildError, PagePool, PagePoolDiagnostics, PagePoolError, fixed_channel,
@@ -223,7 +224,7 @@ pub(in crate::cas_projection::connection) struct PreparedProviderBroker {
 pub(in crate::cas_projection::connection) struct ProviderBroker;
 
 pub(in crate::cas_projection::connection) struct ProviderBrokerControl {
-    pub(super) home: Arc<HomeStore>,
+    pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
     pub(super) authority: Arc<ConnectionRegistryAuthority>,
@@ -284,7 +285,7 @@ pub(in crate::cas_projection::connection) enum ProviderBrokerResponseActivationF
 }
 
 struct Ingester {
-    home: Arc<HomeStore>,
+    home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,
     authority: Arc<ConnectionRegistryAuthority>,

@@ -436,7 +436,7 @@ fn persistent_home_failure_joins_paused_preparation_and_releases_runtime_resourc
 }
 
 #[test]
-fn ordinary_service_drop_requests_preparation_cancellation_without_waiting_for_network() {
+fn ordinary_service_drop_joins_paused_preparation_after_network_release() {
     for mode in ["pause-config", "pause-session-config"] {
         let (mut fixture, sessions, _attention) = fixture(8);
         fs::write(fixture.root(1).join("fixture-mode"), mode).unwrap();
@@ -455,14 +455,24 @@ fn ordinary_service_drop_requests_preparation_cancellation_without_waiting_for_n
             drop(service);
             dropped.send(()).unwrap();
         });
-        observed
-            .recv_timeout(Duration::from_secs(1))
-            .expect("ordinary Drop must only request preparation cancellation");
+        let completed_early = match observed.recv_timeout(Duration::from_secs(1)) {
+            Ok(()) => true,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => false,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                panic!("ordinary Drop worker disconnected")
+            }
+        };
+        if !completed_early {
+            wait_until(|| sessions.diagnostics().closed);
+            fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
+            observed
+                .recv_timeout(Duration::from_secs(10))
+                .expect("ordinary Drop must join paused preparation after release");
+        }
         dropper.join().unwrap();
-        wait_until(|| sessions.diagnostics().closed);
-        fs::write(fixture.root(1).join("release-config"), "ready").unwrap();
-        process.assert_exited();
-        wait_until(|| workers().active() == 0 && fixture.token_count() == 0);
+        assert!(!process.running());
+        assert_eq!(workers().active(), 0);
+        assert_eq!(fixture.token_count(), 0);
         assert_eq!(sessions.diagnostics().retained, 0);
     }
 }
