@@ -52,17 +52,30 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 452: Read Candidate Syndic Startup Revision (finished)
+# Phase 438: Connect Typed Candidate Convergence Consumers (finished)
 
-Accepted exact candidate Syndic revision access with initial/recovered parity, identity and failure
-fences. Focused verification, normal compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-startup-revision).
+Accepted the complete scoped candidate startup consumer set. Independent closure review confirmed
+the accepted component evidence and separated service ownership from persisted convergence.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-consumer-closure).
 
-# Phase 438: Connect Typed Candidate Convergence Consumers (wip)
+# Phase 453: Establish Gated Candidate Service References (wip)
 
-Adapt remaining exact Beryl-state and Syndic startup recovery reads, mutations, receipt interpretation
-and reconciliation required by service preparation. Split independently verifiable consumer boundaries
-before activation; do not publish healthy services or absorb CAS construction.
+Implement the registration-complete candidate's shared service references required by
+[home opening](../crates/beryl-home-store/doc/design-open-and-recovery.md#unpublished-open-candidates).
+Preserve the owned `HomeOpenPublication::publish` result and sole owner authority over close,
+recovery, attachment retirement and home-lock custody. Retained service references must remain
+subject to ordinary opening and generation gates; candidate recovery stays explicitly borrowed.
+Do not change publication into a shared-owner result or construct CAS services in this phase.
+
+Verify retained references reject ordinary access before publication, admit the same generation
+after publication, and reject failed or retired generations. Cover publication rejection,
+candidate cancellation, reference release, attachment retirement and unresolved reconciliation
+without weakening lock custody. Run focused storage lifecycle tests, normal dependent compilation
+and independent ownership review. Split further independent consumer adaptation before activation.
+
+Readiness review identified the existing exclusive `HomeStore` representation and CAS
+`Arc<HomeStore>` retention as the missing prerequisite. The authority already requires gated
+shared references; preserve its ownership contract while implementing that boundary.
 
 # Phase 421: Prepare CAS Services Before Initial Publication (pending)
 

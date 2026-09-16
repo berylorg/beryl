@@ -450,3 +450,21 @@ across normal-terminal, compaction, compaction-source-boundary and composer-hist
 app compilation, formatting and diff checks passed. Independent review accepted ordering, identity,
 no-replay, custody, prepublication isolation and the final test-helper correction. Service preparation
 and complete graph publication retain their later acceptance boundaries.
+
+## Candidate Consumer Closure
+
+Phase 438 completion review found no remaining persisted startup convergence consumer to adapt.
+The sequential startup adapter covers bounded discovery, classification, cursor rebase, active and
+stop abandonment, source-less terminal publication, terminal-history and deferred-compaction
+convergence. Candidate command execution, receipt interpretation and exact reconciliation retain
+the accepted home-store access boundary. The final Syndic revision snapshot is accepted separately.
+
+The ordinary CAS constructor performs startup recovery and the revision read before constructing
+services. Its remaining health checks, mutation observation, shared store ownership and worker
+custody belong to service preparation. Beryl-state registration and candidate reacquisition already
+provide complete typed handles; theme candidate construction uses identity metadata. Settings/theme
+loading and session discovery are explicitly postpublication under the app lifecycle authority.
+
+Independent source review accepted this closure against the component verification recorded above;
+no source changed and no additional test run was needed. This accepts the consumer boundary only,
+not dormant service construction or complete graph publication.

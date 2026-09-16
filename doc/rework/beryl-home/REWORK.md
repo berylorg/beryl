@@ -394,6 +394,8 @@
 - [x] Accepted candidate deferred-compaction convergence with [settlement, confirmation and custody evidence](../../failures/target-bootstrap-composition.md#candidate-deferred-compaction-convergence).
 - [x] Accepted sequential candidate startup recovery with [case, paging, drift and custody evidence](../../failures/target-bootstrap-composition.md#candidate-startup-integration).
 - [x] Accepted candidate startup revision reads with [identity, publication and failure evidence](../../failures/target-bootstrap-composition.md#candidate-startup-revision).
+- [x] Closed the typed candidate convergence consumer boundary with [independent scope review](../../failures/target-bootstrap-composition.md#candidate-consumer-closure).
+- [ ] Establish gated candidate service references with exclusive store retirement ownership before dormant CAS construction.
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
