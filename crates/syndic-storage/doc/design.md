@@ -61,6 +61,12 @@ and composer behavior remain in their feature authorities.
 
 The package exposes grouped typed operations rather than raw record mechanics:
 
+- `RepairRequestDisposition` describes an available request or a `ConsumedRepairRequest`.
+  `ConsumedRepairRequest::new` retains the exact `RepairRequestAttemptNonce` (16 bytes) and accepts only
+  nonzero `InputGateRevision` values whose successor is the checked next source revision.
+  These copyable facts carry no dispatch authority; only the owning atomic claim may grant the
+  non-cloneable capability specified by the CAS-live system. Construction neither generates a
+  nonce nor establishes its freshness, and does not persist or reset a request disposition.
 - Domain registration, fresh typed-handle acquisition, and explicit schema validation.
 - The complete typed declaration of the Syndic domain, candidate-only initial registration and
   fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store

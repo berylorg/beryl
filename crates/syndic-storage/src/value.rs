@@ -6,6 +6,7 @@ mod lifecycle;
 mod ordering;
 mod parent;
 mod proof;
+mod repair;
 mod stop;
 
 pub use beryl_model::ImageLabelOrdinal;
@@ -45,6 +46,11 @@ pub use stop::{
     StopAbandonmentReason, StopAttemptNonce, StopCause, StopCauseFirstRevisions,
     StopCauseFirstRevisionsError, StopCauseSet, StopCauseSetError, StopDispatchClaimWitness,
     StopOperationId, StopOperationNonce, StopOperationRevision,
+};
+
+pub use repair::{
+    ConsumedRepairRequest, RepairRequestAttemptNonce, RepairRequestDisposition,
+    RepairRequestDispositionError,
 };
 
 /// Why a pure Syndic value was rejected before persistence or provider work.

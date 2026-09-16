@@ -52,20 +52,21 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 466: Reconcile Recovery Work With Unavailable Repair (finished)
+# Phase 467: Establish Repair Request Disposition Values (finished)
 
-Accepted the Operator-approved explicit-incomplete recovery sequence, with conditional repair
-dispatch and media work kept separate from recovery prerequisites. Independent semantic review,
-link/diff checks and Markdown reconciliation passed; no runtime code changed.
-[Evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md#remaining-decision).
+Accepted package-owned available/consumed values with exact 16-byte nonce preservation and
+checked adjacent nonzero gate revisions. All four focused nextest cases, formatting/diff checks,
+Markdown reconciliation and independent semantic review passed. These descriptive values grant
+no dispatch capability; target provenance, persistence and admission remain separate below.
 
-# Phase 467: Establish Bounded Repair-Gate Values (pending)
+# Phase 471: Establish Bounded Repair Target Provenance (pending)
 
-Implement package-owned values for exact repair target correlation, closed capture-gap provenance
-and the available/consumed request disposition described by the
+Implement package-owned values for exact repair target correlation and closed capture-gap provenance
+described by the
 [Syndic schema](../crates/syndic-storage/doc/design-schema-v7.md).
-Validate external-identity bounds, witness/digest identity, optional observation references,
-nonzero revisions and the consumed attempt nonce with focused value tests and independent review.
+Validate external-identity bounds, witness/digest identity and optional observation references
+with focused value tests and independent review. Resolve the exact witness representation in
+owning schema authority before implementation; compose the accepted request disposition values.
 Keep gate persistence, admission, dispatch capabilities and runtime mounting separate.
 
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
