@@ -26,6 +26,7 @@ use std::sync::Arc;
 mod lifecycle;
 mod load;
 mod operations;
+pub(crate) mod preparation;
 mod publication;
 
 use load::{

@@ -677,3 +677,21 @@ physical-service/execution regressions. Final run `33f4597b-6f8e-4236-af10-88eb2
 four preparation tests, including activity remaining counted during blocked worker destruction.
 Normal app library compilation, exact-file formatting, diff checks and independent ownership
 review passed. App runtime preparation and complete graph composition remain separate boundaries.
+
+## App Theme Runtime Preparation
+
+Phase 460 accepts the private app runtime preparation owner with immutable bounds, exact candidate
+identity and a dormant typed subscription. Preparation borrows the unpublished candidate and does
+no Settings or repository loading. Outer composition must drop the prepared owner, joining its
+watcher, before disposing the candidate. Loading rejects foreign or stale home generations before
+release and then uses the same startup loader as ordinary runtime construction. That loader owns
+the subscription through errors and preserves complete fallback and typed failure provenance.
+
+Nextest run `1c00462d-f537-45eb-a9b0-126083efeba2` passed six preparation cases and all 35 existing
+theme-runtime regressions, including actual GPUI publication. Final focused run
+`3b765e09-0948-4e51-a3f6-6f61280d40cb` passed all seven preparation cases, adding missing-document
+fallback provenance after postpublication Settings loading. Coverage includes dormant publication,
+spawn failure, abandonment, invalid bounds, early release, foreign home, stale recovered generation
+and runtime retirement. Normal app library compilation, exact-file formatting, diff checks and
+independent lifecycle review passed. This accepts the initial factory only; complete graph
+publication and the remaining graph-factory readiness inventory remain open.

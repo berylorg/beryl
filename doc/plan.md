@@ -52,18 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 459: Adapt Typed Theme Subscription Preparation (finished)
+# Phase 460: Prepare Theme Runtime Before Initial Publication (finished)
 
-Accepted initial/recovered typed subscription preparation, exact candidate qualification and
-activity custody through publication, release and joined destruction. Four new lifecycle tests
-and 22 existing regressions passed; normal app compilation and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#typed-theme-subscription-preparation).
-
-# Phase 460: Prepare Theme Runtime Before Initial Publication (pending)
-
-Separate accepted app theme-runtime construction and dormant subscription custody from
-postpublication settings/repository loading. Preserve startup fallback, typed failure provenance
-and generation retirement. Accept this factory independently before complete graph integration.
+Accepted private theme-runtime preparation with dormant watcher custody and exact-generation
+postpublication loading through the shared startup path. Seven new lifecycle tests and 35 existing
+theme regressions passed, including GPUI publication; normal app compilation and independent
+review passed. [Acceptance evidence](failures/target-bootstrap-composition.md#app-theme-runtime-preparation).
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 

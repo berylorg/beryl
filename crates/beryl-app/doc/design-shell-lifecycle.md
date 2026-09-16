@@ -85,6 +85,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Settings/theme repository loading, compact session discovery and progressive window preparation
   begin only after the complete graph publishes. Their owning readiness and startup-failure gates
   still apply; publishing services does not certify any restore set or first visible window.
+- Theme runtime preparation retains its exact candidate identity, immutable bounds and dormant
+  typed subscription in a private app owner. The composing graph drops that owner, joining its
+  watcher, before discarding the borrowed candidate. Loading accepts only the matching published
+  generation and releases the already-created subscription; it uses the ordinary startup loader
+  and retains its complete fallback and typed failure outcomes. No service factory independently
+  publishes the home or makes a partial graph available to consumers.
 
 ## Startup And Activation
 

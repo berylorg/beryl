@@ -17,6 +17,8 @@ mod identity;
 mod publication;
 mod service;
 
+pub(crate) use service::preparation::PreparedThemeRuntime;
+
 pub use adapter::{
     AppearancePublicationFailure, AppearancePublicationTarget, AppearanceWindowSetSnapshot,
     WindowAdapterId,

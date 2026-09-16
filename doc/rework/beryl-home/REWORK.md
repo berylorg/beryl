@@ -404,7 +404,8 @@
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 - [x] Accepted private candidate-owned marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership). Complete-graph publication and clone distribution remain open.
 - [x] Accepted dormant physical theme watchers with exact-generation release and joined cancellation; [acceptance evidence](../../failures/target-bootstrap-composition.md#dormant-physical-theme-watchers).
-- [x] Accepted typed theme subscription preparation with candidate qualification and joined activity custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#typed-theme-subscription-preparation). App theme-runtime preparation remains open.
+- [x] Accepted typed theme subscription preparation with candidate qualification and joined activity custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#typed-theme-subscription-preparation).
+- [x] Accepted private app theme-runtime preparation and shared postpublication loading with exact-generation fencing; [acceptance evidence](../../failures/target-bootstrap-composition.md#app-theme-runtime-preparation). Complete graph composition remains open.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.

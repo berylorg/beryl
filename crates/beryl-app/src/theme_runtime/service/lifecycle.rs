@@ -8,6 +8,33 @@ impl ThemeRuntime {
         active_setting: Option<&SettingRecord>,
         config: ThemeRuntimeConfig,
     ) -> Result<Self, ThemeRuntimeStartError> {
+        let subscription = service
+            .subscribe_changes(
+                store,
+                config.watch_interval,
+                config.watch_queue_capacity,
+                config.watch_max_entries_per_poll,
+                config.watch_max_file_bytes,
+            )
+            .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
+        Self::load_started(
+            store,
+            service,
+            domain_revision,
+            active_setting,
+            config,
+            subscription,
+        )
+    }
+
+    pub(super) fn load_started(
+        store: &HomeStore,
+        service: ThemeService,
+        domain_revision: DomainRevision,
+        active_setting: Option<&SettingRecord>,
+        config: ThemeRuntimeConfig,
+        subscription: ThemeChangeSubscription,
+    ) -> Result<Self, ThemeRuntimeStartError> {
         let active = ThemeService::active_theme_from_setting(active_setting)
             .map_err(|_| start_error(ThemeRuntimeFailureClass::Identity))?;
         let settings = service.settings_identity(domain_revision, active_setting);
@@ -43,15 +70,6 @@ impl ThemeRuntime {
         let initial = startup.appearance().clone();
         let last_observed_document = installed_identity(&initial).cloned();
         let appearance = AppearanceCoordinator::new(config.appearance, initial);
-        let subscription = service
-            .subscribe_changes(
-                store,
-                config.watch_interval,
-                config.watch_queue_capacity,
-                config.watch_max_entries_per_poll,
-                config.watch_max_file_bytes,
-            )
-            .map_err(|_| start_error(ThemeRuntimeFailureClass::Subscription))?;
         Ok(Self {
             config,
             retired_state: service.diagnostics(),
