@@ -2,6 +2,9 @@ use beryl_model::SyndicTurnId;
 
 use crate::{RepairRequiredTarget, SourceEventPayload, SourceEventRecord, SourceEventSequence};
 
+mod retained;
+pub(crate) use retained::retained_repair_target_matches;
+
 pub(crate) fn repair_source_events_match<E>(
     target: &RepairRequiredTarget,
     mut read: impl FnMut(SyndicTurnId, SourceEventSequence) -> Result<Option<SourceEventRecord>, E>,

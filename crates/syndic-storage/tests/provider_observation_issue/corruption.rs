@@ -2,7 +2,7 @@ use super::*;
 
 use syndic_storage::test_faults::ProviderObservationCorruption;
 
-fn publish_duplicate_start_issue(
+pub(super) fn publish_duplicate_start_issue(
     fixture: &Fixture,
     inspected: InspectedProviderObservation,
 ) -> (ProviderObservationBuildRecord, LiveSourceEvent) {
