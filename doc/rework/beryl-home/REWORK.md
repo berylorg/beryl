@@ -104,10 +104,11 @@
   compatibility recovery path, or unbounded outage buffer may conceal the missing boundary.
 - The private release-pinned exact terminal-turn repair adapter is the only allowed live CAS-history
   dependency; no ordinary transcript, catalog, or replay path may consume it.
-- Until Checkpoint 7 supplies atomic cross-domain repair-media admission, every terminal repair
-  remains successor-gated and undispatched because the historical request may be the first complete
-  media proof. Runtime consumes no durable repair-request claim, fixes no incomplete outcome merely
-  because the target slice is absent, and admits no media-less fallback.
+- A proven-unavailable pinned repair source may converge incomplete through the accepted recovery
+  components; missing implementation alone does not authorize that outcome. Any future eligible
+  repair remains successor-gated and undispatched until atomic cross-domain repair-media admission
+  is accepted, because the request may provide the first complete media proof; no claim consumption
+  or media-less fallback conceals that implementation gap.
 - No whole-value compatibility path may conceal missing range-backed editor, storage, or
   presentation boundaries; declared individual-operation limits do not authorize such a path.
 - During the active cutover, Syndic V7 registers only implemented families; deferred materializer
@@ -436,21 +437,18 @@
 
 ## Checkpoint 5: Add Terminal Repair And Fresh Same-Home Recovery
 
-- [ ] Establish exact pinned repair-route evidence and accept the non-GUI recovery components before branch services and complete graph publication, retaining separate product-mounting acceptance.
-- [ ] Add the private bounded exact terminal-turn backend adapter; accept and discard bounded cursor
-  metadata without following it and provide no adjacent-turn, item-history, or whole-thread
-  fallback.
-- [ ] Add snapshot-specific paged Syndic repair records, atomic repaired snapshot selection,
-  and bounded projection-finalization records without mounting repair dispatch.
+- [x] Established exact pinned evidence requiring unavailable repair for the current supported thread population, with the [source limitation](../../failures/cas-terminal-repair-full-view-is-not-completeness.md) retained.
+- [ ] Accept non-GUI recovery through the existing explicit-incomplete outcome before branch services and complete graph publication, retaining separate product-mounting acceptance.
+- [ ] Add the private bounded exact terminal-turn backend adapter only after new exact source evidence proves eligibility, with no cursor traversal or history fallback.
+- [ ] Add snapshot-specific paged Syndic repair records and atomic repaired snapshot selection only when repair eligibility is proven, without making those conditional components prerequisites of unavailable-repair recovery.
 - [ ] Enforce repair-required successor gates before mounting dispatch while unrelated threads
   remain independent.
-- [ ] Implement, but do not runtime-mount, one durable target-scoped request claim and the repaired
-  or explicit-incomplete path through `FinalizingHistory`, coherent generation publication, and
-  gate release.
+- [ ] Accept bounded explicit-incomplete finalization and coherent publication before releasing repair-required gates while preserving durable request disposition.
+- [ ] Implement the durable target-scoped request claim and repaired finalization path only after repair eligibility is proven, without runtime dispatch mounting.
 - [ ] Add the prioritized outage buffer for already-active exact targets without making buffered
   content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
-- [ ] Gate: verify terminal repair, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
+- [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
@@ -471,19 +469,14 @@
 - [ ] Integrate bounded file reads, header parsing, on-demand thumbnails and tiles, decode workers,
   CPU surfaces, upload staging, shared media identity, GPU residency, eviction, and device-loss
   recovery.
-- [ ] Implement and verify authenticated repair-media staging, sealed paged Asset sets, and bounded
-  owner-qualified resource lookup.
-- [ ] Integrate and verify compact atomic Asset/Syndic repair selection and complete-only recovery
-  with final-command work independent of the staged media count.
-- [ ] Mount the durable claim and exact repair-dispatch path for eligible targets, with explicit
-  incomplete outcomes for missing or unusable media and no inline-base64 fallback.
+- [ ] Implement and verify authenticated repair-media staging, sealed paged Asset sets, and bounded owner-qualified resource lookup only after repair eligibility is proven.
+- [ ] Integrate and verify compact atomic Asset/Syndic repair selection and complete-only recovery after repair eligibility is proven, with final-command work independent of staged media count.
+- [ ] Mount the durable claim and exact repair-dispatch path only after repair eligibility is proven, retaining explicit incomplete outcomes and no inline-base64 fallback.
 - [ ] Mount generated-title maintenance and successful branch-archive presentation through their
   established Syndic authority and bounded Beryl projections.
 - [ ] Preserve unreachable turns and resources until a separately designed future garbage-
   collection operation.
-- [ ] Gate: confirm representative large inputs and configured admission limits, hostile dimensions,
-  generated-image repair, atomic publication, owned-resource release, and deferred cleanup before
-  Checkpoint 8.
+- [ ] Gate: confirm representative asset limits, hostile dimensions, atomic publication, owned-resource release and deferred cleanup before Checkpoint 8, verifying unavailable repair or eligible generated-image repair as applicable.
 
 ## Checkpoint 8: Integrate, Harden, And Close The Rework
 

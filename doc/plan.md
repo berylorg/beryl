@@ -52,16 +52,44 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 464: Establish Exact Pinned Terminal Repair Evidence (finished)
+# Phase 466: Reconcile Recovery Work With Unavailable Repair (finished)
 
-Accepted the source-backed unavailable outcome: exact pinned legacy history omits operational
-items and synthesizes identities; Beryl has no paginated-only admission. Independent source and
-artifact review, link/diff checks and Markdown reconciliation passed. No production behavior or
-backend request was added. [Evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md).
+Accepted the Operator-approved explicit-incomplete recovery sequence, with conditional repair
+dispatch and media work kept separate from recovery prerequisites. Independent semantic review,
+link/diff checks and Markdown reconciliation passed; no runtime code changed.
+[Evidence](failures/cas-terminal-repair-full-view-is-not-completeness.md#remaining-decision).
+
+# Phase 467: Establish Bounded Repair-Gate Values (pending)
+
+Implement package-owned values for exact repair target correlation, closed capture-gap provenance
+and the available/consumed request disposition described by the
+[Syndic schema](../crates/syndic-storage/doc/design-schema-v7.md).
+Validate external-identity bounds, witness/digest identity, optional observation references,
+nonzero revisions and the consumed attempt nonce with focused value tests and independent review.
+Keep gate persistence, admission, dispatch capabilities and runtime mounting separate.
+
+# Phase 468: Persist And Enforce The Repair-Required Gate (pending)
+
+Integrate the accepted repair values into canonical gate storage, bounded structural validation
+and same-thread admission exclusion; verify exact terminal-tail correlation, stale revisions,
+corruption rejection and unrelated-thread independence before app recovery consumes the gate.
+
+# Phase 469: Converge Unavailable Repair To Incomplete History (pending)
+
+Implement the bounded durable transition from an exact repair-required target to explicit
+incomplete authority and `FinalizingHistory`, selecting no snapshot or repair asset; verify
+publication ambiguity, replay and request-disposition preservation before app integration.
+
+# Phase 470: Integrate Unavailable-Repair Startup Recovery (pending)
+
+Connect accepted gate classification and incomplete convergence to ordinary and candidate startup
+recovery, preserving bounded finalization, coherent publication and gate release without backend
+history requests or replay of possible-dispatch work. Outage capture and whole-service replacement
+remain separate tracker slices before branch services and complete graph publication.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
-After phase 464 proves the route and its implementation prerequisites are ready, implement the
+Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
 bounded one-request adapter with exact target/capability admission, streaming closed-item output
 and typed failure. Verify no successor race, cursor follow, retry, alternate history route or
 partial publication; keep durable dispatch custody and runtime mounting separate. Remaining
@@ -70,7 +98,8 @@ recovery and branch components continue to feed bounded phases from the rework t
 Blocked on 2026-09-16: exact source does not satisfy the complete semantic item and identity proof
 for Beryl's supported thread population. The existing design requires unavailable repair. Resume
 only after separately authorized prerequisites prove the route; do not substitute a history
-fallback or silently select a new history mode.
+fallback or silently select a new history mode. The Operator approved proceeding with unavailable
+repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
 # Phase 423: Publish The Complete Initial App Service Graph (pending)
 

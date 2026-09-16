@@ -35,8 +35,16 @@ evidence phase ran no live backend probe or Cargo tests and changed no productio
 
 # Remaining Decision
 
-The recommended next step is to retain unavailable repair and specify the remaining recovery
-components around the already required explicit-incomplete outcome. Enabling repair instead needs
+The Operator approved retaining unavailable repair and proceeding with the remaining recovery
+components around the already required explicit-incomplete outcome on 2026-09-16. Enabling repair instead needs
 separate Operator-approved authority for admitted backend/history modes and a new complete
 persistence, identity, finalization and lineage investigation. Merely requesting paginated mode
 is not established as sufficient. No change to target authority is made by this failure record.
+
+The accepted continuation separates bounded repair-gate values, canonical gate enforcement,
+durable incomplete finalization and app startup integration. Outage capture and fresh-service
+recovery remain prerequisites of branch services and complete graph publication. Independent
+review of phase 466 accepted that ordering after the tracker distinguished proven source
+unavailability from absent implementation and made repair-specific media gates conditional.
+Documentation link/diff checks and Markdown reconciliation passed; no runtime implementation is
+claimed by this planning correction.
