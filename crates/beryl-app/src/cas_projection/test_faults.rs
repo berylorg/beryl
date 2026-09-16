@@ -63,7 +63,7 @@ pub(crate) use terminal_history::pause_terminal_history;
 pub use terminal_history::{
     TerminalCompletionProbe, TerminalHistoryBarrierController, TerminalHistoryBarrierStage,
     converge_terminal_history, converge_terminal_history_candidate,
-    install_terminal_history_barrier,
+    install_terminal_history_barrier, publish_source_less_terminal_candidate,
 };
 
 pub fn signal_accepted_ready(service: &super::ProjectionConnectionService) {

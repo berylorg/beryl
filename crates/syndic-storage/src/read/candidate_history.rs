@@ -1,20 +1,30 @@
 use super::access::ReadAccess;
 use crate::codec::{
-    CanonicalItemsFamily, InputGatesFamily, ItemProjectionBuildsFamily, ItemProjectionHeadsFamily,
-    ItemProjectionSetKey, ItemProjectionSetsFamily, ResourcesFamily, ThreadTranscriptBuildKey,
-    ThreadsFamily, TranscriptBuildsFamily, TranscriptHeadsFamily, TurnStatesFamily, TurnsFamily,
+    CanonicalItemsFamily, HistorySummariesFamily, InputGatesFamily, ItemProjectionBuildsFamily,
+    ItemProjectionHeadsFamily, ItemProjectionSetKey, ItemProjectionSetsFamily, ResourcesFamily,
+    ThreadTranscriptBuildKey, ThreadsFamily, TranscriptBuildsFamily, TranscriptHeadsFamily,
+    TurnStatesFamily, TurnsFamily,
 };
 use crate::{
-    CanonicalItemRecord, ContentManifestRecord, InputGateRecord, ItemProjectionBuildRecord,
-    ItemProjectionGeneration, ItemProjectionHeadRecord, ItemProjectionSetRecord,
-    ResourceMetadataRecord, SyndicPointReadLimit, SyndicReadError, SyndicStorage, ThreadRecord,
-    TranscriptBuildRecord, TranscriptGeneration, TranscriptViewHeadRecord, TurnRecord,
-    TurnStateRecord,
+    CanonicalItemRecord, ContentManifestRecord, HistorySummaryRecord, InputGateRecord,
+    ItemProjectionBuildRecord, ItemProjectionGeneration, ItemProjectionHeadRecord,
+    ItemProjectionSetRecord, ResourceMetadataRecord, SyndicPointReadLimit, SyndicReadError,
+    SyndicStorage, ThreadRecord, TranscriptBuildRecord, TranscriptGeneration,
+    TranscriptViewHeadRecord, TurnRecord, TurnStateRecord,
 };
 use beryl_home_store::HomeCandidateRecoveryAccess;
 use beryl_model::{SyndicContentId, SyndicItemId, SyndicResourceId, SyndicThreadId, SyndicTurnId};
 
 impl SyndicStorage {
+    pub fn history_summary_candidate(
+        &self,
+        store: &HomeCandidateRecoveryAccess<'_>,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<HistorySummaryRecord>, SyndicReadError> {
+        self.point_with_access::<HistorySummariesFamily>(ReadAccess::Candidate(store), id, limit)
+    }
+
     pub fn thread_candidate(
         &self,
         store: &HomeCandidateRecoveryAccess<'_>,

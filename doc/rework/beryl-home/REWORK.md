@@ -389,6 +389,7 @@
 - [x] Accepted candidate history metadata with [exact family, generation and bounded-read evidence](../../failures/target-bootstrap-composition.md#candidate-history-metadata).
 - [x] Accepted candidate turn-item pages with [owner isolation, continuation and exact-byte evidence](../../failures/target-bootstrap-composition.md#candidate-turn-item-pages).
 - [x] Accepted candidate terminal-history convergence with [fixed-point and command-outcome evidence](../../failures/target-bootstrap-composition.md#candidate-terminal-history-convergence).
+- [x] Accepted candidate source-less terminal publication with [stabilization, outcome and authority evidence](../../failures/target-bootstrap-composition.md#candidate-source-less-terminal-publication).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)

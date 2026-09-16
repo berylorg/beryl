@@ -8,6 +8,25 @@ use beryl_model::SyndicThreadId;
 
 use super::NEXT_TOKEN;
 
+pub fn publish_source_less_terminal_candidate(
+    store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+    storage: &syndic_storage::SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    turn: beryl_model::SyndicTurnId,
+    observed_at: syndic_storage::SyndicTimestamp,
+    limit: syndic_storage::SyndicPointReadLimit,
+) -> Result<(), String> {
+    crate::cas_projection::live_source::publish_source_less_terminal_candidate(
+        store,
+        storage,
+        thread,
+        turn,
+        observed_at,
+        limit,
+    )
+    .map_err(|error| format!("{error:?}"))
+}
+
 pub fn converge_terminal_history_candidate(
     store: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
     storage: &syndic_storage::SyndicStorage,
@@ -71,6 +90,7 @@ struct TerminalHistoryBarrier {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TerminalHistoryBarrierStage {
+    SourceFrontierObserved,
     AfterItems,
     BeforeGateRelease,
     AfterGateCommit,

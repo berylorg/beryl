@@ -1,10 +1,14 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use beryl_home_store::{HomeGeneration, HomeStore};
+mod access;
+
+use access::SourceAccess;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, CasThreadId, CasTurnId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
     CasTurnSource, LiveSourceEvent, LiveSourceEventStatus, SourceEventPayload, SourceEventSequence,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRecord,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnEndStatus, TurnIncompleteReason,
+    TurnStateRecord,
 };
 use thiserror::Error;
 
@@ -176,12 +180,33 @@ impl LiveSourceFrontier {
         minimum_observed_at: SyndicTimestamp,
         limit: SyndicPointReadLimit,
     ) -> Result<Self, LiveSourcePublicationError> {
-        let state = storage.turn_state(store, target.turn_id, limit)?;
-        let gate = storage.input_gate(store, target.thread_id, limit)?;
-        let summary = storage.history_summary(store, target.thread_id, limit)?;
-        let confirmed_state = storage.turn_state(store, target.turn_id, limit)?;
-        let confirmed_gate = storage.input_gate(store, target.thread_id, limit)?;
-        let confirmed_summary = storage.history_summary(store, target.thread_id, limit)?;
+        Self::read_with_access(
+            SourceAccess::Ordinary(store),
+            storage,
+            target,
+            minimum_observed_at,
+            limit,
+        )
+    }
+
+    fn read_with_access(
+        store: SourceAccess<'_>,
+        storage: &SyndicStorage,
+        target: &LiveSourceTarget,
+        minimum_observed_at: SyndicTimestamp,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Self, LiveSourcePublicationError> {
+        let state = store.turn_state(storage, target.turn_id, limit)?;
+        let gate = store.input_gate(storage, target.thread_id, limit)?;
+        let summary = store.history_summary(storage, target.thread_id, limit)?;
+        #[cfg(feature = "test-faults")]
+        crate::cas_projection::test_faults::pause_terminal_history(
+            target.thread_id,
+            crate::cas_projection::test_faults::TerminalHistoryBarrierStage::SourceFrontierObserved,
+        );
+        let confirmed_state = store.turn_state(storage, target.turn_id, limit)?;
+        let confirmed_gate = store.input_gate(storage, target.thread_id, limit)?;
+        let confirmed_summary = store.history_summary(storage, target.thread_id, limit)?;
         if confirmed_state != state || confirmed_gate != gate || confirmed_summary != summary {
             return Err(LiveSourcePublicationError::ConcurrentChange);
         }
@@ -239,6 +264,36 @@ impl LiveSourceFrontier {
             self.observed_at,
         )?)
     }
+}
+
+pub(super) fn publish_source_less_terminal_candidate(
+    store: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    thread_id: SyndicThreadId,
+    turn_id: SyndicTurnId,
+    minimum_observed_at: SyndicTimestamp,
+    limit: SyndicPointReadLimit,
+) -> Result<(), LiveSourcePublicationError> {
+    let target = LiveSourceTarget::new_source_less(thread_id, turn_id);
+    let frontier = LiveSourceFrontier::read_with_access(
+        SourceAccess::Candidate(store),
+        storage,
+        &target,
+        minimum_observed_at,
+        limit,
+    )?;
+    let event = frontier.event(
+        &target,
+        None,
+        SourceEventPayload::TurnEnded(TurnEndStatus::incomplete(
+            TurnIncompleteReason::AuthorityLost,
+        )),
+    )?;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        publication::admit_live_event_candidate(store, storage, &event)
+    }))
+    .map_err(|_| LiveSourcePublicationError::PublicationPanicked)??;
+    Ok(())
 }
 
 pub(super) fn publish_reconciled(

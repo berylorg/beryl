@@ -50,16 +50,23 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 447: Converge Candidate Terminal History (finished)
+# Phase 448: Publish Candidate Source-Less Terminal Events (finished)
 
-Accepted candidate terminal-history convergence through the shared ordinary algorithm and exact
-command outcomes. Four focused tests plus the two final fixture checks passed with normal app
-compilation and independent review. [Acceptance evidence](failures/target-bootstrap-composition.md#candidate-terminal-history-convergence).
+Accepted candidate source-less terminal publication through the shared stabilized frontier and
+exact command outcome handling. Normal compilation, 31 focused checks and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-source-less-terminal-publication).
 
-# Phase 448: Publish Candidate Source-Less Terminal Events (pending)
+# Phase 450: Establish Candidate Abandonment Commands (wip)
 
-Adapt the existing stabilized source frontier and exact abandonment/event publication helpers to
-candidate access, preserving time/sequence bounds, command outcomes and reconciliation custody.
+Adapt exact active-binding and stop-operation abandonment helpers through candidate command access
+under the [initial service preparation contract](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication).
+Share ordinary result interpretation, checked revision outcomes and indeterminate reconciliation
+installation; preserve existing command eligibility and exact request fences.
+
+Verify active and stopping candidates, stale/foreign handles, conflicting revisions, initial and
+recovered publication parity, command noncommit/committed-failure/indeterminate outcomes and retained
+custody. Run focused abandonment and ordinary publication regressions plus normal compilation;
+independently review outcome truth and authority. Startup orchestration remains phase 449.
 
 # Phase 449: Connect Candidate Startup Recovery (pending)
 

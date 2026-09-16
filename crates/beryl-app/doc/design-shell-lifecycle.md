@@ -62,6 +62,15 @@ governed by [design.md](design.md). It does not independently declare engineerin
   its existing reconciliation custody and aborts convergence; it never reports successful recovery.
   This candidate entry accepts no live terminal-completion publisher, creates no worker or external
   dispatch, and cannot release ordinary admission or publish the app graph.
+- Candidate source-less terminal publication shares the ordinary stabilized turn-state, input-gate
+  and history-summary frontier, checked next sequence and monotonic timestamp selection. It uses
+  the existing exact live-source command through candidate access, preserving panic containment,
+  command outcomes and installed indeterminate custody. It cannot recreate provider authority;
+  source-less authority-loss eligibility remains enforced by the existing mutation contract.
+- Candidate active-binding and stop-operation abandonment execute the same exact typed commands
+  as ordinary recovery. They preserve checked binding-revision results, ordinary failure
+  interpretation and installed indeterminate reconciliation custody. Abandonment grants no
+  provider dispatch or ordinary admission authority.
 - Only the complete private prepared graph can consume app publication. It publishes the same
   candidate generation and graph under one outer transition, then releases ordinary workers.
   Consumers receive a published graph or a typed failure, never a builder, partial handle tuple,

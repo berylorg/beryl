@@ -1,4 +1,6 @@
-use beryl_home_store::{CommandOutcome, CurrentDomainCommand, HomeGeneration, HomeStore};
+use beryl_home_store::{
+    CommandOutcome, CurrentDomainCommand, HomeCandidateRecoveryAccess, HomeGeneration, HomeStore,
+};
 use beryl_model::{BerylHomeId, BindingRevision, InputGateRevision};
 use syndic_storage::{
     AbandonActiveBinding, AbandonStopOperation, ActivateBinding, CancelBindingActivation,
@@ -157,6 +159,16 @@ pub(super) fn admit_live_event_reconciled(
     admit_live_event(store, storage, request, limit)
 }
 
+pub(super) fn admit_live_event_candidate(
+    store: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    request: &LiveSourceEvent,
+) -> Result<(), ProjectionPublicationFailure> {
+    interpret_outcome(
+        store.execute_current(storage.current_admit_live_source_event(request.clone())),
+    )
+}
+
 fn next_binding_revision(
     revision: BindingRevision,
 ) -> Result<BindingRevision, ProjectionPublicationFailure> {
@@ -177,7 +189,11 @@ fn dispatch(
     store: &HomeStore,
     command: CurrentDomainCommand,
 ) -> Result<(), ProjectionPublicationFailure> {
-    match store.execute_current(command) {
+    interpret_outcome(store.execute_current(command))
+}
+
+fn interpret_outcome(outcome: CommandOutcome) -> Result<(), ProjectionPublicationFailure> {
+    match outcome {
         CommandOutcome::NotCommitted { evidence } => {
             Err(ProjectionPublicationFailure::Command(evidence))
         }

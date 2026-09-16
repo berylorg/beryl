@@ -366,3 +366,19 @@ refusal, noncommit/indeterminate/committed failure, publication rejection and ex
 before resumed convergence. New fixtures use user items; assistant/resource branches retain shared
 implementation and prior typed-read evidence. Normal app compilation, formatting and diff checks
 passed; independent review accepted fixed-point behavior, failure truth and candidate isolation.
+
+## Candidate Source-Less Terminal Publication
+
+Phase 448 accepted candidate source-less AuthorityLost terminal events through the ordinary
+turn/gate/summary stabilization and exact command outcome handling. The new summary read shares
+the ordinary typed point-read boundary. Initial and recovered candidate tests establish exact
+event/state publication parity, checked next sequence, monotonic time, bounded reads, stale and
+foreign handle refusal, ordinary admission refusal, noncommit, committed failure, installed
+indeterminate custody and publication rejection, and detection of summary drift between reads.
+
+Normal app compilation and 31 focused checks passed: two new candidate app tests (run
+`ec006f5f-acc8-43af-b7a8-7141c1f0aa6e`), 18 ordinary terminal tests, seven compaction-boundary
+checks, one candidate summary test and three source-less binding eligibility regressions.
+Independent semantic/adversarial review found no blocking production issue. Formatting and diff
+checks passed. The candidate helper publishes the event only; terminal-history convergence,
+abandonment and sequential startup composition retain their separate boundaries.

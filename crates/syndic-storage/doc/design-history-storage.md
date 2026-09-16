@@ -251,6 +251,10 @@ and `has_more` semantics remain shared. An ordinal is a position, not a revision
 consumers retain their existing surrounding state confirmation. Old or foreign storage handles
 remain invalid, and the read does not release ordinary admission.
 
+`history_summary_candidate` reads the ordinary exact bounded history summary through borrowed
+candidate access for source-less recovery publication. It preserves the typed point-read contract;
+the app owns surrounding turn/gate/summary stabilization and event eligibility.
+
 ## Provider-Operation Finalization Reads
 
 `compaction_admission_read_candidate` shares the ordinary stabilized current-operation/admission

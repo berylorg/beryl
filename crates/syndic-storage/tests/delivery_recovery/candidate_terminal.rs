@@ -264,3 +264,85 @@ fn candidate_terminal_evidence_distinguishes_drift_missing_authority_and_unfinis
         publication.close().unwrap();
     }
 }
+
+#[test]
+fn candidate_history_summary_preserves_authority_bounds_and_publication_parity() {
+    let foreign = terminal_fixture(1020, false, false);
+    let fixture = terminal_fixture(1021, false, false);
+    let expected = fixture
+        .storage
+        .history_summary(&fixture.store, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    fixture.store.close().unwrap();
+    let faults = FaultController::new();
+    let mut candidate = HomeOpenCandidate::open_with_faults(
+        HomeOpenOptions::new(fixture.home.path(), HomeSchemaVersion::CURRENT),
+        faults.clone(),
+    )
+    .unwrap();
+    let storage = SyndicStorage::register(&mut candidate).unwrap();
+    let mut publication = candidate
+        .prepare_publication(SyndicStorage::required_domains().unwrap())
+        .unwrap();
+    let access = publication.recovery_access().unwrap();
+    syndic_storage::test_faults::reset_syndic_point_read_count();
+    let summary = storage
+        .history_summary_candidate(&access, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert!(syndic_storage::test_faults::syndic_point_read_count() <= 1);
+    assert_eq!(summary, expected);
+    assert!(matches!(
+        foreign
+            .storage
+            .history_summary_candidate(&access, fixture.thread, point_limit()),
+        Err(SyndicReadError::Read(_))
+    ));
+    assert!(
+        storage
+            .history_summary_candidate(
+                &access,
+                fixture.thread,
+                SyndicPointReadLimit::new(1).unwrap()
+            )
+            .is_err()
+    );
+    beryl_home_store::test_faults::with_initial_publication_store(&publication, |store| {
+        assert!(
+            storage
+                .history_summary(store, fixture.thread, point_limit())
+                .is_err()
+        );
+    });
+    let store = publication.publish().unwrap();
+    assert_eq!(
+        storage
+            .history_summary(&store, fixture.thread, point_limit())
+            .unwrap(),
+        Some(summary)
+    );
+    faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(store.home_revision().is_err());
+    let mut recovered = store.recover_same_home().unwrap();
+    let fresh = SyndicStorage::reacquire_candidate(&recovered).unwrap();
+    let access = recovered.recovery_access().unwrap();
+    assert!(matches!(
+        storage.history_summary_candidate(&access, fixture.thread, point_limit()),
+        Err(SyndicReadError::Read(_))
+    ));
+    let refreshed = fresh
+        .history_summary_candidate(&access, fixture.thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(refreshed, expected);
+    let store = recovered.publish().unwrap();
+    assert_eq!(
+        fresh
+            .history_summary(&store, fixture.thread, point_limit())
+            .unwrap(),
+        Some(refreshed)
+    );
+    store.close().unwrap();
+    foreign.store.close().unwrap();
+}
