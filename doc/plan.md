@@ -52,16 +52,17 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 473: Encode Bounded Repair Target Provenance (finished)
+# Phase 474: Authenticate Repair Source-Event Witnesses (finished)
 
-Accepted the canonical embedded repair-target codec. All 21 focused nextest cases, formatting/diff
-checks, Markdown reconciliation and independent integrity review passed, including fixed byte
-vectors and malformed-input rejection. Gate framing, durable authentication and admission remain
-phase 468 work; this component grants no request authority.
+Accepted the internal bounded source-event matcher: exact terminal and optional issue keys,
+structural agreement and recomputed witnesses, with missing-record rejection and read-error
+propagation. All 32 focused nextest cases, formatting/diff checks, Markdown reconciliation and
+independent integrity review passed. Retained-store wiring, terminal-tail/reverse-index validation
+and gate authority remain phase 468; this component grants no request authority.
 
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
 
-Integrate the accepted repair values, target codec and witness computation into canonical gate storage, bounded structural validation
+Integrate the accepted repair values, target codec, witness computation and source-event authentication into canonical gate storage, bounded structural validation
 and same-thread admission exclusion; verify exact terminal-tail correlation, stale revisions,
 corruption rejection and unrelated-thread independence before app recovery consumes the gate.
 

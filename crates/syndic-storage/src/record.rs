@@ -11,6 +11,7 @@ mod payload;
 mod projection;
 mod provider;
 mod query;
+pub(crate) mod repair;
 mod route;
 mod stop;
 mod thread_properties;
