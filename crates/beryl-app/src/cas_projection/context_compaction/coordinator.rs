@@ -49,6 +49,7 @@ mod settlement;
 #[cfg(feature = "test-faults")]
 mod test_faults;
 mod work_facts;
+mod worker_start;
 
 #[cfg(feature = "test-faults")]
 use model::validate_completion_timeout;
@@ -259,12 +260,11 @@ impl ContextCompactionCoordinator {
             #[cfg(feature = "test-faults")]
             lifecycle_settlement_pause: Mutex::new(None),
         });
-        let mut workers = Vec::with_capacity(COMPACTION_WORKER_CAPACITY);
-        for index in 0..COMPACTION_WORKER_CAPACITY {
-            let weak = Arc::downgrade(&coordinator);
-            let receiver = Arc::clone(&receiver);
-            let initial_start = Arc::clone(&initial_start);
-            workers.push(
+        let workers = worker_start::start_workers(
+            |index| {
+                let weak = Arc::downgrade(&coordinator);
+                let receiver = Arc::clone(&receiver);
+                let initial_start = Arc::clone(&initial_start);
                 std::thread::Builder::new()
                     .name(format!("beryl-context-compaction-{index}"))
                     .spawn(move || {
@@ -272,13 +272,17 @@ impl ContextCompactionCoordinator {
                             dispatch::run_worker(weak, receiver);
                         }
                     })
-                    .map_err(|_| ContextCompactionError::Unavailable)?,
-            );
+            },
+            || coordinator.request_shutdown(),
+        )?;
+        match coordinator.workers.lock() {
+            Ok(mut retained) => *retained = workers,
+            Err(_) => {
+                coordinator.request_shutdown();
+                join_all_workers(workers);
+                return Err(ContextCompactionError::Unavailable);
+            }
         }
-        *coordinator
-            .workers
-            .lock()
-            .map_err(|_| ContextCompactionError::Unavailable)? = workers;
         Ok(coordinator)
     }
 

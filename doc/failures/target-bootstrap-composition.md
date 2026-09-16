@@ -494,3 +494,18 @@ Final nextest run `453b3083-4642-4f63-8965-78044830ac23` passed all 260 storage 
 binaries in 30.008 seconds using `--features test-faults --test-threads 1`. Normal `beryl-app --lib`
 compilation, formatting and diff checks passed. Independent ownership review accepted the final
 boundary. Ordinary CAS reference adoption remains a separate prerequisite to dormant construction.
+
+## Partial Compaction Worker Construction
+
+The ordinary CAS ownership audit found that compaction construction dropped previously created
+thread handles when a later spawn failed. Shared store references cannot substitute for explicit
+joined worker custody. Phase 455 separated this independently testable prerequisite from CAS
+reference adoption: failed creation now closes work admission and joins every created worker before
+returning the existing unavailable outcome. Successful construction transfers all handles to the
+coordinator; a failure to retain them also stops and joins them. A panicking worker cannot skip
+later joins. Dormant startup-fence cancellation remains a separate phase 421 obligation.
+
+Nextest run `f4fffb7c-cc6e-460b-a296-18d3fbe7f234` passed all five focused construction and join
+regressions, including every one of the eight bounded spawn failure positions. Normal app library
+compilation, formatting and diff checks passed. Independent lifecycle review accepted the ordinary
+queue-disconnection wake path, complete joins, error preservation and ownership transfer.

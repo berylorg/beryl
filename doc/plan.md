@@ -52,11 +52,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 453: Establish Gated Candidate Service References (finished)
+# Phase 455: Join Partial Compaction Worker Construction (finished)
 
-Accepted cloneable generation-gated references with owned publication and exclusive retirement
-custody. All 260 storage tests, normal app compilation and independent ownership review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#gated-service-references).
+Partial compaction worker creation now stops and joins all created workers before returning failure.
+All five focused regressions, normal app compilation and independent lifecycle review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
 
 # Phase 454: Adopt Service References In Ordinary CAS Ownership (wip)
 
