@@ -501,6 +501,26 @@ canonical byte comparison of the point-read target closure.
   `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
   `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V7
   domain is replacement authority.
+- Repair provenance uses only durable `source-events` in the exact target turn. A witness is a
+  nonzero per-turn `SourceEventSequence` and an exact 32-byte SHA-256 digest. The owning target's
+  Syndic turn identity scopes that sequence; neither the digest nor a sequence alone is identity.
+  The digest preimage is the ASCII bytes `beryl/syndic/repair-source-event/v1` followed by one NUL
+  byte and the complete canonical V7 source-event value payload, including turn identity,
+  sequence, optional CAS correlation and closed payload, without the home-store envelope.
+  Admission recomputes the digest from the retained record and checks its full structural
+  agreement with the target; a caller-supplied digest is not authentication.
+- The mandatory terminal witness names `TurnEnded` with the exact target CAS correlation and
+  `TurnEndStatus`. `UnknownTerminal` is ineligible. Closed capture-gap reasons are
+  `TerminalCaptureIncomplete` (tag 0, requiring the terminal status's existing closed incomplete
+  reason), `ForcedAbortOrderingUnproven` (tag 1, requiring an interrupted terminal), and
+  `ProviderObservationIssue` (tag 2, requiring the optional issue witness). The optional compact
+  issue witness uses the same sequence/digest representation and must precede the terminal
+  witness. It names a retained `ProviderObservationIssue` event with the same turn and exact CAS
+  correlation; its digest commits the full sealed observation identity, revision, digest, route,
+  item identity, lifecycle and issue reason already encoded in that event. Other gap reasons may
+  also retain such an issue witness. No free-text reason, volatile outage witness or new witness
+  family is admitted. Gate admission checks terminal-tail and reverse-index agreement in addition
+  to these two bounded source-event reads; value construction alone establishes no durable proof.
 - `stop-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic thread
   identity and stop-operation nonce. Its V1 value repeats both key fields and stores the immutable
   target, record revision, four fixed cause-first-revision slots, an optional dispatch-claim source

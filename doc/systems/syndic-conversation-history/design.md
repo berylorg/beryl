@@ -1525,7 +1525,9 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   reopening the turn or mutating finalized history.
 - A turn whose live stream was interrupted, lost, dropped by the bounded store-outage buffer, or
   contradicted by its completion remains durable and enters repair-required state once its exact
-  terminal identity and outcome are known. Unknown-terminal may accept exact late evidence only
+  terminal identity, outcome and gap evidence are already durable. Outage-only facts lost at
+  retirement cannot establish repair authority or an exact terminal outcome; applicable incomplete
+  or delivery-unknown convergence remains available. Unknown-terminal may accept exact late evidence only
   while the original exact live authority remains usable.
 - A repair-required turn is resolved only by one complete atomic terminal snapshot or by explicit
   incomplete convergence. Reconnect, resume, late subscription, process restart, GUI projections,

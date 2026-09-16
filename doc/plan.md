@@ -52,29 +52,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 467: Establish Repair Request Disposition Values (finished)
+# Phase 471: Establish Bounded Repair Target Provenance (finished)
 
-Accepted package-owned available/consumed values with exact 16-byte nonce preservation and
-checked adjacent nonzero gate revisions. All four focused nextest cases, formatting/diff checks,
-Markdown reconciliation and independent semantic review passed. These descriptive values grant
-no dispatch capability; target provenance, persistence and admission remain separate below.
-
-# Phase 471: Establish Bounded Repair Target Provenance (pending)
-
-Implement package-owned values for exact repair target correlation and closed capture-gap provenance
-described by the
-[Syndic schema](../crates/syndic-storage/doc/design-schema-v7.md).
-Validate external-identity bounds, witness/digest identity and optional observation references
-with focused value tests and independent review. Resolve the exact witness representation in
-owning schema authority before implementation; compose the accepted request disposition values.
-Keep gate persistence, admission, dispatch capabilities and runtime mounting separate.
-
-Blocked on 2026-09-16: the witness representation depends on an unresolved outage-evidence
-custody boundary. Repair permits authenticated sealed outage facts, but recovery disposes the
-failed service before reopening and forbids buffered-fact transfer. No authority defines the
-durable sealing owner, publication cut or authentication record. Defining only an opaque witness
-identity and digest would not establish that provenance. Resolve this in the owning system and
-schema before implementation; see [custody evidence](failures/repair-outage-witness-custody.md).
+Accepted bounded target, closed gap and source-event witness values with exact request disposition
+preservation under the Operator-approved durable-evidence-only contract. All 12 focused nextest
+cases, formatting/diff checks, Markdown reconciliation and independent review passed. These
+descriptive values grant no capabilities; source-record authentication, digest computation and
+gate persistence remain phase 468 work.
 
 # Phase 468: Persist And Enforce The Repair-Required Gate (pending)
 

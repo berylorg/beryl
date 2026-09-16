@@ -49,8 +49,9 @@ pub use stop::{
 };
 
 pub use repair::{
-    ConsumedRepairRequest, RepairRequestAttemptNonce, RepairRequestDisposition,
-    RepairRequestDispositionError,
+    ConsumedRepairRequest, RepairCaptureGap, RepairCaptureGapReason, RepairProvenanceError,
+    RepairRequestAttemptNonce, RepairRequestDisposition, RepairRequestDispositionError,
+    RepairRequiredTarget, RepairSourceEventDigest, RepairSourceEventWitness,
 };
 
 /// Why a pure Syndic value was rejected before persistence or provider work.

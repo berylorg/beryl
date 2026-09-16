@@ -371,7 +371,7 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 - Priority affects only outage survival. Normal capture before the outage remains exact, and a lower-priority fact that fits is retained exactly.
 - Any evicted, rejected, partially received, structurally unrepresentable, or otherwise dropped
   canonical fact marks the entire owning turn as a repair candidate and moves it to repair-required
-  once exact correlation and terminal outcome are known. A retained suffix or terminal fact never
+  only when exact correlation, terminal outcome and gap evidence are already durable. A retained suffix or terminal fact never
   makes a gapped turn canonical.
 - Buffered narrative may remain visible as explicitly transient UI during the outage. It is never committed as a canonical prefix to be spliced with historical repair.
 - On store recovery Beryl closes the failed service and every connection, broker, projection,
@@ -381,7 +381,11 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Exact Terminal-Turn Historical Repair
 
-- A repair candidate is one exact Syndic turn whose CAS thread and turn identities were durably correlated before or can be authenticated by the sealed outage facts, whose terminal outcome is exact, and whose capture gap is known or conservatively suspected.
+- A repair candidate is one exact Syndic turn whose CAS thread and turn identities, exact terminal
+  outcome and known or conservatively suspected capture gap are authenticated by already durable
+  Syndic source evidence. Volatile or purportedly sealed outage facts cannot establish repair
+  provenance. Facts lost at retirement follow the applicable incomplete or delivery-unknown
+  convergence; they cannot invent an exact terminal outcome or authorize a repair request.
 - Repair requires the caller to hold the same-thread no-successor fence. Under that fence the exact
   correlated target must be the latest CAS turn; without both facts, no historical request is
   authorized.

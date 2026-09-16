@@ -67,6 +67,13 @@ The package exposes grouped typed operations rather than raw record mechanics:
   These copyable facts carry no dispatch authority; only the owning atomic claim may grant the
   non-cloneable capability specified by the CAS-live system. Construction neither generates a
   nonce nor establishes its freshness, and does not persist or reset a request disposition.
+- `RepairRequiredTarget` combines an exact typed Syndic turn and bounded `CasTurnSource` with
+  `RepairCaptureGap` and the request disposition. A gap retains the exact terminal status and
+  sequence/digest witness, a closed `RepairCaptureGapReason`, and an optional preceding issue
+  witness. Construction rejects unknown terminal status, missing required gap evidence and
+  invalid issue ordering. `RepairSourceEventWitness` and `RepairSourceEventDigest` are descriptive
+  values, not authenticated reads or capabilities. Storage admission authenticates their retained
+  source records under the schema contract; constructors perform no I/O or digest computation.
 - Domain registration, fresh typed-handle acquisition, and explicit schema validation.
 - The complete typed declaration of the Syndic domain, candidate-only initial registration and
   fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store
