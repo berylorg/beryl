@@ -27,9 +27,19 @@ impl ProjectionConnectionService {
         let storage_revision = storage
             .revision(&home)
             .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
+        let health = home.health();
+        if health.state() != HomeHealthState::Healthy {
+            return Err(ProjectionCoordinatorError::HomeNotHealthy {
+                state: health.state(),
+                generation: health.generation(),
+            });
+        }
+        let reference = Arc::new(home.service_reference());
         Self::construct(
             process,
-            home,
+            reference,
+            home_generation,
+            Some(home),
             storage,
             config,
             scheduled_ordinary_provider,
@@ -39,9 +49,11 @@ impl ProjectionConnectionService {
         )
     }
 
-    fn construct(
+    pub(super) fn construct(
         process: crate::process_admission::ProcessAdmissionGate,
-        owned_home: HomeStore,
+        home: Arc<HomeServiceReference>,
+        home_generation: HomeGeneration,
+        owned_home: Option<HomeStore>,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
         scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
@@ -49,17 +61,6 @@ impl ProjectionConnectionService {
         startup_storage_revision: DomainRevision,
         recovery: StartupRecoveryDiagnostics,
     ) -> Result<Self, ProjectionCoordinatorError> {
-        let home = Arc::new(owned_home.service_reference());
-        let health = home.health();
-        if health.state() != HomeHealthState::Healthy {
-            return Err(ProjectionCoordinatorError::HomeNotHealthy {
-                state: health.state(),
-                generation: health.generation(),
-            });
-        }
-        let Some(home_generation) = health.generation() else {
-            return Err(ProjectionCoordinatorError::HealthyHomeGenerationMissing);
-        };
         let service_generation = ProjectionServiceGeneration::allocate()
             .map_err(|_| ProjectionCoordinatorError::ProjectionServiceGenerationExhausted)?;
         let (failure_notification, failure_receiver) = persistent_failure_notification_channel(
@@ -116,7 +117,8 @@ impl ProjectionConnectionService {
         let mut service = Self {
             home_id: home.home_id(),
             home_generation,
-            owned_home: Some(owned_home),
+            owned_home,
+            initial_start: Arc::clone(&initial_start),
             home: Some(Arc::clone(&home)),
             storage: storage.clone(),
             startup_storage_revision,

@@ -21,6 +21,7 @@ impl ProjectionConnectionService {
             return Ok(ProjectionConnectionServiceCloseOutcome::Closed);
         }
         let election = self.command_gate.close_for_shutdown();
+        self.initial_start.cancel();
         let runtime_failed = self
             .runtime_interest
             .take()

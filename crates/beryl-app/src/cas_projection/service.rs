@@ -68,6 +68,7 @@ mod construction;
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;
+pub(crate) mod initial_preparation;
 #[cfg(feature = "test-faults")]
 pub use graceful_shutdown::GracefulShutdownProbe;
 pub(crate) use graceful_shutdown::{ShutdownAttemptId, ShutdownCoordinatorError, ShutdownProgress};
@@ -102,6 +103,7 @@ struct PreparedProjectionSessionAdmission {
 /// Process-owned admission and shutdown boundary for projection connections.
 pub struct ProjectionConnectionService {
     owned_home: Option<HomeStore>,
+    initial_start: Arc<InitialStartGate>,
     home: Option<Arc<HomeServiceReference>>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,

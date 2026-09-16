@@ -565,3 +565,28 @@ partial spawn position. Ordinary app library compilation, formatting and diff ch
 Independent lifecycle review found no blockers. Candidate owner cleanup ordering and complete
 graph publication remain separate preparation and integration work; this primitive alone does
 not establish those boundaries.
+
+## Initial CAS Service Preparation
+
+Phase 421 connects the accepted candidate recovery algorithm and final candidate-domain revision
+read to private CAS construction. The preparation owner retains the registration-complete home,
+service and move-only release owner. Constructors use the exact candidate service reference and
+generation; they do not demand healthy admission. Ordinary construction keeps its healthy checks
+and ready-worker behavior. Prepared fields remain private, and no production CAS-only publication
+or release entry is provided: complete graph publication remains phase 423.
+
+Service shutdown cancels the initial fence before joins, including construction unwind after
+provider attachment. Prepared abandonment cancels, destroys the joined service, and only then
+drops the candidate. Recovery failures retain their original service error, including the storage
+layer's existing conservative indeterminate reconciliation custody. Read and provenance failures
+happen before provider attachment or worker creation.
+
+Nextest run `1d63737c-840d-4e53-937f-485aaf517abb` passed 14 tests: five new preparation cases plus
+the nine gate and partial-worker regressions. The preparation cases cover dormant workers, joined
+abandonment while the candidate remains Opening and locked, attachment panic, recovery read failure,
+foreign storage, and test-only same-generation publication before release. Run
+`e1e8bdd5-f059-4ebf-b19c-afb4d5b1c09e` passed 12 ordinary ownership and candidate recovery tests,
+including all startup classifications, multi-page rebasing, source drift and command-failure custody.
+The initial regression invocation used a directory name rather than its `normal_terminal` Cargo
+test target; the corrected target supplied the recorded evidence. Normal app library compilation,
+formatting and diff checks passed. Independent lifecycle review found no blockers.

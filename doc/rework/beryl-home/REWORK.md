@@ -400,6 +400,7 @@
 - [x] Adapted ordinary CAS consumers to non-owning service references with exclusive owner retirement and explicit joined shutdown; [acceptance evidence](../../failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
 - [ ] Publish the complete initialized process service graph before restore discovery and native startup.
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
+- [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 - [x] Accepted the generation-scoped [submission-to-execution handoff](../../failures/process-submission-execution-handoff.md) before successor-editor activation.
 - [x] Accepted [managed process execution ownership](../../failures/process-lifecycle-continuation-projection.md#accepted-process-lifetime-composition)
   across direct/accepted input, compaction, continuation and terminal-history convergence without views.

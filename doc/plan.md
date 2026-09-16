@@ -52,18 +52,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 456: Establish The Cancellable Initial Worker Fence (finished)
+# Phase 421: Prepare CAS Services Before Initial Publication (finished)
 
-Accepted the private move-only release owner, irreversible cancellation and wakeup of dormant
-workers, including cancellation before partial compaction joins. Nine focused tests, ordinary
-library compilation and independent lifecycle review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
-
-# Phase 421: Prepare CAS Services Before Initial Publication (pending)
-
-Connect accepted candidate recovery access to sequential initial convergence and dormant CAS service
-construction, retaining worker creation, startup fencing, cancellation and joined disposal before
-publication. Preserve healthy ordinary-service behavior and exact recovery outcomes.
+Accepted private candidate recovery and dormant CAS construction with cancellation and joined
+disposal before candidate retirement. All 26 focused lifecycle/recovery tests, ordinary library
+compilation and independent review passed. Complete graph publication remains separate.
+[Acceptance evidence](failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 
 # Phase 422: Establish Explicit Home Marker-Service Ownership (pending)
 
