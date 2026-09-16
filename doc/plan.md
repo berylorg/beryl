@@ -50,28 +50,24 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 448: Publish Candidate Source-Less Terminal Events (finished)
+# Phase 450: Establish Candidate Abandonment Commands (finished)
 
-Accepted candidate source-less terminal publication through the shared stabilized frontier and
-exact command outcome handling. Normal compilation, 31 focused checks and independent review passed.
-[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-source-less-terminal-publication).
+Accepted candidate active-binding and stop-operation abandonment with shared exact command outcome
+handling and distinct pending versus terminal results. Four focused candidate tests, five ordinary
+regressions, normal compilation and independent review passed.
+[Acceptance evidence](failures/target-bootstrap-composition.md#candidate-abandonment-commands).
 
-# Phase 450: Establish Candidate Abandonment Commands (wip)
+# Phase 451: Converge Candidate Deferred Compaction (pending)
 
-Adapt exact active-binding and stop-operation abandonment helpers through candidate command access
-under the [initial service preparation contract](../crates/beryl-app/doc/design-shell-lifecycle.md#initial-service-preparation-and-publication).
-Share ordinary result interpretation, checked revision outcomes and indeterminate reconciliation
-installation; preserve existing command eligibility and exact request fences.
-
-Verify active and stopping candidates, stale/foreign handles, conflicting revisions, initial and
-recovered publication parity, command noncommit/committed-failure/indeterminate outcomes and retained
-custody. Run focused abandonment and ordinary publication regressions plus normal compilation;
-independently review outcome truth and authority. Startup orchestration remains phase 449.
+Adapt the ordinary deferred-compaction restart convergence through candidate reads and exact commands,
+preserving its settlement decision, consumed-operation fixed point, typed outcomes and reconciliation
+custody. Verify this independent consumer before startup integration; never reconstruct continuation
+intent or dispatch provider work.
 
 # Phase 449: Connect Candidate Startup Recovery (pending)
 
 Connect accepted candidate discovery/classification, terminal-history convergence and source-less
-publication to the sequential startup recovery pass, including deferred compaction settlement and
+publication to the sequential startup recovery pass, including accepted deferred compaction settlement and
 bounded cursor restart/rebase. Do not construct or publish CAS services in this boundary.
 
 # Phase 438: Connect Typed Candidate Convergence Consumers (pending)

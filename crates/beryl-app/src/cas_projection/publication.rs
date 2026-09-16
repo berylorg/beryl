@@ -113,6 +113,17 @@ pub(super) fn abandon_active_reconciled(
     abandon_active(store, storage, request, limit)
 }
 
+pub(super) fn abandon_active_candidate(
+    store: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    request: &AbandonActiveBinding,
+) -> Result<BindingRevision, ProjectionPublicationFailure> {
+    interpret_outcome(
+        store.execute_current(storage.current_abandon_active_binding(request.clone())),
+    )?;
+    next_binding_revision(request.expected_binding_revision())
+}
+
 pub(super) fn abandon_stop(
     store: &HomeStore,
     storage: &SyndicStorage,
@@ -134,6 +145,16 @@ pub(super) fn abandon_stop_reconciled(
     limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
     abandon_stop(store, storage, request, limit)
+}
+
+pub(super) fn abandon_stop_candidate(
+    store: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    request: &AbandonStopOperation,
+) -> Result<(), ProjectionPublicationFailure> {
+    interpret_outcome(
+        store.execute_current(storage.current_abandon_stop_operation(request.clone())),
+    )
 }
 
 pub(super) fn admit_live_event(

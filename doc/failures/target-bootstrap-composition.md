@@ -382,3 +382,19 @@ checks, one candidate summary test and three source-less binding eligibility reg
 Independent semantic/adversarial review found no blocking production issue. Formatting and diff
 checks passed. The candidate helper publishes the event only; terminal-history convergence,
 abandonment and sequential startup composition retain their separate boundaries.
+
+## Candidate Abandonment Commands
+
+Phase 450 accepted candidate active-binding and stop-operation abandonment through the same exact
+commands and outcome interpreter as ordinary recovery. Active abandonment returns the checked next
+binding revision and preserves pending-turn recovery; ordinary stop abandonment publishes the
+authority-loss terminal state, finalizing gate and abandoned-stop witness itself.
+
+Four candidate tests passed (run `c8fa1c9b-8337-4856-adaa-370eb60e6f5a`), covering initial/recovered
+publication, exact results, conflicts and noncommit/committed-failure/indeterminate custody for both
+commands. Stale and foreign handles are tested against still-valid requests, followed by successful
+execution using the fresh handle; an already-rejected request cannot mask missing handle fencing.
+Five ordinary terminal/stop regressions passed (run `4a85b95b-0ad5-4b7c-a3e5-77918f6c0df5`). Normal
+app compilation, formatting and diff checks passed. Independent review accepted command semantics,
+outcome truth and corrected fencing evidence. Deferred-compaction convergence remains a separate
+candidate consumer before sequential startup integration.

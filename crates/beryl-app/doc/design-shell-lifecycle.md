@@ -71,6 +71,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
   as ordinary recovery. They preserve checked binding-revision results, ordinary failure
   interpretation and installed indeterminate reconciliation custody. Abandonment grants no
   provider dispatch or ordinary admission authority.
+- Candidate deferred-compaction convergence shares the ordinary restart classification and exact
+  settlement or abandonment commands, including the consumed-operation fixed point and confirmation
+  after a clean commit. It preserves command outcomes and indeterminate custody, creates no
+  continuation intent and performs no provider dispatch.
 - Only the complete private prepared graph can consume app publication. It publishes the same
   candidate generation and graph under one outer transition, then releases ordinary workers.
   Consumers receive a published graph or a typed failure, never a builder, partial handle tuple,

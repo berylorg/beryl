@@ -6,6 +6,7 @@ use std::sync::{
 
 mod promotion;
 mod provider;
+mod publication;
 mod recovery;
 mod response;
 mod scheduler;
@@ -42,6 +43,7 @@ pub(crate) use promotion::{
     pause_scheduled_promotion_reconciliation, pause_scheduled_promotion_reservation,
 };
 pub use provider::*;
+pub use publication::{abandon_active_candidate, abandon_stop_candidate};
 pub use recovery::{
     RecoverySourceBarrierController, install_recovery_cursor_open_barrier,
     install_recovery_page_handoff_barrier, install_recovery_source_barrier,
