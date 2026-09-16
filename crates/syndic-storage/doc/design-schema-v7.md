@@ -509,6 +509,13 @@ canonical byte comparison of the point-read target closure.
   sequence, optional CAS correlation and closed payload, without the home-store envelope.
   Admission recomputes the digest from the retained record and checks its full structural
   agreement with the target; a caller-supplied digest is not authentication.
+- The embedded repair-target payload orders fields as target turn (16 bytes), CAS thread then
+  CAS turn (existing bounded length-prefixed UTF-8 encodings), terminal witness (big-endian u64
+  sequence then 32 digest bytes), existing terminal-status encoding, gap-reason u8, optional issue
+  witness (0 absent, 1 present followed by sequence/digest), then request disposition. Available is
+  tag 0 with no payload; consumed is tag 1 followed by the 16-byte attempt nonce and big-endian u64
+  source and successor gate revisions. No envelope or separate family surrounds this embedded
+  value. Its decoder enforces the same gap and adjacent-revision invariants as typed construction.
 - The mandatory terminal witness names `TurnEnded` with the exact target CAS correlation and
   `TurnEndStatus`. `UnknownTerminal` is ineligible. Closed capture-gap reasons are
   `TerminalCaptureIncomplete` (tag 0, requiring the terminal status's existing closed incomplete

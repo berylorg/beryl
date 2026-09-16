@@ -6,6 +6,7 @@ mod projection;
 mod provider;
 mod provider_observation;
 mod provider_observation_header;
+pub(crate) mod repair;
 mod value;
 pub(crate) use projection::*;
 pub(crate) use provider::*;

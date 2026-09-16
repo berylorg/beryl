@@ -70,6 +70,8 @@ pub fn terminal_history_evidence_candidate_with_confirmation_hook(
 }
 
 mod build_mapping_custody;
+mod repair_encoding;
+pub use repair_encoding::{decode_repair_target_for_test, encode_repair_target_for_test};
 mod content_text;
 pub use build_mapping_custody::*;
 mod draft_build_mapping_codec;
