@@ -29,6 +29,7 @@ use projection_build::*;
 pub(crate) use provider::*;
 pub(crate) use query::*;
 pub(crate) use route::*;
+pub(crate) use source::repair_source_event_witness;
 use source::*;
 pub(crate) use stop::*;
 use thread_properties::*;

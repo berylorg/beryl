@@ -74,6 +74,9 @@ The package exposes grouped typed operations rather than raw record mechanics:
   invalid issue ordering. `RepairSourceEventWitness` and `RepairSourceEventDigest` are descriptive
   values, not authenticated reads or capabilities. Storage admission authenticates their retained
   source records under the schema contract; constructors perform no I/O or digest computation.
+  `SourceEventRecord::repair_witness` computes a descriptive sequence/digest witness over the
+  schema-defined domain and canonical source-event payload. It neither reads storage nor proves
+  that the record is retained, eligible repair evidence or current gate authority.
 - Domain registration, fresh typed-handle acquisition, and explicit schema validation.
 - The complete typed declaration of the Syndic domain, candidate-only initial registration and
   fresh candidate handle acquisition. Candidate startup recovery consumes explicit home-store

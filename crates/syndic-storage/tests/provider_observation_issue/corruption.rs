@@ -188,6 +188,8 @@ fn arbitrarily_large_referenced_observation_issue_publishes_and_reopens() {
     let SourceEventPayload::ProviderObservationIssue(issue) = stored.payload() else {
         panic!("expected the large observation issue source event");
     };
+    let witness = stored.repair_witness();
+    assert_eq!(witness.sequence(), stored.sequence());
     assert_eq!(issue.observation().identity(), build.identity());
     assert_eq!(issue.observation().chunk_count(), build.chunk_count());
     assert_eq!(
@@ -214,6 +216,7 @@ fn arbitrarily_large_referenced_observation_issue_publishes_and_reopens() {
         .source_event(&reopened, fixture.turn, event.sequence(), limit())
         .unwrap()
         .unwrap();
+    assert_eq!(reopened_event.repair_witness(), witness);
     let SourceEventPayload::ProviderObservationIssue(reopened_issue) = reopened_event.payload()
     else {
         panic!("expected the reopened large observation issue source event");

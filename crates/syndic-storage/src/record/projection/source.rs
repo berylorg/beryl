@@ -100,6 +100,11 @@ pub struct SourceEventRecord {
 }
 
 impl SourceEventRecord {
+    #[must_use]
+    pub fn repair_witness(&self) -> crate::RepairSourceEventWitness {
+        crate::codec::repair_source_event_witness(self)
+    }
+
     pub fn new(
         turn_id: SyndicTurnId,
         sequence: SourceEventSequence,

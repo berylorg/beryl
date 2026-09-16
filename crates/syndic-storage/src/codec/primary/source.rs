@@ -1,6 +1,22 @@
 use super::*;
 
 pub(super) fn encode_source_event(value: &SourceEventRecord) -> Result<Vec<u8>, CodecError> {
+    Ok(source_event_payload_bytes(value))
+}
+
+pub(crate) fn repair_source_event_witness(value: &SourceEventRecord) -> RepairSourceEventWitness {
+    use sha2::{Digest, Sha256};
+
+    let mut digest = Sha256::new();
+    digest.update(b"beryl/syndic/repair-source-event/v1\0");
+    digest.update(source_event_payload_bytes(value));
+    RepairSourceEventWitness::new(
+        value.sequence(),
+        RepairSourceEventDigest::from_bytes(digest.finalize().into()),
+    )
+}
+
+fn source_event_payload_bytes(value: &SourceEventRecord) -> Vec<u8> {
     let mut e = Encoder::new();
     enc_turn(&mut e, value.turn_id());
     enc_source_seq(&mut e, value.sequence());
@@ -12,7 +28,7 @@ pub(super) fn encode_source_event(value: &SourceEventRecord) -> Result<Vec<u8>, 
         None => e.u8(0),
     }
     encode_source_event_payload(&mut e, value.payload());
-    Ok(e.finish())
+    e.finish()
 }
 
 pub(super) fn decode_source_event(bytes: &[u8]) -> Result<SourceEventRecord, CodecError> {
