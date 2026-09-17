@@ -3,7 +3,7 @@
 The Operator requested an analysis of replacing Codex App Server (CAS) with a Beryl-owned agent
 layer over Responses, supporting personal ChatGPT Pro subscriptions only. The investigation also
 asks whether Responses itself forces large buffering. The Operator clarified that incremental
-parsing is acceptable; the disallowed case is retaining payloads in RAM or spilling them to disk
+parsing is acceptable; the disallowed case is retaining potentially large payloads in RAM or spilling them to disk
 because required routing or type metadata arrives later. Large events alone are not a blocker.
 This is decision-support evidence, not an
 approved architecture, implementation plan, account-access authorization, or feature reduction.
@@ -15,11 +15,18 @@ machinery. It would also take over the agent functionality presently delegated t
 explicitly scoped runtime is plausibly simpler; full Codex feature parity is a substantial new
 project. There is no defensible net line-count or schedule estimate from this inspection.
 
-Two conditions prevent accepting the switch today: a supported Pro-backed authentication/access
-contract for Beryl has not been established, and the inspected Responses contract does not
-establish early routing/type metadata for every required payload. Request ownership helps but
-does not prove every field has an immediately known destination. This is a no-spill verification
-gap, not proof that all Responses implementations necessarily buffer because of ordering.
+Follow-up source inspection establishes a practical direct subscription-authentication precedent
+in OpenCode, including its own OAuth refresh. Live subscription-backed HTTP/SSE probes through
+the installed Codex CLI, without CAS, found identity-first complete text, message, custom-tool and
+opaque reasoning payloads. Some deltas and the redundant complete custom-tool-input event put
+payload before identity. The following complete tool item repeats the input with identity first.
+This is promising evidence for no-spill ingestion of the observed families, with bounded handling
+of small fragments and explicit failure on overflow or incompatible ordering. It is not an
+all-family proof or a completed decoder. Missing formal ordering guarantees alone are not a
+reason to reject the practical direction.
+
+Detailed evidence: [OpenCode authentication](../../github.com/anomalyco/opencode/commit/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/chatgpt-subscription-auth.md)
+and [live subscription wire order](../../github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/responses-subscription-live-wire-order.md).
 
 ## Personal Pro Access
 
@@ -35,11 +42,13 @@ At official Codex 0.154.0 commit `6b9826e3aa83b1a5947db50f4332cb9c65f1b340`,
 but this does not prove endpoint or entitlement equivalence. `core/src/client.rs` constructs
 streaming requests with `store: false` and requests encrypted reasoning content.
 
-The inspected official docs do not establish a general third-party personal-Pro OAuth registration
-and direct-Responses entitlement contract for Beryl. Open-source Codex client code demonstrates
-implementation mechanics, not an independent support commitment for a replacement client. No
-credentials were inspected or copied and no authenticated inference calls were made. Whether
-Beryl can use an approved direct subscription route remains unresolved, not declared impossible.
+OpenCode implements browser/device OAuth, refresh-token exchange, token persistence and direct
+requests to the ChatGPT Codex Responses endpoint without CAS. Its documentation offers ChatGPT
+Plus/Pro login. Thus direct subscription access has a concrete implementation precedent; CAS
+need not remain just for refresh. Official documentation does not supply a general third-party
+support commitment, but that is distinct from technical feasibility. The follow-up probes used
+the installed CLI's normal ChatGPT authentication; no credential files were read or copied.
+OpenCode's broader account support does not by itself implement Beryl's personal-Pro-only policy.
 
 Supporting only personal Pro can exclude organization administration, enterprise/Edu/Business
 workspaces, SSO/SCIM/RBAC, enterprise residency/compliance integration and API-key fallback from the
@@ -81,13 +90,13 @@ those guarantees. A newline-delimited `data:` field can itself contain a whole l
 WebSocket message assembly, decompression, generic JSON objects, aggregate response helpers and
 whole-context request serialization are additional allocation boundaries to audit.
 
-More decisively, the public API's backwards-compatibility policy explicitly permits changes to
-JSON property order. Thus example ordering cannot serve as a stable metadata-before-payload
-contract. A text-delta event could put `delta` before `item_id`/indices without changing its JSON
-meaning. Knowing the request's Beryl turn would not alone identify the particular item/field sink
-in that case. Previously established metadata may make some cases unambiguous, but that requires
-a per-event proof rather than guessing the last active item. This establishes a contract-level
-ordering risk, not an observed claim that today's service emits every event in that order.
+The public API's backwards-compatibility policy permits changes to JSON property order. This
+requires bounded drift handling; it does not answer how the current subscription endpoint
+behaves. Live probes now show text and custom-tool deltas with payload before item ID, but
+identity-first complete items. The small probes observed text deltas of 2–6 UTF-8 bytes and
+custom-tool deltas of 1–4 bytes; these are observations, not promised maxima. Knowing the request's
+Beryl turn does not alone identify an item sink, so a fixed fragment scratch limit needs an
+explicit overflow/incomplete outcome. Never guess the last active item.
 [Backwards compatibility](https://developers.openai.com/api/reference/overview#backwards-compatibility).
 Pinning a model snapshot is not a pin of the service's JSON serialization order. This Platform
 policy is also not proof of the separate Pro-backed endpoint's exact behavior.
@@ -98,13 +107,22 @@ and holds event `item`/`response` as JSON values. Ignoring a completed event aft
 already too late to prevent its allocation. Reusing the existing Codex inference client unchanged
 would preserve this problem even if CAS were removed.
 
-There is nevertheless an important simplification available to an HTTP-based design: Beryl knows
+There is an important simplification available to an HTTP-based design: Beryl knows
 the owning durable turn and model-request attempt before opening that request's response body.
-Thread routing need not wait for JSON IDs at the end of content. However, that alone does not
-establish item, field or media identity and interpretation before each payload. The earlier
+Thread routing need not wait for JSON IDs at the end of content. Live complete-item events also
+start their nested item with ID/type before content, although the outer output index is later.
+The added custom-tool item establishes its name before its completed input arrives. These are
+usable practical ordering properties for the observed paths, not proof for every media family. The earlier
 suggestion to stream tentative observations to disk is withdrawn under the Operator's clarified
 requirement. Final storage must not conceal a temporary spill used to wait for metadata.
 Multiplexed WebSocket or API-managed multi-agent streams need an additional routing proof.
+
+The observed `response.custom_tool_call_input.done` puts complete input before item ID. Its
+subsequent `response.output_item.done` repeats input after item ID/type/call ID. A decoder can
+potentially drain the former payload without retaining it and use the latter as the canonical
+input. This needs an explicit per-field authority decision, preserved unique event metadata and
+validated completion/correlation before tool dispatch. It avoids treating a redundant full-input
+event as an unavoidable whole-input buffer.
 
 Where destination and semantics are already known, complete-event content could be parsed
 incrementally into final ranges or checked against already captured deltas without constructing a
@@ -200,8 +218,9 @@ coherent long-term direction. The major gain is removing duplicated state owners
 protocol adaptation. The major cost is becoming the agent runtime maintainer. Restricting accounts
 to Pro reduces administration scope much more than it reduces local agent implementation.
 
-Before changing authority, establish a supported personal-Pro access route and its actual model,
-tool, compaction and cancellation surface. Then prove raw incremental ingestion on that endpoint
+The practical authentication route and initial live ordering evidence justify investigating a
+bounded direct runtime. Before implementation acceptance, verify personal-Pro admission and the
+selected model, tool, compaction and cancellation surface. Prove raw incremental ingestion on that endpoint
 without retaining payloads while waiting for later routing/type metadata,
 including very large final text/tool events, image base64, opaque context, reordered/malformed
 fields, gaps, cancellation and storage outage. With request, item and tool-call counts held within
@@ -212,8 +231,9 @@ growth in durable staged content separately from resident memory.
 
 Choose an explicit agent feature envelope before estimating savings. A basic coding loop with a
 small tool set is different from parity with Codex's MCP, skills, sandbox, subagents and media.
-No switching, API call, installation, source deletion or new implementation phase is authorized
-by this report. The root CAS integration plan remains blocked pending the Operator's decision.
+This report does not change architecture or authorize implementation, installation or source
+deletion. The synthetic authenticated probes were part of Operator-requested research. The root
+CAS integration plan remains blocked pending the Operator's architecture decision.
 
 # Sources
 
@@ -225,7 +245,8 @@ by this report. The root CAS integration plan remains blocked pending the Operat
   [provider selection](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/model-provider-info/src/lib.rs),
   [inference client](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/core/src/client.rs),
   [SSE decoder](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/codex-api/src/sse/responses.rs),
-  and `codex-rs/login/src/server.rs` for login/PKCE mechanics. No upstream build or inference probe.
+  and `codex-rs/login/src/server.rs` for login/PKCE mechanics. No upstream build. Follow-up live
+  inference probes and OpenCode source evidence are recorded in the focused notes linked above.
 - Beryl baseline `b8621738`, current architecture and source inspected:
   [backend runtime](../../../systems/backend-runtime/design.md),
   [CAS-live](../../../systems/cas-live-syndic-transcript/design.md),
@@ -236,4 +257,5 @@ by this report. The root CAS integration plan remains blocked pending the Operat
   `UnavailableBranchResolution` inspected by root or the read-only architecture reviewer.
 - Installed executable was identified as 0.154.0 in the preceding investigation; Beryl's current
   authoritative admitted release remains 0.146.0. The installed version does not silently change
-  that admission contract. No credentials, account records or user conversation content inspected.
+  that admission contract. No credential files or user conversation content inspected. Temporary
+  synthetic-probe traces included response metadata and were deleted after content-free analysis.
