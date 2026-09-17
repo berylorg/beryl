@@ -114,22 +114,29 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 482: Establish Subscription Authentication And Entitlement Evidence (finished)
+# Phase 483: Map The Subscription Inference Surface (finished)
 
-Accepted [auth assessment](memory/topic/responses-agent-runtime/subscription-auth-assessment.md):
-direct inference and account-bound Pro usage succeeded; refresh/account-generation ownership and
-untested disruptive cases are explicit. Source findings passed targeted root validation. The
-[requirement inventory](memory/topic/responses-agent-runtime/cas-responsibility-inventory.md) and
-[direct baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md) remain inputs.
+Accepted the [direct surface inventory](memory/topic/responses-agent-runtime/subscription-inference-surface.md):
+version-sensitive model discovery, rich catalog metadata, strict function-call success and explicit
+output-limit rejection. Source-only transport/context candidates and untested families remain
+separate. Sanitized observations and coverage review passed; no production changes or auth mutation.
 
-# Phase 483: Map The Subscription Inference Surface (wip)
+# Phase 496: Prepare A Bounded Independent Research Helper (wip)
 
-Acceptance boundary: an endpoint/model/capability inventory for the actual subscription route.
-Investigate required headers and request fields, model/reasoning discovery, context/output limits,
-tool/schema constraints, quotas/rate-limit metadata, usage, errors, retention/store behavior,
-regional/network constraints and service drift. Distinguish hosted tools from local tools and
-document unavailable or unverified Platform features. Compare HTTP/SSE and WebSocket tradeoffs
-without assuming either is required. Feed supported payload families into the streaming phase.
+Acceptance boundary: a disposable Rust research helper for direct subscription request/response
+round trips, isolated from production crates and the blocked rework. The preceding one-shot probes
+remain valid; multi-request context retention and reusable protocol inspection now require the
+Rust automation boundary. Use only installed tooling and cached dependencies, with no software
+installation. Keep task-owned build/source artifacts isolated and reclaim them after use.
+
+Read existing credentials only into memory; never refresh, revoke, mutate, log or pass secrets on
+command lines. Restrict requests to the exact subscription host and known endpoint paths, disable
+redirects and automatic retries, identify the probe honestly, and enforce per-request time/body
+caps plus explicit small request-count budgets. Preserve returned synthetic context in bounded
+memory for round trips, record original JSON member order and sanitized metadata, and refuse
+auth/security/rate-limit failures without retries. Verify local parsing, bounds and cleanup before
+live use; synthetic checks validate the helper only, never service behavior. This helper does not
+implement Beryl's target runtime or lift any production hold.
 
 # Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (pending)
 
