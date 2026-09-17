@@ -39,3 +39,10 @@ One bounded unpublished observation scratch owner is a candidate for review, not
 design. Do not guess a target, retain raw operations and their capabilities, bypass home
 reconciliation custody, or transfer outage facts to replacement. The existing
 [durable witness decision](repair-outage-witness-custody.md#accepted-resolution) remains unchanged.
+
+The Operator subsequently directed checking current CAS before proposing buffering. The
+[0.154.0 release-source investigation](../memory/github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/lifecycle-route-wire-order.md)
+confirms lifecycle item-before-route serialization. Decoder reordering cannot obtain unread
+identities. The scratch-owner recommendation is withdrawn pending resolution of that producer
+constraint; implementation is stopped as instructed. Text deltas use a different, route-first
+shape and do not establish lifecycle readiness.

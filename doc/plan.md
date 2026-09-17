@@ -75,6 +75,14 @@ custody, missing-route loss attribution and capture shutdown before deriving its
 implementation phase. Preserve the durable admission fence and reconciliation custody. See
 [outage ingress readiness](failures/outage-ingress-readiness.md).
 
+Operator-directed investigation on 2026-09-17 found the installed CAS is now 0.154.0 and its
+matching release source still serializes lifecycle item content before thread/turn IDs. Decoder
+reordering alone cannot provide lossless route-first capture without retaining preceding content.
+Implementation remains stopped as requested. See the
+[current wire-order evidence](memory/github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/lifecycle-route-wire-order.md).
+The earlier scratch-owner suggestion is not approved; resolve the producer ordering constraint
+before prescribing another buffer.
+
 # Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
 
 Resolve the concrete component boundaries for the backend-runtime system's ordered fresh-service
