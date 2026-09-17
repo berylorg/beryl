@@ -1,5 +1,59 @@
 # Scope
 
+**IMPLEMENTATION HOLD — the entire current Beryl-home rework is blocked by Operator instruction
+on 2026-09-17 until the Operator decides the CAS direction and explicitly releases the hold after
+the affected design, rework tracker and implementation plan are reconciled.** This includes
+non-CAS implementation, integration, mounting, cleanup and cutover work from that rework; earlier
+continuous-implementation authorizations below do not override the hold. Research, evidence
+collection and investigation-plan maintenance remain authorized. A generic request to continue
+means continue the investigation, not resume the blocked implementation.
+
+The active priority is the Operator's 2026-09-17 investigation of replacing CAS with a Beryl-owned
+agent runtime over subscription-backed Responses. Phases 481–494 below gather decision evidence;
+they do not authorize production replacement. Prior CAS implementation phases are suspended during
+this investigation. Existing design remains the comparison baseline, including its CAS-only
+boundary and delegated-runtime non-goals; proposed replacements must be identified explicitly
+before later design changes and implementation planning. No new-thread handoff is needed.
+
+Investigate personal ChatGPT Pro only, with direct OAuth preferred and an auth-only official-client
+helper as a fallback to assess. Do not assume Platform API billing or feature availability applies
+to the subscription endpoint. Preserve the Operator's central constraint: incremental parsing is
+acceptable, but potentially large payloads must not need RAM retention or temporary disk spill
+while waiting for routing/type metadata. Distinguish final owned storage from staging used to
+wait for identity. If a required path inevitably violates that constraint, stop and explain the
+concrete path to the Operator before designing a workaround.
+
+Use the [initial assessment](memory/topic/responses-agent-runtime/beryl-feasibility.md) and its
+pinned-source/live-probe notes as starting evidence. Preserve findings in focused memory notes;
+keep sequencing here. For each material question, record the applicable Beryl requirement,
+source identity/date, evidence strength (documented, source-derived, observed, inferred or unknown),
+failure example, architectural consequence, alternatives and remaining verification. Public API
+documentation, Codex subscription behavior and OpenCode behavior are distinct evidence surfaces.
+
+Expand this plan when discovery reveals a new independent research boundary, before investigating
+it; revise affected dependencies and keep only active/near-term phases detailed. Continue research
+across accepted evidence phases without repeated permission requests. A phase may close with an
+explicitly justified unknown and proposed handling; lack of a public guarantee alone is not a
+technical blocker. Stop when remaining uncertainty cannot change a material architecture choice,
+or is explicitly assigned to bounded implementation validation or Operator decision. Do not expand
+into speculative feature parity outside Beryl's required envelope.
+
+Prefer existing local evidence, pinned primary source and targeted probes. Every live experiment
+must have an explicit question, bounded duration/output/concurrency, synthetic inputs, result
+classification and cleanup. Read-only source comes before effectful probes. Do not install software,
+revoke credentials, change subscription/account settings, or exercise external side effects merely
+to test a hypothesis. Keep secrets and raw private traces out of durable notes. Any disposable
+multi-step harness must follow the Rust-only automation policy. Avoid repetitive model prompts as
+large-payload fixtures: the preceding attempt did not terminate its input as requested.
+
+Research completion means a requirement-to-evidence coverage review, recommendations with concrete
+ownership and lifecycle alternatives, a complete change/removal/new-work inventory, explicit risks
+and unresolved decisions, and a proposed design-authority update map. Review the proposal against
+contradictory evidence and failure scenarios before recommending adoption. These evidence gates
+do not substitute for later implementation verification or change existing production guarantees.
+
+The following earlier implementation context is retained for reconciliation after the investigation.
+
 Production marker admission and canonical widget publication have passed acceptance with the LLVM, one-job,
 no-normal-debug and nonincremental settings under the root
 [technology decisions](design.md#implementation-technology). The Operator authorizes pushing projects and owned forks as needed for
@@ -59,6 +113,153 @@ byte and complete-field limits, priority eviction and sticky per-turn gaps. Elev
 the app library check, formatting, Markdown reconciliation and independent semantic review passed.
 The buffer grants no durable or repair authority. Live routing, pre-route failure handling and
 service retirement remain the separate integration below.
+
+# Phase 481: Inventory CAS Responsibilities And Beryl Requirements (wip)
+
+Acceptance boundary: a source-anchored coverage inventory that distinguishes product requirements,
+current CAS mechanisms, accepted reusable components and unfinished rework gaps. Start from
+[root design](design.md), [backend runtime](systems/backend-runtime/design.md),
+[CAS-live](systems/cas-live-syndic-transcript/design.md),
+[bounded resources](systems/bounded-resource-dataflow/design.md), and the active rework's target
+docs. Trace feature-owned behavior through package boundaries and selected source use sites.
+
+- Account for every delegated capability: authentication, model discovery, inference, context,
+  tools, sandbox/approvals, configuration/instructions, skills, MCP/plugins, subagents and quotas.
+- Include submission/steering, stop, lifecycle yield, generated titles, branches, Running threads,
+  final-window shutdown, images, activity/status and diagnostics; record hidden CAS assumptions.
+- Mark each capability as retained requirement, candidate removal, proposed scope decision or
+  unanswered question. Do not silently narrow features or treat existing stubs as completed work.
+- Record the baseline commit and governing feature/system/package paths. Validate coverage against
+  root feature/system entry points, backend protocol ownership and the rework's remaining gates.
+
+Resume here: the initial assessment and live auth/ordering evidence are committed at `4b4ddcf4`.
+The investigation agenda is established; the exhaustive requirement/use-site inventory is next.
+
+# Phase 482: Establish Subscription Authentication And Entitlement Evidence (pending)
+
+Acceptance boundary: a practical Pro-only authentication and account-lifecycle assessment. Extend
+the pinned OpenCode/Codex evidence for browser/device login, token storage, rotation, concurrent
+refresh, expiration/revocation, logout, offline startup and mixed personal/managed account contexts.
+Determine how active personal Pro eligibility can actually be established and what happens when
+it cannot, the plan changes, or cached claims disagree with service admission. Distinguish account
+plan from similarly named model modes. Compare direct auth with the optional auth-only helper,
+including packaging, client registration, update/support assumptions and credential ownership.
+Use redacted/source evidence for disruptive cases; do not mutate Operator's account to test them.
+
+# Phase 483: Map The Subscription Inference Surface (pending)
+
+Acceptance boundary: an endpoint/model/capability inventory for the actual subscription route.
+Investigate required headers and request fields, model/reasoning discovery, context/output limits,
+tool/schema constraints, quotas/rate-limit metadata, usage, errors, retention/store behavior,
+regional/network constraints and service drift. Distinguish hosted tools from local tools and
+document unavailable or unverified Platform features. Compare HTTP/SSE and WebSocket tradeoffs
+without assuming either is required. Feed supported payload families into the streaming phase.
+
+# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (pending)
+
+Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
+boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,
+function/custom-tool inputs, annotations/refusals, partial/final media, compaction, terminal output
+echoes and errors. Trace identity/type availability, prior metadata dependencies, unique versus
+redundant fields, incomplete UTF-8/escapes/base64, interleaving, duplicate/missing events and unknown
+types. Audit transport/decompression/parser/request serialization as well as application queues.
+Test source-backed representative large payloads using bounded experiments; distinguish observed
+fragment sizes from limits. Propose explicit overflow/order-drift outcomes and verification of
+memory growth with fixed concurrent-item counts. Stop and report any unavoidable required-path spill.
+
+# Phase 485: Assess Durable Agent Execution And Recovery Semantics (pending)
+
+Acceptance boundary: an agent-loop state/ownership proposal supported by failure scenarios.
+Cover one user turn spanning multiple model requests, parallel calls, response closure versus turn
+completion, delivery uncertainty, stream loss, retries, idempotency, tool dispatch/result custody,
+crash/restart and durable-store outage. Analyze stop/steer/queue races, hosted effects, in-flight
+requests, unknown outcomes and safe resume. Identify what Beryl can know versus what the remote
+service cannot prove; avoid assuming reconnect or response replay provides exactly-once effects.
+
+# Phase 486: Assess Context Construction And Compaction (pending)
+
+Acceptance boundary: a context-management feasibility report. Cover instruction precedence,
+assistant phase, opaque reasoning retention, call/result pairing, tool-schema changes, token
+budgeting, automatic/manual compaction, repeated compaction, interruption, model changes and stale
+context. Compare explicit context with server-managed continuation where actually available.
+Account for branch/fork/edit/resume, incomplete turns, media and summaries without making rendered
+transcript text the entire model context. Identify source provenance and context needed to preserve
+coding-agent behavior, along with compaction's large-input/output and storage requirements.
+
+# Phase 487: Assess Local Tool Execution And Permission Boundaries (pending)
+
+Acceptance boundary: a tool-host and execution-policy options report. Inventory shell/PTY,
+process trees, patch/file operations, search, working roots, environment, encoding, large output,
+timeouts and cancellation across supported host/WSL and other platform requirements. Compare
+Rust-compatible reuse with new implementation, including dependency/license and maintenance costs.
+Investigate sandbox enforcement, approval scopes, sticky/session decisions, denied/expired prompts,
+path/symlink races, concurrent edits and recovery after a side effect but before result publication.
+Do not assume dropping enterprise support removes local execution policy requirements.
+
+# Phase 488: Assess Configuration And Agent Integrations (pending)
+
+Acceptance boundary: an integration compatibility and ownership inventory. Cover AGENTS.md and
+developer instructions, configuration precedence/reload, skills discovery/invocation, plugin
+boundaries, MCP stdio/remote lifecycle/auth/tool discovery, schema changes/name collisions,
+unavailable servers and tool-result resources. Include Beryl dynamic tools, elicitation/approval,
+web and media capabilities actually needed by the feature inventory. Distinguish portable
+formats/protocols from Codex-internal behavior; identify configuration migration choices explicitly.
+
+# Phase 489: Assess Subagents Branches And Background Scheduling (pending)
+
+Acceptance boundary: a scheduling and branch-lifecycle options report. Cover isolated contexts,
+fork provenance, parent/child tool permissions, concurrency/quotas, messages/waits, soft/hard stop,
+orphan handling, crash resumption and durable branch-resolution handoff. Trace process-owned work
+across multiple windows, hidden threads, final-window shutdown and lifecycle continuation.
+Verify how local scheduling removes CAS coupling without losing required job/effect custody.
+
+# Phase 490: Assess Storage And Product Integration Changes (pending)
+
+Acceptance boundary: a retain/rewrite/remove/new inventory for Beryl packages, schemas and visible
+behavior. Trace Syndic/home-store identity, immutable history, ranges/assets, context persistence,
+incomplete-state publication, provider metadata and projections into composer, transcript, status,
+activity, Settings, notifications and recovery. Include startup without network/auth and changes
+to runtime selection. Distinguish existing-home data preservation from obsolete-code compatibility;
+identify data-format/cutover decisions without assuming a migration adapter is permitted.
+
+# Phase 491: Assess Operational And Maintenance Requirements (pending)
+
+Acceptance boundary: an operations/supportability assessment. Cover Rust HTTP/auth dependencies,
+proxy/TLS/network behavior, credential protection, diagnostics/redaction, account/quota errors,
+model/service drift, dependency licensing, packaging/updates and supported operating systems.
+Identify useful content-free observability, capability checks and maintenance ownership without
+turning hypothetical risks into new product requirements. Compare the cost of direct ownership
+with keeping a narrowly scoped external auth helper.
+
+# Phase 492: Design The Decisive Verification And Quality Experiments (pending)
+
+Acceptance boundary: an evidence-gap-driven experiment specification and results for reasonably
+bounded probes needed before architecture selection. Include coding-agent task quality, tool
+correctness, long conversations/compaction, concurrency, memory growth, cancellation, failure cuts
+and replay where earlier phases expose material uncertainty. Separate synthetic decoder evidence
+from live service behavior and end-to-end quality. Set explicit budgets/stop conditions and reuse
+earlier evidence; defer expensive nondiscriminating measurements with reasons. Add prerequisite
+research phases if experiment design reveals a new material dependency.
+
+# Phase 493: Synthesize Architecture Alternatives And Replacement Scope (pending)
+
+Acceptance boundary: a recommendation comparing feasible ownership boundaries, dependency reuse,
+direct transport and any justified auth-helper option against the requirement inventory. Provide
+candidate component/dataflow/state-machine descriptions, the actual simplifications and new work,
+critical dependencies, scope choices, maintenance burden and evidence-based effort ranges where
+possible. Map proposed changes to owning root/feature/system/package docs and the active rework.
+Describe a clean replacement and existing-data strategy; do not prescribe compatibility layers or
+convert proposals into approved design through this research phase.
+
+# Phase 494: Review Coverage And Present The Architecture Decision Package (pending)
+
+Acceptance boundary: a reviewed decision package that traces every required capability to evidence,
+a recommendation or an explicit unresolved choice. Challenge unsupported equivalences, omitted
+CAS behavior, unsafe replay, hidden buffering and overclaimed resource bounds. Record blockers,
+acceptable bounded failures, deferred validation and confidence separately. Present concrete
+Operator decisions and the proposed design-update sequence. Only after those choices are accepted
+and controlling design is reconciled may replacement implementation phases be derived; old CAS
+phases must then be retired or reconciled rather than resumed automatically.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 

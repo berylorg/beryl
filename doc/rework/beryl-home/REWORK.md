@@ -149,6 +149,10 @@
 
 # Checklist
 
+## Operator Decision Gate
+
+- [ ] **BLOCKED:** all implementation, integration, mounting, cleanup and cutover in this rework must remain paused until the Operator decides the CAS direction and explicitly releases the hold after affected authority and planning are reconciled; only the [CAS investigation](../../plan.md) may continue under current authorization.
+
 ## Checkpoint 0: Complete And Accept Target Authority
 
 - [x] Closed: reconciled all linked feature, system, package, GUI, external-spec, plan, and tracker
