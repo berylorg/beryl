@@ -77,8 +77,8 @@ Second request:
   sequence_number`; observed lengths 2, 2, 6, 2, 2, 3 bytes.
 - Complete-text keys: `type, content_index, item_id, logprobs, output_index, sequence_number, text`.
 
-This confirms one explicit-context function continuation. It does not confirm reuse of opaque
-reasoning in a later request: the first response in this pair contained no reasoning item.
+This confirms one explicit-context function continuation. The first response in this pair
+contained no reasoning item; opaque reuse was tested separately below.
 
 ## Earlier Custom-Tool Observations
 
@@ -114,8 +114,63 @@ error body content was not printed. Do not infer an authentication failure, unsu
 missing header, or global absence of compaction from this status alone.
 
 Pinned Codex source independently confirms this relative path and the ChatGPT base URL. That
-source does not explain the live 404. Further investigation must identify a concrete routing or
-request prerequisite from source before another experiment; do not scan alternative endpoints.
+source does not explain the live 404.
+
+At 11:07:21 UTC the same endpoint/body was tested with the additional truthful
+`x-codex-routing-hint: model=gpt-5.6-luna` header. Pinned client
+`compact_conversation_history` and `build_routing_hint_header` supply this header for subscription
+compaction. Result: HTTP 404, 22 bytes, 123 ms; no retry or continuation. Its omission alone did
+not resolve the observed failure. No alternate route was attempted.
+
+The same pinned client also selects a Responses Lite dialect from the model catalog. This affects
+request input, instruction/tool placement and reasoning context as well as a header, so adding
+that header alone is not a qualified experiment. The live catalog advertised this mode for Luna;
+its coherent request and compaction semantics are a separate investigation prerequisite.
+
+## Custom Continuation And Opaque Reuse Follow-Up
+
+At 11:06:50 UTC, the corrected custom helper received HTTP 200, 9,473 bytes, 2,538 ms; usage
+85 input/36 output/22 reasoning tokens. It received reasoning with 1,400-byte completed encrypted
+content and one known custom call whose input was one byte, not the requested `record 7`.
+Terminal output was empty. The exact-input guard stopped before continuation. This is model
+instruction noncompliance, distinct from the earlier helper's terminal-array assumption.
+
+A deliberately different validation question followed: can the protocol accept an acknowledgement
+for the actual known custom call, even if its bounded synthetic input differs from the prompt?
+The guard now required exactly one `record_probe` call with nonempty input at most 64 bytes;
+exact prompt compliance remained separately reported, and no external tool was executed.
+
+At 11:08:10 UTC, with the same first request described above:
+
+- First HTTP 200, 6,138 bytes, 1,521 ms; usage 85 input/12 output/zero reasoning tokens.
+  One-byte input again differed from the requested string. No reasoning item was returned.
+- Second request sent the original user item and unchanged actual call, followed by
+  `custom_tool_call_output` with its real call ID and output `acknowledged synthetic input`.
+  Instructions: `The synthetic tool has returned. Reply exactly CUSTOM ROUNDTRIP OK.`
+  Common Luna/low/store-false/stream-true/encrypted-inclusion settings remained.
+- Second HTTP 200, 11,006 bytes, 1,449 ms; usage 57 input/23 output/12 reasoning tokens.
+  Final text equalled `CUSTOM ROUNDTRIP OK`; completed reasoning was 1,356 encrypted bytes.
+- Both terminal output arrays were empty. This establishes custom result protocol acceptance,
+  not prompt obedience or reuse of reasoning that was absent from the first response.
+
+At 11:09:06 UTC a separate two-request reasoning experiment used Luna and encrypted inclusion:
+
+- First instructions: `Answer the synthetic arithmetic question briefly.` User input:
+  `What is 37 * 43 - 19 * 23? Check the arithmetic. Reply with the number only.` Reasoning medium.
+- First HTTP 200, 9,816 bytes, 1,892 ms; usage 41 input/40 output/32 reasoning tokens.
+  Final text exactly `1154`; one completed reasoning item with 1,400-byte encrypted content.
+- Second input contained the original user item, the unchanged actual completed reasoning and
+  message items, and user text `Repeat the previous numerical answer, with no additional text.`
+  Same instructions, reasoning low, no tools. HTTP 200, 7,058 bytes, 1,405 ms;
+  usage 98 input/6 output/zero reasoning tokens; exact final answer `1154`.
+- Both terminal output arrays were empty. This proves acceptance of one actual opaque reasoning
+  item in explicit continuation. It does not establish that the model used its hidden contents,
+  a reasoning-quality benefit, indefinite validity, account portability or model portability.
+
+The final helper revision added the fixed reasoning mode and the source-backed compaction hint;
+credential/endpoint/process budgets were unchanged. Five offline checks passed. Final source
+SHA-256 `415ADDB53A929582D42294AF94B1BED2C3E80EAB8ACB14E32FF462D1D9B350A8`, executable
+`3FFD10B90292107E4C150AE91FE2D4A8A3C0E9615560A7A887C0A66FD5B26BAD`.
 
 ## Architectural Consequences And Remaining Questions
 
@@ -131,7 +186,7 @@ observed deltas are not a service size guarantee. Do not silently route to the l
 
 Persisted completed items must remain distinct from response closure and local turn completion.
 Opaque reasoning has changed between addition and completion in these observations. Interleaved
-parallel calls, failure cuts, annotations, media, custom-tool continuation, reasoning reuse and
+parallel calls, failure cuts, annotations, media, long-lived/model-changed reasoning reuse and
 compaction need further evidence or an explicit bounded unsupported outcome. No unavoidable
 ordering-driven spill has been established for the observed complete-item paths.
 
@@ -145,3 +200,8 @@ ordering-driven spill has been established for the observed complete-item paths.
   `CompactClient::path`, and
   [provider selection](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/model-provider-info/src/lib.rs),
   `CHATGPT_CODEX_BASE_URL` and `to_api_provider`; inspected 2026-09-17. Source evidence only.
+- [Pinned Codex inference client](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/core/src/client.rs),
+  `compact_conversation_history`, `build_routing_hint_header`, `build_responses_request`,
+  `build_reasoning`; source basis for the routing-hint experiment and dialect investigation.
+- [Pinned protocol models](https://github.com/openai/codex/blob/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/codex-rs/protocol/src/models.rs),
+  `ResponseInputItem::CustomToolCallOutput`; source basis for the custom result shape.

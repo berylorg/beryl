@@ -114,21 +114,31 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 496: Prepare A Bounded Independent Research Helper (finished)
+# Phase 497: Assess The Catalog-Selected Responses Dialect (wip)
 
-Accepted the isolated [research helper](memory/topic/responses-agent-runtime/direct-probe-helper.md)
-after four offline checks, locked build validation and independent credential/diagnostic review.
-The [Cargo isolation correction](failures/research-cargo-isolation.md) restored the derived root
-graph; tracked production files and credentials are unchanged. Helper checks are not API evidence.
+New prerequisite discovered during direct compaction investigation: Luna's live catalog advertises
+`use_responses_lite`, and pinned client source changes input construction as well as headers for
+that dialect. Standard HTTP inference and tool continuation already work, but that does not prove
+the same context/compaction contract. Identify coherent request/header/input forms, additional item
+types, instruction/tool placement, reasoning retention and model/dialect changes. Assess whether
+a small source-backed direct experiment resolves the compaction 404 or materially changes ingress
+ordering. Do not toggle internal flags against guessed bodies, fabricate attestation, impersonate
+an official client or scan routes. Close with observed results or an explicit bounded unknown and
+its architecture consequence. Ordering/context conclusions below depend on this distinction.
+
+The isolated [research helper](memory/topic/responses-agent-runtime/direct-probe-helper.md) is
+qualified; its [Cargo isolation correction](failures/research-cargo-isolation.md) restored the
+derived root graph. Helper checks are not API evidence. Production implementation remains held.
 
 # Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (wip)
 
 Direct [stream continuation evidence](memory/topic/responses-agent-runtime/direct-stream-continuation.md)
 now includes a successful independent function round trip and identity-first complete reasoning
 and custom-tool items. Terminal output arrays were empty; completed items must be collected from
-the stream. The source-identified compaction route returned 404, leaving that required path
-unverified. Investigate a source-backed prerequisite before another compaction probe; no endpoint
-guessing or silent fallback. Production implementation remains held.
+the stream. Custom-tool continuation and an opaque-reasoning context round trip also succeeded.
+The source-identified compaction route returned 404 both without and with the exact model routing
+hint, leaving that required path unverified. The catalog-selected dialect investigation above
+precedes further compaction probes; no endpoint guessing or silent fallback.
 
 Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
 boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,
