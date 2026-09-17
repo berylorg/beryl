@@ -13,6 +13,35 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
+pub use super::outage_buffer::{
+    OutageBuffer, OutageBufferError, OutageBufferLimits, OutageFact, OutageLoss, OutagePriority,
+    OutageTarget, OutageTextKind,
+};
+
+pub fn outage_test_target(seed: u8, registration_serial: u64) -> OutageTarget {
+    use beryl_model::{
+        CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasThreadId,
+        CasTurnId, RuntimeId, SyndicThreadId, SyndicTurnId,
+    };
+    let process_generation = CasProcessGeneration::new(1).unwrap();
+    OutageTarget::new(
+        super::ConnectionWorkTargetIdentity {
+            runtime_id: RuntimeId::from_bytes([seed; 16]),
+            process_generation,
+            connection_generation: 1,
+            registration_serial,
+            thread_id: SyndicThreadId::from_bytes([seed; 16]),
+            cas_thread_id: CasThreadId::new(format!("cas-thread-{seed}")).unwrap(),
+            loaded_generation: CasLoadedSessionGeneration::new(
+                process_generation,
+                CasLoadedThreadGeneration::new(1).unwrap(),
+            ),
+            home_generation: 1,
+        },
+        SyndicTurnId::from_bytes([seed; 16]),
+        CasTurnId::new(format!("cas-turn-{seed}")).unwrap(),
+    )
+}
 pub use super::service::GracefulShutdownProbe;
 pub use super::service::ShutdownExecutionCaptureProbe;
 

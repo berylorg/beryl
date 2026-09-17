@@ -48,6 +48,7 @@ mod live_source;
 mod model;
 mod native_lineage_recovery;
 mod ordinary;
+mod outage_buffer;
 mod persistent_failure;
 mod process_sessions;
 mod process_tools;

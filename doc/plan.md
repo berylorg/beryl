@@ -52,21 +52,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 470: Integrate Unavailable-Repair Startup Recovery (finished)
+# Phase 478: Implement Bounded Outage Fact Retention (finished)
 
-Accepted ordinary and candidate startup convergence through explicit incomplete history, bounded
-finalization and coherent gate release. Request disposition and original terminal evidence survive
-restart; ambiguous command outcomes retain reconciliation custody. Three new recovery tests,
-63 existing app regressions and 49 storage tests passed, along with the app check, formatting,
-Markdown reconciliation and independent semantic review. Outage capture and fresh-service
-replacement remain separate below.
-
-# Phase 478: Implement Bounded Outage Fact Retention (pending)
-
-Implement the app-owned fixed-capacity outage buffer from the CAS-live and live-capture contracts:
-already-active exact targets, bounded normalized facts, retention priorities and explicit gap
-tracking. Verify count, encoded-byte, field and target bounds and priority eviction. Buffered
-facts remain transient and cannot establish repair authority. Live failure routing remains below.
+Accepted private retention of typed, qualified facts with frozen exact targets, checked encoded
+byte and complete-field limits, priority eviction and sticky per-turn gaps. Eleven focused tests,
+the app library check, formatting, Markdown reconciliation and independent semantic review passed.
+The buffer grants no durable or repair authority. Live routing, pre-route failure handling and
+service retirement remain the separate integration below.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 

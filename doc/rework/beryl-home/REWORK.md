@@ -445,8 +445,10 @@
   remain independent.
 - [x] Accepted bounded explicit-incomplete finalization and coherent publication before releasing repair-required gates while preserving durable request disposition; storage and startup regression evidence passed independent semantic review.
 - [ ] Implement the durable target-scoped request claim and repaired finalization path only after repair eligibility is proven, without runtime dispatch mounting.
-- [ ] Add the prioritized outage buffer for already-active exact targets without making buffered
-  content canonical history.
+- [x] Accepted the private prioritized outage retention component with exact target qualification,
+  encoded byte limits and sticky gap tracking; focused tests and independent review passed.
+- [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement,
+  including pre-route loss, without making buffered content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
 - [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.

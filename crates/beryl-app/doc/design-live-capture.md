@@ -22,6 +22,28 @@ and bounded repair coordination.
 - Store failure fences new durable admission and retires the service generation. Buffered facts,
   connections, and process-local authority do not transfer to replacement.
 
+The private retention component freezes the complete admitted target set before accepting facts.
+Each target includes Syndic and CAS turn identities together with runtime, home, process,
+connection, loaded-session and registration identity. Target metadata and sticky gap flags are
+non-evictable and count toward the byte limit. Construction rejects an oversized or duplicate
+target set rather than silently omitting targets. The caller establishes active-target custody;
+these descriptive values do not grant it.
+
+The component borrows closed normalized lifecycle, control, terminal, identity, user-correlation,
+saved-path and complete-field values. It checks a compact encoding with fixed tags, exact indices,
+length-prefixed UTF-8 and all target metadata before copying any retained payload. Controls carry
+the retention priority of their normalized semantic field. It accepts only complete bounded
+fields; partial fields, unrepresentable observations and dropped facts report explicit loss for
+their qualified target. Fragment assembly and pre-route attribution are outside this component;
+the ingester must not submit fragments as complete fields or guess a route.
+
+Admission first proves that enough strictly lower-priority facts can be evicted. An impossible
+admission marks the incoming target gapped without evicting retained facts. Eviction chooses the
+lowest priority first, preserving arrival order among survivors and marking every victim's target
+gapped. Equal-priority saturation rejects the incoming fact. A gap never clears during this
+buffer's lifetime. Retirement consumes the sole buffer and releases its transient contents;
+neither its bytes nor its target descriptors constitute durable evidence or a repair capability.
+
 ## Ordered Ingester And Custody
 
 - Each connection's sole ordered ingester consumes the closed compact-control, approval,
