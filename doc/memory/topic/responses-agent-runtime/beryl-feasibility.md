@@ -1,5 +1,9 @@
 # Reason For Investigation
 
+This initial assessment is superseded for current decision-making by the
+[architecture decision package](architecture-decision.md), which links the completed direct and
+subsystem investigations. Earlier CLI-only observations below remain historical evidence only.
+
 The Operator requested an analysis of replacing Codex App Server (CAS) with a Beryl-owned agent
 layer over Responses, supporting personal ChatGPT Pro subscriptions only. The investigation also
 asks whether Responses itself forces large buffering. The Operator clarified that incremental
@@ -36,8 +40,8 @@ Operator-authorized current login, with no CAS/Codex decoder. They established
 [reviewed streaming assessment](ordering-and-bounded-streaming.md) supersedes the earlier
 CLI-only evidence for those observed paths and records remaining adoption gates. Statements about
 not reading credentials in the earlier CLI method apply only to that earlier method. The full
-architecture investigation remains active in the root plan; this initial assessment is not its
-final decision package.
+architecture investigation is now consolidated in the reviewed decision package linked above;
+this initial assessment is retained only as its historical starting point.
 
 ## Personal Pro Access
 

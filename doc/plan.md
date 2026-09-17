@@ -114,59 +114,24 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 490: Assess Storage And Product Integration Changes (finished)
+# Phase 494: Review Coverage And Present The Architecture Decision Package (finished)
 
-The reviewed [package/storage/product inventory](memory/topic/responses-agent-runtime/storage-and-product-changes.md)
-preserves durable admission/history and distinguishes CAS removals from new context/effect custody.
-Digest-addressed sidecars need a separate final-resource decision; canonical text already uses
-bounded indexed records. Existing-home conversion and executable integration are not proven.
-Reviewed preceding evidence covers [streaming](memory/topic/responses-agent-runtime/ordering-and-bounded-streaming.md),
-[execution](memory/topic/responses-agent-runtime/durable-execution-and-recovery.md),
-[context](memory/topic/responses-agent-runtime/context-and-compaction.md),
-[tools](memory/topic/responses-agent-runtime/local-tool-host-options.md),
-[integrations](memory/topic/responses-agent-runtime/configuration-and-integrations.md) and
-[scheduling](memory/topic/responses-agent-runtime/scheduling-and-branches.md).
-Review corrected uncertain-delivery terminalization and scoped the sidecar constraint precisely.
-These are accepted research reports, not adopted design or production verification.
+The reviewed [decision package](memory/topic/responses-agent-runtime/architecture-decision.md)
+recommends a conditional Beryl-owned loop/context over direct subscription streaming, with selective
+Rust/tool-host reuse. It links authentic direct evidence, all subsystem assessments, alternatives,
+new/removable work, authority updates and explicit adoption/quality/resource gates. Review found no
+material remaining synthesis blocker; it was not independent replication of the live probes.
+No new quota, installs or production changes were needed for final synthesis. Research is complete
+for this decision boundary; universal streaming and production readiness are not claimed.
 
-# Phase 491: Assess Operational And Maintenance Requirements (wip)
+# Phase 498: Resolve The CAS Direction And Reconcile Design Authority (pending)
 
-Acceptance boundary: an operations/supportability assessment. Cover Rust HTTP/auth dependencies,
-proxy/TLS/network behavior, credential protection, diagnostics/redaction, account/quota errors,
-model/service drift, dependency licensing, packaging/updates and supported operating systems.
-Identify useful content-free observability, capability checks and maintenance ownership without
-turning hypothetical risks into new product requirements. Compare the cost of direct ownership
-with keeping a narrowly scoped external auth helper.
-
-# Phase 492: Design The Decisive Verification And Quality Experiments (wip)
-
-Acceptance boundary: an evidence-gap-driven experiment specification and results for reasonably
-bounded probes needed before architecture selection. Include coding-agent task quality, tool
-correctness, long conversations/compaction, concurrency, memory growth, cancellation, failure cuts
-and replay where earlier phases expose material uncertainty. Separate synthetic decoder evidence
-from live service behavior and end-to-end quality. Set explicit budgets/stop conditions and reuse
-earlier evidence; defer expensive nondiscriminating measurements with reasons. Add prerequisite
-research phases if experiment design reveals a new material dependency.
-
-# Phase 493: Synthesize Architecture Alternatives And Replacement Scope (pending)
-
-Acceptance boundary: a recommendation comparing feasible ownership boundaries, dependency reuse,
-direct transport and any justified auth-helper option against the requirement inventory. Provide
-candidate component/dataflow/state-machine descriptions, the actual simplifications and new work,
-critical dependencies, scope choices, maintenance burden and evidence-based effort ranges where
-possible. Map proposed changes to owning root/feature/system/package docs and the active rework.
-Describe a clean replacement and existing-data strategy; do not prescribe compatibility layers or
-convert proposals into approved design through this research phase.
-
-# Phase 494: Review Coverage And Present The Architecture Decision Package (pending)
-
-Acceptance boundary: a reviewed decision package that traces every required capability to evidence,
-a recommendation or an explicit unresolved choice. Challenge unsupported equivalences, omitted
-CAS behavior, unsafe replay, hidden buffering and overclaimed resource bounds. Record blockers,
-acceptable bounded failures, deferred validation and confidence separately. Present concrete
-Operator decisions and the proposed design-update sequence. Only after those choices are accepted
-and controlling design is reconciled may replacement implementation phases be derived; old CAS
-phases must then be retired or reconciled rather than resumed automatically.
+Await Operator selection of the conditional direction or a bounded experimental slice described
+in the decision package. Resolve storage/streaming, tool/model/integration, credential ownership
+and old-home choices in owning design before deriving replacement implementation phases. Preserve
+the whole-rework hold until explicitly released; generic continue must not resume the CAS phases
+below or convert the research recommendation into accepted architecture. Additional research is
+appropriate only for a concrete decision-changing gap, not repetition of completed probes.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 
