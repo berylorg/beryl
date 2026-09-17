@@ -114,82 +114,22 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (finished)
+# Phase 490: Assess Storage And Product Integration Changes (finished)
 
-The independently reviewed [streaming feasibility assessment](memory/topic/responses-agent-runtime/ordering-and-bounded-streaming.md)
-found no established inevitable spill in directly observed core paths, including actual tool,
-reasoning, compaction, web and representative image results. Reasoning summaries, annotations/
-refusals, nonempty terminal echoes and an approved appendable final-resource path remain explicit
-adoption gates. This is not universal lossless coverage or production memory verification. The
-ephemeral helper was removed after evidence preservation; production implementation remains held.
+The reviewed [package/storage/product inventory](memory/topic/responses-agent-runtime/storage-and-product-changes.md)
+preserves durable admission/history and distinguishes CAS removals from new context/effect custody.
+Digest-addressed sidecars need a separate final-resource decision; canonical text already uses
+bounded indexed records. Existing-home conversion and executable integration are not proven.
+Reviewed preceding evidence covers [streaming](memory/topic/responses-agent-runtime/ordering-and-bounded-streaming.md),
+[execution](memory/topic/responses-agent-runtime/durable-execution-and-recovery.md),
+[context](memory/topic/responses-agent-runtime/context-and-compaction.md),
+[tools](memory/topic/responses-agent-runtime/local-tool-host-options.md),
+[integrations](memory/topic/responses-agent-runtime/configuration-and-integrations.md) and
+[scheduling](memory/topic/responses-agent-runtime/scheduling-and-branches.md).
+Review corrected uncertain-delivery terminalization and scoped the sidecar constraint precisely.
+These are accepted research reports, not adopted design or production verification.
 
-# Phase 485: Assess Durable Agent Execution And Recovery Semantics (finished)
-
-The independently reviewed [execution/recovery assessment](memory/topic/responses-agent-runtime/durable-execution-and-recovery.md)
-proposes separate accepted-input, turn, request, tool-effect and context ownership. It preserves
-dispatch uncertainty and prior incomplete effects; a later user retry is a new durable submission.
-Steering timing, response-closure gating and handler cancellation remain design decisions. Client
-source does not establish remote replay, acknowledged cancellation or exactly-once effects.
-
-# Phase 486: Assess Context Construction And Compaction (wip)
-
-Acceptance boundary: a context-management feasibility report. Cover instruction precedence,
-assistant phase, opaque reasoning retention, call/result pairing, tool-schema changes, token
-budgeting, automatic/manual compaction, repeated compaction, interruption, model changes and stale
-context. Compare explicit context with server-managed continuation where actually available.
-Account for branch/fork/edit/resume, incomplete turns, media and summaries without making rendered
-transcript text the entire model context. Identify source provenance and context needed to preserve
-coding-agent behavior, along with compaction's large-input/output and storage requirements.
-
-# Phase 487: Assess Local Tool Execution And Permission Boundaries (wip)
-
-The [source assessment](memory/topic/responses-agent-runtime/local-tool-host-options.md) identifies
-Rust reuse candidates, required code-mode/runtime bounds and sandbox integration choices. Source
-coverage is recorded; final cross-phase review remains pending. No tool-host design is adopted.
-
-Acceptance boundary: a tool-host and execution-policy options report. Inventory shell/PTY,
-process trees, patch/file operations, search, working roots, environment, encoding, large output,
-timeouts and cancellation across supported host/WSL and other platform requirements. Compare
-Rust-compatible reuse with new implementation, including dependency/license and maintenance costs.
-Investigate sandbox enforcement, approval scopes, sticky/session decisions, denied/expired prompts,
-path/symlink races, concurrent edits and recovery after a side effect but before result publication.
-Do not assume dropping enterprise support removes local execution policy requirements.
-Read-only source investigation may proceed alongside execution/context analysis; it authorizes
-no production code, installs or sandbox experiments. Reconcile findings at its own evidence gate.
-
-# Phase 488: Assess Configuration And Agent Integrations (wip)
-
-The [integration assessment](memory/topic/responses-agent-runtime/configuration-and-integrations.md)
-records instruction/configuration, skills/plugins, MCP and app-tool ownership. Final cross-phase
-review remains pending; supported compatibility scope and credential ownership are not selected.
-
-Acceptance boundary: an integration compatibility and ownership inventory. Cover AGENTS.md and
-developer instructions, configuration precedence/reload, skills discovery/invocation, plugin
-boundaries, MCP stdio/remote lifecycle/auth/tool discovery, schema changes/name collisions,
-unavailable servers and tool-result resources. Include Beryl dynamic tools, elicitation/approval,
-web and media capabilities actually needed by the feature inventory. Distinguish portable
-formats/protocols from Codex-internal behavior; identify configuration migration choices explicitly.
-Read-only source investigation may proceed alongside the other research boundaries; no live
-integration actions, configuration changes or messages to external parties are authorized.
-
-# Phase 489: Assess Subagents Branches And Background Scheduling (pending)
-
-Acceptance boundary: a scheduling and branch-lifecycle options report. Cover isolated contexts,
-fork provenance, parent/child tool permissions, concurrency/quotas, messages/waits, soft/hard stop,
-orphan handling, crash resumption and durable branch-resolution handoff. Trace process-owned work
-across multiple windows, hidden threads, final-window shutdown and lifecycle continuation.
-Verify how local scheduling removes CAS coupling without losing required job/effect custody.
-
-# Phase 490: Assess Storage And Product Integration Changes (pending)
-
-Acceptance boundary: a retain/rewrite/remove/new inventory for Beryl packages, schemas and visible
-behavior. Trace Syndic/home-store identity, immutable history, ranges/assets, context persistence,
-incomplete-state publication, provider metadata and projections into composer, transcript, status,
-activity, Settings, notifications and recovery. Include startup without network/auth and changes
-to runtime selection. Distinguish existing-home data preservation from obsolete-code compatibility;
-identify data-format/cutover decisions without assuming a migration adapter is permitted.
-
-# Phase 491: Assess Operational And Maintenance Requirements (pending)
+# Phase 491: Assess Operational And Maintenance Requirements (wip)
 
 Acceptance boundary: an operations/supportability assessment. Cover Rust HTTP/auth dependencies,
 proxy/TLS/network behavior, credential protection, diagnostics/redaction, account/quota errors,
@@ -198,7 +138,7 @@ Identify useful content-free observability, capability checks and maintenance ow
 turning hypothetical risks into new product requirements. Compare the cost of direct ownership
 with keeping a narrowly scoped external auth helper.
 
-# Phase 492: Design The Decisive Verification And Quality Experiments (pending)
+# Phase 492: Design The Decisive Verification And Quality Experiments (wip)
 
 Acceptance boundary: an evidence-gap-driven experiment specification and results for reasonably
 bounded probes needed before architecture selection. Include coding-agent task quality, tool

@@ -114,6 +114,12 @@ service made reusable by replacing transport.
 
 ## Options And Verification
 
+Direct [web/image evidence](subscription-web-image-results.md) covers the standalone subscription
+tool endpoints actually tested. These are distinct from MCP servers, plugin loading and hosted
+Apps; success does not establish general connector compatibility. Media context conversion is
+covered by the [context assessment](context-and-compaction.md). Completion review accepted this
+integration inventory as research evidence with the unsupported compatibility scope explicit.
+
 A bounded initial envelope could support explicit local configuration, AGENTS, local skills and
 plugin bundles, selected MCP versions/transports and Beryl tools, leaving marketplaces and
 interactive elicitation outside scope. Broader Codex-library reuse preserves more behavior but

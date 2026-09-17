@@ -99,6 +99,13 @@ identity-related disk buffering.
 
 ## Remaining Decisions And Verification
 
+Preserve exact working-root and host/WSL identity from the
+[responsibility inventory](cas-responsibility-inventory.md); do not route execution to a convenient
+different environment. Time-to-first-yield, execution deadline and cancellation/settlement timeout
+are distinct policies still to select. An expired approval obligation cannot become permission:
+V1 denial means no imported sticky/session grant cache or persistent approvals. Review accepted
+these source findings with runtime/sandbox verification explicitly outstanding.
+
 Select required tool behavior before choosing dependencies. Verify process-tree exit and bounded
 output under native/WSL execution, stdin-after-yield policy, cancellation during file/network
 effects, concurrent edits, symlink races and partial patch failure. Verify code-mode heap/output
