@@ -114,31 +114,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 483: Map The Subscription Inference Surface (finished)
+# Phase 496: Prepare A Bounded Independent Research Helper (finished)
 
-Accepted the [direct surface inventory](memory/topic/responses-agent-runtime/subscription-inference-surface.md):
-version-sensitive model discovery, rich catalog metadata, strict function-call success and explicit
-output-limit rejection. Source-only transport/context candidates and untested families remain
-separate. Sanitized observations and coverage review passed; no production changes or auth mutation.
+Accepted the isolated [research helper](memory/topic/responses-agent-runtime/direct-probe-helper.md)
+after four offline checks, locked build validation and independent credential/diagnostic review.
+The [Cargo isolation correction](failures/research-cargo-isolation.md) restored the derived root
+graph; tracked production files and credentials are unchanged. Helper checks are not API evidence.
 
-# Phase 496: Prepare A Bounded Independent Research Helper (wip)
-
-Acceptance boundary: a disposable Rust research helper for direct subscription request/response
-round trips, isolated from production crates and the blocked rework. The preceding one-shot probes
-remain valid; multi-request context retention and reusable protocol inspection now require the
-Rust automation boundary. Use only installed tooling and cached dependencies, with no software
-installation. Keep task-owned build/source artifacts isolated and reclaim them after use.
-
-Read existing credentials only into memory; never refresh, revoke, mutate, log or pass secrets on
-command lines. Restrict requests to the exact subscription host and known endpoint paths, disable
-redirects and automatic retries, identify the probe honestly, and enforce per-request time/body
-caps plus explicit small request-count budgets. Preserve returned synthetic context in bounded
-memory for round trips, record original JSON member order and sanitized metadata, and refuse
-auth/security/rate-limit failures without retries. Verify local parsing, bounds and cleanup before
-live use; synthetic checks validate the helper only, never service behavior. This helper does not
-implement Beryl's target runtime or lift any production hold.
-
-# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (pending)
+# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (wip)
 
 Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
 boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,
