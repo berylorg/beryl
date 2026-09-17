@@ -67,6 +67,14 @@ preserving exact active-target custody and bounded teardown without transferring
 or process-local authority to replacement. Verify failure, overflow and retirement cuts before
 accepting this non-GUI integration.
 
+Blocked on 2026-09-17: the accepted buffer requires complete route-qualified facts, while the
+provider stream supplies fragments before its route and the ingester terminates on persistent
+store failure. No outage normalization/capture owner bridges those boundaries. This cannot be
+completed as integration of accepted components alone. Specify bounded unpublished observation
+custody, missing-route loss attribution and capture shutdown before deriving its prerequisite
+implementation phase. Preserve the durable admission fence and reconciliation custody. See
+[outage ingress readiness](failures/outage-ingress-readiness.md).
+
 # Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
 
 Resolve the concrete component boundaries for the backend-runtime system's ordered fresh-service
