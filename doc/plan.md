@@ -114,21 +114,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 497: Assess The Catalog-Selected Responses Dialect (wip)
+# Phase 497: Assess The Catalog-Selected Responses Dialect (finished)
 
-New prerequisite discovered during direct compaction investigation: Luna's live catalog advertises
-`use_responses_lite`, and pinned client source changes input construction as well as headers for
-that dialect. Standard HTTP inference and tool continuation already work, but that does not prove
-the same context/compaction contract. Identify coherent request/header/input forms, additional item
-types, instruction/tool placement, reasoning retention and model/dialect changes. Assess whether
-a small source-backed direct experiment resolves the compaction 404 or materially changes ingress
-ordering. Do not toggle internal flags against guessed bodies, fabricate attestation, impersonate
-an official client or scan routes. Close with observed results or an explicit bounded unknown and
-its architecture consequence. Ordering/context conclusions below depend on this distinction.
-
-The isolated [research helper](memory/topic/responses-agent-runtime/direct-probe-helper.md) is
-qualified; its [Cargo isolation correction](failures/research-cargo-isolation.md) restored the
-derived root graph. Helper checks are not API evidence. Production implementation remains held.
+Independent [Lite streaming compaction and continuation](memory/topic/responses-agent-runtime/subscription-streaming-compaction.md)
+succeeded on the existing Responses URL with actual opaque output. Complete compaction items had
+`id, type, encrypted_content` ordering. Pinned source selects streaming V2 by default and rebuilds
+retained context locally; the unary 404s do not establish general compaction unavailability.
+The probe was independently reviewed and five helper checks passed. Large-context quality,
+model/dialect changes and production allocation bounds remain in their owning research boundaries.
 
 # Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (wip)
 
@@ -136,9 +129,17 @@ Direct [stream continuation evidence](memory/topic/responses-agent-runtime/direc
 now includes a successful independent function round trip and identity-first complete reasoning
 and custom-tool items. Terminal output arrays were empty; completed items must be collected from
 the stream. Custom-tool continuation and an opaque-reasoning context round trip also succeeded.
-The source-identified compaction route returned 404 both without and with the exact model routing
-hint, leaving that required path unverified. The catalog-selected dialect investigation above
-precedes further compaction probes; no endpoint guessing or silent fallback.
+The catalog-selected streaming compaction path now has direct early-ID/type evidence and a
+successful continuation. Remaining work focuses on other required payload families, parser and
+transport allocation boundaries, interleaving/overflow outcomes and explicit verification gaps.
+Pinned Lite source implements web/image tools through standalone subscription `alpha/search`
+and `images/generations`, whose request already identifies the local tool operation. Qualify
+fixed one-request modes before one small search and one low-quality synthetic image probe;
+retain existing 30-second/1-MiB limits and do not repeat if they exceed those budgets.
+The first image request returned HTTP 200/908,827 bytes within those limits but failed JSON
+decoding. One qualified diagnostic follow-up may explicitly request JSON and inspect bounded
+framing metadata; no third image request, automatic retry or higher limits. Preserve this first
+result as unverified body format, not image availability/validity evidence.
 
 Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
 boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,

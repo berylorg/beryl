@@ -16,8 +16,10 @@ same terminal-array assumption error. A replacement cannot rely on that terminal
 only source of completed context.
 
 A separate direct request to the source-identified subscription compaction endpoint returned
-HTTP 404. No compacted context was received and no continuation was attempted. Compaction
-availability, output ordering and context round trip remain unverified.
+HTTP 404. No compacted context was received and no continuation was attempted on that route.
+Subsequent [streaming compaction](subscription-streaming-compaction.md) resolved the access and
+small-context ordering gap using the newer source-selected protocol; the negative results below
+remain specific to the unary requests.
 
 ## Method And Helper Correction
 
