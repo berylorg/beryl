@@ -61,6 +61,12 @@ The helper is ephemeral and must be reclaimed after its last experiment. Durable
 record exact request conditions and outcomes separately; a successful qualification is not an
 inference result.
 
+Cleanup completed after the final direct capability experiment on 2026-09-17. The exact owned
+`localtest/subscription-probe-20260917` tree had no reparse points; its 324 files totaling
+98,686,842 bytes were removed with `cleanup-dir.exe` and absence verified. All probe processes
+had exited. No raw credential, opaque response or image file was retained. Durable request
+conditions, outcomes and revision hashes remain in the linked evidence notes.
+
 Subsequent direct probes invalidated the assumption that terminal response output repeats all
 completed items. The independently reviewed correction collects correlated streamed completed
 items instead; five offline checks passed. Updated hashes and exact live outcomes are recorded in

@@ -114,44 +114,16 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 497: Assess The Catalog-Selected Responses Dialect (finished)
+# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (finished)
 
-Independent [Lite streaming compaction and continuation](memory/topic/responses-agent-runtime/subscription-streaming-compaction.md)
-succeeded on the existing Responses URL with actual opaque output. Complete compaction items had
-`id, type, encrypted_content` ordering. Pinned source selects streaming V2 by default and rebuilds
-retained context locally; the unary 404s do not establish general compaction unavailability.
-The probe was independently reviewed and five helper checks passed. Large-context quality,
-model/dialect changes and production allocation bounds remain in their owning research boundaries.
+The independently reviewed [streaming feasibility assessment](memory/topic/responses-agent-runtime/ordering-and-bounded-streaming.md)
+found no established inevitable spill in directly observed core paths, including actual tool,
+reasoning, compaction, web and representative image results. Reasoning summaries, annotations/
+refusals, nonempty terminal echoes and an approved appendable final-resource path remain explicit
+adoption gates. This is not universal lossless coverage or production memory verification. The
+ephemeral helper was removed after evidence preservation; production implementation remains held.
 
-# Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (wip)
-
-Direct [stream continuation evidence](memory/topic/responses-agent-runtime/direct-stream-continuation.md)
-now includes a successful independent function round trip and identity-first complete reasoning
-and custom-tool items. Terminal output arrays were empty; completed items must be collected from
-the stream. Custom-tool continuation and an opaque-reasoning context round trip also succeeded.
-The catalog-selected streaming compaction path now has direct early-ID/type evidence and a
-successful continuation. Remaining work focuses on other required payload families, parser and
-transport allocation boundaries, interleaving/overflow outcomes and explicit verification gaps.
-Pinned Lite source implements web/image tools through standalone subscription `alpha/search`
-and `images/generations`, whose request already identifies the local tool operation. Qualify
-fixed one-request modes before one small search and one low-quality synthetic image probe;
-retain existing 30-second/1-MiB limits and do not repeat if they exceed those budgets.
-The first image request returned HTTP 200/908,827 bytes within those limits but failed JSON
-decoding. One qualified diagnostic follow-up may explicitly request JSON and inspect bounded
-framing metadata; no third image request, automatic retry or higher limits. Preserve this first
-result as unverified body format, not image availability/validity evidence.
-
-Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
-boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,
-function/custom-tool inputs, annotations/refusals, partial/final media, compaction, terminal output
-echoes and errors. Trace identity/type availability, prior metadata dependencies, unique versus
-redundant fields, incomplete UTF-8/escapes/base64, interleaving, duplicate/missing events and unknown
-types. Audit transport/decompression/parser/request serialization as well as application queues.
-Test source-backed representative large payloads using bounded experiments; distinguish observed
-fragment sizes from limits. Propose explicit overflow/order-drift outcomes and verification of
-memory growth with fixed concurrent-item counts. Stop and report any unavoidable required-path spill.
-
-# Phase 485: Assess Durable Agent Execution And Recovery Semantics (pending)
+# Phase 485: Assess Durable Agent Execution And Recovery Semantics (wip)
 
 Acceptance boundary: an agent-loop state/ownership proposal supported by failure scenarios.
 Cover one user turn spanning multiple model requests, parallel calls, response closure versus turn
