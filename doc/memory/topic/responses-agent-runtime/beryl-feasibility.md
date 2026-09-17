@@ -28,6 +28,17 @@ reason to reject the practical direction.
 Detailed evidence: [OpenCode authentication](../../github.com/anomalyco/opencode/commit/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/chatgpt-subscription-auth.md)
 and [live subscription wire order](../../github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/responses-subscription-live-wire-order.md).
 
+Later 2026-09-17 experiments used independent direct HTTP requests and read-only access to the
+Operator-authorized current login, with no CAS/Codex decoder. They established
+[tool and opaque-context continuation](direct-stream-continuation.md),
+[Lite streaming compaction](subscription-streaming-compaction.md), and
+[standalone web/image results](subscription-web-image-results.md). The
+[reviewed streaming assessment](ordering-and-bounded-streaming.md) supersedes the earlier
+CLI-only evidence for those observed paths and records remaining adoption gates. Statements about
+not reading credentials in the earlier CLI method apply only to that earlier method. The full
+architecture investigation remains active in the root plan; this initial assessment is not its
+final decision package.
+
 ## Personal Pro Access
 
 Official authentication documentation distinguishes ChatGPT subscription access in Codex clients

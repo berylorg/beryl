@@ -123,16 +123,15 @@ refusals, nonempty terminal echoes and an approved appendable final-resource pat
 adoption gates. This is not universal lossless coverage or production memory verification. The
 ephemeral helper was removed after evidence preservation; production implementation remains held.
 
-# Phase 485: Assess Durable Agent Execution And Recovery Semantics (wip)
+# Phase 485: Assess Durable Agent Execution And Recovery Semantics (finished)
 
-Acceptance boundary: an agent-loop state/ownership proposal supported by failure scenarios.
-Cover one user turn spanning multiple model requests, parallel calls, response closure versus turn
-completion, delivery uncertainty, stream loss, retries, idempotency, tool dispatch/result custody,
-crash/restart and durable-store outage. Analyze stop/steer/queue races, hosted effects, in-flight
-requests, unknown outcomes and safe resume. Identify what Beryl can know versus what the remote
-service cannot prove; avoid assuming reconnect or response replay provides exactly-once effects.
+The independently reviewed [execution/recovery assessment](memory/topic/responses-agent-runtime/durable-execution-and-recovery.md)
+proposes separate accepted-input, turn, request, tool-effect and context ownership. It preserves
+dispatch uncertainty and prior incomplete effects; a later user retry is a new durable submission.
+Steering timing, response-closure gating and handler cancellation remain design decisions. Client
+source does not establish remote replay, acknowledged cancellation or exactly-once effects.
 
-# Phase 486: Assess Context Construction And Compaction (pending)
+# Phase 486: Assess Context Construction And Compaction (wip)
 
 Acceptance boundary: a context-management feasibility report. Cover instruction precedence,
 assistant phase, opaque reasoning retention, call/result pairing, tool-schema changes, token
@@ -142,7 +141,11 @@ Account for branch/fork/edit/resume, incomplete turns, media and summaries witho
 transcript text the entire model context. Identify source provenance and context needed to preserve
 coding-agent behavior, along with compaction's large-input/output and storage requirements.
 
-# Phase 487: Assess Local Tool Execution And Permission Boundaries (pending)
+# Phase 487: Assess Local Tool Execution And Permission Boundaries (wip)
+
+The [source assessment](memory/topic/responses-agent-runtime/local-tool-host-options.md) identifies
+Rust reuse candidates, required code-mode/runtime bounds and sandbox integration choices. Source
+coverage is recorded; final cross-phase review remains pending. No tool-host design is adopted.
 
 Acceptance boundary: a tool-host and execution-policy options report. Inventory shell/PTY,
 process trees, patch/file operations, search, working roots, environment, encoding, large output,
@@ -151,8 +154,14 @@ Rust-compatible reuse with new implementation, including dependency/license and 
 Investigate sandbox enforcement, approval scopes, sticky/session decisions, denied/expired prompts,
 path/symlink races, concurrent edits and recovery after a side effect but before result publication.
 Do not assume dropping enterprise support removes local execution policy requirements.
+Read-only source investigation may proceed alongside execution/context analysis; it authorizes
+no production code, installs or sandbox experiments. Reconcile findings at its own evidence gate.
 
-# Phase 488: Assess Configuration And Agent Integrations (pending)
+# Phase 488: Assess Configuration And Agent Integrations (wip)
+
+The [integration assessment](memory/topic/responses-agent-runtime/configuration-and-integrations.md)
+records instruction/configuration, skills/plugins, MCP and app-tool ownership. Final cross-phase
+review remains pending; supported compatibility scope and credential ownership are not selected.
 
 Acceptance boundary: an integration compatibility and ownership inventory. Cover AGENTS.md and
 developer instructions, configuration precedence/reload, skills discovery/invocation, plugin
@@ -160,6 +169,8 @@ boundaries, MCP stdio/remote lifecycle/auth/tool discovery, schema changes/name 
 unavailable servers and tool-result resources. Include Beryl dynamic tools, elicitation/approval,
 web and media capabilities actually needed by the feature inventory. Distinguish portable
 formats/protocols from Codex-internal behavior; identify configuration migration choices explicitly.
+Read-only source investigation may proceed alongside the other research boundaries; no live
+integration actions, configuration changes or messages to external parties are authorized.
 
 # Phase 489: Assess Subagents Branches And Background Scheduling (pending)
 
