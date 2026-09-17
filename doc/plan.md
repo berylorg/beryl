@@ -9,7 +9,7 @@ collection and investigation-plan maintenance remain authorized. A generic reque
 means continue the investigation, not resume the blocked implementation.
 
 The active priority is the Operator's 2026-09-17 investigation of replacing CAS with a Beryl-owned
-agent runtime over subscription-backed Responses. Phases 481–494 below gather decision evidence;
+agent runtime over subscription-backed Responses. Phases 495 and 481–494 below gather decision evidence;
 they do not authorize production replacement. Prior CAS implementation phases are suspended during
 this investigation. Existing design remains the comparison baseline, including its CAS-only
 boundary and delegated-runtime non-goals; proposed replacements must be identified explicitly
@@ -29,6 +29,14 @@ keep sequencing here. For each material question, record the applicable Beryl re
 source identity/date, evidence strength (documented, source-derived, observed, inferred or unknown),
 failure example, architectural consequence, alternatives and remaining verification. Public API
 documentation, Codex subscription behavior and OpenCode behavior are distinct evidence surfaces.
+
+Operator clarification: claims about live subscription-service behavior require direct requests
+and inspection of direct responses, independent of CAS/Codex execution and decoders; mocks and
+source inspection guide experiments but cannot substitute for that evidence. Use OpenCode as the
+accepted practical precedent, without treating it as a service guarantee. Probe subscription
+endpoints only, sequentially and with bounded cost; no Platform calls, scanning, fuzzing, stress
+tests or access-control bypass. Stop on security challenges or denied access and respect rate
+limits. Do not compete with the active client's refresh-token rotation.
 
 Expand this plan when discovery reveals a new independent research boundary, before investigating
 it; revise affected dependencies and keep only active/near-term phases detailed. Continue research
@@ -106,13 +114,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 478: Implement Bounded Outage Fact Retention (finished)
+# Phase 495: Verify Independent Subscription Access (finished)
 
-Accepted private retention of typed, qualified facts with frozen exact targets, checked encoded
-byte and complete-field limits, priority eviction and sticky per-turn gaps. Eleven focused tests,
-the app library check, formatting, Markdown reconciliation and independent semantic review passed.
-The buffer grants no durable or repair authority. Live routing, pre-route failure handling and
-service retirement remain the separate integration below.
+Accepted one direct subscription HTTP request without CAS/Codex execution: HTTP 200, completed
+synthetic text, 30 input and 8 output tokens; 30-second/256-KiB bounds and sanitized evidence passed
+self-review. No credential mutation or temporary artifacts. See the
+[direct baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md).
 
 # Phase 481: Inventory CAS Responsibilities And Beryl Requirements (wip)
 
