@@ -123,6 +123,13 @@ graph; tracked production files and credentials are unchanged. Helper checks are
 
 # Phase 484: Assess Ordering And Bounded Streaming For Required Payloads (wip)
 
+Direct [stream continuation evidence](memory/topic/responses-agent-runtime/direct-stream-continuation.md)
+now includes a successful independent function round trip and identity-first complete reasoning
+and custom-tool items. Terminal output arrays were empty; completed items must be collected from
+the stream. The source-identified compaction route returned 404, leaving that required path
+unverified. Investigate a source-backed prerequisite before another compaction probe; no endpoint
+guessing or silent fallback. Production implementation remains held.
+
 Acceptance boundary: a per-family ingress/egress feasibility assessment with concrete allocation
 boundaries and no ordering-driven spill. Cover text, reasoning summaries/encrypted context,
 function/custom-tool inputs, annotations/refusals, partial/final media, compaction, terminal output

@@ -51,7 +51,7 @@ with closed labels and selected numeric counters; the sentinel check passed and 
 accepted the correction. Endpoint, credential, request-budget and normal child-disposal boundaries
 were also reviewed.
 
-Qualified SHA-256 identities:
+Initial qualified SHA-256 identities:
 
 - `src/lib.rs`: `2F2AC7247AFF091AD9EEA507A09869EEEFD2B3EDD055E4E48ED9F7E23B16C0E0`.
 - `Cargo.lock`: `294603B571D7815C41C379A6241848D30BA05588BED541216A48AB4346E3B2FD`.
@@ -60,6 +60,12 @@ Qualified SHA-256 identities:
 The helper is ephemeral and must be reclaimed after its last experiment. Durable live findings
 record exact request conditions and outcomes separately; a successful qualification is not an
 inference result.
+
+Subsequent direct probes invalidated the assumption that terminal response output repeats all
+completed items. The independently reviewed correction collects correlated streamed completed
+items instead; five offline checks passed. Updated hashes and exact live outcomes are recorded in
+[direct stream continuation](direct-stream-continuation.md). Initial qualification hashes above
+identify the earlier revision, not the corrected executable.
 
 # Sources
 
