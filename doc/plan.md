@@ -9,7 +9,7 @@ collection and investigation-plan maintenance remain authorized. A generic reque
 means continue the investigation, not resume the blocked implementation.
 
 The active priority is the Operator's 2026-09-17 investigation of replacing CAS with a Beryl-owned
-agent runtime over subscription-backed Responses. Phases 495 and 481–494 below gather decision evidence;
+agent runtime over subscription-backed Responses. The research phases below gather decision evidence;
 they do not authorize production replacement. Prior CAS implementation phases are suspended during
 this investigation. Existing design remains the comparison baseline, including its CAS-only
 boundary and delegated-runtime non-goals; proposed replacements must be identified explicitly
@@ -114,26 +114,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 481: Inventory CAS Responsibilities And Beryl Requirements (finished)
+# Phase 482: Establish Subscription Authentication And Entitlement Evidence (finished)
 
-Accepted coverage of all 16 root feature and 10 system entries, delegated responsibilities and
-unfinished product gates, with targeted root validation of scope-sensitive source/authority.
-See the [inventory](memory/topic/responses-agent-runtime/cas-responsibility-inventory.md).
-The independent [direct subscription baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md)
-also passed; neither result changes production authority or lifts the implementation hold.
+Accepted [auth assessment](memory/topic/responses-agent-runtime/subscription-auth-assessment.md):
+direct inference and account-bound Pro usage succeeded; refresh/account-generation ownership and
+untested disruptive cases are explicit. Source findings passed targeted root validation. The
+[requirement inventory](memory/topic/responses-agent-runtime/cas-responsibility-inventory.md) and
+[direct baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md) remain inputs.
 
-# Phase 482: Establish Subscription Authentication And Entitlement Evidence (wip)
-
-Acceptance boundary: a practical Pro-only authentication and account-lifecycle assessment. Extend
-the pinned OpenCode/Codex evidence for browser/device login, token storage, rotation, concurrent
-refresh, expiration/revocation, logout, offline startup and mixed personal/managed account contexts.
-Determine how active personal Pro eligibility can actually be established and what happens when
-it cannot, the plan changes, or cached claims disagree with service admission. Distinguish account
-plan from similarly named model modes. Compare direct auth with the optional auth-only helper,
-including packaging, client registration, update/support assumptions and credential ownership.
-Use redacted/source evidence for disruptive cases; do not mutate Operator's account to test them.
-
-# Phase 483: Map The Subscription Inference Surface (pending)
+# Phase 483: Map The Subscription Inference Surface (wip)
 
 Acceptance boundary: an endpoint/model/capability inventory for the actual subscription route.
 Investigate required headers and request fields, model/reasoning discovery, context/output limits,
