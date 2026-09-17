@@ -114,35 +114,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 495: Verify Independent Subscription Access (finished)
+# Phase 481: Inventory CAS Responsibilities And Beryl Requirements (finished)
 
-Accepted one direct subscription HTTP request without CAS/Codex execution: HTTP 200, completed
-synthetic text, 30 input and 8 output tokens; 30-second/256-KiB bounds and sanitized evidence passed
-self-review. No credential mutation or temporary artifacts. See the
-[direct baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md).
+Accepted coverage of all 16 root feature and 10 system entries, delegated responsibilities and
+unfinished product gates, with targeted root validation of scope-sensitive source/authority.
+See the [inventory](memory/topic/responses-agent-runtime/cas-responsibility-inventory.md).
+The independent [direct subscription baseline](memory/topic/responses-agent-runtime/direct-subscription-baseline.md)
+also passed; neither result changes production authority or lifts the implementation hold.
 
-# Phase 481: Inventory CAS Responsibilities And Beryl Requirements (wip)
-
-Acceptance boundary: a source-anchored coverage inventory that distinguishes product requirements,
-current CAS mechanisms, accepted reusable components and unfinished rework gaps. Start from
-[root design](design.md), [backend runtime](systems/backend-runtime/design.md),
-[CAS-live](systems/cas-live-syndic-transcript/design.md),
-[bounded resources](systems/bounded-resource-dataflow/design.md), and the active rework's target
-docs. Trace feature-owned behavior through package boundaries and selected source use sites.
-
-- Account for every delegated capability: authentication, model discovery, inference, context,
-  tools, sandbox/approvals, configuration/instructions, skills, MCP/plugins, subagents and quotas.
-- Include submission/steering, stop, lifecycle yield, generated titles, branches, Running threads,
-  final-window shutdown, images, activity/status and diagnostics; record hidden CAS assumptions.
-- Mark each capability as retained requirement, candidate removal, proposed scope decision or
-  unanswered question. Do not silently narrow features or treat existing stubs as completed work.
-- Record the baseline commit and governing feature/system/package paths. Validate coverage against
-  root feature/system entry points, backend protocol ownership and the rework's remaining gates.
-
-Resume here: the initial assessment and live auth/ordering evidence are committed at `4b4ddcf4`.
-The investigation agenda is established; the exhaustive requirement/use-site inventory is next.
-
-# Phase 482: Establish Subscription Authentication And Entitlement Evidence (pending)
+# Phase 482: Establish Subscription Authentication And Entitlement Evidence (wip)
 
 Acceptance boundary: a practical Pro-only authentication and account-lifecycle assessment. Extend
 the pinned OpenCode/Codex evidence for browser/device login, token storage, rotation, concurrent
