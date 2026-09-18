@@ -7,6 +7,12 @@ adoption gates; it does not amend design authority or release the production rew
 
 # Outcome
 
+Scope update, 2026-09-18: Operator has since excluded sandboxing, marketplaces, plugins and
+hosted connectors, and made skills, parallel tools, steering, subagents, image input, web search
+and automatic recovery mandatory. See the root plan's Scope for the current selections.
+The alternatives below preserve the investigation baseline; their optional/deferred labels do
+not override those later choices. Code mode and WebSocket reuse remain under discussion.
+
 **Recommend pursuing a Beryl-owned agent loop and context over direct subscription HTTP streaming,
 with selected Rust reuse and a separately bounded local tool host.** Direct authentication is
 the preferred ownership target; keep an auth-only helper as an alternative if secure login/refresh
