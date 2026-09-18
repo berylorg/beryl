@@ -12,12 +12,19 @@ Operator scope selections on 2026-09-18 supersede optional/deferred classificati
 research menu: no sandboxing; local coding tools and terminals, MCP, instruction files, local
 skills, Codex-style remote compaction, parallel tool execution, steering, subagents, image input,
 web search and automatic recovery are required. No marketplace, plugins or hosted-connector
-compatibility. Automatic recovery belongs in the initial architecture, not a later retrofit;
-its exact behavior for uncertain external effects and in-flight inference still needs explicit
-design. It must not be assumed to prove an effect did not happen or authorize blind replay.
-Code-mode adoption and WebSocket reuse remain under discussion. Image generation is being
-considered as a service-backed tool, distinct from core image-input/context support. Search
-provider choice and the exact MCP/steering/recovery envelopes remain to reconcile in design.
+compatibility. Follow Codex's subscription compaction strategy rather than inventing a separate
+summarizer, and use OpenAI's subscription search. Use WebSocket connection/context reuse responsibly,
+with local recoverable context independent of connection cache and subscription qualification.
+Automatic recovery belongs in the initial architecture, not a later retrofit. For external tools,
+Beryl owns invocation bookkeeping and output delivery, not verification, rollback or semantic
+reconciliation of their external effects. Beryl-implemented internal mutations retain their own
+correctness/recovery contracts. A crash can still leave dispatch/start acknowledgement uncertain;
+the exact runner recovery policy must represent that honestly without requiring Beryl to inspect
+external effects. Code-mode adoption remains under discussion: filtering and batching are also
+possible in shell scripts; the distinct candidate benefit is direct programmable access to the
+registered MCP/app/local tool catalog, not inherently unique token savings. Image generation is
+being considered as a service-backed tool, distinct from core image-input/context support. Exact
+MCP/steering/recovery envelopes remain to reconcile in design.
 These scope choices do not release the implementation hold.
 
 The active priority is the Operator's 2026-09-17 investigation of replacing CAS with a Beryl-owned

@@ -11,7 +11,12 @@ Scope update, 2026-09-18: Operator has since excluded sandboxing, marketplaces, 
 hosted connectors, and made skills, parallel tools, steering, subagents, image input, web search
 and automatic recovery mandatory. See the root plan's Scope for the current selections.
 The alternatives below preserve the investigation baseline; their optional/deferred labels do
-not override those later choices. Code mode and WebSocket reuse remain under discussion.
+not override those later choices. Codex's subscription compaction strategy and OpenAI subscription
+search are selected, with responsible WebSocket reuse and independently recoverable local context.
+For external tools, Beryl is the runner: invocation bookkeeping/output delivery belong to it,
+but effect verification, rollback and semantic reconciliation do not. Internal Beryl mutations
+retain their own recovery contracts. Code mode remains under discussion; shell scripting can
+provide the same filtering/batching savings when it can access the relevant tools.
 
 **Recommend pursuing a Beryl-owned agent loop and context over direct subscription HTTP streaming,
 with selected Rust reuse and a separately bounded local tool host.** Direct authentication is
