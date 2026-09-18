@@ -18,9 +18,14 @@ with local recoverable context independent of connection cache and subscription 
 Automatic recovery belongs in the initial architecture, not a later retrofit. For external tools,
 Beryl owns invocation bookkeeping and output delivery, not verification, rollback or semantic
 reconciliation of their external effects. Beryl-implemented internal mutations retain their own
-correctness/recovery contracts. A crash can still leave dispatch/start acknowledgement uncertain;
-the exact runner recovery policy must represent that honestly without requiring Beryl to inspect
-external effects. Code-mode adoption remains under discussion: filtering and batching are also
+correctness/recovery contracts. Operator clarified that process-restart recovery restores durable
+conversation/context and presents unfinished execution as interrupted/incomplete, then waits for
+user instruction. It does not automatically retry tools, resume model/subagent execution or ask
+the model to reconcile external state. The user chooses whether to retry or inspect the worktree.
+No external-effect reconciliation subsystem or separate user-facing invocation-uncertainty
+workflow is required. Preserve recorded results without claiming that missing results prove a
+tool did not run. This clarification concerns process restart; live connection recovery remains
+a separate design boundary. Code-mode adoption remains under discussion: filtering and batching are also
 possible in shell scripts; the distinct candidate benefit is direct programmable access to the
 registered MCP/app/local tool catalog, not inherently unique token savings. Image generation is
 being considered as a service-backed tool, distinct from core image-input/context support. Exact

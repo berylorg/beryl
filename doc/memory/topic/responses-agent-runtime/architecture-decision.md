@@ -15,7 +15,13 @@ not override those later choices. Codex's subscription compaction strategy and O
 search are selected, with responsible WebSocket reuse and independently recoverable local context.
 For external tools, Beryl is the runner: invocation bookkeeping/output delivery belong to it,
 but effect verification, rollback and semantic reconciliation do not. Internal Beryl mutations
-retain their own recovery contracts. Code mode remains under discussion; shell scripting can
+retain their own recovery contracts. Operator further clarified restart behavior: restore durable
+conversation/context, show unfinished work as interrupted/incomplete and wait for user instruction.
+Do not automatically retry external tools, resume agents or launch worktree reconciliation after
+restart. No dedicated external-effect reconciliation or invocation-uncertainty UI is required.
+Recorded results remain available; missing results do not establish that a tool never ran.
+Earlier automatic-resumption options below do not override this selection.
+Code mode remains under discussion; shell scripting can
 provide the same filtering/batching savings when it can access the relevant tools.
 
 **Recommend pursuing a Beryl-owned agent loop and context over direct subscription HTTP streaming,
