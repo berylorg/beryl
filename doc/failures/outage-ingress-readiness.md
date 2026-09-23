@@ -154,3 +154,28 @@ seal qualification. Only loss without usable inventory/routing becomes a conserv
 gap; qualified retention failure must not widen it. The corrected ready-inventory overflow test
 proves sibling isolation. The 36 assembly/retention tests passed, and independent review accepted
 the private slot. Exact home/service/failure ownership remains the shared capture owner's duty.
+
+## Delayed Steering Echo Still Requires Healthy Replay
+
+Readiness inspection after the accepted driver and slot work found another backend/app prerequisite.
+`beryl-backend/src/incoming_json/provider/steering_capture.rs::begin` asks the ordered sink for a
+`SteeringUserMessageSource` and creates a `StreamedUserMessageVerifier`. The app ingester's
+`steering_user.rs::select_steering_user_message` reads the delivering input, validates its target,
+reads asset ownership and constructs an accepted-input replay source. That source continues reading
+the home during verification. The sink interface returns only a replay source or rejection.
+`provider/machine/steering.rs` propagates rejection and `incoming_json/provider.rs` converts it into
+a decode failure. There is no passive consume disposition.
+
+A valid delayed echo arriving after home failure therefore cannot pass this interface without
+failed-store reads. Returning rejection stops parsing rather than recording correlation/loss and
+continuing passive capture. That remains legitimate healthy fail-closed behavior, but it does not
+implement the accepted outage contract for well-formed input. Fabricating a replay source would
+falsely claim verified content and is not an acceptable implementation shortcut.
+
+Root source inspection and independent review confirmed the prerequisite on 2026-09-23; no runtime
+reproduction or passive protocol implementation is claimed. Per repository instructions the root
+stopped at this technical plan blocker. The recommended next boundary is an authoritative explicit
+passive correlation-or-loss outcome across backend parsing and app ingestion, preserving exact
+healthy verification, request dispatch/result custody and bounded discard. Its precise behavior
+must be settled before implementation. This changes Beryl's adapter, not CAS. Accepted driver and
+slot components remain valid; ordinary outage capture is still not mounted.

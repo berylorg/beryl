@@ -90,6 +90,14 @@ explicit unavailable capture until that composition is present; helper tests alo
 ordinary outage capture. The [driver-cycle diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition)
 remains evidence for the required nonwaiting protocol, not authority for an ingester inventory wait.
 
+Blocked at readiness: a delayed steering echo requires the backend to obtain a replay source from
+the ingester and verify content against failed-home reads. Its source-or-error interface cannot
+consume a well-formed echo passively; rejection aborts decoding. Root inspection and independent
+review confirmed the [passive steering seam](failures/outage-ingress-readiness.md#delayed-steering-echo-still-requires-healthy-replay).
+Per repository instructions, stop before implementing a workaround. Define an explicit passive
+correlation/loss outcome in the backend and app authorities, preserving healthy verification and
+outstanding request outcomes, then replan its prerequisite before this transition. CAS stays unchanged.
+
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 
 Connect accepted outage-mode ingestion to ordinary store failure, admission fencing and failed
