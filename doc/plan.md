@@ -75,21 +75,39 @@ the service graph or visible startup.
 
 # Phase 514: Specify Atomic Handoff Participants (finished)
 
-Accepted independent compact Syndic discussion-gate identity, revision, schema, creation/pristine
-closure, authenticated admission and exact release participants, with separate mutation enforcement.
-Independent readiness review passed and clarified that read-only preconditions cannot substitute
-for gate old/new outcome evidence. Generated parent input currently lacks a non-composer admission
+Accepted independent compact Syndic discussion-gate identity, revision, schema, required creation
+linkage and ordinary-fallback gate-absence guard, authenticated admission and exact release
+participants, with separate mutation enforcement.
+Independent participant review clarified that read-only preconditions cannot substitute for gate
+old/new outcome evidence. Subsequent factory inspection corrected the prerequisite ordering below.
+Generated parent input currently lacks a non-composer admission
 receipt; its concrete schema and app command composition remain phase 517's separate readiness
 boundary. No fabricated draft provenance or enabled branch dispatch is accepted.
 
-# Phase 515: Implement Discussion Handoff Gate Participants (wip)
+# Phase 518: Specify Production Discussion Creation (wip)
+
+Resolve the concrete typed creation command, exact terminal selected-projection/range proof,
+inherited execution/usage/label authority, immutable context binding, initial draft and initial
+handoff gate, plus operation-specific ambiguous-outcome custody. Inspect every required factory;
+branch attribute fixtures are not production creation. Derive bounded implementation phases before
+gate integration. Creation performs no CAS request or window claim and remains durable after later
+activation failure. Keep ordinary fallback pristine deletion restricted to its existing scope.
+Independently review the concrete boundary before implementation.
+
+# Phase 515: Implement Discussion Handoff Gate Participants (pending)
 
 Implement the owning Syndic gate value, exact codec/family, ordinary/candidate reads and local
-structural validation, discussion creation/pristine closure, authenticated admission, exact release
+structural validation, integration with accepted discussion creation, authenticated admission, exact release
 and parent-frontier validation participants. Preserve independent title/archive revisions. Verify
 stale revisions, wrong branch/turn/binding, queued-input races, overflow, missing/orphaned gates,
 candidate fencing and exact old/new mutation outcomes. These are typed participants only; gate
 enforcement and cross-domain app composition remain separate and branch dispatch stays unavailable.
+
+Ordering correction: production discussion creation is absent; the only open-branch attributes
+factory use is a test-fault fixture. Existing pristine deletion also excludes discussion lineage.
+Do not absorb branch creation or broaden deletion in this phase. Establish creation first under
+phase 518 and its implementation phases; see the
+[factory evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
 
 # Phase 516: Enforce Discussion Mutation Gates (pending)
 

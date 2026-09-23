@@ -68,9 +68,9 @@ composes these checks with the system's whole-operation custody before exposing 
 
 ## Pristine Thread Abandonment
 
-The discussion gate is part of a discussion's pristine closure. Ordinary-thread closure requires
-its absence; discussion creation and exact pristine deletion include its open initial record.
-A pending or advanced gate is not pristine and cannot be deleted through abandonment.
+Ordinary fallback-thread pristine closure requires absence of a discussion gate. This abandonment
+API accepts only ordinary root threads; discussion lineage or context is ineligible. Discussion
+creation does not acquire deletion authority, and its durable result survives activation failure.
 
 - The package exposes a bounded authenticated pristine-thread candidate covering the exact initial
   thread, current draft, empty draft root and history, immutable execution and attributes, compact

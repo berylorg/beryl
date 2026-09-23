@@ -83,6 +83,21 @@ distinguishes exact generated schemas from newer-checkout processor/reducer corr
 does not yet establish the exact 0.146.0 source semantics required by CAS-live authority. Preserve
 that proof gate before adapter implementation, including the permitted unavailable outcome.
 
+### Discussion Creation Factory Inventory
+
+On 2026-09-23, branch-gate readiness initially assumed an existing production discussion-creation
+participant. Concrete inspection disproved that assumption: `CreateThread::records` creates only
+ordinary threads, and `ThreadAttributesRecord::branch_discussion_open` is reached only through
+`test_faults::open_branch_thread_attributes`, explicitly documented as a fixture for a future
+production mutation. Accepted branch-shaped records and archive tests do not supply creation.
+
+The same proposal incorrectly broadened pristine deletion to discussions. `pristine_thread::is_eligible`
+requires an ordinary root with no lineage parent or context; branch creation instead remains durable
+if subsequent activation fails. The authority was corrected to require gate absence only for the
+existing ordinary fallback closure. The plan moves production discussion-creation readiness ahead
+of gate integration without expanding deletion or enabling the branch handler. Concrete factory
+inventory, not fixture availability, must precede the next implementation acceptance.
+
 ## Session-Only Facade Removal
 
 Complete routine `BerylState::register` now acquires every required state and theme handle in one
