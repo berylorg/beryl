@@ -166,7 +166,7 @@ pub fn prepare_thread_catalog_projection(
     Ok(ThreadCatalogProjectionPreparation::Publish(command))
 }
 
-fn validate_execution_binding(
+pub(crate) fn validate_execution_binding(
     summary: &ThreadCatalogSummaryRecord,
     source: &RuntimeRootCatalogSource,
 ) -> Result<(), CatalogProjectionBuildError> {
@@ -205,7 +205,7 @@ fn project_claim(
     ))
 }
 
-fn project_facts(
+pub(crate) fn project_facts(
     summary: &ThreadCatalogSummaryRecord,
     source: &RuntimeRootCatalogSource,
     claim: CatalogClaimSummary,

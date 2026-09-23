@@ -23,6 +23,7 @@ pub enum FaultPoint {
     AfterCommitBeforePersist,
     AfterPersist,
     BeforeVerification,
+    BeforeReconciliationSnapshot,
     BeforeReopen,
     AfterReopen,
     BeforeSidecarRootDirectorySync,

@@ -73,20 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 522: Establish Exact Initial Catalog Publication (finished)
+# Phase 521: Compose Discussion Creation And Catalog Custody (finished)
 
-Accepted original-handle publication and home-bound immutable outcome evidence over the exact
-primary and recency records. All 26 catalog/source/recovery cases passed
-(`44619dc9-94c4-4c29-897f-80ff6effc40f`), including six new partial-state, stale/foreign authority,
-identity and ambiguous-outcome cases. App integration check and independent review passed.
-No scan, deletion or cross-domain outcome decision was added.
-# Phase 521: Compose Discussion Creation And Catalog Custody (wip)
-
-Compose the typed Syndic creation and unclaimed catalog participant through one exact app operation
-with stable captured request and synchronous registry transfer. Verify cancellation, acknowledgement
-loss and home replacement preserve the same child identity without duplicate creation; ordinary
-activation remains a separate later GUI workflow. Independently review before gate/job integration.
-
+Accepted the atomic unclaimed discussion/catalog operation with process-bounded custody, original
+admission epoch and shared audit disposition. Nine app creation/catalog cases passed
+(`fb38f4a1-78c1-4b1a-9caf-50644cc06a8d`); two final catalog-collision/claim cases passed
+(`90b5b8a4-b34f-44bc-8a97-2938ffb74254`). Evidence covers cancellation, acknowledgement loss,
+process and home replacement, partial closure, and explicit retry of cached reconciliation failure.
+App integration check and independent review passed. GUI activation and job integration remain open.
 # Phase 515: Implement Discussion Handoff Gate Participants (pending)
 
 Extend the accepted initial Syndic gate foundation with authenticated admission, exact release
@@ -95,12 +89,13 @@ stale revisions, wrong branch/turn/binding, queued-input races, overflow, missin
 candidate fencing and exact old/new mutation outcomes. These are typed participants only; gate
 enforcement and cross-domain app composition remain separate and branch dispatch stays unavailable.
 
-Ordering correction: production discussion creation is absent; the only open-branch attributes
-factory use is a test-fault fixture. Existing pristine deletion also excludes discussion lineage.
-Do not absorb branch creation or broaden deletion in this phase. Establish creation first under
-phase 518 and its implementation phases; see the
-[factory evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
-
+Blocked on 2026-09-23: the proposed separate Syndic participants conflict with the store's explicit
+one-participant-per-domain rule. Parent validation must execute inside the single Syndic admission
+mutation, and successful release/archive must be one Syndic mutation composed with the State job
+transition. The [composition evidence](failures/discussion-command-composition.md) records the
+recommended bounded contract correction. Await Operator direction under the instruction to stop
+when a planned step cannot technically work; do not add sequential commits or a generic multiplexer.
+Discussion creation and its catalog custody are now accepted; no discussion deletion is introduced.
 # Phase 516: Enforce Discussion Mutation Gates (pending)
 
 Apply the pending/archive checks at durable input, draft edit/history, replacement/path and

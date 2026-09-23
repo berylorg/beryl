@@ -73,6 +73,10 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   timestamp and typed Syndic source witness. Its admission uses the configured bounded operation
   capacity and never retains more than the contract's selected-text limit per admitted operation.
   Cancellation before commit drops unpublished preparation; it cannot cancel a committed creation.
+- Process-owned operation capacity survives home-service replacement. Retained audit evidence shares
+  the same bounded operation slot and immutable selected text, without retaining an old home service.
+  Preparation captures the process admission epoch; execution holds that admission through commit
+  outcome handling and any synchronous registry handoff. Shutdown/reopen cannot revive old preparation.
 - The app composes Syndic creation with the exact unclaimed Beryl catalog row in one `SyncAll`
   command. No session/window claim or backend request belongs to that command. Exact created
   outcome returns the same discussion identity for later ordinary activation; activation failure
@@ -81,6 +85,9 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   typed revisions. An indeterminate outcome transfers custody synchronously to the sole home
   registry before responding or cancelling. Exact old grants ordinary noncommit handling; exact
   new reconstructs the committed creation result; partial or conflicting state stays unavailable.
+  Evidence retained before execution shares the exact attempt's disposition and installed registry
+  handle. Visible natural records alone cannot turn an unresolved indeterminate attempt into success;
+  the audit must join that scope and honor pending or collision outcomes before reporting creation.
   GUI busy state, selection presentation and activation retry remain feature-owned.
 
 ## Tools And Lifecycle Yield

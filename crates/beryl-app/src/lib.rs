@@ -184,6 +184,7 @@ pub mod composer_host;
 pub mod composer_marker_seal;
 pub mod conversation_tools;
 pub mod crash_reporting;
+pub mod discussion_creation;
 mod dynamic_tool_namespace;
 pub mod input_admission;
 pub mod lifecycle_attention;

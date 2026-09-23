@@ -311,6 +311,10 @@ impl HomeStore {
             admission.fail(FailureSeverity::Structural);
             failure(ReconciliationFailureInner::GenerationPoisoned)
         })?;
+        #[cfg(feature = "test-faults")]
+        self.faults
+            .check(crate::fault::FaultPoint::BeforeReconciliationSnapshot)
+            .map_err(|source| failure(ReconciliationFailureInner::Snapshot(Box::new(source))))?;
         let snapshot = generation.database.snapshot().map_err(|source| {
             let source = ClassifiedFjallError::direct(source);
             signal_structural(&admission, source.severity());
