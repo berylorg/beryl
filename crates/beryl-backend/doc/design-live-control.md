@@ -38,6 +38,13 @@ observation. Neither a mode result nor unverified metadata grants effect or disp
 
 ## Approval and Response Capabilities
 
+Passive failed-service capture returns the exact approval request through an explicit unanswered
+completion. The backend validates it against the originating responder, then disposes both without
+denial, interruption or another response. Identity mismatch fails the connection without invoking
+the healthy automatic-denial fallback. A successful unanswered completion permits subsequent
+source-ordered receive but establishes no approval, denial or stop evidence. The app may select
+this outcome only after exact service failure; ordinary approval routing retains its contracts.
+
 - Foreground approvals normalize to compact non-cloneable events with bounded request identity, closed kind, thread/turn/item route, exact-session response capability, and required deny/interrupt facts. Command text, cwd, reason, permission bodies, raw parameters, and pretty payloads are discarded.
 - One shared response state belongs to its exact originating session: response-required, automatically denied, or caller-denied. A foreign session or second response is rejected locally. Protocol-specific denial exists for command-execution, file-change, and permission-expansion approvals without deciding product policy.
 - Read-only approval and dynamic-tool response observations expose an opaque exact-request revision,

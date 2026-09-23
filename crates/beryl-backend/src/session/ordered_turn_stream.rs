@@ -201,6 +201,16 @@ impl ManagedBackendSession {
         let kind = request.kind();
         let result = sink.submit(OrderedTurnStreamOperation::Approval(request));
         match result {
+            Ok(OrderedTurnStreamCompletion::Approval(
+                ApprovalOperationCompletion::Unanswered { request },
+            )) => {
+                if request.kind() != kind || !responder.matches(&request) {
+                    return Err(ManagedBackendError::OrderedTurnStreamUnexpectedCompletion {
+                        method: method.to_string(),
+                    });
+                }
+                Ok(true)
+            }
             Ok(OrderedTurnStreamCompletion::Approval(ApprovalOperationCompletion::Routed {
                 interruption,
             })) => {

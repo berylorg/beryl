@@ -136,8 +136,13 @@ pub enum ApprovalInterruption {
 
 /// Synchronous result of applying one approval operation to exact app target authority.
 pub enum ApprovalOperationCompletion {
+    Unanswered {
+        request: ApprovalRequest,
+    },
     /// The exact route accepted the approval and any separate driver obligation was admitted.
-    Routed { interruption: ApprovalInterruption },
+    Routed {
+        interruption: ApprovalInterruption,
+    },
     /// A classified exact target failed locally and returned the non-routed approval.
     TargetFailed {
         request: ApprovalRequest,
@@ -148,6 +153,10 @@ pub enum ApprovalOperationCompletion {
 impl std::fmt::Debug for ApprovalOperationCompletion {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unanswered { request } => formatter
+                .debug_struct("Unanswered")
+                .field("request", request)
+                .finish(),
             Self::Routed { interruption } => formatter
                 .debug_struct("Routed")
                 .field("interruption", interruption)

@@ -189,3 +189,9 @@ wrong-turn errors preserve their exported type. The 97 ingress tests and final 1
 cover source release, late transitions, closed schema, live request response, subsequent echoes and
 mid-discard cancellation. Backend/app checks and independent review passed. The remaining boundary
 is exact failed-service mode selection and loss qualification in app ingestion.
+
+The approval path also needed an explicit unanswered completion: both generic success and generic
+rejection otherwise entered healthy denial/error handling. The accepted completion returns the
+exact request for responder-identity validation and releases both handles without writing a
+response; foreign identity fails without denial fallback. All 28 approval/custody tests, app check
+and independent review passed. Passive ingestion must select this only after exact service failure.

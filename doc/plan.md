@@ -73,13 +73,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 507: Support Passive Delayed Steering Echo Consumption (finished)
+# Phase 508: Preserve Unanswered Approval Custody During Passive Capture (finished)
 
-Accepted explicit passive consumption and bounded unverified correlation, with irreversible replay
-release and closed-schema validation. Healthy typed failures and request results remain exact.
-Backend/app checks, 97 ingress tests and the final 12 passive cases passed; independent review
-accepted the corrected count/variant transition and late-cancellation boundaries. App mounting
-remains below.
+Accepted exact-request unanswered approval disposal without denial or interruption. Foreign request
+substitution retires the connection without sending a response. All three kinds, handle release
+and continued receive passed 28 approval/custody tests, app compatibility check and independent
+review. Failed-service selection remains below.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (wip)
 
