@@ -62,7 +62,7 @@ impl PreparedDiscussionChildSettlement {
                 new_gate,
                 attributes: None,
             },
-            settlement: Some(self),
+            proof: ReleaseProof::ChildSettlement(self),
         })
     }
 

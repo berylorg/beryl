@@ -11,8 +11,13 @@ use beryl_model::{
 
 mod admission;
 mod outcome;
+mod parent;
 mod settlement;
 pub use outcome::DiscussionHandoffStatus;
+pub use parent::{
+    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
+    PreparedDiscussionParent,
+};
 pub use settlement::{
     DiscussionChildSettlement, DiscussionChildSettlementDisposition,
     PreparedDiscussionChildSettlement,
@@ -77,7 +82,13 @@ pub struct PreparedDiscussionHandoff {
     revision: DomainRevision,
     request: DiscussionHandoffMutation,
     intent: DiscussionHandoffIntent,
-    settlement: Option<PreparedDiscussionChildSettlement>,
+    proof: ReleaseProof,
+}
+
+enum ReleaseProof {
+    None,
+    ChildSettlement(PreparedDiscussionChildSettlement),
+    ParentArchived(PreparedDiscussionParent),
 }
 
 impl PreparedDiscussionHandoff {
@@ -167,7 +178,7 @@ impl SyndicStorage {
             handle: self.handle.clone(),
             revision,
             request,
-            settlement: None,
+            proof: ReleaseProof::None,
             intent: DiscussionHandoffIntent {
                 home_id: store.home_id(),
                 old_gate,
@@ -186,8 +197,10 @@ impl DomainMutation<SyndicDomain> for PreparedDiscussionHandoff {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        if let Some(settlement) = &self.settlement {
-            settlement.validate_settlement(reader)?;
+        match &self.proof {
+            ReleaseProof::None => {}
+            ReleaseProof::ChildSettlement(settlement) => settlement.validate_settlement(reader)?,
+            ReleaseProof::ParentArchived(parent) => parent.validate_parent(reader)?,
         }
         let thread = self.intent.old_gate.thread_id();
         let actual = required::<DiscussionHandoffGatesFamily>(reader, &thread)?;

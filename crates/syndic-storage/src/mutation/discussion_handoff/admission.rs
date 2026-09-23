@@ -52,6 +52,12 @@ pub(super) fn validate(
     }
 
     let parent = required::<ThreadsFamily>(reader, &request.parent.thread_id)?;
+    let parent_attributes = required::<ThreadAttributesFamily>(reader, &request.parent.thread_id)?;
+    if parent_attributes.thread_id() != request.parent.thread_id
+        || parent_attributes.archive().is_archived()
+    {
+        return Err(SyndicMutationError::DiscussionHandoffConflict);
+    }
     let parent_gate =
         super::super::input_gate::required_input_gate(reader, &request.parent.thread_id)?;
     if parent.id() != request.parent.thread_id

@@ -685,6 +685,10 @@ pub use discussion_gate::{
 };
 pub use discussion_source::{DiscussionSourceError, PreparedDiscussionSource};
 pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation};
+pub use mutation::{
+    DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
+    PreparedDiscussionParent,
+};
 pub use mutation::{DiscussionChildSettlement, DiscussionChildSettlementDisposition, PreparedDiscussionChildSettlement};
 pub use mutation::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
 pub use domain::SyndicStorage;

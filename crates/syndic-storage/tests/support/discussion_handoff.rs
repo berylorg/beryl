@@ -9,21 +9,41 @@ pub fn active_request(
     intent_id: ResolutionIntentId,
     job_id: JobId,
 ) -> AdmitDiscussionHandoff {
+    active_request_for(
+        store,
+        storage,
+        id(36),
+        draft_id(201),
+        SyndicItemId::from_bytes([202; 16]),
+        intent_id,
+        job_id,
+    )
+}
+
+pub fn active_request_for(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    child_id: beryl_model::SyndicThreadId,
+    replacement_draft: beryl_model::SyndicDraftId,
+    item_id: SyndicItemId,
+    intent_id: ResolutionIntentId,
+    job_id: JobId,
+) -> AdmitDiscussionHandoff {
     let limit = SyndicPointReadLimit::new(400_000).unwrap();
     let turn = exact_cas::submit_current_draft(
         store,
         storage.clone(),
-        id(36),
-        draft_id(201),
-        SyndicItemId::from_bytes([202; 16]),
+        child_id,
+        replacement_draft,
+        item_id,
         "Resolve this discussion",
         timestamp(10),
     );
-    let source = exact_cas::establish_turn(store, storage.clone(), id(36), turn, timestamp(11));
-    let thread = storage.thread(store, id(36), limit).unwrap().unwrap();
-    let gate = storage.input_gate(store, id(36), limit).unwrap().unwrap();
+    let source = exact_cas::establish_turn(store, storage.clone(), child_id, turn, timestamp(11));
+    let thread = storage.thread(store, child_id, limit).unwrap().unwrap();
+    let gate = storage.input_gate(store, child_id, limit).unwrap().unwrap();
     let binding = storage
-        .current_binding(store, id(36), limit)
+        .current_binding(store, child_id, limit)
         .unwrap()
         .unwrap();
     let owner = thread.context_owner_id().unwrap();
@@ -31,13 +51,19 @@ pub fn active_request(
         .context_envelope(store, owner, limit)
         .unwrap()
         .unwrap();
-    let parent = storage.thread(store, id(30), limit).unwrap().unwrap();
-    let parent_gate = storage.input_gate(store, id(30), limit).unwrap().unwrap();
+    let parent = storage
+        .thread(store, thread.parent_thread_id().unwrap(), limit)
+        .unwrap()
+        .unwrap();
+    let parent_gate = storage
+        .input_gate(store, parent.id(), limit)
+        .unwrap()
+        .unwrap();
     AdmitDiscussionHandoff {
-        thread_id: id(36),
+        thread_id: child_id,
         thread_revision: thread.revision(),
         attributes_revision: storage
-            .thread_attributes(store, id(36), limit)
+            .thread_attributes(store, child_id, limit)
             .unwrap()
             .unwrap()
             .revision(),

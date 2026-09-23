@@ -73,20 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 530: Prepare Exact Parent Job Transition Evidence (finished)
+# Phase 531: Prove Parent Eligibility And Archived-Parent Release (finished)
 
-Accepted shared source-authenticated handoff job preparations and exact old/new witnesses for
-parent start and archived-parent failure. Ten State tests, nine app settlement regressions, app
-check and independent review passed. Canonical-item identity remains in the joined Syndic proof.
+Accepted bounded ordinary/candidate parent eligibility and proof-checked archived-parent child
+gate release, plus fresh resolution refusal after parent archive. Four focused cases, thirteen
+handoff regressions, app check and independent review passed. No input or CAS work is admitted.
 
-# Phase 531: Prove Parent Eligibility And Archived-Parent Release (wip)
-
-Implement Syndic's bounded parent eligibility witness and one-participant archived-parent proof
-with child-gate release. Verify nested parent identity, busy/pending parent, ordinary versus special
-draft intent, archived disposition, stale proof, candidate access and unchanged child/parent input.
-No generated input or CAS work belongs to this boundary. Independently review.
-
-# Phase 532: Compose Archived-Parent Failure Convergence (pending)
+# Phase 532: Compose Archived-Parent Failure Convergence (wip)
 
 Join the accepted State transition and Syndic archived-parent release through bounded app custody
 for ordinary and candidate convergence; verify atomic failure, no parent input, cancellation and

@@ -14,13 +14,17 @@ fn limit() -> SyndicPointReadLimit {
 pub fn committed(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command.add(contribution).unwrap();
-    assert!(matches!(
-        store.execute(command),
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ));
+    let outcome = store.execute(command);
+    assert!(
+        matches!(
+            outcome,
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
 }
 
 pub fn prepare_acceptance(store: &HomeStore, storage: &SyndicStorage) -> FirstAcceptance {
