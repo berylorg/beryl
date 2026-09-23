@@ -28,6 +28,10 @@ durable job records and transitions plus compact catalog schema, normalization, 
   all nonfailure checkpoints; unrecoverable post-append is terminal only at `starting_parent` or
   `parent_active`; interruption, incomplete termination, and terminal failure are terminal only at
   `parent_active`.
+- Child input remaining after steering settlement and resolving-turn convergence is a distinct
+  terminal failure kind valid only at `waiting_resolving_turn`, with no parent identity. It retains
+  the immutable attempt and leaves the live index. The app supplies exact Syndic child-queue proof
+  and releases the discussion gate atomically; State does not read or discard child input.
 - One shared valid state/transition matrix governs decode, mutation admission, retryability,
   checkpoint eligibility, and bounded recovery reads. Resolution text is at most 65,536 Unicode
   scalar values and 262,144 UTF-8 bytes; failure detail is at most 2 KiB. Failure kind must agree

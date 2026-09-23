@@ -106,6 +106,22 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
         .unwrap()
         .unwrap();
     let source = CasTurnSource::new(route.cas_thread_id().clone(), route.cas_turn_id().clone());
+    let at = storage
+        .current_draft(store, id(36), limit)
+        .unwrap()
+        .unwrap()
+        .draft()
+        .updated_at()
+        .unix_millis()
+        .max(
+            storage
+                .turn_state(store, turn, limit)
+                .unwrap()
+                .unwrap()
+                .updated_at()
+                .unix_millis(),
+        )
+        + 1;
     exact_cas::admit_event(
         store,
         storage.clone(),
@@ -113,7 +129,7 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
         turn,
         &source,
         SourceEventPayload::TurnActivated,
-        timestamp(11),
+        timestamp(at),
     );
     exact_cas::correlate_user_item(
         store,
@@ -122,7 +138,7 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
         turn,
         SyndicItemId::from_bytes([202; 16]),
         &source,
-        timestamp(12),
+        timestamp(at + 1),
     );
     exact_cas::admit_event(
         store,
@@ -133,7 +149,7 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
         SourceEventPayload::TurnEnded(
             TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
         ),
-        timestamp(13),
+        timestamp(at + 2),
     );
     exact_cas::converge_and_release_terminal_history(store, storage.clone(), id(36), turn);
 }

@@ -73,22 +73,22 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 515: Implement Discussion Handoff Gate Participants (finished)
+# Phase 516: Enforce Discussion Mutation Gates (finished)
 
-Accepted authenticated admission with an embedded parent-frontier proof, exact failure release and
-one combined success release/archive participant. Removed standalone archive publication; domain
-uniqueness remains enforced. Focused admission, title, recovery and atomic archive cases passed
-(`6c9b6518-20c5-4a04-996b-de86ae0652ac`, five cases); real queued-input fencing passed
-(`e47ad266-4e68-4c0a-b391-3d74b6c02f3f`); corrected catalog regression and release after resolving
-execution completed passed (`6b27b152-bfa3-4cb1-b77f-ff992c37a19e`). App check and independent review
-passed. The [approved composition correction](failures/discussion-command-composition.md) is implemented.
+Accepted pending/archive guards at input, draft/history publication, selected-path and lifecycle
+successor boundaries. Nine handoff cases passed (`f1b8e5e7-c46b-4e9f-acbc-0aa52de32045`), including
+fresh-revision refusal, release restoring edits, steering rejection, exact stop and terminal queue
+preservation. Seventeen promotion, history, compaction and disposal regressions passed
+(`73667766-cca1-4ab8-9d81-f10e5b84bb23`); app check and independent review passed. Operator approved
+the [steering settlement correction](failures/discussion-steering-handoff.md) on 2026-09-24;
+concrete settlement proofs and coordinator composition remain separate.
 
-# Phase 516: Enforce Discussion Mutation Gates (wip)
+# Phase 523: Specify Child Steering Settlement Before Handoff (wip)
 
-Apply the pending/archive checks at durable input, draft edit/history, replacement/path and
-lifecycle successor publication. Verify that already-admitted steering, exact stop, capture and
-terminal convergence still complete, and concurrent unpublished edits cannot bypass a newly
-admitted gate. Independently review the relevant mutation inventory before acceptance.
+Specify the bounded exact child terminal/queue proof, normal terminal failure disposition and
+atomic State transition with Syndic validation or release required by the accepted steering
+correction. Derive implementation and coordinator phases before admitting parent execution;
+verify delivered, rejected, terminally reclassified and unresolved steering plus restart races.
 
 # Phase 517: Specify Generated Parent Input And Atomic App Admission (pending)
 

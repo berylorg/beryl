@@ -162,6 +162,7 @@ impl DomainMutation<SyndicDomain> for FirstAcceptanceMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        super::discussion_mutation::require_editable(reader, self.acceptance.thread_id())?;
         self.records(reader)
     }
 

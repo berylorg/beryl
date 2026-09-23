@@ -1,7 +1,11 @@
 use super::*;
 use beryl_model::{SyndicDraftId, SyndicItemId};
+#[path = "edit_gates.rs"]
+mod edit_gates;
 #[path = "../draft_edit_history_retention/common.rs"]
 mod edit_support;
+#[path = "mutation_gates.rs"]
+mod mutation_gates;
 #[path = "../draft_edit_history/support.rs"]
 #[allow(dead_code, unused_imports)]
 mod support;
@@ -18,7 +22,7 @@ fn committed(store: &HomeStore, contribution: beryl_home_store::MutationContribu
     ));
 }
 
-fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
+fn prepare_acceptance(store: &HomeStore, storage: &SyndicStorage) -> FirstAcceptance {
     let selected = storage
         .current_draft(store, id(36), limit())
         .unwrap()
@@ -86,7 +90,7 @@ fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
         .unwrap()
         .unwrap();
     let gate = storage.input_gate(store, id(36), limit()).unwrap().unwrap();
-    let acceptance = FirstAcceptance::new(
+    FirstAcceptance::new(
         id(36),
         selected.thread().revision(),
         storage
@@ -104,10 +108,28 @@ fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
         None,
         DraftPieceOperationIdV1::from_bytes([227; 16]),
         timestamp(201),
-    );
+    )
+}
+
+fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
+    let acceptance = prepare_acceptance(store, storage);
     committed(
         store,
         storage.first_acceptance(storage.revision(store).unwrap(), acceptance),
+    );
+}
+
+fn blocked(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    let outcome = store.execute(command);
+    assert!(
+        matches!(outcome, CommandOutcome::NotCommitted { .. }),
+        "{outcome:?}"
+    );
+    assert!(
+        format!("{outcome:?}").contains("DiscussionMutationBlocked"),
+        "{outcome:?}"
     );
 }
 

@@ -99,9 +99,20 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Job states are `waiting_resolving_turn`, `waiting_parent`, `starting_parent`, `parent_active`, `retryable_failed`, `terminal_failed`, and `succeeded`.
 - Runtime unavailable, root unavailable, CAS unavailable, and delivery failure proven before dispatch may enter `retryable_failed` from any of the four non-failure checkpoints. Exact CAS rejection before acceptance may do so only from `starting_parent`. A possibly dispatched parent `turn/start` whose response is lost is not retryable delivery failure.
 - Invariant violation and missing parent may enter `terminal_failed` from any non-failure checkpoint. Unrecoverable post-append may do so only from `starting_parent` or `parent_active`. Parent interruption, incomplete termination, and terminal failure may do so only from `parent_active`.
+- Child input remaining after steering settlement and resolving-turn convergence enters
+  `terminal_failed` from `waiting_resolving_turn`, before any parent input exists. It is a normal
+  terminal disposition, not an invariant violation. Failure and discussion gate release publish
+  atomically; queued child input remains durable and becomes eligible for ordinary processing.
 - The exact failure disposition and checkpoint matrix is one durable schema invariant shared by transition admission and record decoding. Ordinary registration, verification, and recovery reject any persisted pair outside it rather than interpreting the evidence at a different stage.
 - The handoff composer gate exists exactly while the latest attempt is live. A retryable failure retains that gate and its immutable job; a transition to `terminal_failed` removes the gate in the same durable state change.
 - After tool admission, the job waits until the resolving child CAS turn is no longer active and its tool call plus resolution payload are durable. Terminal success, interruption, or explicit incomplete termination may satisfy this `waiting_resolving_turn` condition because accepted intent is already immutable; it does not remove the handoff composer gate.
+- Advancement to `waiting_parent` also requires settled already-admitted steering, completed
+  resolving-turn terminal convergence and zero remaining child accepted input. Delivering or
+  unresolved steering keeps the job waiting. Steering rejected or reclassified to future child
+  input terminally fails the attempt as described above. The writer validates these exact child
+  facts with the State transition; no parent input may be prepared or admitted before that
+  transition. Pending discussion gates prevent new acceptance and successors thereafter, so the
+  proven empty child queue stays empty through parent execution. Recovery applies the same check.
 - `waiting_parent` preserves existing parent accepted-input order. The handoff follows every
   parent input through the job's recorded accepted-input frontier, inclusive, and preserves later
   input already accepted before handoff admission through the normal revisioned admission path.

@@ -135,6 +135,10 @@ impl SettleLifecycleMutation {
         current_operation: CompactionOperationRecord,
     ) -> Result<ContinuationRecords, SyndicMutationError> {
         let request = &self.0;
+        crate::mutation::discussion_mutation::require_editable(
+            reader,
+            request.operation_id.thread_id(),
+        )?;
         if point::<CompactionSettlementReceiptsFamily>(reader, &current_operation.id())?.is_some() {
             return Err(SyndicMutationError::AdmissionIdentityCollision);
         }

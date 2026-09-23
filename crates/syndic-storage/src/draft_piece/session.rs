@@ -432,6 +432,10 @@ impl DomainMutation<SyndicDomain> for OpenSessionMutation {
             return Err(SyndicMutationError::IdentityCollision);
         }
         let selector_matches = selector_matches(reader, self.prepared.request)?;
+        crate::mutation::discussion_mutation::require_editable(
+            reader,
+            self.prepared.request.selector().thread_id(),
+        )?;
         let source = selected_history(reader, self.prepared.request)?;
         let target_key = DraftEditHistoryFrontierKeyV1::session(
             self.prepared.request.selector().draft_id(),

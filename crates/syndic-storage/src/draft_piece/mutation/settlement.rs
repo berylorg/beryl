@@ -17,7 +17,12 @@ enum PreparedWriterClosure {
 }
 
 impl PreparedSettlementContribution {
-    pub(super) fn terminal_writer_evidence(&self) -> Option<(DraftMarkerAdmissionHeadV1, DraftMarkerAdmissionReplayReceiptV1)> {
+    pub(super) fn terminal_writer_evidence(
+        &self,
+    ) -> Option<(
+        DraftMarkerAdmissionHeadV1,
+        DraftMarkerAdmissionReplayReceiptV1,
+    )> {
         match &self.writer {
             Some(PreparedWriterClosure::Terminal(writer)) => Some(writer.outcome_evidence()),
             _ => None,
@@ -148,6 +153,7 @@ fn read_and_authenticate(
         && current.newest_root() == build.predecessor_root()
         && current.newest_history() == build.predecessor_history()
     {
+        crate::mutation::discussion_mutation::require_editable(reader, current.thread_id())?;
         contribute_committed(
             prepared,
             reader,

@@ -54,6 +54,7 @@ impl AdmitMutation {
     ) -> Result<AdmissionRecords, SyndicMutationError> {
         let request = &self.0;
         let target = &request.target;
+        crate::mutation::discussion_mutation::require_editable(reader, target.thread_id())?;
         if request.operation_id.thread_id() != target.thread_id()
             || request.operation_id.provider_turn_id() != target.turn_id()
             || point::<CompactionOperationsFamily>(reader, &request.operation_id)?.is_some()

@@ -339,6 +339,7 @@ impl DomainMutation<SyndicDomain> for AdoptMutation {
         let mut successor_history = None;
         let mut successor_candidate = None;
         if source_is_current {
+            crate::mutation::discussion_mutation::require_editable(reader, current.thread_id())?;
             if point::<super::super::super::DraftPieceSettlementsFamily>(
                 reader,
                 &super::super::super::DraftPieceSettlementKeyV1::new(

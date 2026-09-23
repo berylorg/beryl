@@ -145,6 +145,7 @@ impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        super::discussion_mutation::require_editable(reader, self.promotion.thread_id())?;
         PromotionRecords::build(reader, &self.promotion)
     }
 

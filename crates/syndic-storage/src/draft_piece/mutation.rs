@@ -1781,6 +1781,7 @@ impl DomainMutation<SyndicDomain> for BeginMutation {
         {
             return Err(SyndicMutationError::CurrentDraftConflict);
         }
+        crate::mutation::discussion_mutation::require_editable(reader, session.thread_id())?;
         Ok(Some((target_build, target_receipt, target_session)))
     }
 

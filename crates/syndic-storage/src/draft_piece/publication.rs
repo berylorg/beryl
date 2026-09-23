@@ -1022,6 +1022,10 @@ impl DomainMutation<SyndicDomain> for PublicationMutation {
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
         let request = self.prepared.request;
+        crate::mutation::discussion_mutation::require_editable(
+            reader,
+            request.selector().thread_id(),
+        )?;
         if let Some(record) =
             point::<DraftEditorCandidateSessionsFamily>(reader, &publication_key(request))?
         {

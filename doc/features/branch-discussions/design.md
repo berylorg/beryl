@@ -121,6 +121,11 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 - The discussion immediately enters resolution-pending state and accepts no new composer submission, steering, replacement edit, or other mutation that could alter the resolving path.
 - The composer remains disabled while the admitted attempt is waiting, running, or available for retry after a retryable failure.
 - The discussion remains unarchived until the exact parent handoff turn reaches terminal success.
+- Before sending the resolution to the parent, Beryl waits for already-accepted steering to settle
+  and for the resolving discussion turn to finish. If any accepted message needs another discussion
+  turn, the handoff fails and the discussion reopens without being archived. That message proceeds
+  through normal discussion processing; no parent input is created for this attempt. A later
+  resolution tool call may start a fresh attempt.
 - If the parent is active, unavailable, or temporarily ineligible, the handoff waits without blocking other threads.
 - A retry of already admitted intent retries only that same handoff and cannot change the accepted resolution or create duplicate parent input.
 - A discussion may have only one live admitted attempt. A second resolution cannot be admitted while the current attempt is pending, active, or retryably failed.
