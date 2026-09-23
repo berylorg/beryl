@@ -5,6 +5,7 @@ use beryl_state::{
 };
 use syndic_storage::{
     DiscussionChildSettlement, DiscussionChildSettlementDisposition, DiscussionHandoffGateState,
+    DiscussionParentDisposition, DiscussionParentEligibility,
 };
 
 impl DiscussionSettlementService {
@@ -78,7 +79,12 @@ fn prepare(
     }
     let before = access.revision()?;
     let job = access.job(state, job_id)?;
-    if job.job_id() != job_id || job.lifecycle() != BranchHandoffJobLifecycle::WaitingResolvingTurn
+    if job.job_id() != job_id
+        || !matches!(
+            job.lifecycle(),
+            BranchHandoffJobLifecycle::WaitingResolvingTurn
+                | BranchHandoffJobLifecycle::WaitingParent
+        )
     {
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
@@ -93,34 +99,57 @@ fn prepare(
     {
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
-    let child = access.child(syndic, gate)?;
-    if access.revision()? != before {
-        return Err(DiscussionSettlementError::ConcurrentChange);
-    }
-    let DiscussionChildSettlement::Settled(child) = child else {
-        return Ok(None);
-    };
+    let parent = access.parent(syndic, &job, gate)?;
     let mut command = HomeCommand::new(before).with_cancellation(cancellation);
-    let (transition, gate, result) = match child.disposition() {
-        DiscussionChildSettlementDisposition::Ready => {
-            command.add_validation(child.into_ready_validation()?)?;
-            (
-                HandoffJobTransition::CompleteResolving,
-                None,
-                DiscussionSettlementResult::ReadyForParent,
-            )
+    let (transition, gate, result) = if let DiscussionParentEligibility::Proven(parent) = parent
+        && parent.disposition() == DiscussionParentDisposition::Archived
+    {
+        let release = parent.into_archived_release()?;
+        let intent = release.intent().clone();
+        command.add(release.contribution())?;
+        let evidence = HandoffFailureEvidence::new(HandoffFailureKind::ParentArchived, None)
+            .expect("empty failure detail is bounded");
+        (
+            HandoffJobTransition::ParentArchived(evidence),
+            Some(intent),
+            DiscussionSettlementResult::ParentArchived,
+        )
+    } else {
+        if job.lifecycle() == BranchHandoffJobLifecycle::WaitingParent {
+            if access.revision()? != before {
+                return Err(DiscussionSettlementError::ConcurrentChange);
+            }
+            return Ok(None);
         }
-        DiscussionChildSettlementDisposition::QueuedInput => {
-            let release = child.into_queued_release()?;
-            let intent = release.intent().clone();
-            command.add(release.contribution())?;
-            let evidence = HandoffFailureEvidence::new(HandoffFailureKind::ChildInputPending, None)
-                .expect("empty failure detail is bounded");
-            (
-                HandoffJobTransition::ChildInputPending(evidence),
-                Some(intent),
-                DiscussionSettlementResult::ChildInputPending,
-            )
+        let child = access.child(syndic, gate)?;
+        if access.revision()? != before {
+            return Err(DiscussionSettlementError::ConcurrentChange);
+        }
+        let DiscussionChildSettlement::Settled(child) = child else {
+            return Ok(None);
+        };
+        match child.disposition() {
+            DiscussionChildSettlementDisposition::Ready => {
+                command.add_validation(child.into_ready_validation()?)?;
+                (
+                    HandoffJobTransition::CompleteResolving,
+                    None,
+                    DiscussionSettlementResult::ReadyForParent,
+                )
+            }
+            DiscussionChildSettlementDisposition::QueuedInput => {
+                let release = child.into_queued_release()?;
+                let intent = release.intent().clone();
+                command.add(release.contribution())?;
+                let evidence =
+                    HandoffFailureEvidence::new(HandoffFailureKind::ChildInputPending, None)
+                        .expect("empty failure detail is bounded");
+                (
+                    HandoffJobTransition::ChildInputPending(evidence),
+                    Some(intent),
+                    DiscussionSettlementResult::ChildInputPending,
+                )
+            }
         }
     };
     let prepared = access.transition(state, &job, transition)?;

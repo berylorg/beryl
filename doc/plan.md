@@ -73,19 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 531: Prove Parent Eligibility And Archived-Parent Release (finished)
+# Phase 532: Compose Archived-Parent Failure Convergence (finished)
 
-Accepted bounded ordinary/candidate parent eligibility and proof-checked archived-parent child
-gate release, plus fresh resolution refusal after parent archive. Four focused cases, thirteen
-handoff regressions, app check and independent review passed. No input or CAS work is admitted.
+Accepted atomic ParentArchived failure and child-gate release at both pre-append checkpoints
+through existing bounded ordinary/candidate settlement custody. Twelve app tests, app and shared
+fixture checks, and independent review passed. Cancellation, uncertain outcome and input preservation
+are covered; parent input admission remains separate.
 
-# Phase 532: Compose Archived-Parent Failure Convergence (wip)
-
-Join the accepted State transition and Syndic archived-parent release through bounded app custody
-for ordinary and candidate convergence; verify atomic failure, no parent input, cancellation and
-uncertain outcomes. Keep scheduling and generated parent admission separate.
-
-# Phase 533: Implement Generated Input Provenance And Schema (pending)
+# Phase 533: Implement Generated Input Provenance And Schema (wip)
 
 Replace composer-only accepted-input/order schemas with the closed generated source and direct
 turn/item proof. Implement canonical encodings, bounded reads and structural validation, updating

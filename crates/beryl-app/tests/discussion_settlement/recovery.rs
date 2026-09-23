@@ -13,6 +13,17 @@ fn uncertain_ready_transition_reconciles_validation_only_syndic_participation() 
 fn uncertain_settlement(queued: bool) {
     let fixture = Fixture::new(queued);
     fixture.finish_child();
+    uncertain_outcome(
+        fixture,
+        if queued {
+            DiscussionSettlementResult::ChildInputPending
+        } else {
+            DiscussionSettlementResult::ReadyForParent
+        },
+    );
+}
+
+pub(super) fn uncertain_outcome(fixture: Fixture, expected: DiscussionSettlementResult) {
     let prepared = fixture.prepare();
     let retained = prepared.audit();
     fixture
@@ -34,11 +45,7 @@ fn uncertain_settlement(queued: bool) {
     assert_eq!(fixture.store.pending_reconciliations().len(), 1);
     assert_eq!(
         fixture.audit(&retained),
-        DiscussionSettlementAuditOutcome::Settled(if queued {
-            DiscussionSettlementResult::ChildInputPending
-        } else {
-            DiscussionSettlementResult::ReadyForParent
-        })
+        DiscussionSettlementAuditOutcome::Settled(expected)
     );
     assert!(fixture.store.pending_reconciliations().is_empty());
     fixture.store.close().unwrap();
@@ -48,6 +55,10 @@ fn uncertain_settlement(queued: bool) {
 fn candidate_settlement_uses_fresh_handles_without_ordinary_process_admission() {
     let fixture = Fixture::new(true);
     fixture.finish_child();
+    candidate_outcome(fixture, DiscussionSettlementResult::ChildInputPending);
+}
+
+pub(super) fn candidate_outcome(fixture: Fixture, expected: DiscussionSettlementResult) {
     let stale = fixture.prepare();
     let fence = fixture.process.test_fence().unwrap();
     fixture.faults.fail_next(FaultPoint::BeforeReadConfirmation);
@@ -87,14 +98,14 @@ fn candidate_settlement_uses_fresh_handles_without_ordinary_process_admission() 
     assert!(matches!(
         prepared.execute(),
         DiscussionSettlementOutcome::Committed {
-            result: DiscussionSettlementResult::ChildInputPending,
+            result,
             later_failure: None,
             ..
-        }
+        } if result == expected
     ));
     assert_eq!(
         audit.reconcile_candidate(&access, &syndic, &state).unwrap(),
-        DiscussionSettlementAuditOutcome::Settled(DiscussionSettlementResult::ChildInputPending)
+        DiscussionSettlementAuditOutcome::Settled(expected)
     );
     let store = candidate.publish().unwrap();
     fence.try_reopen(true).unwrap();

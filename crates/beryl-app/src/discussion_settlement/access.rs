@@ -7,7 +7,7 @@ use beryl_state::{
 };
 use syndic_storage::{
     DiscussionChildSettlement, DiscussionHandoffGateRecord, DiscussionHandoffStatus,
-    SyndicPointReadLimit,
+    DiscussionParentEligibility, DiscussionParentRequest, SyndicPointReadLimit,
 };
 
 #[derive(Clone, Copy)]
@@ -59,6 +59,23 @@ impl Access<'_> {
         Ok(match self {
             Self::Ordinary(s) => syndic.prepare_discussion_child_settlement(s, gate)?,
             Self::Candidate(s) => syndic.prepare_discussion_child_settlement_candidate(s, gate)?,
+        })
+    }
+    pub(super) fn parent(
+        self,
+        syndic: &SyndicStorage,
+        job: &BranchHandoffJobRecord,
+        gate: DiscussionHandoffGateRecord,
+    ) -> Result<DiscussionParentEligibility, DiscussionSettlementError> {
+        let request = DiscussionParentRequest {
+            child_gate: gate,
+            parent_thread_id: job.parent_thread_id(),
+            context_owner: job.context_owner_id(),
+            context_digest: job.context_digest(),
+        };
+        Ok(match self {
+            Self::Ordinary(s) => syndic.prepare_discussion_parent(s, request)?,
+            Self::Candidate(s) => syndic.prepare_discussion_parent_candidate(s, request)?,
         })
     }
     pub(super) fn transition(

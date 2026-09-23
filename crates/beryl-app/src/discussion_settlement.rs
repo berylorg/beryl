@@ -21,6 +21,7 @@ pub use recovery::DiscussionSettlementAuditOutcome;
 pub enum DiscussionSettlementResult {
     ReadyForParent,
     ChildInputPending,
+    ParentArchived,
 }
 
 #[derive(Debug, thiserror::Error)]

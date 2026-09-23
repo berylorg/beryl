@@ -618,3 +618,5 @@ pub fn batch(records: impl IntoIterator<Item = FixtureRecord>) -> FixtureBatch {
     }
     batch
 }
+
+pub mod discussion_creation;

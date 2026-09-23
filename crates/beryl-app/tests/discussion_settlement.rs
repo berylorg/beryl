@@ -1,4 +1,6 @@
 #![cfg(feature = "test-faults")]
+#[path = "discussion_settlement/archived_parent.rs"]
+mod archived_parent;
 #[path = "discussion_settlement/atomicity.rs"]
 mod atomicity;
 #[path = "discussion_settlement/cases.rs"]
@@ -79,43 +81,7 @@ impl Fixture {
                 .unwrap()
                 .revision();
         }
-        let admission = BranchHandoffJobAdmission::new(
-            request.intent_id,
-            ResolutionAttemptOrdinal::FIRST,
-            request.thread_id,
-            request.parent.thread_id,
-            request.context_owner,
-            request.context_digest,
-            request.resolving_target.pending().active_turn_id(),
-            ResolutionRequestIdentity::new(
-                request.resolving_target.pending().cas_thread_id().clone(),
-                request.resolving_target.cas_turn_id().clone(),
-                beryl_model::DynamicToolCallId::new("resolve").unwrap(),
-            ),
-            ParentQueueOrdinal::new(request.parent.accepted_high_water),
-            ResolutionText::new("Resolution result").unwrap(),
-        );
-        let job = admission.job_id();
-        request.job_id = job;
-        let handoff = syndic
-            .prepare_discussion_handoff(&store, DiscussionHandoffMutation::Admit(request))
-            .unwrap();
-        let gate = handoff.intent().new_gate();
-        let mut command = HomeCommand::new(store.home_revision().unwrap());
-        command.add(handoff.contribution()).unwrap();
-        command
-            .add(state.durable_jobs().admit_branch_handoff(
-                state.durable_jobs().revision(&store).unwrap(),
-                AdmitBranchHandoffJob::new(admission),
-            ))
-            .unwrap();
-        assert!(matches!(
-            store.execute(command),
-            CommandOutcome::Committed {
-                later_failure: None,
-                ..
-            }
-        ));
+        let (job, gate) = admit_request(&store, &state, &syndic, request);
         let process = ProcessAdmissionGate::new();
         let operations =
             DiscussionSettlementOperations::new(process.clone(), NonZeroUsize::new(1).unwrap());
@@ -153,4 +119,50 @@ impl Fixture {
             .reconcile(&self.store, &self.syndic, &self.state)
             .unwrap()
     }
+}
+
+fn admit_request(
+    store: &HomeStore,
+    state: &BerylState,
+    syndic: &SyndicStorage,
+    mut request: AdmitDiscussionHandoff,
+) -> (JobId, DiscussionHandoffGateRecord) {
+    let admission = BranchHandoffJobAdmission::new(
+        request.intent_id,
+        ResolutionAttemptOrdinal::FIRST,
+        request.thread_id,
+        request.parent.thread_id,
+        request.context_owner,
+        request.context_digest,
+        request.resolving_target.pending().active_turn_id(),
+        ResolutionRequestIdentity::new(
+            request.resolving_target.pending().cas_thread_id().clone(),
+            request.resolving_target.cas_turn_id().clone(),
+            beryl_model::DynamicToolCallId::new("resolve").unwrap(),
+        ),
+        ParentQueueOrdinal::new(request.parent.accepted_high_water),
+        ResolutionText::new("Resolution result").unwrap(),
+    );
+    let job = admission.job_id();
+    request.job_id = job;
+    let handoff = syndic
+        .prepare_discussion_handoff(store, DiscussionHandoffMutation::Admit(request))
+        .unwrap();
+    let gate = handoff.intent().new_gate();
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(handoff.contribution()).unwrap();
+    command
+        .add(state.durable_jobs().admit_branch_handoff(
+            state.durable_jobs().revision(store).unwrap(),
+            AdmitBranchHandoffJob::new(admission),
+        ))
+        .unwrap();
+    assert!(matches!(
+        store.execute(command),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    (job, gate)
 }
