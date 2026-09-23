@@ -73,22 +73,35 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 516: Enforce Discussion Mutation Gates (finished)
+# Phase 523: Specify Child Steering Settlement Before Handoff (finished)
 
-Accepted pending/archive guards at input, draft/history publication, selected-path and lifecycle
-successor boundaries. Nine handoff cases passed (`f1b8e5e7-c46b-4e9f-acbc-0aa52de32045`), including
-fresh-revision refusal, release restoring edits, steering rejection, exact stop and terminal queue
-preservation. Seventeen promotion, history, compaction and disposal regressions passed
-(`73667766-cca1-4ab8-9d81-f10e5b84bb23`); app check and independent review passed. Operator approved
-the [steering settlement correction](failures/discussion-steering-handoff.md) on 2026-09-24;
-concrete settlement proofs and coordinator composition remain separate.
+Accepted the bounded child settlement probe, opaque source-bound preparation, validation-only ready
+path and single-participant proof-checked queued-input release. Specified State's terminal-only
+`ChildInputPending` kind at the resolving checkpoint and the app's atomic identity/custody join.
+Independent readiness review passed; existing terminal-history readers support explicit incomplete
+history and bounded candidate access. Parent scheduling remains gated on the implementations below.
 
-# Phase 523: Specify Child Steering Settlement Before Handoff (wip)
+# Phase 524: Implement Exact Child Settlement Participants (wip)
 
-Specify the bounded exact child terminal/queue proof, normal terminal failure disposition and
-atomic State transition with Syndic validation or release required by the accepted steering
-correction. Derive implementation and coordinator phases before admitting parent execution;
-verify delivered, rejected, terminally reclassified and unresolved steering plus restart races.
+Implement the bounded Syndic settlement probe and opaque original-handle preparation from
+[history storage](../crates/syndic-storage/doc/design-history-storage.md#discussion-child-settlement).
+Ready contributes validation only; queued child input contributes one proof-checked gate release.
+Verify live and unsettled steering waits, terminal reclassification, explicit incomplete history,
+missing/foreign records, stale proof and candidate generation, exact release outcomes and unchanged
+queued records. Run focused regressions and independent review; no State or CAS scheduling here.
+
+# Phase 525: Implement Child-Input Terminal Failure (pending)
+
+Add the closed State failure kind and exact checkpoint/codec validation, preserving existing tags,
+immutable attempt identity and bounds. Verify allowed waiting-resolving transition, rejected later
+checkpoints and retryability, old/new index closure and round-trip recovery. Independently review.
+
+# Phase 526: Compose Child Settlement And Job Transition (pending)
+
+Compose the typed child proof and exact State transition with generation-qualified operation
+custody and bounded reconciliation. Preserve waiting, atomic gate release on child-input failure,
+candidate/runtime separation and no parent input. Verify failure, cancellation, stale generations
+and uncertain outcomes before coordinator scheduling can consume the result.
 
 # Phase 517: Specify Generated Parent Input And Atomic App Admission (pending)
 

@@ -234,6 +234,17 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   finish unpublished, but cannot publish a forbidden edit after the gate changes. Archived
   discussion mutation remains independently closed by its archive attribute. No generic gate check
   may strand the exact resolving turn's terminal history or prevent failure cleanup.
+- Before leaving `waiting_resolving_turn`, the app joins the exact current job and Syndic child
+  settlement preparation under one home command and the coordinator's existing generation and
+  custody fence. `Ready` contributes one Syndic validator plus State resolving completion;
+  `QueuedInput` contributes one Syndic release mutation plus State terminal failure
+  `ChildInputPending`. `Waiting` contributes nothing and does not reserve parent input. The app
+  checks the job's discussion, intent and resolving-turn identities against the pending gate.
+  Candidate convergence uses the same decision with explicit candidate access and no CAS work.
+- These commands use ordinary exact outcome custody: advancing the job without a Syndic write
+  reconciles the State transition closure; failing it with gate release reconciles both mutation
+  closures. Uncertain outcome suppresses advancement and parent scheduling until resolved. No
+  cached child observation substitutes for writer validation or mutation outcome evidence.
 - The stored parent queue ordinal records the parent's accepted-input high-water mark observed
   under the resolution-admission command's exact parent gate revision. It is an ordering frontier,
   not an accepted-input reservation. Parent handoff waits for an idle eligible parent with no live

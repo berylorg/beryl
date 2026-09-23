@@ -32,6 +32,10 @@ durable job records and transitions plus compact catalog schema, normalization, 
   terminal failure kind valid only at `waiting_resolving_turn`, with no parent identity. It retains
   the immutable attempt and leaves the live index. The app supplies exact Syndic child-queue proof
   and releases the discussion gate atomically; State does not read or discard child input.
+  Its closed kind is `ChildInputPending`, encoded as appended failure-kind tag 11; existing tags
+  0 through 10 retain their meaning. Decode, transition admission and failure construction share
+  this checkpoint restriction, and retryable construction rejects the kind. Existing job record
+  size and failure-detail limits remain unchanged.
 - One shared valid state/transition matrix governs decode, mutation admission, retryability,
   checkpoint eligibility, and bounded recovery reads. Resolution text is at most 65,536 Unicode
   scalar values and 262,144 UTF-8 bytes; failure detail is at most 2 KiB. Failure kind must agree

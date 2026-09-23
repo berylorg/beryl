@@ -112,6 +112,30 @@ path changes, and lifecycle successor admission. Existing capture, already-admit
 stop/terminal convergence and cleanup preserve access to their exact admitted scope. The app
 composes these checks with the system's whole-operation custody before exposing resolution.
 
+## Discussion Child Settlement
+
+- A bounded probe accepts the exact pending discussion gate, including intent, job and resolving
+  turn. It authenticates that gate, the unarchived discussion, its selected resolving turn and
+  terminal history, the input gate and current binding. A missing or contradictory identity is an
+  error, never an empty queue. In-flight turn, steering or terminal-history convergence is `Waiting`.
+- Settlement requires proven terminal resolving-turn state, the existing complete terminal-history
+  publication proof (including explicit incomplete history), an idle input gate, no live steering
+  and no active binding. Nonzero accepted future-turn count then yields `QueuedInput`; zero total
+  live input yields `Ready`. Neither result consumes accepted input, opens another turn or calls CAS.
+- Ordinary and explicit candidate probes use bounded typed point reads under stable source domain
+  revision and fresh handles. Settled results carry opaque preparation bound to that original
+  handle, home identity, domain revision and exact pending gate. `Waiting` grants no command
+  capability. Candidate preparation does not publish ordinary home access or scheduling authority.
+- A `Ready` preparation exposes one Syndic validation contribution for atomic composition with
+  State's resolving-completion transition. A `QueuedInput` preparation exposes one gate-release
+  mutation that revalidates the settlement proof inside the same Syndic participant. Wrong-result
+  use is rejected. The latter composes with State's child-input terminal failure and preserves all
+  queued content, draft and history. No separate same-domain validator is added beside that release.
+- Writer preparation repeats the exact bounded settlement check before either publication. Source
+  revision changes, stale handles, changed gate or changed disposition reject the whole command.
+  Ready validation writes no Syndic records; queued release uses the existing exact gate old/new
+  outcome witness. Read-only settlement observations are not mutation outcome evidence.
+
 ## Pristine Thread Abandonment
 
 Ordinary fallback-thread pristine closure requires absence of a discussion gate. This abandonment
