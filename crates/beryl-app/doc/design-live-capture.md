@@ -71,6 +71,42 @@ gapped. Equal-priority saturation rejects the incoming fact. A gap never clears 
 buffer's lifetime. Retirement consumes the sole buffer and releases its transient contents;
 neither its bytes nor its target descriptors constitute durable evidence or a repair capability.
 
+## Failure Transition And Inventory Handoff
+
+- The ingester moves from durable capture to passive capture after exact service failure. It first
+  installs any indeterminate staging/publication custody, releases its operation permit, and marks
+  the observation spanning that failure lost. It performs no failed-store reread or retry. A local
+  schema/transport failure is not permission to enter passive mode.
+- Passive capture never waits for target inventory or a coordinator action before acknowledging an
+  operation. One bounded slot holds either the current typed assembly or its completed seal and
+  route. When inventory is ready, the ingester qualifies a sealed slot into shared retention and
+  releases it. It also checks readiness at its existing bounded receive wake. A following begin
+  first attempts that handoff; if inventory is still unavailable, it discards the sealed slot,
+  records a sticky connection gap, and reuses the slot. There is no queue behind it.
+- Per-connection transition state retains only bounded schema/identity, slot state and sticky loss
+  flags. Assembly binds the exact connection and service generation before any target exists; it
+  never fabricates a representative target. Compact facts without ready inventory record loss
+  rather than joining a pending queue. Pre-inventory loss applies conservatively to all frozen
+  targets of that exact connection.
+  A failed durable observation stays discarded through route/closure even when inventory arrives
+  meanwhile. Malformed input or transport loss abandons the slot and records conservative loss.
+- The service's single outage-retention owner publishes one complete bounded frozen inventory for
+  its exact home/service failure generation. It reads borrowed witnesses while worker-backed batches
+  retain projection custody, then publishes readiness before consuming those batches or installing
+  attachment-dependent interruption obligations. Interrupt eligibility does not select capture
+  targets. Historical zero-worker connections keep immediate cleanup and do not accumulate in the
+  live inventory. Incomplete or oversized inventory rejects transient capture rather than silently
+  omitting targets; pending slots are released without reopening durable admission.
+- The retention owner and ingress handles share only generation-bound local capture state. Ready,
+  rejected and retired inventory outcomes are terminal for that publication attempt. Cancellation
+  wins further consumption, wakes the ingester without the forwarding lock and returns owned pages
+  only after any command custody handoff. Retirement joins ingress, disposes each assembly/sealed
+  slot and shared retention, and completes before fresh-service construction.
+- Verification covers failure inside an ordinary poll and during an already-dispatched request,
+  unavailable inventory across multiple seals, publication racing a new begin, partial inventory
+  rejection, cancellation during blocked submission, and resource disposal without provider seal
+  or terminal evidence. All cases preserve exact request outcome classification and closed effects.
+
 ## Ordered Ingester And Custody
 
 - Each connection's sole ordered ingester consumes the closed compact-control, approval,

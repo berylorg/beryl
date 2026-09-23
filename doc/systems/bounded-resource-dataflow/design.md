@@ -114,6 +114,12 @@ of every allocation made by Beryl or its dependencies.
   another home. Overflow preserves compact loss state, consumes the remaining observation
   without retaining its content, and attributes loss only after exact routing or conservatively
   to the affected connection's frozen active targets if routing cannot be established.
+- The single outage scratch slot may contain an open observation or a completed unqualified seal;
+  waiting for frozen target inventory adds no second slot or queue. Route metadata shares its
+  configured byte/entry bound. A new begin evicts an unqualified sealed slot if it cannot first
+  hand it to ready retention, recording sticky connection loss. Compact facts that cannot yet be
+  qualified are consumed as explicit loss without creating another pending collection. No ingress
+  acknowledgement waits for inventory, and cancellation releases scratch without a provider seal.
 - Provider-capable foreground connections parse CAS JSON incrementally for size-unbounded text,
   tool arguments, and other payloads that Beryl must retain. Compact controls use generous
   representable-field limits.

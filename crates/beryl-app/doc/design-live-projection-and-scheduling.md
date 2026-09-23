@@ -41,6 +41,33 @@ topology and typed execution surfaces.
   connection rather than forgetting exclusion. Other queues, prefixes, registrations, and worker
   sets use configured finite capacities, not tuning values as semantic authority.
 
+## Passive Receive And Failure Retirement
+
+- The sole connection driver owns receive serialization and exact attachment/worker lifetime.
+  Reading and parsing the stream grants no durable or effect authority and holds no drain-counted
+  live-command permit. Each durable ingester operation obtains its own durable admission; driver work after
+  a poll, including approval handling and quiet-state publication, obtains fresh admission before
+  using healthy-service APIs. A failure between receipt and that admission prevents those effects.
+- Outbound commands retain their existing admission, dispatch evidence, response correlation and
+  exact completion custody. Failure does not release an outstanding non-idempotent request as if it
+  never dispatched. Notifications interleaved with its response use the same nonwaiting passive
+  ingestion contract, so request settlement can release its original permit without awaiting the
+  coordinator's inventory. No request is replayed or newly authorized by passive receipt.
+- After exact persistent failure, the driver rejects queued ordinary commands and may continue
+  passive polling on the original connection while the failed service remains alive. It serializes
+  only already-authorized failure interruptions with that polling; receipt cannot authorize an
+  approval response, tool execution, continuation, new turn, or durable publication. Ordinary
+  shutdown and explicit cancellation instead stop polling. No wait for a terminal provider event
+  extends failed-service retirement. A passive transport or schema failure directly signals exact
+  ingress cancellation and stops the driver; it cannot depend on healthy-command admission to
+  perform retirement.
+- Each connection retains an exact non-authorizing ingress-cancellation handle established with its
+  original broker. Retirement signals it before acquiring the forwarding attachment lock or joining
+  the driver. The handle cancels/wakes that consumer only; it cannot submit work, access the backend,
+  publish to storage, or target a replacement. Acknowledgement closure still follows return of the
+  current operation and required reconciliation handoff. Driver and ingester joins precede attachment
+  disposal; transient bytes and cancellation handles never transfer to a replacement service.
+
 ## Projection Authority And Leases
 
 - A projection is usable only with exact home, service, runtime, managed-process, connection,

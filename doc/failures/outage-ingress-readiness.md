@@ -132,11 +132,15 @@ Independent readiness review and root source inspection on 2026-09-23 invalidate
   `AckSlot::wait` intentionally keeps waiting for exact operation custody even when cancelled.
 
 This is a Beryl lifecycle prerequisite, not renewed CAS ordering rejection. The buffering exception
-and frozen-batch custody remain valid. Before resuming implementation, resolve passive receive,
-driver permit ownership, complete inventory delivery and cancellation/join as one protocol in
-[app live projection](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md) and
-[app live capture](../../crates/beryl-app/doc/design-live-capture.md), under the existing system policy.
-Do not bypass the reconciliation handoff, invent durable acknowledgement, reopen effects, or use
-phase ordering to hide the required driver change. Then derive its bounded implementation gate before
-ordinary outage mounting. Evidence is source inspection plus independent review, not a reproduced
-runtime hang; no transition source was changed or tests run during this diagnosis.
+and frozen-batch custody remain valid. The accepted resolution separates passive receive from durable-command admission and never waits
+for inventory before acknowledging ingress. Existing dispatched requests keep their exact permits,
+outcome custody and timeouts. One bounded assembly slot may hold a validated seal; if inventory is
+still unavailable when a new begin needs it, eviction records sticky connection loss. Compact facts
+without inventory record loss without another queue. Exact cancellation is signaled before the
+forwarding lock, and passive transport/schema failure cannot depend on healthy retirement admission.
+The system resource policy and [app live projection](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md)
+and [app live capture](../../crates/beryl-app/doc/design-live-capture.md) own the accepted protocol.
+Independent design review passed. Driver primitives, passive ingestion and ordinary publisher
+mounting remain separate implementation gates; design acceptance alone does not enable capture.
+The invalidated cycle was established by source inspection and independent review, not a reproduced
+runtime hang. CAS and the bounded buffering exception remain unchanged.

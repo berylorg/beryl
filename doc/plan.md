@@ -69,38 +69,33 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 503: Retain Frozen Target Custody Through Inventory Handoff (finished)
+# Phase 504: Specify Nonwaiting Passive Capture And Driver Custody (finished)
 
-Accepted batch-owned projection custody with borrowed exact witnesses and disposal on consumption,
-drop, unwind or partial collection failure. Only worker-backed batches accumulate; zero-worker
-historical connections retain immediate bounded cleanup. Independent review and focused failure,
-disposal and historical-capacity tests passed; formatting and whitespace checks passed. See
-[the custody lesson](failures/outage-ingress-readiness.md#frozen-inventory-custody).
+Accepted non-authorizing receive, unchanged outstanding-request custody, nonwaiting one-slot
+pre-inventory capture with explicit loss, and independently reachable cancellation. System and app
+authorities align; independent semantic review passed. The driver-cycle blocker is resolved in
+design, with implementation and ordinary mounting still separate below. CAS remains unchanged.
+
+# Phase 505: Separate Driver Receive Lifetime From Effect Admission (wip)
+
+Implement non-authorizing ordinary receive and fresh post-poll effect admission, plus exact ingress
+cancellation before forwarding-lock acquisition. Preserve outbound request permits and outcomes.
+Verify failure during synchronous ingress, effect rejection after gate closure, cancellation and
+joined retirement without waiting for a provider seal. Independently review the receive and disposal
+cuts. Passive failed-gate polling is connected by the ingester phase after its consumer exists.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 
-Implement the ordered ingester's durable-to-transient mode transition, frozen active-target
-custody, passive acknowledgement meaning and cancellation/join boundary. Verify mid-observation
-failure, indeterminate handoff before acknowledgement, no durable retry or new effect authority,
-missing-route conservative loss, and retirement without waiting for terminal evidence. Reuse the
-accepted assembler and retention component; independently review custody and lifecycle cuts before
-integration into ordinary service failure.
-Use the accepted frozen-batch witness borrow before consuming worker-backed batches. Release the
-ingester live-command permit before waiting for the coordinator, which drains those permits first.
-Resume from the existing `Ingester::run_loop` terminal-on-store-failure cut and accepted
-`outage_buffer::OutageAssembly`. Seal only at the validated backend provider seal; malformed input
-and transport loss must abandon. Preserve the existing registry handoff before any acknowledgement.
-
-Blocked on 2026-09-23: an ingester-only transition cannot work. The driver retains a drain-counted
-poll permit while synchronously waiting for the ingester; awaiting frozen inventory before reply
-therefore prevents the coordinator's pre-freeze drain. The closed-gate driver path also stops normal
-stream polling, and terminal cancellation waits behind the same forwarding mutex as submission.
-First resolve passive driver polling, outstanding permit custody, inventory delivery and cancellation
-ordering together in the app's live-projection/live-capture authority, then derive the driver
-prerequisite before resuming this phase. Preserve reconciliation-before-acknowledgement and no new
-effect authority; moving mounting earlier cannot remove this cycle. See
-[the reviewed diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition).
-No source changes were made for this blocked transition.
+Implement nonwaiting durable-to-passive ingestion and the driver's failed-gate passive polling using
+the accepted receive/cancellation primitives. Reuse bounded assembly and retention; one slot holds
+an open or sealed unqualified observation while inventory is pending. Verify exact failure fencing,
+reconciliation before acknowledgement, whole-observation loss across failure, slot eviction/gaps,
+no effects or retries, and cancellation/join without provider completion. Use generation-bound
+inventory outcomes and independently review custody before ordinary service mounting.
+The service inventory publisher and shared-retention lifetime are mounted by phase 479. Preserve
+explicit unavailable capture until that composition is present; helper tests alone do not accept
+ordinary outage capture. The [driver-cycle diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition)
+remains evidence for the required nonwaiting protocol, not authority for an ingester inventory wait.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 

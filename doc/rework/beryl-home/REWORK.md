@@ -455,7 +455,8 @@
   encoded byte limits and sticky gap tracking; focused tests and independent review passed.
 - [x] Accepted bounded unpublished outage assembly with exact late routing, explicit loss attribution and independently reviewed retention priorities.
 - [x] Accepted bounded frozen-target custody through witness handoff and projection disposal.
-- [ ] Resolve the passive driver polling and cancellation protocol in [app live projection](../../../crates/beryl-app/doc/design-live-projection-and-scheduling.md) and [live capture](../../../crates/beryl-app/doc/design-live-capture.md) before accepting failed-store ingress lifetime and retirement.
+- [x] Specified nonwaiting passive receive, bounded pre-inventory capture and independent cancellation in the app and system authorities.
+- [ ] Accept driver receive/cancellation boundaries and failed-store ingress lifetime before integrating ordinary outage capture.
 - [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement, including pre-route loss, without making buffered content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
 - [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.

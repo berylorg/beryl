@@ -380,6 +380,27 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   route/closure without further payload retention. Malformed input or transport loss stops that
   connection with the same conservative gap attribution. Partial fields never enter retention
   as complete facts. Normal healthy capture acquires no new whole-item size ceiling.
+- Passive receipt and parsing retain connection lifetime, not durable-command admission. A driver
+  poll must not hold a drain-counted durable-work permit across synchronous ingress. An already
+  dispatched request keeps its existing exact outcome custody and bounded request lifetime;
+  passive ingestion cannot wait for that request, the admission drain, or frozen target inventory.
+- Before frozen inventory is available, each admitted connection uses the same single bounded
+  assembly slot for an open observation or a validated sealed observation with bounded route
+  metadata. There is no second pending queue. A sealed observation is qualified when inventory
+  becomes available; if the next observation needs the slot first, the pending observation is
+  discarded and a sticky connection gap is recorded. Loss before qualification conservatively
+  gaps that connection's frozen targets when they become available. Payload and route metadata
+  share the configured byte/entry bounds. An observation that crossed durable failure remains lost
+  through its seal; its suffix cannot be promoted to a complete field.
+- Compact normalized facts received before target inventory is available are consumed as explicit
+  connection-scoped loss, without another pending queue. Their later receipt with ready exact
+  inventory uses the existing qualified retention priorities. Effectful request capabilities are
+  disposed without invocation; passive receipt supplies no response or execution authorization.
+- Every passive acknowledgement follows any required reconciliation handoff and releases the
+  current bounded operation. It never waits for inventory readiness. Frozen inventory publication
+  precedes attachment-dependent failure request installation; incomplete inventory closes transient
+  admission and releases pending payload. Cancellation reaches the consumer independently of the
+  forwarding submission lock, without discarding indeterminate command custody.
 - Outage capture is passive and generation-local: ordered ingestion may acknowledge transient
   consumption to release backpressure, never durable success. It admits no new durable work or
   effectful request, retries no failed store command, and does not prolong failed-service life
