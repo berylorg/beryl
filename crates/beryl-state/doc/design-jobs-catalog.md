@@ -51,6 +51,31 @@ durable job records and transitions plus compact catalog schema, normalization, 
   and encoded-byte limits, and stale-generation rejection. They do not publish ordinary access or
   decide scheduling, parent delivery, discussion gating or archive policy.
 
+## Resolving checkpoint transition evidence
+
+- State prepares one opaque resolving-checkpoint transition from an exact current job id and
+  revision, selecting either resolving completion or terminal `ChildInputPending` with bounded
+  failure evidence. Preparation authenticates the waiting-resolving job, identical live-index
+  copy, request admission, ordered attempt and latest-attempt pointer through fixed-count bounded
+  reads. Missing or contradictory records reject preparation. It retains the original domain
+  handle and revision and computes the successor with the same transition rules as writer admission.
+- The prepared contribution rechecks those exact sources in the writer and changes only the job
+  and live-index records. Completion replaces both with the next-revision waiting-parent job;
+  child-input failure replaces the job and removes its live copy. Immutable attempt and request
+  indexes remain unchanged. State neither reads Syndic nor grants parent submission permission.
+- The associated opaque home-bound outcome witness retains the exact old and new job records.
+  Ordinary and explicit candidate reads inspect only the job and live-index keys, bounded by the
+  existing record ceiling, and confirm a stable domain revision. Both exact old copies classify
+  `ExactOld`; the exact new job plus its expected live copy or absence classify `ExactNew`.
+  Missing, mixed, partial or different mutation records classify `Collision`. Unchanged indexes
+  authenticate preparation but do not enlarge the mutation outcome closure or become mutable
+  outcome evidence. These checks never scan, repair or treat a later transition as this outcome.
+- Candidate preparation uses explicit candidate access and fresh handles. A fresh same-home handle
+  may reconcile an earlier witness after recovery, but foreign homes and stale handles reject.
+  The witness grants no mutation or replay right. Retention consists of two bounded job records
+  per admitted reconciliation slot; app custody owns that slot and joins any Syndic release outcome
+  and home registry resolution before reporting advancement.
+
 ## Compact catalog
 
 - Catalog rows are rebuildable compact projections keyed by Syndic thread id with deterministic

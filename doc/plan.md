@@ -73,11 +73,18 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 525: Implement Child-Input Terminal Failure (finished)
+# Phase 527: Specify Resolving Transition Outcome Closure (finished)
 
-Added terminal-only ChildInputPending at the resolving checkpoint with appended codec tag 11.
-Eight focused job tests passed, including the complete transition/decode rejection matrix and
-retained attempt/index behavior across reopen. App check and independent review passed.
+Specified exact five-record preparation authentication and two-record mutation outcome closure,
+original-handle custody, same-home candidate recovery and bounded witness retention. Independent
+readiness review confirmed alignment with the existing State transition mutations.
+
+# Phase 528: Implement Resolving Transition Outcome Closure (wip)
+
+Implement the opaque State preparation, exact writer recheck and ordinary/candidate outcome reads.
+Verify both dispositions, missing and mixed index records, stale revision/generation, foreign-home
+rejection, immutable identity, bounded recovery and exact old/new outcomes. Run focused job
+regressions and independent review before app integration.
 
 # Phase 526: Compose Child Settlement And Job Transition (pending)
 
