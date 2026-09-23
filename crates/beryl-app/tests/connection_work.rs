@@ -108,7 +108,10 @@ fn live_fixture(
         )
         .unwrap();
     let target = projection
-        .into_active_live_event_target(CasTurnId::new(protocol::CAS_TURN_ID).unwrap())
+        .into_active_live_event_target(
+            beryl_model::SyndicTurnId::from_bytes([seed; 16]),
+            CasTurnId::new(protocol::CAS_TURN_ID).unwrap(),
+        )
         .unwrap();
     (fixture, server, session, target, sessions)
 }

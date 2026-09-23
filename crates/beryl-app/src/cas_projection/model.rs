@@ -416,9 +416,13 @@ impl LoadedCasProjection {
     /// Consumes this projection into the sole target for an already proven active CAS turn.
     pub fn into_active_live_event_target(
         self,
+        syndic_turn_id: beryl_model::SyndicTurnId,
         turn_id: CasTurnId,
     ) -> Result<LiveEventTarget, LiveEventTargetRegistrationError> {
-        self.into_live_event_target_inner(TargetTurnRegistration::Active(turn_id))
+        self.into_live_event_target_inner(TargetTurnRegistration::Active {
+            syndic_turn_id,
+            cas_turn_id: turn_id,
+        })
     }
 
     /// Consumes this projection into the exact pre-turn target for one durable compaction.

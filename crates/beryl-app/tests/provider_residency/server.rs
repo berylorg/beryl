@@ -59,6 +59,7 @@ enum ServerCommand {
     Observation(ObservationSpec),
     BeginBackpressure(ObservationSpec),
     ProbeBackpressure,
+    ProbeBackpressurePrefix,
     MissingText { sequence: u64 },
     Close,
 }
@@ -129,6 +130,16 @@ impl ProviderServer {
 
     pub fn wait_for_no_pong(&self) {
         self.expect_event(ServerEvent::NoPongWhileBlocked);
+    }
+
+    pub fn probe_backpressure_prefix(&self) {
+        self.commands
+            .send(ServerCommand::ProbeBackpressurePrefix)
+            .unwrap();
+    }
+
+    pub fn wait_for_resumed_prefix(&self) {
+        self.expect_event(ServerEvent::PongAfterRelease);
     }
 
     pub fn finish_backpressure(&self, sequence: u64) -> ObservationReport {
@@ -213,12 +224,16 @@ fn run_server(
                 pending = Some(message);
                 events.send(ServerEvent::BackpressurePrefix).unwrap();
             }
-            ServerCommand::ProbeBackpressure => {
+            ServerCommand::ProbeBackpressure | ServerCommand::ProbeBackpressurePrefix => {
                 let mut message = pending.take().expect("backpressure message is pending");
                 probe_while_blocked(&mut socket, &mut message);
                 events.send(ServerEvent::NoPongWhileBlocked).unwrap();
                 wait_for_pong(&mut socket);
                 events.send(ServerEvent::PongAfterRelease).unwrap();
+                if matches!(command, ServerCommand::ProbeBackpressurePrefix) {
+                    pending = Some(message);
+                    continue;
+                }
                 let report = finish_observation(&mut socket, message);
                 events.send(ServerEvent::Observation(report)).unwrap();
             }

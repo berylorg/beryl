@@ -12,15 +12,7 @@ use super::{
 const SMALL_PATTERNS: u64 = 2_000;
 const PAUSED_PATTERNS: u64 = 40_000;
 
-pub fn prove_failure_release_and_atomic_visibility() {
-    prove_submit_receiver_loss();
-    prove_target_abandonment();
-    prove_schema_failure();
-    prove_fragment_store_failure();
-    prove_unknown_outcome_reconciliation();
-}
-
-fn prove_submit_receiver_loss() {
+pub(super) fn prove_submit_receiver_loss() {
     let harness = LiveHarness::new(104);
     let spec = ObservationSpec::new(1, 1);
     let receiver_loss = install_provider_submit_receiver_loss(harness.session());
@@ -35,20 +27,20 @@ fn prove_submit_receiver_loss() {
     harness.close();
 }
 
-fn prove_target_abandonment() {
+pub(super) fn prove_target_abandonment() {
     let mut harness = LiveHarness::new(105);
     let spec = ObservationSpec::new(1, PAUSED_PATTERNS);
     let barrier = install_provider_fragment_stage_barrier(harness.session());
     harness.server().begin_backpressure(spec);
     barrier.wait_for_stage();
-    harness.abandon_target();
     harness.assert_unpublished(spec.sequence);
 
-    harness.server().probe_backpressure();
+    harness.server().probe_backpressure_prefix();
     harness.server().wait_for_no_pong();
     barrier.release();
-    let report = harness.server().finish_backpressure(spec.sequence);
-    let _ = ingress_snapshot(&harness, report);
+    harness.server().wait_for_resumed_prefix();
+    // The server withholds the suffix, so disposal cannot race publication at seal.
+    harness.abandon_target();
     harness.wait_for_page_leases(0);
     let released = provider_broker_snapshot(harness.session());
     assert_eq!(released.in_flight().current(), 0);
@@ -58,7 +50,7 @@ fn prove_target_abandonment() {
     harness.close();
 }
 
-fn prove_schema_failure() {
+pub(super) fn prove_schema_failure() {
     let harness = LiveHarness::new(106);
     harness.server().send_missing_text(1);
     harness.wait_for_target_closed();
@@ -67,7 +59,7 @@ fn prove_schema_failure() {
     harness.close();
 }
 
-fn prove_fragment_store_failure() {
+pub(super) fn prove_fragment_store_failure() {
     let harness = LiveHarness::new(107);
     let spec = ObservationSpec::new(1, PAUSED_PATTERNS);
     let barrier = install_provider_fragment_stage_barrier(harness.session());
@@ -121,10 +113,11 @@ fn prove_fragment_store_failure() {
     harness.close();
 }
 
-fn prove_unknown_outcome_reconciliation() {
+pub(super) fn prove_unknown_outcome_reconciliation() {
     let faults = FaultController::new();
     let harness = LiveHarness::with_faults(109, faults.clone());
     let staged = ObservationSpec::new(1, PAUSED_PATTERNS);
+    let settlement = harness.next_provider_seal_ack();
     let barrier = install_provider_fragment_stage_barrier(harness.session());
     harness.server().begin_backpressure(staged);
     barrier.wait_for_stage();
@@ -134,7 +127,6 @@ fn prove_unknown_outcome_reconciliation() {
     );
     harness.server().probe_backpressure();
     harness.server().wait_for_no_pong();
-    let settlement = harness.next_provider_seal_ack();
     barrier.release();
     let report = harness.server().finish_backpressure(staged.sequence);
     harness.wait_for_provider_seal_ack(settlement);

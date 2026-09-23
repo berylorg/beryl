@@ -69,13 +69,30 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 499: Implement Unpublished Outage Observation Assembly (finished)
+# Phase 501: Retain Exact Syndic Turn Identity At Target Registration (finished)
 
-Accepted the private typed assembler with exact late routing, fixed local bounds, loss attribution,
-retention priorities and consuming release. Independent semantic review passed after correcting
-reasoning-control priority; all 27 focused `outage_assembly` and `outage_buffer` tests passed with
-`cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults --test outage_assembly --test outage_buffer -j 1`.
-Formatting and scoped whitespace checks passed. Live failed-store ingestion remains separate.
+Accepted exact Syndic turn identity retention for pending, active and compaction registrations and
+failure witnesses without widening interrupt authority. Independent review passed; 53 focused unit,
+six connection-work and four provider failure tests passed. The corrected abandonment test withholds
+seal until whole-target disposal. Formatting and whitespace checks passed. Broader provider-suite
+defects remain explicit in the next phase; no outage ingress is mounted.
+
+# Phase 502: Reconcile Provider Failure And Paused-Ingress Verification (wip)
+
+Align the provider-residency harness with the accepted
+[ingester custody contract](../crates/beryl-app/doc/design-live-capture.md#ordered-ingester-and-custody).
+Replace stale healthy continuation after indeterminate staging/publication with exact registry
+handoff, terminal capture and released-resource evidence. Preserve separate staging and publication
+fault coverage, atomic visibility and no same-service retry. Audit paused transport diagnostics and
+cancellation sequencing against the forwarding mutex; capture safe diagnostic handles before the
+pause and do not wait for operations requiring that mutex before releasing staging.
+
+Keep test cases independently selectable and enabled. Verify the full provider-residency target
+and independently review custody assertions and deterministic schedules before phase 500. Do not
+change production failure semantics to satisfy stale tests. Resume from
+[the diagnosis](failures/outage-ingress-readiness.md#registration-identity-and-verification-follow-up):
+the four isolated loss/abandonment/schema/fragment cases pass; the unknown-outcome case now terminates
+with connection closure rather than hanging, but still expects obsolete successful continuation.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 

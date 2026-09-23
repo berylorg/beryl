@@ -1269,9 +1269,8 @@ impl ProjectionConnection {
                     activation.clone(),
                 ))
             }
-            TargetTurnRegistration::Active(_) | TargetTurnRegistration::ContextCompaction(_) => {
-                None
-            }
+            TargetTurnRegistration::Active { .. }
+            | TargetTurnRegistration::ContextCompaction(_) => None,
         };
         let result = (|| {
             let gate = self.authority.lock()?;

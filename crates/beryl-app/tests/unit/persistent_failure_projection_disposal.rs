@@ -23,7 +23,10 @@ fn zero_worker_router_disposes_retained_target_projection_after_freeze_unlocks()
         .unwrap();
     server.wait_for_projection();
     let target = projection
-        .into_active_live_event_target(beryl_model::CasTurnId::new("captured-active-turn").unwrap())
+        .into_active_live_event_target(
+            beryl_model::SyndicTurnId::from_bytes([190; 16]),
+            beryl_model::CasTurnId::new("captured-active-turn").unwrap(),
+        )
         .unwrap();
     let home = command.home();
     let binding = fixture

@@ -113,7 +113,10 @@ fn register(
             Duration::from_secs(1),
             turn_id.map_or_else(
                 || TargetTurnRegistration::Pending(pending_activation(owner)),
-                |turn_id| TargetTurnRegistration::Active(CasTurnId::new(turn_id).unwrap()),
+                |turn_id| TargetTurnRegistration::Active {
+                    syndic_turn_id: pending_activation(owner).turn_id(),
+                    cas_turn_id: CasTurnId::new(turn_id).unwrap(),
+                },
             ),
         )
         .unwrap()

@@ -89,7 +89,7 @@ impl LiveHarness {
         assert_eq!(projection.cas_thread_id().as_str(), CAS_THREAD_ID);
         let source = activate_projection(&fixture, submitted, &projection);
         let target = projection
-            .into_active_live_event_target(source.turn_id().clone())
+            .into_active_live_event_target(submitted.turn, source.turn_id().clone())
             .unwrap();
         Self {
             thread: fixture.thread,

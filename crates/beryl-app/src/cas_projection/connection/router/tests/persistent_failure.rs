@@ -743,7 +743,10 @@ fn register_target(
         ),
         home_generation,
         Duration::from_secs(1),
-        TargetTurnRegistration::Active(CasTurnId::new(format!("cas-turn-{index:03}")).unwrap()),
+        TargetTurnRegistration::Active {
+            syndic_turn_id: super::pending_activation(seed).turn_id(),
+            cas_turn_id: CasTurnId::new(format!("cas-turn-{index:03}")).unwrap(),
+        },
     )
 }
 

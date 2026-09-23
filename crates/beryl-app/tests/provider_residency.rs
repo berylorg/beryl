@@ -33,7 +33,31 @@ fn provider_transport_backpressure_and_cancellation_release() {
 }
 
 #[test]
-fn provider_failures_and_unknown_outcomes_remain_atomic() {
+fn provider_submit_receiver_loss_releases_resources() {
     let _guard = TEST_LOCK.lock().unwrap();
-    failure::prove_failure_release_and_atomic_visibility();
+    failure::prove_submit_receiver_loss();
+}
+
+#[test]
+fn provider_target_abandonment_discards_unsealed_observation() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_target_abandonment();
+}
+
+#[test]
+fn provider_schema_failure_remains_atomic() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_schema_failure();
+}
+
+#[test]
+fn provider_fragment_store_failure_remains_atomic() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_fragment_store_failure();
+}
+
+#[test]
+fn provider_unknown_outcome_reconciliation_remains_atomic() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_unknown_outcome_reconciliation();
 }

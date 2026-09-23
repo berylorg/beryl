@@ -507,6 +507,7 @@ struct TargetEntry {
     request_timeout: std::time::Duration,
     turn_state: TargetTurn,
     turn_id: Option<CasTurnId>,
+    syndic_turn_id: beryl_model::SyndicTurnId,
     start_dispatched: bool,
     activation_durable: bool,
     pending_activation: Option<PendingTurnActivation>,

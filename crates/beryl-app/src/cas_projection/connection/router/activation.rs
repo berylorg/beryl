@@ -8,7 +8,10 @@ use crate::cas_projection::PendingTurnActivation;
 
 pub(in crate::cas_projection) enum TargetTurnRegistration {
     Pending(PendingTurnActivation),
-    Active(CasTurnId),
+    Active {
+        syndic_turn_id: beryl_model::SyndicTurnId,
+        cas_turn_id: CasTurnId,
+    },
     ContextCompaction(crate::cas_projection::context_compaction::ContextCompactionTargetAuthority),
 }
 

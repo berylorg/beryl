@@ -49,6 +49,13 @@ non-evictable and count toward the byte limit. Construction rejects an oversized
 target set rather than silently omitting targets. The caller establishes active-target custody;
 these descriptive values do not grant it.
 
+Target registration retains its exact Syndic turn identity before store failure: pending ordinary
+registration uses its activation identity, already-active registration supplies its existing
+Syndic turn identity alongside the CAS turn, and compaction uses its provider-turn identity.
+Failure capture must not infer this identity from interrupt eligibility or reread failed storage.
+Passive capture descriptors confer no interrupt authority; the existing interruption proofs and
+their eligibility checks remain separate.
+
 The component borrows closed normalized lifecycle, control, terminal, identity, user-correlation,
 saved-path and complete-field values. It checks a compact encoding with fixed tags, exact indices,
 length-prefixed UTF-8 and all target metadata before copying any retained payload. Controls carry

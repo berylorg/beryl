@@ -52,6 +52,7 @@ impl EventRouter {
             let (
                 turn_state,
                 turn_id,
+                syndic_turn_id,
                 start_dispatched,
                 activation_durable,
                 pending_activation,
@@ -60,17 +61,28 @@ impl EventRouter {
                 TargetTurnRegistration::Pending(activation) => (
                     TargetTurn::AwaitingStart,
                     None,
+                    activation.turn_id(),
                     false,
                     false,
                     Some(activation),
                     None,
                 ),
-                TargetTurnRegistration::Active(turn_id) => {
-                    (TargetTurn::Exact, Some(turn_id), true, true, None, None)
-                }
+                TargetTurnRegistration::Active {
+                    syndic_turn_id,
+                    cas_turn_id,
+                } => (
+                    TargetTurn::Exact,
+                    Some(cas_turn_id),
+                    syndic_turn_id,
+                    true,
+                    true,
+                    None,
+                    None,
+                ),
                 TargetTurnRegistration::ContextCompaction(authority) => (
                     TargetTurn::AwaitingCompactionTurn,
                     None,
+                    authority.provider_turn_id(),
                     false,
                     true,
                     None,
@@ -99,6 +111,7 @@ impl EventRouter {
                     request_timeout,
                     turn_state,
                     turn_id,
+                    syndic_turn_id,
                     start_dispatched,
                     activation_durable,
                     pending_activation: pending_activation.clone(),

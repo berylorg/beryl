@@ -45,7 +45,10 @@ fn verify_failed_ingester_slot_disposal(pending: bool) {
                 loaded,
                 fixture.home_generation.get(),
                 Duration::from_secs(1),
-                TargetTurnRegistration::Active(turn_id.clone()),
+                TargetTurnRegistration::Active {
+                    syndic_turn_id: beryl_model::SyndicTurnId::from_bytes([202; 16]),
+                    cas_turn_id: turn_id.clone(),
+                },
             )
             .unwrap();
         let request = approval_request(

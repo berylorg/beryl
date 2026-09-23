@@ -431,10 +431,7 @@ fn build_witness(
         election_token,
         loaded_generation: target.loaded_generation,
         syndic_thread_id: target.owner,
-        syndic_turn_id: target
-            .pending_activation
-            .as_ref()
-            .map(PendingTurnActivation::turn_id),
+        syndic_turn_id: Some(target.syndic_turn_id),
         cas_thread_id: cas_thread_id.clone(),
         cas_turn_id: target.turn_id.clone(),
         pending_activation: target.pending_activation.clone(),
