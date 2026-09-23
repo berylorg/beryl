@@ -278,6 +278,11 @@ pub(super) const fn failure_state_is_compatible(
 
     let checkpoint_lifecycle = checkpoint.lifecycle();
     match kind {
+        HandoffFailureKind::ParentArchived => matches!(
+            checkpoint_lifecycle,
+            BranchHandoffJobLifecycle::WaitingResolvingTurn
+                | BranchHandoffJobLifecycle::WaitingParent
+        ),
         HandoffFailureKind::ChildInputPending => matches!(
             checkpoint_lifecycle,
             BranchHandoffJobLifecycle::WaitingResolvingTurn

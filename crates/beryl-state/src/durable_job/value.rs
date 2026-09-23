@@ -237,6 +237,7 @@ pub enum HandoffFailureKind {
     ParentIncomplete,
     ParentTerminalFailure,
     ChildInputPending,
+    ParentArchived,
 }
 
 impl HandoffFailureKind {

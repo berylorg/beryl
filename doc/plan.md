@@ -73,21 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 517: Specify Generated Parent Input And Atomic App Admission (finished)
+# Phase 529: Implement Archived-Parent Failure Classification (finished)
 
-Accepted closed generated input/order provenance, exact visible text, draft-preserving admission,
-ordinary execution support and bounded app outcome custody. ParentArchived follows existing
-unrecoverable-failure policy; non-ordinary parent drafts wait. Independent readiness review passed
-after resolving accepted-order encoding and initial-context eligibility; implementations follow.
+Accepted terminal-only ParentArchived tag 12 at both pre-append checkpoints. The full
+failure/decode matrix and restart coverage passed (11 focused tests); app check and independent
+review passed. Existing tags, bounds and immutable attempt/index closure remain intact.
 
-# Phase 529: Implement Archived-Parent Failure Classification (wip)
-
-Implement State's terminal-only `ParentArchived` tag 12 at the two pre-append checkpoints from
-[jobs authority](../crates/beryl-state/doc/design-jobs-catalog.md#durable-jobs). Preserve immutable
-attempt/index closure and existing tags/bounds. Verify the full failure/decode matrix, rejection
-after parent identity exists and on retryable construction, and restart. Independently review.
-
-# Phase 530: Prepare Exact Parent Job Transition Evidence (pending)
+# Phase 530: Prepare Exact Parent Job Transition Evidence (wip)
 
 Implement bounded original-handle preparation and two-record outcome witnesses for parent start
 and archived-parent failure under [State's transition contract](../crates/beryl-state/doc/design-jobs-catalog.md#parent-handoff-transition-evidence).
