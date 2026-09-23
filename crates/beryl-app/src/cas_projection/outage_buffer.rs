@@ -1,7 +1,9 @@
 mod assembly;
 mod encoding;
+mod slot;
 
 pub use assembly::{OutageAssembly, OutageAssemblyError, OutageAssemblyLimits};
+pub use slot::OutageObservationSlot;
 
 use super::ConnectionWorkTargetIdentity;
 use beryl_backend::{
@@ -26,6 +28,15 @@ pub struct OutageTarget {
 }
 
 impl OutageTarget {
+    pub fn connection(&self) -> OutageConnectionIdentity {
+        OutageConnectionIdentity {
+            runtime: self.identity.runtime_id,
+            process: self.identity.process_generation,
+            connection: self.identity.connection_generation,
+            home_generation: self.identity.home_generation,
+        }
+    }
+
     pub fn new(
         identity: ConnectionWorkTargetIdentity,
         turn: SyndicTurnId,
@@ -35,6 +46,24 @@ impl OutageTarget {
             identity,
             turn,
             cas_turn,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OutageConnectionIdentity {
+    pub runtime: beryl_model::RuntimeId,
+    pub process: beryl_model::CasProcessGeneration,
+    pub connection: u64,
+    pub home_generation: u64,
+}
+
+impl OutageConnectionIdentity {
+    fn record_gap(self, buffer: &mut OutageBuffer) {
+        for state in &mut buffer.targets {
+            if state.target.connection() == self {
+                state.gap = true;
+            }
         }
     }
 }

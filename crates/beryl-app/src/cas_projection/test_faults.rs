@@ -21,7 +21,8 @@ pub fn active_live_command_count(service: &super::ProjectionConnectionService) -
 
 pub use super::outage_buffer::{
     OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferError,
-    OutageBufferLimits, OutageFact, OutageLoss, OutagePriority, OutageTarget, OutageTextKind,
+    OutageBufferLimits, OutageConnectionIdentity, OutageFact, OutageLoss, OutageObservationSlot,
+    OutagePriority, OutageTarget, OutageTextKind,
 };
 
 pub fn outage_test_target(seed: u8, registration_serial: u64) -> OutageTarget {

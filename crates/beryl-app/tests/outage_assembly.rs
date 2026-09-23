@@ -1,5 +1,8 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "outage_assembly/slot.rs"]
+mod slot;
+
 use beryl_app::cas_projection::test_faults::{
     OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferLimits,
     OutagePriority, OutageTarget, outage_test_connection_target, outage_test_target,
@@ -34,7 +37,7 @@ fn buffer(targets: &[OutageTarget]) -> OutageBuffer {
 
 fn assembly(target: &OutageTarget, limits: OutageAssemblyLimits) -> OutageAssembly {
     OutageAssembly::new(
-        target,
+        target.connection(),
         ProviderObservationId::from_bytes([7; 16]),
         ProviderObservationBegin::Item {
             lifecycle: ProviderItemLifecycle::Completed,
@@ -344,7 +347,7 @@ fn command_delta_remains_operational_content() {
     let target = outage_test_target(1, 1);
     let mut buffer = buffer(&[target.clone()]);
     let mut assembly = OutageAssembly::new(
-        &target,
+        target.connection(),
         ProviderObservationId::from_bytes([7; 16]),
         ProviderObservationBegin::Delta {
             kind: ProviderDeltaKind::CommandExecutionOutput,
@@ -373,7 +376,7 @@ fn reasoning_structure_retains_the_priority_of_its_narrative() {
     let target = outage_test_target(1, 1);
     let mut buffer = buffer(&[target.clone()]);
     let mut assembly = OutageAssembly::new(
-        &target,
+        target.connection(),
         ProviderObservationId::from_bytes([7; 16]),
         ProviderObservationBegin::Item {
             lifecycle: ProviderItemLifecycle::Completed,
@@ -423,7 +426,7 @@ fn delta_indices_survive_as_exact_correlation_controls() {
     let target = outage_test_target(1, 1);
     let mut buffer = buffer(&[target.clone()]);
     let mut assembly = OutageAssembly::new(
-        &target,
+        target.connection(),
         ProviderObservationId::from_bytes([7; 16]),
         ProviderObservationBegin::Delta {
             kind: ProviderDeltaKind::ReasoningSummaryText,

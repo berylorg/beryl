@@ -144,3 +144,13 @@ Independent design review passed. Driver primitives, passive ingestion and ordin
 mounting remain separate implementation gates; design acceptance alone does not enable capture.
 The invalidated cycle was established by source inspection and independent review, not a reproduced
 runtime hang. CAS and the bounded buffering exception remain unchanged.
+
+## Preserve Qualified Loss Through Slot Handoff
+
+Independent review of the pre-inventory slot found that making every assembly overflow a sticky
+connection gap widened loss to unaffected sibling targets even when a valid trailing route and
+ready inventory identified the exact target. Keep bounded observation loss in the assembly until
+seal qualification. Only loss without usable inventory/routing becomes a conservative connection
+gap; qualified retention failure must not widen it. The corrected ready-inventory overflow test
+proves sibling isolation. The 36 assembly/retention tests passed, and independent review accepted
+the private slot. Exact home/service/failure ownership remains the shared capture owner's duty.

@@ -1,4 +1,7 @@
-use super::{OutageBuffer, OutageFact, OutagePriority, OutageTarget, OutageTextKind};
+use super::{
+    OutageBuffer, OutageConnectionIdentity, OutageFact, OutagePriority, OutageTarget,
+    OutageTextKind,
+};
 use beryl_backend::{
     ProviderEnumValue, ProviderField, ProviderItemKind, ProviderObservationBegin,
     ProviderObservationControl, ProviderObservationRoute, ProviderValueContext,
@@ -27,7 +30,7 @@ enum Entry {
 }
 
 pub struct OutageAssembly {
-    connection: OutageTarget,
+    connection: OutageConnectionIdentity,
     observation: ProviderObservationId,
     begin: ProviderObservationBegin,
     limits: OutageAssemblyLimits,
@@ -39,13 +42,13 @@ pub struct OutageAssembly {
 
 impl OutageAssembly {
     pub fn new(
-        connection: &OutageTarget,
+        connection: OutageConnectionIdentity,
         observation: ProviderObservationId,
         begin: ProviderObservationBegin,
         limits: OutageAssemblyLimits,
     ) -> Self {
         Self {
-            connection: connection.clone(),
+            connection,
             observation,
             begin,
             limits,
@@ -138,6 +141,48 @@ impl OutageAssembly {
         let _ = self.fail(OutageAssemblyError::RetentionLoss);
     }
 
+    pub(super) fn validate_seal(
+        &self,
+        route: &ProviderObservationRoute,
+    ) -> Result<(), OutageAssemblyError> {
+        if let Some(loss) = self.loss {
+            return Err(loss);
+        }
+        if self.open.is_some() {
+            return Err(OutageAssemblyError::Malformed);
+        }
+        let route_bytes = route
+            .thread_id()
+            .as_str()
+            .len()
+            .checked_add(route.turn_id().as_str().len())
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<ProviderObservationRoute>()));
+        if route.thread_id().as_str().len() > self.limits.max_field_bytes
+            || route.turn_id().as_str().len() > self.limits.max_field_bytes
+            || self.retained_entries() >= self.limits.max_entries
+            || route_bytes
+                .and_then(|bytes| self.retained_bytes.checked_add(bytes))
+                .is_none_or(|bytes| bytes > self.limits.max_bytes)
+        {
+            return Err(OutageAssemblyError::Overflow);
+        }
+        self.item_id().map(|_| ())
+    }
+
+    fn item_id(&self) -> Result<CasItemId, OutageAssemblyError> {
+        let mut item = None;
+        for entry in &self.entries {
+            if let Entry::Field(ProviderValueContext::Field(ProviderField::ItemId), text) = entry {
+                if item.is_some() || text.len() > 256 {
+                    return Err(OutageAssemblyError::Malformed);
+                }
+                item =
+                    Some(CasItemId::new(text.clone()).map_err(|_| OutageAssemblyError::Malformed)?);
+            }
+        }
+        item.ok_or(OutageAssemblyError::Malformed)
+    }
+
     pub fn abandon(self, buffer: &mut OutageBuffer) {
         self.gap_connection(buffer);
     }
@@ -170,23 +215,12 @@ impl OutageAssembly {
             buffer.targets[index].gap = true;
             return Err(OutageAssemblyError::Malformed);
         }
-        let mut item = None;
-        for entry in &self.entries {
-            if let Entry::Field(ProviderValueContext::Field(ProviderField::ItemId), text) = entry {
-                if item.is_some() || text.len() > 256 {
-                    buffer.targets[index].gap = true;
-                    return Err(OutageAssemblyError::Malformed);
-                }
-                item = CasItemId::new(text.clone()).ok();
-                if item.is_none() {
-                    buffer.targets[index].gap = true;
-                    return Err(OutageAssemblyError::Malformed);
-                }
+        let item = match self.item_id() {
+            Ok(item) => item,
+            Err(error) => {
+                buffer.targets[index].gap = true;
+                return Err(error);
             }
-        }
-        let Some(item) = item else {
-            buffer.targets[index].gap = true;
-            return Err(OutageAssemblyError::Malformed);
         };
         let target = buffer.targets[index].target.clone();
         let mut lost = buffer
@@ -265,20 +299,11 @@ impl OutageAssembly {
     }
 
     fn same_connection(&self, target: &OutageTarget) -> bool {
-        let left = &self.connection.identity;
-        let right = &target.identity;
-        left.runtime_id == right.runtime_id
-            && left.process_generation == right.process_generation
-            && left.connection_generation == right.connection_generation
-            && left.home_generation == right.home_generation
+        self.connection == target.connection()
     }
 
     fn gap_connection(&self, buffer: &mut OutageBuffer) {
-        for state in &mut buffer.targets {
-            if self.same_connection(&state.target) {
-                state.gap = true;
-            }
-        }
+        self.connection.record_gap(buffer);
     }
 }
 

@@ -69,15 +69,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 505: Separate Driver Receive Lifetime From Effect Admission (finished)
+# Phase 506: Implement The Bounded Pre-Inventory Observation Slot (finished)
 
-Accepted non-authorizing receive, fresh effect admission and independently reachable exact-broker
-cancellation. Paused-ingress tests prove only the staging operation owns admission and cancellation
-arrives before stage release without provider seal. Provider residency, broker and failure/shutdown
-checks passed (8, 54 and 101 tests plus the strengthened regression); independent review passed.
-Outbound request custody is unchanged. Passive failed-gate polling remains below.
+Accepted connection-only assembly binding and one bounded open-or-sealed slot, with route bytes
+and entries charged to the same limits. Ready handoff preserves qualified loss attribution;
+pre-inventory eviction records sticky connection loss. Release, malformed input, exact limits
+and generation isolation passed 36 focused tests and independent review. Generation-bound service
+ownership and production capture remain below.
 
-# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
+# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (wip)
 
 Implement nonwaiting durable-to-passive ingestion and the driver's failed-gate passive polling using
 the accepted receive/cancellation primitives. Reuse bounded assembly and retention; one slot holds

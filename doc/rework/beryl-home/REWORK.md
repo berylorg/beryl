@@ -457,6 +457,7 @@
 - [x] Accepted bounded frozen-target custody through witness handoff and projection disposal.
 - [x] Specified nonwaiting passive receive, bounded pre-inventory capture and independent cancellation in the app and system authorities.
 - [x] Accepted non-authorizing driver receive and independently reachable exact-broker cancellation with staged-ingress, failure and shutdown verification and independent review.
+- [x] Accepted the bounded pre-inventory observation slot with connection-only binding, exact qualified loss, conservative unqualified loss and shared payload/route limits; focused verification and independent review passed.
 - [ ] Accept failed-store ingress lifetime before integrating ordinary outage capture.
 - [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement, including pre-route loss, without making buffered content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
