@@ -85,8 +85,10 @@ durable job records and transitions plus compact catalog schema, normalization, 
 
 - Parent-start preparation authenticates the exact waiting-parent job and its five-record closure
   under the same bounded original-handle rules as resolving transition evidence. It derives one
-  next-revision starting-parent job from a caller-supplied exact parent accepted-input, turn and
-  canonical-item identity. The shared existing transition rules remain the State authority.
+  next-revision starting-parent job from caller-supplied exact parent accepted-input and turn
+  identities. Syndic owns the canonical-item identity in its generated receipt; the app joins that
+  proof with State's witness. State does not duplicate the item identity in its job schema.
+  The shared existing transition rules remain the State authority.
   Its two-record job/live witness has the same ordinary/candidate old/new and collision semantics.
 - Archived-parent failure preparation accepts only the two permitted pre-append checkpoints,
   retains bounded `ParentArchived` evidence and has the same five-record source authentication.

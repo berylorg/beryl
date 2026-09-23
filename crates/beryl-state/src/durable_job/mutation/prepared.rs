@@ -6,7 +6,7 @@ use beryl_home_store::{
 use beryl_model::{BerylHomeId, DomainRevision};
 
 use super::super::{
-    BranchHandoffJobLifecycle, DurableJobState, HandoffFailureEvidence, HandoffFailureKind,
+    DurableJobState, HandoffFailureEvidence, HandoffFailureKind, ParentHandoffIdentity,
 };
 use super::*;
 
@@ -14,28 +14,34 @@ mod access;
 use access::{ReadAccess, read_authenticated};
 
 #[derive(Clone, Debug)]
-pub enum ResolvingTransition {
-    Complete,
+pub enum HandoffJobTransition {
+    CompleteResolving,
     ChildInputPending(HandoffFailureEvidence),
+    StartParent(ParentHandoffIdentity),
+    ParentArchived(HandoffFailureEvidence),
 }
 
-impl ResolvingTransition {
+impl HandoffJobTransition {
     fn successor(
         &self,
         job: BranchHandoffJobRecord,
     ) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
-        if job.lifecycle() != BranchHandoffJobLifecycle::WaitingResolvingTurn {
-            return Err(DurableJobMutationError::InvalidTransition {
-                expected: "waiting resolving turn",
-                current: job.lifecycle(),
-            });
-        }
         match self {
-            Self::Complete => super::transition::complete_resolving_job(job),
+            Self::CompleteResolving => super::transition::complete_resolving_job(job),
+            Self::StartParent(parent) => super::transition::start_parent_job(job, *parent),
             Self::ChildInputPending(evidence) => {
                 if evidence.kind() != HandoffFailureKind::ChildInputPending {
                     return Err(DurableJobMutationError::FailureKindMismatch {
                         expected: "child input pending",
+                        actual: evidence.kind(),
+                    });
+                }
+                super::transition::terminal_failed_job(job, evidence.clone())
+            }
+            Self::ParentArchived(evidence) => {
+                if evidence.kind() != HandoffFailureKind::ParentArchived {
+                    return Err(DurableJobMutationError::FailureKindMismatch {
+                        expected: "parent archived",
                         actual: evidence.kind(),
                     });
                 }
@@ -46,7 +52,7 @@ impl ResolvingTransition {
 }
 
 #[derive(Clone)]
-pub struct ResolvingTransitionWitness(Arc<TransitionRecords>);
+pub struct HandoffJobTransitionWitness(Arc<TransitionRecords>);
 
 struct TransitionRecords {
     home_id: BerylHomeId,
@@ -54,7 +60,7 @@ struct TransitionRecords {
     new: BranchHandoffJobRecord,
 }
 
-impl ResolvingTransitionWitness {
+impl HandoffJobTransitionWitness {
     pub fn old_job(&self) -> &BranchHandoffJobRecord {
         &self.0.old
     }
@@ -64,20 +70,20 @@ impl ResolvingTransitionWitness {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ResolvingTransitionStatus {
+pub enum HandoffJobTransitionStatus {
     ExactOld,
     ExactNew,
     Collision,
 }
 
-pub struct PreparedResolvingTransition {
+pub struct PreparedHandoffJobTransition {
     handle: DomainHandle<DurableJobDomain>,
     revision: DomainRevision,
-    witness: ResolvingTransitionWitness,
+    witness: HandoffJobTransitionWitness,
 }
 
-impl PreparedResolvingTransition {
-    pub fn witness(&self) -> &ResolvingTransitionWitness {
+impl PreparedHandoffJobTransition {
+    pub fn witness(&self) -> &HandoffJobTransitionWitness {
         &self.witness
     }
     pub fn contribution(self) -> MutationContribution {
@@ -86,77 +92,77 @@ impl PreparedResolvingTransition {
 }
 
 impl DurableJobState {
-    pub fn prepare_resolving_transition(
+    pub fn prepare_handoff_job_transition(
         &self,
         store: &HomeStore,
         job_id: JobId,
         expected: JobRevision,
-        transition: ResolvingTransition,
-    ) -> Result<PreparedResolvingTransition, DurableJobMutationError> {
-        self.prepare_resolving(ReadAccess::Ordinary(store), job_id, expected, transition)
+        transition: HandoffJobTransition,
+    ) -> Result<PreparedHandoffJobTransition, DurableJobMutationError> {
+        self.prepare_handoff_job(ReadAccess::Ordinary(store), job_id, expected, transition)
     }
 
-    pub fn prepare_resolving_transition_candidate(
+    pub fn prepare_handoff_job_transition_candidate(
         &self,
         access: &HomeCandidateRecoveryAccess<'_>,
         job_id: JobId,
         expected: JobRevision,
-        transition: ResolvingTransition,
-    ) -> Result<PreparedResolvingTransition, DurableJobMutationError> {
-        self.prepare_resolving(ReadAccess::Candidate(access), job_id, expected, transition)
+        transition: HandoffJobTransition,
+    ) -> Result<PreparedHandoffJobTransition, DurableJobMutationError> {
+        self.prepare_handoff_job(ReadAccess::Candidate(access), job_id, expected, transition)
     }
 
-    fn prepare_resolving(
+    fn prepare_handoff_job(
         &self,
         access: ReadAccess<'_>,
         job_id: JobId,
         expected: JobRevision,
-        transition: ResolvingTransition,
-    ) -> Result<PreparedResolvingTransition, DurableJobMutationError> {
+        transition: HandoffJobTransition,
+    ) -> Result<PreparedHandoffJobTransition, DurableJobMutationError> {
         let revision = access.revision(&self.handle)?;
         let result: Result<_, DurableJobMutationError> = (|| {
             let old = read_authenticated(&access.reader(&self.handle), job_id)?;
             ensure_revision(expected, old.revision())?;
             let new = transition.successor(old.clone())?;
-            Ok(ResolvingTransitionWitness(Arc::new(TransitionRecords {
+            Ok(HandoffJobTransitionWitness(Arc::new(TransitionRecords {
                 home_id: access.home_id(),
                 old,
                 new,
             })))
         })();
         access.confirm(&self.handle, revision)?;
-        Ok(PreparedResolvingTransition {
+        Ok(PreparedHandoffJobTransition {
             handle: self.handle.clone(),
             revision,
             witness: result?,
         })
     }
 
-    pub fn resolving_transition_status(
+    pub fn handoff_job_transition_status(
         &self,
         store: &HomeStore,
-        witness: &ResolvingTransitionWitness,
-    ) -> Result<ResolvingTransitionStatus, DurableJobMutationError> {
-        self.resolving_status(ReadAccess::Ordinary(store), witness)
+        witness: &HandoffJobTransitionWitness,
+    ) -> Result<HandoffJobTransitionStatus, DurableJobMutationError> {
+        self.handoff_job_status(ReadAccess::Ordinary(store), witness)
     }
 
-    pub fn resolving_transition_status_candidate(
+    pub fn handoff_job_transition_status_candidate(
         &self,
         access: &HomeCandidateRecoveryAccess<'_>,
-        witness: &ResolvingTransitionWitness,
-    ) -> Result<ResolvingTransitionStatus, DurableJobMutationError> {
-        self.resolving_status(ReadAccess::Candidate(access), witness)
+        witness: &HandoffJobTransitionWitness,
+    ) -> Result<HandoffJobTransitionStatus, DurableJobMutationError> {
+        self.handoff_job_status(ReadAccess::Candidate(access), witness)
     }
 
-    fn resolving_status(
+    fn handoff_job_status(
         &self,
         access: ReadAccess<'_>,
-        witness: &ResolvingTransitionWitness,
-    ) -> Result<ResolvingTransitionStatus, DurableJobMutationError> {
+        witness: &HandoffJobTransitionWitness,
+    ) -> Result<HandoffJobTransitionStatus, DurableJobMutationError> {
         let revision = access.revision(&self.handle)?;
         if access.home_id() != witness.0.home_id {
             return Err(DurableJobMutationError::Invariant(
-                "resolving witness belongs to another home",
+                "handoff job witness belongs to another home",
             ));
         }
         let result = access.outcome(&self.handle, witness);
@@ -165,9 +171,9 @@ impl DurableJobState {
     }
 }
 
-impl DomainMutation<DurableJobDomain> for PreparedResolvingTransition {
+impl DomainMutation<DurableJobDomain> for PreparedHandoffJobTransition {
     type Error = DurableJobMutationError;
-    type Prepared = ResolvingTransitionWitness;
+    type Prepared = HandoffJobTransitionWitness;
 
     fn prepare(
         self,
@@ -176,7 +182,7 @@ impl DomainMutation<DurableJobDomain> for PreparedResolvingTransition {
         let current = read_authenticated(reader, self.witness.old_job().job_id())?;
         if &current != self.witness.old_job() {
             return Err(DurableJobMutationError::Invariant(
-                "resolving transition source changed",
+                "handoff job transition source changed",
             ));
         }
         Ok(self.witness)

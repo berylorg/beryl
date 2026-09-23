@@ -2,8 +2,8 @@ use super::*;
 use beryl_home_store::ReconciliationResolution;
 use beryl_model::{HomeRevision, SyndicThreadId};
 use beryl_state::{
-    BranchHandoffJobRecord, PreparedResolvingTransition, ResolvingTransition,
-    ResolvingTransitionStatus,
+    BranchHandoffJobRecord, HandoffJobTransition, HandoffJobTransitionStatus,
+    PreparedHandoffJobTransition,
 };
 use syndic_storage::{
     DiscussionChildSettlement, DiscussionHandoffGateRecord, DiscussionHandoffStatus,
@@ -65,10 +65,10 @@ impl Access<'_> {
         self,
         state: &BerylState,
         job: &BranchHandoffJobRecord,
-        transition: ResolvingTransition,
-    ) -> Result<PreparedResolvingTransition, DiscussionSettlementError> {
+        transition: HandoffJobTransition,
+    ) -> Result<PreparedHandoffJobTransition, DiscussionSettlementError> {
         Ok(match self {
-            Self::Ordinary(s) => state.durable_jobs().prepare_resolving_transition(
+            Self::Ordinary(s) => state.durable_jobs().prepare_handoff_job_transition(
                 s,
                 job.job_id(),
                 job.revision(),
@@ -76,7 +76,7 @@ impl Access<'_> {
             )?,
             Self::Candidate(s) => state
                 .durable_jobs()
-                .prepare_resolving_transition_candidate(
+                .prepare_handoff_job_transition_candidate(
                     s,
                     job.job_id(),
                     job.revision(),
@@ -89,13 +89,13 @@ impl Access<'_> {
         audit: &DiscussionSettlementAudit,
         syndic: &SyndicStorage,
         state: &BerylState,
-    ) -> Result<ResolvingTransitionStatus, DiscussionSettlementError> {
+    ) -> Result<HandoffJobTransitionStatus, DiscussionSettlementError> {
         let before = self.revision()?;
         let (job, gate) = match self {
             Self::Ordinary(s) => (
                 state
                     .durable_jobs()
-                    .resolving_transition_status(s, &audit.0.job)?,
+                    .handoff_job_transition_status(s, &audit.0.job)?,
                 audit
                     .0
                     .gate
@@ -106,7 +106,7 @@ impl Access<'_> {
             Self::Candidate(s) => (
                 state
                     .durable_jobs()
-                    .resolving_transition_status_candidate(s, &audit.0.job)?,
+                    .handoff_job_transition_status_candidate(s, &audit.0.job)?,
                 audit
                     .0
                     .gate
@@ -120,14 +120,14 @@ impl Access<'_> {
         }
         Ok(match (job, gate) {
             (
-                ResolvingTransitionStatus::ExactOld,
+                HandoffJobTransitionStatus::ExactOld,
                 None | Some(DiscussionHandoffStatus::ExactOld),
-            ) => ResolvingTransitionStatus::ExactOld,
+            ) => HandoffJobTransitionStatus::ExactOld,
             (
-                ResolvingTransitionStatus::ExactNew,
+                HandoffJobTransitionStatus::ExactNew,
                 None | Some(DiscussionHandoffStatus::ExactNew),
-            ) => ResolvingTransitionStatus::ExactNew,
-            _ => ResolvingTransitionStatus::Collision,
+            ) => HandoffJobTransitionStatus::ExactNew,
+            _ => HandoffJobTransitionStatus::Collision,
         })
     }
     pub(super) fn reconcile(

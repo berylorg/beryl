@@ -1,9 +1,9 @@
 #[path = "durable_job/child_input_failure.rs"]
 mod child_input_failure;
-#[cfg(feature = "test-faults")]
-#[path = "durable_job/resolving_outcome.rs"]
-mod resolving_outcome;
 mod support;
+#[cfg(feature = "test-faults")]
+#[path = "durable_job/transition_outcome.rs"]
+mod transition_outcome;
 
 use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::{

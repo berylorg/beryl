@@ -187,17 +187,13 @@ impl DomainMutation<DurableJobDomain> for StartParentHandoff {
         self,
         reader: &DomainReader<'_, DurableJobDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let mut job = validate_lifecycle(
+        let job = validate_lifecycle(
             reader,
             self.job_id,
             self.expected_job_revision,
             BranchHandoffJobLifecycle::WaitingParent,
         )?;
-        job.state = BranchHandoffJobState::StartingParent {
-            parent: self.parent,
-        };
-        advance(&mut job)?;
-        Ok(job)
+        start_parent_job(job, self.parent)
     }
 
     fn reserve_reconciliation(
@@ -419,6 +415,18 @@ impl DomainMutation<DurableJobDomain> for SucceedBranchHandoff {
     ) -> Result<(), Self::Error> {
         put_terminal_transition(mutations, &job)
     }
+}
+
+pub(super) fn start_parent_job(
+    mut job: BranchHandoffJobRecord,
+    parent: ParentHandoffIdentity,
+) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
+    if job.lifecycle() != BranchHandoffJobLifecycle::WaitingParent {
+        return Err(invalid_transition("waiting parent", job.lifecycle()));
+    }
+    job.state = BranchHandoffJobState::StartingParent { parent };
+    advance(&mut job)?;
+    Ok(job)
 }
 
 pub(super) fn complete_resolving_job(

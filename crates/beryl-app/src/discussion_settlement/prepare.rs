@@ -1,7 +1,7 @@
 use super::access::Access;
 use super::*;
 use beryl_state::{
-    BranchHandoffJobLifecycle, HandoffFailureEvidence, HandoffFailureKind, ResolvingTransition,
+    BranchHandoffJobLifecycle, HandoffFailureEvidence, HandoffFailureKind, HandoffJobTransition,
 };
 use syndic_storage::{
     DiscussionChildSettlement, DiscussionChildSettlementDisposition, DiscussionHandoffGateState,
@@ -105,7 +105,7 @@ fn prepare(
         DiscussionChildSettlementDisposition::Ready => {
             command.add_validation(child.into_ready_validation()?)?;
             (
-                ResolvingTransition::Complete,
+                HandoffJobTransition::CompleteResolving,
                 None,
                 DiscussionSettlementResult::ReadyForParent,
             )
@@ -117,7 +117,7 @@ fn prepare(
             let evidence = HandoffFailureEvidence::new(HandoffFailureKind::ChildInputPending, None)
                 .expect("empty failure detail is bounded");
             (
-                ResolvingTransition::ChildInputPending(evidence),
+                HandoffJobTransition::ChildInputPending(evidence),
                 Some(intent),
                 DiscussionSettlementResult::ChildInputPending,
             )

@@ -5,7 +5,7 @@ use beryl_home_store::{
     ReconciliationHandle,
 };
 use beryl_model::{BerylHomeId, JobId};
-use beryl_state::{BerylState, ResolvingTransitionWitness};
+use beryl_state::{BerylState, HandoffJobTransitionWitness};
 use std::sync::{Arc, Mutex};
 use syndic_storage::{DiscussionHandoffIntent, SyndicStorage};
 
@@ -61,7 +61,7 @@ pub enum DiscussionSettlementError {
 pub struct DiscussionSettlementAudit(Arc<Attempt>);
 struct Attempt {
     home_id: BerylHomeId,
-    job: ResolvingTransitionWitness,
+    job: HandoffJobTransitionWitness,
     gate: Option<DiscussionHandoffIntent>,
     result: DiscussionSettlementResult,
     disposition: Mutex<Disposition>,

@@ -13,11 +13,11 @@ use super::{
     },
 };
 
-mod resolving;
+mod prepared;
 mod transition;
-pub use resolving::{
-    PreparedResolvingTransition, ResolvingTransition, ResolvingTransitionStatus,
-    ResolvingTransitionWitness,
+pub use prepared::{
+    HandoffJobTransition, HandoffJobTransitionStatus, HandoffJobTransitionWitness,
+    PreparedHandoffJobTransition,
 };
 
 pub use transition::{

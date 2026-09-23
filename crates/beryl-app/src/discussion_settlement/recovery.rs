@@ -1,7 +1,7 @@
 use super::access::Access;
 use super::*;
 use beryl_home_store::ReconciliationResolution;
-use beryl_state::ResolvingTransitionStatus;
+use beryl_state::HandoffJobTransitionStatus;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiscussionSettlementAuditOutcome {
@@ -50,21 +50,21 @@ impl DiscussionSettlementAudit {
         }
         if let Disposition::Indeterminate(handle) = &*disposition {
             match (natural, access.reconcile(handle)?) {
-                (ResolvingTransitionStatus::ExactOld, ReconciliationResolution::ExactOld) => {
+                (HandoffJobTransitionStatus::ExactOld, ReconciliationResolution::ExactOld) => {
                     *disposition = Disposition::NotCommitted
                 }
                 (
-                    ResolvingTransitionStatus::ExactNew,
+                    HandoffJobTransitionStatus::ExactNew,
                     ReconciliationResolution::ExactNew { .. },
                 ) => *disposition = Disposition::Committed,
                 _ => *disposition = Disposition::Collision,
             }
         }
         Ok(match (&*disposition, natural) {
-            (Disposition::NotCommitted, ResolvingTransitionStatus::ExactOld) => {
+            (Disposition::NotCommitted, HandoffJobTransitionStatus::ExactOld) => {
                 DiscussionSettlementAuditOutcome::NotCommitted
             }
-            (Disposition::Committed, ResolvingTransitionStatus::ExactNew) => {
+            (Disposition::Committed, HandoffJobTransitionStatus::ExactNew) => {
                 DiscussionSettlementAuditOutcome::Settled(self.0.result)
             }
             _ => DiscussionSettlementAuditOutcome::Collision,

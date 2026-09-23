@@ -73,20 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 529: Implement Archived-Parent Failure Classification (finished)
+# Phase 530: Prepare Exact Parent Job Transition Evidence (finished)
 
-Accepted terminal-only ParentArchived tag 12 at both pre-append checkpoints. The full
-failure/decode matrix and restart coverage passed (11 focused tests); app check and independent
-review passed. Existing tags, bounds and immutable attempt/index closure remain intact.
+Accepted shared source-authenticated handoff job preparations and exact old/new witnesses for
+parent start and archived-parent failure. Ten State tests, nine app settlement regressions, app
+check and independent review passed. Canonical-item identity remains in the joined Syndic proof.
 
-# Phase 530: Prepare Exact Parent Job Transition Evidence (wip)
-
-Implement bounded original-handle preparation and two-record outcome witnesses for parent start
-and archived-parent failure under [State's transition contract](../crates/beryl-state/doc/design-jobs-catalog.md#parent-handoff-transition-evidence).
-Reuse shared transition rules and authentication. Verify identity/checkpoint mismatch, stale
-revision and handle, candidate parity, immutable indexes and exact old/new versus mixed closure.
-
-# Phase 531: Prove Parent Eligibility And Archived-Parent Release (pending)
+# Phase 531: Prove Parent Eligibility And Archived-Parent Release (wip)
 
 Implement Syndic's bounded parent eligibility witness and one-participant archived-parent proof
 with child-gate release. Verify nested parent identity, busy/pending parent, ordinary versus special

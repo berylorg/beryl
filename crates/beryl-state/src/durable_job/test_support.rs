@@ -11,7 +11,7 @@ use super::{
 };
 
 #[derive(Clone)]
-pub enum ResolvingIndexFault {
+pub enum HandoffJobIndexFault {
     MissingJob,
     MissingLive,
     MissingRequest,
@@ -22,15 +22,15 @@ pub enum ResolvingIndexFault {
 
 struct CorruptResolvingIndex {
     job: super::BranchHandoffJobRecord,
-    fault: ResolvingIndexFault,
+    fault: HandoffJobIndexFault,
 }
 
 impl super::DurableJobState {
-    pub fn corrupt_resolving_index_for_test(
+    pub fn corrupt_handoff_job_index_for_test(
         &self,
         revision: beryl_model::DomainRevision,
         job: super::BranchHandoffJobRecord,
-        fault: ResolvingIndexFault,
+        fault: HandoffJobIndexFault,
     ) -> beryl_home_store::MutationContribution {
         self.handle
             .contribution(revision, CorruptResolvingIndex { job, fault })
@@ -49,17 +49,17 @@ impl DomainMutation<DurableJobDomain> for CorruptResolvingIndex {
     ) -> Result<(), Self::Error> {
         use super::codec::*;
         match self.fault {
-            ResolvingIndexFault::MissingJob => reservation.reserve_records::<JobRecordCodec>(1)?,
-            ResolvingIndexFault::MissingLive | ResolvingIndexFault::LiveCopy(_) => {
+            HandoffJobIndexFault::MissingJob => reservation.reserve_records::<JobRecordCodec>(1)?,
+            HandoffJobIndexFault::MissingLive | HandoffJobIndexFault::LiveCopy(_) => {
                 reservation.reserve_records::<LiveJobIndexCodec>(1)?
             }
-            ResolvingIndexFault::MissingRequest => {
+            HandoffJobIndexFault::MissingRequest => {
                 reservation.reserve_records::<RequestIdempotencyIndexCodec>(1)?
             }
-            ResolvingIndexFault::MissingAttempt => {
+            HandoffJobIndexFault::MissingAttempt => {
                 reservation.reserve_records::<DiscussionAttemptIndexCodec>(1)?
             }
-            ResolvingIndexFault::MissingLatest => {
+            HandoffJobIndexFault::MissingLatest => {
                 reservation.reserve_records::<LatestAttemptIndexCodec>(1)?
             }
         }
@@ -72,20 +72,21 @@ impl DomainMutation<DurableJobDomain> for CorruptResolvingIndex {
         use super::codec::*;
         let job = prepared.job;
         match prepared.fault {
-            ResolvingIndexFault::MissingJob => builder.delete::<JobRecordCodec>(&job.job_id())?,
-            ResolvingIndexFault::MissingLive => {
+            HandoffJobIndexFault::MissingJob => builder.delete::<JobRecordCodec>(&job.job_id())?,
+            HandoffJobIndexFault::MissingLive => {
                 builder.delete::<LiveJobIndexCodec>(&job.job_id())?
             }
-            ResolvingIndexFault::MissingRequest => builder.delete::<RequestIdempotencyIndexCodec>(
-                &RequestIndexKey::new(job.request().clone()),
-            )?,
-            ResolvingIndexFault::MissingAttempt => builder.delete::<DiscussionAttemptIndexCodec>(
+            HandoffJobIndexFault::MissingRequest => builder
+                .delete::<RequestIdempotencyIndexCodec>(&RequestIndexKey::new(
+                    job.request().clone(),
+                ))?,
+            HandoffJobIndexFault::MissingAttempt => builder.delete::<DiscussionAttemptIndexCodec>(
                 &DiscussionAttemptKey::new(job.discussion_thread_id(), job.attempt_ordinal()),
             )?,
-            ResolvingIndexFault::MissingLatest => {
+            HandoffJobIndexFault::MissingLatest => {
                 builder.delete::<LatestAttemptIndexCodec>(&job.discussion_thread_id())?
             }
-            ResolvingIndexFault::LiveCopy(copy) => {
+            HandoffJobIndexFault::LiveCopy(copy) => {
                 builder.put::<LiveJobIndexCodec>(&job.job_id(), &copy)?
             }
         }

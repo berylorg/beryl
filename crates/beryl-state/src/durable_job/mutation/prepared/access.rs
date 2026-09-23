@@ -44,7 +44,7 @@ pub(super) fn read_authenticated(
         || latest != Some(LatestBranchHandoffAttempt::from_job(&job))
     {
         return Err(DurableJobMutationError::Invariant(
-            "resolving job index closure disagrees",
+            "handoff job index closure disagrees",
         ));
     }
     Ok(job)
@@ -101,7 +101,7 @@ impl ReadAccess<'_> {
     ) -> Result<(), DurableJobMutationError> {
         if self.revision(handle)? != expected {
             return Err(DurableJobMutationError::Invariant(
-                "resolving transition source revision changed",
+                "handoff job transition source revision changed",
             ));
         }
         Ok(())
@@ -118,15 +118,15 @@ impl ReadAccess<'_> {
     pub(super) fn outcome(
         self,
         handle: &DomainHandle<DurableJobDomain>,
-        witness: &ResolvingTransitionWitness,
-    ) -> Result<ResolvingTransitionStatus, DurableJobMutationError> {
+        witness: &HandoffJobTransitionWitness,
+    ) -> Result<HandoffJobTransitionStatus, DurableJobMutationError> {
         let reader = self.reader(handle);
         let key = witness.old_job().job_id();
         let job = reader.point::<JobRecordCodec>(&key, job_point_limit())?;
         let live = reader.point::<LiveJobIndexCodec>(&key, job_point_limit())?;
         Ok(
             if job.as_ref() == Some(witness.old_job()) && live.as_ref() == Some(witness.old_job()) {
-                ResolvingTransitionStatus::ExactOld
+                HandoffJobTransitionStatus::ExactOld
             } else if job.as_ref() == Some(witness.new_job())
                 && live.as_ref()
                     == witness
@@ -135,9 +135,9 @@ impl ReadAccess<'_> {
                         .is_live()
                         .then_some(witness.new_job())
             {
-                ResolvingTransitionStatus::ExactNew
+                HandoffJobTransitionStatus::ExactNew
             } else {
-                ResolvingTransitionStatus::Collision
+                HandoffJobTransitionStatus::Collision
             },
         )
     }
