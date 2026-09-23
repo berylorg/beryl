@@ -123,7 +123,7 @@ impl LiveCommandAuthorizer {
         self.inner.failure_observed()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(in crate::cas_projection) fn active_command_count_for_test(&self) -> usize {
         self.inner
             .state

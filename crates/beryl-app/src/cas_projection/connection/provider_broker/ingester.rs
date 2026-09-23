@@ -50,6 +50,7 @@ use crate::cas_projection::{
 mod activation;
 mod active;
 mod approval;
+mod cancellation;
 mod compaction;
 mod construction;
 mod control;
@@ -64,6 +65,7 @@ mod submitted_user;
 mod terminal;
 
 use active::{ActiveDynamicTool, ActiveIngress, ActiveObservation, ActiveSteeringLifecycle};
+pub(in crate::cas_projection::connection) use cancellation::ProviderIngressCancellation;
 use state::{
     StickyRoutingFailure, TargetRouteOutcome, WholeConnectionRoutingFailure, receive_next,
 };

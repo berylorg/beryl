@@ -13,6 +13,12 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
+pub fn active_live_command_count(service: &super::ProjectionConnectionService) -> usize {
+    service
+        .live_command_authorizer()
+        .active_command_count_for_test()
+}
+
 pub use super::outage_buffer::{
     OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferError,
     OutageBufferLimits, OutageFact, OutageLoss, OutagePriority, OutageTarget, OutageTextKind,

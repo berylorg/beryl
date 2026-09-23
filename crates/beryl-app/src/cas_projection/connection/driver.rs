@@ -1313,9 +1313,6 @@ fn run_driver(
                 command.execute(&mut requests, &context);
             }
             Err(ReceiveError::Empty) => {
-                let Ok(poll_permit) = attachment.commands.authorize() else {
-                    continue;
-                };
                 if checked_steering_blocks_stream_poll(
                     &attachment.broker,
                     STREAM_IDLE_POLL_INTERVAL,
@@ -1323,9 +1320,9 @@ fn run_driver(
                     continue;
                 }
                 let progress = backend.poll_ordered_turn_stream_progress(STREAM_IDLE_POLL_INTERVAL);
-                if !poll_permit.is_current() {
+                let Ok(poll_permit) = attachment.commands.authorize() else {
                     continue;
-                }
+                };
                 match progress {
                     Ok(progress) => {
                         let mut requests = ConnectionRequestSession {

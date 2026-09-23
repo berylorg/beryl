@@ -483,6 +483,14 @@ pub fn prove_transport_backpressure_and_cancellation() {
     harness.server().begin_backpressure(spec);
     barrier.wait_for_stage();
 
+    assert_eq!(
+        beryl_app::cas_projection::test_faults::active_live_command_count(
+            &harness.fixture.as_ref().unwrap().store,
+        ),
+        1,
+        "only the ingester's staging operation owns admission during synchronous receive"
+    );
+
     let pages = reader.page_diagnostics().unwrap();
     assert_eq!(pages.leased, 1);
     assert_eq!(pages.high_water, 1);
@@ -521,8 +529,13 @@ pub fn prove_transport_backpressure_and_cancellation() {
     barrier.wait_for_stage();
     harness.assert_unpublished(cancelled.sequence);
     // The server retains the unsealed suffix while shutdown joins the ingester.
-    barrier.release();
-    harness.session().invalidate_connection();
+    std::thread::scope(|scope| {
+        let session = harness.session();
+        let retirement = scope.spawn(|| session.invalidate_connection());
+        barrier.wait_for_cancellation();
+        barrier.release();
+        retirement.join().unwrap();
+    });
     harness.wait_for_target_closed();
     harness.wait_for_page_leases(0);
     let released = reader.snapshot();

@@ -69,20 +69,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 504: Specify Nonwaiting Passive Capture And Driver Custody (finished)
+# Phase 505: Separate Driver Receive Lifetime From Effect Admission (finished)
 
-Accepted non-authorizing receive, unchanged outstanding-request custody, nonwaiting one-slot
-pre-inventory capture with explicit loss, and independently reachable cancellation. System and app
-authorities align; independent semantic review passed. The driver-cycle blocker is resolved in
-design, with implementation and ordinary mounting still separate below. CAS remains unchanged.
-
-# Phase 505: Separate Driver Receive Lifetime From Effect Admission (wip)
-
-Implement non-authorizing ordinary receive and fresh post-poll effect admission, plus exact ingress
-cancellation before forwarding-lock acquisition. Preserve outbound request permits and outcomes.
-Verify failure during synchronous ingress, effect rejection after gate closure, cancellation and
-joined retirement without waiting for a provider seal. Independently review the receive and disposal
-cuts. Passive failed-gate polling is connected by the ingester phase after its consumer exists.
+Accepted non-authorizing receive, fresh effect admission and independently reachable exact-broker
+cancellation. Paused-ingress tests prove only the staging operation owns admission and cancellation
+arrives before stage release without provider seal. Provider residency, broker and failure/shutdown
+checks passed (8, 54 and 101 tests plus the strengthened regression); independent review passed.
+Outbound request custody is unchanged. Passive failed-gate polling remains below.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 

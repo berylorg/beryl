@@ -15,7 +15,7 @@ pub(super) use ingester::fail_next_provider_broker_join_for_test;
 pub(super) use ingester::{
     PreparedProviderBroker, ProviderBroker, ProviderBrokerControl,
     ProviderBrokerResponseActivationFailure, ProviderBrokerStartToken,
-    ProviderBrokerTerminalReceipt, RunningProviderBrokerIngester,
+    ProviderBrokerTerminalReceipt, ProviderIngressCancellation, RunningProviderBrokerIngester,
     StartBlockedProviderBrokerIngester,
 };
 pub(in crate::cas_projection) use loss::ActiveBindingLossDisposition;

@@ -49,6 +49,7 @@ pub(in crate::cas_projection) struct ProjectionConnection {
     runtime_interest_source: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
     cut_worker_source: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
     original_router: std::sync::Weak<EventRouter>,
+    ingress_cancellation: provider_broker::ProviderIngressCancellation,
     forwarding_hub: Arc<ForwardingHub>,
     shutdown_settlement: Mutex<ConnectionShutdownSettlement>,
     runtime: Mutex<Option<ConnectionRuntime>>,
@@ -319,6 +320,7 @@ impl ProjectionConnection {
             runtime_interest_source,
             cut_worker_source,
             original_router: Arc::downgrade(&router),
+            ingress_cancellation: broker.cancellation_handle(),
             forwarding_hub,
             shutdown_settlement: Mutex::new(ConnectionShutdownSettlement::Unsettled),
             runtime: Mutex::new(Some(ConnectionRuntime { driver })),
@@ -729,6 +731,7 @@ impl ProjectionConnection {
     }
 
     pub(super) fn signal_ordinary_retirement(&self) {
+        self.ingress_cancellation.request();
         self.process_fact
             .retire(LiveEventTargetCloseReason::ConnectionRetired);
         if let Ok(attachment) = self.current_attachment() {
@@ -748,6 +751,7 @@ impl ProjectionConnection {
     }
 
     pub(in crate::cas_projection) fn shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
+        self.ingress_cancellation.request();
         let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
             ProjectionCoordinatorError::RegistryPoisoned {
                 registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
@@ -804,6 +808,7 @@ impl ProjectionConnection {
     pub(in crate::cas_projection) fn shutdown_after_ordinary_retirement(
         &self,
     ) -> Result<(), ProjectionCoordinatorError> {
+        self.ingress_cancellation.request();
         let mut settlement = self.shutdown_settlement.lock().map_err(|_| {
             ProjectionCoordinatorError::RegistryPoisoned {
                 registry: crate::cas_projection::ProjectionRegistryKind::ProjectionConnection,
@@ -853,6 +858,7 @@ impl ProjectionConnection {
     }
 
     fn execute_ordinary_shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
+        self.ingress_cancellation.request();
         match self.authority.retire()? {
             ConnectionRetirementOutcome::Complete => {}
         }
@@ -903,6 +909,7 @@ impl ProjectionConnection {
     }
 
     fn execute_terminal_shutdown(&self) -> Result<(), ProjectionCoordinatorError> {
+        self.ingress_cancellation.request();
         let (hub, hub_poisoned) = self.forwarding_hub.lock_attachment_for_disposal();
         let attachment = hub
             .attachment()
@@ -1441,6 +1448,7 @@ impl ProjectionConnection {
 
 impl Drop for ProjectionConnection {
     fn drop(&mut self) {
+        self.ingress_cancellation.request();
         self.request_ordinary_retirement();
         if let Ok(attachment) = self.forwarding_hub.current_attachment() {
             attachment.request_ingester_cancel();

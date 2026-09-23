@@ -59,6 +59,7 @@ impl ProjectionConnection {
     }
 
     pub(in crate::cas_projection) fn signal_idle_session_retirement(&self) {
+        self.ingress_cancellation.request();
         if let Ok(attachment) = self.current_attachment() {
             attachment.signal_elected_ordinary_retirement();
         }
