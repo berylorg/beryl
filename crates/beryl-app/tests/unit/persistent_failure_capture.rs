@@ -1,4 +1,56 @@
 use super::*;
+use crate::cas_projection::test_faults::OutageCaptureState;
+
+#[test]
+fn oversized_active_inventory_disables_capture_without_blocking_failure_cut() {
+    use crate::cas_projection::connection::{LoadedThreadKey, TargetTurnRegistration};
+    use beryl_model::{
+        CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasThreadId, CasTurnId,
+        SyndicThreadId, SyndicTurnId,
+    };
+    let mut config =
+        ProjectionServiceConfig::try_new(8, 4, MinimumTurnCaptureReserve::try_new(1).unwrap())
+            .unwrap();
+    config.outage_buffer.max_targets = 0;
+    let (_directory, faults, state, _, service) = service_with_config(config);
+    let (server, session) = admitted_connection(&service, 102_160);
+    let router = session.connection().original_failure_router_for_test();
+    let command = service.command_authorizer.authorize().unwrap();
+    let process = CasProcessGeneration::new(102_160).unwrap();
+    let registration = router
+        .register(
+            &command,
+            LoadedThreadKey {
+                runtime_id: RuntimeId::from_bytes([102; 16]),
+                process_generation: process,
+                cas_thread_id: CasThreadId::new("active-over-limit").unwrap(),
+            },
+            SyndicThreadId::from_bytes([160; 16]),
+            CasLoadedSessionGeneration::new(process, CasLoadedThreadGeneration::new(1).unwrap()),
+            service.home_generation.get(),
+            Duration::from_secs(1),
+            TargetTurnRegistration::Active {
+                syndic_turn_id: SyndicTurnId::from_bytes([161; 16]),
+                cas_turn_id: CasTurnId::new("active-turn").unwrap(),
+            },
+        )
+        .unwrap();
+    drop(command);
+    fail_home(&service, state, &faults);
+    wait_until("oversized inventory cut", || {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+    assert_eq!(
+        service.outage_inventory.snapshot().state,
+        OutageCaptureState::Unavailable
+    );
+    assert_eq!(service.outage_inventory.snapshot().targets, 0);
+    drop(registration);
+    let _ = service.close().unwrap();
+    drop(session);
+    drop(router);
+    server.join();
+}
 
 #[test]
 fn invalid_registry_before_failure_capture_never_installs_obligations() {
@@ -17,6 +69,10 @@ fn invalid_registry_before_failure_capture_never_installs_obligations() {
                 == PersistentFailureCutState::Incomplete
         });
         assert!(!connection.failure_obligations_installed_for_test());
+        assert_eq!(
+            service.outage_inventory.snapshot().state,
+            OutageCaptureState::Unavailable
+        );
         let _ = service.close();
         drop(session);
         drop(connection);
@@ -162,6 +218,10 @@ fn complete_freeze_and_final_membership_validation_precede_obligation_installati
             });
             assert!(!first.failure_obligations_installed_for_test());
             assert!(!second.failure_obligations_installed_for_test());
+            assert_eq!(
+                service.outage_inventory.snapshot().state,
+                OutageCaptureState::Pending
+            );
             if mutate_membership {
                 service.connections.lock().unwrap().reverse();
             }
@@ -184,7 +244,21 @@ fn complete_freeze_and_final_membership_validation_precede_obligation_installati
             second.failure_obligations_installed_for_test(),
             !mutate_membership
         );
+        let retained_inventory = Arc::clone(&service.outage_inventory);
+        assert_eq!(
+            retained_inventory.snapshot().state,
+            if mutate_membership {
+                OutageCaptureState::Unavailable
+            } else {
+                OutageCaptureState::Ready
+            }
+        );
         let _ = service.close();
+        assert_eq!(
+            retained_inventory.snapshot().state,
+            OutageCaptureState::Unavailable
+        );
+        assert_eq!(retained_inventory.snapshot().facts, 0);
         drop(first_session);
         drop(second_session);
         drop(first);

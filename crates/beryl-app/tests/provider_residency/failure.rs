@@ -111,6 +111,139 @@ pub(super) fn prove_fragment_store_failure() {
     harness.close();
 }
 
+pub(super) fn prove_passive_store_failure_capture() {
+    use beryl_app::cas_projection::test_faults::OutageCaptureState;
+    let faults = FaultController::new();
+    let harness = LiveHarness::with_faults(113, faults.clone());
+    let observer = harness.outage_observer();
+    let reader = capture_provider_broker_snapshot_reader(harness.session());
+    let settlement = harness.next_provider_seal_ack();
+    let barrier = install_provider_fragment_stage_barrier(harness.session());
+    harness
+        .server()
+        .begin_backpressure(ObservationSpec::new(1, PAUSED_PATTERNS));
+    barrier.wait_for_stage();
+    faults.fail_next_in_scope(
+        FaultPoint::AfterPersist,
+        syndic_storage::test_faults::provider_observation_stage_fault_scope(),
+    );
+    barrier.release();
+    let deadline = std::time::Instant::now() + super::server::TIMEOUT;
+    loop {
+        let snapshot = observer.snapshot().unwrap();
+        if snapshot.state == OutageCaptureState::Ready {
+            assert_eq!(
+                snapshot.targets, 1,
+                "active-only targets also participate in capture"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "inventory did not publish: {snapshot:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    harness.server().finish_pending(1);
+    harness.wait_for_provider_seal_ack(settlement);
+    let snapshot = observer.snapshot().unwrap();
+    assert_eq!(snapshot.gapped_targets, 1);
+    assert_eq!(
+        snapshot.facts, 0,
+        "spanning observation cannot publish its suffix"
+    );
+    let batches = reader.snapshot().provider_staging_batches();
+    for sequence in 2..=3 {
+        let settlement = harness.next_provider_seal_ack();
+        harness
+            .server()
+            .send_observation(ObservationSpec::new(sequence, 64));
+        harness.wait_for_provider_seal_ack(settlement);
+    }
+    let retained = observer.snapshot().unwrap();
+    assert!(
+        retained.facts > 0,
+        "ordinary failed-gate polls must continue receiving"
+    );
+    assert!(retained.encoded_bytes <= 4 * 1024 * 1024);
+    let settlement = harness.next_provider_seal_ack();
+    harness
+        .server()
+        .send_observation(ObservationSpec::new(4, PAUSED_PATTERNS));
+    harness.wait_for_provider_seal_ack(settlement);
+    assert_eq!(
+        observer.snapshot().unwrap().facts,
+        retained.facts,
+        "oversized observation is wholly lost"
+    );
+    assert_eq!(
+        reader.snapshot().provider_staging_batches(),
+        batches,
+        "passive receipt must not retry storage"
+    );
+    harness.wait_for_page_leases(0);
+    drop(barrier);
+    harness.close_failed();
+    assert!(observer.snapshot().is_none_or(|snapshot| snapshot.state
+        == OutageCaptureState::Unavailable
+        && snapshot.facts == 0));
+}
+
+pub(super) fn prove_dispatched_request_failure_capture() {
+    use beryl_app::cas_projection::test_faults::{OutageCaptureState, start_outage_probe_request};
+    let faults = FaultController::new();
+    let harness = LiveHarness::with_faults(114, faults.clone());
+    let observer = harness.outage_observer();
+    let request = start_outage_probe_request(harness.session());
+    harness.server().await_request();
+    let settlement = harness.next_provider_seal_ack();
+    let barrier = install_provider_fragment_stage_barrier(harness.session());
+    harness
+        .server()
+        .begin_backpressure(ObservationSpec::new(1, PAUSED_PATTERNS));
+    barrier.wait_for_stage();
+    faults.fail_next_in_scope(
+        FaultPoint::AfterPersist,
+        syndic_storage::test_faults::provider_observation_stage_fault_scope(),
+    );
+    barrier.release();
+    harness.server().finish_pending(1);
+    harness.wait_for_provider_seal_ack(settlement);
+    let settlement = harness.next_provider_seal_ack();
+    harness
+        .server()
+        .send_observation(ObservationSpec::new(2, 64));
+    harness.wait_for_provider_seal_ack(settlement);
+    assert_eq!(
+        observer.snapshot().unwrap().state,
+        OutageCaptureState::Pending,
+        "the dispatched request still owns its command permit"
+    );
+    assert!(!request.is_finished());
+    harness.server().reject_request();
+    let result = request.join().unwrap().unwrap_err();
+    assert!(
+        format!("{result:?}").contains("outage probe rejection"),
+        "original backend outcome was replaced: {result:?}"
+    );
+    let deadline = std::time::Instant::now() + super::server::TIMEOUT;
+    loop {
+        let snapshot = observer.snapshot().unwrap();
+        if snapshot.state == OutageCaptureState::Ready && snapshot.facts > 0 {
+            assert_eq!(snapshot.targets, 1);
+            assert_eq!(snapshot.gapped_targets, 1);
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pending observation did not flush after request settlement: {snapshot:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    drop(barrier);
+    harness.close_failed();
+}
+
 pub(super) fn prove_indeterminate_staging() {
     let faults = FaultController::new();
     let harness = LiveHarness::with_faults(109, faults.clone());

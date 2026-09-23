@@ -64,6 +64,25 @@ fn service_with_worker_capacity(
     Arc<AtomicUsize>,
     ProjectionConnectionService,
 ) {
+    service_with_config(
+        ProjectionServiceConfig::try_new(
+            8,
+            worker_capacity,
+            MinimumTurnCaptureReserve::try_new(1).unwrap(),
+        )
+        .unwrap(),
+    )
+}
+
+fn service_with_config(
+    config: ProjectionServiceConfig,
+) -> (
+    tempfile::TempDir,
+    FaultController,
+    BerylState,
+    Arc<AtomicUsize>,
+    ProjectionConnectionService,
+) {
     let directory = tempfile::tempdir().unwrap();
     let faults = FaultController::new();
     let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
@@ -88,12 +107,7 @@ fn service_with_worker_capacity(
         Default::default(),
         home,
         storage,
-        ProjectionServiceConfig::try_new(
-            8,
-            worker_capacity,
-            MinimumTurnCaptureReserve::try_new(1).unwrap(),
-        )
-        .unwrap(),
+        config,
         Box::new(ShutdownProbe(Arc::clone(&shutdowns))),
     )
     .unwrap();

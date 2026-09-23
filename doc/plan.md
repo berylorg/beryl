@@ -73,33 +73,16 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (finished)
+# Phase 479: Connect Outage Capture To Failed-Service Retirement (finished)
 
-Accepted exact-failure passive ingestion, failed-gate polling, bounded generation-bound inventory,
-unanswered approval disposal across cancellation, and loss-preserving retirement. Independent
-review, app check, 157 broker/failure/shutdown regressions, 49 focused transport/buffer tests,
-seven final passive tests and 98 backend ingress tests passed. Ordinary retention mounting remains
-below; [failure evidence](failures/outage-ingress-readiness.md) records the transition hazards.
+Accepted one generation-bound retention owner, prepared-ingester binding, complete bounded frozen
+inventory publication before obligations, and terminal retention disposal. Ordinary poll and
+dispatched-request failure, partial loss, overflow and no storage retry passed live transport
+verification. Independent custody review, 63 focused unit tests, all ten provider transport tests
+and the app check passed. The accepted passive-ingress prerequisites and their hazards remain in
+[outage ingress readiness](failures/outage-ingress-readiness.md).
 
-# Phase 479: Connect Outage Capture To Failed-Service Retirement (wip)
-
-Connect accepted outage-mode ingestion to ordinary store failure, admission fencing and failed
-service disposal. Verify exact active-target custody, failure and overflow, cancellation, and no
-buffer/connection transfer to replacement. The former producer-ordering blocker is resolved by
-the explicit buffering exception; assembly and ingress-mode acceptance remain prerequisites.
-Historical evidence remains in [outage ingress readiness](failures/outage-ingress-readiness.md).
-
-Mount one configured retention owner per exact service/home failure generation and bind prepared
-ingesters before activation. Publish the complete bounded inventory from borrowed worker-backed
-frozen witnesses before consuming batches or installing attachment-dependent obligations; reject
-incomplete or oversized inventories atomically. Dispose retention with failed-service retirement,
-including failure and cancellation paths, without retaining old-home or replacement authority.
-Verify ordinary poll and dispatched-request failure, late routing and partial-observation loss,
-bounded overflow, no response/tool effects, and cancellation/join without provider completion.
-Use independent custody review and ordinary service evidence; component tests alone do not accept
-the production mount.
-
-# Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
+# Phase 480: Specify Fresh Same-Home Recovery Composition (wip)
 
 Resolve the concrete component boundaries for the backend-runtime system's ordered fresh-service
 recovery protocol, using accepted candidate convergence and service ownership. Derive bounded

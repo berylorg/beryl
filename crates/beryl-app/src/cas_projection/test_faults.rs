@@ -13,6 +13,38 @@ mod scheduler;
 mod stop_handoff;
 mod target;
 mod terminal_history;
+pub use super::outage_buffer::{OutageCaptureSnapshot, OutageCaptureState};
+
+pub struct OutageCaptureObserver(std::sync::Weak<super::outage_buffer::OutageInventory>);
+
+impl OutageCaptureObserver {
+    pub fn snapshot(&self) -> Option<OutageCaptureSnapshot> {
+        self.0.upgrade().map(|owner| owner.snapshot())
+    }
+}
+
+pub fn capture_outage_observer(
+    service: &super::ProjectionConnectionService,
+) -> OutageCaptureObserver {
+    OutageCaptureObserver(service.outage_observer())
+}
+
+pub fn start_outage_probe_request(
+    session: &super::AdmittedProjectionSession,
+) -> std::thread::JoinHandle<Result<(), super::ProjectionExecutionError>> {
+    let connection = Arc::clone(session.connection());
+    std::thread::spawn(move || {
+        connection.call(|request| {
+            request
+                .start_thread_with_options(
+                    std::path::Path::new(r"C:\work\beryl"),
+                    beryl_backend::ThreadStartOptions::persistent(),
+                    std::time::Duration::from_secs(10),
+                )
+                .map(|_| ())
+        })
+    })
+}
 pub fn active_live_command_count(service: &super::ProjectionConnectionService) -> usize {
     service
         .live_command_authorizer()

@@ -15,6 +15,7 @@ impl PersistentFailureCoordinator {
         connections: Arc<
             crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
         >,
+        outage_inventory: Arc<crate::cas_projection::outage_buffer::OutageInventory>,
     ) -> Result<Self, std::io::Error> {
         Self::start_with_initial_start(
             home,
@@ -27,6 +28,7 @@ impl PersistentFailureCoordinator {
             stop_coordinator,
             connections,
             crate::cas_projection::initial_start::InitialStartGate::ready(),
+            outage_inventory,
         )
     }
 
@@ -44,6 +46,7 @@ impl PersistentFailureCoordinator {
             crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
         >,
         initial_start: Arc<crate::cas_projection::initial_start::InitialStartGate>,
+        outage_inventory: Arc<crate::cas_projection::outage_buffer::OutageInventory>,
     ) -> Result<Self, std::io::Error> {
         let stop_requested = Arc::new(AtomicBool::new(false));
         let state = Arc::new((
@@ -61,6 +64,7 @@ impl PersistentFailureCoordinator {
             Condvar::new(),
         ));
         let context = WorkerContext {
+            outage_inventory,
             home,
             home_id,
             home_generation,
@@ -75,7 +79,10 @@ impl PersistentFailureCoordinator {
         let handle = std::thread::Builder::new()
             .name("beryl-persistent-failure-cut".to_owned())
             .spawn(move || {
-                let _exit = super::worker::WorkerExitSignal(Arc::clone(&context.state));
+                let _exit = super::worker::WorkerExitSignal(
+                    Arc::clone(&context.state),
+                    Arc::clone(&context.outage_inventory),
+                );
                 if initial_start.wait() {
                     super::worker::run_worker(receiver, context);
                 }

@@ -58,6 +58,9 @@ pub struct ObservationReport {
 enum ServerCommand {
     Observation(ObservationSpec),
     BeginBackpressure(ObservationSpec),
+    FinishPending,
+    AwaitRequest,
+    RejectRequest,
     ProbeBackpressure,
     ProbeBackpressurePrefix,
     MissingText { sequence: u64 },
@@ -67,6 +70,7 @@ enum ServerCommand {
 #[derive(Debug)]
 enum ServerEvent {
     ProjectionReady,
+    RequestDispatched,
     Observation(ObservationReport),
     BackpressurePrefix,
     NoPongWhileBlocked,
@@ -83,6 +87,18 @@ pub struct ProviderServer {
 }
 
 impl ProviderServer {
+    pub fn await_request(&self) {
+        self.commands.send(ServerCommand::AwaitRequest).unwrap();
+        self.expect_event(ServerEvent::RequestDispatched);
+    }
+
+    pub fn reject_request(&self) {
+        self.commands.send(ServerCommand::RejectRequest).unwrap();
+    }
+    pub fn finish_pending(&self, sequence: u64) -> ObservationReport {
+        self.commands.send(ServerCommand::FinishPending).unwrap();
+        self.expect_observation(sequence)
+    }
     pub fn spawn() -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
@@ -210,8 +226,24 @@ fn run_server(
     events.send(ServerEvent::ProjectionReady).unwrap();
 
     let mut pending = None;
+    let mut request_id = None;
     while let Ok(command) = commands.recv() {
         match command {
+            ServerCommand::AwaitRequest => {
+                let request = read_json(&mut socket).unwrap();
+                assert_eq!(request["method"], "thread/start");
+                request_id = Some(request["id"].as_u64().unwrap());
+                events.send(ServerEvent::RequestDispatched).unwrap();
+            }
+            ServerCommand::RejectRequest => {
+                let id = request_id.take().unwrap();
+                send_json(
+                    &mut socket,
+                    &format!(
+                        r#"{{"error":{{"code":-32603,"message":"outage probe rejection"}},"id":{id}}}"#
+                    ),
+                );
+            }
             ServerCommand::Observation(spec) => {
                 assert!(pending.is_none());
                 let report = write_observation(&mut socket, spec);
@@ -235,6 +267,11 @@ fn run_server(
                     continue;
                 }
                 let report = finish_observation(&mut socket, message);
+                events.send(ServerEvent::Observation(report)).unwrap();
+            }
+            ServerCommand::FinishPending => {
+                let report =
+                    finish_observation(&mut socket, pending.take().expect("pending prefix"));
                 events.send(ServerEvent::Observation(report)).unwrap();
             }
             ServerCommand::MissingText { sequence } => {

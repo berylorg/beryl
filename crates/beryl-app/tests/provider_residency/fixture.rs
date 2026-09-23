@@ -43,6 +43,29 @@ pub(super) struct LiveHarness {
 }
 
 impl LiveHarness {
+    pub(super) fn outage_observer(
+        &self,
+    ) -> beryl_app::cas_projection::test_faults::OutageCaptureObserver {
+        beryl_app::cas_projection::test_faults::capture_outage_observer(
+            &self.fixture.as_ref().unwrap().store,
+        )
+    }
+
+    pub(super) fn close_failed(mut self) {
+        self.target.take();
+        self.server().request_close();
+        self.session().invalidate_connection();
+        self.session.take();
+        self.server.take().unwrap().join();
+        let (directory, service) = self.fixture.take().unwrap().into_service();
+        assert!(matches!(
+            service.close().unwrap(),
+            beryl_app::cas_projection::ProjectionConnectionServiceCloseOutcome::PersistentFailure(
+                _
+            )
+        ));
+        drop(directory);
+    }
     pub(super) fn new(seed: u8) -> Self {
         Self::from_fixture(Fixture::new(seed), seed)
     }

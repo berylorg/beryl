@@ -33,6 +33,64 @@ pub(in crate::cas_projection) enum OutageInventoryError {
 }
 
 impl OutageInventory {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn snapshot(&self) -> super::OutageCaptureSnapshot {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match &*state {
+            InventoryState::Pending(_) => super::OutageCaptureSnapshot {
+                state: super::OutageCaptureState::Pending,
+                targets: 0,
+                facts: 0,
+                gapped_targets: 0,
+                encoded_bytes: 0,
+            },
+            InventoryState::Unavailable => super::OutageCaptureSnapshot {
+                state: super::OutageCaptureState::Unavailable,
+                targets: 0,
+                facts: 0,
+                gapped_targets: 0,
+                encoded_bytes: 0,
+            },
+            InventoryState::Ready(buffer) => super::OutageCaptureSnapshot {
+                state: super::OutageCaptureState::Ready,
+                targets: buffer.targets.len(),
+                facts: buffer.facts.len(),
+                gapped_targets: buffer.targets.iter().filter(|state| state.gap).count(),
+                encoded_bytes: buffer.encoded_bytes(),
+            },
+        }
+    }
+
+    pub(in crate::cas_projection) fn publish_frozen(
+        &self,
+        identity: PersistentFailureCutIdentity,
+        targets: impl Iterator<Item = Result<Option<OutageTarget>, ()>>,
+    ) -> Result<(), OutageInventoryError> {
+        if !self.matches(identity) {
+            return Err(OutageInventoryError::Identity);
+        }
+        let mut inventory = Vec::new();
+        for target in targets {
+            match target {
+                Ok(Some(target))
+                    if inventory.len() < self.limits.max_targets
+                        && inventory.try_reserve_exact(1).is_ok() =>
+                {
+                    inventory.push(target)
+                }
+                Ok(None) => {}
+                _ => {
+                    self.retire();
+                    return Err(OutageInventoryError::Unrepresentable);
+                }
+            }
+        }
+        self.publish(identity, &inventory)
+    }
+
     pub(in crate::cas_projection) fn new(
         identity: PersistentFailureCutIdentity,
         limits: OutageBufferLimits,

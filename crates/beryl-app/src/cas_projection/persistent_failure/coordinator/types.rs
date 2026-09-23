@@ -175,6 +175,7 @@ impl std::fmt::Debug for PersistentFailureTerminalDisposer {
 }
 
 pub(super) struct WorkerContext {
+    pub(super) outage_inventory: Arc<crate::cas_projection::outage_buffer::OutageInventory>,
     pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,

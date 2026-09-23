@@ -1,5 +1,23 @@
 use super::*;
 
+impl PreparedProviderBroker {
+    pub(in crate::cas_projection::connection) fn activate(
+        self,
+    ) -> (
+        Box<dyn OrderedTurnStreamSink>,
+        Arc<ProviderBrokerControl>,
+        RunningProviderBrokerIngester,
+    ) {
+        let Self {
+            sink,
+            control,
+            ingester,
+            start,
+        } = self;
+        (sink, control, ingester.start(start))
+    }
+}
+
 impl ProviderBrokerUnstarted {
     pub(super) fn spawn(
         self,

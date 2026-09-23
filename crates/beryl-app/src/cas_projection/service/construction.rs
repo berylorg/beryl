@@ -1,6 +1,13 @@
 use super::*;
 
 impl ProjectionConnectionService {
+    #[cfg(feature = "test-faults")]
+    pub(in crate::cas_projection) fn outage_observer(
+        &self,
+    ) -> std::sync::Weak<super::super::outage_buffer::OutageInventory> {
+        Arc::downgrade(&self.outage_inventory)
+    }
+
     pub fn new(
         process: crate::process_admission::ProcessAdmissionGate,
         home: HomeStore,
@@ -86,6 +93,16 @@ impl ProjectionConnectionService {
             command_authorizer.clone(),
             scheduler_signal.clone(),
         ));
+        let outage_inventory = Arc::new(super::super::outage_buffer::OutageInventory::new(
+            super::super::persistent_failure::PersistentFailureCutIdentity::new(
+                home.home_id(),
+                home_generation,
+                service_generation,
+                super::super::PersistentFailureGeneration::FIRST,
+            ),
+            config.outage_buffer,
+            config.outage_assembly,
+        ));
         let persistent_failure = PersistentFailureCoordinator::start_with_initial_start(
             Arc::clone(&home),
             home.home_id(),
@@ -97,6 +114,7 @@ impl ProjectionConnectionService {
             Arc::clone(&stop_coordinator),
             Arc::clone(&connections),
             Arc::clone(&initial_start),
+            Arc::clone(&outage_inventory),
         )
         .map_err(
             |error| ProjectionCoordinatorError::PersistentFailureWorkerSpawn {
@@ -115,6 +133,7 @@ impl ProjectionConnectionService {
             scheduler_signal.clone(),
         );
         let mut service = Self {
+            outage_inventory,
             home_id: home.home_id(),
             home_generation,
             owned_home,

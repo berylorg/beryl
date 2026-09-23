@@ -7,6 +7,7 @@ mod tests;
 
 #[derive(Clone)]
 pub(in crate::cas_projection) struct ProjectionAdmissionContext {
+    outage_inventory: Arc<super::super::outage_buffer::OutageInventory>,
     acquisition: Option<super::super::acquisition::ProjectionAcquisition>,
     home: Option<Arc<HomeServiceReference>>,
     home_id: BerylHomeId,
@@ -83,6 +84,7 @@ impl ProjectionConnectionService {
             .as_ref()
             .ok_or(ProjectionCoordinatorError::HomeServiceUnavailable)?;
         Ok(ProjectionAdmissionContext {
+            outage_inventory: Arc::clone(&self.outage_inventory),
             acquisition: None,
             home: self.home.clone(),
             home_id: self.home_id,
@@ -400,6 +402,7 @@ impl ProjectionAdmissionContext {
             self.command_authorizer.clone(),
             self.failure_notification.clone(),
             self.terminal_disposer.clone(),
+            Arc::clone(&self.outage_inventory),
         )
         .map_err(|source| {
             ProjectionSessionAdmissionError::connection_ownership(

@@ -57,6 +57,18 @@ fn provider_fragment_store_failure_remains_atomic() {
 }
 
 #[test]
+fn failed_store_keeps_receiving_into_bounded_passive_capture_until_retirement() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_passive_store_failure_capture();
+}
+
+#[test]
+fn dispatched_request_receives_passively_before_failure_inventory_can_publish() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_dispatched_request_failure_capture();
+}
+
+#[test]
 fn provider_indeterminate_staging_retains_custody() {
     let _guard = TEST_LOCK.lock().unwrap();
     failure::prove_indeterminate_staging();

@@ -7,6 +7,24 @@ pub use assembly::{OutageAssembly, OutageAssemblyError, OutageAssemblyLimits};
 pub(in crate::cas_projection) use inventory::{
     OutageInventory, OutageInventoryAccess, OutageInventoryError,
 };
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OutageCaptureState {
+    Pending,
+    Ready,
+    Unavailable,
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OutageCaptureSnapshot {
+    pub state: OutageCaptureState,
+    pub targets: usize,
+    pub facts: usize,
+    pub gapped_targets: usize,
+    pub encoded_bytes: usize,
+}
 pub use slot::OutageObservationSlot;
 
 use super::ConnectionWorkTargetIdentity;
@@ -16,7 +34,7 @@ use beryl_backend::{
 };
 use beryl_model::{CasItemId, CasTurnId, ProviderObservationId, SyndicTurnId};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OutageBufferLimits {
     pub max_facts: usize,
     pub max_encoded_bytes: usize,

@@ -8,7 +8,7 @@ use beryl_backend::{
 };
 use beryl_model::{CasItemId, ProviderObservationId};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OutageAssemblyLimits {
     pub max_bytes: usize,
     pub max_field_bytes: usize,

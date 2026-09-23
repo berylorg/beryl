@@ -36,6 +36,7 @@ fn failure_witness_preserves_each_registration_turn_identity_without_interrupt_a
         ),
     ];
     for (turn, expected) in variants {
+        let capture_expected = matches!(turn, TargetTurnRegistration::Active { .. });
         let (router, gate) = router_with_gate_for(201, 89_201);
         let identity = PersistentFailureCutIdentity::new(
             home.home_id(),
@@ -67,10 +68,12 @@ fn failure_witness_preserves_each_registration_turn_identity_without_interrupt_a
             gate.elect_persistent_failure_for_test(identity.failure_generation)
                 .unwrap()
         );
-        let mut candidates = router
+        let batch = router
             .freeze_persistent_failure_targets(identity, false)
-            .unwrap()
-            .into_candidates();
+            .unwrap();
+        let witness = batch.witnesses().next().unwrap();
+        assert_eq!(witness.outage_target().unwrap().is_some(), capture_expected);
+        let mut candidates = batch.into_candidates();
         let candidate = candidates.pop().unwrap();
         assert!(candidates.is_empty());
         assert_eq!(candidate.syndic_thread_id(), owner);

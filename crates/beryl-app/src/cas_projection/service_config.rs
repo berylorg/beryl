@@ -29,6 +29,8 @@ const MINIMUM_WORKER_CAPACITY: usize = CONNECTION_WORKER_PERMITS
 /// Immutable local limits for the non-GUI projection connection service.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProjectionServiceConfig {
+    pub(in crate::cas_projection) outage_buffer: super::outage_buffer::OutageBufferLimits,
+    pub(in crate::cas_projection) outage_assembly: super::outage_buffer::OutageAssemblyLimits,
     foreground: ForegroundSessionConfig,
     worker_capacity: NonZeroUsize,
     turn_start_admission_requirement: TurnStartAdmissionRequirement,
@@ -90,6 +92,17 @@ impl ProjectionServiceConfig {
         let turn_start_admission_requirement =
             Self::compose_turn_start_admission_requirement(minimum_turn_capture_reserve)?;
         Ok(Self {
+            outage_buffer: super::outage_buffer::OutageBufferLimits {
+                max_facts: 4096,
+                max_encoded_bytes: 4 * 1024 * 1024,
+                max_field_bytes: 64 * 1024,
+                max_targets: 1024,
+            },
+            outage_assembly: super::outage_buffer::OutageAssemblyLimits {
+                max_bytes: 256 * 1024,
+                max_field_bytes: 64 * 1024,
+                max_entries: 1024,
+            },
             foreground: ForegroundSessionConfig::new(pre_bind_control_capacity),
             worker_capacity,
             turn_start_admission_requirement,

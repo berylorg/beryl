@@ -33,6 +33,7 @@ pub(super) struct PersistentFailureRouterCut {
 /// Exact immutable ordinary-turn proof frozen from last-coherent router evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::cas_projection) struct PersistentFailureTargetWitness {
+    capture_active: Result<bool, ()>,
     cut_identity: PersistentFailureCutIdentity,
     connection: ProjectionConnectionIdentityObservation,
     registration: u64,
@@ -213,6 +214,32 @@ impl PersistentFailureTargetProof {
 }
 
 impl PersistentFailureTargetWitness {
+    pub(in crate::cas_projection) fn outage_target(
+        &self,
+    ) -> Result<Option<crate::cas_projection::outage_buffer::OutageTarget>, ()> {
+        if !self.capture_active? {
+            return Ok(None);
+        }
+        let turn = self.syndic_turn_id.ok_or(())?;
+        let cas_turn = self.cas_turn_id.clone().ok_or(())?;
+        Ok(Some(
+            crate::cas_projection::outage_buffer::OutageTarget::new(
+                crate::cas_projection::ConnectionWorkTargetIdentity {
+                    runtime_id: self.connection.runtime_id(),
+                    process_generation: self.connection.process_generation(),
+                    connection_generation: self.connection.connection_generation(),
+                    registration_serial: self.registration,
+                    thread_id: self.syndic_thread_id,
+                    cas_thread_id: self.cas_thread_id.clone(),
+                    loaded_generation: self.loaded_generation,
+                    home_generation: self.cut_identity.home_generation.get(),
+                },
+                turn,
+                cas_turn,
+            ),
+        ))
+    }
+
     pub(in crate::cas_projection) const fn cut_identity(&self) -> PersistentFailureCutIdentity {
         self.cut_identity
     }
@@ -438,6 +465,25 @@ fn build_witness(
     election_token: u64,
 ) -> PersistentFailureTargetWitness {
     PersistentFailureTargetWitness {
+        capture_active: if target.home_generation != identity.home_generation.get()
+            || target.key.runtime_id != router.runtime_id
+            || target.key.process_generation != router.process_generation
+            || target.loaded_generation.process() != router.process_generation
+            || target.key.cas_thread_id != *cas_thread_id
+        {
+            Err(())
+        } else {
+            target
+                .terminal
+                .lock()
+                .map(|terminal| {
+                    target.turn_state == TargetTurn::Exact
+                        && *terminal == super::TargetTerminalSignal::Open
+                        && !target.loss_requested
+                        && target.publication_closing.is_none()
+                })
+                .map_err(|_| ())
+        },
         cut_identity: identity,
         connection: ProjectionConnectionIdentityObservation::new(
             router.connection_generation,

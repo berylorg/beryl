@@ -102,6 +102,7 @@ struct PreparedProjectionSessionAdmission {
 
 /// Process-owned admission and shutdown boundary for projection connections.
 pub struct ProjectionConnectionService {
+    outage_inventory: Arc<super::outage_buffer::OutageInventory>,
     owned_home: Option<HomeStore>,
     initial_start: Arc<InitialStartGate>,
     home: Option<Arc<HomeServiceReference>>,

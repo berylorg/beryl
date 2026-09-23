@@ -1,6 +1,9 @@
 use super::*;
 
-pub(super) struct WorkerExitSignal(pub(super) Arc<(Mutex<CoordinatorState>, Condvar)>);
+pub(super) struct WorkerExitSignal(
+    pub(super) Arc<(Mutex<CoordinatorState>, Condvar)>,
+    pub(super) Arc<crate::cas_projection::outage_buffer::OutageInventory>,
+);
 
 impl Drop for WorkerExitSignal {
     fn drop(&mut self) {
@@ -10,6 +13,7 @@ impl Drop for WorkerExitSignal {
             state.phase,
             PersistentFailureCutState::Armed | PersistentFailureCutState::Cutting
         ) {
+            self.1.retire();
             state.phase = if std::thread::panicking() {
                 PersistentFailureCutState::Incomplete
             } else {
@@ -96,7 +100,9 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             );
             return;
         }
-        let Ok(results) = freeze_and_dispatch_targets(identity, &context.connections) else {
+        let Ok(results) =
+            freeze_and_dispatch_targets(identity, &context.connections, &context.outage_inventory)
+        else {
             finish_worker(
                 &context,
                 PersistentFailureCutState::Incomplete,
@@ -124,6 +130,7 @@ pub(super) fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
 fn freeze_and_dispatch_targets(
     identity: PersistentFailureCutIdentity,
     connections: &crate::cas_projection::service_registry::ProjectionServiceConnectionRegistry,
+    outage_inventory: &crate::cas_projection::outage_buffer::OutageInventory,
 ) -> Result<CutResultCounts, ()> {
     let mut frozen = Vec::new();
     let mut results = CutResultCounts::default();
@@ -149,6 +156,17 @@ fn freeze_and_dispatch_targets(
             Ok(())
         })
         .map_err(|_| ())?;
+    let _ = outage_inventory.publish_frozen(
+        identity,
+        frozen.iter().flat_map(|(_, _, batch)| {
+            batch.witnesses().map(|witness| {
+                if witness.cut_identity() != identity {
+                    return Err(());
+                }
+                witness.outage_target()
+            })
+        }),
+    );
     let mut pending_results = Vec::new();
     let mut retained_workers = Vec::with_capacity(frozen.len());
     for (connection, workers, batch) in frozen {
@@ -230,6 +248,9 @@ fn finish_worker(
     failure_generation: Option<PersistentFailureGeneration>,
     results: CutResultCounts,
 ) {
+    if phase != PersistentFailureCutState::Finished {
+        context.outage_inventory.retire();
+    }
     let mut state = context
         .state
         .0

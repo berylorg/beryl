@@ -215,6 +215,7 @@ impl ProjectionConnection {
         failure_notification: crate::cas_projection::PersistentFailureNotification,
         terminal_disposer:
             crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
+        outage_inventory: Arc<crate::cas_projection::outage_buffer::OutageInventory>,
     ) -> Result<Arc<Self>, ProjectionCoordinatorError> {
         let authority = Arc::new(ConnectionRegistryAuthority::new(
             runtime_id,
@@ -241,7 +242,7 @@ impl ProjectionConnection {
         let cut_worker_source = worker_permits.retention_source();
         let ordinary_workers = worker_permits.worker_pool();
         let ingester_permit = worker_permits.take_ingester();
-        let (sink, broker, ingester) = match ProviderBroker::start(
+        let prepared = match ProviderBroker::prepare(
             Arc::clone(&home),
             home_id,
             home_generation,
@@ -263,6 +264,23 @@ impl ProjectionConnection {
                 });
             }
         };
+        if prepared.bind_outage_inventory(outage_inventory).is_err() {
+            let super::provider_broker::PreparedProviderBroker {
+                sink,
+                control,
+                ingester,
+                start,
+            } = prepared;
+            drop(ingester.cancel_and_join(start).into_worker());
+            drop((sink, control));
+            let _ = backend.shutdown();
+            let _ = authority.retire();
+            router.retire(LiveEventTargetCloseReason::StreamFailure);
+            return Err(ProjectionCoordinatorError::ProviderBrokerAdmission {
+                message: "outage capture generation binding failed".into(),
+            });
+        }
+        let (sink, broker, ingester) = prepared.activate();
         let provider_pages = broker.page_diagnostics();
         let attachment = Arc::new(ConnectionAttachment {
             identity: ConnectionAttachmentIdentity::new(
