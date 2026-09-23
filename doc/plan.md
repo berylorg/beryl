@@ -73,21 +73,33 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 479: Connect Outage Capture To Failed-Service Retirement (finished)
+# Phase 480: Specify Fresh Same-Home Recovery Composition (finished)
 
-Accepted one generation-bound retention owner, prepared-ingester binding, complete bounded frozen
-inventory publication before obligations, and terminal retention disposal. Ordinary poll and
-dispatched-request failure, partial loss, overflow and no storage retry passed live transport
-verification. Independent custody review, 63 focused unit tests, all ten provider transport tests
-and the app check passed. The accepted passive-ingress prerequisites and their hazards remain in
-[outage ingress readiness](failures/outage-ingress-readiness.md).
+Accepted the runtime-retirement/storage-custody split, distinct reopening-candidate preparation,
+and exact supervisor/publication responsibilities in the backend-runtime and app authorities.
+Independent readiness review confirmed compatibility with existing same-home reopen and candidate
+abort. The bounded components below precede branch work; complete supervisor mounting consumes
+the real complete graph after phase 423, without a partial graph or generic placeholder.
 
-# Phase 480: Specify Fresh Same-Home Recovery Composition (wip)
+# Phase 509: Preserve Failed-Home Custody Through CAS Retirement (wip)
 
-Resolve the concrete component boundaries for the backend-runtime system's ordered fresh-service
-recovery protocol, using accepted candidate convergence and service ownership. Derive bounded
-implementation phases for disposal, same-home reopening, supervisor attachment and publication
-custody before branch services. Complete-stack publication and product mounting remain separate.
+Implement the app's separate consuming CAS retirement handoff from the
+[replacement contract](../crates/beryl-app/doc/design-shell-lifecycle.md#same-home-replacement-contribution).
+Reuse exact failed-service disposal while retaining only owned failed-home custody and bounded
+generation evidence. Reference-only components return no owned home. Failure must retain explicit
+terminal-disposal custody without reopening permission. Verify healthy/stale rejection, connection
+and worker failure, live ingress cancellation, no old service authority, retained home lock and
+reconciliation custody, and successful same-home reopening only after component retirement.
+Independent custody review and focused lifecycle/storage checks accept only this component.
+
+# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (pending)
+
+Consume the storage recovery candidate and freshly reacquired typed handles through shared
+candidate convergence and fresh fenced service construction. Preserve distinct owned opening and
+reopening capabilities, immutable configuration and explicit failure custody. Verify wrong identity,
+convergence and constructor failure, cancellation/disposal before abort, and no ordinary work or
+early publication. Independent review accepts this preparation component; complete graph and
+supervisor publication remain separate.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

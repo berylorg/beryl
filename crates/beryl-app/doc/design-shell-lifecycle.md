@@ -186,3 +186,24 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - Failure before publication disposes the candidate and publishes no authority. After publication,
   schedulers and projection consumers establish fresh authority from durable typed facts under the
   new generation.
+- CAS retirement consumes its service and returns only exact home/service/failure identity and
+  bounded disposal evidence after its runtime, connection, broker, scheduler and compaction workers
+  settle. It retires outage retention before joining ingress. When that service owns the failed
+  home, retirement separates the owned home from the disposed service; a reference-only component
+  cannot manufacture home ownership. Neither form proves retirement of other graph components.
+- A retirement failure grants no reopening authority. Any owned failed home stays in explicit
+  failure custody for terminal disposal, preserving the home-store reconciliation and lock rules.
+  Successful CAS retirement alone cannot publish replacement services or restart ordinary work.
+- Fresh CAS preparation accepts the owned reopening candidate, reacquired Syndic handles and the
+  same immutable configuration inputs as initial preparation. It runs the shared sequential
+  candidate convergence, constructs fresh generation-bound services and configures managed-session
+  preparation behind the worker fence. The initial and recovery candidate capabilities are never
+  converted into each other or exposed as early healthy stores.
+- An unpublished replacement retains complete disposal ownership. Construction or convergence
+  failure and cancellation join all prepared CAS workers before aborting its candidate. Candidate
+  failure returns explicit failed-home custody to outer recovery; no ordinary store reference,
+  prepared worker or outage payload crosses to the next attempt.
+- The outer app graph requires every component's retirement and preparation before handing the
+  complete candidate to the process supervisor. CAS-only disposal or preparation is not a complete
+  graph receipt. The supervisor's single attempt, attachment, retry and atomic publication follow
+  the [backend-runtime composition](../../../doc/systems/backend-runtime/design.md#same-home-recovery-composition).

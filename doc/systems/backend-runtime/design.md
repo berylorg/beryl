@@ -176,6 +176,43 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
 - Any in-flight non-idempotent request remains classified from its last exact durable and transport evidence. Recovery does not resend it merely because a fresh connection exists.
 - Backend process replacement likewise creates fresh connection and projection authority; it cannot inherit interruption, steering, repair-response, or capture authority from the old process.
 
+### Same-Home Recovery Composition
+
+- The process-wide app supervisor outlives replaceable service graphs. It owns one exact configured
+  home recovery attempt, one retry deadline and the publication slot. Concurrent failure notices
+  coalesce for the same failed generation; stale notices and completions cannot replace a newer
+  graph. Retry uses the home-store delay sequence and cannot overlap disposal or candidate work.
+- Retirement separates runtime disposal from storage recovery custody. Every old graph component
+  fences admission and joins its workers before reporting its exact generation retired. Only
+  storage-package recovery custody survives in the failed home owner; reopening preserves its
+  lock and reconciliation registry while disposing and reconstructing backend storage as required
+  by the storage contract. No old graph or connection accompanies that owner into reopening. Terminal
+  application close remains distinct and creates no recovery handoff.
+- The outer composition owner requires retirement of the complete old graph before consuming that
+  failed home owner through `HomeStore::recover_same_home`. It never releases and reacquires the
+  home lock, opens another path, or falls back to initial creation. Unproven component retirement
+  blocks reopening; the failed home remains under conservative storage custody.
+- Reopening yields the storage package's unpublished `HomeRecoveryCandidate`. Fresh typed domain
+  handles and service factories use only that candidate's generation and explicit recovery access.
+  Initial and replacement construction share service implementations and convergence rules, while
+  their owned candidate capabilities remain distinct. No adapter admits an old healthy handle.
+- The complete fresh graph, durable convergence result and supervisor attachment are prepared
+  before publication. Attachment binds the exact attempt and candidate generation without opening
+  admission or installing another supervisor. Publication verifies that the slot still owns that
+  attempt, consumes the storage publication capability and installs the complete graph in one
+  serialized outer transition. No fallible constructor or attachment follows storage publication;
+  only release of prepared work and fresh projection acquisition follows visibility.
+- Cancellation before publication fences and joins the candidate before its recovery candidate is
+  aborted back to failed storage custody. Failed reopening returns the original failed owner for
+  the next bounded retry. Candidate writes retain their actual committed or indeterminate outcome;
+  disposal never rolls them back or treats them as authorization to repeat external work. A
+  shutdown racing publication is serialized by the same owner: it either cancels the unpublished
+  attempt or closes the newly published complete graph.
+- Verification proves old-worker disposal before reopen, retained reconciliation and lock custody,
+  exact candidate identity, construction/convergence/attachment failure, cancellation, stale attempt
+  rejection and publication races. Component acceptance does not substitute for complete-graph
+  publication or running-window recovery evidence.
+
 ## Protocol Ownership
 
 - Authentication, agent execution, configuration, skills, MCP, tools, subagents, sandboxing, approvals, and provider policy remain backend-owned.
