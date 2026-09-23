@@ -75,13 +75,31 @@ pub(in crate::cas_projection) enum PersistentFailureTargetIneligibility {
 #[derive(Debug)]
 pub(in crate::cas_projection) struct PersistentFailureTargetBatch {
     candidates: Vec<PersistentFailureTargetCandidate>,
+    projections: Vec<crate::cas_projection::LoadedCasProjection>,
+    disposer: Option<crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer>,
 }
 
 impl PersistentFailureTargetBatch {
+    pub(in crate::cas_projection) fn witnesses(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &PersistentFailureTargetWitness> {
+        self.candidates.iter().map(|candidate| &candidate.witness)
+    }
+
     pub(in crate::cas_projection) fn into_candidates(
-        self,
+        mut self,
     ) -> Vec<PersistentFailureTargetCandidate> {
-        self.candidates
+        std::mem::take(&mut self.candidates)
+    }
+}
+
+impl Drop for PersistentFailureTargetBatch {
+    fn drop(&mut self) {
+        if let Some(disposer) = &self.disposer {
+            for projection in self.projections.drain(..) {
+                disposer.dispose_target(projection);
+            }
+        }
     }
 }
 
@@ -363,12 +381,11 @@ impl EventRouter {
         super::state::advance_revision(&mut state);
         drop(state);
         self.publication_changed.notify_all();
-        if let Some(disposer) = self.terminal_disposer.clone() {
-            for projection in retained_target_projections {
-                disposer.dispose_target(projection);
-            }
-        }
-        Ok(PersistentFailureTargetBatch { candidates })
+        Ok(PersistentFailureTargetBatch {
+            candidates,
+            projections: retained_target_projections,
+            disposer: self.terminal_disposer.clone(),
+        })
     }
 
     pub(in crate::cas_projection) fn authorize_persistent_failure_dispatch(

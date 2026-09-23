@@ -72,9 +72,11 @@ fn failure_cut_waits_for_prepared_connection_publication_before_traversal() {
 fn historical_failed_connections_beyond_capacity_do_not_enter_retained_capture() {
     let (_directory, faults, state, _, service) = service();
     let mut historical = Vec::new();
+    let mut historical_routers = Vec::new();
     for generation in 102_100..102_109 {
         let (server, session) = admitted_connection(&service, generation);
         let connection = Arc::clone(session.connection());
+        historical_routers.push(connection.original_failure_router_for_test());
         connection.fail_next_ingester_join_for_test();
         drop(session);
         assert!(connection.shutdown().is_err());
@@ -110,6 +112,11 @@ fn historical_failed_connections_beyond_capacity_do_not_enter_retained_capture()
         for (weak, expected) in historical.iter().zip(baseline) {
             assert_eq!(weak.strong_count(), expected);
         }
+        assert!(
+            historical_routers
+                .iter()
+                .all(|router| router.failure_is_frozen_for_test())
+        );
         assert!(!live.failure_obligations_installed_for_test());
         release.send(()).unwrap();
         lock.join().unwrap();

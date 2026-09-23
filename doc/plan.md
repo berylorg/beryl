@@ -69,14 +69,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 502: Reconcile Provider Failure And Paused-Ingress Verification (finished)
+# Phase 503: Retain Frozen Target Custody Through Inventory Handoff (finished)
 
-Accepted genuine indeterminate staging/publication tests with exact registry custody surviving
-connection and service retirement, atomic visibility, and no live retry. Weak page diagnostics and
-corrected unsealed cancellation scheduling avoid paused-ingress mutex deadlocks. Independent review
-passed; all eight provider-residency tests passed, followed by both strengthened custody cases.
-Formatting and whitespace checks passed. See [the retained lesson](failures/outage-ingress-readiness.md#registration-identity-and-verification-follow-up).
-Operator requested ending this turn without continuation yield for a GUI restart; resume at phase 500.
+Accepted batch-owned projection custody with borrowed exact witnesses and disposal on consumption,
+drop, unwind or partial collection failure. Only worker-backed batches accumulate; zero-worker
+historical connections retain immediate bounded cleanup. Independent review and focused failure,
+disposal and historical-capacity tests passed; formatting and whitespace checks passed. See
+[the custody lesson](failures/outage-ingress-readiness.md#frozen-inventory-custody).
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 
@@ -86,6 +85,8 @@ failure, indeterminate handoff before acknowledgement, no durable retry or new e
 missing-route conservative loss, and retirement without waiting for terminal evidence. Reuse the
 accepted assembler and retention component; independently review custody and lifecycle cuts before
 integration into ordinary service failure.
+Use the accepted frozen-batch witness borrow before consuming worker-backed batches. Release the
+ingester live-command permit before waiting for the coordinator, which drains those permits first.
 Resume from the existing `Ingester::run_loop` terminal-on-store-failure cut and accepted
 `outage_buffer::OutageAssembly`. Seal only at the validated backend provider seal; malformed input
 and transport loss must abandon. Preserve the existing registry handoff before any acknowledgement.

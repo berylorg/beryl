@@ -85,3 +85,27 @@ Independent review accepted these corrections. All eight provider-residency case
 `5265a37a-3ac8-42de-8c40-1b139aa4e62f`. The weak observer retains no page storage. Formatting and
 whitespace checks passed. Failed-store ingress and ordinary outage integration remain unimplemented;
 these test repairs authorize no change to production failure semantics.
+
+## Frozen Inventory Custody
+
+Failure-target freezing originally disposed retained projections before returning descriptive
+witnesses. Outage inventory needs a bounded handoff before that disposal. The frozen batch now owns
+those projections and exposes borrowed witnesses; consumption, drop and unwind release local
+projection custody exactly once outside the router lock. Interrupt eligibility is unchanged.
+
+Do not collect every historical zero-worker batch to create a complete live inventory. Service
+membership can retain historical connections after worker capacity is released; an externally held
+router can still return an empty batch. Accumulating those batches has no worker-capacity bound.
+Keep their immediate per-connection disposal and nondispatch accounting. Only worker-backed batches
+may wait for complete inventory collection under the existing retained-worker bound. The proposed
+coordinator accumulation change was removed during review.
+
+The accepted tests retain historical routers while pausing a later live freeze and verify unchanged
+connection reference counts. Real projection tests verify borrowed identity before disposal, exactly
+one disposal after consumption, abandoned/unwinding batches and a later collection error with an
+actual retained worker reservation. The initial 54-test failure run passed
+`3de4dd21-363b-431d-a110-8e03916d656f`; the final six affected disposal/membership tests passed
+`d8005d77-f93c-453a-92e5-4ed494dd7d5e`, and strengthened historical-capacity coverage passed
+`219542fa-5581-4c87-b1da-1bae7bb9eb6e`. Independent review accepted the final bounded ownership.
+The inventory publication and ingester transition remain outstanding; a descriptive witness borrow
+alone does not mount outage capture or grant effect authority.

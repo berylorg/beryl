@@ -454,6 +454,7 @@
 - [x] Accepted the private prioritized outage retention component with exact target qualification,
   encoded byte limits and sticky gap tracking; focused tests and independent review passed.
 - [x] Accepted bounded unpublished outage assembly with exact late routing, explicit loss attribution and independently reviewed retention priorities.
+- [x] Accepted bounded frozen-target custody through witness handoff and projection disposal.
 - [ ] Accept failed-store ingress lifetime and retirement before integrating ordinary outage capture.
 - [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement, including pre-route loss, without making buffered content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
