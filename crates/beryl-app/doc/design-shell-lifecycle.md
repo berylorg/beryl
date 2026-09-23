@@ -164,6 +164,17 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Typed Home Integration
 
+- Branch resolution commands compose the exact State admission with Syndic discussion-gate
+  admission and parent-frontier validation. The app first resolves the request index and latest
+  attempt through typed reads, then revalidates the same proposal at the writer. Its reconciliation
+  closure covers the job, live/request/attempt/latest indexes and exact discussion gate; parent,
+  binding and turn observations remain preconditions, never substitute outcome evidence.
+- Parent input admission composes the generated Syndic input/turn/provenance closure with the
+  exact job's `starting_parent` transition. Terminal failure composes that job transition with
+  gate release; success composes job success, gate release and archive in one `SyncAll` command.
+  The sole home reconciliation registry receives ambiguous outcomes before any response or wake.
+  Participant APIs alone do not authorize a standalone gate, parent input or archive publication.
+
 - The package never opens Fjall, reads raw keyspaces, or constructs storage encodings. It receives
   typed domain handles, repositories, revisions, and command outcomes.
 - Service configuration supplies a nonzero minimum capture reserve to `beryl-home-store` and

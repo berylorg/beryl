@@ -37,7 +37,40 @@ root, and bounded timestamps/metadata. Turn and thread lineage digests are struc
 scoped reads validate exact depth, parent, skip, and digest progression without retaining an ancestor
 set.
 
+## Discussion Handoff Gate
+
+The package owns a compact `DiscussionHandoffGateRecord` keyed by discussion thread with its own
+positive revision and closed `Open` or `Pending` state. Pending retains only the exact resolution
+intent, handoff job and resolving Syndic turn identities. Every discussion is created with an open
+revision-one gate. Ordinary threads have no gate; missing, foreign or orphaned discussion gates
+are corruption. Title and archive records retain their independent revision semantics.
+
+Typed ordinary and candidate reads expose this bounded record. Gate admission validates exact
+Syndic domain, thread, attributes, input-gate, handoff-gate and resolving-turn revisions, current
+selected turn, active binding/snapshot/CAS-turn correlation, immutable parent/context ownership,
+and zero accepted future-turn input at the writer. It contributes only the open-to-pending gate
+transition. The app must compose it with State intent/job admission; this package neither reads
+State jobs nor allocates their identities. Parent identity and queue-frontier observations are a
+separate exact validation participant in the same command.
+
+Release requires the exact pending identities and gate revision and contributes a checked next
+open revision. The app composes terminal failure with release, or success with release and exact
+archive. No retryable transition releases the gate. Mutations preserve the exact unrelated thread,
+draft, title, execution and history records. Natural reconciliation compares only the named gate's
+exact old and intended-new records. Parent, binding and turn observations remain read-only
+preconditions and cannot substitute for outcome evidence. It never scans discussions or jobs.
+
+Package-owned checks reject forbidden discussion mutation at its durable publication boundary,
+including new input/steering acceptance, draft edit/history publication, replacement or selected-
+path changes, and lifecycle successor admission. Existing capture, already-admitted steering,
+stop/terminal convergence and cleanup preserve access to their exact admitted scope. The app
+composes these checks with the system's whole-operation custody before exposing resolution.
+
 ## Pristine Thread Abandonment
+
+The discussion gate is part of a discussion's pristine closure. Ordinary-thread closure requires
+its absence; discussion creation and exact pristine deletion include its open initial record.
+A pending or advanced gate is not pristine and cannot be deleted through abandonment.
 
 - The package exposes a bounded authenticated pristine-thread candidate covering the exact initial
   thread, current draft, empty draft root and history, immutable execution and attributes, compact

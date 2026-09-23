@@ -483,6 +483,9 @@
 - [x] Accepted explicit candidate durable-job reads and complete Unicode resolution storage bounds.
   Maximum payload, page bounds, restart, stale handles and publication-failure tests, dependent app
   check and independent review passed; atomic coordination remains pending.
+- [x] Specified independent revisioned Syndic discussion-gate participants and schema, exact
+  admission/release and command custody. Independent readiness review passed; mutation enforcement,
+  generated parent-input provenance and app composition retain separate acceptance boundaries.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

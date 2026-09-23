@@ -73,22 +73,38 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 513: Expose Bounded Candidate Job Reads (finished)
+# Phase 514: Specify Atomic Handoff Participants (finished)
 
-Accepted explicit candidate revision, job, request, latest-attempt and live-index reads with shared
-paging/codec validation, exact handle checks and ordinary visibility fencing. Resolution storage
-now admits the complete Unicode tool contract within the 320 KiB record ceiling. Eleven durable-job
-tests cover maximum payloads, restart, both page caps, continuation and failed publication; the
-dependent app check and independent boundary review passed. No scheduling is enabled.
+Accepted independent compact Syndic discussion-gate identity, revision, schema, creation/pristine
+closure, authenticated admission and exact release participants, with separate mutation enforcement.
+Independent readiness review passed and clarified that read-only preconditions cannot substitute
+for gate old/new outcome evidence. Generated parent input currently lacks a non-composer admission
+receipt; its concrete schema and app command composition remain phase 517's separate readiness
+boundary. No fabricated draft provenance or enabled branch dispatch is accepted.
 
-# Phase 514: Specify Atomic Handoff Participants (wip)
+# Phase 515: Implement Discussion Handoff Gate Participants (wip)
 
-Inspect and specify concrete Syndic discussion-gate, generated parent-input provenance and
-draft-preserving admission participants, then the app's exact cross-domain operation and
-reconciliation closures. Derive separate implementation boundaries for admission/gating,
-parent delivery, terminal archive and bounded coordinator preparation/execution. Resolve any
-schema/content prerequisites in their owners before coding; ordinary branch resolution remains
-unavailable until the complete non-GUI coordinator is accepted.
+Implement the owning Syndic gate value, exact codec/family, ordinary/candidate reads and local
+structural validation, discussion creation/pristine closure, authenticated admission, exact release
+and parent-frontier validation participants. Preserve independent title/archive revisions. Verify
+stale revisions, wrong branch/turn/binding, queued-input races, overflow, missing/orphaned gates,
+candidate fencing and exact old/new mutation outcomes. These are typed participants only; gate
+enforcement and cross-domain app composition remain separate and branch dispatch stays unavailable.
+
+# Phase 516: Enforce Discussion Mutation Gates (pending)
+
+Apply the pending/archive checks at durable input, draft edit/history, replacement/path and
+lifecycle successor publication. Verify that already-admitted steering, exact stop, capture and
+terminal convergence still complete, and concurrent unpublished edits cannot bypass a newly
+admitted gate. Independently review the relevant mutation inventory before acceptance.
+
+# Phase 517: Specify Generated Parent Input And Atomic App Admission (pending)
+
+Resolve the concrete generated-input receipt, turn/item provenance, bounded content publication and
+draft-preserving submission schema, then exact app admission/reconciliation APIs. Preserve normal
+accepted order and possible-dispatch fencing. Derive implementation phases before replacing the
+composer-only assumptions; terminal coordination and bounded runtime mounting remain explicit
+later boundaries in the rework tracker.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

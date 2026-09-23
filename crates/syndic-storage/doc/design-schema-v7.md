@@ -1,7 +1,7 @@
 # V7 Persisted Schema
 
 This supplement is the sole authority for the persisted `syndic` byte format at schema V7. It owns
-the complete 68-primary plus 24-index family inventory, family and record versions, natural keys,
+the complete 69-primary plus 24-index family inventory, family and record versions, natural keys,
 canonical values, tags, integer encoding, digest preimages, decode rejection, public schema bounds,
 and structural proofs. The package entry point controls scope and rigor. No other supplement may
 change persisted bytes.
@@ -29,7 +29,7 @@ change persisted bytes.
   receipts, and settlements are rejected at the version boundary, with no legacy transition reader.
 - The primary families are `threads`, `image-label-authority-heads`,
   `draft-image-label-protection-heads`, `thread-executions`,
-  `thread-attributes`,
+  `thread-attributes`, `discussion-handoff-gates`,
   `thread-usage`, `thread-catalog-summaries`, `drafts`, `draft-piece-roots`,
   `draft-piece-nodes`, `draft-piece-leaves`, `draft-marker-identity-index`,
   `draft-marker-order-commitments`, `draft-marker-seals`,
@@ -77,7 +77,7 @@ change persisted bytes.
   `transcript-view-entries`, `stable-item-projections`, `item-projections`,
   `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
   `cas-turn-index`, and `provider-observation-chunks`.
-- The complete V7 inventory is exactly 68 primary plus 24 index families, or 92 total. Family names,
+- The complete V7 inventory is exactly 69 primary plus 24 index families, or 93 total. Family names,
   natural key encodings, and the complete primary/index inventory are closed. A release
   registers exactly the implemented owned families it exposes and never registers an empty
   placeholder for an unimplemented family.
@@ -1294,6 +1294,15 @@ mandatory current-root cache. The complete assignment inventory above remains un
 Canonical-byte replay and captured deletion-absence checks retain their separate requirements.
 
 ## V7 Bounds And Canonical Encoding
+
+- `discussion-handoff-gates` uses keyspace V1 and record V1. Its key is the exact 16-byte discussion
+  thread identity. Its value contains that same identity, positive big-endian `u64` gate revision,
+  then one state byte: `0` is open with no payload; `1` is pending followed by exact 16-byte intent,
+  job and resolving-turn identities in that order. Values are exactly 25 or 73 bytes before the
+  home-store record-version envelope. Unknown tags, zero revision, trailing bytes, or key/value
+  disagreement are rejected. Structural validation requires one gate per discussion and none on
+  ordinary threads, and a pending resolving turn owned by that discussion. Job agreement is a
+  cross-domain app obligation, not a Syndic schema read.
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.
 - Stable Beryl and Syndic identities use their exact 16-byte payloads. Digests use exact 32-byte values. External CAS identities retain validated UTF-8 and remain bounded by `beryl-model`.

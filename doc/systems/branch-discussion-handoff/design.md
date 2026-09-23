@@ -199,6 +199,25 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   and the generated parent input's immutable provenance. Admission composes both typed mutations
   in one command; a job record alone cannot close discussion input. Every ordinary discussion
   mutation that the feature forbids while resolution is pending checks that same durable gate.
+- The handoff gate is independent from the execution input gate and thread title/archive revision.
+  It starts open with discussion creation, names the exact intent/job/resolving turn while pending,
+  and advances its own revision on admission or terminal release. A missing gate on a discussion is
+  invalid state, never an implicit open gate. Retrying the same live attempt preserves its gate;
+  terminal failure clears it, while success clears it with one-way archive publication. Ordinary
+  threads have no handoff gate. Storage validates its local thread/turn closure; the app validates
+  its agreement with the State job in the same command or exact recovery operation.
+- Resolution admission authenticates the discussion's immutable parent/context binding, selected
+  resolving turn, current active CAS binding/turn, open archive state, exact gate revisions and
+  zero future-turn accepted inputs at the serialized writer. The parent observation fences its
+  exact identity and accepted-input frontier; no parent execution capability is retained. An
+  intervening queue admission or changed binding rejects the proposal without creating either
+  participant. Existing request idempotency is checked before proposing a fresh attempt.
+- Admission gates new composer acceptance, steering acceptance, replacement/path mutation and
+  automatic lifecycle successors. It does not prevent source capture, delivery of already admitted
+  steering, exact stop, resolving-turn terminal convergence, or disposal. Draft preparation may
+  finish unpublished, but cannot publish a forbidden edit after the gate changes. Archived
+  discussion mutation remains independently closed by its archive attribute. No generic gate check
+  may strand the exact resolving turn's terminal history or prevent failure cleanup.
 - The stored parent queue ordinal records the parent's accepted-input high-water mark observed
   under the resolution-admission command's exact parent gate revision. It is an ordering frontier,
   not an accepted-input reservation. Parent handoff waits for an idle eligible parent with no live
