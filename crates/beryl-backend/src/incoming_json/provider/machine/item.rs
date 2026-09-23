@@ -53,17 +53,11 @@ impl TargetMachine<'_> {
                 self.finish_web_action(probe, After::None)
             }
             (ScalarKind::Name, ScalarHandler::OtherName(probe)) => self.finish_other_name(probe),
-            (
-                ScalarKind::String,
-                ScalarHandler::UserText { index, after },
-            ) => {
+            (ScalarKind::String, ScalarHandler::UserText { index, after }) => {
                 self.finish_user_text(index)?;
                 self.finish_after(after)
             }
-            (
-                ScalarKind::String,
-                ScalarHandler::UserPath { index, after },
-            ) => {
+            (ScalarKind::String, ScalarHandler::UserPath { index, after }) => {
                 self.finish_user_image_path(index)?;
                 self.finish_after(after)
             }
@@ -157,13 +151,7 @@ impl TargetMachine<'_> {
                     "original" => Some(ImageDetail::Original),
                     _ => return Err(unsupported("the pinned image detail").into()),
                 };
-                let expected = self.expected_user_image_detail(index)?;
-                if actual != expected {
-                    return Err(StreamedUserMessageCorrelationError::ImageDetailMismatch {
-                        item_index: index,
-                    }
-                    .into());
-                }
+                self.check_user_image_detail(index, actual)?;
                 self.finish_after(after)
             }
         }
@@ -207,14 +195,9 @@ impl TargetMachine<'_> {
     }
 
     fn finish_user_type(&mut self, index: u64, value: &str) -> Result<(), MachineError> {
-        let expected = self.begin_user_input(index)?;
-        if value != expected {
-            return Err(StreamedUserMessageCorrelationError::InputVariantMismatch {
-                item_index: index,
-                expected,
-                actual: known_input_type(value),
-            }
-            .into());
+        self.begin_user_input(index, known_input_type(value))?;
+        if !matches!(value, "text" | "localImage") {
+            return Err(unsupported("the pinned user input type").into());
         }
         let Frame::UserInput {
             index, seen, after, ..
@@ -224,7 +207,7 @@ impl TargetMachine<'_> {
         };
         self.set_top(Frame::UserInput {
             index,
-            kind: Some(if expected == "text" {
+            kind: Some(if value == "text" {
                 UserInputKind::Text
             } else {
                 UserInputKind::LocalImage

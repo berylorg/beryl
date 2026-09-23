@@ -128,13 +128,7 @@ impl TargetMachine<'_> {
                 Err(SteeringUserMessageError::MissingOrMalformedCorrelation.into())
             }
             Expected::UserDetail { index, after } if value == ProviderScalar::Null => {
-                let expected = self.expected_user_image_detail(index)?;
-                if expected.is_some() {
-                    return Err(StreamedUserMessageCorrelationError::ImageDetailMismatch {
-                        item_index: index,
-                    }
-                    .into());
-                }
+                self.check_user_image_detail(index, None)?;
                 self.finish_after(after)
             }
             _ => Err(ProviderObservationSchemaError::WrongType.into()),

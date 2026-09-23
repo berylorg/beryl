@@ -39,6 +39,10 @@ The former window-owned stop/wait plan is superseded. Previously accepted exact-
 continuation-cancellation, draft-flush and session primitives are reusable evidence, not authority
 for stopping a background thread when a nonfinal view closes.
 
+Operator clarified that bounded technical prerequisites are to be planned and implemented
+autonomously. Escalate only a material architectural change, impending scope explosion, significant
+risk, or a concrete decision needing Operator input; a discovered prerequisite alone is not a stop.
+
 Continue in the current conversation thread; do not request new-thread handoffs.
 
 At every phase boundary, explain any blocker directly to the Operator and suggest concrete next
@@ -69,13 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 506: Implement The Bounded Pre-Inventory Observation Slot (finished)
+# Phase 507: Support Passive Delayed Steering Echo Consumption (finished)
 
-Accepted connection-only assembly binding and one bounded open-or-sealed slot, with route bytes
-and entries charged to the same limits. Ready handoff preserves qualified loss attribution;
-pre-inventory eviction records sticky connection loss. Release, malformed input, exact limits
-and generation isolation passed 36 focused tests and independent review. Generation-bound service
-ownership and production capture remain below.
+Accepted explicit passive consumption and bounded unverified correlation, with irreversible replay
+release and closed-schema validation. Healthy typed failures and request results remain exact.
+Backend/app checks, 97 ingress tests and the final 12 passive cases passed; independent review
+accepted the corrected count/variant transition and late-cancellation boundaries. App mounting
+remains below.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (wip)
 
@@ -90,13 +94,9 @@ explicit unavailable capture until that composition is present; helper tests alo
 ordinary outage capture. The [driver-cycle diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition)
 remains evidence for the required nonwaiting protocol, not authority for an ingester inventory wait.
 
-Blocked at readiness: a delayed steering echo requires the backend to obtain a replay source from
-the ingester and verify content against failed-home reads. Its source-or-error interface cannot
-consume a well-formed echo passively; rejection aborts decoding. Root inspection and independent
-review confirmed the [passive steering seam](failures/outage-ingress-readiness.md#delayed-steering-echo-still-requires-healthy-replay).
-Per repository instructions, stop before implementing a workaround. Define an explicit passive
-correlation/loss outcome in the backend and app authorities, preserving healthy verification and
-outstanding request outcomes, then replan its prerequisite before this transition. CAS stays unchanged.
+The [passive steering prerequisite](failures/outage-ingress-readiness.md#delayed-steering-echo-still-requires-healthy-replay)
+is implemented first by phase 507. Mount its mode only after exact service failure, consume
+unverified correlation as transient loss evidence, and never promote it to checked-input authority.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 

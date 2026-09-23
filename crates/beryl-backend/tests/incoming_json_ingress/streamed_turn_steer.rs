@@ -34,6 +34,9 @@ use dispatch_support::{
 
 const TEXT: &str = "steered text";
 
+#[path = "passive_steering.rs"]
+mod passive;
+
 fn source_identity() -> StreamedInputSourceIdentity {
     StreamedInputSourceIdentity::new([71; 32])
 }

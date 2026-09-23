@@ -413,6 +413,12 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 - When a Beryl-home write fails after a CAS turn may be active, Beryl immediately fences new durable admissions and same-thread successor operations.
 - One process-local outage buffer may retain only Beryl-relevant normalized facts for already active exact targets. Its item count, encoded bytes, per-field bytes, and target count have hard local limits independent of CAS memory.
+- After exact service failure, delayed steering echoes use the backend's explicit passive mode:
+  validate the closed wire structure, discard content incrementally, and hand off only unverified
+  correlation/loss metadata. The app owns failure selection and target qualification; the backend
+  never rereads failed durable input or fabricates checked content. An observation may leave healthy
+  replay irreversibly at a verification boundary, including after a racing replay failure. Request-
+  scoped verification and dispatched request outcome custody retain their ordinary contracts.
 - Retention priority is exact identity and correlation, terminal outcome, assistant final output, transcript-visible narrative, user-message correlation, generated-media handoff metadata, then operational content. Operational content may be evicted first when the hard limit is reached.
 - Priority affects only outage survival. Normal capture before the outage remains exact, and a lower-priority fact that fits is retained exactly.
 - Any evicted, rejected, partially received, structurally unrepresentable, or otherwise dropped

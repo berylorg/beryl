@@ -27,9 +27,8 @@ impl<'a> TargetMachine<'a> {
             .as_ref()
             .cloned()
             .ok_or(SteeringUserMessageError::MissingOrMalformedCorrelation)?;
-        let client_user_message_id =
-            crate::ClientUserMessageId::try_new(client_user_message_id)
-                .map_err(|_| SteeringUserMessageError::MissingOrMalformedCorrelation)?;
+        let client_user_message_id = crate::ClientUserMessageId::try_new(client_user_message_id)
+            .map_err(|_| SteeringUserMessageError::MissingOrMalformedCorrelation)?;
         let sink = self
             .sink
             .take()
@@ -43,47 +42,65 @@ impl<'a> TargetMachine<'a> {
         Ok(())
     }
 
-    fn expected_user_item_count(&self) -> Result<u64, MachineError> {
+    fn check_user_item_count(&mut self, actual: u64, complete: bool) -> Result<(), MachineError> {
         if self.request_scoped_user_message() {
-            return Ok(self.verifier_ref()?.expected_item_count());
-        }
-        self.steering_capture
-            .as_ref()
-            .map(SteeringUserMessageCapture::expected_item_count)
-            .ok_or_else(|| SteeringUserMessageError::MissingOrMalformedCorrelation.into())
-    }
-
-    fn begin_user_input(&mut self, index: u64) -> Result<&'static str, MachineError> {
-        if self.request_scoped_user_message() {
-            return self.verifier_ref()?.begin_input(index).map_err(Into::into);
-        }
-        self.steering_capture_mut()?
-            .begin_input(index)
-            .map_err(Into::into)
-    }
-
-    fn expected_user_image_detail(
-        &mut self,
-        index: u64,
-    ) -> Result<Option<ImageDetail>, MachineError> {
-        if self.request_scoped_user_message() {
-            return self
-                .verifier_ref()?
-                .expected_image_detail(index)
-                .map_err(Into::into);
+            let expected = self.verifier_ref()?.expected_item_count();
+            if actual > expected || (complete && actual != expected) {
+                return Err(StreamedUserMessageCorrelationError::InputCountMismatch {
+                    expected,
+                    actual,
+                }
+                .into());
+            }
+            return Ok(());
         }
         self.steering_capture
             .as_mut()
             .ok_or(SteeringUserMessageError::MissingOrMalformedCorrelation)?
-            .expected_image_detail(index)
+            .check_item_count(actual, complete)
             .map_err(Into::into)
     }
 
-    fn compare_user_text_bytes(
+    fn begin_user_input(&mut self, index: u64, actual: &'static str) -> Result<(), MachineError> {
+        if self.request_scoped_user_message() {
+            let expected = self.verifier_ref()?.begin_input(index)?;
+            if actual != expected {
+                return Err(StreamedUserMessageCorrelationError::InputVariantMismatch {
+                    item_index: index,
+                    expected,
+                    actual,
+                }
+                .into());
+            }
+            return Ok(());
+        }
+        self.steering_capture_mut()?
+            .begin_input(index, actual)
+            .map_err(Into::into)
+    }
+
+    fn check_user_image_detail(
         &mut self,
         index: u64,
-        bytes: &[u8],
+        actual: Option<ImageDetail>,
     ) -> Result<(), MachineError> {
+        if self.request_scoped_user_message() {
+            if self.verifier_ref()?.expected_image_detail(index)? != actual {
+                return Err(StreamedUserMessageCorrelationError::ImageDetailMismatch {
+                    item_index: index,
+                }
+                .into());
+            }
+            return Ok(());
+        }
+        self.steering_capture
+            .as_mut()
+            .ok_or(SteeringUserMessageError::MissingOrMalformedCorrelation)?
+            .check_image_detail(index, actual)
+            .map_err(Into::into)
+    }
+
+    fn compare_user_text_bytes(&mut self, index: u64, bytes: &[u8]) -> Result<(), MachineError> {
         if self.request_scoped_user_message() {
             return self
                 .verifier_ref()?
@@ -97,10 +114,7 @@ impl<'a> TargetMachine<'a> {
 
     fn finish_user_text(&mut self, index: u64) -> Result<(), MachineError> {
         if self.request_scoped_user_message() {
-            return self
-                .verifier_ref()?
-                .finish_text(index)
-                .map_err(Into::into);
+            return self.verifier_ref()?.finish_text(index).map_err(Into::into);
         }
         self.steering_capture_mut()?
             .finish_text(index)
@@ -137,10 +151,7 @@ impl<'a> TargetMachine<'a> {
 
     fn finish_user_input(&mut self, index: u64) -> Result<(), MachineError> {
         if self.request_scoped_user_message() {
-            return self
-                .verifier_ref()?
-                .finish_input(index)
-                .map_err(Into::into);
+            return self.verifier_ref()?.finish_input(index).map_err(Into::into);
         }
         self.steering_capture_mut()?
             .finish_input(index)

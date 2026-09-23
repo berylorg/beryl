@@ -73,6 +73,15 @@ neither its bytes nor its target descriptors constitute durable evidence or a re
 
 ## Failure Transition And Inventory Handoff
 
+For delayed steering echoes the exact broker reports passive verification mode only after its own
+service failure. Its unverified completion carries bounded lifecycle, item/client correlation,
+trailing thread/turn route and timestamp, but no content proof. With ready inventory the ingester
+may retain matching transient correlation and records the missing verification as target loss;
+without inventory it records conservative connection loss. It never constructs checked-input,
+delivery-success, retry or effect authority. Healthy selection still uses exact durable replay.
+An echo spanning failure switches to passive before further replay and its old durable lifecycle
+custody follows the ordinary failure handoff; it is not completed as a verified echo.
+
 - The ingester moves from durable capture to passive capture after exact service failure. It first
   installs any indeterminate staging/publication custody, releases its operation permit, and marks
   the observation spanning that failure lost. It performs no failed-store reread or retry. A local

@@ -11,6 +11,22 @@ This supplement is normative only for its bounded backend live-control role and 
 - Exact structured `activeTurnNotSteerable` data normalizes only to its closed review or compact verdict. No-active-turn and expected-turn-mismatch remain exact rejections without a machine verdict unless pinned schema/source evidence establishes one; diagnostic text never supplies retry authority.
 - Source/revision validation, replay, serialization or masking, cancellation, and concrete transport failure remain distinct typed steering causes under the same monotonic dispatch evidence. Nondispatch proves only no offered request byte, never transience or timer retry; post-dispatch transport, malformed/identity response, or unrecognized remote failure remains completion unknown and retires that session.
 
+## Passive Delayed Steering Echoes
+
+Delayed steering echoes have two explicit sink-selected modes: healthy content verification and
+passive unverified consumption. The exact connection's sink alone reports passive mode after its
+own durable service fails. The parser checks mode before replay/verification work and after a
+verification failure before propagating it; a passive transition drops the replay source and is
+irreversible for that observation. Healthy failures remain failures. Request-scoped source proof,
+dispatch evidence, response correlation and request outcomes do not change.
+
+Passive consumption still validates the pinned closed user-message schema, required identities,
+field uniqueness, UTF-8, input variants, bounded structure and trailing route. It discards text and
+image paths incrementally without replay, persistence, asset access or content retention. It emits
+only a distinct bounded unverified lifecycle/correlation record after a valid seal, never a checked
+message or source-equality claim. Malformation, cancellation and transport loss abandon the exact
+observation. Neither a mode result nor unverified metadata grants effect or dispatch authority.
+
 ## Exact Interruption and Compaction
 
 - `turn/interrupt` is available only on the admitted foreground session owning the exact loaded thread and turn. Durable soft-stop and volatile pre-admission authorizations are noninterchangeable typed families and bind exact runtime, managed-process, loaded-thread, CAS thread, turn, and sole driver identity. An explicit unbind revokes prior authorization.

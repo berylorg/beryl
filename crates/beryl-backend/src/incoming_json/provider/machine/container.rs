@@ -146,14 +146,7 @@ impl TargetMachine<'_> {
                 self.finish_after(after)
             }
             Frame::UserContent { next, after } if kind == ContainerKind::Array => {
-                let expected = self.expected_user_item_count()?;
-                if next != expected {
-                    return Err(StreamedUserMessageCorrelationError::InputCountMismatch {
-                        expected,
-                        actual: next,
-                    }
-                    .into());
-                }
+                self.check_user_item_count(next, true)?;
                 self.finish_user_content(next)?;
                 self.finish_after(after)
             }
@@ -341,21 +334,14 @@ impl TargetMachine<'_> {
                 });
             }
             Frame::UserContent { next, after } => {
-                let expected = self.expected_user_item_count()?;
-                if next >= expected {
-                    return Err(StreamedUserMessageCorrelationError::InputCountMismatch {
-                        expected,
-                        actual: next.saturating_add(1),
-                    }
-                    .into());
-                }
                 let index = next;
                 let next = next.checked_add(1).ok_or(
                     StreamedUserMessageCorrelationError::InputCountMismatch {
-                        expected,
+                        expected: u64::MAX,
                         actual: u64::MAX,
                     },
                 )?;
+                self.check_user_item_count(next, false)?;
                 self.set_top(Frame::UserContent { next, after });
                 self.expected = Some(Expected::UserInput {
                     index,

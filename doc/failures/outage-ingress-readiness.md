@@ -179,3 +179,13 @@ passive correlation-or-loss outcome across backend parsing and app ingestion, pr
 healthy verification, request dispatch/result custody and bounded discard. Its precise behavior
 must be settled before implementation. This changes Beryl's adapter, not CAS. Accepted driver and
 slot components remain valid; ordinary outage capture is still not mounted.
+
+Operator subsequently authorized autonomous planning and implementation of bounded prerequisites,
+reserving escalation for material architectural churn, scope explosion, risk or a concrete decision.
+The backend now supports sink-selected passive delayed echoes and a distinct unverified completion.
+Review found count and input-variant comparisons outside the failure-aware verifier boundary; these
+now recheck passive mode after disagreement, as do replay, content and route checks. Healthy
+wrong-turn errors preserve their exported type. The 97 ingress tests and final 12 passive cases
+cover source release, late transitions, closed schema, live request response, subsequent echoes and
+mid-discard cancellation. Backend/app checks and independent review passed. The remaining boundary
+is exact failed-service mode selection and loss qualification in app ingestion.

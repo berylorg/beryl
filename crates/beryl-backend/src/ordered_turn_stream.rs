@@ -277,6 +277,19 @@ impl std::error::Error for OrderedTurnStreamSubmitError {
 /// The consumer must finish applying an operation before returning. On failure it returns the
 /// exact submitted operation, including any provider fragment lease.
 pub trait OrderedTurnStreamSink: Send {
+    fn steering_user_message_capture_mode(
+        &mut self,
+    ) -> Result<crate::SteeringUserMessageCaptureMode, OrderedTurnStreamSubmitCause> {
+        Ok(crate::SteeringUserMessageCaptureMode::Verify)
+    }
+
+    fn submit_unverified_steering_user_message(
+        &mut self,
+        _message: crate::UnverifiedSteeringUserMessage,
+    ) -> Result<(), OrderedTurnStreamSubmitCause> {
+        Err(OrderedTurnStreamSubmitCause::Unavailable)
+    }
+
     fn submit(
         &mut self,
         operation: OrderedTurnStreamOperation,
