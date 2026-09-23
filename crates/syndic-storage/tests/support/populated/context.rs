@@ -73,6 +73,7 @@ pub(super) fn records() -> Vec<FixtureRecord> {
         ),
         FixtureRecord::ThreadExecution(execution),
         FixtureRecord::ThreadAttributes(attributes),
+        FixtureRecord::DiscussionHandoffGate(DiscussionHandoffGateRecord::open(child_thread)),
         FixtureRecord::ThreadUsage(usage),
         FixtureRecord::ThreadCatalogSummary(catalog),
         FixtureRecord::Draft(DraftRecord::new(

@@ -8,6 +8,7 @@ mod binding;
 mod compaction;
 mod content;
 mod core_record;
+mod discussion_gate;
 mod input_gate;
 mod projection;
 pub(super) mod projection_build;
@@ -23,6 +24,7 @@ pub(crate) use compaction::*;
 pub(crate) use content::*;
 use core_record::*;
 pub(crate) use core_record::{decode_draft_record, encode_draft_record};
+use discussion_gate::*;
 pub(crate) use input_gate::*;
 use projection::*;
 use projection_build::*;
@@ -160,6 +162,17 @@ id_family!(
     encode_thread_usage,
     decode_thread_usage,
     SMALL_MAX
+);
+id_family!(
+    DiscussionHandoffGatesFamily,
+    DiscussionHandoffGatesCodec,
+    "discussion-handoff-gates",
+    SyndicThreadId,
+    DiscussionHandoffGateRecord,
+    |b| key16(b, "discussion handoff gate key", SyndicThreadId::from_bytes),
+    encode_discussion_handoff_gate,
+    decode_discussion_handoff_gate,
+    73
 );
 id_family!(
     ThreadCatalogSummariesFamily,

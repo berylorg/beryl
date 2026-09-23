@@ -17,15 +17,15 @@ use crate::{
     TranscriptViewHeadRecord,
     codec::{
         ActivityQueryHeadsCodec, ActivityQueryHeadsFamily, BindingHeadsCodec, BindingHeadsFamily,
-        BindingKey, BindingsCodec, BindingsFamily, DraftByThreadCodec, DraftByThreadFamily,
-        DraftImageLabelProtectionHeadsCodec, DraftImageLabelProtectionHeadsFamily, DraftsCodec,
-        DraftsFamily, Family, HistorySummariesCodec, HistorySummariesFamily,
-        ImageLabelAuthorityHeadsCodec, ImageLabelAuthorityHeadsFamily, InputGatesFamily,
-        ThreadAttributesCodec, ThreadAttributesFamily, ThreadCatalogSummariesCodec,
-        ThreadCatalogSummariesFamily, ThreadExecutionsCodec, ThreadExecutionsFamily,
-        ThreadTranscriptBuildKey, ThreadUsageCodec, ThreadUsageFamily, ThreadsCodec, ThreadsFamily,
-        TranscriptBuildsCodec, TranscriptBuildsFamily, TranscriptHeadsCodec, TranscriptHeadsFamily,
-        family_point_limit,
+        BindingKey, BindingsCodec, BindingsFamily, DiscussionHandoffGatesFamily,
+        DraftByThreadCodec, DraftByThreadFamily, DraftImageLabelProtectionHeadsCodec,
+        DraftImageLabelProtectionHeadsFamily, DraftsCodec, DraftsFamily, Family,
+        HistorySummariesCodec, HistorySummariesFamily, ImageLabelAuthorityHeadsCodec,
+        ImageLabelAuthorityHeadsFamily, InputGatesFamily, ThreadAttributesCodec,
+        ThreadAttributesFamily, ThreadCatalogSummariesCodec, ThreadCatalogSummariesFamily,
+        ThreadExecutionsCodec, ThreadExecutionsFamily, ThreadTranscriptBuildKey, ThreadUsageCodec,
+        ThreadUsageFamily, ThreadsCodec, ThreadsFamily, TranscriptBuildsCodec,
+        TranscriptBuildsFamily, TranscriptHeadsCodec, TranscriptHeadsFamily, family_point_limit,
     },
     domain::SyndicDomain,
     draft_piece::{
@@ -165,6 +165,21 @@ impl SyndicStorage {
         expected_execution: &ExecutionBinding,
     ) -> Result<PristineThreadInspection, SyndicReadError> {
         let source_revision = self.revision(store)?;
+        if self
+            .point::<DiscussionHandoffGatesFamily>(
+                store,
+                thread_id,
+                limit::<DiscussionHandoffGatesFamily>(),
+            )?
+            .is_some()
+        {
+            return stable_inspection(
+                self,
+                store,
+                source_revision,
+                PristineThreadInspection::Ineligible,
+            );
+        }
         let Some(thread) =
             self.point::<ThreadsFamily>(store, thread_id, limit::<ThreadsFamily>())?
         else {
@@ -586,7 +601,8 @@ fn facts_match(
 ) -> Result<bool, SyndicMutationError> {
     let thread_id = facts.thread.id();
     Ok(
-        point_matches::<ThreadsFamily>(reader, &thread_id, &facts.thread)?
+        crate::mutation::point::<DiscussionHandoffGatesFamily>(reader, &thread_id)?.is_none()
+            && point_matches::<ThreadsFamily>(reader, &thread_id, &facts.thread)?
             && point_matches::<DraftByThreadFamily>(reader, &thread_id, &facts.index)?
             && point_matches::<DraftsFamily>(reader, &facts.draft.id(), &facts.draft)?
             && point_matches::<DraftPieceRootsFamily>(
@@ -661,6 +677,16 @@ fn removal_audit(
     let thread_id = facts.thread.id();
     let mut all_absent = true;
     let mut exact = true;
+    if storage
+        .point::<DiscussionHandoffGatesFamily>(
+            store,
+            thread_id,
+            limit::<DiscussionHandoffGatesFamily>(),
+        )?
+        .is_some()
+    {
+        return Ok(PristineThreadRemovalAudit::Collision);
+    }
     macro_rules! inspect {
         ($family:ty, $key:expr, $expected:expr) => {
             match storage.point::<$family>(store, $key, limit::<$family>())? {

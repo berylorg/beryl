@@ -98,8 +98,9 @@ const V7_FAMILIES: &[RecordFamily<SyndicDomain>] = &[
     RecordFamily::new::<DraftMarkerAdmissionReceiptsCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<DraftPieceBuildMappingCodec>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<NonIdleGateSourcesCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DiscussionHandoffGatesCodec>(KeyspaceSchemaVersion::new(1)),
 ];
-const _: [(); 88] = [(); V7_FAMILIES.len()];
+const _: [(); 89] = [(); V7_FAMILIES.len()];
 
 #[cfg(feature = "test-faults")]
 pub(crate) fn v7_family_names() -> impl Iterator<Item = &'static str> {
@@ -142,6 +143,7 @@ impl StorageDomain for SyndicDomain {
         classify!(DraftImageLabelProtectionHeadsCodec);
         classify!(ThreadExecutionsCodec);
         classify!(ThreadAttributesCodec);
+        classify!(DiscussionHandoffGatesCodec);
         classify!(ThreadUsageCodec);
         classify!(ThreadCatalogSummariesCodec);
         classify!(DraftsCodec);

@@ -73,33 +73,24 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 519: Authenticate Discussion Source Selection (finished)
+# Phase 520: Create A Durable Discussion Atomically (finished)
 
-Accepted opaque home-bound source preparation, bounded exact range comparison outside the writer
-and compact writer validation. Eleven focused cases passed across nextest runs
-`e522ccb2-91b4-46a6-8a20-84cbf7deee12` (nine passing cases) and
-`ec884989-f7b3-4fe8-93c8-0c0551342aa9` (two corrected/final cases), covering roles, lifecycle,
-membership, selected path, UTF-8 and projection boundaries, limits, foreign home and reopened
-generation, and revision drift. Storage/app checks and independent review passed. The 65,536-byte
-cap does not permit selections spanning projections. Preparation grants no creation or CAS authority.
+Accepted the complete atomic discussion closure, shared ordinary initial-record builder, exact
+home-bound outcome witness and initial handoff gate. Ten focused creation/recovery cases passed
+(`71ab3758-d3b0-41fa-9882-6966daf91308`); five final gate/ordinal cases passed
+(`01656b20-e824-481a-b713-da8b048f4f5c`). Broader storage runs passed all remaining cases, including
+family deletion, ordinary creation and pristine closure; their earlier recovery-fixture and ordinal
+failures were corrected and covered by those final runs. App integration check and independent
+review passed. Discussion GUI activation and job admission remain separate boundaries.
+# Phase 522: Establish Exact Initial Catalog Publication (wip)
 
-# Phase 520: Create A Durable Discussion Atomically (wip)
-
-Use the accepted witness to publish the complete discussion closure, including the initial compact
-handoff-gate record/codec/read/validation foundation. Verify selected-prefix parentage, unchanged
-source/draft, inherited execution and label frontier, first submission, every identity collision,
-stale writer anchors, bounded record custody and exact old/new/collision after ambiguous outcomes.
-Preserve ordinary-thread gate absence and pristine deletion scope. No GUI activation or job
-admission is accepted by this storage phase.
-
-Reuse ordinary initial-record mechanics through an explicit shared closure builder, preserving
-ordinary semantics. Prepare source-prefix title and lineage facts outside the writer; recheck
-the opaque source proof and exact parent execution/label anchors inside it. Use existing bounded
-lineage skip proofs. Add the declared gate family with exact ordinary/candidate reads, codec and
-structural validation, and require gate absence in ordinary pristine closure. Update fixture
-coverage for the declared family without introducing discussion deletion or gate admission.
-Run focused creation, schema/corruption and existing ordinary-creation/pristine tests plus the
-app integration check, then independently review complete closure and outcome custody.
+Implement the State [initial publication contract](../crates/beryl-state/doc/design-jobs-catalog.md#initial-catalog-publication)
+as an opaque home-bound row witness, revision-fenced two-record participant and shared ordinary/
+candidate exact outcome reads. Require primary and intended recency absence before publication;
+preserve bounded normalized facts and existing catalog update semantics. Verify exact absence,
+publication, partial/different copies, duplicate identities, stale revisions/generations, foreign
+homes and ambiguous commit recovery. Run focused catalog and app checks and independently review
+before composing the cross-domain app operation. No catalog scan, deletion or GUI scope is added.
 
 # Phase 521: Compose Discussion Creation And Catalog Custody (pending)
 

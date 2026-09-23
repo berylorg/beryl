@@ -5,6 +5,7 @@ use crate::{domain::SyndicDomain, error::SyndicValidationError};
 mod bindings;
 mod compaction;
 mod content;
+mod discussion_gate;
 mod draft_marker_admission;
 pub(crate) use content::{read_encoded_range, read_projection_text_range};
 mod graph;
@@ -34,6 +35,7 @@ pub(crate) fn validate(
     non_idle_gate::validate(reader)?;
     compaction::validate(reader)?;
     graph::validate(reader)?;
+    discussion_gate::validate(reader)?;
     ordering::validate(reader)?;
     queries::validate(reader)?;
     projections::validate(reader)?;

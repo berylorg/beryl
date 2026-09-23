@@ -18,6 +18,9 @@ pub(super) fn delete_record(
         }
         FixtureDelete::ThreadExecution(v) => builder.delete::<ThreadExecutionsCodec>(v)?,
         FixtureDelete::ThreadAttributes(v) => builder.delete::<ThreadAttributesCodec>(v)?,
+        FixtureDelete::DiscussionHandoffGate(v) => {
+            builder.delete::<DiscussionHandoffGatesCodec>(v)?
+        }
         FixtureDelete::ThreadUsage(v) => builder.delete::<ThreadUsageCodec>(v)?,
         FixtureDelete::ThreadCatalogSummary(v) => {
             builder.delete::<ThreadCatalogSummariesCodec>(v)?

@@ -202,6 +202,11 @@ impl SyndicStorage {
             let before = self.revision(store)?;
             let expected = creation.records();
             let thread = self.point::<ThreadsFamily>(store, creation.thread_id(), limit)?;
+            let discussion_gate = self.point::<crate::codec::DiscussionHandoffGatesFamily>(
+                store,
+                creation.thread_id(),
+                limit,
+            )?;
             let draft_image_label_protection = self.point::<DraftImageLabelProtectionHeadsFamily>(
                 store,
                 creation.thread_id(),
@@ -268,6 +273,7 @@ impl SyndicStorage {
                 return Err(concurrent("thread-creation reconciliation"));
             }
             let absent = thread.is_none()
+                && discussion_gate.is_none()
                 && draft_image_label_protection.is_none()
                 && execution.is_none()
                 && attributes.is_none()
@@ -290,6 +296,7 @@ impl SyndicStorage {
                 return Ok(ThreadCreationStatus::Absent);
             }
             let exact = matches_record(thread, &expected.thread)
+                && discussion_gate.is_none()
                 && matches_record(
                     draft_image_label_protection,
                     &expected.draft_image_label_protection_head,

@@ -174,7 +174,7 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 #[test]
 fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let records = populated_records();
-    assert_eq!(PhysicalFamily::ALL.len(), 64);
+    assert_eq!(PhysicalFamily::ALL.len(), 65);
     // Provider staging, stop-operation, and compaction families are covered by their dedicated
     // phase fixtures rather than this legacy populated aggregate. Resource families are
     // intentionally unrepresented because the fixture's plain provider text produces no typed
@@ -379,7 +379,7 @@ fn rejection_families() -> Vec<PhysicalFamily> {
 fn exercise_deletion_partition(modulus: usize, remainder: usize) {
     let cases = deletion_cases();
     let rejection_families = rejection_families();
-    assert_eq!(cases.len(), 55);
+    assert_eq!(cases.len(), 56);
     assert_eq!(cases.len(), rejection_families.len());
     for family in rejection_families {
         assert_eq!(
@@ -437,6 +437,11 @@ fn an_independent_family_deletion_can_be_semantically_accepted() {
 
 fn deletion_cases() -> Vec<DeletionCase> {
     let mut cases = vec![
+        DeletionCase {
+            family: PhysicalFamily::DiscussionHandoffGates,
+            delete: FixtureDelete::DiscussionHandoffGate(id(36)),
+            expected: "discussion gate presence disagrees with thread lineage",
+        },
         DeletionCase {
             family: PhysicalFamily::Threads,
             delete: FixtureDelete::Thread(id(40)),

@@ -525,7 +525,7 @@ fn corrupted_build_digest_is_rejected_and_new_families_are_registered() {
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap_err();
     assert!(error.to_string().contains("disagrees with chunk replay"));
-    assert_eq!(PhysicalFamily::ALL.len(), 64);
+    assert_eq!(PhysicalFamily::ALL.len(), 65);
     assert!(PhysicalFamily::ALL.contains(&PhysicalFamily::ProviderObservationBuilds));
     assert!(PhysicalFamily::ALL.contains(&PhysicalFamily::ProviderObservationChunks));
     store.close().unwrap();

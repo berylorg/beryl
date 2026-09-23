@@ -19,6 +19,9 @@ pub(super) fn put_record(
         FixtureRecord::ThreadExecution(v) => {
             builder.put::<ThreadExecutionsCodec>(&v.thread_id(), v)?
         }
+        FixtureRecord::DiscussionHandoffGate(v) => {
+            builder.put::<DiscussionHandoffGatesCodec>(&v.thread_id(), v)?
+        }
         FixtureRecord::ThreadAttributes(v) => {
             builder.put::<ThreadAttributesCodec>(&v.thread_id(), v)?
         }

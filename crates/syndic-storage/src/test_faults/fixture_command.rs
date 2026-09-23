@@ -32,6 +32,9 @@ impl FixtureOperation {
                 }
                 FixtureDelete::ThreadExecution(_) => super::PhysicalFamily::ThreadExecutions,
                 FixtureDelete::ThreadAttributes(_) => super::PhysicalFamily::ThreadAttributes,
+                FixtureDelete::DiscussionHandoffGate(_) => {
+                    super::PhysicalFamily::DiscussionHandoffGates
+                }
                 FixtureDelete::ThreadUsage(_) => super::PhysicalFamily::ThreadUsage,
                 FixtureDelete::ThreadCatalogSummary(_) => {
                     super::PhysicalFamily::ThreadCatalogSummaries
@@ -269,6 +272,7 @@ fn reserve_fixture_family(
         }
         super::PhysicalFamily::ThreadExecutions => reserve!(ThreadExecutionsCodec),
         super::PhysicalFamily::ThreadAttributes => reserve!(ThreadAttributesCodec),
+        super::PhysicalFamily::DiscussionHandoffGates => reserve!(DiscussionHandoffGatesCodec),
         super::PhysicalFamily::ThreadUsage => reserve!(ThreadUsageCodec),
         super::PhysicalFamily::ThreadCatalogSummaries => reserve!(ThreadCatalogSummariesCodec),
         super::PhysicalFamily::Drafts => reserve!(DraftsCodec),

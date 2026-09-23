@@ -92,9 +92,11 @@ pub use crate::draft_piece::build_mapping::fixture::{
     mapping_root_codec_roundtrip,
 };
 pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
+mod discussion_gate;
 mod dispatch_provenance;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
+pub use discussion_gate::{decode_discussion_gate_fixture, encode_discussion_gate_fixture};
 mod draft_piece_current_drift;
 mod draft_piece_encoding;
 mod draft_piece_staging;
@@ -642,6 +644,7 @@ pub enum FixtureRecord {
     DraftImageLabelProtectionHead(DraftImageLabelProtectionHeadV1),
     ThreadExecution(ThreadExecutionRecord),
     ThreadAttributes(ThreadAttributesRecord),
+    DiscussionHandoffGate(DiscussionHandoffGateRecord),
     ThreadUsage(ThreadUsageRecord),
     ThreadCatalogSummary(ThreadCatalogSummaryRecord),
     Draft(DraftRecord),
@@ -752,6 +755,7 @@ impl FixtureRecord {
             }
             Self::ThreadExecution(_) => PhysicalFamily::ThreadExecutions,
             Self::ThreadAttributes(_) => PhysicalFamily::ThreadAttributes,
+            Self::DiscussionHandoffGate(_) => PhysicalFamily::DiscussionHandoffGates,
             Self::ThreadUsage(_) => PhysicalFamily::ThreadUsage,
             Self::ThreadCatalogSummary(_) => PhysicalFamily::ThreadCatalogSummaries,
             Self::Draft(_) => PhysicalFamily::Drafts,
@@ -820,6 +824,7 @@ pub enum FixtureDelete {
     DraftImageLabelProtectionHead(beryl_model::SyndicThreadId),
     ThreadExecution(beryl_model::SyndicThreadId),
     ThreadAttributes(beryl_model::SyndicThreadId),
+    DiscussionHandoffGate(beryl_model::SyndicThreadId),
     ThreadUsage(beryl_model::SyndicThreadId),
     ThreadCatalogSummary(beryl_model::SyndicThreadId),
     Draft(beryl_model::SyndicDraftId),

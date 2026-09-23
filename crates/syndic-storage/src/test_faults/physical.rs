@@ -96,6 +96,9 @@ pub fn inject_physical_corruption(
         PhysicalFamily::ThreadExecutions => {
             inject::<ThreadExecutionsFamily>(store, storage, thread, corruption)
         }
+        PhysicalFamily::DiscussionHandoffGates => {
+            inject::<DiscussionHandoffGatesFamily>(store, storage, thread, corruption)
+        }
         PhysicalFamily::ThreadAttributes => {
             inject::<ThreadAttributesFamily>(store, storage, thread, corruption)
         }

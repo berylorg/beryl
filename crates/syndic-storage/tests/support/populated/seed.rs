@@ -105,6 +105,7 @@ fn deferred_context_record(record: &FixtureRecord) -> bool {
         FixtureRecord::Thread(record) => record.id() == thread,
         FixtureRecord::ThreadExecution(record) => record.thread_id() == thread,
         FixtureRecord::ThreadAttributes(record) => record.thread_id() == thread,
+        FixtureRecord::DiscussionHandoffGate(record) => record.thread_id() == thread,
         FixtureRecord::ThreadUsage(record) => record.thread_id() == thread,
         FixtureRecord::ThreadCatalogSummary(record) => record.thread_id() == thread,
         FixtureRecord::Draft(record) => record.id() == draft_id(37),

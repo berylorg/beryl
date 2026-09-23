@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use beryl_model::{
     DiscussionContextDigest, ProjectionRevision, SyndicItemId, SyndicProjectionId, SyndicThreadId,
     SyndicTurnId,
@@ -17,7 +19,7 @@ pub enum DiscussionContextVersion {
 
 /// Exact selected UTF-8 text retained without trimming or role conversion.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DiscussionContextText(Box<str>);
+pub struct DiscussionContextText(Arc<str>);
 
 impl DiscussionContextText {
     /// Validates complete selected text while preserving its exact bytes.

@@ -20,7 +20,7 @@ use syndic_storage::*;
 #[test]
 fn canonical_source_encoding_is_exact_and_rejects_invalid_bytes() {
     let names = syndic_storage::test_faults::syndic_v7_family_names();
-    assert_eq!(names.len(), 88);
+    assert_eq!(names.len(), 89);
     assert_eq!(names[87], "non-idle-gate-sources");
     let revision = InputGateRevision::new(0x0102_0304_0506_0708).unwrap();
     let source = NonIdleGateSourceRecord::new(id(42), revision);

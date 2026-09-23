@@ -6,6 +6,7 @@ pub enum PhysicalFamily {
     DraftImageLabelProtectionHeads,
     ThreadExecutions,
     ThreadAttributes,
+    DiscussionHandoffGates,
     ThreadUsage,
     ThreadCatalogSummaries,
     Drafts,
@@ -68,12 +69,13 @@ pub enum PhysicalFamily {
 }
 
 impl PhysicalFamily {
-    pub const ALL: [Self; 64] = [
+    pub const ALL: [Self; 65] = [
         Self::Threads,
         Self::ImageLabelAuthorityHeads,
         Self::DraftImageLabelProtectionHeads,
         Self::ThreadExecutions,
         Self::ThreadAttributes,
+        Self::DiscussionHandoffGates,
         Self::ThreadUsage,
         Self::ThreadCatalogSummaries,
         Self::Drafts,
@@ -143,6 +145,7 @@ impl PhysicalFamily {
             Self::DraftImageLabelProtectionHeads => "draft-image-label-protection-heads",
             Self::ThreadExecutions => "thread-executions",
             Self::ThreadAttributes => "thread-attributes",
+            Self::DiscussionHandoffGates => "discussion-handoff-gates",
             Self::ThreadUsage => "thread-usage",
             Self::ThreadCatalogSummaries => "thread-catalog-summaries",
             Self::Drafts => "drafts",

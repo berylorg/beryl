@@ -45,8 +45,8 @@ const PHYSICAL_CORRUPTIONS: [PhysicalCorruption; 3] = [
 ];
 
 fn exercise_physical_corruption_partition(partitions: usize, partition: usize) {
-    assert_eq!(PhysicalFamily::ALL.len(), 64);
-    assert_eq!(PhysicalFamily::ALL.len() * PHYSICAL_CORRUPTIONS.len(), 192);
+    assert_eq!(PhysicalFamily::ALL.len(), 65);
+    assert_eq!(PhysicalFamily::ALL.len() * PHYSICAL_CORRUPTIONS.len(), 195);
     for (family, corruption) in PhysicalFamily::ALL
         .into_iter()
         .flat_map(|family| {

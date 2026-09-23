@@ -66,6 +66,23 @@ durable job records and transitions plus compact catalog schema, normalization, 
   byte cost, and fail rather than represent an incomplete collection as complete; stale rows rebuild
   before correctness-sensitive mutation.
 
+## Initial catalog publication
+
+- Initial publication prepares an opaque home-bound witness containing one validated current row
+  at the initial catalog revision. It retains the exact source revisions and normalized bounded
+  facts. Preparation and its mutation use the same registered handle and expected domain revision;
+  a stale generation or revision cannot publish it.
+- The mutation requires both the thread's primary row and the intended recency key to be absent,
+  reserves reconciliation for both records, and publishes them atomically. An existing primary or
+  intended index copy rejects creation, including an orphaned index. It does not replace or repair
+  existing catalog state. The app supplies source validation participants in the same command.
+- Ordinary and explicit candidate outcome reads use the same two exact keys and bounded schema
+  limits: both absent is `Absent`, both equal to the witness is `Exact`, and any partial or different
+  state is `Collision`. Reads confirm a stable catalog domain revision; fresh candidate handles
+  may inspect the same-home witness after recovery, but foreign homes and stale handles reject.
+  The witness is outcome evidence, not authority to replay a prior-generation mutation. These
+  reads neither scan other recency keys nor decide the surrounding cross-domain command outcome.
+
 ## Prepublication abandonment participants
 
 - The durable-job boundary exposes an exact revision-bound validation-only guard proving that the

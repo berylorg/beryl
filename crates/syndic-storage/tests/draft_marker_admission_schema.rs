@@ -795,7 +795,7 @@ fn assigning_heads_enforce_reservation_cardinality_and_progress() {
 #[test]
 fn four_admission_families_are_appended_without_reordering_prior_families() {
     let names = syndic_v7_family_names();
-    assert_eq!(names.len(), 88);
+    assert_eq!(names.len(), 89);
     assert_eq!(names[86], "draft-piece-build-mapping");
     assert_eq!(
         &names[81..86],
