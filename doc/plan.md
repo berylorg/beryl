@@ -25,9 +25,13 @@ the model to reconcile external state. The user chooses whether to retry or insp
 No external-effect reconciliation subsystem or separate user-facing invocation-uncertainty
 workflow is required. Preserve recorded results without claiming that missing results prove a
 tool did not run. This clarification concerns process restart; live connection recovery remains
-a separate design boundary. Code-mode adoption remains under discussion: filtering and batching are also
-possible in shell scripts; the distinct candidate benefit is direct programmable access to the
-registered MCP/app/local tool catalog, not inherently unique token savings. Image generation is
+a separate design boundary. Restored subagents retain their own context and parent/task relation;
+after user-directed continuation, the parent may send them ordinary follow-up turns.
+On 2026-09-23 Operator deferred code mode entirely from the current replacement scope. Do not
+include embedded JavaScript/TypeScript/Deno, a scripting checker, or scripting-driven IPC work
+as a prerequisite for CAS replacement. Use ordinary tool calling and mandatory parallel dispatch;
+validate the chosen subscription model/dialect with that tool surface rather than silently
+reintroducing code mode. Image generation is
 being considered as a service-backed tool, distinct from core image-input/context support. Exact
 MCP/steering/recovery envelopes remain to reconcile in design.
 These scope choices do not release the implementation hold.

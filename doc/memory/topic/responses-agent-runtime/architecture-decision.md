@@ -21,8 +21,10 @@ Do not automatically retry external tools, resume agents or launch worktree reco
 restart. No dedicated external-effect reconciliation or invocation-uncertainty UI is required.
 Recorded results remain available; missing results do not establish that a tool never ran.
 Earlier automatic-resumption options below do not override this selection.
-Code mode remains under discussion; shell scripting can
-provide the same filtering/batching savings when it can access the relevant tools.
+On 2026-09-23 Operator deferred code mode from the current replacement scope. Embedded scripting,
+TypeScript checking and scripting-driven IPC are not replacement prerequisites. Ordinary tool
+calling with parallel dispatch is the current direction; model/dialect compatibility still needs
+qualification. Earlier code-mode options and costs below remain historical investigation only.
 
 **Recommend pursuing a Beryl-owned agent loop and context over direct subscription HTTP streaming,
 with selected Rust reuse and a separately bounded local tool host.** Direct authentication is
