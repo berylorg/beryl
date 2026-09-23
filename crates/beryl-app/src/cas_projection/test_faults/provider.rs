@@ -185,18 +185,26 @@ pub fn provider_broker_snapshot(session: &AdmittedProjectionSession) -> Provider
     session.provider_broker_test_snapshot()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProviderBrokerSnapshotReader {
     metrics: Arc<ProviderBrokerTestMetrics>,
+    pages: beryl_stream::PagePoolObserver,
 }
 
 impl ProviderBrokerSnapshotReader {
-    pub(crate) fn new(metrics: Arc<ProviderBrokerTestMetrics>) -> Self {
-        Self { metrics }
+    pub(crate) fn new(
+        metrics: Arc<ProviderBrokerTestMetrics>,
+        pages: beryl_stream::PagePoolObserver,
+    ) -> Self {
+        Self { metrics, pages }
     }
 
     pub fn snapshot(&self) -> ProviderBrokerSnapshot {
         self.metrics.snapshot()
+    }
+
+    pub fn page_diagnostics(&self) -> Option<beryl_stream::PagePoolDiagnostics> {
+        self.pages.diagnostics()
     }
 }
 

@@ -56,38 +56,32 @@ also owns a separate provider-turn identity. Exact outage inventory therefore ca
 solely from pending activation or successful interrupt proofs. Registration must preserve the
 already-held Syndic identity before failure; descriptive identity does not grant interrupt authority.
 
-The implementation preserves these identities and passed independent semantic review plus 53
-focused persistent-failure and approval-disposal unit tests. Six connection-work integration tests
-also passed. The broader provider-residency run did not complete: diagnostic markers localized an
-initial stall to `prove_target_abandonment`, after `barrier.wait_for_stage()` and before the return
-of synchronous `harness.abandon_target()`.
+The registration correction passed independent review, 53 focused unit tests and six connection-work
+tests. Provider verification then exposed artificial-pause deadlocks: `ForwardingHubSink::submit`
+holds the forwarding mutex through fragment acknowledgement, while target disposal, connection
+invalidation, broker snapshots and page diagnostics can require that same mutex. Moving disposal to
+another thread and polling the router does not resolve this dependency. Capture independent metrics
+and weak page observers before the pause; release staging before attachment-dependent operations.
+This evidence does not establish a production deadlock without the artificial pause.
 
-Source inspection identifies the dependency: `ForwardingHubSink::submit` holds the forwarding
-state mutex through `endpoint.sink.submit(operation)`, including the paused fragment acknowledgement.
-Target disposal calls `current_router` through `ForwardingHub::current_attachment`, which requires
-that mutex. Moving disposal to another thread and polling the router cannot resolve this: the
-snapshot needs the same attachment mutex. The test thread must release staging before either can
-complete. This evidence does not establish a production deadlock without the artificial pause.
+Receiver-only abandonment is not whole-target disposal: retaining the route permitted publication
+(`source_event_count` was 2, expected 1; run `1bb64fc6-09d6-4866-97f2-6522bc9c3bb1`). The accepted
+schedule releases staging, observes resumed Pong, and withholds the JSON suffix until full target
+disposal. Cancellation likewise releases staging while the server keeps the observation unsealed,
+then invalidates and joins the connection. Neither schedule claims cancellation during paused staging.
 
-Substituting receiver-only abandonment is not equivalent. With the registered route retained,
-`provider_failures_and_unknown_outcomes_remain_atomic` completed in 3.435 seconds but failed the
-no-publication assertion (`source_event_count` was 2, expected 1; nextest run
-`1bb64fc6-09d6-4866-97f2-6522bc9c3bb1`). That substitution was removed. Do not weaken the assertion
-or claim it proves whole-target disposal.
+The old unknown-outcome case also expected healthy continuation after `AfterPersist`. That fault is
+actually committed-with-later-failure; capture correctly closed rather than continuing (run
+`d8e88038-dcb9-44c9-b284-21b1c190f16a`). Genuine indeterminate coverage now uses
+`AfterCommitBeforePersist` separately for staging and source publication. Each test captures the sole
+registry handle at terminal target closure, verifies released resources and retained custody after
+connection retirement, and carries that same handle through consuming service close. The close error
+retains the home until explicit post-retirement reconciliation resolves `ExactNew`. Staging remains
+unpublished; the publication cut exposes the complete atomic item. There is no same-service retry.
+Broker seal-ack counters include rejected replies and cannot prove successful publication.
 
-The accepted test correction releases staging, observes resumed Pong and withholds the JSON suffix
-at the server until whole-target disposal. Post-disposal resource-zero and no-publication assertions
-remain. Independent review accepted this schedule; four independently selectable receiver-loss,
-target-abandonment, schema and fragment-failure cases passed in run
-`1d0c8d73-1037-4526-b7ba-7df16d3c7999`. Alongside the 53 unit and six connection-work passes, this
-accepts the registration prerequisite, not the full provider suite or outage mounting.
-
-Moving the unknown-outcome test's acknowledgement snapshot before the pause exposes a separate
-stale expectation: `AfterPersist` staging failure closes capture, while the test waits for Pong,
-successful seal and continued publication on the same service. Run
-`d8e88038-dcb9-44c9-b284-21b1c190f16a` failed in 7.025 seconds with provider closure. The current
-ingester installs indeterminate custody then rejects; registry handoff grants no publication or
-retry authority. Repair this test separately, preserving staging and publication fault coverage.
-The paused transport case also needs a lock-order audit of snapshots and cancellation waits.
-Both remain explicit before failed-store ingress implementation; no production continuation change
-is justified by these stale test expectations.
+Independent review accepted these corrections. All eight provider-residency cases passed in run
+`16f81b20-7966-4799-b613-4a625c118538`; both strengthened same-handle custody cases passed again in
+`5265a37a-3ac8-42de-8c40-1b139aa4e62f`. The weak observer retains no page storage. Formatting and
+whitespace checks passed. Failed-store ingress and ordinary outage integration remain unimplemented;
+these test repairs authorize no change to production failure semantics.

@@ -57,7 +57,13 @@ fn provider_fragment_store_failure_remains_atomic() {
 }
 
 #[test]
-fn provider_unknown_outcome_reconciliation_remains_atomic() {
+fn provider_indeterminate_staging_retains_custody() {
     let _guard = TEST_LOCK.lock().unwrap();
-    failure::prove_unknown_outcome_reconciliation();
+    failure::prove_indeterminate_staging();
+}
+
+#[test]
+fn provider_indeterminate_publication_retains_custody() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    failure::prove_indeterminate_publication();
 }

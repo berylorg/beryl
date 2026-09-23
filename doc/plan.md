@@ -69,30 +69,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 501: Retain Exact Syndic Turn Identity At Target Registration (finished)
+# Phase 502: Reconcile Provider Failure And Paused-Ingress Verification (finished)
 
-Accepted exact Syndic turn identity retention for pending, active and compaction registrations and
-failure witnesses without widening interrupt authority. Independent review passed; 53 focused unit,
-six connection-work and four provider failure tests passed. The corrected abandonment test withholds
-seal until whole-target disposal. Formatting and whitespace checks passed. Broader provider-suite
-defects remain explicit in the next phase; no outage ingress is mounted.
-
-# Phase 502: Reconcile Provider Failure And Paused-Ingress Verification (wip)
-
-Align the provider-residency harness with the accepted
-[ingester custody contract](../crates/beryl-app/doc/design-live-capture.md#ordered-ingester-and-custody).
-Replace stale healthy continuation after indeterminate staging/publication with exact registry
-handoff, terminal capture and released-resource evidence. Preserve separate staging and publication
-fault coverage, atomic visibility and no same-service retry. Audit paused transport diagnostics and
-cancellation sequencing against the forwarding mutex; capture safe diagnostic handles before the
-pause and do not wait for operations requiring that mutex before releasing staging.
-
-Keep test cases independently selectable and enabled. Verify the full provider-residency target
-and independently review custody assertions and deterministic schedules before phase 500. Do not
-change production failure semantics to satisfy stale tests. Resume from
-[the diagnosis](failures/outage-ingress-readiness.md#registration-identity-and-verification-follow-up):
-the four isolated loss/abandonment/schema/fragment cases pass; the unknown-outcome case now terminates
-with connection closure rather than hanging, but still expects obsolete successful continuation.
+Accepted genuine indeterminate staging/publication tests with exact registry custody surviving
+connection and service retirement, atomic visibility, and no live retry. Weak page diagnostics and
+corrected unsealed cancellation scheduling avoid paused-ingress mutex deadlocks. Independent review
+passed; all eight provider-residency tests passed, followed by both strengthened custody cases.
+Formatting and whitespace checks passed. See [the retained lesson](failures/outage-ingress-readiness.md#registration-identity-and-verification-follow-up).
+Operator requested ending this turn without continuation yield for a GUI restart; resume at phase 500.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 

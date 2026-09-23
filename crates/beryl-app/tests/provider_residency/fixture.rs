@@ -8,18 +8,19 @@ use beryl_app::cas_projection::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LiveEventPoll,
     LiveEventTarget,
     test_faults::{
-        WebSocketIngressSnapshot, install_provider_fragment_stage_barrier,
-        last_websocket_ingress_snapshot, provider_broker_snapshot,
+        WebSocketIngressSnapshot, capture_provider_broker_snapshot_reader,
+        install_provider_fragment_stage_barrier, last_websocket_ingress_snapshot,
+        provider_broker_snapshot,
     },
 };
 use beryl_backend::{ManagedBackendClientConnector, ThreadStartOptions};
-use beryl_home_store::{CommandOutcome, HomeHealthState, ReadError, test_faults::FaultController};
+use beryl_home_store::{CommandOutcome, test_faults::FaultController};
 use beryl_model::{
     CasProcessGeneration, CasTurnId, SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::{
     ActivateBinding, CasTurnSource, LiveSourceEvent, PublishActiveCasTurn, SourceEventPayload,
-    SourceEventSequence, SyndicReadError, SyndicTimestamp,
+    SourceEventSequence, SyndicTimestamp,
 };
 
 use super::{
@@ -267,7 +268,39 @@ impl LiveHarness {
         self.session.take();
         self.server.take().unwrap().join();
         let (directory, service) = self.fixture.take().unwrap().into_service();
-        service.close().unwrap();
+        assert!(matches!(
+            service.close().unwrap(),
+            beryl_app::cas_projection::ProjectionConnectionServiceCloseOutcome::Closed
+        ));
+        drop(directory);
+    }
+
+    pub(super) fn close_with_reconciliation(
+        mut self,
+        custody: beryl_home_store::ReconciliationHandle,
+    ) {
+        self.target.take();
+        self.server().request_close();
+        self.session().invalidate_connection();
+        self.session.take();
+        self.server.take().unwrap().join();
+        let (directory, service) = self.fixture.take().unwrap().into_service();
+        let error = match service.close() {
+            Err(beryl_app::cas_projection::ProjectionConnectionServiceCloseError::HomeClose(
+                error,
+            )) => error,
+            other => panic!("expected retained home custody after service retirement: {other:?}"),
+        };
+        assert_eq!(error.pending_reconciliation_scopes(), Some(1));
+        let home = error.into_open_store().unwrap();
+        let scopes = home.pending_reconciliations();
+        assert_eq!(scopes.len(), 1);
+        assert!(matches!(
+            home.reconcile(&custody).unwrap(),
+            beryl_home_store::ReconciliationResolution::ExactNew { .. }
+        ));
+        assert!(home.pending_reconciliations().is_empty());
+        home.close().unwrap();
         drop(directory);
     }
 }
@@ -444,14 +477,16 @@ pub fn prove_transport_backpressure_and_cancellation() {
 
     let harness = LiveHarness::new(102);
     let spec = ObservationSpec::new(1, BACKPRESSURE_PATTERNS);
+    let reader = capture_provider_broker_snapshot_reader(harness.session());
+    let settlement = harness.next_provider_seal_ack();
     let barrier = install_provider_fragment_stage_barrier(harness.session());
     harness.server().begin_backpressure(spec);
     barrier.wait_for_stage();
 
-    let pages = harness.session().provider_page_diagnostics();
+    let pages = reader.page_diagnostics().unwrap();
     assert_eq!(pages.leased, 1);
     assert_eq!(pages.high_water, 1);
-    let blocked_broker = provider_broker_snapshot(harness.session());
+    let blocked_broker = reader.snapshot();
     assert_eq!(blocked_broker.in_flight().current(), 1);
     assert_eq!(blocked_broker.in_flight().high_water(), 1);
     assert_eq!(blocked_broker.staged_fragments().current(), 1);
@@ -460,7 +495,6 @@ pub fn prove_transport_backpressure_and_cancellation() {
 
     harness.server().probe_backpressure();
     harness.server().wait_for_no_pong();
-    let settlement = harness.next_provider_seal_ack();
     barrier.release();
     let report = harness.server().finish_backpressure(spec.sequence);
     harness.wait_for_provider_seal_ack(settlement);
@@ -480,21 +514,18 @@ pub fn prove_transport_backpressure_and_cancellation() {
     harness.close();
 
     let harness = LiveHarness::new(103);
+    let reader = capture_provider_broker_snapshot_reader(harness.session());
     let cancelled = ObservationSpec::new(1, BACKPRESSURE_PATTERNS);
     let barrier = install_provider_fragment_stage_barrier(harness.session());
     harness.server().begin_backpressure(cancelled);
     barrier.wait_for_stage();
     harness.assert_unpublished(cancelled.sequence);
-    let session = harness.session();
-    thread::scope(|scope| {
-        let shutdown = scope.spawn(move || session.invalidate_connection());
-        barrier.wait_for_cancellation();
-        barrier.release();
-        shutdown.join().unwrap();
-    });
+    // The server retains the unsealed suffix while shutdown joins the ingester.
+    barrier.release();
+    harness.session().invalidate_connection();
     harness.wait_for_target_closed();
     harness.wait_for_page_leases(0);
-    let released = provider_broker_snapshot(harness.session());
+    let released = reader.snapshot();
     assert_eq!(released.in_flight().current(), 0);
     assert_eq!(released.staged_fragments().current(), 0);
     harness.assert_unpublished(cancelled.sequence);

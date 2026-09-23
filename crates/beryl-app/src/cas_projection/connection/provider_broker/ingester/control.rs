@@ -146,9 +146,10 @@ impl ProviderBrokerControl {
     pub(in crate::cas_projection::connection) fn test_snapshot_reader(
         &self,
     ) -> crate::cas_projection::test_faults::ProviderBrokerSnapshotReader {
-        crate::cas_projection::test_faults::ProviderBrokerSnapshotReader::new(Arc::clone(
-            &self.test_metrics,
-        ))
+        crate::cas_projection::test_faults::ProviderBrokerSnapshotReader::new(
+            Arc::clone(&self.test_metrics),
+            self.pages.observer(),
+        )
     }
 }
 
