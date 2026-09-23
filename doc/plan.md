@@ -73,26 +73,17 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 480: Specify Fresh Same-Home Recovery Composition (finished)
+# Phase 509: Preserve Failed-Home Custody Through CAS Retirement (finished)
 
-Accepted the runtime-retirement/storage-custody split, distinct reopening-candidate preparation,
-and exact supervisor/publication responsibilities in the backend-runtime and app authorities.
-Independent readiness review confirmed compatibility with existing same-home reopen and candidate
-abort. The bounded components below precede branch work; complete supervisor mounting consumes
-the real complete graph after phase 423, without a partial graph or generic placeholder.
+Accepted separate consuming CAS retirement with exact generation checks, failed-home handoff only
+after complete disposal, and opaque terminal-only failure custody. Reference-only components
+return no owned home. Same-home reopen preserves the lock and reconciles the original pending
+command through fresh candidate access. Six focused cases, 106 failure/shutdown regressions,
+app check and independent custody review passed. The
+[close-error escape](failures/fresh-service-recovery.md) was corrected and verified in isolation.
+Complete-graph retirement and supervisor publication remain separate.
 
-# Phase 509: Preserve Failed-Home Custody Through CAS Retirement (wip)
-
-Implement the app's separate consuming CAS retirement handoff from the
-[replacement contract](../crates/beryl-app/doc/design-shell-lifecycle.md#same-home-replacement-contribution).
-Reuse exact failed-service disposal while retaining only owned failed-home custody and bounded
-generation evidence. Reference-only components return no owned home. Failure must retain explicit
-terminal-disposal custody without reopening permission. Verify healthy/stale rejection, connection
-and worker failure, live ingress cancellation, no old service authority, retained home lock and
-reconciliation custody, and successful same-home reopening only after component retirement.
-Independent custody review and focused lifecycle/storage checks accept only this component.
-
-# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (pending)
+# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (wip)
 
 Consume the storage recovery candidate and freshly reacquired typed handles through shared
 candidate convergence and fresh fenced service construction. Preserve distinct owned opening and

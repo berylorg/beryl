@@ -417,6 +417,9 @@ fn admitted_connection(
 #[path = "persistent_failure_capture.rs"]
 mod capture;
 
+#[path = "recovery_retirement.rs"]
+mod recovery_retirement_tests;
+
 #[test]
 fn persistent_failure_cut_preserves_detached_failed_join_and_disposes_later_connection() {
     let (_directory, faults, state, shutdowns, service) = service();

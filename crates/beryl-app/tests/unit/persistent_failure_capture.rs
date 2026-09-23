@@ -253,7 +253,21 @@ fn complete_freeze_and_final_membership_validation_precede_obligation_installati
                 OutageCaptureState::Ready
             }
         );
-        let _ = service.close();
+        if mutate_membership {
+            use crate::cas_projection::service::recovery_retirement::{
+                CasRetirementError, CasRetirementFailure,
+            };
+            let generation = service.service_generation();
+            match service.retire_for_recovery(generation) {
+                Err(CasRetirementFailure::Disposal(failure)) => {
+                    assert!(matches!(failure.error(), CasRetirementError::IncompleteCut));
+                    failure.close().unwrap();
+                }
+                _ => panic!("incomplete freeze must not grant recovery custody"),
+            }
+        } else {
+            let _ = service.close();
+        }
         assert_eq!(
             retained_inventory.snapshot().state,
             OutageCaptureState::Unavailable

@@ -13,7 +13,7 @@ impl ProjectionConnectionService {
         self.close_inner()
     }
 
-    fn close_inner(
+    pub(super) fn close_inner(
         &mut self,
     ) -> Result<ProjectionConnectionServiceCloseOutcome, ProjectionConnectionServiceCloseError>
     {

@@ -65,6 +65,7 @@ mod admission;
 mod commands;
 mod compaction_work;
 mod construction;
+pub(crate) mod recovery_retirement;
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;
