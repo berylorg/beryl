@@ -13,7 +13,7 @@ use beryl_state::{
     ResolutionRequestIdentity, ResolutionText, StartParentHandoff, SucceedBranchHandoff,
 };
 use syndic_storage::{
-    ArchiveBranchDiscussionThread, SyndicPointReadLimit, SyndicStorage, ThreadArchiveState,
+    DiscussionHandoffMutation, SyndicPointReadLimit, SyndicStorage, ThreadArchiveState,
     ThreadAttributesRevision,
 };
 
@@ -81,6 +81,12 @@ fn prepare_parent_active_job(
     seed_populated(store, syndic.clone());
     let admission = admission();
     let job_id = admission.job_id();
+    crate::support::discussion_handoff::admit(
+        store,
+        &syndic,
+        ResolutionIntentId::from_bytes([0x74; 16]),
+        job_id,
+    );
     execute(
         store,
         state.durable_jobs().admit_branch_handoff(
@@ -152,15 +158,22 @@ fn terminal_command(
         ))
         .unwrap();
     command
-        .add(syndic.archive_branch_discussion(
-            syndic.revision(store).unwrap(),
-            ArchiveBranchDiscussionThread::new(
-                id(36),
-                ThreadAttributesRevision::FIRST,
-                job_id,
-                timestamp(20),
-            ),
-        ))
+        .add(
+            syndic
+                .prepare_discussion_handoff(
+                    store,
+                    DiscussionHandoffMutation::ReleaseAndArchive {
+                        expected: syndic
+                            .discussion_handoff_gate(store, id(36), limit())
+                            .unwrap()
+                            .unwrap(),
+                        attributes_revision: ThreadAttributesRevision::FIRST,
+                        archived_at: timestamp(20),
+                    },
+                )
+                .unwrap()
+                .contribution(),
+        )
         .unwrap();
     command
 }

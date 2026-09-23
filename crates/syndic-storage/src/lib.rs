@@ -685,6 +685,7 @@ pub use discussion_gate::{
 };
 pub use discussion_source::{DiscussionSourceError, PreparedDiscussionSource};
 pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation};
+pub use mutation::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
 pub use domain::SyndicStorage;
 pub use draft_piece::*;
 pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};
@@ -693,7 +694,7 @@ pub use mutation::{
     AbandonActiveBinding, AbandonCompactionOperation, AbandonStopOperation,
     AcceptGeneratedThreadTitle, AcceptedInputPromotionStatus, ActivateBinding,
     ActiveCasTurnPublicationStatus, AdmitCompactionOperation, AdmitStopOperation,
-    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, ArchiveBranchDiscussionThread,
+    AdvanceItemProjectionBuild, AdvanceTranscriptBuild,
     BeginAcceptedInputDelivery, BindingPublicationStatus, CONTENT_APPEND_MAX_CHUNKS,
     CancelBindingActivation, ClaimCompactionDispatch, ClaimStopDispatch, CompactionProviderEvent,
     CompleteAcceptedInputDelivery, CompleteTerminalHistory, ContentAppend, ContentBuild,

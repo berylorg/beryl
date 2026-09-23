@@ -1,12 +1,12 @@
 use beryl_home_store::{
     DomainMutation, DomainReader, MutationBuilder, MutationContribution, ReconciliationReservation,
 };
-use beryl_model::{DomainRevision, JobId, SyndicThreadId};
+use beryl_model::{DomainRevision, SyndicThreadId};
 
 use crate::{
     BindingState, CanonicalItemKind, ContentLifecycle, GeneratedThreadTitle, SyndicMutationError,
-    SyndicTimestamp, ThreadArchiveState, ThreadAttributesRevision, ThreadUsageObservation,
-    ThreadUsageRevision, codec::*, domain::SyndicDomain,
+    ThreadAttributesRevision, ThreadUsageObservation, ThreadUsageRevision, codec::*,
+    domain::SyndicDomain,
 };
 
 use super::required;
@@ -31,31 +31,6 @@ impl AcceptGeneratedThreadTitle {
             thread_id,
             expected_attributes_revision,
             title,
-        }
-    }
-}
-
-/// One-way intrinsic archive publication composed with exact durable handoff success.
-pub struct ArchiveBranchDiscussionThread {
-    thread_id: SyndicThreadId,
-    expected_attributes_revision: ThreadAttributesRevision,
-    handoff_job_id: JobId,
-    archived_at: SyndicTimestamp,
-}
-
-impl ArchiveBranchDiscussionThread {
-    #[must_use]
-    pub const fn new(
-        thread_id: SyndicThreadId,
-        expected_attributes_revision: ThreadAttributesRevision,
-        handoff_job_id: JobId,
-        archived_at: SyndicTimestamp,
-    ) -> Self {
-        Self {
-            thread_id,
-            expected_attributes_revision,
-            handoff_job_id,
-            archived_at,
         }
     }
 }
@@ -93,15 +68,6 @@ impl crate::SyndicStorage {
     }
 
     #[must_use]
-    pub fn archive_branch_discussion(
-        &self,
-        expected_domain_revision: DomainRevision,
-        request: ArchiveBranchDiscussionThread,
-    ) -> MutationContribution {
-        self.handle.contribution(expected_domain_revision, request)
-    }
-
-    #[must_use]
     pub fn publish_thread_usage(
         &self,
         expected_domain_revision: DomainRevision,
@@ -131,48 +97,6 @@ impl DomainMutation<SyndicDomain> for AcceptGeneratedThreadTitle {
         }
         validate_title_eligibility(reader, self.thread_id, &self.title)?;
         let next = attributes.accept_generated_title(self.title)?;
-        Ok((self.thread_id, next))
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<ThreadAttributesCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        prepared: Self::Prepared,
-        mutations: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        mutations.put::<ThreadAttributesCodec>(&prepared.0, &prepared.1)?;
-        Ok(())
-    }
-}
-
-impl DomainMutation<SyndicDomain> for ArchiveBranchDiscussionThread {
-    type Error = SyndicMutationError;
-    type Prepared = (SyndicThreadId, crate::ThreadAttributesRecord);
-
-    fn prepare(
-        self,
-        reader: &DomainReader<'_, SyndicDomain>,
-    ) -> Result<Self::Prepared, Self::Error> {
-        let thread = required::<ThreadsFamily>(reader, &self.thread_id)?;
-        let attributes = required::<ThreadAttributesFamily>(reader, &self.thread_id)?;
-        if attributes.revision() != self.expected_attributes_revision {
-            return Err(SyndicMutationError::ThreadAttributesRevisionConflict {
-                expected: self.expected_attributes_revision,
-                current: attributes.revision(),
-            });
-        }
-        if thread.parent_thread_id().is_none()
-            || attributes.archive() != ThreadArchiveState::BranchDiscussionOpen
-        {
-            return Err(SyndicMutationError::ThreadArchiveStateConflict);
-        }
-        let next = attributes.archive_branch_discussion(self.handoff_job_id, self.archived_at)?;
         Ok((self.thread_id, next))
     }
 

@@ -73,30 +73,17 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 521: Compose Discussion Creation And Catalog Custody (finished)
+# Phase 515: Implement Discussion Handoff Gate Participants (finished)
 
-Accepted the atomic unclaimed discussion/catalog operation with process-bounded custody, original
-admission epoch and shared audit disposition. Nine app creation/catalog cases passed
-(`fb38f4a1-78c1-4b1a-9caf-50644cc06a8d`); two final catalog-collision/claim cases passed
-(`90b5b8a4-b34f-44bc-8a97-2938ffb74254`). Evidence covers cancellation, acknowledgement loss,
-process and home replacement, partial closure, and explicit retry of cached reconciliation failure.
-App integration check and independent review passed. GUI activation and job integration remain open.
-# Phase 515: Implement Discussion Handoff Gate Participants (pending)
+Accepted authenticated admission with an embedded parent-frontier proof, exact failure release and
+one combined success release/archive participant. Removed standalone archive publication; domain
+uniqueness remains enforced. Focused admission, title, recovery and atomic archive cases passed
+(`6c9b6518-20c5-4a04-996b-de86ae0652ac`, five cases); real queued-input fencing passed
+(`e47ad266-4e68-4c0a-b391-3d74b6c02f3f`); corrected catalog regression and release after resolving
+execution completed passed (`6b27b152-bfa3-4cb1-b77f-ff992c37a19e`). App check and independent review
+passed. The [approved composition correction](failures/discussion-command-composition.md) is implemented.
 
-Extend the accepted initial Syndic gate foundation with authenticated admission, exact release
-and parent-frontier validation participants. Preserve independent title/archive revisions. Verify
-stale revisions, wrong branch/turn/binding, queued-input races, overflow, missing/orphaned gates,
-candidate fencing and exact old/new mutation outcomes. These are typed participants only; gate
-enforcement and cross-domain app composition remain separate and branch dispatch stays unavailable.
-
-Blocked on 2026-09-23: the proposed separate Syndic participants conflict with the store's explicit
-one-participant-per-domain rule. Parent validation must execute inside the single Syndic admission
-mutation, and successful release/archive must be one Syndic mutation composed with the State job
-transition. The [composition evidence](failures/discussion-command-composition.md) records the
-recommended bounded contract correction. Await Operator direction under the instruction to stop
-when a planned step cannot technically work; do not add sequential commits or a generic multiplexer.
-Discussion creation and its catalog custody are now accepted; no discussion deletion is introduced.
-# Phase 516: Enforce Discussion Mutation Gates (pending)
+# Phase 516: Enforce Discussion Mutation Gates (wip)
 
 Apply the pending/archive checks at durable input, draft edit/history, replacement/path and
 lifecycle successor publication. Verify that already-admitted steering, exact stop, capture and

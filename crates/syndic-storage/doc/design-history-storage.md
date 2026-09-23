@@ -92,14 +92,18 @@ Syndic domain, thread, attributes, input-gate, handoff-gate and resolving-turn r
 selected turn, active binding/snapshot/CAS-turn correlation, immutable parent/context ownership,
 and zero accepted future-turn input at the writer. It contributes only the open-to-pending gate
 transition. The app must compose it with State intent/job admission; this package neither reads
-State jobs nor allocates their identities. Parent identity and queue-frontier observations are a
-separate exact validation participant in the same command.
+State jobs nor allocates their identities. Parent identity and queue-frontier observations form a
+separately typed proof validated inside that same Syndic admission mutation. The command contains
+one Syndic participant and one State job participant, preserving the store's domain uniqueness rule.
 
 Release requires the exact pending identities and gate revision and contributes a checked next
-open revision. The app composes terminal failure with release, or success with release and exact
-archive. No retryable transition releases the gate. Mutations preserve the exact unrelated thread,
-draft, title, execution and history records. Natural reconciliation compares only the named gate's
-exact old and intended-new records. Parent, binding and turn observations remain read-only
+open revision. Terminal failure uses a gate-only release mutation. Successful handoff uses one
+Syndic mutation that releases the gate and publishes exact archive together, preserving the current
+title and independently checked attributes revision. The app composes that single Syndic participant
+with the State terminal job transition. No retryable transition releases the gate. Mutations preserve
+unrelated thread, draft, execution and history records. Natural reconciliation compares only the
+named gate's exact old/new records, plus the exact attributes old/new pair for successful archive.
+Parent, binding and turn observations remain read-only
 preconditions and cannot substitute for outcome evidence. It never scans discussions or jobs.
 
 Package-owned checks reject forbidden discussion mutation at its durable publication boundary,

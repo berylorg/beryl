@@ -212,6 +212,11 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   exact identity and accepted-input frontier; no parent execution capability is retained. An
   intervening queue admission or changed binding rejects the proposal without creating either
   participant. Existing request idempotency is checked before proposing a fresh attempt.
+- Each command has exactly one Syndic participant. A separately typed parent-frontier proof is
+  validated inside admission's Syndic mutation. Terminal failure uses one gate-release mutation;
+  success uses one combined gate-release/archive mutation. The app composes that participant with
+  the State job mutation. These operations preserve one writer snapshot and atomic publication;
+  they do not require repeated same-domain participants or sequential commands.
 - Admission gates new composer acceptance, steering acceptance, replacement/path mutation and
   automatic lifecycle successors. It does not prevent source capture, delivery of already admitted
   steering, exact stop, resolving-turn terminal convergence, or disposal. Draft preparation may

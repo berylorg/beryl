@@ -2,7 +2,7 @@ use beryl_home_store::{CommandOutcome, HomeCommand};
 use beryl_model::JobId;
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::{
-    ArchiveBranchDiscussionThread, SyndicPointReadLimit, SyndicStorage, ThreadAttributesRevision,
+    DiscussionHandoffMutation, SyndicPointReadLimit, SyndicStorage, ThreadAttributesRevision,
     ThreadCatalogSummaryRecord,
 };
 
@@ -48,18 +48,37 @@ fn stale_attributes_witness_cannot_justify_a_changed_catalog_payload() {
         .publish()
         .unwrap();
     seed_populated(&store, storage.clone());
+    crate::support::discussion_handoff::admit(
+        &store,
+        &storage,
+        beryl_model::ResolutionIntentId::from_bytes([0x73; 16]),
+        JobId::from_bytes([0x74; 16]),
+    );
+    crate::support::discussion_handoff::complete_resolving_turn(&store, &storage);
+    if let syndic_storage::ThreadCatalogSummaryPreparation::PreparedReplacement(prepared) = storage
+        .prepare_thread_catalog_summary(&store, id(36))
+        .unwrap()
+        .unwrap()
+    {
+        execute(&store, storage.rebuild_thread_catalog_summary(prepared));
+    }
     let stale_catalog = current_catalog(&store, storage.clone());
     execute(
         &store,
-        storage.archive_branch_discussion(
-            storage.revision(&store).unwrap(),
-            ArchiveBranchDiscussionThread::new(
-                id(36),
-                ThreadAttributesRevision::FIRST,
-                JobId::from_bytes([0x74; 16]),
-                timestamp(20),
-            ),
-        ),
+        storage
+            .prepare_discussion_handoff(
+                &store,
+                DiscussionHandoffMutation::ReleaseAndArchive {
+                    expected: storage
+                        .discussion_handoff_gate(&store, id(36), limit())
+                        .unwrap()
+                        .unwrap(),
+                    attributes_revision: ThreadAttributesRevision::FIRST,
+                    archived_at: timestamp(20),
+                },
+            )
+            .unwrap()
+            .contribution(),
     );
     assert!(
         stale_catalog.sources().attributes_revision()

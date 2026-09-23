@@ -15,7 +15,7 @@ duplicate same-domain participation. Both `HomeCommand::add` and `add_validation
 Consequently admission plus a separate parent validator, or release plus separate archive,
 cannot be composed as proposed. Independent readiness review confirmed the conflict on 2026-09-23.
 
-## Proposed Correction
+## Accepted Correction
 
 Preserve the store rule and atomic command. Validate a separately typed parent-frontier proof
 inside the single Syndic admission mutation. Expose a single Syndic success mutation that releases
@@ -23,7 +23,6 @@ the gate and archives the discussion together; terminal failure releases only th
 that one Syndic contribution with the State job transition. Neither sequential commits nor a
 generic participant multiplexer is needed.
 
-The owning history-storage and branch-handoff contracts must be reconciled before implementation.
-Phase 515 is blocked pending Operator direction under the supplied instruction to stop when a
-planned step cannot technically work. No gate admission/release implementation has begun. The
-accepted discussion creation and catalog custody work is unaffected.
+Operator approved this correction on 2026-09-23. The owning history-storage and branch-handoff
+contracts now require that composition. Phase 515 implements the typed participants; app job
+composition remains a later boundary. Accepted discussion creation and catalog custody are unaffected.

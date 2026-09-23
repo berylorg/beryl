@@ -127,6 +127,7 @@ pub enum SyndicMutationError {
     PristineThreadConflict,
     GeneratedTitleAlreadyAccepted,
     ThreadArchiveStateConflict,
+    DiscussionHandoffConflict,
     UsageRouteConflict,
     UsageProviderOrdinalConflict,
     BindingPathConflict,
@@ -347,6 +348,7 @@ impl fmt::Display for SyndicMutationError {
             }
             Self::ThreadArchiveStateConflict => formatter
                 .write_str("thread archive state does not admit the requested transition"),
+            Self::DiscussionHandoffConflict => formatter.write_str("discussion handoff gate or authenticated admission source disagrees"),
             Self::UsageRouteConflict => formatter
                 .write_str("token usage does not name the exact current usable route"),
             Self::UsageProviderOrdinalConflict => {

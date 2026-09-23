@@ -23,6 +23,8 @@ mod binding;
 mod compaction;
 mod content;
 mod discussion_creation;
+mod discussion_handoff;
+pub use discussion_handoff::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
 mod initial_thread;
 pub use discussion_creation::{
     CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation,
@@ -88,7 +90,7 @@ pub use stop::{
     SafelyReopenStopOperation,
 };
 pub use thread_properties::{
-    AcceptGeneratedThreadTitle, ArchiveBranchDiscussionThread, PublishThreadUsage,
+    AcceptGeneratedThreadTitle, PublishThreadUsage,
 };
 pub use transcript::{AdvanceTranscriptBuild, StartTranscriptBuild};
 
