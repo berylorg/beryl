@@ -14,6 +14,8 @@ mod acquisition;
 mod codec;
 #[path = "catalog/error.rs"]
 mod error;
+#[path = "catalog/initial.rs"]
+mod initial;
 #[path = "catalog/mutation.rs"]
 mod mutation;
 #[path = "catalog/normalization.rs"]
@@ -35,6 +37,9 @@ pub use acquisition::{
 };
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
+pub use initial::{
+    CatalogInitialPublication, CatalogInitialStatus, PreparedInitialCatalogPublication,
+};
 pub use mutation::{
     DeleteCatalogClaimedRow, MarkCatalogRowStale, PublishCatalogClaim, PublishCatalogRow,
     ReleaseCatalogClaim,
@@ -392,6 +397,19 @@ impl CatalogState {
             test_support::CorruptRecencyCopy { key, row },
         )
     }
+
+    #[cfg(test)]
+    pub(crate) fn remove_copy_for_test(
+        &self,
+        expected_revision: DomainRevision,
+        row: CatalogRow,
+        primary: bool,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_revision,
+            test_support::RemoveCatalogCopy { row, primary },
+        )
+    }
 }
 
 /// Why a bounded catalog read could not return a coherent typed row copy.
@@ -466,6 +484,9 @@ pub enum CatalogMutationError {
     IndexMissing {
         thread_id: SyndicThreadId,
     },
+    IndexExists {
+        thread_id: SyndicThreadId,
+    },
     IndexMismatch {
         thread_id: SyndicThreadId,
     },
@@ -515,6 +536,12 @@ impl fmt::Display for CatalogMutationError {
                 write!(
                     formatter,
                     "catalog recency index is missing for {thread_id}"
+                )
+            }
+            Self::IndexExists { thread_id } => {
+                write!(
+                    formatter,
+                    "catalog initial recency key exists for {thread_id}"
                 )
             }
             Self::IndexMismatch { thread_id } => {

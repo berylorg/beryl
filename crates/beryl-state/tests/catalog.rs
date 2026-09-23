@@ -84,6 +84,9 @@ macro_rules! assert_committed {
     };
 }
 
+#[path = "catalog/initial_publication.rs"]
+mod initial_publication;
+
 fn execute(
     store: &HomeStore,
     state: &CatalogState,

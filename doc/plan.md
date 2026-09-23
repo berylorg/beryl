@@ -73,26 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 520: Create A Durable Discussion Atomically (finished)
+# Phase 522: Establish Exact Initial Catalog Publication (finished)
 
-Accepted the complete atomic discussion closure, shared ordinary initial-record builder, exact
-home-bound outcome witness and initial handoff gate. Ten focused creation/recovery cases passed
-(`71ab3758-d3b0-41fa-9882-6966daf91308`); five final gate/ordinal cases passed
-(`01656b20-e824-481a-b713-da8b048f4f5c`). Broader storage runs passed all remaining cases, including
-family deletion, ordinary creation and pristine closure; their earlier recovery-fixture and ordinal
-failures were corrected and covered by those final runs. App integration check and independent
-review passed. Discussion GUI activation and job admission remain separate boundaries.
-# Phase 522: Establish Exact Initial Catalog Publication (wip)
-
-Implement the State [initial publication contract](../crates/beryl-state/doc/design-jobs-catalog.md#initial-catalog-publication)
-as an opaque home-bound row witness, revision-fenced two-record participant and shared ordinary/
-candidate exact outcome reads. Require primary and intended recency absence before publication;
-preserve bounded normalized facts and existing catalog update semantics. Verify exact absence,
-publication, partial/different copies, duplicate identities, stale revisions/generations, foreign
-homes and ambiguous commit recovery. Run focused catalog and app checks and independently review
-before composing the cross-domain app operation. No catalog scan, deletion or GUI scope is added.
-
-# Phase 521: Compose Discussion Creation And Catalog Custody (pending)
+Accepted original-handle publication and home-bound immutable outcome evidence over the exact
+primary and recency records. All 26 catalog/source/recovery cases passed
+(`44619dc9-94c4-4c29-897f-80ff6effc40f`), including six new partial-state, stale/foreign authority,
+identity and ambiguous-outcome cases. App integration check and independent review passed.
+No scan, deletion or cross-domain outcome decision was added.
+# Phase 521: Compose Discussion Creation And Catalog Custody (wip)
 
 Compose the typed Syndic creation and unclaimed catalog participant through one exact app operation
 with stable captured request and synchronous registry transfer. Verify cancellation, acknowledgement
