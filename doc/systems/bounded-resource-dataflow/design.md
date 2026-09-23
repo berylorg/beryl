@@ -104,6 +104,16 @@ of every allocation made by Beryl or its dependencies.
 
 ## CAS To Syndic
 
+- CAS lifecycle content may precede its routing identities. Retention needed solely to bridge
+  that ordering is permitted: healthy capture uses existing unpublished Syndic staging with
+  bounded resident pages; failed-store capture uses one bounded unpublished observation per
+  admitted connection and the existing prioritized outage retention owner. This is an explicit
+  exception to immediate routed delivery, not permission for raw JSON or a whole-history buffer.
+- Outage scratch has configured observation-byte, field-byte, and field/control-count limits;
+  admitted connection count bounds aggregate scratch. It does not spill to the failed store or
+  another home. Overflow preserves compact loss state, consumes the remaining observation
+  without retaining its content, and attributes loss only after exact routing or conservatively
+  to the affected connection's frozen active targets if routing cannot be established.
 - Provider-capable foreground connections parse CAS JSON incrementally for size-unbounded text,
   tool arguments, and other payloads that Beryl must retain. Compact controls use generous
   representable-field limits.

@@ -12,6 +12,23 @@ and bounded repair coordination.
 
 ## Outage Buffer
 
+- The ordered ingester owns a separate unpublished-observation assembler for CAS's late route.
+  It retains typed fields and controls, never raw operations, response capabilities or generic
+  JSON. One observation per connection has explicit total-byte, per-field-byte and entry limits;
+  admitted connections bound aggregate usage. Healthy capture continues using Syndic staging.
+- Begin fixes the observation schema. Fragments must agree on item, kind, field, ordinal,
+  protocol indices and contiguous offset; a field is eligible only after its explicit closure.
+  Seal validates the trailing route against the connection's frozen outage targets before
+  borrowing complete facts into the retention component. Assembler storage is released after
+  handoff, rejection, abandonment, cancellation or retirement.
+- Overflow and a mid-observation store failure retain only bounded loss state until route or
+  connection termination. They never submit a retained suffix as a complete field. Valid route
+  marks its exact target gapped; unavailable or unqualified route marks the frozen active targets
+  of that connection gapped. A malformed observation terminates capture rather than guessing.
+- Outage-mode acknowledgements mean transient consumption only. Indeterminate home custody must
+  reach reconciliation before entering this mode; the durable admission fence remains closed.
+  Retirement cancels ingress and joins the consumer without waiting for provider completion,
+  then disposes both scratch and qualified retention before constructing replacement services.
 - One coordinator owns the fixed-capacity process-local outage buffer for normalized observations
   from already active exact targets during temporary durable unavailability.
 - Configuration fixes item, encoded-byte, per-field-byte, and target-count limits and prioritizes
@@ -79,7 +96,7 @@ neither its bytes nor its target descriptors constitute durable evidence or a re
 - Each fragment validates exact CAS thread, turn, item, kind, field, ordinal, protocol index, and
   logical frontier. Replay requires stable identity and byte agreement; conflict yields the typed
   system issue or failure instead of overwrite.
-- The live path retains at most one bounded pending field fragment and uses bounded stabilized
+- The healthy live path retains at most one bounded pending field fragment and uses bounded stabilized
   reads. It owns no active/completed item maps, whole-response clone, generic event queue, or
   approximate parsed-byte authority.
 - Terminal capture flushes pending work and audits admitted items through fixed-size cursor pages

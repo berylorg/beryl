@@ -361,6 +361,31 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
 
 ## Durable-Store Outage Buffer
 
+- CAS content-before-route ordering permits necessary unpublished typed buffering. Healthy
+  capture keeps its existing Syndic staging; an outage never requires that failed storage to
+  remain writable. One app-owned assembler per admitted connection may retain one unpublished
+  observation within configured byte, field-byte, and field/control-count limits, independently
+  of the separately bounded qualified-fact retention buffer. There is no raw-message spool.
+- The assembler is bound to the original connection and generation. It records schema, item,
+  field identity, indices, fragment order and field closure, then admits only complete fields
+  and controls after the trailing route validates against the frozen active-target inventory.
+  Buffered bytes grant no publication, request, successor, or repair authority.
+- A store failure during an observation first transfers any indeterminate durable custody to
+  the home reconciliation registry, fences durable admission, and marks the observation lost;
+  it does not reread failed staging or pretend its remaining suffix is complete. Subsequent
+  observations may assemble for transient retention. Valid trailing routing attributes the gap
+  to its exact active target; absent, invalid, or unqualified routing conservatively gaps all
+  frozen active targets of that connection without inventing a target or terminal outcome.
+- Overflow releases unpublished payload, retains bounded loss metadata, and consumes through
+  route/closure without further payload retention. Malformed input or transport loss stops that
+  connection with the same conservative gap attribution. Partial fields never enter retention
+  as complete facts. Normal healthy capture acquires no new whole-item size ceiling.
+- Outage capture is passive and generation-local: ordered ingestion may acknowledge transient
+  consumption to release backpressure, never durable success. It admits no new durable work or
+  effectful request, retries no failed store command, and does not prolong failed-service life
+  to await a terminal event. Retirement or cancellation stops ingress, closes acknowledgements,
+  joins the consumer, and releases assembler and retention contents before fresh-service
+  composition. No scratch or buffered facts transfer to the replacement generation.
 - This outage and recovery boundary handles ordinary returned failures. An application panic uses
   [fatal crash reporting](../crash-reporting/design.md), with no further capture, settlement,
   acknowledgement or in-process repair required before termination.

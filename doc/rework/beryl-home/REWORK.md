@@ -91,6 +91,8 @@
 
 - Old workspace-era state is discarded. No importer, dual write, compatibility reader, migration
   adapter, or renamed old model is allowed.
+- CAS remains the execution provider; the root and CAS-live design's pre-route buffering exception
+  applies while completing this rework, and provider replacement is deferred until closure.
 - Live source may depend only on final target packages and explicitly retained low-level leaves; it
   may not import or expose archived source.
 - Intentional cutover gaps stay visible. No compatibility alias, aggregate buffer, compile-only
@@ -151,7 +153,7 @@
 
 ## Operator Decision Gate
 
-- [ ] **BLOCKED:** all implementation, integration, mounting, cleanup and cutover in this rework must remain paused until the Operator decides the CAS direction and explicitly releases the hold after affected authority and planning are reconciled; only the [CAS investigation](../../plan.md) may continue under current authorization.
+- [x] Operator selected continued CAS use with necessary pre-route buffering and authorized resuming the rework under the reconciled [plan](../../plan.md).
 
 ## Checkpoint 0: Complete And Accept Target Authority
 
@@ -453,6 +455,7 @@
   encoded byte limits and sticky gap tracking; focused tests and independent review passed.
 - [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement,
   including pre-route loss, without making buffered content canonical history.
+- [ ] Accept unpublished outage observation assembly and failed-store ingress lifetime before integrating ordinary outage capture.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
 - [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.

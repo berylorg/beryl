@@ -87,6 +87,10 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 - Agent execution, live event streams, authentication, sandboxing, approvals, tools, skills, MCP, subagents, managed configuration, and enterprise policy flow through out-of-process `codex app-server`.
 - Unmodified out-of-process `codex app-server` is Beryl's sole agent-execution provider; Beryl does not implement a replacement, fork, embedded Codex runtime, or independently operated CAS-compatible provider.
+- CAS payload-before-route ordering is an explicit exception to immediate routed streaming.
+  Beryl may retain the necessary unpublished typed content until exact routing arrives, using
+  the staging and outage limits defined by the CAS-live and bounded-resource systems. This
+  exception does not permit unbounded resident history, guessed routing, or false completeness.
 - Beryl does not bundle, install, modify, or directly link Codex internal crates.
 - Beryl may launch and supervise app-server processes and may implement narrow GUI-side orchestration from public protocol primitives.
 - Cross-boundary communication uses the app-server contract rather than Codex storage, process memory, or internal implementation details.

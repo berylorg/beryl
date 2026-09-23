@@ -1,94 +1,21 @@
 # Scope
 
-**IMPLEMENTATION HOLD — the entire current Beryl-home rework is blocked by Operator instruction
-on 2026-09-17 until the Operator decides the CAS direction and explicitly releases the hold after
-the affected design, rework tracker and implementation plan are reconciled.** This includes
-non-CAS implementation, integration, mounting, cleanup and cutover work from that rework; earlier
-continuous-implementation authorizations below do not override the hold. Research, evidence
-collection and investigation-plan maintenance remain authorized. A generic request to continue
-means continue the investigation, not resume the blocked implementation.
+Operator selected continued use of unmodified CAS on 2026-09-23, authorized necessary buffering
+for its payload-before-route ordering, and requested resumption and completion of the Beryl-home
+rework. The whole-rework implementation hold is released by that explicit direction, subject to
+ordinary phase design-readiness and acceptance gates. CAS replacement is deferred until this
+rework is fully finished; the completed [research decision package](memory/topic/responses-agent-runtime/architecture-decision.md)
+is retained as evidence, not current implementation scope. Its proposed subscription runtime,
+tool host, model, authentication, recovery and integration selections do not change the CAS target.
 
-Operator scope selections on 2026-09-18 supersede optional/deferred classifications in the
-research menu: no sandboxing; local coding tools and terminals, MCP, instruction files, local
-skills, Codex-style remote compaction, parallel tool execution, steering, subagents, image input,
-web search and automatic recovery are required. No marketplace, plugins or hosted-connector
-compatibility. Follow Codex's subscription compaction strategy rather than inventing a separate
-summarizer, and use OpenAI's subscription search. Use WebSocket connection/context reuse responsibly,
-with local recoverable context independent of connection cache and subscription qualification.
-Automatic recovery belongs in the initial architecture, not a later retrofit. For external tools,
-Beryl owns invocation bookkeeping and output delivery, not verification, rollback or semantic
-reconciliation of their external effects. Beryl-implemented internal mutations retain their own
-correctness/recovery contracts. Operator clarified that process-restart recovery restores durable
-conversation/context and presents unfinished execution as interrupted/incomplete, then waits for
-user instruction. It does not automatically retry tools, resume model/subagent execution or ask
-the model to reconcile external state. The user chooses whether to retry or inspect the worktree.
-No external-effect reconciliation subsystem or separate user-facing invocation-uncertainty
-workflow is required. Preserve recorded results without claiming that missing results prove a
-tool did not run. This clarification concerns process restart; live connection recovery remains
-a separate design boundary. Restored subagents retain their own context and parent/task relation;
-after user-directed continuation, the parent may send them ordinary follow-up turns.
-On 2026-09-23 Operator deferred code mode entirely from the current replacement scope. Do not
-include embedded JavaScript/TypeScript/Deno, a scripting checker, or scripting-driven IPC work
-as a prerequisite for CAS replacement. Use ordinary tool calling and mandatory parallel dispatch;
-validate the chosen subscription model/dialect with that tool surface rather than silently
-reintroducing code mode. Image generation is
-being considered as a service-backed tool, distinct from core image-input/context support. Exact
-MCP/steering/recovery envelopes remain to reconcile in design.
-These scope choices do not release the implementation hold.
-
-The active priority is the Operator's 2026-09-17 investigation of replacing CAS with a Beryl-owned
-agent runtime over subscription-backed Responses. The research phases below gather decision evidence;
-they do not authorize production replacement. Prior CAS implementation phases are suspended during
-this investigation. Existing design remains the comparison baseline, including its CAS-only
-boundary and delegated-runtime non-goals; proposed replacements must be identified explicitly
-before later design changes and implementation planning. No new-thread handoff is needed.
-
-Investigate personal ChatGPT Pro only, with direct OAuth preferred and an auth-only official-client
-helper as a fallback to assess. Do not assume Platform API billing or feature availability applies
-to the subscription endpoint. Preserve the Operator's central constraint: incremental parsing is
-acceptable, but potentially large payloads must not need RAM retention or temporary disk spill
-while waiting for routing/type metadata. Distinguish final owned storage from staging used to
-wait for identity. If a required path inevitably violates that constraint, stop and explain the
-concrete path to the Operator before designing a workaround.
-
-Use the [initial assessment](memory/topic/responses-agent-runtime/beryl-feasibility.md) and its
-pinned-source/live-probe notes as starting evidence. Preserve findings in focused memory notes;
-keep sequencing here. For each material question, record the applicable Beryl requirement,
-source identity/date, evidence strength (documented, source-derived, observed, inferred or unknown),
-failure example, architectural consequence, alternatives and remaining verification. Public API
-documentation, Codex subscription behavior and OpenCode behavior are distinct evidence surfaces.
-
-Operator clarification: claims about live subscription-service behavior require direct requests
-and inspection of direct responses, independent of CAS/Codex execution and decoders; mocks and
-source inspection guide experiments but cannot substitute for that evidence. Use OpenCode as the
-accepted practical precedent, without treating it as a service guarantee. Probe subscription
-endpoints only, sequentially and with bounded cost; no Platform calls, scanning, fuzzing, stress
-tests or access-control bypass. Stop on security challenges or denied access and respect rate
-limits. Do not compete with the active client's refresh-token rotation.
-
-Expand this plan when discovery reveals a new independent research boundary, before investigating
-it; revise affected dependencies and keep only active/near-term phases detailed. Continue research
-across accepted evidence phases without repeated permission requests. A phase may close with an
-explicitly justified unknown and proposed handling; lack of a public guarantee alone is not a
-technical blocker. Stop when remaining uncertainty cannot change a material architecture choice,
-or is explicitly assigned to bounded implementation validation or Operator decision. Do not expand
-into speculative feature parity outside Beryl's required envelope.
-
-Prefer existing local evidence, pinned primary source and targeted probes. Every live experiment
-must have an explicit question, bounded duration/output/concurrency, synthetic inputs, result
-classification and cleanup. Read-only source comes before effectful probes. Do not install software,
-revoke credentials, change subscription/account settings, or exercise external side effects merely
-to test a hypothesis. Keep secrets and raw private traces out of durable notes. Any disposable
-multi-step harness must follow the Rust-only automation policy. Avoid repetitive model prompts as
-large-payload fixtures: the preceding attempt did not terminate its input as requested.
-
-Research completion means a requirement-to-evidence coverage review, recommendations with concrete
-ownership and lifecycle alternatives, a complete change/removal/new-work inventory, explicit risks
-and unresolved decisions, and a proposed design-authority update map. Review the proposal against
-contradictory evidence and failure scenarios before recommending adoption. These evidence gates
-do not substitute for later implementation verification or change existing production guarantees.
-
-The following earlier implementation context is retained for reconciliation after the investigation.
+The [root design](design.md), [bounded-resource system](systems/bounded-resource-dataflow/design.md),
+[CAS-live system](systems/cas-live-syndic-transcript/design.md#durable-store-outage-buffer) and
+[app capture contract](../crates/beryl-app/doc/design-live-capture.md) now permit necessary typed
+pre-route retention. Healthy storage keeps bounded-page Syndic staging; outage capture uses
+bounded unpublished assembly and existing qualified retention, with explicit loss attribution,
+closed durable admission and full disposal before replacement. No CAS producer change or further
+replacement-runtime investigation is a prerequisite. The existing release admission remains in
+force; the 0.154.0 ordering investigation does not upgrade the pinned 0.146.0 provider contract.
 
 Production marker admission and canonical widget publication have passed acceptance with the LLVM, one-job,
 no-normal-debug and nonincremental settings under the root
@@ -142,47 +69,40 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 494: Review Coverage And Present The Architecture Decision Package (finished)
+# Phase 498: Reconcile Continued CAS Use And Resume The Rework (finished)
 
-The reviewed [decision package](memory/topic/responses-agent-runtime/architecture-decision.md)
-recommends a conditional Beryl-owned loop/context over direct subscription streaming, with selective
-Rust/tool-host reuse. It links authentic direct evidence, all subsystem assessments, alternatives,
-new/removable work, authority updates and explicit adoption/quality/resource gates. Review found no
-material remaining synthesis blocker; it was not independent replication of the live probes.
-No new quota, installs or production changes were needed for final synthesis. Research is complete
-for this decision boundary; universal streaming and production readiness are not claimed.
+Reconciled continued CAS use, the necessary typed buffering exception, rework resumption and
+replacement-runtime deferral across root/system/package authority and tracker. Independent semantic
+review accepted custody, loss attribution and retirement contracts with no blocking findings;
+scoped whitespace checks passed and the documentation index is current. Runtime evidence remains
+with the following implementation phases.
 
-# Phase 498: Resolve The CAS Direction And Reconcile Design Authority (pending)
+# Phase 499: Implement Unpublished Outage Observation Assembly (pending)
 
-Await Operator selection of the conditional direction or a bounded experimental slice described
-in the decision package. Resolve storage/streaming, tool/model/integration, credential ownership
-and old-home choices in owning design before deriving replacement implementation phases. Preserve
-the whole-rework hold until explicitly released; generic continue must not resume the CAS phases
-below or convert the research recommendation into accepted architecture. Additional research is
-appropriate only for a concrete decision-changing gap, not repetition of completed probes.
+Implement the private app-owned assembler derived from the
+[app capture contract](../crates/beryl-app/doc/design-live-capture.md#outage-buffer). Keep it separate
+from the existing qualified-fact retention component. Verify fragmented fields and closure,
+identity/index/offset mismatch, late routing, missing/unqualified routes, overflow without retained
+suffix publication, and release after seal, failure or abandonment. Prove fixed byte/entry bounds
+and exact target qualification with focused integration tests and independent semantic review.
+This component acceptance does not mount outage mode or change ordinary store-failure behavior.
+
+# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
+
+Implement the ordered ingester's durable-to-transient mode transition, frozen active-target
+custody, passive acknowledgement meaning and cancellation/join boundary. Verify mid-observation
+failure, indeterminate handoff before acknowledgement, no durable retry or new effect authority,
+missing-route conservative loss, and retirement without waiting for terminal evidence. Reuse the
+accepted assembler and retention component; independently review custody and lifecycle cuts before
+integration into ordinary service failure.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 
-Route ordinary durable-store failures through the accepted outage buffer and admission fence,
-preserving exact active-target custody and bounded teardown without transferring buffered facts
-or process-local authority to replacement. Verify failure, overflow and retirement cuts before
-accepting this non-GUI integration.
-
-Blocked on 2026-09-17: the accepted buffer requires complete route-qualified facts, while the
-provider stream supplies fragments before its route and the ingester terminates on persistent
-store failure. No outage normalization/capture owner bridges those boundaries. This cannot be
-completed as integration of accepted components alone. Specify bounded unpublished observation
-custody, missing-route loss attribution and capture shutdown before deriving its prerequisite
-implementation phase. Preserve the durable admission fence and reconciliation custody. See
-[outage ingress readiness](failures/outage-ingress-readiness.md).
-
-Operator-directed investigation on 2026-09-17 found the installed CAS is now 0.154.0 and its
-matching release source still serializes lifecycle item content before thread/turn IDs. Decoder
-reordering alone cannot provide lossless route-first capture without retaining preceding content.
-Implementation remains stopped as requested. See the
-[current wire-order evidence](memory/github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/lifecycle-route-wire-order.md).
-The earlier scratch-owner suggestion is not approved; resolve the producer ordering constraint
-before prescribing another buffer.
+Connect accepted outage-mode ingestion to ordinary store failure, admission fencing and failed
+service disposal. Verify exact active-target custody, failure and overflow, cancellation, and no
+buffer/connection transfer to replacement. The former producer-ordering blocker is resolved by
+the explicit buffering exception; assembly and ingress-mode acceptance remain prerequisites.
+Historical evidence remains in [outage ingress readiness](failures/outage-ingress-readiness.md).
 
 # Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
 
