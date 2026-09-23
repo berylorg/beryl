@@ -73,24 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 523: Specify Child Steering Settlement Before Handoff (finished)
+# Phase 524: Implement Exact Child Settlement Participants (finished)
 
-Accepted the bounded child settlement probe, opaque source-bound preparation, validation-only ready
-path and single-participant proof-checked queued-input release. Specified State's terminal-only
-`ChildInputPending` kind at the resolving checkpoint and the app's atomic identity/custody join.
-Independent readiness review passed; existing terminal-history readers support explicit incomplete
-history and bounded candidate access. Parent scheduling remains gated on the implementations below.
+Implemented bounded ordinary/candidate settlement, original-handle ready validation and proof-checked
+queued-input gate release. Four focused settlement tests and nine gate/archive regressions passed;
+independent review accepted the identity checks, stale-handle fencing and candidate execution.
 
-# Phase 524: Implement Exact Child Settlement Participants (wip)
-
-Implement the bounded Syndic settlement probe and opaque original-handle preparation from
-[history storage](../crates/syndic-storage/doc/design-history-storage.md#discussion-child-settlement).
-Ready contributes validation only; queued child input contributes one proof-checked gate release.
-Verify live and unsettled steering waits, terminal reclassification, explicit incomplete history,
-missing/foreign records, stale proof and candidate generation, exact release outcomes and unchanged
-queued records. Run focused regressions and independent review; no State or CAS scheduling here.
-
-# Phase 525: Implement Child-Input Terminal Failure (pending)
+# Phase 525: Implement Child-Input Terminal Failure (wip)
 
 Add the closed State failure kind and exact checkpoint/codec validation, preserving existing tags,
 immutable attempt identity and bounds. Verify allowed waiting-resolving transition, rejected later

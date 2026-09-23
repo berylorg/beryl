@@ -11,7 +11,12 @@ use beryl_model::{
 
 mod admission;
 mod outcome;
+mod settlement;
 pub use outcome::DiscussionHandoffStatus;
+pub use settlement::{
+    DiscussionChildSettlement, DiscussionChildSettlementDisposition,
+    PreparedDiscussionChildSettlement,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct DiscussionParentFrontierProof {
@@ -72,6 +77,7 @@ pub struct PreparedDiscussionHandoff {
     revision: DomainRevision,
     request: DiscussionHandoffMutation,
     intent: DiscussionHandoffIntent,
+    settlement: Option<PreparedDiscussionChildSettlement>,
 }
 
 impl PreparedDiscussionHandoff {
@@ -161,6 +167,7 @@ impl SyndicStorage {
             handle: self.handle.clone(),
             revision,
             request,
+            settlement: None,
             intent: DiscussionHandoffIntent {
                 home_id: store.home_id(),
                 old_gate,
@@ -179,6 +186,9 @@ impl DomainMutation<SyndicDomain> for PreparedDiscussionHandoff {
         self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
+        if let Some(settlement) = &self.settlement {
+            settlement.validate_settlement(reader)?;
+        }
         let thread = self.intent.old_gate.thread_id();
         let actual = required::<DiscussionHandoffGatesFamily>(reader, &thread)?;
         if actual != self.intent.old_gate {

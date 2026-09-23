@@ -92,6 +92,14 @@ pub fn admit(
 }
 
 pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
+    finish_resolving_turn(
+        store,
+        storage,
+        TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
+    );
+}
+
+pub fn finish_resolving_turn(store: &HomeStore, storage: &SyndicStorage, status: TurnEndStatus) {
     let limit = SyndicPointReadLimit::new(400_000).unwrap();
     let current = storage
         .current_binding(store, id(36), limit)
@@ -146,9 +154,7 @@ pub fn complete_resolving_turn(store: &HomeStore, storage: &SyndicStorage) {
         id(36),
         turn,
         &source,
-        SourceEventPayload::TurnEnded(
-            TurnEndStatus::new(TurnTerminalOutcome::Complete, None).unwrap(),
-        ),
+        SourceEventPayload::TurnEnded(status),
         timestamp(at + 2),
     );
     exact_cas::converge_and_release_terminal_history(store, storage.clone(), id(36), turn);

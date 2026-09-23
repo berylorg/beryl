@@ -111,7 +111,7 @@ fn prepare_acceptance(store: &HomeStore, storage: &SyndicStorage) -> FirstAccept
     )
 }
 
-fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
+pub(super) fn accept_next(store: &HomeStore, storage: &SyndicStorage) {
     let acceptance = prepare_acceptance(store, storage);
     committed(
         store,

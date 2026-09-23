@@ -25,6 +25,7 @@ mod content;
 mod discussion_creation;
 mod discussion_handoff;
 pub(crate) mod discussion_mutation;
+pub use discussion_handoff::{DiscussionChildSettlement, DiscussionChildSettlementDisposition, PreparedDiscussionChildSettlement};
 pub use discussion_handoff::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};
 mod initial_thread;
 pub use discussion_creation::{

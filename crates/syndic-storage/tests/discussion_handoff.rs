@@ -3,6 +3,8 @@
 mod support;
 #[path = "discussion_handoff/queue.rs"]
 mod queue;
+#[path = "discussion_handoff/child_settlement.rs"]
+mod child_settlement;
 
 use beryl_home_store::{
     CommandOutcome, HomeCommand, HomeOpenCandidate, HomeOpenOptions, HomeSchemaVersion, HomeStore,
