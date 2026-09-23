@@ -50,7 +50,7 @@ pub(crate) struct NoopBranch;
 impl BranchDiscussionResolutionRequestHandler for NoopBranch {
     fn respond_branch_discussion_resolution(
         &mut self,
-        _context: OrdinaryDynamicToolContext,
+        _context: beryl_app::cas_projection::BranchDiscussionResolutionContext,
         _request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse {
         DynamicToolCallResponse::success_text("unused branch handler")

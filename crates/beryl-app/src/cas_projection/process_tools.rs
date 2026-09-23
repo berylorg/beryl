@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    OrdinaryDynamicToolAuthority, OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers,
-    ProcessLifecycleYieldHandler, ProjectionConnectionService,
+    OrdinaryDynamicToolAuthority, OrdinaryDynamicToolHandlers, ProcessLifecycleYieldHandler,
+    ProjectionConnectionService,
 };
 
 #[derive(Clone)]
@@ -42,7 +42,7 @@ struct UnavailableBranchResolution;
 impl BranchDiscussionResolutionRequestHandler for UnavailableBranchResolution {
     fn respond_branch_discussion_resolution(
         &mut self,
-        _context: OrdinaryDynamicToolContext,
+        _context: crate::cas_projection::BranchDiscussionResolutionContext,
         _request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse {
         DynamicToolCallResponse::failure_text("Branch discussion resolution is unavailable.")

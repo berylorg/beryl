@@ -124,9 +124,10 @@ pub use native_lineage_recovery::{
     NativeLineageRecoveryKey, NativeLineageRecoverySnapshot, NativeLineageRecoveryStatus,
 };
 pub use ordinary::{
-    OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers, OrdinaryNotStartedProjection,
-    OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionError, OrdinaryTurnExecutionFailure,
-    OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest, OrdinaryTurnNotStarted,
+    BranchDiscussionResolutionContext, OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers,
+    OrdinaryNotStartedProjection, OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionError,
+    OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
+    OrdinaryTurnNotStarted,
 };
 #[cfg(feature = "test-faults")]
 #[doc(hidden)]

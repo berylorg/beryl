@@ -477,6 +477,9 @@
   prerequisites; concrete atomic participants remain separate before coordinator implementation.
 
 - [ ] Accept non-GUI handoff coordination after the recovery service gate and before complete graph publication, without accepting branch GUI mounting.
+- [x] Accepted exact ordinary branch-call context without changing lifecycle handlers or enabling
+  resolution. Live correlation/schema, lifecycle and process-tool tests, app checks and independent
+  authority/custody review passed.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

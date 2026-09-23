@@ -73,24 +73,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 511: Specify Durable Branch-Handoff Coordination (finished)
+# Phase 512: Preserve Exact Branch Tool Correlation (finished)
 
-Accepted coordinator ownership, candidate/runtime scan separation, exact branch correlation,
-shared bounded job reads and full Unicode payload limits, inclusive parent ordering frontier and
-durable transition custody in the handoff system and owning packages. Independent review passed
-for phases 512 and 513; concrete atomic participants remain phase 514's readiness boundary.
-Neither full coordination nor enabled branch resolution is accepted.
+Accepted distinct branch context with broker-validated CAS thread/turn/call and unchanged
+home/service/Syndic correlation. Live transport verifies distinct calls and rejects payload-supplied
+identity; 26 lifecycle cases, seven tool/retirement cases and the app all-test-target check passed.
+Independent review confirmed existing exact target checks and sole response custody. Production
+branch resolution remains unavailable until durable coordination is accepted.
 
-# Phase 512: Preserve Exact Branch Tool Correlation (wip)
-
-Carry the already validated CAS thread, turn and tool-call identity into a distinct branch handler
-context before consuming the routed call. Preserve ordinary home/service and Syndic correlation,
-closed payload schemas, move-only requests and the sole response owner. Keep lifecycle handlers
-unchanged and the process branch handler unavailable. Verify exact delivery, wrong/stale
-correlation rejection, invalid arguments and single response/cancellation custody through existing
-ordinary dispatch tests; run the focused app check and required independent review.
-
-# Phase 513: Expose Bounded Candidate Job Reads (pending)
+# Phase 513: Expose Bounded Candidate Job Reads (wip)
 
 Align typed resolution and encoded record limits with the owning tool contract, then share exact
 point and live-index reads across ordinary and explicit candidate access. Verify maximum Unicode

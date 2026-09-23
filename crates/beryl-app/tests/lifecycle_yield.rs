@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "lifecycle_yield/branch_correlation.rs"]
+mod branch_correlation;
 #[path = "lifecycle_yield/continuation_attention.rs"]
 mod continuation_attention;
 #[path = "lifecycle_yield/custody.rs"]

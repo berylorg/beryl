@@ -92,7 +92,7 @@ struct BranchHandler;
 impl BranchDiscussionResolutionRequestHandler for BranchHandler {
     fn respond_branch_discussion_resolution(
         &mut self,
-        _context: OrdinaryDynamicToolContext,
+        _context: crate::cas_projection::BranchDiscussionResolutionContext,
         _request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse {
         DynamicToolCallResponse::success_text("branch")

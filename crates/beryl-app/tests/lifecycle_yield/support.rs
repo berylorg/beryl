@@ -5,9 +5,8 @@ use beryl_app::{
     LifecycleYieldRequestHandler,
     cas_projection::{
         AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest,
-        LoadedCasProjection, OrdinaryDynamicToolAuthority, OrdinaryDynamicToolContext,
-        OrdinaryDynamicToolHandlers, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
-        OrdinaryTurnExecutionRequest,
+        LoadedCasProjection, OrdinaryDynamicToolAuthority, OrdinaryDynamicToolHandlers,
+        OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
     },
 };
 use beryl_backend::{
@@ -63,7 +62,7 @@ struct UnusedBranch;
 impl BranchDiscussionResolutionRequestHandler for UnusedBranch {
     fn respond_branch_discussion_resolution(
         &mut self,
-        _context: OrdinaryDynamicToolContext,
+        _context: beryl_app::cas_projection::BranchDiscussionResolutionContext,
         _request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse {
         panic!("lifecycle execution must not dispatch a branch request")
@@ -90,7 +89,7 @@ pub fn execute_with_authority(
     execute_with_handlers(fixture, projection, tools.handlers())
 }
 
-fn execute_with_handlers(
+pub fn execute_with_handlers(
     fixture: &Fixture,
     projection: LoadedCasProjection,
     handlers: OrdinaryDynamicToolHandlers<'_>,

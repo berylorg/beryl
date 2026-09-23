@@ -275,6 +275,8 @@ fn handle_dynamic_tool(
     call: crate::cas_projection::connection::RoutedDynamicToolCall,
     tools: &mut OrdinaryDynamicToolHandlers<'_>,
 ) -> Result<(), OrdinaryTurnExecutionError> {
+    let branch_context =
+        super::super::BranchDiscussionResolutionContext::from_routed_call(context, &call);
     let (response_owner, request) = call.into_parts();
     let response = match request {
         crate::conversation_tools::RoutedDynamicToolRequest::LifecycleYield(request) => {
@@ -282,7 +284,7 @@ fn handle_dynamic_tool(
         }
         crate::conversation_tools::RoutedDynamicToolRequest::BranchDiscussionResolution(
             request,
-        ) => tools.respond_branch_discussion_resolution(context, request),
+        ) => tools.respond_branch_discussion_resolution(branch_context, request),
         crate::conversation_tools::RoutedDynamicToolRequest::Rejected(rejection) => {
             rejection.response()
         }

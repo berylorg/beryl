@@ -5,7 +5,7 @@ use beryl_backend::{
 use serde_json::json;
 
 use crate::{
-    cas_projection::OrdinaryDynamicToolContext,
+    cas_projection::BranchDiscussionResolutionContext,
     conversation_tools::{
         DynamicToolRejection, DynamicToolSchemaRejection, DynamicToolUnavailableRejection,
         arguments::{SingleStringObjectBuilder, StringValueSink},
@@ -30,7 +30,7 @@ pub trait BranchDiscussionResolutionRequestHandler {
     /// Handles one branch-resolution request and returns its sole bounded backend response.
     fn respond_branch_discussion_resolution(
         &mut self,
-        context: OrdinaryDynamicToolContext,
+        context: BranchDiscussionResolutionContext,
         request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse;
 }

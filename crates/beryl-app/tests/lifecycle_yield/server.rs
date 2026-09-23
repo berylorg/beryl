@@ -5,7 +5,7 @@ include!("../normal_terminal/server.rs");
 enum YieldCommand {
     Call(&'static str),
     CallUntilConnectionClose(&'static str),
-    ResolveBranch,
+    ResolveBranch(&'static str),
     Complete,
     Compact,
     LiveCompaction,
@@ -103,12 +103,12 @@ impl YieldServer {
                         assert_eq!(response["id"], request_id);
                         responses_tx.send(response).unwrap();
                     }
-                    YieldCommand::ResolveBranch => {
+                    YieldCommand::ResolveBranch(arguments) => {
                         request_id += 1;
                         send_json(
                             &mut socket,
                             &format!(
-                                r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{cas_thread_id}","turnId":"{CAS_TURN_ID}","callId":"resolution-{request_id}","namespace":"beryl","tool":"resolve_branch_discussion","arguments":{{"resolution":"private resolution must not be retained or echoed"}}}}}}"#,
+                                r#"{{"method":"item/tool/call","id":{request_id},"params":{{"threadId":"{cas_thread_id}","turnId":"{CAS_TURN_ID}","callId":"resolution-{request_id}","namespace":"beryl","tool":"resolve_branch_discussion","arguments":{arguments}}}}}"#,
                             ),
                         );
                         let response = read_json(&mut socket).unwrap();
@@ -201,7 +201,15 @@ impl YieldServer {
     }
 
     pub fn resolve_branch(&self) -> Value {
-        self.commands.send(YieldCommand::ResolveBranch).unwrap();
+        self.resolve_branch_arguments(
+            r#"{"resolution":"private resolution must not be retained or echoed"}"#,
+        )
+    }
+
+    pub fn resolve_branch_arguments(&self, arguments: &'static str) -> Value {
+        self.commands
+            .send(YieldCommand::ResolveBranch(arguments))
+            .unwrap();
         self.responses.recv_timeout(TIMEOUT).unwrap()
     }
 

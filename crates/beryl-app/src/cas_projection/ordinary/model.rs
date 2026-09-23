@@ -139,6 +139,36 @@ impl OrdinaryDynamicToolContext {
     }
 }
 
+#[derive(Debug)]
+pub struct BranchDiscussionResolutionContext {
+    ordinary: OrdinaryDynamicToolContext,
+    request: beryl_state::ResolutionRequestIdentity,
+}
+
+impl BranchDiscussionResolutionContext {
+    pub(super) fn from_routed_call(
+        ordinary: OrdinaryDynamicToolContext,
+        call: &crate::cas_projection::connection::RoutedDynamicToolCall,
+    ) -> Self {
+        Self {
+            ordinary,
+            request: beryl_state::ResolutionRequestIdentity::new(
+                call.thread_id().clone(),
+                call.turn_id().clone(),
+                call.call_id().clone(),
+            ),
+        }
+    }
+
+    pub const fn ordinary(&self) -> OrdinaryDynamicToolContext {
+        self.ordinary
+    }
+
+    pub const fn request_identity(&self) -> &beryl_state::ResolutionRequestIdentity {
+        &self.request
+    }
+}
+
 /// Capability-free dispatcher over two separately narrowed feature handlers.
 pub struct OrdinaryDynamicToolHandlers<'a> {
     lifecycle: &'a mut dyn LifecycleYieldRequestHandler,
@@ -165,7 +195,7 @@ impl<'a> OrdinaryDynamicToolHandlers<'a> {
 
     pub(super) fn respond_branch_discussion_resolution(
         &mut self,
-        context: OrdinaryDynamicToolContext,
+        context: BranchDiscussionResolutionContext,
         request: BranchDiscussionResolutionRequest,
     ) -> DynamicToolCallResponse {
         self.branch

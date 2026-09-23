@@ -19,7 +19,7 @@ pub use super::input_replay::{
 };
 pub use error::OrdinaryTurnExecutionError;
 pub use model::{
-    OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers, OrdinaryNotStartedProjection,
-    OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
-    OrdinaryTurnExecutionRequest, OrdinaryTurnNotStarted,
+    BranchDiscussionResolutionContext, OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers,
+    OrdinaryNotStartedProjection, OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionFailure,
+    OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest, OrdinaryTurnNotStarted,
 };
