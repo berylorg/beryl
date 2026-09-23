@@ -73,24 +73,27 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 509: Preserve Failed-Home Custody Through CAS Retirement (finished)
+# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (finished)
 
-Accepted separate consuming CAS retirement with exact generation checks, failed-home handoff only
-after complete disposal, and opaque terminal-only failure custody. Reference-only components
-return no owned home. Same-home reopen preserves the lock and reconciles the original pending
-command through fresh candidate access. Six focused cases, 106 failure/shutdown regressions,
-app check and independent custody review passed. The
-[close-error escape](failures/fresh-service-recovery.md) was corrected and verified in isolation.
-Complete-graph retirement and supervisor publication remain separate.
+Accepted distinct owned reopening-candidate preparation through shared convergence and fresh
+fenced services, managed-session configuration, cancellation and explicit failed-home custody.
+Constructor cleanup now reports unconfirmed retirement before retry can be granted. Eighteen
+initial/recovery preparation tests, six final recovery cases, app check and independent review
+passed. Independent review also accepted the pre-branch component gate; complete graph, supervisor
+mounting and running-window recovery remain separate after phase 423. Existing unavailable repair
+remains the authorized result.
 
-# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (wip)
+# Phase 511: Specify Durable Branch-Handoff Coordination (wip)
 
-Consume the storage recovery candidate and freshly reacquired typed handles through shared
-candidate convergence and fresh fenced service construction. Preserve distinct owned opening and
-reopening capabilities, immutable configuration and explicit failure custody. Verify wrong identity,
-convergence and constructor failure, cancellation/disposal before abort, and no ordinary work or
-early publication. Independent review accepts this preparation component; complete graph and
-supervisor publication remain separate.
+Consume the bounded non-GUI branch-service slice from the rework tracker using the
+[handoff system](systems/branch-discussion-handoff/design.md),
+[state job contract](../crates/beryl-state/doc/design-jobs-catalog.md#durable-jobs) and app graph
+authority. Resolve ownership of candidate recovery, bounded scheduling, exact per-job admission,
+parent delivery and durable transition custody before implementation. Inspect existing typed job
+and Syndic APIs for concrete prerequisites and derive one acceptance boundary per implementation
+phase. Preserve queued-input ordering, no replay after possible dispatch, exact retry and terminal
+archive rules. Independently review readiness; keep the ordinary branch handler unavailable until
+real coordination is accepted, and keep feature GUI and complete graph publication separate.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

@@ -66,6 +66,7 @@ mod commands;
 mod compaction_work;
 mod construction;
 pub(crate) mod recovery_retirement;
+pub(crate) mod recovery_preparation;
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;

@@ -1,5 +1,15 @@
 use super::*;
 
+#[cfg(test)]
+std::thread_local! {
+    static FAIL_SCHEDULER_START: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn fail_scheduler_start_for_test(cleanup_fails: bool) {
+    FAIL_SCHEDULER_START.set(Some(cleanup_fails));
+}
+
 impl ProjectionConnectionService {
     #[cfg(feature = "test-faults")]
     pub(in crate::cas_projection) fn outage_observer(
@@ -159,7 +169,8 @@ impl ProjectionConnectionService {
             graceful_shutdown: Mutex::new(super::graceful_shutdown::ShutdownCoordinator::default()),
             settled: false,
         };
-        service.context_compaction = Some(
+        let construction = (|| {
+            service.context_compaction = Some(
             super::super::context_compaction::ContextCompactionCoordinator::new_with_initial_start(
                 Arc::clone(&home),
                 home.home_id(),
@@ -173,47 +184,67 @@ impl ProjectionConnectionService {
             )
             .map_err(|_| ProjectionCoordinatorError::ContextCompactionCoordinatorUnavailable)?,
         );
-        let scheduled_ordinary_provider = service
-            .scheduled_ordinary_provider
-            .as_ref()
-            .expect("constructing service retains its execution provider");
-        scheduled_ordinary_provider
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .attach(
-                super::super::process_sessions::ScheduledExecutionProviderContext::new(
+            let scheduled_ordinary_provider = service
+                .scheduled_ordinary_provider
+                .as_ref()
+                .expect("constructing service retains its execution provider");
+            scheduled_ordinary_provider
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .attach(
+                    super::super::process_sessions::ScheduledExecutionProviderContext::new(
+                        home.home_id(),
+                        home_generation,
+                        service_generation,
+                        config,
+                        command_authorizer.clone(),
+                        Arc::downgrade(&connections),
+                        scheduler_signal.clone(),
+                    ),
+                );
+            #[cfg(test)]
+            if let Some(cleanup_fails) = FAIL_SCHEDULER_START.replace(None) {
+                if cleanup_fails {
+                    service.connections.exhaust_revision_for_test();
+                }
+                return Err(ProjectionCoordinatorError::AcceptedInputSchedulerSpawn {
+                    message: "injected scheduler start failure".to_owned(),
+                });
+            }
+            service.scheduler = Some(AcceptedInputScheduler::start_with_initial_start(
+                AcceptedInputSchedulerContext::new(
+                    Arc::clone(&home),
                     home.home_id(),
                     home_generation,
-                    service_generation,
-                    config,
-                    command_authorizer.clone(),
-                    Arc::downgrade(&connections),
+                    config.turn_start_admission_requirement(),
+                    storage.clone(),
+                    workers.clone(),
+                    Arc::clone(&connections),
+                    Arc::clone(scheduled_ordinary_provider),
+                    command_gate.clone(),
+                    service
+                        .persistent_failure
+                        .as_ref()
+                        .expect("constructing service retains its failure coordinator")
+                        .terminal_disposer(home.home_id(), home_generation),
+                    ActiveSteeringCancellationLifecycle::new(),
                     scheduler_signal.clone(),
+                    native_lineage_recovery.clone(),
                 ),
-            );
-        service.scheduler = Some(AcceptedInputScheduler::start_with_initial_start(
-            AcceptedInputSchedulerContext::new(
-                Arc::clone(&home),
-                home.home_id(),
-                home_generation,
-                config.turn_start_admission_requirement(),
-                storage.clone(),
-                workers.clone(),
-                Arc::clone(&connections),
-                Arc::clone(scheduled_ordinary_provider),
-                command_gate.clone(),
-                service
-                    .persistent_failure
-                    .as_ref()
-                    .expect("constructing service retains its failure coordinator")
-                    .terminal_disposer(home.home_id(), home_generation),
-                ActiveSteeringCancellationLifecycle::new(),
-                scheduler_signal.clone(),
-                native_lineage_recovery.clone(),
-            ),
-            initial_start,
-        )?);
-        scheduler_signal.hand_off_recovery(recovery);
+                initial_start,
+            )?);
+            scheduler_signal.hand_off_recovery(recovery);
+            Ok::<(), ProjectionCoordinatorError>(())
+        })();
+        if let Err(source) = construction {
+            return Err(if service.close_inner().is_err() {
+                ProjectionCoordinatorError::ServiceConstructionDisposal {
+                    source: Box::new(source),
+                }
+            } else {
+                source
+            });
+        }
         Ok(service)
     }
 }

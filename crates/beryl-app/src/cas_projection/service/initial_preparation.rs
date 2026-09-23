@@ -11,13 +11,15 @@ pub(crate) struct PreparedCasServices {
 
 #[derive(Debug, Error)]
 pub(crate) enum CasPreparationError {
-    #[error("initial CAS candidate access failed: {0}")]
+    #[error("CAS service preparation was cancelled")]
+    Cancelled,
+    #[error("CAS candidate access failed: {0}")]
     Candidate(#[from] HomeCandidateError),
-    #[error("initial CAS service preparation failed: {0}")]
+    #[error("CAS service preparation failed: {0}")]
     Service(#[from] ProjectionCoordinatorError),
-    #[error("initial runtime-interest configuration failed: {0}")]
+    #[error("runtime-interest configuration failed: {0}")]
     RuntimeInterest(#[from] crate::cas_projection::RuntimeInterestError),
-    #[error("initial managed-session configuration failed: {0}")]
+    #[error("managed-session configuration failed: {0}")]
     Session(#[from] crate::cas_projection::RuntimeSessionPreparationError),
 }
 

@@ -462,11 +462,11 @@
 - [x] Accepted exact unanswered approval disposal for passive capture, with no denial fallback and complete response-capability release; approval/custody tests and independent review passed.
 - [x] Accepted exact-failure passive ingress, nonwaiting generation-bound inventory handoff, unanswered approval cancellation and loss-preserving retirement; focused transport, custody and shutdown tests and independent review passed.
 - [x] Accepted ordinary store failure mounting with exact prepared-ingester binding, atomic bounded frozen inventory and retirement disposal. Ordinary polling and dispatched-request failures retain only transient qualified facts; partial loss, overflow and no storage retry passed live transport tests and independent custody review.
-- [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
+- [x] Accepted non-GUI old-service disposal and fresh candidate preparation with the specified outer supervisor attachment/publication protocol. Complete supervisor mounting remains in the full-stack gate below.
 - [x] Specified fresh same-home composition: exact runtime retirement separates storage recovery custody, distinct reopening candidates prepare fresh services, and one outer supervisor owns complete-graph publication and retry. Independent readiness review passed.
 - [x] Accepted consuming CAS retirement with retained failed-home lock/reconciliation custody, exact rejection, and terminal-only cleanup errors. Focused recovery evidence, shutdown regressions and independent custody review passed.
-- [ ] Implement fresh reopening-candidate service preparation before the recovery component gate.
-- [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.
+- [x] Accepted fresh reopening-candidate CAS preparation, configuration, cancellation and failure custody through shared convergence and fenced construction; initial/recovery regressions and independent review passed.
+- [x] Gate: independently accepted unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation. This does not accept complete-stack publication or running-window recovery.
 - [ ] After complete graph publication is accepted, verify running-session recovery through full old-stack disposal, a complete fresh candidate stack, valid-successor-aware convergence, supervisor attachment and atomic publication before recovery product mounting.
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff

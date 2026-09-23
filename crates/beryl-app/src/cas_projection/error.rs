@@ -282,6 +282,11 @@ pub enum ProjectionCoordinatorError {
     /// The process-owned context-compaction coordinator could not start.
     #[error("failed to start the context-compaction coordinator")]
     ContextCompactionCoordinatorUnavailable,
+    #[error("CAS service construction failed and cleanup could not confirm retirement: {source}")]
+    ServiceConstructionDisposal {
+        #[source]
+        source: Box<ProjectionCoordinatorError>,
+    },
     /// The OS could not start the process-owned accepted-input scheduler.
     #[error("failed to start the accepted-input scheduler: {message}")]
     AcceptedInputSchedulerSpawn { message: String },
