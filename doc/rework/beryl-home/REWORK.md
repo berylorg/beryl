@@ -486,6 +486,10 @@
 - [x] Specified independent revisioned Syndic discussion-gate participants and schema, exact
   admission/release and command custody. Independent readiness review passed; mutation enforcement,
   generated parent-input provenance and app composition retain separate acceptance boundaries.
+- [x] Corrected fixture-only creation readiness and specified production exact-selection proof,
+  atomic discussion creation and app/catalog custody boundaries. Independent review accepted the
+  source-proof prerequisite; creation implementation remains pending and ordinary fallback deletion
+  retains its existing scope.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

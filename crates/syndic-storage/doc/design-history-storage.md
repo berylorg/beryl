@@ -37,6 +37,48 @@ root, and bounded timestamps/metadata. Turn and thread lineage digests are struc
 scoped reads validate exact depth, parent, skip, and digest progression without retaining an ancestor
 set.
 
+## Discussion Creation
+
+The package exposes an opaque prepared discussion-source witness from exact captured
+`DiscussionContextSource`, bounded selected bytes and current source-thread/transcript proofs.
+Preparation proves terminal finalized assistant content, exact current projection-set membership,
+the selected source turn's membership in the named thread's current path, normalized UTF-8 range
+and byte equality. It uses bounded existing text-range reads outside the writer and retains at
+most the admitted 65,536-byte selection plus compact source records. It never copies the source
+message, transcript, thread ancestry or image-label map. Read drift returns a conflict; no alternate
+projection, selection, source thread or range is inferred.
+
+The witness binds home/domain provenance and exact mutable source anchors. The creation mutation
+rechecks those anchors and immutable source identities at the serialized writer, including exact
+current transcript-entry and finalized projection-set membership. Captured selected bytes are
+already authenticated against immutable finalized history; the writer need not reread a provider
+message or scan the selected path. A stale witness cannot create a discussion. Fresh same-home
+recovery reacquires and authenticates the same captured request rather than accepting a stale
+generation's witness.
+
+One typed creation participant publishes the child thread, immutable parent/context link and index,
+context-owning initial draft, empty editor root/history and reverse binding, execution/attributes/
+usage seeds, input and discussion gates, compact label/protection heads, history/catalog/activity
+seeds, transcript initialization and unbound CAS binding together. New identities are caller-owned
+operation facts checked against every created key and deterministic draft/turn/input alias. The
+initial selected tail is the exact source turn and its digest, excluding later parent turns; the
+draft's discussion-context intent derives its first submitted parent from that same envelope.
+
+Execution inherits the exact immutable source-thread binding. The new discussion starts open with
+no generated title or provider usage observation; compact title derivation follows the existing
+policy for the selected prefix. Its inherited and permanent image-label frontiers start at the
+parent's observed permanent frontier, and its draft-protection head starts at that same frontier.
+The mutation fences that parent label-head revision and computes bounded lineage depth/digest/skip
+proofs without copying origin spans. Initial history/transcript freshness follows normal selected-
+tail creation; creation does not claim a rebuilt inherited transcript.
+
+The operation's reconciliation closure is its exact created records, including the immutable
+envelope and initial open discussion gate. Source observations are read-only preconditions. Exact
+absence of the complete closure means old, complete equality means created, and partial/different
+closure means collision. A public bounded natural-state read supports ordinary and candidate
+access without exposing private storage encodings. Creation creates no CAS thread, view claim,
+window or dispatch capability and provides no discussion deletion path.
+
 ## Discussion Handoff Gate
 
 The package owns a compact `DiscussionHandoffGateRecord` keyed by discussion thread with its own

@@ -73,31 +73,41 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 514: Specify Atomic Handoff Participants (finished)
+# Phase 518: Specify Production Discussion Creation (finished)
 
-Accepted independent compact Syndic discussion-gate identity, revision, schema, required creation
-linkage and ordinary-fallback gate-absence guard, authenticated admission and exact release
-participants, with separate mutation enforcement.
-Independent participant review clarified that read-only preconditions cannot substitute for gate
-old/new outcome evidence. Subsequent factory inspection corrected the prerequisite ordering below.
-Generated parent input currently lacks a non-composer admission
-receipt; its concrete schema and app command composition remain phase 517's separate readiness
-boundary. No fabricated draft provenance or enabled branch dispatch is accepted.
+Accepted opaque exact-selection preparation, compact writer revalidation, distinct complete
+discussion creation and app/catalog custody boundaries. Concrete source inventory and independent
+review accepted phase 519 readiness: public transcript proof fields require authentication against
+exact current thread/view/entry and projection membership. Creation/initial gate and app custody
+remain phases 520/521; ordinary fallback deletion remains restricted to its existing scope.
 
-# Phase 518: Specify Production Discussion Creation (wip)
+# Phase 519: Authenticate Discussion Source Selection (wip)
 
-Resolve the concrete typed creation command, exact terminal selected-projection/range proof,
-inherited execution/usage/label authority, immutable context binding, initial draft and initial
-handoff gate, plus operation-specific ambiguous-outcome custody. Inspect every required factory;
-branch attribute fixtures are not production creation. Derive bounded implementation phases before
-gate integration. Creation performs no CAS request or window claim and remains durable after later
-activation failure. Keep ordinary fallback pristine deletion restricted to its existing scope.
-Independently review the concrete boundary before implementation.
+Implement opaque preparation from captured source/range/text and exact current transcript proofs,
+with bounded range comparison outside the writer and compact source anchors for writer validation.
+Verify wrong roles, nonterminal/unfinalized items, foreign or stale projection membership, selected-
+away turns, malformed UTF-8 range boundaries, text mismatch, limits and generation/revision drift.
+Preparation grants no creation or CAS authority; independently review the source proof boundary.
+
+# Phase 520: Create A Durable Discussion Atomically (pending)
+
+Use the accepted witness to publish the complete discussion closure, including the initial compact
+handoff-gate record/codec/read/validation foundation. Verify selected-prefix parentage, unchanged
+source/draft, inherited execution and label frontier, first submission, every identity collision,
+stale writer anchors, bounded record custody and exact old/new/collision after ambiguous outcomes.
+Preserve ordinary-thread gate absence and pristine deletion scope. No GUI activation or job
+admission is accepted by this storage phase.
+
+# Phase 521: Compose Discussion Creation And Catalog Custody (pending)
+
+Compose the typed Syndic creation and unclaimed catalog participant through one exact app operation
+with stable captured request and synchronous registry transfer. Verify cancellation, acknowledgement
+loss and home replacement preserve the same child identity without duplicate creation; ordinary
+activation remains a separate later GUI workflow. Independently review before gate/job integration.
 
 # Phase 515: Implement Discussion Handoff Gate Participants (pending)
 
-Implement the owning Syndic gate value, exact codec/family, ordinary/candidate reads and local
-structural validation, integration with accepted discussion creation, authenticated admission, exact release
+Extend the accepted initial Syndic gate foundation with authenticated admission, exact release
 and parent-frontier validation participants. Preserve independent title/archive revisions. Verify
 stale revisions, wrong branch/turn/binding, queued-input races, overflow, missing/orphaned gates,
 candidate fencing and exact old/new mutation outcomes. These are typed participants only; gate

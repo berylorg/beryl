@@ -67,6 +67,22 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   identity preserves the prior appearance. Replacement transfers no cursor, subscription, preview,
   observation, reconciliation descriptor, or publication authority.
 
+## Discussion Creation Adapter
+
+- The non-GUI creation operation owns one exact captured request, stable child/draft identities,
+  timestamp and typed Syndic source witness. Its admission uses the configured bounded operation
+  capacity and never retains more than the contract's selected-text limit per admitted operation.
+  Cancellation before commit drops unpublished preparation; it cannot cancel a committed creation.
+- The app composes Syndic creation with the exact unclaimed Beryl catalog row in one `SyncAll`
+  command. No session/window claim or backend request belongs to that command. Exact created
+  outcome returns the same discussion identity for later ordinary activation; activation failure
+  neither repeats creation nor deletes the discussion.
+- Reconciliation combines only the exact Syndic creation closure and catalog row under stable
+  typed revisions. An indeterminate outcome transfers custody synchronously to the sole home
+  registry before responding or cancelling. Exact old grants ordinary noncommit handling; exact
+  new reconstructs the committed creation result; partial or conflicting state stays unavailable.
+  GUI busy state, selection presentation and activation retry remain feature-owned.
+
 ## Tools And Lifecycle Yield
 
 - Every persistent conversation lineage uses one canonical versioned, deterministically ordered
