@@ -4,7 +4,8 @@ use beryl_model::{CasThreadId, CasTurnId, DynamicToolCallId, SyndicAcceptedInput
 pub use beryl_model::{DiscussionContextDigest, DiscussionContextOwnerId};
 
 /// Maximum UTF-8 bytes retained for one admitted branch-resolution payload.
-pub const RESOLUTION_TEXT_MAX_BYTES: usize = 64 * 1024;
+pub const RESOLUTION_TEXT_MAX_BYTES: usize = 262_144;
+pub const RESOLUTION_TEXT_MAX_SCALARS: usize = 65_536;
 
 /// Maximum UTF-8 bytes retained as diagnostic evidence for one job failure.
 pub const HANDOFF_FAILURE_DETAIL_MAX_BYTES: usize = 2 * 1024;
@@ -17,6 +18,10 @@ pub enum DurableJobValueError {
     },
     TooLong {
         kind: &'static str,
+        maximum: usize,
+        actual: usize,
+    },
+    TooManyScalars {
         maximum: usize,
         actual: usize,
     },
@@ -34,6 +39,10 @@ pub enum DurableJobValueError {
 impl fmt::Display for DurableJobValueError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::TooManyScalars { maximum, actual } => write!(
+                formatter,
+                "branch resolution text must not exceed {maximum} Unicode scalar values, got {actual}"
+            ),
             Self::Empty { kind } => write!(formatter, "{kind} must not be empty"),
             Self::TooLong {
                 kind,
@@ -288,10 +297,11 @@ fn validate_resolution_text(value: &str) -> Result<(), DurableJobValueError> {
             actual: value.len(),
         });
     }
-    if let Some(index) = value.as_bytes().iter().position(|byte| *byte == 0) {
-        return Err(DurableJobValueError::ControlCharacter {
-            kind: "branch resolution text",
-            index,
+    let scalars = value.chars().count();
+    if scalars > RESOLUTION_TEXT_MAX_SCALARS {
+        return Err(DurableJobValueError::TooManyScalars {
+            maximum: RESOLUTION_TEXT_MAX_SCALARS,
+            actual: scalars,
         });
     }
     Ok(())

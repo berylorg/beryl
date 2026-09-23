@@ -480,6 +480,9 @@
 - [x] Accepted exact ordinary branch-call context without changing lifecycle handlers or enabling
   resolution. Live correlation/schema, lifecycle and process-tool tests, app checks and independent
   authority/custody review passed.
+- [x] Accepted explicit candidate durable-job reads and complete Unicode resolution storage bounds.
+  Maximum payload, page bounds, restart, stale handles and publication-failure tests, dependent app
+  check and independent review passed; atomic coordination remains pending.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.

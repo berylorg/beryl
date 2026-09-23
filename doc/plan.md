@@ -73,23 +73,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 512: Preserve Exact Branch Tool Correlation (finished)
+# Phase 513: Expose Bounded Candidate Job Reads (finished)
 
-Accepted distinct branch context with broker-validated CAS thread/turn/call and unchanged
-home/service/Syndic correlation. Live transport verifies distinct calls and rejects payload-supplied
-identity; 26 lifecycle cases, seven tool/retirement cases and the app all-test-target check passed.
-Independent review confirmed existing exact target checks and sole response custody. Production
-branch resolution remains unavailable until durable coordination is accepted.
+Accepted explicit candidate revision, job, request, latest-attempt and live-index reads with shared
+paging/codec validation, exact handle checks and ordinary visibility fencing. Resolution storage
+now admits the complete Unicode tool contract within the 320 KiB record ceiling. Eleven durable-job
+tests cover maximum payloads, restart, both page caps, continuation and failed publication; the
+dependent app check and independent boundary review passed. No scheduling is enabled.
 
-# Phase 513: Expose Bounded Candidate Job Reads (wip)
-
-Align typed resolution and encoded record limits with the owning tool contract, then share exact
-point and live-index reads across ordinary and explicit candidate access. Verify maximum Unicode
-payloads, over-limit rejection, stale handles, item/byte page caps, continuation and candidate
-visibility fencing. This accepts storage prerequisites only, not job scheduling or resolution
-admission. Required independent review follows focused State verification.
-
-# Phase 514: Specify Atomic Handoff Participants (pending)
+# Phase 514: Specify Atomic Handoff Participants (wip)
 
 Inspect and specify concrete Syndic discussion-gate, generated parent-input provenance and
 draft-preserving admission participants, then the app's exact cross-domain operation and

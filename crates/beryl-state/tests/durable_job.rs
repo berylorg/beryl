@@ -509,6 +509,12 @@ fn success_retains_relationships_and_cannot_regress() {
 fn resolution_and_failure_evidence_are_strictly_bounded() {
     assert!(ResolutionText::new("").is_err());
     assert!(ResolutionText::new("x".repeat(64 * 1024 + 1)).is_err());
+    for scalar in ["x", "é", "🦀"] {
+        let exact = scalar.repeat(beryl_state::RESOLUTION_TEXT_MAX_SCALARS);
+        assert_eq!(ResolutionText::new(&exact).unwrap().as_str(), exact);
+        assert!(ResolutionText::new(format!("{exact}{scalar}")).is_err());
+    }
+    assert_eq!(ResolutionText::new("a\0b").unwrap().as_str(), "a\0b");
     assert!(
         HandoffFailureEvidence::new(
             HandoffFailureKind::InvariantViolation,

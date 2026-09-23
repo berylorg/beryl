@@ -148,10 +148,11 @@ pub use durable_job::{
     DurableJobMutationError, DurableJobState, DurableJobValueError,
     HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
     LatestBranchHandoffAttempt, ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal,
-    RESOLUTION_TEXT_MAX_BYTES, RecordParentCasAcceptance, RecordRetryableHandoffFailure,
-    RecordTerminalHandoffFailure, ResolutionAttemptOrdinal, ResolutionRequestAdmission,
-    ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff, StartParentHandoff,
-    SucceedBranchHandoff, ThreadReuseJobGuard, ThreadReuseJobGuardError, branch_handoff_job_id,
+    RESOLUTION_TEXT_MAX_BYTES, RESOLUTION_TEXT_MAX_SCALARS, RecordParentCasAcceptance,
+    RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, ResolutionAttemptOrdinal,
+    ResolutionRequestAdmission, ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff,
+    StartParentHandoff, SucceedBranchHandoff, ThreadReuseJobGuard, ThreadReuseJobGuardError,
+    branch_handoff_job_id,
 };
 pub use runtime_root::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, RootRecord, RootRegistration,

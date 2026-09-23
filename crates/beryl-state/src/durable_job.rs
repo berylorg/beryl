@@ -14,6 +14,7 @@ use crate::StatePage;
 mod acquisition;
 mod codec;
 mod mutation;
+mod read;
 mod record;
 #[cfg(feature = "test-faults")]
 mod test_support;
@@ -39,10 +40,11 @@ pub use value::{
     DiscussionContextDigest, DiscussionContextOwnerId, DurableJobValueError,
     HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
     ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, RESOLUTION_TEXT_MAX_BYTES,
-    ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
+    RESOLUTION_TEXT_MAX_SCALARS, ResolutionAttemptOrdinal, ResolutionRequestIdentity,
+    ResolutionText,
 };
 
-pub(crate) const BRANCH_HANDOFF_JOB_RECORD_LIMIT: usize = 128 * 1024;
+pub(crate) const BRANCH_HANDOFF_JOB_RECORD_LIMIT: usize = 320 * 1024;
 pub(crate) const REQUEST_IDEMPOTENCY_RECORD_LIMIT: usize = 64;
 
 const DURABLE_JOB_FAMILIES: &[RecordFamily<DurableJobDomain>] = &[
@@ -239,32 +241,13 @@ impl DurableJobState {
         after: Option<JobId>,
         limits: CursorReadLimits,
     ) -> Result<StatePage<BranchHandoffJobRecord>, ReadError> {
-        let start = after.unwrap_or_else(|| JobId::from_bytes([0; 16]));
-        let end = JobId::from_bytes([u8::MAX; 16]);
-        let range = if after.is_some() {
-            CursorRange::after(start, end)
-        } else {
-            CursorRange::closed(start, end)
-        };
         let page = store.read_cursor::<DurableJobDomain, LiveJobIndexCodec>(
             &self.handle,
-            &range,
+            &read::live_range(after),
             CursorDirection::Forward,
             limits,
         )?;
-        let stored_bytes = page.stored_bytes();
-        let decoded_bytes = page.decoded_bytes();
-        let has_more = page.has_more();
-        Ok(StatePage {
-            records: page
-                .into_records()
-                .into_iter()
-                .map(|entry| entry.into_parts().1)
-                .collect(),
-            stored_bytes,
-            decoded_bytes,
-            has_more,
-        })
+        Ok(read::live_page(page))
     }
 
     #[must_use]
