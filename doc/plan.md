@@ -73,19 +73,64 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 526: Compose Child Settlement And Job Transition (finished)
+# Phase 517: Specify Generated Parent Input And Atomic App Admission (finished)
 
-Accepted atomic app settlement with bounded audit custody, exact job/gate identity and candidate
-execution. Nine app cases, seven shared handoff regressions and independent review passed; parent
-input remains absent. See [correction evidence](failures/discussion-steering-handoff.md#implementation-state).
+Accepted closed generated input/order provenance, exact visible text, draft-preserving admission,
+ordinary execution support and bounded app outcome custody. ParentArchived follows existing
+unrecoverable-failure policy; non-ordinary parent drafts wait. Independent readiness review passed
+after resolving accepted-order encoding and initial-context eligibility; implementations follow.
 
-# Phase 517: Specify Generated Parent Input And Atomic App Admission (wip)
+# Phase 529: Implement Archived-Parent Failure Classification (wip)
 
-Resolve the concrete generated-input receipt, turn/item provenance, bounded content publication and
-draft-preserving submission schema, then exact app admission/reconciliation APIs. Preserve normal
-accepted order and possible-dispatch fencing. Derive implementation phases before replacing the
-composer-only assumptions; terminal coordination and bounded runtime mounting remain explicit
-later boundaries in the rework tracker.
+Implement State's terminal-only `ParentArchived` tag 12 at the two pre-append checkpoints from
+[jobs authority](../crates/beryl-state/doc/design-jobs-catalog.md#durable-jobs). Preserve immutable
+attempt/index closure and existing tags/bounds. Verify the full failure/decode matrix, rejection
+after parent identity exists and on retryable construction, and restart. Independently review.
+
+# Phase 530: Prepare Exact Parent Job Transition Evidence (pending)
+
+Implement bounded original-handle preparation and two-record outcome witnesses for parent start
+and archived-parent failure under [State's transition contract](../crates/beryl-state/doc/design-jobs-catalog.md#parent-handoff-transition-evidence).
+Reuse shared transition rules and authentication. Verify identity/checkpoint mismatch, stale
+revision and handle, candidate parity, immutable indexes and exact old/new versus mixed closure.
+
+# Phase 531: Prove Parent Eligibility And Archived-Parent Release (pending)
+
+Implement Syndic's bounded parent eligibility witness and one-participant archived-parent proof
+with child-gate release. Verify nested parent identity, busy/pending parent, ordinary versus special
+draft intent, archived disposition, stale proof, candidate access and unchanged child/parent input.
+No generated input or CAS work belongs to this boundary. Independently review.
+
+# Phase 532: Compose Archived-Parent Failure Convergence (pending)
+
+Join the accepted State transition and Syndic archived-parent release through bounded app custody
+for ordinary and candidate convergence; verify atomic failure, no parent input, cancellation and
+uncertain outcomes. Keep scheduling and generated parent admission separate.
+
+# Phase 533: Implement Generated Input Provenance And Schema (pending)
+
+Replace composer-only accepted-input/order schemas with the closed generated source and direct
+turn/item proof. Implement canonical encodings, bounded reads and structural validation, updating
+consumers without synthetic drafts/routes or compatibility readers. Verify ordinary regressions,
+generated identity/corruption cases and supported payload bounds before admission exists.
+
+# Phase 534: Carry Generated Input Through Ordinary Execution (pending)
+
+Support the accepted generated turn/item kind through ordinary pending dispatch, snapshots, replay,
+provider correlation, stop and terminal/repair classification. Verify visible text and generated
+provenance survive exactly once; preserve the single existing CAS execution path.
+
+# Phase 535: Admit Generated Parent Input Without Consuming Drafts (pending)
+
+Implement sealed content preparation and one exact Syndic generated-input/turn participant with
+bounded outcome/discovery evidence. Verify permanent order, busy/special drafts, draft preservation,
+identity collision, stale/candidate proofs and maximum text. No State transition or CAS dispatch.
+
+# Phase 536: Compose Atomic Parent Input And Starting Job (pending)
+
+Join accepted Syndic admission and State parent-start evidence under bounded process custody.
+Verify exact payload and identities, cancellation, races, uncertain outcomes and candidate
+inspection without new input. Durable coordinator scheduling remains a later rework checkpoint.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

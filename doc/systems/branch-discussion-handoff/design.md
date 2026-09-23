@@ -117,6 +117,13 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   parent input through the job's recorded accepted-input frontier, inclusive, and preserves later
   input already accepted before handoff admission through the normal revisioned admission path.
 - Parent active turn, compaction, replacement, rebind, or another same-thread operation keeps the job waiting.
+- A parent's pending discussion handoff also keeps delivery waiting. An exact archived parent
+  rejects fresh child resolution admission; if the child attempt was already admitted and no
+  parent input exists, `ParentArchived` terminally fails it from `waiting_resolving_turn` or
+  `waiting_parent` and releases the child's gate atomically. The writer validates the exact parent
+  archive observation inside the same Syndic release participant. This normal outcome neither
+  invokes invariant failure nor makes archive depend on descendant jobs. After parent input has
+  been admitted, the existing parent-turn outcome remains authoritative for the child job.
 - Runtime/root/CAS unavailability or delivery failure proven before dispatch moves the job to `retryable_failed` without changing the discussion archive state or admitting another attempt.
 - Retrying `retryable_failed` resumes only that exact job and any exact parent input already admitted for it. It cannot change the intent payload, allocate another attempt, or append a duplicate parent turn.
 - Invariant failure, missing parent, or an unrecoverable post-append state moves the job to `terminal_failed`, leaves the discussion unarchived, and releases the discussion for later ordinary mutation.
@@ -126,9 +133,35 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Parent handoff is a real Syndic submitted turn admitted through the parent's normal revisioned submission path.
 - The input item is typed as Beryl-generated discussion handoff rather than user-authored composer input and records discussion thread id, intent id, job id, context digest, and resolution provenance.
 - Its visible text identifies that it is a discussion resolution and includes the exact admitted resolution payload.
+- The canonical visible text is the UTF-8 prefix `Discussion resolution:` followed by two LF
+  characters and the exact admitted resolution bytes. No trimming, rewriting, hidden suffix,
+  selected-context duplication or image-marker interpretation changes that payload. The fixed
+  24-byte prefix gives a maximum of 262,168 visible UTF-8 bytes. Provenance retains the child,
+  intent/job, context owner/digest and resolving turn plus SHA-256 of the exact resolution bytes;
+  the immutable State job supplies the original correlated model-call identity.
+- A generated accepted-input identity uses the intent/job's exact 16-byte payload under the
+  `SyndicAcceptedInputId` type. The new submitted turn and canonical item use distinct caller-owned
+  stable identities retained through preparation and reconciliation. Identity collision rejects
+  the command; it never generates replacement ids during replay. A generated receipt names that
+  exact turn and item and has no source/replacement draft or steering route. The input occupies
+  the next permanent accepted ordinal and is already assigned to its turn in the admitting command;
+  it never appears as pending steering or next-turn work.
+- Parent admission requires an exact idle, editable parent with no live accepted input, no active
+  binding or unresolved same-thread lifecycle operation, and an ordinary draft submission intent.
+  Initial discussion-context and replacement drafts remain waiting; generated admission cannot
+  perform their special first-submission or replacement transition.
+  It advances normal turn topology, pending dispatch and bounded transcript/history heads while
+  preserving the current draft identity, revision, text/markers, editor session and submission
+  intent. Only the current-draft reverse index's enclosing thread-revision proof advances.
+  Competing ordinary input and other handoffs contend at the same revisioned writer boundary.
 - CAS receives the same visible handoff text through ordinary user input because it is the new model-visible parent turn; hidden context is not used to conceal a visible handoff.
 - Parent admission and the job transition to `starting_parent` occur atomically. Recovery finding the parent turn identity never creates another input for that job.
 - CAS acceptance records exact CAS turn identity and moves the job to `parent_active`.
+- Generated handoff turns and canonical inputs have distinct closed provenance kinds. Ordinary
+  pending dispatch, execution snapshots, input replay, provider-user-message correlation, exact
+  stop, terminal convergence and repair classification recognize that kind as the same ordinary
+  model-visible execution path. The generated canonical input is retained exactly once when CAS
+  echoes it; neither correlation nor history repair changes its authorship to composer input.
 - CAS rejection before acceptance moves the job to `retryable_failed` and leaves the existing admitted parent turn pending for retry; it does not append another turn.
 - If parent `turn/start` may have been dispatched but its response is unavailable, the parent turn is
   never replayed automatically. Proven loss of its execution session converges that parent turn to

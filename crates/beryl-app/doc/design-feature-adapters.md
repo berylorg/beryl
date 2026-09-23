@@ -90,6 +90,37 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   the audit must join that scope and honor pending or collision outcomes before reporting creation.
   GUI busy state, selection presentation and activation retry remain feature-owned.
 
+## Discussion Parent Admission
+
+- Parent delivery is a non-GUI handoff operation owned by the process coordinator and its exact
+  home generation. A configured reconciliation slot owns one job, stable generated input/turn/item
+  identities, prepared sealed visible text and bounded exact outcome witnesses. Input id derives
+  from the admitted job; turn/item ids and timestamp are captured once. The State resolution is
+  the only payload source; no later tool response, selection, draft or window supplies replacement
+  content. Preparation follows the handoff system's exact visible-text contract.
+- Ordinary admission reads one exact waiting-parent job, asks Syndic for current parent eligibility,
+  and returns waiting without admission when temporary gates remain. A ready result joins one
+  Syndic generated-input mutation with the exact State starting-parent transition in one home
+  command. State witness identity and resolution agree with the Syndic receipt and sealed content;
+  mismatches reject preparation. Process admission remains held through writer outcome and any
+  synchronous registry handoff. The normal provider dispatcher remains a later owner.
+- An archived parent joins one Syndic proof-checked child-gate release and the State terminal
+  `ParentArchived` transition. The same operation can converge an already-admitted pre-append job
+  through explicit candidate access. Candidate convergence never prepares or creates a new parent
+  input, starts CAS, or transfers ordinary ready work into publication.
+- Audit evidence shares the admitted slot and retains no old service reference. Uncertain outcome
+  installs its exact home reconciliation scope before returning, and no parent dispatch or tool
+  success is authorized until both participants and that registry scope agree. Exact old grants
+  noncommit handling; exact new returns the same immutable parent identities or terminal failure;
+  partial or conflicting evidence stays unavailable. Candidate reconciliation uses fresh handles
+  and the same bounded closures. Cancellation and service replacement cannot revive old prepared
+  commands; cancellation never rolls back committed parent input.
+- Each slot retains at most the admitted resolution and one canonical visible-text preparation,
+  bounded by 262,144 and 262,168 UTF-8 bytes respectively, two bounded State job records and the
+  fixed-count Syndic command closure. Ordinary content chunking and record ceilings apply; no
+  staging stream, queued job collection or retry can extend these per-operation bounds. The
+  original job page is released before unrelated work is admitted.
+
 ## Tools And Lifecycle Yield
 
 - Every persistent conversation lineage uses one canonical versioned, deterministically ordered

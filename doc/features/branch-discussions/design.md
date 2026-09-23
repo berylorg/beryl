@@ -141,6 +141,14 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
   never terminalizes or redirects the handoff or admits the resolution again.
 - Beryl exposes no parent-thread deletion command. If exact parent identity is nevertheless missing or invalid before resolution admission, the tool rejects without accepting intent and the discussion remains editable and unarchived.
 - Beryl never silently redirects resolution to an ancestor, sibling, replacement thread, or newly created thread.
+- When the exact parent is itself resolving, its child handoff waits while the parent remains
+  temporarily ineligible. An archived parent stays readonly: a fresh child resolution is rejected,
+  and an already-admitted child attempt whose parent input has not been admitted ends with an explicit archived-parent
+  failure. The child remains unarchived and becomes editable; its admitted resolution stays in
+  history. Open descendants do not prevent a discussion from resolving or archiving.
+- A handoff also waits while the parent has an unsubmitted initial discussion-context prompt or
+  replacement edit. It never consumes that prompt or edit; the parent completes its own ordinary
+  submission workflow before it becomes eligible for generated handoff input.
 
 ## Completion And Navigation
 

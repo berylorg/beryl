@@ -157,7 +157,7 @@ Preserve CAS as the live execution, authentication, sandbox, approval, skill, MC
   absent stop eligibility or coarse idle state is not nondispatch proof. A dispatched or possibly
   dispatched target cannot use this outcome and must reach terminal-history fixed point or the
   existing durable authority-loss convergence.
-- Ordinary and lifecycle-continuation turns carry storage-owned bounded dispatch provenance in
+- Ordinary, generated discussion-handoff and lifecycle-continuation turns carry storage-owned bounded dispatch provenance in
   their turn state: unattempted, activated, or exactly cancelled. Activated and cancelled states
   name the exact execution snapshot and active binding revision. Provider-operation turns use
   their existing operation receipts and carry a distinct provider-operation marker.

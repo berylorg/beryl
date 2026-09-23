@@ -160,6 +160,13 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
   identity and reference-set ownership; they never create a separate queued-input identity or a
   second active turn.
 - Permanent accepted-input order is retained independently from revisioned route-generation state.
+  Composer-sourced accepted input owns its existing draft receipt and route generation. Generated
+  discussion-handoff input owns a distinct direct-to-turn receipt, occupies the same permanent
+  order, and never enters a live route. Route intervals remain disjoint; ordinals belonging to
+  generated input need not belong to any route interval. The
+  [handoff system](../branch-discussion-handoff/design.md#parent-input-and-turn) owns its visible
+  content and admission policy. Its distinct generated turn/item provenance remains visible through
+  projection and provider correlation without becoming user-authored draft history.
   Generations own disjoint contiguous accepted-order intervals, aggregate checked `u64` live counts
   and logical bytes, and expose their leaves through bounded revision-bound pages. A compact ordered
   ready-source record selects each exact steering generation with ready or retryable work, while a

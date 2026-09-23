@@ -9,11 +9,11 @@ change persisted bytes.
 ## V7 Domain Schema
 
 - The stable logical domain name is `syndic` at domain schema V7. Every family uses keyspace schema
-  V1 and one exact package-owned record version selected per family. `source-events`,
-  and `accepted-inputs` use record V3; `accepted-route-leaves` uses record V4; `input-gates` uses
+  V1 and one exact package-owned record version selected per family. `source-events`
+  uses record V3; `accepted-inputs` and `accepted-route-leaves` use record V4; `input-gates` uses
   record V5;
-  `accepted-route-generations` and `turns` use record V3; `turn-states` uses record V4; `threads`, `drafts`,
-  `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
+  `accepted-route-generations`, `accepted-order` and `turns` use record V3; `turn-states` uses record V4;
+  `threads`, `drafts`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2.
   `draft-mutation-staging-pages`, `draft-piece-build-fragments`, `draft-piece-leaves`,
   `draft-marker-identity-index`, `draft-marker-order-commitments`, `draft-marker-seals`, and
   `draft-editor-candidate-sessions` also use record V2. `draft-piece-builds`,
@@ -621,7 +621,7 @@ canonical byte comparison of the point-read target closure.
   successor is legitimate after gate release. It grants no permission to reopen repair. Routine
   open and unrelated-thread mutations perform no repair scan. Explicit validation detects malformed
   resolved references, while admitted updates preserve existing authority without broad traversal.
-- Dispatch provenance agrees with the immutable turn kind: ordinary-user and lifecycle-continuation
+- Dispatch provenance agrees with the immutable turn kind: ordinary-user, discussion-handoff and lifecycle-continuation
   turns cannot carry the provider-operation marker, and provider-operation turns must carry it.
   Anchored provenance names an ordinary execution snapshot and its exact active binding for that
   thread and turn. Cancelled provenance additionally requires the immediate unchanged-authority
@@ -1631,6 +1631,59 @@ Canonical-byte replay and captured deletion-absence checks retain their separate
 - Home-store page, item, stored-byte, and decoded-byte limit failures remain typed read failures and
   do not imply durable corruption. Mutation preparation and validation perform only operation-
   bounded reads and never wait for resource capacity while holding the serialized writer.
+
+## Generated Discussion Input Encoding
+
+- `accepted-inputs` V4 retains the existing 16-byte input key and 65,536-byte value ceiling.
+  Values encode input id, parent thread id and nonzero accepted ordinal, then one source tag.
+  Tag 0 is composer acceptance: exact source thread revision, source draft id, source draft
+  revision, source gate revision, replacement draft id and route generation in that order using
+  their existing canonical encodings. Tag 1 is generated discussion handoff: source parent thread
+  revision, source parent gate revision, child thread id, resolution intent id, job id, context
+  owner, context digest, resolving turn id, resolution digest, new parent turn id and canonical
+  item id in that order. Revisions are nonzero canonical `u64`; identities are 16 bytes; context
+  owner uses its existing closed draft/turn encoding; both digests are exactly 32 bytes.
+- After either source payload, V4 encodes the existing content reference, optional sealed asset
+  reference set and admitted timestamp in their prior order and format. Generated input requires
+  absent asset proof and input-id bytes equal to intent/job bytes. Its child differs from its
+  owning parent. Composer input preserves its source-draft-derived identity and distinct
+  replacement-draft rule. Unknown tags, malformed payloads, zero revisions/ordinals, identity
+  disagreement, generated assets, truncation or trailing bytes reject decoding. V3 accepted input
+  is rejected rather than decoded through a compatibility path. `accepted-order` changes to V3
+  as specified below; no other family version changes.
+- Generated accepted input occupies the same `accepted-order` index as composer input. V3 preserves
+  the existing thread/ordinal key and encodes thread id, accepted ordinal and input id followed by
+  a source tag: tag 0 has one existing nonzero route-generation encoding; tag 1 denotes generated
+  direct-to-turn input and has no payload. V2 records, unknown tags, key/value disagreement,
+  truncated or trailing bytes are rejected. The existing value ceiling remains unchanged.
+  The source tag must agree with the accepted record; generated input owns no route generation
+  or leaf. Route structural
+  validation selects the closed source before requiring route membership; generated input must
+  have no route leaf or ready/next membership. Aggregate route counts include only their actual
+  members and remain bounded; generated ordinals may lie between disjoint route intervals.
+- Immutable `TurnKind::BerylDiscussionHandoff` adds tag 3 to the existing turn-kind encoding,
+  including the embedded stop-kind encoding. Tags 0 through 2 retain their current payloads.
+  This kind uses ordinary unattempted/activated/cancelled dispatch provenance, never the
+  provider-operation marker. It uses the same checked topology and turn digest construction;
+  no special provider or fork topology is encoded.
+- Canonical presentation `DiscussionHandoff` adds tag 5 after existing tags 0 through 4. Its
+  payload is the existing content-reference encoding followed by the exact 16-byte accepted-input
+  id. It has no asset-set payload. Provider kind is `UserMessage`; the local pending item starts
+  `AwaitingCorrelation`. Its immutable generated provenance survives subsequent provider frame
+  capture and correlation. Wrong provider kind, turn kind, item/turn/receipt identity, content
+  reference or generated accepted-input source is rejected by structural validation.
+- The generated receipt's resolution digest is SHA-256 of the exact admitted resolution UTF-8,
+  excluding the 24-byte `Discussion resolution:` plus two-LF prefix. Canonical content contains
+  that prefix and payload exactly, at most 262,168 logical UTF-8 bytes. The payload retains its
+  65,536-scalar and 262,144-byte limits and is nonempty under the handoff text contract. Ordinary
+  content chunk/manifest encoding, full digest comparison and byte bounds apply unchanged.
+  Generated text contains no structural marker or asset reference, regardless of literal bytes.
+- Scoped generated-input validation joins the exact accepted record and order, parent turn,
+  canonical item and its first turn-item index, child thread/context envelope and the receipt's
+  immutable parent relationship. Historical validation does not require the child's gate still to
+  be pending or a mutable parent head to remain at admission. It never reads State or infers job
+  success; the app supplies the State side of that cross-domain proof. Current writer admission
+  additionally requires the exact pending child gate and eligible parent source records.
 
 ## V1 Structural Proofs
 

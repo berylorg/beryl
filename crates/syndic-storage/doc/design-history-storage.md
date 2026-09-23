@@ -32,10 +32,57 @@ The constructor observes no clock. Draft validation proves its immutable source 
 without requiring the historical source to equal a later mutable child tail.
 
 Every immutable turn stores stable identity, owning thread, optional immutable parent turn, nonzero
-depth, deterministic ancestor skip, chain digest, accepted-input provenance, exact draft-submission
-root, and bounded timestamps/metadata. Turn and thread lineage digests are structural proof anchors;
+depth, deterministic ancestor skip, chain digest and bounded timestamps/metadata. Submitted input
+has closed provenance: composer admission retains its exact draft authority, while a generated
+discussion handoff retains its exact generated receipt without inventing draft authority.
+Turn and thread lineage digests are structural proof anchors;
 scoped reads validate exact depth, parent, skip, and digest progression without retaining an ancestor
 set.
+
+## Generated Discussion Handoff Input
+
+- Accepted input retains one closed admission source. Composer acceptance preserves its existing
+  source/replacement draft proof and route generation. Discussion handoff acceptance instead owns
+  a generated receipt containing source parent thread/gate revisions, child id, intent id, job id,
+  context owner/digest, resolving turn, exact resolution digest, new parent turn and canonical item.
+  It has no route generation, route leaf, composer root or asset-reference set. Both sources use
+  the existing permanent accepted-input and accepted-order families and ordering high-water mark.
+  Generated input is never included in live route counters or ready/next-source indexes.
+- The generated identity is the job payload retyped as an accepted-input id. Its turn kind is
+  `BerylDiscussionHandoff`; its canonical presentation is `DiscussionHandoff`, carrying sealed
+  visible text and that accepted-input id. Structural proof joins the receipt, owning parent,
+  exact turn/item and permanent order. Composer-only APIs reject generated provenance explicitly
+  instead of fabricating a draft or interpreting a missing route as queued work.
+- Preparation accepts exact parent and child/job identities, caller-owned turn/item identities,
+  timestamp and the bounded admitted resolution. It seals only the canonical text defined by the
+  handoff system through ordinary content identity/full-digest validation. Literal marker-shaped
+  resolution text stays text and grants no asset or image-label authority. The prepared content
+  stays unpublished until the admission command and is charged to its bounded operation slot.
+- One original-handle, source-revision preparation authenticates the pending child handoff gate,
+  child parent/context binding, exact idle parent thread/input/binding, parent discussion archive
+  and handoff gate where applicable, and current draft selector/intent. Missing or inconsistent
+  local records are errors; active work, parent resolution, queued accepted input or non-ordinary
+  draft intent yields waiting. This includes initial discussion-context and replacement drafts;
+  their ownership/submission transition is never fabricated by generated input. An archived
+  parent has its distinct immutable disposition. No parent
+  input identity becomes durable during this probe.
+- Writer admission repeats the bounded source proof, rejects any input/turn/item identity
+  collision, advances the checked accepted-order high-water mark, and contributes generated input,
+  order, content, pending turn/state and canonical item together with ordinary topology, thread,
+  binding, current-draft reverse index and projection/activity heads. The draft and its edit
+  history, roots, materializations, image-label frontiers and marker authority remain unchanged.
+  No fake accepted route or intermediate queued state is persisted.
+- The opaque admission witness names every changed source/successor record and absence key. Exact
+  ordinary/candidate outcome inspection uses that bounded closure and stable revisions; mixed,
+  partial or unrelated state is collision. The immutable generated receipt also supports later
+  exact recovery discovery after mutable heads advance, proving the same job/input/turn/item and
+  sealed content without claiming the original command's natural outcome or replay permission.
+  Fresh candidate handles may inspect same-home witnesses; stale handles and foreign homes reject.
+- The archived-parent proof is likewise original-handle and revision-bound. It authenticates the
+  child's exact pending gate and immutable parent binding plus the parent's archived attributes.
+  Its sole Syndic mutation rechecks that proof and releases only the child gate; parent records
+  and child input remain unchanged. This composes with State's `ParentArchived` transition and
+  reconciles the existing exact child-gate old/new closure. It does not reopen the parent.
 
 ## Discussion Creation
 

@@ -36,6 +36,11 @@ durable job records and transitions plus compact catalog schema, normalization, 
   0 through 10 retain their meaning. Decode, transition admission and failure construction share
   this checkpoint restriction, and retryable construction rejects the kind. Existing job record
   size and failure-detail limits remain unchanged.
+- `ParentArchived` is terminal-only at `waiting_resolving_turn` or `waiting_parent`, before any
+  parent input identity exists. It appends failure-kind tag 12 without changing tags 0 through 11
+  or record/detail bounds. The shared transition/decode matrix rejects retryable or post-append
+  use. State retains the immutable attempt and removes its live copy; the app supplies the exact
+  Syndic archived-parent proof and atomic child-gate release.
 - One shared valid state/transition matrix governs decode, mutation admission, retryability,
   checkpoint eligibility, and bounded recovery reads. Resolution text is at most 65,536 Unicode
   scalar values and 262,144 UTF-8 bytes; failure detail is at most 2 KiB. Failure kind must agree
@@ -75,6 +80,21 @@ durable job records and transitions plus compact catalog schema, normalization, 
   The witness grants no mutation or replay right. Retention consists of two bounded job records
   per admitted reconciliation slot; app custody owns that slot and joins any Syndic release outcome
   and home registry resolution before reporting advancement.
+
+## Parent handoff transition evidence
+
+- Parent-start preparation authenticates the exact waiting-parent job and its five-record closure
+  under the same bounded original-handle rules as resolving transition evidence. It derives one
+  next-revision starting-parent job from a caller-supplied exact parent accepted-input, turn and
+  canonical-item identity. The shared existing transition rules remain the State authority.
+  Its two-record job/live witness has the same ordinary/candidate old/new and collision semantics.
+- Archived-parent failure preparation accepts only the two permitted pre-append checkpoints,
+  retains bounded `ParentArchived` evidence and has the same five-record source authentication.
+  It changes the job and removes its live copy; exact old/new evidence does not claim the parent
+  archive or child gate changed. The app joins the corresponding Syndic proof/release participant.
+- All these immutable witnesses share their bounded old/new record ownership with the admitted
+  operation and audit. Extending transition evidence does not add a new durable family, scan,
+  request index, parent queue, scheduling permission or State dependency on Syndic records.
 
 ## Compact catalog
 
