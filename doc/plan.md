@@ -91,6 +91,17 @@ Resume from the existing `Ingester::run_loop` terminal-on-store-failure cut and 
 `outage_buffer::OutageAssembly`. Seal only at the validated backend provider seal; malformed input
 and transport loss must abandon. Preserve the existing registry handoff before any acknowledgement.
 
+Blocked on 2026-09-23: an ingester-only transition cannot work. The driver retains a drain-counted
+poll permit while synchronously waiting for the ingester; awaiting frozen inventory before reply
+therefore prevents the coordinator's pre-freeze drain. The closed-gate driver path also stops normal
+stream polling, and terminal cancellation waits behind the same forwarding mutex as submission.
+First resolve passive driver polling, outstanding permit custody, inventory delivery and cancellation
+ordering together in the app's live-projection/live-capture authority, then derive the driver
+prerequisite before resuming this phase. Preserve reconciliation-before-acknowledgement and no new
+effect authority; moving mounting earlier cannot remove this cycle. See
+[the reviewed diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition).
+No source changes were made for this blocked transition.
+
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 
 Connect accepted outage-mode ingestion to ordinary store failure, admission fencing and failed

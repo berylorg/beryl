@@ -109,3 +109,34 @@ actual retained worker reservation. The initial 54-test failure run passed
 `219542fa-5581-4c87-b1da-1bae7bb9eb6e`. Independent review accepted the final bounded ownership.
 The inventory publication and ingester transition remain outstanding; a descriptive witness borrow
 alone does not mount outage capture or grant effect authority.
+
+## Driver Polling Blocks The Ingester-Only Transition
+
+The planned durable-to-transient ingester switch assumed that releasing its own live-command permit
+would let the failure coordinator drain work and publish frozen inventory before acknowledgement.
+Independent readiness review and root source inspection on 2026-09-23 invalidate that assumption:
+
+- `connection/driver.rs::run_driver` retains a separate drain-counted `poll_permit` across
+  `backend.poll_ordered_turn_stream_progress`. Backend `session/ordered_turn_stream.rs` passes the
+  bound sink directly into synchronous receive/parsing. The ingester's acknowledgement therefore
+  releases the driver poll, while the coordinator's `wait_until_drained` precedes target freezing.
+  Waiting for inventory before that acknowledgement creates a cycle even after the ingester drops
+  its own permit. The existing terminal reply breaks this cycle by ending capture.
+- The driver's closed-gate persistent-failure branch dispatches already-authorized failure
+  obligations or waits; it does not resume provider polling. An ingester mode alone cannot capture
+  subsequent observations.
+- `ForwardingHubSink::submit` holds its attachment mutex across acknowledgement. Obligation
+  installation and `execute_terminal_shutdown` acquire that mutex; shutdown requests ingester
+  cancellation only afterward. Inventory publication must precede attachment-dependent obligation
+  installation, and cancellation needs a route that does not wait on the blocked submission.
+  `AckSlot::wait` intentionally keeps waiting for exact operation custody even when cancelled.
+
+This is a Beryl lifecycle prerequisite, not renewed CAS ordering rejection. The buffering exception
+and frozen-batch custody remain valid. Before resuming implementation, resolve passive receive,
+driver permit ownership, complete inventory delivery and cancellation/join as one protocol in
+[app live projection](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md) and
+[app live capture](../../crates/beryl-app/doc/design-live-capture.md), under the existing system policy.
+Do not bypass the reconciliation handoff, invent durable acknowledgement, reopen effects, or use
+phase ordering to hide the required driver change. Then derive its bounded implementation gate before
+ordinary outage mounting. Evidence is source inspection plus independent review, not a reproduced
+runtime hang; no transition source was changed or tests run during this diagnosis.
