@@ -32,7 +32,7 @@ const STAGES: [Stage; 4] = [
     Stage::ParentActive,
 ];
 
-const FAILURE_KINDS: [HandoffFailureKind; 11] = [
+const FAILURE_KINDS: [HandoffFailureKind; 12] = [
     HandoffFailureKind::RuntimeUnavailable,
     HandoffFailureKind::RootUnavailable,
     HandoffFailureKind::CasUnavailable,
@@ -44,6 +44,7 @@ const FAILURE_KINDS: [HandoffFailureKind; 11] = [
     HandoffFailureKind::ParentInterrupted,
     HandoffFailureKind::ParentIncomplete,
     HandoffFailureKind::ParentTerminalFailure,
+    HandoffFailureKind::ChildInputPending,
 ];
 
 #[test]
@@ -100,8 +101,8 @@ fn mutation_admission_enforces_the_complete_failure_checkpoint_matrix() {
         }
     }
 
-    assert_eq!(accepted, 30);
-    assert_eq!(rejected, 58);
+    assert_eq!(accepted, 31);
+    assert_eq!(rejected, 65);
     store.close().unwrap();
     let (reopened, _) = open(directory.path());
     reopened.close().unwrap();
@@ -245,6 +246,7 @@ fn compatible(retryable: bool, kind: HandoffFailureKind, stage: Stage) -> bool {
         return false;
     }
     match kind {
+        HandoffFailureKind::ChildInputPending => stage == Stage::WaitingResolvingTurn,
         HandoffFailureKind::CasRejectedBeforeAcceptance => stage == Stage::StartingParent,
         HandoffFailureKind::UnrecoverablePostAppend => {
             matches!(stage, Stage::StartingParent | Stage::ParentActive)

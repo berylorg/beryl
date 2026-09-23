@@ -73,17 +73,11 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 524: Implement Exact Child Settlement Participants (finished)
+# Phase 525: Implement Child-Input Terminal Failure (finished)
 
-Implemented bounded ordinary/candidate settlement, original-handle ready validation and proof-checked
-queued-input gate release. Four focused settlement tests and nine gate/archive regressions passed;
-independent review accepted the identity checks, stale-handle fencing and candidate execution.
-
-# Phase 525: Implement Child-Input Terminal Failure (wip)
-
-Add the closed State failure kind and exact checkpoint/codec validation, preserving existing tags,
-immutable attempt identity and bounds. Verify allowed waiting-resolving transition, rejected later
-checkpoints and retryability, old/new index closure and round-trip recovery. Independently review.
+Added terminal-only ChildInputPending at the resolving checkpoint with appended codec tag 11.
+Eight focused job tests passed, including the complete transition/decode rejection matrix and
+retained attempt/index behavior across reopen. App check and independent review passed.
 
 # Phase 526: Compose Child Settlement And Job Transition (pending)
 

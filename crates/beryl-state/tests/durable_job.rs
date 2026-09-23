@@ -1,3 +1,5 @@
+#[path = "durable_job/child_input_failure.rs"]
+mod child_input_failure;
 mod support;
 
 use beryl_home_store::{CommandOutcome, CursorReadLimits};

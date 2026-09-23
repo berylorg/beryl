@@ -191,6 +191,7 @@ fn encode_failure_kind(kind: HandoffFailureKind) -> u8 {
         HandoffFailureKind::ParentInterrupted => 8,
         HandoffFailureKind::ParentIncomplete => 9,
         HandoffFailureKind::ParentTerminalFailure => 10,
+        HandoffFailureKind::ChildInputPending => 11,
     }
 }
 
@@ -207,6 +208,7 @@ fn decode_failure_kind(tag: u8) -> Result<HandoffFailureKind, CodecError> {
         8 => Ok(HandoffFailureKind::ParentInterrupted),
         9 => Ok(HandoffFailureKind::ParentIncomplete),
         10 => Ok(HandoffFailureKind::ParentTerminalFailure),
+        11 => Ok(HandoffFailureKind::ChildInputPending),
         tag => Err(CodecError::InvalidTag {
             kind: "handoff failure kind",
             tag,

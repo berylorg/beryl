@@ -37,7 +37,7 @@ const STAGES: [Stage; 4] = [
     Stage::ParentActive,
 ];
 
-const FAILURE_KINDS: [HandoffFailureKind; 11] = [
+const FAILURE_KINDS: [HandoffFailureKind; 12] = [
     HandoffFailureKind::RuntimeUnavailable,
     HandoffFailureKind::RootUnavailable,
     HandoffFailureKind::CasUnavailable,
@@ -49,6 +49,7 @@ const FAILURE_KINDS: [HandoffFailureKind; 11] = [
     HandoffFailureKind::ParentInterrupted,
     HandoffFailureKind::ParentIncomplete,
     HandoffFailureKind::ParentTerminalFailure,
+    HandoffFailureKind::ChildInputPending,
 ];
 
 #[test]
@@ -101,7 +102,7 @@ fn routine_reopen_defers_every_dormant_incompatible_persisted_failure_pair_to_sc
         }
     }
 
-    assert_eq!(case, 58);
+    assert_eq!(case, 65);
 }
 
 fn corrupt_home(
@@ -223,6 +224,7 @@ fn compatible(retryable: bool, kind: HandoffFailureKind, stage: Stage) -> bool {
         return false;
     }
     match kind {
+        HandoffFailureKind::ChildInputPending => stage == Stage::WaitingResolvingTurn,
         HandoffFailureKind::CasRejectedBeforeAcceptance => stage == Stage::StartingParent,
         HandoffFailureKind::UnrecoverablePostAppend => {
             matches!(stage, Stage::StartingParent | Stage::ParentActive)
