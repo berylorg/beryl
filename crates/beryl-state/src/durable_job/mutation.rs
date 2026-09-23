@@ -13,7 +13,12 @@ use super::{
     },
 };
 
+mod resolving;
 mod transition;
+pub use resolving::{
+    PreparedResolvingTransition, ResolvingTransition, ResolvingTransitionStatus,
+    ResolvingTransitionWitness,
+};
 
 pub use transition::{
     CompleteResolvingTurn, RecordParentCasAcceptance, RecordRetryableHandoffFailure,

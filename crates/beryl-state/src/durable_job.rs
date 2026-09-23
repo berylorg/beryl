@@ -18,6 +18,8 @@ mod read;
 mod record;
 #[cfg(feature = "test-faults")]
 mod test_support;
+#[cfg(feature = "test-faults")]
+pub use test_support::ResolvingIndexFault;
 mod validate;
 mod value;
 
@@ -27,8 +29,9 @@ use codec::{
     RequestIdempotencyIndexCodec, RequestIndexKey,
 };
 pub use mutation::{
-    AdmitBranchHandoffJob, CompleteResolvingTurn, RecordParentCasAcceptance,
-    RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, RetryBranchHandoff,
+    AdmitBranchHandoffJob, CompleteResolvingTurn, PreparedResolvingTransition,
+    RecordParentCasAcceptance, RecordRetryableHandoffFailure, RecordTerminalHandoffFailure,
+    ResolvingTransition, ResolvingTransitionStatus, ResolvingTransitionWitness, RetryBranchHandoff,
     StartParentHandoff, SucceedBranchHandoff,
 };
 pub use record::{

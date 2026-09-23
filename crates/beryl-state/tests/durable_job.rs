@@ -1,5 +1,8 @@
 #[path = "durable_job/child_input_failure.rs"]
 mod child_input_failure;
+#[cfg(feature = "test-faults")]
+#[path = "durable_job/resolving_outcome.rs"]
+mod resolving_outcome;
 mod support;
 
 use beryl_home_store::{CommandOutcome, CursorReadLimits};

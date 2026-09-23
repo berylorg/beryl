@@ -141,6 +141,8 @@ pub use catalog::{
     CatalogValueError, CatalogWindowClaim, DeleteCatalogClaimedRow, MarkCatalogRowStale,
     PreparedInitialCatalogPublication, PublishCatalogClaim, PublishCatalogRow, ReleaseCatalogClaim,
 };
+#[cfg(feature = "test-faults")]
+pub use durable_job::ResolvingIndexFault;
 pub use durable_job::{
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
     BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
@@ -148,11 +150,12 @@ pub use durable_job::{
     DurableJobMutationError, DurableJobState, DurableJobValueError,
     HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
     LatestBranchHandoffAttempt, ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal,
-    RESOLUTION_TEXT_MAX_BYTES, RESOLUTION_TEXT_MAX_SCALARS, RecordParentCasAcceptance,
-    RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, ResolutionAttemptOrdinal,
-    ResolutionRequestAdmission, ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff,
-    StartParentHandoff, SucceedBranchHandoff, ThreadReuseJobGuard, ThreadReuseJobGuardError,
-    branch_handoff_job_id,
+    PreparedResolvingTransition, RESOLUTION_TEXT_MAX_BYTES, RESOLUTION_TEXT_MAX_SCALARS,
+    RecordParentCasAcceptance, RecordRetryableHandoffFailure, RecordTerminalHandoffFailure,
+    ResolutionAttemptOrdinal, ResolutionRequestAdmission, ResolutionRequestIdentity,
+    ResolutionText, ResolvingTransition, ResolvingTransitionStatus, ResolvingTransitionWitness,
+    RetryBranchHandoff, StartParentHandoff, SucceedBranchHandoff, ThreadReuseJobGuard,
+    ThreadReuseJobGuardError, branch_handoff_job_id,
 };
 pub use runtime_root::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, RootRecord, RootRegistration,

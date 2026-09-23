@@ -10,6 +10,89 @@ use super::{
     },
 };
 
+#[derive(Clone)]
+pub enum ResolvingIndexFault {
+    MissingJob,
+    MissingLive,
+    MissingRequest,
+    MissingAttempt,
+    MissingLatest,
+    LiveCopy(super::BranchHandoffJobRecord),
+}
+
+struct CorruptResolvingIndex {
+    job: super::BranchHandoffJobRecord,
+    fault: ResolvingIndexFault,
+}
+
+impl super::DurableJobState {
+    pub fn corrupt_resolving_index_for_test(
+        &self,
+        revision: beryl_model::DomainRevision,
+        job: super::BranchHandoffJobRecord,
+        fault: ResolvingIndexFault,
+    ) -> beryl_home_store::MutationContribution {
+        self.handle
+            .contribution(revision, CorruptResolvingIndex { job, fault })
+    }
+}
+
+impl DomainMutation<DurableJobDomain> for CorruptResolvingIndex {
+    type Error = DurableJobMutationError;
+    type Prepared = Self;
+    fn prepare(self, _: &DomainReader<'_, DurableJobDomain>) -> Result<Self, Self::Error> {
+        Ok(self)
+    }
+    fn reserve_reconciliation(
+        &self,
+        reservation: &mut ReconciliationReservation<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        use super::codec::*;
+        match self.fault {
+            ResolvingIndexFault::MissingJob => reservation.reserve_records::<JobRecordCodec>(1)?,
+            ResolvingIndexFault::MissingLive | ResolvingIndexFault::LiveCopy(_) => {
+                reservation.reserve_records::<LiveJobIndexCodec>(1)?
+            }
+            ResolvingIndexFault::MissingRequest => {
+                reservation.reserve_records::<RequestIdempotencyIndexCodec>(1)?
+            }
+            ResolvingIndexFault::MissingAttempt => {
+                reservation.reserve_records::<DiscussionAttemptIndexCodec>(1)?
+            }
+            ResolvingIndexFault::MissingLatest => {
+                reservation.reserve_records::<LatestAttemptIndexCodec>(1)?
+            }
+        }
+        Ok(())
+    }
+    fn contribute(
+        prepared: Self,
+        builder: &mut MutationBuilder<'_, DurableJobDomain>,
+    ) -> Result<(), Self::Error> {
+        use super::codec::*;
+        let job = prepared.job;
+        match prepared.fault {
+            ResolvingIndexFault::MissingJob => builder.delete::<JobRecordCodec>(&job.job_id())?,
+            ResolvingIndexFault::MissingLive => {
+                builder.delete::<LiveJobIndexCodec>(&job.job_id())?
+            }
+            ResolvingIndexFault::MissingRequest => builder.delete::<RequestIdempotencyIndexCodec>(
+                &RequestIndexKey::new(job.request().clone()),
+            )?,
+            ResolvingIndexFault::MissingAttempt => builder.delete::<DiscussionAttemptIndexCodec>(
+                &DiscussionAttemptKey::new(job.discussion_thread_id(), job.attempt_ordinal()),
+            )?,
+            ResolvingIndexFault::MissingLatest => {
+                builder.delete::<LatestAttemptIndexCodec>(&job.discussion_thread_id())?
+            }
+            ResolvingIndexFault::LiveCopy(copy) => {
+                builder.put::<LiveJobIndexCodec>(&job.job_id(), &copy)?
+            }
+        }
+        Ok(())
+    }
+}
+
 pub(super) struct CorruptFailureState {
     pub(super) job_id: JobId,
     pub(super) expected_job_revision: JobRevision,

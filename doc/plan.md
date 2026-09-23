@@ -73,20 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 527: Specify Resolving Transition Outcome Closure (finished)
+# Phase 528: Implement Resolving Transition Outcome Closure (finished)
 
-Specified exact five-record preparation authentication and two-record mutation outcome closure,
-original-handle custody, same-home candidate recovery and bounded witness retention. Independent
-readiness review confirmed alignment with the existing State transition mutations.
+Implemented authenticated original-handle preparation and bounded ordinary/candidate two-record
+outcome reads. Ten job tests, app check and independent review passed, covering missing/mixed
+records, stale generation, candidate execution and foreign-home rejection.
 
-# Phase 528: Implement Resolving Transition Outcome Closure (wip)
-
-Implement the opaque State preparation, exact writer recheck and ordinary/candidate outcome reads.
-Verify both dispositions, missing and mixed index records, stale revision/generation, foreign-home
-rejection, immutable identity, bounded recovery and exact old/new outcomes. Run focused job
-regressions and independent review before app integration.
-
-# Phase 526: Compose Child Settlement And Job Transition (pending)
+# Phase 526: Compose Child Settlement And Job Transition (wip)
 
 Compose the typed child proof and exact State transition with generation-qualified operation
 custody and bounded reconciliation. Preserve waiting, atomic gate release on child-input failure,
