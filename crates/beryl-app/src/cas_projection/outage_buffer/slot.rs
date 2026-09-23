@@ -149,6 +149,12 @@ impl OutageObservationSlot {
         self.accepting = false;
     }
 
+    pub(in crate::cas_projection) fn discard_for_retirement(&mut self) -> bool {
+        let lost = self.gap || !matches!(self.observation, Observation::Empty);
+        self.disable();
+        lost
+    }
+
     pub fn flush(&mut self, buffer: &mut OutageBuffer) {
         if matches!(self.observation, Observation::Sealed(..)) {
             let Observation::Sealed(assembly, route) =

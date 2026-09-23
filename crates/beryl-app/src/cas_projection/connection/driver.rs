@@ -1282,9 +1282,19 @@ fn run_driver(
             ) {
                 continue;
             }
-            attachment
-                .persistent_failure
-                .wait_for_change(STREAM_IDLE_POLL_INTERVAL);
+            if attachment.broker.passive_ready() {
+                if backend
+                    .poll_ordered_turn_stream_progress(STREAM_IDLE_POLL_INTERVAL)
+                    .is_err()
+                {
+                    attachment.broker.request_cancel();
+                    break 'driver;
+                }
+            } else {
+                attachment
+                    .persistent_failure
+                    .wait_for_change(STREAM_IDLE_POLL_INTERVAL);
+            }
             continue;
         }
         if context.authority.is_retired() {
@@ -1321,6 +1331,10 @@ fn run_driver(
                 }
                 let progress = backend.poll_ordered_turn_stream_progress(STREAM_IDLE_POLL_INTERVAL);
                 let Ok(poll_permit) = attachment.commands.authorize() else {
+                    if progress.is_err() && attachment.commands.is_persistent_failure_cut() {
+                        attachment.broker.request_cancel();
+                        break 'driver;
+                    }
                     continue;
                 };
                 match progress {

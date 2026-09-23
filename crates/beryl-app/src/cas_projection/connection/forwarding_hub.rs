@@ -17,6 +17,7 @@ pub(super) struct ForwardingAttachmentEndpoint {
 }
 
 struct ForwardingHubState {
+    passive_approval: Option<Arc<super::provider_broker::PassiveApprovalFence>>,
     endpoint: Option<ForwardingAttachmentEndpoint>,
     inert: bool,
 }
@@ -69,6 +70,7 @@ impl ForwardingHub {
         Arc::new(Self {
             authority,
             state: Mutex::new(ForwardingHubState {
+                passive_approval: None,
                 endpoint: None,
                 inert: false,
             }),
@@ -89,6 +91,7 @@ impl ForwardingHub {
         if state.inert || state.endpoint.is_some() {
             return Err(ProjectionCoordinatorError::ProjectionWorkerStopped);
         }
+        state.passive_approval = Some(Arc::clone(&endpoint.attachment.broker.passive_approval));
         state.endpoint = Some(endpoint);
         Ok(())
     }
@@ -268,25 +271,21 @@ impl ForwardingHubAttachmentGuard<'_> {
 }
 
 impl ForwardingHubSink {
-    fn record_thread_closed(
-        &self,
-        thread_id: &CasThreadId,
-    ) -> Result<OrderedTurnStreamCompletion, ()> {
-        self.hub
-            .record_thread_closed(thread_id)
-            .ok()
-            .filter(|outcome| !outcome.connection_retired())
-            .map(|_| OrderedTurnStreamCompletion::Applied)
-            .ok_or(())
-    }
-}
-
-impl OrderedTurnStreamSink for ForwardingHubSink {
-    fn submit(
+    fn submit_inner(
         &mut self,
         operation: OrderedTurnStreamOperation,
     ) -> Result<OrderedTurnStreamCompletion, OrderedTurnStreamSubmitError> {
-        if let OrderedTurnStreamOperation::ThreadClosed(closed) = &operation {
+        let passive = self
+            .hub
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .passive_approval
+            .as_ref()
+            .is_some_and(|fence| fence.observe());
+        if let OrderedTurnStreamOperation::ThreadClosed(closed) = &operation
+            && !passive
+        {
             return self.record_thread_closed(closed.thread_id()).map_err(|()| {
                 OrderedTurnStreamSubmitError::new(
                     operation,
@@ -320,6 +319,77 @@ impl OrderedTurnStreamSink for ForwardingHubSink {
         endpoint.sink.submit(operation)
     }
 
+    fn record_thread_closed(
+        &self,
+        thread_id: &CasThreadId,
+    ) -> Result<OrderedTurnStreamCompletion, ()> {
+        self.hub
+            .record_thread_closed(thread_id)
+            .ok()
+            .filter(|outcome| !outcome.connection_retired())
+            .map(|_| OrderedTurnStreamCompletion::Applied)
+            .ok_or(())
+    }
+}
+
+impl OrderedTurnStreamSink for ForwardingHubSink {
+    fn steering_user_message_capture_mode(
+        &mut self,
+    ) -> Result<beryl_backend::SteeringUserMessageCaptureMode, OrderedTurnStreamSubmitCause> {
+        let mut state = self
+            .hub
+            .state
+            .lock()
+            .map_err(|_| OrderedTurnStreamSubmitCause::Cancelled)?;
+        if state.inert {
+            return Err(OrderedTurnStreamSubmitCause::Cancelled);
+        }
+        let endpoint = state
+            .endpoint
+            .as_mut()
+            .ok_or(OrderedTurnStreamSubmitCause::Cancelled)?;
+        endpoint.sink.steering_user_message_capture_mode()
+    }
+
+    fn submit_unverified_steering_user_message(
+        &mut self,
+        message: beryl_backend::UnverifiedSteeringUserMessage,
+    ) -> Result<(), OrderedTurnStreamSubmitCause> {
+        let mut state = self
+            .hub
+            .state
+            .lock()
+            .map_err(|_| OrderedTurnStreamSubmitCause::Cancelled)?;
+        if state.inert {
+            return Err(OrderedTurnStreamSubmitCause::Cancelled);
+        }
+        let endpoint = state
+            .endpoint
+            .as_mut()
+            .ok_or(OrderedTurnStreamSubmitCause::Cancelled)?;
+        endpoint
+            .sink
+            .submit_unverified_steering_user_message(message)
+    }
+
+    fn submit(
+        &mut self,
+        operation: OrderedTurnStreamOperation,
+    ) -> Result<OrderedTurnStreamCompletion, OrderedTurnStreamSubmitError> {
+        let result = self.submit_inner(operation);
+        if result.is_ok() {
+            return result;
+        }
+        let state = self
+            .hub
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match &state.passive_approval {
+            Some(fence) => fence.dispose(result),
+            None => result,
+        }
+    }
     fn select_steering_user_message(
         &mut self,
         selection: SteeringUserMessageSelection,

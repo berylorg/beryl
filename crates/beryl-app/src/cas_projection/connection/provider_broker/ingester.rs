@@ -59,6 +59,7 @@ mod disposition;
 mod dynamic;
 mod lifecycle;
 mod operations;
+mod passive;
 mod state;
 mod steering_user;
 mod submitted_user;
@@ -226,6 +227,7 @@ pub(in crate::cas_projection::connection) struct PreparedProviderBroker {
 pub(in crate::cas_projection::connection) struct ProviderBroker;
 
 pub(in crate::cas_projection::connection) struct ProviderBrokerControl {
+    pub(in crate::cas_projection::connection) passive_approval: Arc<super::PassiveApprovalFence>,
     pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
     pub(super) home_generation: HomeGeneration,
@@ -237,6 +239,9 @@ pub(in crate::cas_projection::connection) struct ProviderBrokerControl {
     pub(super) commands: LiveCommandAuthorizer,
     pub(super) failure_notification: PersistentFailureNotification,
     cancelled: Arc<AtomicBool>,
+    passive_ready: Arc<AtomicBool>,
+    outage_inventory:
+        Arc<std::sync::OnceLock<Arc<crate::cas_projection::outage_buffer::OutageInventory>>>,
     ack: Arc<AckSlot>,
     routing_failure: Arc<StickyRoutingFailure>,
     approval: Arc<ApprovalInterruptionSlot>,
@@ -287,6 +292,7 @@ pub(in crate::cas_projection::connection) enum ProviderBrokerResponseActivationF
 }
 
 struct Ingester {
+    passive: passive::PassiveIngress,
     home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,
     home_generation: HomeGeneration,

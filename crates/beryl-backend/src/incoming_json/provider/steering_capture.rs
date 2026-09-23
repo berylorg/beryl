@@ -45,7 +45,7 @@ impl<'a> SteeringUserMessageCapture<'a> {
         let selected = match capture.sink.select_steering_user_message(selection) {
             Ok(source) => source,
             Err(error) => {
-                if capture.mode()? == SteeringUserMessageCaptureMode::Passive {
+                if matches!(capture.mode(), Ok(SteeringUserMessageCaptureMode::Passive)) {
                     return Ok(capture);
                 }
                 capture.active = false;

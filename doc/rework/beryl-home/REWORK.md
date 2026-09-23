@@ -460,7 +460,7 @@
 - [x] Accepted the bounded pre-inventory observation slot with connection-only binding, exact qualified loss, conservative unqualified loss and shared payload/route limits; focused verification and independent review passed.
 - [x] Accepted backend passive delayed-echo consumption with explicit unverified metadata, no replay after transition, closed structural validation and unchanged request outcomes; independent review and focused tests passed.
 - [x] Accepted exact unanswered approval disposal for passive capture, with no denial fallback and complete response-capability release; approval/custody tests and independent review passed.
-- [ ] Accept failed-store ingress lifetime before integrating ordinary outage capture.
+- [x] Accepted exact-failure passive ingress, nonwaiting generation-bound inventory handoff, unanswered approval cancellation and loss-preserving retirement; focused transport, custody and shutdown tests and independent review passed.
 - [ ] Connect ordinary store failure to bounded outage capture and failed-service retirement, including pre-route loss, without making buffered content canonical history.
 - [ ] Accept non-GUI fresh same-home recovery components for old-service disposal, candidate convergence and supervisor attachment before branch service implementation.
 - [ ] Gate: verify unavailable-repair convergence, fail-closed successor gating, outage capture and fresh same-home recovery component protocols before branch service implementation, without claiming complete-stack publication.

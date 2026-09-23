@@ -195,3 +195,20 @@ rejection otherwise entered healthy denial/error handling. The accepted completi
 exact request for responder-identity validation and releases both handles without writing a
 response; foreign identity fails without denial fallback. All 28 approval/custody tests, app check
 and independent review passed. Passive ingestion must select this only after exact service failure.
+
+## Passive Transition And Retirement Custody
+
+App integration exposed boundary cases beyond the healthy operation handlers: a cancellation
+rejection could still invoke approval denial, a successful steering mode reply could race store
+failure, and dropping a pre-inventory sealed slot could erase its loss evidence. Exact-generation
+failure observation now fences error-owned approvals through both broker and forwarding disposal.
+Steering replies crossing failure remain nonterminal and recheck passive mode before replay.
+Compact work records qualified loss; an observation spanning failure stays discarded through seal.
+
+Retirement discards unpublished payload even when inventory has become ready. It transfers only
+bounded deduplicated connection-loss identities to pending inventory; count or byte overflow
+permanently rejects capture. This preserves loss after ingress exits without creating another
+payload queue. Cleanup also runs after ingester unwind. Independent review and the app check
+passed, with 157 broker/failure/shutdown regressions, 49 transport/buffer/passive tests, seven final
+passive tests and 98 backend ingress tests. Service inventory publication and ordinary retained
+capture remain the separate mounting boundary.

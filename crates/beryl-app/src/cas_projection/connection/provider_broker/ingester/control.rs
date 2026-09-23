@@ -14,6 +14,7 @@ impl ProviderBrokerControl {
     }
 
     pub(in crate::cas_projection::connection) fn request_cancel(&self) {
+        self.passive_approval.observe();
         self.cancelled.store(true, Ordering::Release);
         #[cfg(feature = "test-faults")]
         {

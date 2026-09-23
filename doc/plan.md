@@ -73,37 +73,31 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 508: Preserve Unanswered Approval Custody During Passive Capture (finished)
+# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (finished)
 
-Accepted exact-request unanswered approval disposal without denial or interruption. Foreign request
-substitution retires the connection without sending a response. All three kinds, handle release
-and continued receive passed 28 approval/custody tests, app compatibility check and independent
-review. Failed-service selection remains below.
+Accepted exact-failure passive ingestion, failed-gate polling, bounded generation-bound inventory,
+unanswered approval disposal across cancellation, and loss-preserving retirement. Independent
+review, app check, 157 broker/failure/shutdown regressions, 49 focused transport/buffer tests,
+seven final passive tests and 98 backend ingress tests passed. Ordinary retention mounting remains
+below; [failure evidence](failures/outage-ingress-readiness.md) records the transition hazards.
 
-# Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (wip)
-
-Implement nonwaiting durable-to-passive ingestion and the driver's failed-gate passive polling using
-the accepted receive/cancellation primitives. Reuse bounded assembly and retention; one slot holds
-an open or sealed unqualified observation while inventory is pending. Verify exact failure fencing,
-reconciliation before acknowledgement, whole-observation loss across failure, slot eviction/gaps,
-no effects or retries, and cancellation/join without provider completion. Use generation-bound
-inventory outcomes and independently review custody before ordinary service mounting.
-The service inventory publisher and shared-retention lifetime are mounted by phase 479. Preserve
-explicit unavailable capture until that composition is present; helper tests alone do not accept
-ordinary outage capture. The [driver-cycle diagnosis](failures/outage-ingress-readiness.md#driver-polling-blocks-the-ingester-only-transition)
-remains evidence for the required nonwaiting protocol, not authority for an ingester inventory wait.
-
-The [passive steering prerequisite](failures/outage-ingress-readiness.md#delayed-steering-echo-still-requires-healthy-replay)
-is implemented first by phase 507. Mount its mode only after exact service failure, consume
-unverified correlation as transient loss evidence, and never promote it to checked-input authority.
-
-# Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
+# Phase 479: Connect Outage Capture To Failed-Service Retirement (wip)
 
 Connect accepted outage-mode ingestion to ordinary store failure, admission fencing and failed
 service disposal. Verify exact active-target custody, failure and overflow, cancellation, and no
 buffer/connection transfer to replacement. The former producer-ordering blocker is resolved by
 the explicit buffering exception; assembly and ingress-mode acceptance remain prerequisites.
 Historical evidence remains in [outage ingress readiness](failures/outage-ingress-readiness.md).
+
+Mount one configured retention owner per exact service/home failure generation and bind prepared
+ingesters before activation. Publish the complete bounded inventory from borrowed worker-backed
+frozen witnesses before consuming batches or installing attachment-dependent obligations; reject
+incomplete or oversized inventories atomically. Dispose retention with failed-service retirement,
+including failure and cancellation paths, without retaining old-home or replacement authority.
+Verify ordinary poll and dispatched-request failure, late routing and partial-observation loss,
+bounded overflow, no response/tool effects, and cancellation/join without provider completion.
+Use independent custody review and ordinary service evidence; component tests alone do not accept
+the production mount.
 
 # Phase 480: Specify Fresh Same-Home Recovery Composition (pending)
 

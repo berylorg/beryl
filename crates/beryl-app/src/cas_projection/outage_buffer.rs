@@ -1,8 +1,12 @@
 mod assembly;
 mod encoding;
+mod inventory;
 mod slot;
 
 pub use assembly::{OutageAssembly, OutageAssemblyError, OutageAssemblyLimits};
+pub(in crate::cas_projection) use inventory::{
+    OutageInventory, OutageInventoryAccess, OutageInventoryError,
+};
 pub use slot::OutageObservationSlot;
 
 use super::ConnectionWorkTargetIdentity;
@@ -59,7 +63,7 @@ pub struct OutageConnectionIdentity {
 }
 
 impl OutageConnectionIdentity {
-    fn record_gap(self, buffer: &mut OutageBuffer) {
+    pub(in crate::cas_projection) fn record_gap(self, buffer: &mut OutageBuffer) {
         for state in &mut buffer.targets {
             if state.target.connection() == self {
                 state.gap = true;
@@ -178,6 +182,32 @@ pub struct OutageBuffer {
 }
 
 impl OutageBuffer {
+    pub(in crate::cas_projection) fn capture_routed(
+        &mut self,
+        connection: OutageConnectionIdentity,
+        thread: &beryl_model::CasThreadId,
+        turn: &CasTurnId,
+        fact: Option<OutageFact<'_>>,
+        gap: bool,
+    ) {
+        let mut matches = self.targets.iter().enumerate().filter(|(_, state)| {
+            state.target.connection() == connection
+                && state.target.identity.cas_thread_id() == thread
+                && &state.target.cas_turn == turn
+        });
+        let index = matches.next().map(|(index, _)| index);
+        if index.is_none() || matches.next().is_some() {
+            connection.record_gap(self);
+            return;
+        }
+        let index = index.expect("unique exact route");
+        self.targets[index].gap |= gap;
+        if let Some(fact) = fact {
+            let target = self.targets[index].target.clone();
+            let _ = self.offer(&target, fact);
+        }
+    }
+
     pub fn new(
         limits: OutageBufferLimits,
         targets: &[OutageTarget],

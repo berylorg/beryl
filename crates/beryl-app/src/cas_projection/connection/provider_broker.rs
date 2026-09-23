@@ -5,6 +5,7 @@ mod channel;
 mod consumer;
 mod ingester;
 mod loss;
+mod passive_approval;
 mod staging;
 mod steering_result;
 mod translation;
@@ -28,5 +29,6 @@ pub(in crate::cas_projection) use steering_result::{
     CheckedSteeringLifecycleWaitError,
 };
 const PROVIDER_PAGE_BYTES: usize = 65_536;
+pub(super) use passive_approval::PassiveApprovalFence;
 const BROKER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(20);
 const PROVIDER_POINT_READ_BYTES: usize = 1_000_000;

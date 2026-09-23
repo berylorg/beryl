@@ -6,8 +6,9 @@ use std::sync::{
 use beryl_backend::{
     CheckedSteeringUserMessage, CheckedSteeringUserMessageSubmitError, OrderedTurnStreamCompletion,
     OrderedTurnStreamOperation, OrderedTurnStreamSink, OrderedTurnStreamSubmitCause,
-    OrderedTurnStreamSubmitError, SteeringUserMessageAbandonReason, SteeringUserMessageSelection,
-    SteeringUserMessageSelectionError, SteeringUserMessageSource,
+    OrderedTurnStreamSubmitError, SteeringUserMessageAbandonReason, SteeringUserMessageCaptureMode,
+    SteeringUserMessageSelection, SteeringUserMessageSelectionError, SteeringUserMessageSource,
+    UnverifiedSteeringUserMessage,
 };
 use beryl_stream::{FixedChannelReceiver, FixedChannelSender, SendError};
 
@@ -20,6 +21,8 @@ pub(super) enum BrokerOperation {
     SteeringSelect(SteeringUserMessageSelection),
     SteeringChecked(CheckedSteeringUserMessage),
     SteeringAbandon(SteeringUserMessageAbandonReason),
+    SteeringMode,
+    SteeringUnverified(UnverifiedSteeringUserMessage),
 }
 
 impl BrokerOperation {
@@ -44,6 +47,8 @@ pub(super) enum BrokerReply {
     SteeringCheckedRejected(CheckedSteeringUserMessage, OrderedTurnStreamSubmitCause),
     SteeringAbandoned,
     SteeringAbandonRejected(OrderedTurnStreamSubmitCause),
+    SteeringMode(Result<SteeringUserMessageCaptureMode, OrderedTurnStreamSubmitCause>),
+    SteeringUnverified(Result<(), OrderedTurnStreamSubmitCause>),
 }
 
 #[derive(Default)]
@@ -142,6 +147,7 @@ impl AckSlot {
 }
 
 pub(super) struct BrokerSink {
+    passive_approval: Option<Arc<super::PassiveApprovalFence>>,
     sender: BrokerSender,
     ack: Arc<AckSlot>,
     cancelled: Arc<AtomicBool>,
@@ -152,54 +158,10 @@ pub(super) struct BrokerSink {
 }
 
 impl BrokerSink {
-    pub(super) const fn new(
-        sender: BrokerSender,
-        ack: Arc<AckSlot>,
-        cancelled: Arc<AtomicBool>,
-        #[cfg(feature = "test-faults")] home_id: beryl_model::BerylHomeId,
-        #[cfg(feature = "test-faults")] test_metrics: Arc<
-            crate::cas_projection::test_faults::ProviderBrokerTestMetrics,
-        >,
-    ) -> Self {
-        Self {
-            sender,
-            ack,
-            cancelled,
-            #[cfg(feature = "test-faults")]
-            test_home_id: home_id,
-            #[cfg(feature = "test-faults")]
-            test_metrics,
-        }
+    pub(super) fn set_passive_approval(&mut self, fence: Arc<super::PassiveApprovalFence>) {
+        self.passive_approval = Some(fence);
     }
-
-    fn exchange_special(
-        &mut self,
-        operation: BrokerOperation,
-    ) -> Result<BrokerReply, (BrokerOperation, OrderedTurnStreamSubmitCause)> {
-        if self.cancelled.load(Ordering::Acquire) || !self.ack.prepare() {
-            return Err((operation, OrderedTurnStreamSubmitCause::Cancelled));
-        }
-        match self.sender.send_timeout(operation, BROKER_POLL_INTERVAL) {
-            Ok(()) => {}
-            Err(SendError::Full(operation)) => {
-                return Err((operation, OrderedTurnStreamSubmitCause::CapacityFull));
-            }
-            Err(SendError::Timeout(operation)) => {
-                return Err((operation, OrderedTurnStreamSubmitCause::Timeout));
-            }
-            Err(SendError::Closed(operation)) => {
-                return Err((operation, OrderedTurnStreamSubmitCause::ReceiverLost));
-            }
-        }
-        self.ack.wait(&self.cancelled).map_or_else(
-            || panic!("provider broker closed without returning the specialized operation"),
-            Ok,
-        )
-    }
-}
-
-impl OrderedTurnStreamSink for BrokerSink {
-    fn submit(
+    fn submit_inner(
         &mut self,
         operation: OrderedTurnStreamOperation,
     ) -> Result<OrderedTurnStreamCompletion, OrderedTurnStreamSubmitError> {
@@ -294,6 +256,86 @@ impl OrderedTurnStreamSink for BrokerSink {
                 // prevents this branch.
                 panic!("provider broker closed without returning the submitted operation")
             }
+        }
+    }
+
+    pub(super) const fn new(
+        sender: BrokerSender,
+        ack: Arc<AckSlot>,
+        cancelled: Arc<AtomicBool>,
+        #[cfg(feature = "test-faults")] home_id: beryl_model::BerylHomeId,
+        #[cfg(feature = "test-faults")] test_metrics: Arc<
+            crate::cas_projection::test_faults::ProviderBrokerTestMetrics,
+        >,
+    ) -> Self {
+        Self {
+            passive_approval: None,
+            sender,
+            ack,
+            cancelled,
+            #[cfg(feature = "test-faults")]
+            test_home_id: home_id,
+            #[cfg(feature = "test-faults")]
+            test_metrics,
+        }
+    }
+
+    fn exchange_special(
+        &mut self,
+        operation: BrokerOperation,
+    ) -> Result<BrokerReply, (BrokerOperation, OrderedTurnStreamSubmitCause)> {
+        if self.cancelled.load(Ordering::Acquire) || !self.ack.prepare() {
+            return Err((operation, OrderedTurnStreamSubmitCause::Cancelled));
+        }
+        match self.sender.send_timeout(operation, BROKER_POLL_INTERVAL) {
+            Ok(()) => {}
+            Err(SendError::Full(operation)) => {
+                return Err((operation, OrderedTurnStreamSubmitCause::CapacityFull));
+            }
+            Err(SendError::Timeout(operation)) => {
+                return Err((operation, OrderedTurnStreamSubmitCause::Timeout));
+            }
+            Err(SendError::Closed(operation)) => {
+                return Err((operation, OrderedTurnStreamSubmitCause::ReceiverLost));
+            }
+        }
+        self.ack.wait(&self.cancelled).map_or_else(
+            || panic!("provider broker closed without returning the specialized operation"),
+            Ok,
+        )
+    }
+}
+
+impl OrderedTurnStreamSink for BrokerSink {
+    fn steering_user_message_capture_mode(
+        &mut self,
+    ) -> Result<SteeringUserMessageCaptureMode, OrderedTurnStreamSubmitCause> {
+        match self.exchange_special(BrokerOperation::SteeringMode) {
+            Ok(BrokerReply::SteeringMode(result)) => result,
+            Err((_, cause)) => Err(cause),
+            _ => panic!("steering mode received a mismatched acknowledgement"),
+        }
+    }
+
+    fn submit_unverified_steering_user_message(
+        &mut self,
+        message: UnverifiedSteeringUserMessage,
+    ) -> Result<(), OrderedTurnStreamSubmitCause> {
+        match self.exchange_special(BrokerOperation::SteeringUnverified(message)) {
+            Ok(BrokerReply::SteeringUnverified(result)) => result,
+            Err((_, cause)) => Err(cause),
+            _ => panic!("unverified steering received a mismatched acknowledgement"),
+        }
+    }
+
+    fn submit(
+        &mut self,
+        operation: OrderedTurnStreamOperation,
+    ) -> Result<OrderedTurnStreamCompletion, OrderedTurnStreamSubmitError> {
+        let result = self.submit_inner(operation);
+        match &self.passive_approval {
+            Some(fence) => fence.dispose(result),
+            None => result,
         }
     }
 

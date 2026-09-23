@@ -30,6 +30,8 @@ mod approval_disposal {
 }
 
 struct BrokerBuildFixture {
+    #[cfg(feature = "test-faults")]
+    faults: beryl_home_store::test_faults::FaultController,
     authority: Arc<ConnectionRegistryAuthority>,
     router: Arc<EventRouter>,
     stop: Arc<StopCoordinator>,
@@ -47,6 +49,15 @@ struct BrokerBuildFixture {
 impl BrokerBuildFixture {
     fn new(seed: u8) -> Self {
         let directory = tempfile::tempdir().unwrap();
+        #[cfg(feature = "test-faults")]
+        let faults = beryl_home_store::test_faults::FaultController::new();
+        #[cfg(feature = "test-faults")]
+        let mut home = beryl_home_store::HomeOpenCandidate::open_with_faults(
+            HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+            faults.clone(),
+        )
+        .unwrap();
+        #[cfg(not(feature = "test-faults"))]
         let mut home = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
@@ -109,6 +120,8 @@ impl BrokerBuildFixture {
             .unwrap(),
         );
         Self {
+            #[cfg(feature = "test-faults")]
+            faults,
             authority,
             router,
             stop,
@@ -174,6 +187,14 @@ impl BrokerBuildFixture {
         )
         .unwrap()
     }
+}
+
+#[cfg(feature = "test-faults")]
+mod passive {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/provider_broker_ingester/passive.rs"
+    ));
 }
 
 impl Drop for BrokerBuildFixture {

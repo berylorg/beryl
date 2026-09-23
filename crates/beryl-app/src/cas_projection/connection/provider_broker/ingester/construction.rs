@@ -268,6 +268,8 @@ impl ProviderBroker {
             }
         };
         let cancelled = Arc::new(AtomicBool::new(false));
+        let passive_ready = Arc::new(AtomicBool::new(false));
+        let outage_inventory = Arc::new(std::sync::OnceLock::new());
         let ack = Arc::new(AckSlot::new());
         let routing_failure = Arc::new(StickyRoutingFailure::default());
         let approval = Arc::new(ApprovalInterruptionSlot::new());
@@ -275,7 +277,12 @@ impl ProviderBroker {
         #[cfg(feature = "test-faults")]
         let test_metrics =
             Arc::new(crate::cas_projection::test_faults::ProviderBrokerTestMetrics::default());
-        let sink = BrokerSink::new(
+        let passive_approval = Arc::new(super::super::PassiveApprovalFence::new(
+            &home,
+            home_id,
+            home_generation,
+        ));
+        let mut sink = BrokerSink::new(
             sender,
             Arc::clone(&ack),
             Arc::clone(&cancelled),
@@ -285,6 +292,9 @@ impl ProviderBroker {
             Arc::clone(&test_metrics),
         );
         let control = Arc::new(ProviderBrokerControl {
+            passive_approval: Arc::clone(&passive_approval),
+            passive_ready: Arc::clone(&passive_ready),
+            outage_inventory: Arc::clone(&outage_inventory),
             home: Arc::clone(&home),
             home_id,
             home_generation,
@@ -304,8 +314,19 @@ impl ProviderBroker {
             #[cfg(feature = "test-faults")]
             test_metrics: Arc::clone(&test_metrics),
         });
+        sink.set_passive_approval(passive_approval);
         let launch = Arc::new(ProviderBrokerLaunchEscrow {
             ingester: Mutex::new(Some(Ingester {
+                passive: super::passive::PassiveIngress::new(
+                    crate::cas_projection::persistent_failure::PersistentFailureCutIdentity::new(
+                        home_id, home_generation, commands.service_generation(),
+                        crate::cas_projection::persistent_failure::PersistentFailureGeneration::FIRST,
+                    ),
+                    authority.outage_identity(home_generation.get()),
+                    outage_inventory,
+                    passive_ready,
+                    Arc::clone(&cancelled),
+                ),
                 home: Arc::clone(&home),
                 home_id,
                 home_generation,

@@ -14,6 +14,20 @@ pub(in crate::cas_projection) struct ConnectionRegistryAuthority {
     retirement_changed: std::sync::Condvar,
 }
 
+impl ConnectionRegistryAuthority {
+    pub(super) fn outage_identity(
+        &self,
+        home_generation: u64,
+    ) -> super::super::outage_buffer::OutageConnectionIdentity {
+        super::super::outage_buffer::OutageConnectionIdentity {
+            runtime: self.runtime_id,
+            process: self.process_generation,
+            connection: self.generation.get(),
+            home_generation,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(in crate::cas_projection) struct ConnectionAuthorityState {
     session_owner_live: bool,

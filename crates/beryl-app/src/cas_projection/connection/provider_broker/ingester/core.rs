@@ -6,6 +6,7 @@ impl Ingester {
         let service_generation = self.commands.service_generation();
         let home_generation = self.home_generation;
         let clean = catch_unwind(AssertUnwindSafe(|| self.run_loop())).is_ok();
+        self.passive.finish();
         self.approval.close();
         // The sole producer has returned or unwound, so no reserved installation can follow.
         self.approval.cancel_reservation();
@@ -36,11 +37,55 @@ impl Ingester {
             "injected ingester execution panic"
         );
         let mut persistent_failure = false;
-        while let Some(operation) = receive_next(&self.receiver, &self.cancelled) {
+        loop {
+            if !self.passive.is_active() && self.passive_failure_observed() {
+                persistent_failure = true;
+                self.enter_passive();
+            }
+            if self.passive.is_active() && !self.cancelled.load(Ordering::Acquire) {
+                self.passive.refresh();
+            }
+            let operation = match self
+                .receiver
+                .receive_timeout(super::super::BROKER_POLL_INTERVAL)
+            {
+                Ok(Some(operation)) => operation,
+                Ok(None) if !self.cancelled.load(Ordering::Acquire) => continue,
+                Ok(None) | Err(beryl_stream::ReceiveError::Closed) => break,
+                Err(beryl_stream::ReceiveError::Empty) => {
+                    unreachable!("blocking receive never reports empty")
+                }
+            };
+            if self.cancelled.load(Ordering::Acquire) {
+                let (reply, _) = self.apply(operation);
+                self.ack.complete_terminal(reply);
+                break;
+            }
+            if self.passive.is_active() {
+                let (reply, terminal) = self.passive_reply(operation);
+                if terminal {
+                    self.ack.complete_terminal(reply);
+                    self.cancelled.store(true, Ordering::Release);
+                    break;
+                }
+                self.ack.complete(reply);
+                continue;
+            }
             let command = match self.commands.authorize() {
                 Ok(command) => command,
                 Err(_) => {
-                    persistent_failure = self.commands.failure_observed();
+                    persistent_failure = self.passive_failure_observed();
+                    if persistent_failure {
+                        self.enter_passive();
+                        let (reply, terminal) = self.passive_reply(operation);
+                        if !terminal {
+                            self.ack.complete(reply);
+                            continue;
+                        }
+                        self.ack.complete_terminal(reply);
+                        self.cancelled.store(true, Ordering::Release);
+                        break;
+                    }
                     self.cancelled.store(true, Ordering::Release);
                     let (reply, _) = self.apply(operation);
                     self.ack.complete_terminal(reply);
@@ -48,8 +93,29 @@ impl Ingester {
                 }
             };
             self.command = Some(command);
+            self.passive.observe_durable(&operation);
             let (reply, terminal) = self.apply(operation);
-            persistent_failure = self.exact_persistent_failure();
+            persistent_failure = self.passive_failure_observed();
+            if persistent_failure {
+                if self.authority_lost {
+                    self.command
+                        .take()
+                        .expect("authority loss retains its outer live command")
+                        .release_after_authority_loss();
+                } else {
+                    drop(self.command.take());
+                }
+                self.enter_passive();
+                let (reply, fatal) = self.passive_completion(reply);
+                if fatal {
+                    self.ack.complete_terminal(reply);
+                    self.cancelled.store(true, Ordering::Release);
+                    break;
+                }
+                self.ack.complete(reply);
+                continue;
+            }
+            self.passive.clear_completed_route();
             if self.authority_lost {
                 self.command
                     .take()
@@ -101,10 +167,26 @@ impl Ingester {
                 BrokerOperation::SteeringAbandon(_) => {
                     BrokerReply::SteeringAbandonRejected(OrderedTurnStreamSubmitCause::Cancelled)
                 }
+                BrokerOperation::SteeringMode => {
+                    BrokerReply::SteeringMode(Err(OrderedTurnStreamSubmitCause::Cancelled))
+                }
+                BrokerOperation::SteeringUnverified(_) => {
+                    BrokerReply::SteeringUnverified(Err(OrderedTurnStreamSubmitCause::Cancelled))
+                }
             };
             return (reply, true);
         }
         match operation {
+            BrokerOperation::SteeringMode => (
+                BrokerReply::SteeringMode(Ok(
+                    beryl_backend::SteeringUserMessageCaptureMode::Verify,
+                )),
+                false,
+            ),
+            BrokerOperation::SteeringUnverified(_) => (
+                BrokerReply::SteeringUnverified(Err(OrderedTurnStreamSubmitCause::Unavailable)),
+                true,
+            ),
             BrokerOperation::Ordered(operation) => match operation {
                 OrderedTurnStreamOperation::ThreadStatusChanged(status) => {
                     self.thread_status_changed(status)
