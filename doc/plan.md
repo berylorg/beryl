@@ -69,23 +69,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 498: Reconcile Continued CAS Use And Resume The Rework (finished)
+# Phase 499: Implement Unpublished Outage Observation Assembly (finished)
 
-Reconciled continued CAS use, the necessary typed buffering exception, rework resumption and
-replacement-runtime deferral across root/system/package authority and tracker. Independent semantic
-review accepted custody, loss attribution and retirement contracts with no blocking findings;
-scoped whitespace checks passed and the documentation index is current. Runtime evidence remains
-with the following implementation phases.
-
-# Phase 499: Implement Unpublished Outage Observation Assembly (pending)
-
-Implement the private app-owned assembler derived from the
-[app capture contract](../crates/beryl-app/doc/design-live-capture.md#outage-buffer). Keep it separate
-from the existing qualified-fact retention component. Verify fragmented fields and closure,
-identity/index/offset mismatch, late routing, missing/unqualified routes, overflow without retained
-suffix publication, and release after seal, failure or abandonment. Prove fixed byte/entry bounds
-and exact target qualification with focused integration tests and independent semantic review.
-This component acceptance does not mount outage mode or change ordinary store-failure behavior.
+Accepted the private typed assembler with exact late routing, fixed local bounds, loss attribution,
+retention priorities and consuming release. Independent semantic review passed after correcting
+reasoning-control priority; all 27 focused `outage_assembly` and `outage_buffer` tests passed with
+`cargo +stable --config .cargo/local.toml nextest run -p beryl-app --features test-faults --test outage_assembly --test outage_buffer -j 1`.
+Formatting and scoped whitespace checks passed. Live failed-store ingestion remains separate.
 
 # Phase 500: Implement Failed-Store Ingress Mode And Retirement Cut (pending)
 
@@ -95,6 +85,9 @@ failure, indeterminate handoff before acknowledgement, no durable retry or new e
 missing-route conservative loss, and retirement without waiting for terminal evidence. Reuse the
 accepted assembler and retention component; independently review custody and lifecycle cuts before
 integration into ordinary service failure.
+Resume from the existing `Ingester::run_loop` terminal-on-store-failure cut and accepted
+`outage_buffer::OutageAssembly`. Seal only at the validated backend provider seal; malformed input
+and transport loss must abandon. Preserve the existing registry handoff before any acknowledgement.
 
 # Phase 479: Connect Outage Capture To Failed-Service Retirement (pending)
 

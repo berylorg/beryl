@@ -16,6 +16,9 @@ and bounded repair coordination.
   It retains typed fields and controls, never raw operations, response capabilities or generic
   JSON. One observation per connection has explicit total-byte, per-field-byte and entry limits;
   admitted connections bound aggregate usage. Healthy capture continues using Syndic staging.
+- The assembler consumes the backend's validated typed grammar; its caller seals only on the
+  backend's completed provider seal and abandons on malformed input or transport loss. Backend
+  schema/container validation remains authoritative rather than being duplicated in the app.
 - Begin fixes the observation schema. Fragments must agree on item, kind, field, ordinal,
   protocol indices and contiguous offset; a field is eligible only after its explicit closure.
   Seal validates the trailing route against the connection's frozen outage targets before

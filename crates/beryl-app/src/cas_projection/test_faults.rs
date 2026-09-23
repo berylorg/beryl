@@ -14,11 +14,29 @@ mod stop_handoff;
 mod target;
 mod terminal_history;
 pub use super::outage_buffer::{
-    OutageBuffer, OutageBufferError, OutageBufferLimits, OutageFact, OutageLoss, OutagePriority,
-    OutageTarget, OutageTextKind,
+    OutageAssembly, OutageAssemblyError, OutageAssemblyLimits, OutageBuffer, OutageBufferError,
+    OutageBufferLimits, OutageFact, OutageLoss, OutagePriority, OutageTarget, OutageTextKind,
 };
 
 pub fn outage_test_target(seed: u8, registration_serial: u64) -> OutageTarget {
+    outage_test_connection_target(seed, registration_serial, seed)
+}
+
+pub fn outage_test_connection_target(
+    seed: u8,
+    registration_serial: u64,
+    connection_seed: u8,
+) -> OutageTarget {
+    outage_test_routed_target(seed, registration_serial, connection_seed, seed, 1)
+}
+
+pub fn outage_test_routed_target(
+    seed: u8,
+    registration_serial: u64,
+    connection_seed: u8,
+    route_seed: u8,
+    home_generation: u64,
+) -> OutageTarget {
     use beryl_model::{
         CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasProcessGeneration, CasThreadId,
         CasTurnId, RuntimeId, SyndicThreadId, SyndicTurnId,
@@ -26,20 +44,20 @@ pub fn outage_test_target(seed: u8, registration_serial: u64) -> OutageTarget {
     let process_generation = CasProcessGeneration::new(1).unwrap();
     OutageTarget::new(
         super::ConnectionWorkTargetIdentity {
-            runtime_id: RuntimeId::from_bytes([seed; 16]),
+            runtime_id: RuntimeId::from_bytes([connection_seed; 16]),
             process_generation,
             connection_generation: 1,
             registration_serial,
             thread_id: SyndicThreadId::from_bytes([seed; 16]),
-            cas_thread_id: CasThreadId::new(format!("cas-thread-{seed}")).unwrap(),
+            cas_thread_id: CasThreadId::new(format!("cas-thread-{route_seed}")).unwrap(),
             loaded_generation: CasLoadedSessionGeneration::new(
                 process_generation,
                 CasLoadedThreadGeneration::new(1).unwrap(),
             ),
-            home_generation: 1,
+            home_generation,
         },
         SyndicTurnId::from_bytes([seed; 16]),
-        CasTurnId::new(format!("cas-turn-{seed}")).unwrap(),
+        CasTurnId::new(format!("cas-turn-{route_seed}")).unwrap(),
     )
 }
 pub use super::service::GracefulShutdownProbe;

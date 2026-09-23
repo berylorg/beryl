@@ -28,21 +28,22 @@ the route arrives. Keeping the existing terminal failure acknowledgement also pr
 outage capture. A bounded normalizer and capture lifetime are missing prerequisites, rather than
 ordinary wiring. This does not establish that bounded outage capture is impossible.
 
-## Required Resolution
+## Accepted Resolution
 
-Specify ownership and aggregate limits for unpublished observations before route validation, the
-loss policy when a route never arrives, and the bounded capture-to-retirement cut. Define how that
-capture proceeds behind the durable admission fence without restoring durable command authority.
-Then derive and accept the missing component separately before returning to phase 479.
-
-One bounded unpublished observation scratch owner is a candidate for review, not an accepted
-design. Do not guess a target, retain raw operations and their capabilities, bypass home
-reconciliation custody, or transfer outage facts to replacement. The existing
-[durable witness decision](repair-outage-witness-custody.md#accepted-resolution) remains unchanged.
-
-The Operator subsequently directed checking current CAS before proposing buffering. The
+The Operator directed checking current CAS before proposing buffering. The
 [0.154.0 release-source investigation](../memory/github.com/openai/codex/commit/6b9826e3aa83b1a5947db50f4332cb9c65f1b340/lifecycle-route-wire-order.md)
 confirms lifecycle item-before-route serialization. Decoder reordering cannot obtain unread
-identities. The scratch-owner recommendation is withdrawn pending resolution of that producer
-constraint; implementation is stopped as instructed. Text deltas use a different, route-first
-shape and do not establish lifecycle readiness.
+identities. Text deltas use a different, route-first shape and do not establish lifecycle readiness.
+
+On 2026-09-23 the Operator selected continued CAS use, authorized necessary ordering-related
+buffering, and resumed the rework; CAS replacement is deferred until rework completion. The
+[CAS-live system](../systems/cas-live-syndic-transcript/design.md#durable-store-outage-buffer) and
+[app capture contract](../../crates/beryl-app/doc/design-live-capture.md#outage-buffer) now define
+bounded unpublished assembly, exact or conservative connection-scoped loss attribution, passive
+outage ingestion, and full disposal before replacement. Healthy capture keeps Syndic staging.
+The [durable witness decision](repair-outage-witness-custody.md#accepted-resolution) remains unchanged.
+
+Assembly and the failed-store ingestion mode require separate acceptance before ordinary outage
+integration. Buffered data cannot guess a target, retain request capabilities, bypass reconciliation
+custody, become canonical history, or transfer to a replacement service. The remaining risk is
+implementation of those transition and disposal cuts, not a requirement to fix CAS producer order.

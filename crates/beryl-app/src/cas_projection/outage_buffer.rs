@@ -1,4 +1,7 @@
+mod assembly;
 mod encoding;
+
+pub use assembly::{OutageAssembly, OutageAssemblyError, OutageAssemblyLimits};
 
 use super::ConnectionWorkTargetIdentity;
 use beryl_backend::{
@@ -49,6 +52,9 @@ pub enum OutagePriority {
 
 #[derive(Clone, Copy, Debug)]
 pub enum OutageTextKind {
+    IdentityCorrelation,
+    UserCorrelation,
+    MediaHandoff,
     AssistantFinal,
     TranscriptNarrative,
     Operational,
@@ -95,6 +101,9 @@ impl OutageFact<'_> {
             Self::Control { priority, .. } => priority,
             Self::Terminal(_) => OutagePriority::Terminal,
             Self::CompleteField { kind, .. } => match kind {
+                OutageTextKind::IdentityCorrelation => OutagePriority::IdentityCorrelation,
+                OutageTextKind::UserCorrelation => OutagePriority::UserCorrelation,
+                OutageTextKind::MediaHandoff => OutagePriority::MediaHandoff,
                 OutageTextKind::AssistantFinal => OutagePriority::AssistantFinal,
                 OutageTextKind::TranscriptNarrative => OutagePriority::TranscriptNarrative,
                 OutageTextKind::Operational => OutagePriority::Operational,
