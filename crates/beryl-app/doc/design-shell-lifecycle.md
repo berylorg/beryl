@@ -177,6 +177,13 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Same-Home Replacement Contribution
 
+- The process graph owns one durable branch-handoff coordinator with the lifecycle and bounded
+  scan policy in the [handoff system](../../../doc/systems/branch-discussion-handoff/design.md).
+  Its private preparation follows CAS-live candidate convergence and uses fresh typed State and
+  Syndic participants. Ordinary job scanning and exact execution admission remain fenced until
+  whole-graph publication. Graph retirement joins its scanning and admitted work; no branch worker,
+  page, queue, request response owner or reconciliation descriptor transfers to a replacement.
+
 - `beryl-app` contributes one complete unpublished app service graph to the process-wide same-home
   replacement. Before candidate construction, the old graph fences admission and disposes its
   connections, brokers, routers, schedulers, projections, leases, workers, custody, subscriptions,

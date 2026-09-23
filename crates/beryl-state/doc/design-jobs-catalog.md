@@ -29,10 +29,19 @@ durable job records and transitions plus compact catalog schema, normalization, 
   `parent_active`; interruption, incomplete termination, and terminal failure are terminal only at
   `parent_active`.
 - One shared valid state/transition matrix governs decode, mutation admission, retryability,
-  checkpoint eligibility, and bounded recovery reads. Resolution text is at most 64 KiB and failure
-  detail at most 2 KiB; failure kind must agree with retryability and retained checkpoint. Separate
+  checkpoint eligibility, and bounded recovery reads. Resolution text is at most 65,536 Unicode
+  scalar values and 262,144 UTF-8 bytes; failure detail is at most 2 KiB. Failure kind must agree
+  with retryability and retained checkpoint. Separate
   typed families hold records, live jobs, request admissions, ordered attempts, and latest-attempt
   pointers; bounded validation proves their two-way agreement.
+- Encoded job values have a fixed 320 KiB ceiling covering the complete resolution and bounded
+  identity, state and failure metadata. Configuration validation accounts for the encoded key as
+  well when requiring a page capable of holding a largest valid record; there is no oversized-row
+  exception. Mutation, decode, ordinary reads and candidate reads share these limits.
+- Candidate point and live-index reads use explicit home-candidate access and reacquired domain
+  handles. They preserve ordinary revision checks, exclusive key continuation, independent item
+  and encoded-byte limits, and stale-generation rejection. They do not publish ordinary access or
+  decide scheduling, parent delivery, discussion gating or archive policy.
 
 ## Compact catalog
 

@@ -102,7 +102,9 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - The exact failure disposition and checkpoint matrix is one durable schema invariant shared by transition admission and record decoding. Ordinary registration, verification, and recovery reject any persisted pair outside it rather than interpreting the evidence at a different stage.
 - The handoff composer gate exists exactly while the latest attempt is live. A retryable failure retains that gate and its immutable job; a transition to `terminal_failed` removes the gate in the same durable state change.
 - After tool admission, the job waits until the resolving child CAS turn is no longer active and its tool call plus resolution payload are durable. Terminal success, interruption, or explicit incomplete termination may satisfy this `waiting_resolving_turn` condition because accepted intent is already immutable; it does not remove the handoff composer gate.
-- `waiting_parent` preserves existing parent accepted-input order. The handoff is placed after all parent inputs durably admitted before the job's queue ordinal.
+- `waiting_parent` preserves existing parent accepted-input order. The handoff follows every
+  parent input through the job's recorded accepted-input frontier, inclusive, and preserves later
+  input already accepted before handoff admission through the normal revisioned admission path.
 - Parent active turn, compaction, replacement, rebind, or another same-thread operation keeps the job waiting.
 - Runtime/root/CAS unavailability or delivery failure proven before dispatch moves the job to `retryable_failed` without changing the discussion archive state or admitting another attempt.
 - Retrying `retryable_failed` resumes only that exact job and any exact parent input already admitted for it. It cannot change the intent payload, allocate another attempt, or append a duplicate parent turn.
@@ -143,6 +145,20 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 
 ## Restart Recovery
 
+- One process-owned coordinator belongs to the exact home and app service generation. It composes
+  typed Syndic and Beryl-state participants through the home writer; windows and tool response
+  owners neither own jobs nor retain their reconciliation descriptors. Disposal fences admission,
+  cancels scanning and joins admitted workers before releasing the service. Replacement reconstructs
+  it from durable facts using fresh handles.
+- Initial-open and same-home recovery candidates use the same sequential durable convergence
+  algorithm through explicit candidate access, after CAS-live convergence has settled available
+  dispatch and terminal evidence. Candidate convergence performs no CAS request and admits no
+  ordinary ready work. Waiting jobs may remain durable at publication; a backlog larger than the
+  ready queue cannot prevent startup merely because ordinary workers are still fenced.
+- After complete graph publication, a fresh bounded live-index scan admits ordinary work. Candidate
+  convergence does not transfer a retained job list, cursor, response owner or execution capability
+  into that scan. The existing complete-graph publication fence controls worker release.
+
 - Startup validates exact positive `handoff_recovery_page_items`,
   `handoff_recovery_page_encoded_bytes`, `handoff_job_record_encoded_bytes`,
   `handoff_reconcile_slots`, and `handoff_ready_job_items` configuration before scanning. It
@@ -155,8 +171,9 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   idempotency but are never scheduled as live work.
 - The scanner retains at most one cursor page, its continuation key and store revision, one current
   job identity/checkpoint, and aggregate progress counters. It never builds a live-job collection
-  or parent-to-job map. Reconciliation admission pauses when either the ready-job queue reaches
-  `handoff_ready_job_items` or all `handoff_reconcile_slots` are occupied.
+  or parent-to-job map. Ordinary scheduling admission pauses when either the ready-job queue reaches
+  `handoff_ready_job_items` or all `handoff_reconcile_slots` are occupied. Candidate convergence
+  processes one job at a time without populating that queue.
 - Each decoded job record is released after reconciliation or bounded scheduler admission, and the
   page plus its decoded-byte accounting is released before the next cursor request. Cancellation,
   store invalidation, and startup failure release the current page, queued task ownership, and
@@ -169,6 +186,52 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   ready-job capacities, are keyed by exact job id, release their slot and queue ownership on every
   terminal, cancellation, or supersession path, and wake only for relevant durable, explicit-retry,
   or runtime state changes.
+
+## Coordination Participants
+
+- The ordinary dispatcher supplies a branch-specific context containing its exact home/service
+  generation and Syndic thread/turn plus the broker-validated CAS thread, turn and tool-call
+  identity. It derives this context before consuming the routed call and preserves the single
+  response owner. The model payload supplies no correlation identity. Admission revalidates the
+  current durable binding and resolving turn; copied correlation alone grants no mutation right.
+- Beryl-state owns the immutable admitted intent within the job, exact request index, ordered
+  attempts and revisioned job transitions. Syndic owns the discussion's revisioned handoff gate
+  and the generated parent input's immutable provenance. Admission composes both typed mutations
+  in one command; a job record alone cannot close discussion input. Every ordinary discussion
+  mutation that the feature forbids while resolution is pending checks that same durable gate.
+- The stored parent queue ordinal records the parent's accepted-input high-water mark observed
+  under the resolution-admission command's exact parent gate revision. It is an ordering frontier,
+  not an accepted-input reservation. Parent handoff waits for an idle eligible parent with no live
+  earlier accepted input, and normal admission also preserves any later input already accepted
+  before handoff admission. There is no priority bypass, speculative parent turn or separate
+  volatile parent queue. Multiple jobs for one parent contend through ordinary revisioned writer
+  admission; live-index key order does not become accepted-input order.
+- Parent handoff preparation preserves the parent's editable draft. It constructs bounded sealed
+  visible content through the normal content boundary and contributes a generated accepted input,
+  its submitted turn and exact typed provenance together with `starting_parent` in one command.
+  A failed preparation grants no parent input identity. A committed input is permanent even if
+  subsequent dispatch fails. Exact operation custody covers all participants and releases unused
+  unpublished preparation resources without rolling back committed input.
+- Parent execution uses the ordinary exclusive projection, dispatch provenance and turn lifecycle.
+  The handoff coordinator observes exact durable outcomes and never implements an alternate CAS
+  sender. Unknown dispatch remains fenced until the CAS-live owner settles it. Job transition and
+  discussion gate release or archive compose atomically; unresolved command custody suppresses
+  both tool success and dependent scheduling.
+- The runtime queue retains only bounded exact job identities and observed revisions. A worker
+  rereads current typed state before admission, releases its payload and slot when the job must
+  wait, and relies on relevant durable/runtime wakes. Bounded duplicate suppression covers only
+  queued and running identities. A coalesced rescan request, not one retained wake per durable job,
+  handles changes while scanning. Capacity release resumes a paused scan; waiting state alone does
+  not create a polling or automatic retry loop.
+- A processed live-index key is the continuation after the coordinator's own mutation. Before
+  reusing an unprocessed page, the scanner checks its revision and drops a stale page. Relevant
+  changes behind the cursor request another bounded pass; no scan accumulates a home-wide job set.
+- Typed point and live-index reads support both ordinary home access and explicit unpublished
+  candidate access with identical validation and byte accounting. Candidate access does not expose
+  a healthy home or bypass stale-handle checks. Record limits accommodate the full tool contract:
+  at most 65,536 scalar values and 262,144 UTF-8 bytes of exact resolution, plus bounded metadata.
+  Configuration must admit a largest valid record within a page; lowering a transport/page tuning
+  value cannot silently redefine the product's resolution limit.
 
 # Engineering Rigor
 

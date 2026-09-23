@@ -471,6 +471,11 @@
 
 ## Checkpoint 6: Implement Branch Discussion And Resolution Handoff
 
+- [x] Specified process-owned handoff coordination, candidate/runtime scan separation, exact
+  branch correlation, bounded job reads and Unicode payload limits, parent ordering frontier and
+  transition custody. Independent readiness review accepted correlation and candidate-read
+  prerequisites; concrete atomic participants remain separate before coordinator implementation.
+
 - [ ] Accept non-GUI handoff coordination after the recovery service gate and before complete graph publication, without accepting branch GUI mounting.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without

@@ -81,6 +81,10 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 - Lifecycle-yield, branch-resolution, and theme tools keep separate feature schemas and
   authorization. Unknown tool, invalid envelope, schema failure, cancellation, loss, and handler
   failure produce one typed response or connection failure under exact dispatch state.
+- Branch dispatch preserves the validated CAS thread/turn/call identity in a distinct typed
+  handler context alongside ordinary home/service and Syndic correlation. Construction stays
+  inside the ordinary dispatcher; payload parsing cannot manufacture that context. The handler
+  borrows correlation independently of the non-cloneable request and sole response owner.
 
 ## Diagnostics
 

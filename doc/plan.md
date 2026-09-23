@@ -73,27 +73,39 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 510: Prepare Fresh CAS Services From A Reopening Candidate (finished)
+# Phase 511: Specify Durable Branch-Handoff Coordination (finished)
 
-Accepted distinct owned reopening-candidate preparation through shared convergence and fresh
-fenced services, managed-session configuration, cancellation and explicit failed-home custody.
-Constructor cleanup now reports unconfirmed retirement before retry can be granted. Eighteen
-initial/recovery preparation tests, six final recovery cases, app check and independent review
-passed. Independent review also accepted the pre-branch component gate; complete graph, supervisor
-mounting and running-window recovery remain separate after phase 423. Existing unavailable repair
-remains the authorized result.
+Accepted coordinator ownership, candidate/runtime scan separation, exact branch correlation,
+shared bounded job reads and full Unicode payload limits, inclusive parent ordering frontier and
+durable transition custody in the handoff system and owning packages. Independent review passed
+for phases 512 and 513; concrete atomic participants remain phase 514's readiness boundary.
+Neither full coordination nor enabled branch resolution is accepted.
 
-# Phase 511: Specify Durable Branch-Handoff Coordination (wip)
+# Phase 512: Preserve Exact Branch Tool Correlation (wip)
 
-Consume the bounded non-GUI branch-service slice from the rework tracker using the
-[handoff system](systems/branch-discussion-handoff/design.md),
-[state job contract](../crates/beryl-state/doc/design-jobs-catalog.md#durable-jobs) and app graph
-authority. Resolve ownership of candidate recovery, bounded scheduling, exact per-job admission,
-parent delivery and durable transition custody before implementation. Inspect existing typed job
-and Syndic APIs for concrete prerequisites and derive one acceptance boundary per implementation
-phase. Preserve queued-input ordering, no replay after possible dispatch, exact retry and terminal
-archive rules. Independently review readiness; keep the ordinary branch handler unavailable until
-real coordination is accepted, and keep feature GUI and complete graph publication separate.
+Carry the already validated CAS thread, turn and tool-call identity into a distinct branch handler
+context before consuming the routed call. Preserve ordinary home/service and Syndic correlation,
+closed payload schemas, move-only requests and the sole response owner. Keep lifecycle handlers
+unchanged and the process branch handler unavailable. Verify exact delivery, wrong/stale
+correlation rejection, invalid arguments and single response/cancellation custody through existing
+ordinary dispatch tests; run the focused app check and required independent review.
+
+# Phase 513: Expose Bounded Candidate Job Reads (pending)
+
+Align typed resolution and encoded record limits with the owning tool contract, then share exact
+point and live-index reads across ordinary and explicit candidate access. Verify maximum Unicode
+payloads, over-limit rejection, stale handles, item/byte page caps, continuation and candidate
+visibility fencing. This accepts storage prerequisites only, not job scheduling or resolution
+admission. Required independent review follows focused State verification.
+
+# Phase 514: Specify Atomic Handoff Participants (pending)
+
+Inspect and specify concrete Syndic discussion-gate, generated parent-input provenance and
+draft-preserving admission participants, then the app's exact cross-domain operation and
+reconciliation closures. Derive separate implementation boundaries for admission/gating,
+parent delivery, terminal archive and bounded coordinator preparation/execution. Resolve any
+schema/content prerequisites in their owners before coding; ordinary branch resolution remains
+unavailable until the complete non-GUI coordinator is accepted.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
