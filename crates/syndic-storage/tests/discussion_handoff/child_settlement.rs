@@ -182,7 +182,7 @@ fn ready_validation_waits_for_terminal_history_and_fences_recovered_handles() {
 fn queued_settlement_releases_exact_gate_and_preserves_input_after_stale_proof_rejection() {
     let home = TestHome::new("child-settlement-queued");
     let (store, storage, mut request) = seeded(&home, FaultController::new());
-    queue::accept_next(&store, &storage);
+    support::discussion_input::accept_next(&store, &storage);
     request.input_gate_revision = storage
         .input_gate(&store, id(36), limit())
         .unwrap()

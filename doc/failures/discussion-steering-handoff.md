@@ -41,5 +41,13 @@ steering. The coordinator must enforce the exact child-queue proof before leavin
 
 The combined mutation fix is accepted at `7718ecf4`. Local mutation gates passed nine handoff cases
 and seventeen focused regressions, app compilation and independent review. Steering rejection and
-terminal reclassification remain available and preserve queued input. Typed child settlement proof,
-State disposition and coordinator composition remain required before parent handoff can run.
+terminal reclassification remain available and preserve queued input. Typed child settlement proof
+is accepted at `7ebbe4d0`, terminal State disposition at `ef7fdc6c`, and exact State transition
+outcome evidence at `026cd8d0`.
+
+The app settlement operation now joins those participants atomically through ordinary or candidate
+access. Nine focused app cases and seven shared handoff regressions passed, with independent review.
+Evidence includes wrong-attempt rejection, mixed-outcome collision, both uncertain commit paths,
+process fencing, candidate recovery, cancellation, retained capacity and unchanged child/parent
+input. The operation performs no CAS work. Coordinator scheduling and complete service mounting
+remain separate prerequisites before parent handoff can run.

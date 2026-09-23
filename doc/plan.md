@@ -73,20 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 528: Implement Resolving Transition Outcome Closure (finished)
+# Phase 526: Compose Child Settlement And Job Transition (finished)
 
-Implemented authenticated original-handle preparation and bounded ordinary/candidate two-record
-outcome reads. Ten job tests, app check and independent review passed, covering missing/mixed
-records, stale generation, candidate execution and foreign-home rejection.
+Accepted atomic app settlement with bounded audit custody, exact job/gate identity and candidate
+execution. Nine app cases, seven shared handoff regressions and independent review passed; parent
+input remains absent. See [correction evidence](failures/discussion-steering-handoff.md#implementation-state).
 
-# Phase 526: Compose Child Settlement And Job Transition (wip)
-
-Compose the typed child proof and exact State transition with generation-qualified operation
-custody and bounded reconciliation. Preserve waiting, atomic gate release on child-input failure,
-candidate/runtime separation and no parent input. Verify failure, cancellation, stale generations
-and uncertain outcomes before coordinator scheduling can consume the result.
-
-# Phase 517: Specify Generated Parent Input And Atomic App Admission (pending)
+# Phase 517: Specify Generated Parent Input And Atomic App Admission (wip)
 
 Resolve the concrete generated-input receipt, turn/item provenance, bounded content publication and
 draft-preserving submission schema, then exact app admission/reconciliation APIs. Preserve normal
