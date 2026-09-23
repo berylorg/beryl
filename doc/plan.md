@@ -73,23 +73,17 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 518: Specify Production Discussion Creation (finished)
+# Phase 519: Authenticate Discussion Source Selection (finished)
 
-Accepted opaque exact-selection preparation, compact writer revalidation, distinct complete
-discussion creation and app/catalog custody boundaries. Concrete source inventory and independent
-review accepted phase 519 readiness: public transcript proof fields require authentication against
-exact current thread/view/entry and projection membership. Creation/initial gate and app custody
-remain phases 520/521; ordinary fallback deletion remains restricted to its existing scope.
+Accepted opaque home-bound source preparation, bounded exact range comparison outside the writer
+and compact writer validation. Eleven focused cases passed across nextest runs
+`e522ccb2-91b4-46a6-8a20-84cbf7deee12` (nine passing cases) and
+`ec884989-f7b3-4fe8-93c8-0c0551342aa9` (two corrected/final cases), covering roles, lifecycle,
+membership, selected path, UTF-8 and projection boundaries, limits, foreign home and reopened
+generation, and revision drift. Storage/app checks and independent review passed. The 65,536-byte
+cap does not permit selections spanning projections. Preparation grants no creation or CAS authority.
 
-# Phase 519: Authenticate Discussion Source Selection (wip)
-
-Implement opaque preparation from captured source/range/text and exact current transcript proofs,
-with bounded range comparison outside the writer and compact source anchors for writer validation.
-Verify wrong roles, nonterminal/unfinalized items, foreign or stale projection membership, selected-
-away turns, malformed UTF-8 range boundaries, text mismatch, limits and generation/revision drift.
-Preparation grants no creation or CAS authority; independently review the source proof boundary.
-
-# Phase 520: Create A Durable Discussion Atomically (pending)
+# Phase 520: Create A Durable Discussion Atomically (wip)
 
 Use the accepted witness to publish the complete discussion closure, including the initial compact
 handoff-gate record/codec/read/validation foundation. Verify selected-prefix parentage, unchanged
@@ -97,6 +91,15 @@ source/draft, inherited execution and label frontier, first submission, every id
 stale writer anchors, bounded record custody and exact old/new/collision after ambiguous outcomes.
 Preserve ordinary-thread gate absence and pristine deletion scope. No GUI activation or job
 admission is accepted by this storage phase.
+
+Reuse ordinary initial-record mechanics through an explicit shared closure builder, preserving
+ordinary semantics. Prepare source-prefix title and lineage facts outside the writer; recheck
+the opaque source proof and exact parent execution/label anchors inside it. Use existing bounded
+lineage skip proofs. Add the declared gate family with exact ordinary/candidate reads, codec and
+structural validation, and require gate absence in ordinary pristine closure. Update fixture
+coverage for the declared family without introducing discussion deletion or gate admission.
+Run focused creation, schema/corruption and existing ordinary-creation/pristine tests plus the
+app integration check, then independently review complete closure and outcome custody.
 
 # Phase 521: Compose Discussion Creation And Catalog Custody (pending)
 

@@ -647,6 +647,7 @@ mod catalog_title;
 mod codec;
 mod compaction;
 mod content;
+mod discussion_source;
 mod dispatch_provenance;
 mod domain;
 mod draft_piece;
@@ -678,6 +679,7 @@ pub use compaction::{
     prepare_lifecycle_continuation_content,
 };
 pub use content::{ComposerContentAssembler, PreparedContent};
+pub use discussion_source::{DiscussionSourceError, PreparedDiscussionSource};
 pub use domain::SyndicStorage;
 pub use draft_piece::*;
 pub use error::{RecoveryBudgetKind, RecoveryProjectionError, SyndicReadError, SyndicRecordError};

@@ -488,8 +488,10 @@
   generated parent-input provenance and app composition retain separate acceptance boundaries.
 - [x] Corrected fixture-only creation readiness and specified production exact-selection proof,
   atomic discussion creation and app/catalog custody boundaries. Independent review accepted the
-  source-proof prerequisite; creation implementation remains pending and ordinary fallback deletion
-  retains its existing scope.
+    source-proof prerequisite. Opaque home-bound source preparation and compact writer validation
+    are accepted with role, lifecycle, membership, selected-path, UTF-8/range and stale-generation
+    rejection evidence. Creation implementation remains pending and ordinary fallback deletion
+    retains its existing scope.
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.
