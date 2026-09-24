@@ -6,7 +6,7 @@ mod recovery;
 #[path = "parent_execution/identity.rs"]
 mod identity_tests;
 
-fn start() -> Fixture {
+pub(super) fn start() -> Fixture {
     let fixture = Fixture::new(false);
     parent_input::ready(&fixture);
     let prepared = fixture
@@ -41,7 +41,7 @@ fn observe(fixture: &Fixture) -> Option<PreparedDiscussionSettlement<'static>> {
         )
         .unwrap()
 }
-fn accepted(fixture: &Fixture) -> CasTurnSource {
+pub(super) fn accepted(fixture: &Fixture) -> CasTurnSource {
     support::exact_cas::establish_turn(
         &fixture.store,
         fixture.syndic.clone(),
@@ -50,7 +50,7 @@ fn accepted(fixture: &Fixture) -> CasTurnSource {
         support::timestamp(501),
     )
 }
-fn finish(fixture: &Fixture, source: &CasTurnSource, status: TurnEndStatus) {
+pub(super) fn finish(fixture: &Fixture, source: &CasTurnSource, status: TurnEndStatus) {
     let turn = identity(fixture).turn_id();
     support::exact_cas::admit_event(
         &fixture.store,

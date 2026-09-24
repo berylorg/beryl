@@ -530,6 +530,11 @@
   version and key envelopes, plus shared ordinary/candidate rejection of mis-keyed or terminal
   live-index rows. Fourteen State cases, the app limit matrix, dependent checks and independent
   review passed. Candidate convergence and ordinary scheduling remain separate.
+- [x] Accepted bounded sequential candidate handoff convergence with exact current jobs, shared
+  settlement, retained command custody and coalesced rescans after own mutations. Five cases,
+  app checks and independent review passed, including backlog beyond ready capacity, undispatched
+  generated input and an earlier child released after a later parent archive. Graph mounting and
+  ordinary coordinator scheduling remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

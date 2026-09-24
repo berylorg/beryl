@@ -20,6 +20,9 @@ struct Flights {
 }
 
 impl DiscussionSettlementOperations {
+    pub(super) fn configured_slots(&self) -> NonZeroUsize {
+        self.flights.maximum
+    }
     pub fn new(process: ProcessAdmissionGate, maximum: NonZeroUsize) -> Self {
         Self {
             process,

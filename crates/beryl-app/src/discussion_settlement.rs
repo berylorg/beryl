@@ -12,6 +12,8 @@ use syndic_storage::{
 };
 
 mod access;
+mod candidate;
+pub use candidate::{HandoffCandidateConvergenceError, HandoffCandidateConvergenceSummary};
 mod flight;
 mod prepare;
 mod recovery;

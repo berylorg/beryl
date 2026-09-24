@@ -9,6 +9,8 @@ mod cases;
 mod parent_input;
 #[path = "discussion_settlement/parent_execution.rs"]
 mod parent_execution;
+#[path = "discussion_settlement/candidate_scan.rs"]
+mod candidate_scan;
 #[path = "discussion_settlement/recovery.rs"]
 mod recovery;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
