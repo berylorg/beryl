@@ -190,7 +190,9 @@ impl StopOperationRecord {
             (
                 Some(source),
                 Some(successor),
-                TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation,
+                TurnKind::OrdinaryUser
+                | TurnKind::BerylLifecycleContinuation
+                | TurnKind::BerylDiscussionHandoff,
             ) => {
                 if admission.source_compaction_revision().is_some() {
                     return Err(StopOperationRecordError::AdmissionRouteGenerationMismatch);

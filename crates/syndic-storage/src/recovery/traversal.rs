@@ -306,7 +306,9 @@ impl SyndicStorage {
         }
         if !matches!(
             turn.kind(),
-            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+            TurnKind::OrdinaryUser
+                | TurnKind::BerylLifecycleContinuation
+                | TurnKind::BerylDiscussionHandoff
         ) {
             return Err(RecoveryProjectionError::UnsupportedHistory {
                 reason: "provider-operation turn",

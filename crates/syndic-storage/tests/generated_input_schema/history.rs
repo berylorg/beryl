@@ -11,114 +11,22 @@ fn generated_history_validates_bounded_maximum_text_and_rejects_receipt_corrupti
         .unwrap()
         .publish()
         .unwrap();
-    support::populated::seed_populated(&store, storage.clone());
-    support::converge_and_release_terminal_history(
-        &store,
-        storage.clone(),
-        support::id(30),
-        support::populated::source_turn(),
-    );
-    let request = support::discussion_handoff::active_request(
-        &store,
-        &storage,
-        ResolutionIntentId::from_bytes([231; 16]),
-        JobId::from_bytes([231; 16]),
-    );
-    let parent = request.parent.thread_id;
+    let (input, proof, pending) =
+        support::generated_input::seed(&store, storage.clone(), &"🦀".repeat(65_536));
+    let parent = input.thread_id();
+    let item_id = proof.canonical_item_id;
+    let turn_id = proof.parent_turn_id;
     let limit = SyndicPointReadLimit::new(400_000).unwrap();
-    let admission = storage
-        .prepare_discussion_handoff(&store, DiscussionHandoffMutation::Admit(request.clone()))
-        .unwrap();
-    let pending = admission.intent().new_gate();
-    support::discussion_input::committed(&store, admission.contribution());
-    let text = "🦀".repeat(65_536);
-    let item_id = SyndicItemId::from_bytes([232; 16]);
-    let turn_id = support::exact_cas::submit_current_draft(
-        &store,
-        storage.clone(),
-        parent,
-        SyndicDraftId::from_bytes([233; 16]),
-        item_id,
-        &format!("Discussion resolution:\n\n{text}"),
-        support::timestamp(100),
-    );
-    let turn = storage.turn(&store, turn_id, limit).unwrap().unwrap();
-    let item = storage
+    let generated = storage
         .canonical_item(&store, item_id, limit)
         .unwrap()
         .unwrap();
-    let gate = storage.input_gate(&store, parent, limit).unwrap().unwrap();
-    let proof = DiscussionHandoffReceipt {
-        parent_thread_revision: request.parent.thread_revision,
-        parent_gate_revision: request.parent.input_gate_revision,
-        child_thread_id: request.thread_id,
-        intent_id: request.intent_id,
-        job_id: request.job_id,
-        context_owner: request.context_owner,
-        context_digest: request.context_digest,
-        resolving_turn_id: request.resolving_target.pending().active_turn_id(),
-        resolution_digest: Sha256::digest(text.as_bytes()).into(),
-        parent_turn_id: turn_id,
-        canonical_item_id: item_id,
-    };
-    let input = AcceptedInputRecord::new(
-        SyndicAcceptedInputId::from_bytes([231; 16]),
-        parent,
-        AcceptedInputOrdinal::FIRST,
-        AcceptedInputSource::DiscussionHandoff(proof),
-        item.presentation().content().unwrap(),
-        None,
-        turn.submitted_at(),
-    )
-    .unwrap();
-    let generated = CanonicalItemRecord::local_discussion_handoff(
-        item_id,
-        turn_id,
-        item.ordinal(),
-        item.revision(),
-        input.content(),
-        input.id(),
-    );
-    let batch = support::batch([
-        FixtureRecord::Turn(TurnRecord::new(
-            turn_id,
-            parent,
-            TurnKind::BerylDiscussionHandoff,
-            turn.parent(),
-            turn.ancestor_skip(),
-            turn.depth(),
-            turn.chain_digest(),
-            turn.submitted_at(),
-        )),
-        FixtureRecord::CanonicalItem(generated.clone()),
-        FixtureRecord::AcceptedInput(input.clone()),
-        FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::from_source(
-            parent,
-            input.ordinal(),
-            input.id(),
-            AcceptedOrderSource::DiscussionHandoff,
-        )),
-        FixtureRecord::InputGate(
-            InputGateRecord::new(
-                parent,
-                gate.revision(),
-                gate.state().clone(),
-                1,
-                gate.route_generation_high_water(),
-                gate.selected_route(),
-                0,
-                0,
-                0,
-            )
-            .unwrap(),
-        ),
-    ]);
-    support::commit(&store, storage.clone(), batch);
+    let item = generated.clone();
     store
         .scrub_whole_home(WholeHomeScrubTrigger::Explicit)
         .unwrap();
     let attributes = storage
-        .thread_attributes(&store, request.thread_id, limit)
+        .thread_attributes(&store, proof.child_thread_id, limit)
         .unwrap()
         .unwrap();
     let release = storage

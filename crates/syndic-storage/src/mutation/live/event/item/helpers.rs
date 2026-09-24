@@ -173,6 +173,7 @@ pub(super) const fn is_visible(presentation: &CanonicalItemPresentation) -> bool
     matches!(
         presentation,
         CanonicalItemPresentation::UserInput { .. }
+            | CanonicalItemPresentation::DiscussionHandoff { .. }
             | CanonicalItemPresentation::Narrative
             | CanonicalItemPresentation::GeneratedMedia { .. }
     )

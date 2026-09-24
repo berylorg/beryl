@@ -1,17 +1,17 @@
 use crate::codec::{
-    CanonicalItemsFamily, HistorySummariesFamily, InputGatesFamily, ThreadsFamily,
-    TurnStatesFamily, TurnsFamily,
+    AcceptedInputsFamily, CanonicalItemsFamily, HistorySummariesFamily, InputGatesFamily,
+    ThreadsFamily, TurnStatesFamily, TurnsFamily,
 };
 use crate::read::access::ReadAccess;
 use beryl_home_store::{CursorReadLimits, HomeGeneration};
 use beryl_model::{BerylHomeId, DomainRevision, SyndicThreadId};
 
 use crate::{
-    BindingState, CanonicalItemKind, CanonicalItemPresentation, CanonicalItemRecord,
-    ContentManifestRecord, HistorySummaryRecord, InputGateRecord, InputGateState,
-    SelectedPathProof, SyndicCurrentBinding, SyndicPage, SyndicPointReadLimit, SyndicReadError,
-    SyndicStorage, ThreadRecord, TurnDispatchProvenance, TurnItemIndexRecord, TurnItemOrdinal,
-    TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord,
+    BindingState, CanonicalItemPresentation, CanonicalItemRecord, ContentManifestRecord,
+    HistorySummaryRecord, InputGateRecord, InputGateState, SelectedPathProof, SyndicCurrentBinding,
+    SyndicPage, SyndicPointReadLimit, SyndicReadError, SyndicStorage, ThreadRecord,
+    TurnDispatchProvenance, TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle,
+    TurnRecord, TurnStateRecord,
 };
 
 use super::PendingDispatchEvidence;
@@ -69,7 +69,9 @@ pub(super) fn read(
         || state.lifecycle() != TurnLifecycle::Pending
         || !matches!(
             turn.kind(),
-            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+            TurnKind::OrdinaryUser
+                | TurnKind::BerylLifecycleContinuation
+                | TurnKind::BerylDiscussionHandoff
         )
     {
         return Err(SyndicReadError::Invariant(
@@ -117,6 +119,31 @@ pub(super) fn read(
         item.presentation_content(),
         "pending dispatch canonical input has no sealed content",
     )?;
+    if let CanonicalItemPresentation::DiscussionHandoff {
+        accepted_input_id, ..
+    } = item.presentation()
+    {
+        let accepted = required(
+            storage.point_with_access::<AcceptedInputsFamily>(store, *accepted_input_id, limit)?,
+            "pending generated input receipt is missing",
+        )?;
+        let crate::AcceptedInputSource::DiscussionHandoff(receipt) = accepted.source() else {
+            return Err(SyndicReadError::Invariant(
+                "pending generated input has composer receipt",
+            ));
+        };
+        if accepted.id() != *accepted_input_id
+            || accepted.thread_id() != thread_id
+            || accepted.content() != input
+            || receipt.parent_turn_id != turn_id
+            || receipt.canonical_item_id != item.id()
+            || accepted.admitted_at() != turn.submitted_at()
+        {
+            return Err(SyndicReadError::Invariant(
+                "pending generated input receipt disagrees",
+            ));
+        }
+    }
     let manifest = required(
         storage.content_manifest_with_access(store, input.id(), limit)?,
         "pending dispatch input content is missing",
@@ -184,10 +211,15 @@ impl PendingDispatchFacts {
             || item.turn_id() != turn.id()
             || item.ordinal() != TurnItemOrdinal::FIRST
             || item.revision() != index.item_revision()
-            || item.kind() != CanonicalItemKind::UserInput
             || !matches!(
-                item.presentation(),
-                CanonicalItemPresentation::UserInput { .. }
+                (turn.kind(), item.presentation()),
+                (
+                    TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation,
+                    CanonicalItemPresentation::UserInput { .. }
+                ) | (
+                    TurnKind::BerylDiscussionHandoff,
+                    CanonicalItemPresentation::DiscussionHandoff { .. }
+                )
             )
             || item.source_event().is_some()
         {

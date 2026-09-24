@@ -73,20 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 533: Implement Generated Input Provenance And Schema (finished)
+# Phase 534: Carry Generated Input Through Ordinary Execution (finished)
 
-Accepted closed generated accepted-input/order sources, canonical turn/item provenance and bounded
-historical validation. Generated schema/corruption tests, ordinary route/admission and app replay
-regressions, version assertions, dependent test-target checks and independent review passed.
-Historical child archival/parent advancement, payload bounds and route exclusion are covered.
+Accepted ordinary dispatch, correlation, projection, stop and recovery support for generated
+handoff input. Sixteen focused schema/execution/regression tests, both package test-target checks,
+and independent review passed. Early CAS echoes preserve exact text and one canonical generated
+item; stop settlement, receipt mismatch rejection and single recovery replay are covered.
 
-# Phase 534: Carry Generated Input Through Ordinary Execution (wip)
-
-Support the accepted generated turn/item kind through ordinary pending dispatch, snapshots, replay,
-provider correlation, stop and terminal/repair classification. Verify visible text and generated
-provenance survive exactly once; preserve the single existing CAS execution path.
-
-# Phase 535: Admit Generated Parent Input Without Consuming Drafts (pending)
+# Phase 535: Admit Generated Parent Input Without Consuming Drafts (wip)
 
 Implement sealed content preparation and one exact Syndic generated-input/turn participant with
 bounded outcome/discovery evidence. Verify permanent order, busy/special drafts, draft preservation,

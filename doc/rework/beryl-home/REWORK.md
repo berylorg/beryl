@@ -498,7 +498,11 @@
 - [x] Accepted closed generated parent-input provenance and schema with bounded historical
   validation, exact payload/identity proofs and route exclusion. Schema/corruption, ordinary
   route/admission and app replay regressions, dependent checks and independent review passed;
-  ordinary generated execution and atomic parent admission remain separate boundaries.
+  atomic parent admission remains a separate boundary.
+- [x] Accepted generated-input execution through the existing dispatch, CAS echo correlation,
+  projection, stop and recovery paths. Exact Unicode transport with early echoes, one canonical
+  item, stop settlement, bounded replay and ordinary regressions passed independent review;
+  generated admission and coordinator composition remain pending.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

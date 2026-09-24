@@ -105,7 +105,9 @@ impl ActivateBindingMutation {
             || turn_state.source_event_count() != 0
             || !matches!(
                 turn.kind(),
-                crate::TurnKind::OrdinaryUser | crate::TurnKind::BerylLifecycleContinuation
+                crate::TurnKind::OrdinaryUser
+                    | crate::TurnKind::BerylLifecycleContinuation
+                    | crate::TurnKind::BerylDiscussionHandoff
             )
         {
             return Err(SyndicMutationError::TurnLifecycleConflict);

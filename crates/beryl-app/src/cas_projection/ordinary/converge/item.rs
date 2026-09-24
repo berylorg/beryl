@@ -22,7 +22,9 @@ pub(super) fn converge_turn_items(
     let terminal = snapshot::terminal_turn(store, storage, thread_id, turn_id, limit)?;
     if !matches!(
         terminal.turn.kind(),
-        TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+        TurnKind::OrdinaryUser
+            | TurnKind::BerylLifecycleContinuation
+            | TurnKind::BerylDiscussionHandoff
     ) {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "ordinary history convergence received a provider-operation turn",

@@ -346,7 +346,10 @@ pub(super) fn validate_projection_snapshot(
     if source_item_revision > item.revision() {
         return invariant("projection source revision exceeds its canonical item");
     }
-    if matches!(item.kind(), CanonicalItemKind::UserInput) {
+    if matches!(
+        item.kind(),
+        CanonicalItemKind::UserInput | CanonicalItemKind::DiscussionHandoff
+    ) {
         if item.projection_source() != Some(source) {
             return invariant("user projection source changed across canonical revisions");
         }

@@ -344,7 +344,8 @@ fn validate_current_presentation(
 ) -> Result<(), SyndicMutationError> {
     let expected = match item.provider_kind() {
         ProviderItemKind::UserMessage => match item.presentation() {
-            CanonicalItemPresentation::UserInput { .. } => return Ok(()),
+            CanonicalItemPresentation::UserInput { .. }
+            | CanonicalItemPresentation::DiscussionHandoff { .. } => return Ok(()),
             _ => return Err(SyndicMutationError::CanonicalItemConflict),
         },
         ProviderItemKind::AgentMessage | ProviderItemKind::Plan => {
@@ -390,7 +391,9 @@ fn validate_structural_publication_facts(
     current: Option<&CanonicalItemRecord>,
 ) -> Result<(), SyndicMutationError> {
     if frame.frame().item_kind() == ProviderItemKind::UserMessage {
-        let CanonicalItemPresentation::UserInput { content, .. } = presentation else {
+        let (CanonicalItemPresentation::UserInput { content, .. }
+        | CanonicalItemPresentation::DiscussionHandoff { content, .. }) = presentation
+        else {
             return Err(SyndicMutationError::CanonicalItemConflict);
         };
         if structural.submitted_content() != Some(*content) {

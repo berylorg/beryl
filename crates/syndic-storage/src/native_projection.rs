@@ -303,7 +303,9 @@ impl SyndicStorage {
                 ))?;
         if !matches!(
             pending.kind(),
-            TurnKind::OrdinaryUser | TurnKind::BerylLifecycleContinuation
+            TurnKind::OrdinaryUser
+                | TurnKind::BerylLifecycleContinuation
+                | TurnKind::BerylDiscussionHandoff
         ) || pending_state.lifecycle() != TurnLifecycle::Pending
         {
             return Err(NativeProjectionError::CurrentTailNotPendingOrdinaryUser);

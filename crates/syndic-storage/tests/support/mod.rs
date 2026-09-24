@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod generated_input;
+
 pub mod exact_cas;
 pub mod discussion_handoff;
 pub mod discussion_input;

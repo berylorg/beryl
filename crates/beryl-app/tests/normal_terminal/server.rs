@@ -39,6 +39,11 @@ enum ServerScenario {
     Terminal,
     RecoveryTerminal(Vec<Value>),
     ResumeTerminal(Box<str>),
+    GeneratedTerminal {
+        thread: Box<str>,
+        text: Box<str>,
+        root: Box<str>,
+    },
     ResumeNondispatch(Box<str>),
     ResumeDelayedRejection(Box<str>),
     ConnectionLoss,
@@ -110,6 +115,14 @@ impl NormalTerminalServer {
 
     pub fn spawn_resume_terminal(cas_thread_id: impl Into<Box<str>>) -> Self {
         Self::spawn_scenario(ServerScenario::ResumeTerminal(cas_thread_id.into()))
+    }
+
+    pub fn spawn_generated_terminal(thread: &str, text: &str, root: &str) -> Self {
+        Self::spawn_scenario(ServerScenario::GeneratedTerminal {
+            thread: thread.into(),
+            text: text.into(),
+            root: root.into(),
+        })
     }
 
     pub fn spawn_resume_nondispatch(cas_thread_id: impl Into<Box<str>>) -> Self {
@@ -326,6 +339,39 @@ fn run_server(
             complete_unsubscribe(&mut socket, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }
+        ServerScenario::GeneratedTerminal { thread, text, root } => {
+            let resume = read_json(&mut socket).unwrap();
+            assert_eq!(resume["method"], "thread/resume");
+            assert_eq!(resume["params"]["threadId"], thread.as_ref());
+            send_thread_load_metadata_at_root(
+                &mut socket,
+                resume["id"].as_u64().unwrap(),
+                &thread,
+                true,
+                "gpt-5.6",
+                Some("high"),
+                &root,
+            );
+            events.send(ServerEvent::ProjectionReady).unwrap();
+            let request = read_json(&mut socket).unwrap();
+            assert_eq!(request["method"], "turn/start");
+            assert_eq!(request["params"]["threadId"], thread.as_ref());
+            assert_eq!(
+                request["params"]["input"],
+                json!([{"type":"text", "text":text.as_ref()}])
+            );
+            for (method, field, at) in [
+                ("item/started", "startedAtMs", STARTED_AT_MS),
+                ("item/completed", "completedAtMs", COMPLETED_AT_MS),
+            ] {
+                let mut message = json!({"method":method,"params":{"item":{"type":"userMessage","id":CAS_ITEM_ID,"clientId":null,"content":[{"type":"text","text":text.as_ref(),"text_elements":[]}]},"threadId":thread.as_ref(),"turnId":CAS_TURN_ID}});
+                message["params"][field] = json!(at);
+                send_json(&mut socket, &message.to_string());
+            }
+            send_turn_start_response(&mut socket, request["id"].as_u64().unwrap());
+            send_json(&mut socket, &terminal_wire_for(&thread));
+            read_until_close(&mut socket).unwrap();
+        }
         ServerScenario::ResumeNondispatch(cas_thread_id) => {
             events.send(ServerEvent::AdmissionReady).unwrap();
             complete_resume_projection(&mut socket, &cas_thread_id);
@@ -475,6 +521,26 @@ fn send_thread_load_metadata(
     model: &str,
     reasoning: Option<&str>,
 ) {
+    send_thread_load_metadata_at_root(
+        socket,
+        id,
+        cas_thread_id,
+        resumed,
+        model,
+        reasoning,
+        r"C:\work\beryl",
+    );
+}
+
+fn send_thread_load_metadata_at_root(
+    socket: &mut WebSocket<TcpStream>,
+    id: u64,
+    cas_thread_id: &str,
+    resumed: bool,
+    model: &str,
+    reasoning: Option<&str>,
+    root: &str,
+) {
     let initial_turns_page = if resumed {
         r#","initialTurnsPage":null,"turnsBackwardsCursor":null,"itemsBackwardsCursor":null"#
     } else {
@@ -485,6 +551,8 @@ fn send_thread_load_metadata(
     )).unwrap();
     response["result"]["model"] = json!(model);
     response["result"]["reasoningEffort"] = json!(reasoning);
+    response["result"]["cwd"] = json!(root);
+    response["result"]["thread"]["cwd"] = json!(root);
     send_json(socket, &response.to_string());
 }
 

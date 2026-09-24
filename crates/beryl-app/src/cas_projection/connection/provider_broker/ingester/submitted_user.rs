@@ -210,7 +210,10 @@ impl Ingester {
                     || record.turn_id() != turn_id
                     || record.ordinal() != TurnItemOrdinal::FIRST
                     || record.revision() != index.item_revision()
-                    || record.kind() != CanonicalItemKind::UserInput
+                    || !matches!(
+                        record.kind(),
+                        CanonicalItemKind::UserInput | CanonicalItemKind::DiscussionHandoff
+                    )
                     || record.source_event().is_some()
                     || record.cas_source().is_some()
                     || record.provider().is_some()
@@ -238,7 +241,10 @@ impl Ingester {
                     .presentation_content()
                     .ok_or(CheckedUserPreparationError::Target)?;
                 if record.turn_id() != target.turn_id()
-                    || record.kind() != CanonicalItemKind::UserInput
+                    || !matches!(
+                        record.kind(),
+                        CanonicalItemKind::UserInput | CanonicalItemKind::DiscussionHandoff
+                    )
                     || record.provider_lifecycle() != ProviderItemLifecycle::Started
                 {
                     return Err(CheckedUserPreparationError::Target);
