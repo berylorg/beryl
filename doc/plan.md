@@ -73,27 +73,19 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 555: Specify Runtime Activity Identity And Enrollment (finished)
+# Phase 556: Implement Exact Activity Enrollment (finished)
 
-Accepted independently reviewed writer-derived runtime enrollment preserving V7 bytes, bounded
-first-enrollment custody, across-turn retention, obsolete-running cleanup and ended-period
-canonical-only handling. Source and authority checks support the separate storage, producer and
-service boundaries below; [bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-retains the allocation proof and rejected process-counter shortcut. No Activity code changed yet.
+Accepted independently reviewed exact-revision enrollment, bounded obsolete-running cleanup and
+ordinary/candidate outcome witnesses with unchanged V7 codecs. Fifteen focused cases passed across
+enrollment, Activity query/corruption and exhaustion checks; app and all storage test-target checks
+passed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
+retains identity and cleanup reasoning. Runtime producers are not connected yet.
 
-# Phase 556: Implement Exact Activity Enrollment (wip)
-
-Implement the typed Syndic enrollment and bounded outcome witness specified by the runtime and
-history authorities, retaining exact V7 bytes. Verify writer-derived first-token allocation,
-same-period source enrollment and idempotency, retained completed rows, fresh-period selection,
-revision/source races, token exhaustion, invalid stored periods, acknowledgement loss and exact
-candidate reconciliation. Cover bounded obsolete-running cleanup before same-period root activation,
-including interruption between cleanup pages. Independently review atomicity, constant-memory closure and collision
-classification. This accepts a storage primitive, not current runtime producer integration.
-
-# Phase 557: Connect Runtime-Owned Activity Producers (pending)
+# Phase 557: Connect Runtime-Owned Activity Producers (wip)
 
 Connect bounded first-enrollment custody and proven-token reuse to admitted runtime producers.
+Join installed home reconciliation and original enrollment witness before publishing uncertain
+first-enrollment identity; a natural-record match alone does not settle that registry custody.
 Replace per-turn resets with exact enrollment, preserve current canonical/Activity atomicity and
 ended-runtime canonical terminal custody, and fence retirement/replacement. Verify across-turn and
 cross-thread retention, concurrent first enrollment, failure/reconciliation and joined disposal

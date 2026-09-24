@@ -686,6 +686,11 @@ pub use discussion_gate::{
 pub use discussion_source::{DiscussionSourceError, PreparedDiscussionSource};
 pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussionCreation};
 pub use mutation::{
+    ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
+    ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,
+    PreparedActivityEnrollment,
+};
+pub use mutation::{
     DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
     PreparedDiscussionParent,
     DiscussionParentExecution, DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,

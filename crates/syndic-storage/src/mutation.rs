@@ -17,6 +17,12 @@ use crate::{
 
 mod accepted;
 mod activity;
+mod activity_enrollment;
+pub use activity_enrollment::{
+    ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
+    ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,
+    PreparedActivityEnrollment,
+};
 mod admission;
 mod admission_helpers;
 mod binding;

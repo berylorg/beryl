@@ -850,3 +850,20 @@ that prefix empty before publication. Completed rows and exact source membership
 The runtime/history/app authorities now state both boundaries, independently reviewed against the
 writer, codecs, producer sites and query validation. Storage enrollment, runtime producer wiring
 and bounded Activity service remain separate implementation work.
+
+The storage enrollment primitive now owns its exact-revision command construction and bounded
+natural-outcome witness. Same-period cleanup retains at most 32 entries per 65,536-byte page;
+fresh-period enrollment proves the target prefix empty without scanning old periods. Ended-period
+canonical progress may leave a stale head with a lagging membership: fresh enrollment authenticates
+its exact terminal canonical source instead of demanding that retired derived frontier be current.
+Source IDs must match requested storage keys, including terminal cleanup proofs; decoded values
+agreeing only with each other are insufficient. App publication must join any installed home
+reconciliation before using an uncertain enrollment's naturally matching token.
+
+Fifteen focused cases passed across runs `a9f209de-9c2f-416a-b412-d6abe0cdfcff` and
+`58c142e0-1f8a-48f9-9382-9498942bd238` after correcting the alias test's injection seam. Coverage
+includes 65 real running entries cleaned in three interrupted batches, completed-row retention,
+stale-ended-head replacement, exact candidate outcomes, key aliases, mixed records, occupied
+future periods and checked allocation exhaustion. App and all Syndic test-target checks passed;
+independent review accepted the corrected storage boundary. Runtime producer and service wiring
+remain separate work, and no complete graph or Activity GUI readiness is claimed.

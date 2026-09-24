@@ -53,6 +53,10 @@ topology and typed execution surfaces.
   own source. The slot and its move-only witness survive acknowledgement loss until exact outcome
   classification; cancellation and retirement cannot fabricate noncommit or free unresolved
   custody. No runtime-wide list of participating threads is retained.
+- Natural-record enrollment inspection is not settlement of an installed home reconciliation.
+  After uncertainty, the owner joins that exact registry outcome and its original enrollment
+  witness before publishing the token. A matching derived head alone grants no dispatch,
+  generation-replacement or durable-acknowledgement authority.
 - Enrollment precedes current live projection mutation and preserves lazy CAS warm-up. Admission
   without a runtime remains canonical-only until an executor obtains the matching runtime and
   enrolls the source. An ended lifetime cannot publish Activity, but its already-owned capture and

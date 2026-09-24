@@ -116,6 +116,8 @@ pub use non_idle_gate::{
 pub(crate) mod metrics;
 mod physical;
 pub use physical::inject_turn_state_without_dispatch_provenance;
+mod activity_enrollment;
+pub use activity_enrollment::turn_alias_contribution_for_test;
 mod provider;
 mod provider_observation;
 mod schema_history;
