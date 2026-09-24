@@ -95,7 +95,7 @@ fixed_family!(
     AcceptedOrderFamily,
     AcceptedOrderCodec,
     "accepted-order",
-    beryl_home_store::RecordVersion::new(2),
+    beryl_home_store::RecordVersion::new(3),
     ThreadAcceptedKey,
     AcceptedOrderIndexRecord,
     24,
@@ -271,16 +271,31 @@ fn encode_accepted_order(v: &AcceptedOrderIndexRecord) -> Result<Vec<u8>, CodecE
     enc_thread(&mut e, v.thread_id);
     enc_accepted_ord(&mut e, v.ordinal);
     enc_accepted(&mut e, v.input_id);
-    enc_route_generation(&mut e, v.route_generation);
+    match v.source() {
+        AcceptedOrderSource::Composer(generation) => {
+            e.u8(0);
+            enc_route_generation(&mut e, generation);
+        }
+        AcceptedOrderSource::DiscussionHandoff => e.u8(1),
+    }
     Ok(e.finish())
 }
 fn decode_accepted_order(b: &[u8]) -> Result<AcceptedOrderIndexRecord, CodecError> {
     let mut d = Decoder::new(b);
-    let v = AcceptedOrderIndexRecord::new(
+    let v = AcceptedOrderIndexRecord::from_source(
         dec_thread(&mut d)?,
         dec_accepted_ord(&mut d)?,
         dec_accepted(&mut d)?,
-        dec_route_generation(&mut d)?,
+        match d.u8()? {
+            0 => AcceptedOrderSource::Composer(dec_route_generation(&mut d)?),
+            1 => AcceptedOrderSource::DiscussionHandoff,
+            tag => {
+                return Err(CodecError::InvalidTag {
+                    kind: "accepted-order source",
+                    tag,
+                });
+            }
+        },
     );
     d.finish()?;
     Ok(v)

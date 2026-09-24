@@ -153,7 +153,7 @@ pub fn try_accepted_route_state(
         match storage.accepted_route_page(
             store,
             ids.thread,
-            input.route_generation(),
+            input.route_generation().unwrap(),
             AcceptedRouteRevision::new(revision).unwrap(),
             None,
         ) {

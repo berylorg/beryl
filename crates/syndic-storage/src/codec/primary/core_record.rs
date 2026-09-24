@@ -296,13 +296,34 @@ pub(super) fn encode_accepted_input(value: &AcceptedInputRecord) -> Result<Vec<u
     enc_accepted(&mut e, value.id());
     enc_thread(&mut e, value.thread_id());
     enc_accepted_ord(&mut e, value.ordinal());
-    let admission = value.admission();
-    enc_thread_rev(&mut e, admission.expected_thread_revision());
-    enc_draft(&mut e, admission.source_draft_id());
-    enc_draft_rev(&mut e, admission.expected_draft_revision());
-    enc_input_gate_rev(&mut e, admission.expected_gate_revision());
-    enc_draft(&mut e, admission.replacement_draft_id());
-    enc_route_generation(&mut e, value.route_generation());
+    match value.source() {
+        AcceptedInputSource::Composer {
+            admission,
+            route_generation,
+        } => {
+            e.u8(0);
+            enc_thread_rev(&mut e, admission.expected_thread_revision());
+            enc_draft(&mut e, admission.source_draft_id());
+            enc_draft_rev(&mut e, admission.expected_draft_revision());
+            enc_input_gate_rev(&mut e, admission.expected_gate_revision());
+            enc_draft(&mut e, admission.replacement_draft_id());
+            enc_route_generation(&mut e, route_generation);
+        }
+        AcceptedInputSource::DiscussionHandoff(receipt) => {
+            e.u8(1);
+            enc_thread_rev(&mut e, receipt.parent_thread_revision);
+            enc_input_gate_rev(&mut e, receipt.parent_gate_revision);
+            enc_thread(&mut e, receipt.child_thread_id);
+            e.fixed16(receipt.intent_id.as_bytes());
+            e.fixed16(receipt.job_id.as_bytes());
+            enc_context_owner(&mut e, receipt.context_owner);
+            e.fixed32(receipt.context_digest.as_bytes());
+            enc_turn(&mut e, receipt.resolving_turn_id);
+            e.fixed32(&receipt.resolution_digest);
+            enc_turn(&mut e, receipt.parent_turn_id);
+            enc_item(&mut e, receipt.canonical_item_id);
+        }
+    }
     enc_content_ref(&mut e, value.content());
     enc_opt(
         &mut e,
@@ -315,19 +336,46 @@ pub(super) fn encode_accepted_input(value: &AcceptedInputRecord) -> Result<Vec<u
 
 pub(super) fn decode_accepted_input(bytes: &[u8]) -> Result<AcceptedInputRecord, CodecError> {
     let mut d = Decoder::new(bytes);
+    let id = dec_accepted(&mut d)?;
+    let thread = dec_thread(&mut d)?;
+    let ordinal = dec_accepted_ord(&mut d)?;
+    let source = match d.u8()? {
+        0 => AcceptedInputSource::Composer {
+            admission: AcceptedInputAdmissionProof::new(
+                dec_thread_rev(&mut d)?,
+                dec_draft(&mut d)?,
+                dec_draft_rev(&mut d)?,
+                dec_input_gate_rev(&mut d)?,
+                dec_draft(&mut d)?,
+            )
+            .map_err(|source| invalid("accepted-input admission proof", source))?,
+            route_generation: dec_route_generation(&mut d)?,
+        },
+        1 => AcceptedInputSource::DiscussionHandoff(DiscussionHandoffReceipt {
+            parent_thread_revision: dec_thread_rev(&mut d)?,
+            parent_gate_revision: dec_input_gate_rev(&mut d)?,
+            child_thread_id: dec_thread(&mut d)?,
+            intent_id: beryl_model::ResolutionIntentId::from_bytes(d.fixed16()?),
+            job_id: beryl_model::JobId::from_bytes(d.fixed16()?),
+            context_owner: dec_context_owner(&mut d)?,
+            context_digest: beryl_model::DiscussionContextDigest::from_bytes(d.fixed32()?),
+            resolving_turn_id: dec_turn(&mut d)?,
+            resolution_digest: d.fixed32()?,
+            parent_turn_id: dec_turn(&mut d)?,
+            canonical_item_id: dec_item(&mut d)?,
+        }),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "accepted-input source",
+                tag,
+            });
+        }
+    };
     let value = AcceptedInputRecord::new(
-        dec_accepted(&mut d)?,
-        dec_thread(&mut d)?,
-        dec_accepted_ord(&mut d)?,
-        AcceptedInputAdmissionProof::new(
-            dec_thread_rev(&mut d)?,
-            dec_draft(&mut d)?,
-            dec_draft_rev(&mut d)?,
-            dec_input_gate_rev(&mut d)?,
-            dec_draft(&mut d)?,
-        )
-        .map_err(|source| invalid("accepted-input admission proof", source))?,
-        dec_route_generation(&mut d)?,
+        id,
+        thread,
+        ordinal,
+        source,
         dec_content_ref(&mut d)?,
         dec_opt(
             &mut d,

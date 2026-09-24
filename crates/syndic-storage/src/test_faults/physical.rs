@@ -524,7 +524,7 @@ pub fn inject_retired_accepted_input_v2(
     let content = crate::PreparedContent::composer(&crate::ComposerPayload::default())
         .expect("empty composer fixture is valid")
         .reference(ContentRevision::new(1).expect("one is nonzero"));
-    let value = crate::AcceptedInputRecord::new(
+    let value = crate::AcceptedInputRecord::from_composer(
         input,
         SyndicThreadId::from_bytes([0xB6; 16]),
         crate::AcceptedInputOrdinal::FIRST,

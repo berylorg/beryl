@@ -398,7 +398,7 @@ impl SyndicStorage {
             });
         }
         let (role, source) = match item.kind() {
-            CanonicalItemKind::UserInput => {
+            CanonicalItemKind::UserInput | CanonicalItemKind::DiscussionHandoff => {
                 let content = item.presentation_content().ok_or(
                     RecoveryProjectionError::UnsupportedHistory {
                         reason: "user input omitted composer content",

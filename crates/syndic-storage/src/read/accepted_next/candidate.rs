@@ -172,7 +172,7 @@ impl SyndicStorage {
             )?;
             if order.thread_id() != expected.thread_id()
                 || order.ordinal() != ordinal
-                || order.route_generation() != expected.generation()
+                || order.route_generation() != Some(expected.generation())
             {
                 return Err(SyndicReadError::Invariant(
                     "accepted-next source interval crosses accepted-order membership",

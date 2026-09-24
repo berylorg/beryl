@@ -136,12 +136,18 @@ impl TurnChildIndexRecord {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AcceptedOrderSource {
+    Composer(AcceptedRouteGeneration),
+    DiscussionHandoff,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AcceptedOrderIndexRecord {
     pub(crate) thread_id: SyndicThreadId,
     pub(crate) ordinal: AcceptedInputOrdinal,
     pub(crate) input_id: SyndicAcceptedInputId,
-    pub(crate) route_generation: AcceptedRouteGeneration,
+    pub(crate) source: AcceptedOrderSource,
 }
 impl AcceptedOrderIndexRecord {
     #[must_use]
@@ -151,11 +157,24 @@ impl AcceptedOrderIndexRecord {
         input_id: SyndicAcceptedInputId,
         route_generation: AcceptedRouteGeneration,
     ) -> Self {
+        Self::from_source(
+            thread_id,
+            ordinal,
+            input_id,
+            AcceptedOrderSource::Composer(route_generation),
+        )
+    }
+    pub const fn from_source(
+        thread_id: SyndicThreadId,
+        ordinal: AcceptedInputOrdinal,
+        input_id: SyndicAcceptedInputId,
+        source: AcceptedOrderSource,
+    ) -> Self {
         Self {
             thread_id,
             ordinal,
             input_id,
-            route_generation,
+            source,
         }
     }
     #[must_use]
@@ -171,8 +190,14 @@ impl AcceptedOrderIndexRecord {
         self.input_id
     }
     #[must_use]
-    pub const fn route_generation(&self) -> AcceptedRouteGeneration {
-        self.route_generation
+    pub const fn source(&self) -> AcceptedOrderSource {
+        self.source
+    }
+    pub const fn route_generation(&self) -> Option<AcceptedRouteGeneration> {
+        match self.source {
+            AcceptedOrderSource::Composer(generation) => Some(generation),
+            AcceptedOrderSource::DiscussionHandoff => None,
+        }
     }
 }
 

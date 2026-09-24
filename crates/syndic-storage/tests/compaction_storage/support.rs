@@ -479,7 +479,7 @@ impl CompactionFixture {
             replacement,
         )
         .unwrap();
-        let input = AcceptedInputRecord::new(
+        let input = AcceptedInputRecord::from_composer(
             input_id,
             self.thread,
             ordinal,

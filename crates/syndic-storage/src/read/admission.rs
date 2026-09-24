@@ -291,11 +291,11 @@ impl FirstAcceptanceObservation {
                     && self.order.as_ref().is_some_and(|order| {
                         self.input.as_ref().is_some_and(|input| {
                             order
-                                == &AcceptedOrderIndexRecord::new(
+                                == &AcceptedOrderIndexRecord::from_source(
                                     input.thread_id(),
                                     input.ordinal(),
                                     input.id(),
-                                    input.route_generation(),
+                                    input.source().order_source(),
                                 )
                         })
                     })
@@ -328,7 +328,7 @@ fn exact_route_leaf_matches(
 ) -> bool {
     let common = leaf.input_id() == acceptance.accepted_input_id()
         && leaf.thread_id() == acceptance.thread_id()
-        && leaf.generation() == input.route_generation()
+        && Some(leaf.generation()) == input.route_generation()
         && leaf.ordinal() == input.ordinal();
     if !common {
         return false;
@@ -450,7 +450,7 @@ fn exact_input_matches(acceptance: &FirstAcceptance, input: &AcceptedInputRecord
     };
     input.id() == acceptance.accepted_input_id()
         && input.thread_id() == acceptance.thread_id()
-        && input.admission() == proof
+        && input.composer_admission() == Some(proof)
         && input.content() == acceptance.materialization().content()
         && input.asset_reference_set() == acceptance.asset_reference_set()
         && input.admitted_at() == acceptance.admitted_at()

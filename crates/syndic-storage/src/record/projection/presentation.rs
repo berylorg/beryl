@@ -4,6 +4,7 @@ use super::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CanonicalItemKind {
     UserInput,
+    DiscussionHandoff,
     AssistantMessage(AssistantMessagePhase),
     ProviderText(ProviderItemKind),
     Operational(ProviderItemKind),
@@ -14,6 +15,10 @@ pub enum CanonicalItemKind {
 /// Closed presentation policy retained independently from exact provider bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CanonicalItemPresentation {
+    DiscussionHandoff {
+        content: ContentReference,
+        accepted_input_id: beryl_model::SyndicAcceptedInputId,
+    },
     UserInput {
         content: ContentReference,
         asset_reference_set: Option<Box<SealedAssetReferenceSetProof>>,
@@ -41,7 +46,9 @@ impl CanonicalItemPresentation {
     #[must_use]
     pub const fn content(&self) -> Option<ContentReference> {
         match self {
-            Self::UserInput { content, .. } => Some(*content),
+            Self::UserInput { content, .. } | Self::DiscussionHandoff { content, .. } => {
+                Some(*content)
+            }
             Self::Narrative | Self::Operational | Self::Activity | Self::GeneratedMedia { .. } => {
                 None
             }
@@ -55,9 +62,11 @@ impl CanonicalItemPresentation {
                 asset_reference_set,
                 ..
             } => asset_reference_set.as_deref().copied(),
-            Self::Narrative | Self::Operational | Self::Activity | Self::GeneratedMedia { .. } => {
-                None
-            }
+            Self::DiscussionHandoff { .. }
+            | Self::Narrative
+            | Self::Operational
+            | Self::Activity
+            | Self::GeneratedMedia { .. } => None,
         }
     }
 
@@ -65,7 +74,11 @@ impl CanonicalItemPresentation {
     pub const fn resource_id(&self) -> Option<SyndicResourceId> {
         match self {
             Self::GeneratedMedia { resource_id } => Some(*resource_id),
-            Self::UserInput { .. } | Self::Narrative | Self::Operational | Self::Activity => None,
+            Self::DiscussionHandoff { .. }
+            | Self::UserInput { .. }
+            | Self::Narrative
+            | Self::Operational
+            | Self::Activity => None,
         }
     }
 }

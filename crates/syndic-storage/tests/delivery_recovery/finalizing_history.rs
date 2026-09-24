@@ -68,7 +68,7 @@ fn finalizing_history_reopens_classifies_and_routes_new_input_as_terminal_histor
         .accepted_route_page(
             &store,
             thread,
-            input.route_generation(),
+            input.route_generation().unwrap(),
             AcceptedRouteRevision::FIRST,
             None,
         )

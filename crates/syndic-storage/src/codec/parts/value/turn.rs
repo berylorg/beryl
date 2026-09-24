@@ -50,6 +50,7 @@ pub(crate) fn enc_turn_kind(e: &mut Encoder, value: crate::TurnKind) {
     match value {
         crate::TurnKind::OrdinaryUser => e.u8(0),
         crate::TurnKind::BerylLifecycleContinuation => e.u8(2),
+        crate::TurnKind::BerylDiscussionHandoff => e.u8(3),
         crate::TurnKind::ProviderOperation(crate::ProviderOperationKind::ContextCompaction) => {
             e.u8(1)
         }
@@ -63,6 +64,7 @@ pub(crate) fn dec_turn_kind(d: &mut Decoder<'_>) -> Result<crate::TurnKind, Code
             crate::ProviderOperationKind::ContextCompaction,
         )),
         2 => Ok(crate::TurnKind::BerylLifecycleContinuation),
+        3 => Ok(crate::TurnKind::BerylDiscussionHandoff),
         tag => Err(CodecError::InvalidTag {
             kind: "turn kind",
             tag,

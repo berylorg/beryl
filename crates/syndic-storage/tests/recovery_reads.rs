@@ -280,7 +280,7 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
         let revision = AcceptedInputRevision::new(1).unwrap();
         let generation = AcceptedRouteGeneration::new(number).unwrap();
         records.push(FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input_id,
                 id(1),
                 ordinal,

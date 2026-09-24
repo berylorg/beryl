@@ -55,7 +55,7 @@ impl FirstAcceptancePromotionSource<SyndicDomain> for FirstAcceptancePromotionSo
         };
         if intended_leaf.input_id() != intended_input.id()
             || intended_leaf.thread_id() != intended_input.thread_id()
-            || intended_leaf.generation() != intended_input.route_generation()
+            || Some(intended_leaf.generation()) != intended_input.route_generation()
             || intended_leaf.ordinal() != intended_input.ordinal()
             || intended_leaf.revision() != initial_revision
             || intended_leaf.lifecycle() != AcceptedInputLifecycle::Admitted

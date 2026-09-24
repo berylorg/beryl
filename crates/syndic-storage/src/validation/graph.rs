@@ -389,6 +389,7 @@ pub(super) fn validate_context_envelopes(
 
 fn validate_turns(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicValidationError> {
     scan::<TurnsFamily>(reader, |key, turn| {
+        super::ordering::generated::validate_turn(reader, turn)?;
         if *key != turn.id() {
             return invariant("turn key and identity disagree");
         }

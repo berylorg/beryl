@@ -3,7 +3,10 @@ use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::{BerylHomeId, RuntimeMode, SyndicItemId, SyndicThreadId};
 use beryl_state::AssetOwner;
 use sha2::{Digest, Sha256};
-use syndic_storage::{AcceptedInputRecord, ContentReference, SyndicStorage};
+use syndic_storage::{
+    AcceptedInputAdmissionProof, AcceptedInputRecord, AcceptedInputSource, AcceptedRouteGeneration,
+    ContentReference, SyndicStorage,
+};
 
 use super::{InputReplayPrepareError, point_limit};
 use crate::cas_projection::LoadedCasProjection;
@@ -107,7 +110,11 @@ pub(in crate::cas_projection) enum InputReplayRecord {
         thread_id: SyndicThreadId,
         item_id: SyndicItemId,
     },
-    Accepted(AcceptedInputRecord),
+    Accepted {
+        record: AcceptedInputRecord,
+        admission: AcceptedInputAdmissionProof,
+        route_generation: AcceptedRouteGeneration,
+    },
 }
 
 impl InputReplayRecord {
@@ -118,21 +125,32 @@ impl InputReplayRecord {
         Self::Submitted { thread_id, item_id }
     }
 
-    pub(in crate::cas_projection) const fn accepted(record: AcceptedInputRecord) -> Self {
-        Self::Accepted(record)
+    pub(in crate::cas_projection) fn accepted(record: AcceptedInputRecord) -> Option<Self> {
+        let AcceptedInputSource::Composer {
+            admission,
+            route_generation,
+        } = record.source()
+        else {
+            return None;
+        };
+        Some(Self::Accepted {
+            record,
+            admission,
+            route_generation,
+        })
     }
 
     pub(super) const fn thread_id(&self) -> SyndicThreadId {
         match self {
             Self::Submitted { thread_id, .. } => *thread_id,
-            Self::Accepted(record) => record.thread_id(),
+            Self::Accepted { record, .. } => record.thread_id(),
         }
     }
 
     pub(super) const fn asset_owner(&self) -> AssetOwner {
         match self {
             Self::Submitted { item_id, .. } => AssetOwner::SubmittedTurnItem(*item_id),
-            Self::Accepted(record) => AssetOwner::AcceptedInput(record.id()),
+            Self::Accepted { record, .. } => AssetOwner::AcceptedInput(record.id()),
         }
     }
 
@@ -140,7 +158,7 @@ impl InputReplayRecord {
         &self,
         content: ContentReference,
     ) -> Result<(), InputReplayPrepareError> {
-        if let Self::Accepted(record) = self
+        if let Self::Accepted { record, .. } = self
             && record.content() != content
         {
             return Err(InputReplayPrepareError::AcceptedInputContentMismatch {
@@ -155,7 +173,10 @@ impl InputReplayRecord {
         store: &HomeStore,
         storage: &SyndicStorage,
     ) -> Result<(), InputReplayPrepareError> {
-        let Self::Accepted(expected) = self else {
+        let Self::Accepted {
+            record: expected, ..
+        } = self
+        else {
             return Ok(());
         };
         let actual = storage.accepted_input(store, expected.id(), point_limit())?;
@@ -177,7 +198,10 @@ impl InputReplayRecord {
         store: &HomeStore,
         storage: &SyndicStorage,
     ) -> Result<(), StreamedInputSourceError> {
-        let Self::Accepted(expected) = self else {
+        let Self::Accepted {
+            record: expected, ..
+        } = self
+        else {
             return Ok(());
         };
         match storage.accepted_input(store, expected.id(), point_limit()) {
@@ -194,8 +218,11 @@ impl InputReplayRecord {
                 hasher.update(thread_id.as_bytes());
                 hasher.update(item_id.as_bytes());
             }
-            Self::Accepted(record) => {
-                let admission = record.admission();
+            Self::Accepted {
+                record,
+                admission,
+                route_generation,
+            } => {
                 hasher.update([1_u8]);
                 hasher.update(record.id().as_bytes());
                 hasher.update(record.thread_id().as_bytes());
@@ -205,7 +232,7 @@ impl InputReplayRecord {
                 hasher.update(admission.expected_draft_revision().get().to_be_bytes());
                 hasher.update(admission.expected_gate_revision().get().to_be_bytes());
                 hasher.update(admission.replacement_draft_id().as_bytes());
-                hasher.update(record.route_generation().get().to_be_bytes());
+                hasher.update(route_generation.get().to_be_bytes());
                 hasher.update(record.admitted_at().unix_millis().to_be_bytes());
             }
         }

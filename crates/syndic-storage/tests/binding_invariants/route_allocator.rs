@@ -126,7 +126,7 @@ fn seed_unselected_accepted_input(
             history.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input,
                 thread,
                 ordinal,
@@ -294,10 +294,10 @@ fn unselected_generations_and_later_activation_share_one_route_allocator() {
         .accepted_input(&store, accepted, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(accepted_record.route_generation(), first_generation);
-    assert_eq!(accepted_record.admission().source_draft_id(), source_draft);
+    assert_eq!(accepted_record.route_generation().unwrap(), first_generation);
+    assert_eq!(accepted_record.composer_admission().unwrap().source_draft_id(), source_draft);
     assert_eq!(
-        accepted_record.admission().replacement_draft_id(),
+        accepted_record.composer_admission().unwrap().replacement_draft_id(),
         storage
             .current_draft(&store, thread, point_limit())
             .unwrap()

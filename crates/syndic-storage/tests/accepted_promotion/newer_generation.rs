@@ -67,7 +67,7 @@ fn assert_newer_authority(
         .unwrap()
         .expect("generation-two accepted input remains available");
     assert_eq!(input.thread_id(), thread);
-    assert_eq!(input.route_generation(), newer_head.proof().generation());
+    assert_eq!(input.route_generation().unwrap(), newer_head.proof().generation());
 }
 
 fn assert_exact_with_preserved_head(

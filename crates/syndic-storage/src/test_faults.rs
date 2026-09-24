@@ -94,6 +94,8 @@ pub use crate::draft_piece::build_mapping::fixture::{
 pub(crate) use draft_marker_continuation_bounds::put_marker_bounds_fixture_record as put_mapping_fixture_record;
 mod discussion_gate;
 mod dispatch_provenance;
+mod generated_input;
+pub use generated_input::*;
 mod draft_piece_candidate_drift;
 mod draft_piece_corruption;
 pub use discussion_gate::{decode_discussion_gate_fixture, encode_discussion_gate_fixture};

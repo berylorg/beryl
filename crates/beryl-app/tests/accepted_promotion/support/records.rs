@@ -223,7 +223,7 @@ pub(super) fn promotion_records(
             time(5),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 accepted_input,
                 thread,
                 accepted_ordinal,

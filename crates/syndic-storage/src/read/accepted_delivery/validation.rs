@@ -13,7 +13,7 @@ pub(super) fn input_leaf_identity_agrees(
 ) -> bool {
     leaf.input_id() == input.id()
         && leaf.thread_id() == input.thread_id()
-        && leaf.generation() == input.route_generation()
+        && Some(leaf.generation()) == input.route_generation()
         && leaf.ordinal() == input.ordinal()
 }
 
@@ -45,11 +45,11 @@ pub(super) fn validate_ready_route(
         || gate.accepted_high_water() < input.ordinal().get()
         || gate
             .route_generation_high_water()
-            .is_none_or(|high_water| high_water < input.route_generation())
+            .is_none_or(|high_water| input.route_generation().is_none_or(|generation| high_water < generation))
         || gate.live_steering_count() == 0
         || head.thread_id() != input.thread_id()
         || head.proof() != route
-        || route.generation() != input.route_generation()
+        || Some(route.generation()) != input.route_generation()
         || generation.thread_id() != input.thread_id()
         || generation.generation() != route.generation()
         || generation.revision() != route.revision()

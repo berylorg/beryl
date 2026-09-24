@@ -260,7 +260,7 @@ pub(super) fn records(
         acceptance.expected_gate_revision(),
         acceptance.next_draft_id(),
     )?;
-    let input = AcceptedInputRecord::new(
+    let input = AcceptedInputRecord::from_composer(
         input_id,
         base.thread.id(),
         ordinal,

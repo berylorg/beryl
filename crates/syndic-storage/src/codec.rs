@@ -163,18 +163,18 @@ mod tests {
     fn every_changed_record_family_declares_its_current_version_explicitly() {
         let v2 = RecordVersion::new(2);
         assert_eq!(version::<primary::ThreadsCodec>(), v2);
-        assert_eq!(version::<secondary::AcceptedOrderCodec>(), v2);
         assert_eq!(version::<primary::ContentManifestsCodec>(), v2);
         assert_eq!(version::<primary::CanonicalItemsCodec>(), v2);
 
         let v3 = RecordVersion::new(3);
-        assert_eq!(version::<primary::TurnStatesCodec>(), v3);
-        assert_eq!(version::<primary::AcceptedInputsCodec>(), v3);
+        assert_eq!(version::<secondary::AcceptedOrderCodec>(), v3);
         assert_eq!(version::<primary::SourceEventsCodec>(), v3);
         assert_eq!(version::<secondary::AcceptedRouteGenerationsCodec>(), v3);
 
         let v4 = RecordVersion::new(4);
-        assert_eq!(version::<primary::InputGatesCodec>(), v4);
+        assert_eq!(version::<primary::TurnStatesCodec>(), v4);
+        assert_eq!(version::<primary::AcceptedInputsCodec>(), v4);
+        assert_eq!(version::<primary::InputGatesCodec>(), RecordVersion::new(5));
         assert_eq!(version::<primary::AcceptedRouteLeavesCodec>(), v4);
 
         assert_eq!(

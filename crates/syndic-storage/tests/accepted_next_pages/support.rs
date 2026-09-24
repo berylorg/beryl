@@ -190,7 +190,7 @@ pub fn next_turn_records(
             let input_id = draft.accepted_input_id();
             records.extend([
                 FixtureRecord::AcceptedInput(
-                    AcceptedInputRecord::new(
+                    AcceptedInputRecord::from_composer(
                         input_id,
                         thread,
                         ordinal,

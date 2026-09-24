@@ -43,6 +43,21 @@ pub struct CanonicalItemRecord {
 }
 
 impl CanonicalItemRecord {
+    pub fn local_discussion_handoff(
+        id: SyndicItemId,
+        turn_id: SyndicTurnId,
+        ordinal: TurnItemOrdinal,
+        revision: ProjectionRevision,
+        content: ContentReference,
+        accepted_input_id: beryl_model::SyndicAcceptedInputId,
+    ) -> Self {
+        let mut item = Self::local_user_input(id, turn_id, ordinal, revision, content, None);
+        item.presentation = CanonicalItemPresentation::DiscussionHandoff {
+            content,
+            accepted_input_id,
+        };
+        item
+    }
     #[must_use]
     pub fn local_user_input(
         id: SyndicItemId,
@@ -123,6 +138,9 @@ impl CanonicalItemRecord {
     pub fn kind(&self) -> CanonicalItemKind {
         match &self.presentation {
             CanonicalItemPresentation::UserInput { .. } => CanonicalItemKind::UserInput,
+            CanonicalItemPresentation::DiscussionHandoff { .. } => {
+                CanonicalItemKind::DiscussionHandoff
+            }
             CanonicalItemPresentation::Narrative
                 if self.provider_kind == ProviderItemKind::AgentMessage =>
             {
@@ -184,7 +202,8 @@ impl CanonicalItemRecord {
     #[must_use]
     pub const fn projection_source(&self) -> Option<ProjectionTextSource> {
         match &self.presentation {
-            CanonicalItemPresentation::UserInput { content, .. } => {
+            CanonicalItemPresentation::UserInput { content, .. }
+            | CanonicalItemPresentation::DiscussionHandoff { content, .. } => {
                 Some(ProjectionTextSource::composer(*content))
             }
             CanonicalItemPresentation::Narrative => match &self.provider {
@@ -295,7 +314,11 @@ const fn presentation_is_valid(
 ) -> bool {
     match kind {
         ProviderItemKind::UserMessage => {
-            matches!(presentation, CanonicalItemPresentation::UserInput { .. })
+            matches!(
+                presentation,
+                CanonicalItemPresentation::UserInput { .. }
+                    | CanonicalItemPresentation::DiscussionHandoff { .. }
+            )
         }
         ProviderItemKind::AgentMessage | ProviderItemKind::Plan => {
             matches!(presentation, CanonicalItemPresentation::Narrative)

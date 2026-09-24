@@ -89,6 +89,8 @@ pub enum SyndicRecordError {
     AcceptedInputAdmissionDraftCollision,
     #[error("accepted-input identity is not derived from its admission source draft")]
     AcceptedInputIdentityMismatch,
+    #[error("generated handoff input identity, content bounds or marker authority disagrees")]
+    InvalidGeneratedHandoffInput,
     #[error("provider-observation build, validator, or chunk frontier disagrees")]
     InvalidProviderObservationFrontier,
     #[error("{kind} must not be empty")]

@@ -469,8 +469,8 @@ fn substitute_exact_authority(
                         );
                     }
                     FixtureRecord::AcceptedInput(input) if input.thread_id() == thread => {
-                        let admission = input.admission();
-                        *input = AcceptedInputRecord::new(
+                        let admission = input.composer_admission().unwrap();
+                        *input = AcceptedInputRecord::from_composer(
                             input.id(),
                             input.thread_id(),
                             input.ordinal(),
@@ -482,7 +482,7 @@ fn substitute_exact_authority(
                                 replacement,
                             )
                             .unwrap(),
-                            input.route_generation(),
+                            input.route_generation().unwrap(),
                             input.content(),
                             input.asset_reference_set(),
                             input.admitted_at(),

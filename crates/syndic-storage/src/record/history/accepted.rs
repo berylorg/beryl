@@ -1,5 +1,8 @@
 use super::*;
 
+mod source;
+pub use source::{AcceptedInputSource, DiscussionHandoffReceipt};
+
 /// Immutable natural-identity and revision receipt for one accepted-input admission.
 ///
 /// The receipt preserves the source authority checked by the admission and the distinct
@@ -68,8 +71,7 @@ pub struct AcceptedInputRecord {
     id: SyndicAcceptedInputId,
     thread_id: SyndicThreadId,
     ordinal: AcceptedInputOrdinal,
-    admission: AcceptedInputAdmissionProof,
-    route_generation: AcceptedRouteGeneration,
+    source: AcceptedInputSource,
     content: ContentReference,
     asset_reference_set: Option<SealedAssetReferenceSetProof>,
     admitted_at: SyndicTimestamp,
@@ -82,7 +84,7 @@ impl AcceptedInputRecord {
     /// source draft.
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn from_composer(
         id: SyndicAcceptedInputId,
         thread_id: SyndicThreadId,
         ordinal: AcceptedInputOrdinal,
@@ -92,15 +94,54 @@ impl AcceptedInputRecord {
         asset_reference_set: Option<SealedAssetReferenceSetProof>,
         admitted_at: SyndicTimestamp,
     ) -> Result<Self, crate::SyndicRecordError> {
-        if id != admission.source_draft_id().accepted_input_id() {
-            return Err(crate::SyndicRecordError::AcceptedInputIdentityMismatch);
+        Self::new(
+            id,
+            thread_id,
+            ordinal,
+            AcceptedInputSource::Composer {
+                admission,
+                route_generation,
+            },
+            content,
+            asset_reference_set,
+            admitted_at,
+        )
+    }
+
+    pub fn new(
+        id: SyndicAcceptedInputId,
+        thread_id: SyndicThreadId,
+        ordinal: AcceptedInputOrdinal,
+        source: AcceptedInputSource,
+        content: ContentReference,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
+        admitted_at: SyndicTimestamp,
+    ) -> Result<Self, crate::SyndicRecordError> {
+        match source {
+            AcceptedInputSource::Composer { admission, .. } => {
+                if id != admission.source_draft_id().accepted_input_id() {
+                    return Err(crate::SyndicRecordError::AcceptedInputIdentityMismatch);
+                }
+            }
+            AcceptedInputSource::DiscussionHandoff(receipt) => {
+                if id.as_bytes() != receipt.intent_id.as_bytes()
+                    || id.as_bytes() != receipt.job_id.as_bytes()
+                    || receipt.child_thread_id == thread_id
+                    || asset_reference_set.is_some()
+                    || receipt.parent_turn_id == receipt.resolving_turn_id
+                    || content.encoding() != crate::ContentEncoding::ComposerV1
+                    || content.summary().image_marker_count() != 0
+                    || !(25..=262_168).contains(&content.summary().logical_utf8_bytes())
+                {
+                    return Err(crate::SyndicRecordError::InvalidGeneratedHandoffInput);
+                }
+            }
         }
         Ok(Self {
             id,
             thread_id,
             ordinal,
-            admission,
-            route_generation,
+            source,
             content,
             asset_reference_set,
             admitted_at,
@@ -119,16 +160,27 @@ impl AcceptedInputRecord {
         self.ordinal
     }
     #[must_use]
-    pub const fn admission(&self) -> AcceptedInputAdmissionProof {
-        self.admission
+    pub const fn source(&self) -> AcceptedInputSource {
+        self.source
+    }
+    pub const fn composer_admission(&self) -> Option<AcceptedInputAdmissionProof> {
+        match self.source {
+            AcceptedInputSource::Composer { admission, .. } => Some(admission),
+            AcceptedInputSource::DiscussionHandoff(_) => None,
+        }
     }
     #[must_use]
     pub const fn admission_gate_revision(&self) -> InputGateRevision {
-        self.admission.expected_gate_revision()
+        self.source.gate_revision()
     }
     #[must_use]
-    pub const fn route_generation(&self) -> AcceptedRouteGeneration {
-        self.route_generation
+    pub const fn route_generation(&self) -> Option<AcceptedRouteGeneration> {
+        match self.source {
+            AcceptedInputSource::Composer {
+                route_generation, ..
+            } => Some(route_generation),
+            AcceptedInputSource::DiscussionHandoff(_) => None,
+        }
     }
     #[must_use]
     pub const fn content(&self) -> ContentReference {

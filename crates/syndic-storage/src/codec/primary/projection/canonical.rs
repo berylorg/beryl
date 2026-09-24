@@ -109,6 +109,14 @@ pub(in crate::codec::primary) fn decode_canonical_item(
 
 fn encode_canonical_presentation(e: &mut Encoder, value: &CanonicalItemPresentation) {
     match value {
+        CanonicalItemPresentation::DiscussionHandoff {
+            content,
+            accepted_input_id,
+        } => {
+            e.u8(5);
+            enc_content_ref(e, *content);
+            enc_accepted(e, *accepted_input_id);
+        }
         CanonicalItemPresentation::UserInput {
             content,
             asset_reference_set,
@@ -149,6 +157,10 @@ fn decode_canonical_presentation(
         4 => Ok(CanonicalItemPresentation::GeneratedMedia {
             resource_id: dec_resource(d)?,
         }),
+        5 => Ok(CanonicalItemPresentation::DiscussionHandoff {
+            content: dec_content_ref(d)?,
+            accepted_input_id: dec_accepted(d)?,
+        }),
         tag => Err(CodecError::InvalidTag {
             kind: "canonical item presentation",
             tag,
@@ -180,22 +192,32 @@ fn decode_local_canonical_item(
             SyndicRecordError::InvalidProviderItemLifecycle,
         ));
     }
-    let CanonicalItemPresentation::UserInput {
-        content,
-        asset_reference_set,
-    } = presentation
-    else {
-        return Err(invalid(
+    match presentation {
+        CanonicalItemPresentation::UserInput {
+            content,
+            asset_reference_set,
+        } => Ok(CanonicalItemRecord::local_user_input(
+            id,
+            turn,
+            ordinal,
+            revision,
+            content,
+            asset_reference_set.map(|proof| *proof),
+        )),
+        CanonicalItemPresentation::DiscussionHandoff {
+            content,
+            accepted_input_id,
+        } => Ok(CanonicalItemRecord::local_discussion_handoff(
+            id,
+            turn,
+            ordinal,
+            revision,
+            content,
+            accepted_input_id,
+        )),
+        _ => Err(invalid(
             "canonical item",
             SyndicRecordError::InvalidProviderItemDisposition,
-        ));
-    };
-    Ok(CanonicalItemRecord::local_user_input(
-        id,
-        turn,
-        ordinal,
-        revision,
-        content,
-        asset_reference_set.map(|proof| *proof),
-    ))
+        )),
+    }
 }

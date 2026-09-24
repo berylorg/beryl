@@ -298,10 +298,10 @@ fn exact_rejected_leaf(
     let leaf = required::<AcceptedRouteLeavesFamily>(reader, &rejected.input_id())?;
     if input.id() != rejected.input_id()
         || input.thread_id() != request.thread_id
-        || input.route_generation() != request.route_generation
+        || input.route_generation() != Some(request.route_generation)
         || leaf.input_id() != input.id()
         || leaf.thread_id() != input.thread_id()
-        || leaf.generation() != input.route_generation()
+        || Some(leaf.generation()) != input.route_generation()
         || leaf.ordinal() != input.ordinal()
         || leaf.revision() != rejected.expected_input_revision()
         || leaf.state() != AcceptedRouteLeafState::Routed

@@ -12,6 +12,7 @@ pub enum TurnKind {
     OrdinaryUser,
     /// Beryl-owned fixed lifecycle continuation; not user-authored input.
     BerylLifecycleContinuation,
+    BerylDiscussionHandoff,
     /// A provider operation that owns turn-scoped items.
     ProviderOperation(ProviderOperationKind),
 }

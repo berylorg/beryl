@@ -113,10 +113,10 @@ fn validate_named_rejection(
         SyndicValidationError::Invariant("named abandonment input revision is exhausted")
     })?;
     if input.thread_id() != generation.thread_id()
-        || input.route_generation() != generation.generation()
+        || input.route_generation() != Some(generation.generation())
         || leaf.input_id() != input.id()
         || leaf.thread_id() != input.thread_id()
-        || leaf.generation() != input.route_generation()
+        || Some(leaf.generation()) != input.route_generation()
         || leaf.ordinal() != input.ordinal()
         || leaf.revision() < successor
     {

@@ -115,7 +115,7 @@ impl SyndicStorage {
                 "steerable input gate has no selected route",
             );
         };
-        if route_proof.generation() != input.route_generation() {
+        if Some(route_proof.generation()) != input.route_generation() {
             return self.ready_stable_none(store, &gate, limit);
         }
 

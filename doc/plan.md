@@ -73,21 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 532: Compose Archived-Parent Failure Convergence (finished)
+# Phase 533: Implement Generated Input Provenance And Schema (finished)
 
-Accepted atomic ParentArchived failure and child-gate release at both pre-append checkpoints
-through existing bounded ordinary/candidate settlement custody. Twelve app tests, app and shared
-fixture checks, and independent review passed. Cancellation, uncertain outcome and input preservation
-are covered; parent input admission remains separate.
+Accepted closed generated accepted-input/order sources, canonical turn/item provenance and bounded
+historical validation. Generated schema/corruption tests, ordinary route/admission and app replay
+regressions, version assertions, dependent test-target checks and independent review passed.
+Historical child archival/parent advancement, payload bounds and route exclusion are covered.
 
-# Phase 533: Implement Generated Input Provenance And Schema (wip)
-
-Replace composer-only accepted-input/order schemas with the closed generated source and direct
-turn/item proof. Implement canonical encodings, bounded reads and structural validation, updating
-consumers without synthetic drafts/routes or compatibility readers. Verify ordinary regressions,
-generated identity/corruption cases and supported payload bounds before admission exists.
-
-# Phase 534: Carry Generated Input Through Ordinary Execution (pending)
+# Phase 534: Carry Generated Input Through Ordinary Execution (wip)
 
 Support the accepted generated turn/item kind through ordinary pending dispatch, snapshots, replay,
 provider correlation, stop and terminal/repair classification. Verify visible text and generated

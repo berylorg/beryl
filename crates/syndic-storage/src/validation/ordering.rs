@@ -10,6 +10,7 @@ use crate::{
 use super::scan::{point, require, scan, scan_range};
 
 mod abandonment;
+pub(super) mod generated;
 mod promotion;
 mod transition_witness;
 mod util;
@@ -32,7 +33,13 @@ pub(super) fn validate(
 
 fn validate_inputs(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicValidationError> {
     scan::<AcceptedInputsFamily>(reader, |key, input| {
-        let proof = input.admission();
+        let crate::AcceptedInputSource::Composer {
+            admission: proof,
+            route_generation,
+        } = input.source()
+        else {
+            return generated::validate(reader, *key, input);
+        };
         if *key != input.id()
             || input.id() != proof.source_draft_id().accepted_input_id()
             || proof.source_draft_id() == proof.replacement_draft_id()
@@ -71,7 +78,7 @@ fn validate_inputs(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndic
             input.thread_id(),
             input.ordinal(),
             input.id(),
-            input.route_generation(),
+            route_generation,
         );
         if order != expected {
             return invariant("accepted input and immutable order membership disagree");
@@ -83,7 +90,7 @@ fn validate_inputs(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndic
         )?;
         if leaf.thread_id() != input.thread_id()
             || leaf.ordinal() != input.ordinal()
-            || leaf.generation() != input.route_generation()
+            || Some(leaf.generation()) != input.route_generation()
         {
             return invariant("accepted input and route leaf disagree");
         }
@@ -91,7 +98,7 @@ fn validate_inputs(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndic
             reader,
             &ThreadRouteKey {
                 thread: input.thread_id(),
-                generation: input.route_generation(),
+                generation: route_generation,
             },
             "accepted input references a missing route generation",
         )?;
@@ -129,10 +136,10 @@ fn validate_order(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicV
                 if previous.ordinal().checked_next().ok() != Some(input.ordinal()) {
                     return invariant("accepted order is not strictly contiguous");
                 }
-                let previous_proof = previous.admission();
-                let proof = input.admission();
-                if proof.expected_thread_revision() <= previous_proof.expected_thread_revision()
-                    || proof.expected_gate_revision() <= previous_proof.expected_gate_revision()
+                let previous_proof = previous.source();
+                let proof = input.source();
+                if proof.thread_revision() <= previous_proof.thread_revision()
+                    || proof.gate_revision() <= previous_proof.gate_revision()
                     || input.admitted_at() < previous.admitted_at()
                 {
                     return invariant("accepted admission receipts are not strict descendants");
@@ -173,7 +180,10 @@ fn validate_replacement_descendant(
     reader: &DomainReader<'_, SyndicDomain>,
     input: &crate::AcceptedInputRecord,
 ) -> Result<(), SyndicValidationError> {
-    let replacement = input.admission().replacement_draft_id();
+    let Some(admission) = input.composer_admission() else {
+        return invariant("generated input has no replacement draft");
+    };
+    let replacement = admission.replacement_draft_id();
     let accepted = point::<AcceptedInputsFamily>(reader, &replacement.accepted_input_id())?;
     let draft = point::<DraftsFamily>(reader, &replacement)?;
     let turn = point::<TurnsFamily>(reader, &replacement.submitted_turn_id())?;
@@ -183,12 +193,14 @@ fn validate_replacement_descendant(
         return invariant("accepted-input replacement descendant is not exclusive");
     }
     let accepted_exact = accepted.as_ref().is_some_and(|next| {
-        let proof = next.admission();
+        let Some(proof) = next.composer_admission() else {
+            return false;
+        };
         next.thread_id() == input.thread_id()
             && proof.source_draft_id() == replacement
             && next.ordinal().get() > input.ordinal().get()
-            && proof.expected_thread_revision() > input.admission().expected_thread_revision()
-            && proof.expected_gate_revision() > input.admission().expected_gate_revision()
+            && proof.expected_thread_revision() > admission.expected_thread_revision()
+            && proof.expected_gate_revision() > admission.expected_gate_revision()
             && next.admitted_at() >= input.admitted_at()
     });
     let draft_exact = draft.as_ref().is_some_and(|draft| {
@@ -223,7 +235,7 @@ fn validate_leaves(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndic
         if *key != leaf.input_id()
             || input.thread_id() != leaf.thread_id()
             || input.ordinal() != leaf.ordinal()
-            || input.route_generation() != leaf.generation()
+            || input.route_generation() != Some(leaf.generation())
         {
             return invariant("accepted-route leaf and immutable input disagree");
         }
@@ -330,7 +342,7 @@ fn classify_member(
     totals: &mut RouteTotals,
 ) -> Result<(), SyndicValidationError> {
     if order.thread_id() != generation.thread_id()
-        || order.route_generation() != generation.generation()
+        || order.route_generation() != Some(generation.generation())
     {
         return invariant("accepted-route interval crosses generation membership");
     }

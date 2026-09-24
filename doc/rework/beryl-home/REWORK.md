@@ -495,6 +495,10 @@
 - [ ] Implement branch discussion creation, immutable selection provenance, readonly context,
   first submission, ordinary child conversation, and inherited image-label authority without
   copying historical label maps.
+- [x] Accepted closed generated parent-input provenance and schema with bounded historical
+  validation, exact payload/identity proofs and route exclusion. Schema/corruption, ordinary
+  route/admission and app replay regressions, dependent checks and independent review passed;
+  ordinary generated execution and atomic parent admission remain separate boundaries.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

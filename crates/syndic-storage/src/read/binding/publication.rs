@@ -324,10 +324,10 @@ fn rejected_leaf_matches(
     };
     input.id() == expected.input_id()
         && input.thread_id() == request.thread_id()
-        && input.route_generation() == request.route_generation()
+        && input.route_generation() == Some(request.route_generation())
         && leaf.input_id() == input.id()
         && leaf.thread_id() == input.thread_id()
-        && leaf.generation() == input.route_generation()
+        && Some(leaf.generation()) == input.route_generation()
         && leaf.ordinal() == input.ordinal()
         && leaf.revision() == revision
         && if published {

@@ -286,7 +286,7 @@ fn ordering_event_item_and_projection_corruption_fail_closed() {
             let generation = AcceptedRouteGeneration::FIRST;
             batch([
                 FixtureRecord::AcceptedInput(
-                    AcceptedInputRecord::new(
+                    AcceptedInputRecord::from_composer(
                         input_id,
                         id(1),
                         ordinal,

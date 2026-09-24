@@ -62,7 +62,7 @@ pub(super) fn records(facts: RouteRecordFacts) -> Vec<FixtureRecord> {
 
     vec![
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 steering,
                 thread,
                 AcceptedInputOrdinal::FIRST,
@@ -140,7 +140,7 @@ pub(super) fn records(facts: RouteRecordFacts) -> Vec<FixtureRecord> {
             AcceptedInputLifecycle::Admitted,
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 next,
                 thread,
                 AcceptedInputOrdinal::new(2).unwrap(),

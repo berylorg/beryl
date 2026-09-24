@@ -371,7 +371,7 @@ pub(super) fn queue_input(
             .unwrap(),
         ),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input_id,
                 thread,
                 ordinal,

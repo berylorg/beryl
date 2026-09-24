@@ -68,7 +68,9 @@ impl AcceptedInputReplayFactory {
             &storage,
             assets,
             context.0,
-            InputReplayRecord::accepted(record),
+            InputReplayRecord::accepted(record).ok_or(
+                AcceptedInputReplayError::GeneratedInputRequiresSubmittedTurn { input_id },
+            )?,
             content,
             asset_reference_set,
             owner_head,
@@ -200,6 +202,8 @@ fn decode_nibble(byte: u8, index: usize) -> Result<u8, AcceptedInputSteeringCorr
 /// Typed failure while stabilizing one accepted-input replay factory.
 #[derive(Debug, Error)]
 pub(in crate::cas_projection) enum AcceptedInputReplayError {
+    #[error("generated input {input_id} requires submitted-turn replay")]
+    GeneratedInputRequiresSubmittedTurn { input_id: SyndicAcceptedInputId },
     #[error("accepted-input replay was cancelled before preparation completed")]
     Cancelled,
     #[error("accepted-input replay requires a healthy Beryl home, got {state:?}")]

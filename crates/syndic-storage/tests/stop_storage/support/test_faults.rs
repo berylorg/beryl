@@ -252,7 +252,7 @@ pub fn admit_queued_text(
         next_draft_id,
     );
     let next_draft_revision = DraftRevision::new(1).unwrap();
-    let input = AcceptedInputRecord::new(
+    let input = AcceptedInputRecord::from_composer(
         current.draft().id().accepted_input_id(),
         thread_id,
         ordinal,

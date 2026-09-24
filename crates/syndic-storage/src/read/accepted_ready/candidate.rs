@@ -205,7 +205,7 @@ impl SyndicStorage {
                 || key.ordinal != expected_ordinal
                 || order.thread_id() != source.thread_id()
                 || order.ordinal() != expected_ordinal
-                || order.route_generation() != source.generation()
+                || order.route_generation() != Some(source.generation())
             {
                 return Err(SyndicReadError::Invariant(
                     "accepted-ready candidate order membership disagrees",

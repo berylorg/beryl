@@ -94,15 +94,15 @@ fn seed_large_route(store: &HomeStore, storage: &SyndicStorage, last_ordinal: u6
             summary.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 next.id(),
                 thread,
                 next.ordinal(),
                 AcceptedInputAdmissionProof::new(
-                    next.admission().expected_thread_revision(),
-                    next.admission().source_draft_id(),
-                    next.admission().expected_draft_revision(),
-                    next.admission().expected_gate_revision(),
+                    next.composer_admission().unwrap().expected_thread_revision(),
+                    next.composer_admission().unwrap().source_draft_id(),
+                    next.composer_admission().unwrap().expected_draft_revision(),
+                    next.composer_admission().unwrap().expected_gate_revision(),
                     SyndicDraftId::from_bytes(*accepted_id(3).as_bytes()),
                 )
                 .unwrap(),
@@ -166,7 +166,7 @@ fn seed_large_route(store: &HomeStore, storage: &SyndicStorage, last_ordinal: u6
         let input_id = accepted_id(value);
         records.extend([
             FixtureRecord::AcceptedInput(
-                AcceptedInputRecord::new(
+                AcceptedInputRecord::from_composer(
                     input_id,
                     thread,
                     ordinal,

@@ -231,7 +231,7 @@ id_family!(
     encode_accepted_input,
     decode_accepted_input,
     SMALL_MAX,
-    beryl_home_store::RecordVersion::new(3)
+    beryl_home_store::RecordVersion::new(4)
 );
 id_family!(
     CanonicalItemsFamily,

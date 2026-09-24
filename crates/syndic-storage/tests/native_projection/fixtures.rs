@@ -536,7 +536,7 @@ pub(super) fn seed_accepted_input_admission_descendant(
             selected.thread_revision(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input,
                 fixture.thread,
                 ordinal,

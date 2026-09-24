@@ -329,7 +329,7 @@ fn direct_accepted_identity_chain_corruption_is_rejected() {
         Err(SyndicRecordError::AcceptedInputAdmissionDraftCollision)
     );
     assert!(matches!(
-        AcceptedInputRecord::new(
+        AcceptedInputRecord::from_composer(
             SyndicAcceptedInputId::from_bytes([99; 16]),
             id(57),
             AcceptedInputOrdinal::FIRST,
@@ -354,8 +354,8 @@ fn direct_accepted_identity_chain_corruption_is_rejected() {
         .accepted_input(&store, fixture.accepted_input, limit())
         .unwrap()
         .unwrap();
-    let proof = input.admission();
-    let corrupt = AcceptedInputRecord::new(
+    let proof = input.composer_admission().unwrap();
+    let corrupt = AcceptedInputRecord::from_composer(
         input.id(),
         input.thread_id(),
         input.ordinal(),
@@ -367,7 +367,7 @@ fn direct_accepted_identity_chain_corruption_is_rejected() {
             draft_id(99),
         )
         .unwrap(),
-        input.route_generation(),
+        input.route_generation().unwrap(),
         input.content(),
         input.asset_reference_set(),
         input.admitted_at(),

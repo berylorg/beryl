@@ -97,15 +97,15 @@ fn seed_large_delivering_generation(
             current_summary.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 retryable.id(),
                 thread,
                 retryable.ordinal(),
                 AcceptedInputAdmissionProof::new(
-                    retryable.admission().expected_thread_revision(),
-                    retryable.admission().source_draft_id(),
-                    retryable.admission().expected_draft_revision(),
-                    retryable.admission().expected_gate_revision(),
+                    retryable.composer_admission().unwrap().expected_thread_revision(),
+                    retryable.composer_admission().unwrap().source_draft_id(),
+                    retryable.composer_admission().unwrap().expected_draft_revision(),
+                    retryable.composer_admission().unwrap().expected_gate_revision(),
                     SyndicDraftId::from_bytes(*accepted_id(5).as_bytes()),
                 )
                 .unwrap(),
@@ -200,8 +200,8 @@ fn seed_large_delivering_generation(
                 );
             }
             FixtureRecord::AcceptedInput(input) if input.id() == retryable_input() => {
-                let proof = input.admission();
-                *input = AcceptedInputRecord::new(
+                let proof = input.composer_admission().unwrap();
+                *input = AcceptedInputRecord::from_composer(
                     input.id(),
                     input.thread_id(),
                     input.ordinal(),
@@ -213,7 +213,7 @@ fn seed_large_delivering_generation(
                         SyndicDraftId::from_bytes(*accepted_id(5).as_bytes()),
                     )
                     .unwrap(),
-                    input.route_generation(),
+                    input.route_generation().unwrap(),
                     input.content(),
                     input.asset_reference_set(),
                     input.admitted_at(),
@@ -280,7 +280,7 @@ fn seed_large_delivering_generation(
         let input_id = accepted_id(value);
         records.extend([
             FixtureRecord::AcceptedInput(
-                AcceptedInputRecord::new(
+                AcceptedInputRecord::from_composer(
                     input_id,
                     thread,
                     ordinal,

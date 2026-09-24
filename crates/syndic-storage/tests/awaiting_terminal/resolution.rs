@@ -58,7 +58,7 @@ fn exact_late_terminal_enters_history_without_retargeting_unknown_interval_work(
         .accepted_input(&fixture.store, second, point_limit())
         .unwrap()
         .unwrap();
-    assert_ne!(second_record.route_generation(), retained.generation());
+    assert_ne!(second_record.route_generation().unwrap(), retained.generation());
     assert_eq!(next_sources(&fixture).len(), 2);
     fixture
         .store
@@ -156,7 +156,7 @@ fn late_terminal_releases_unknown_interval_work_for_exact_promotion() {
         .accepted_input(&fixture.store, second, point_limit())
         .unwrap()
         .unwrap();
-    assert_ne!(second_record.route_generation(), retained.generation());
+    assert_ne!(second_record.route_generation().unwrap(), retained.generation());
     fixture
         .store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)

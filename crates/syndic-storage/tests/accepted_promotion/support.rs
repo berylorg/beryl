@@ -121,7 +121,7 @@ pub fn promotion_fixture_with_newer_generation(
         .find_map(|record| match record {
             FixtureRecord::AcceptedInput(record)
                 if record.thread_id() == thread
-                    && record.route_generation() == newer_generation =>
+                    && record.route_generation().unwrap() == newer_generation =>
             {
                 Some(record.id())
             }
@@ -172,7 +172,7 @@ fn promotion_fixture_for_generations(
         .find_map(|record| match record {
             FixtureRecord::AcceptedInput(record)
                 if record.thread_id() == thread
-                    && record.route_generation() == AcceptedRouteGeneration::FIRST =>
+                    && record.route_generation().unwrap() == AcceptedRouteGeneration::FIRST =>
             {
                 Some(record.id())
             }
@@ -368,12 +368,12 @@ fn rewrite_base_records(
                 );
             }
             FixtureRecord::AcceptedInput(current) if current.thread_id() == thread => {
-                *current = AcceptedInputRecord::new(
+                *current = AcceptedInputRecord::from_composer(
                     current.id(),
                     thread,
                     current.ordinal(),
-                    current.admission(),
-                    current.route_generation(),
+                    current.composer_admission().unwrap(),
+                    current.route_generation().unwrap(),
                     accepted_content,
                     current.asset_reference_set(),
                     current.admitted_at(),

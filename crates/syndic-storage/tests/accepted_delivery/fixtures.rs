@@ -88,19 +88,19 @@ pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
             summary.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 next.id(),
                 next.thread_id(),
                 next.ordinal(),
                 AcceptedInputAdmissionProof::new(
-                    next.admission().expected_thread_revision(),
-                    next.admission().source_draft_id(),
-                    next.admission().expected_draft_revision(),
-                    next.admission().expected_gate_revision(),
+                    next.composer_admission().unwrap().expected_thread_revision(),
+                    next.composer_admission().unwrap().source_draft_id(),
+                    next.composer_admission().unwrap().expected_draft_revision(),
+                    next.composer_admission().unwrap().expected_gate_revision(),
                     SyndicDraftId::from_bytes(*delivering_input().as_bytes()),
                 )
                 .unwrap(),
-                next.route_generation(),
+                next.route_generation().unwrap(),
                 next.content(),
                 next.asset_reference_set(),
                 next.admitted_at(),
@@ -198,7 +198,7 @@ pub fn seed_mixed_abandonment(store: &HomeStore, storage: SyndicStorage) {
         };
         records.extend([
             FixtureRecord::AcceptedInput(
-                AcceptedInputRecord::new(
+                AcceptedInputRecord::from_composer(
                     input_id,
                     id(40),
                     ordinal,

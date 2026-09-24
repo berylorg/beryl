@@ -211,11 +211,11 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        admitted.admission().expected_thread_revision(),
+        admitted.composer_admission().unwrap().expected_thread_revision(),
         ThreadRevision::new(1).unwrap()
     );
     assert_eq!(
-        admitted.admission().expected_gate_revision(),
+        admitted.composer_admission().unwrap().expected_gate_revision(),
         InputGateRevision::new(1).unwrap()
     );
 

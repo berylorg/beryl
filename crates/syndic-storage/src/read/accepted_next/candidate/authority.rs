@@ -64,7 +64,7 @@ pub(super) fn validate_next_leaf(
     leaf: &AcceptedRouteLeafRecord,
 ) -> Result<(), SyndicReadError> {
     if order.thread_id() != source.thread_id()
-        || order.route_generation() != source.generation()
+        || order.route_generation() != Some(source.generation())
         || leaf.input_id() != order.input_id()
         || leaf.thread_id() != source.thread_id()
         || leaf.generation() != source.generation()

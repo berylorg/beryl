@@ -40,11 +40,11 @@ pub(super) fn validate_promotion_source(
         || generation.next_turn_count() == 0
         || input.id() != promotion.accepted_input_id()
         || input.thread_id() != basis.thread().id()
-        || input.route_generation() != generation.generation()
+        || input.route_generation() != Some(generation.generation())
         || input.ordinal() != order.ordinal()
         || order.input_id() != input.id()
         || order.thread_id() != input.thread_id()
-        || order.route_generation() != generation.generation()
+        || order.route_generation() != Some(generation.generation())
         || leaf.input_id() != input.id()
         || leaf.thread_id() != input.thread_id()
         || leaf.generation() != generation.generation()

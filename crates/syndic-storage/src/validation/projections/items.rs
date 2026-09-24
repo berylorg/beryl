@@ -13,6 +13,7 @@ pub(super) fn validate_items(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     scan::<CanonicalItemsFamily>(reader, |key, item| {
+        super::super::ordering::generated::validate_item(reader, item)?;
         if *key != item.id() {
             return invariant("canonical-item key and identity disagree");
         }

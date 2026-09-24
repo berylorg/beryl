@@ -67,7 +67,7 @@ impl AcceptedInputDeliveryMutation {
             || leaf.thread_id() != transition.thread_id
             || leaf.input_id() != input.id()
             || leaf.ordinal() != input.ordinal()
-            || leaf.generation() != input.route_generation()
+            || Some(leaf.generation()) != input.route_generation()
         {
             return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
         }

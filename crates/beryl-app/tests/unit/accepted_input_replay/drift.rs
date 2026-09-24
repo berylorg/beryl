@@ -21,12 +21,12 @@ fn preparation_rejects_cancellation_identity_drift_and_missing_input() {
         Err(AcceptedInputReplayError::Cancelled)
     ));
 
-    let changed = AcceptedInputRecord::new(
+    let changed = AcceptedInputRecord::from_composer(
         record.id(),
         record.thread_id(),
         record.ordinal(),
-        record.admission(),
-        record.route_generation(),
+        record.composer_admission().unwrap(),
+        record.route_generation().unwrap(),
         record.content(),
         record.asset_reference_set(),
         time(record.admitted_at().unix_millis() + 1),
@@ -40,7 +40,7 @@ fn preparation_rejects_cancellation_identity_drift_and_missing_input() {
 
     let missing_source = SyndicDraftId::from_bytes([0xee; 16]);
     let missing_id = missing_source.accepted_input_id();
-    let admission = record.admission();
+    let admission = record.composer_admission().unwrap();
     let missing_admission = AcceptedInputAdmissionProof::new(
         admission.expected_thread_revision(),
         missing_source,
@@ -49,12 +49,12 @@ fn preparation_rejects_cancellation_identity_drift_and_missing_input() {
         admission.replacement_draft_id(),
     )
     .unwrap();
-    let missing = AcceptedInputRecord::new(
+    let missing = AcceptedInputRecord::from_composer(
         missing_id,
         record.thread_id(),
         record.ordinal(),
         missing_admission,
-        record.route_generation(),
+        record.route_generation().unwrap(),
         record.content(),
         record.asset_reference_set(),
         record.admitted_at(),
@@ -112,12 +112,12 @@ fn prepared_source_rechecks_the_exact_accepted_record_before_replay() {
     let factory = fixture
         .replay_factory(record.clone(), &ProjectionCancellationToken::new())
         .unwrap();
-    let changed = AcceptedInputRecord::new(
+    let changed = AcceptedInputRecord::from_composer(
         record.id(),
         record.thread_id(),
         record.ordinal(),
-        record.admission(),
-        record.route_generation(),
+        record.composer_admission().unwrap(),
+        record.route_generation().unwrap(),
         record.content(),
         record.asset_reference_set(),
         time(record.admitted_at().unix_millis() + 1),

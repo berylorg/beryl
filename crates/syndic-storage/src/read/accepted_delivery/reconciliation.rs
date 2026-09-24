@@ -183,7 +183,7 @@ impl SyndicStorage {
             store,
             ThreadRouteKey {
                 thread: request.thread,
-                generation: input.route_generation(),
+                generation: input.route_generation().ok_or(SyndicReadError::Invariant("generated input has no delivery route"))?,
             },
             limit,
         )?;
@@ -191,10 +191,10 @@ impl SyndicStorage {
             return Ok(AcceptedInputDeliveryTransitionStatus::Collision);
         };
         Ok(
-            if proof.expected_route().generation() == input.route_generation()
+            if Some(proof.expected_route().generation()) == input.route_generation()
                 && proof.expected_route().revision() < generation.revision()
                 && generation.thread_id() == request.thread
-                && generation.generation() == input.route_generation()
+                && Some(generation.generation()) == input.route_generation()
                 && route_preserves_target(generation.target(), request.target)
             {
                 AcceptedInputDeliveryTransitionStatus::Exact
@@ -216,7 +216,7 @@ impl SyndicStorage {
             store,
             ThreadRouteKey {
                 thread: request.thread,
-                generation: input.route_generation(),
+                generation: input.route_generation().ok_or(SyndicReadError::Invariant("generated input has no delivery route"))?,
             },
             limit,
         )?;
@@ -248,9 +248,9 @@ impl SyndicStorage {
             if gate.thread_id() == request.thread
                 && input.admission_gate_revision() < gate.revision()
                 && gate.live_steering_count() > 0
-                && proof.generation() == input.route_generation()
+                && Some(proof.generation()) == input.route_generation()
                 && generation.thread_id() == request.thread
-                && generation.generation() == input.route_generation()
+                && Some(generation.generation()) == input.route_generation()
                 && source_count > 0
                 && in_interval
                 && target == request.target

@@ -71,7 +71,7 @@ fn accepted_and_canonical_owners_remain_small_metadata_records() {
     records.extend(content_records);
     records.extend([
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input,
                 thread,
                 ordinal,

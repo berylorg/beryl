@@ -175,6 +175,7 @@ fn enc_turn_kind(e: &mut Encoder, value: TurnKind) {
     match value {
         TurnKind::OrdinaryUser => e.u8(0),
         TurnKind::BerylLifecycleContinuation => e.u8(2),
+        TurnKind::BerylDiscussionHandoff => e.u8(3),
         TurnKind::ProviderOperation(kind) => {
             e.u8(1);
             e.u8(match kind {
@@ -197,6 +198,7 @@ fn dec_turn_kind(d: &mut Decoder<'_>) -> Result<TurnKind, CodecError> {
             }),
         },
         2 => Ok(TurnKind::BerylLifecycleContinuation),
+        3 => Ok(TurnKind::BerylDiscussionHandoff),
         tag => Err(CodecError::InvalidTag {
             kind: "stop turn kind",
             tag,

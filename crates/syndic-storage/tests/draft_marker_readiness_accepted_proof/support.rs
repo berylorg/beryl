@@ -340,7 +340,7 @@ fn publish_local_origin(
     let content = PreparedContent::composer(&payload)
         .unwrap()
         .reference(ContentRevision::new(1).unwrap());
-    let input = AcceptedInputRecord::new(
+    let input = AcceptedInputRecord::from_composer(
         input_id,
         thread,
         AcceptedInputOrdinal::FIRST,

@@ -361,7 +361,7 @@ fn seed_queued_input(
             history.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input,
                 thread,
                 ordinal,
@@ -501,7 +501,7 @@ fn seed_active_queued_input(
             history.last_activity_at(),
         )),
         FixtureRecord::AcceptedInput(
-            AcceptedInputRecord::new(
+            AcceptedInputRecord::from_composer(
                 input,
                 thread,
                 ordinal,
@@ -1386,8 +1386,8 @@ fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
         .accepted_input(&store, accepted, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(retained.route_generation(), lost_route.generation());
-    assert_eq!(retained.admission().source_draft_id(), draft_id(73));
+    assert_eq!(retained.route_generation().unwrap(), lost_route.generation());
+    assert_eq!(retained.composer_admission().unwrap().source_draft_id(), draft_id(73));
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();

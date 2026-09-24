@@ -476,7 +476,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
         .accepted_input(&fixture.store, second, point_limit())
         .unwrap()
         .unwrap();
-    assert!(second_record.route_generation() > original_waiting.generation());
+    assert!(second_record.route_generation().unwrap() > original_waiting.generation());
     let queued_gate = fixture
         .storage
         .input_gate(&fixture.store, fixture.thread, point_limit())
@@ -488,7 +488,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
     let sources = next_sources(&fixture);
     assert_eq!(sources.len(), 2);
     assert_eq!(sources[0].generation(), original_waiting.generation());
-    assert_eq!(sources[1].generation(), second_record.route_generation());
+    assert_eq!(sources[1].generation(), second_record.route_generation().unwrap());
 
     admit_event(
         &fixture.store,
@@ -509,7 +509,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
         &InputGateState::Steerable(fixture.turn)
     );
     let fresh = reactivated.selected_route().unwrap();
-    assert!(fresh.generation() > second_record.route_generation());
+    assert!(fresh.generation() > second_record.route_generation().unwrap());
     assert_eq!(fresh.revision(), AcceptedRouteRevision::FIRST);
     assert_eq!(
         reactivated.route_generation_high_water(),
@@ -529,7 +529,7 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
         .accepted_input(&fixture.store, third, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(third_record.route_generation(), fresh.generation());
+    assert_eq!(third_record.route_generation().unwrap(), fresh.generation());
     let final_gate = fixture
         .storage
         .input_gate(&fixture.store, fixture.thread, point_limit())

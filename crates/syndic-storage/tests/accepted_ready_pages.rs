@@ -133,7 +133,7 @@ fn seed_ordinary_ready_source(
                 history.last_activity_at(),
             )),
             FixtureRecord::AcceptedInput(
-                AcceptedInputRecord::new(
+                AcceptedInputRecord::from_composer(
                     input,
                     thread,
                     AcceptedInputOrdinal::FIRST,

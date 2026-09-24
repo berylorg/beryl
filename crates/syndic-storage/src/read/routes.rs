@@ -206,7 +206,7 @@ impl SyndicStorage {
         let mut records = Vec::with_capacity(page.records().len());
         for record in page.into_records() {
             let order = record.into_parts().1;
-            if order.route_generation() != expected.generation() {
+            if order.route_generation() != Some(expected.generation()) {
                 return Err(SyndicReadError::Invariant(
                     "route page crossed generation membership",
                 ));
@@ -240,7 +240,7 @@ impl SyndicStorage {
             }
             stored_bytes = next_stored_bytes;
             decoded_bytes = next_decoded_bytes;
-            if input.route_generation() != expected.generation()
+            if input.route_generation() != Some(expected.generation())
                 || leaf.generation() != expected.generation()
                 || input.ordinal() != order.ordinal()
                 || leaf.ordinal() != order.ordinal()
