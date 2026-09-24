@@ -32,12 +32,17 @@ impl AcceptedInputSchedulerSignal {
             inner: Arc::new(SignalInner {
                 state: std::sync::Mutex::new(SignalState::new()),
                 changed: std::sync::Condvar::new(),
+                handoff: std::sync::Mutex::new(None),
             }),
         }
     }
 
     pub(in crate::cas_projection) fn wake(&self, reason: AcceptedInputWakeReason) {
         self.wake_bits(reason.bit());
+    }
+
+    pub(in crate::cas_projection) fn set_handoff_waker(&self, wake: Option<Waker>) {
+        *self.inner.handoff.lock().unwrap_or_else(|e| e.into_inner()) = wake;
     }
 
     pub(in crate::cas_projection) fn wake_submission(
@@ -195,5 +200,14 @@ impl AcceptedInputSchedulerSignal {
 impl Wake for AcceptedInputSchedulerSignal {
     fn wake(self: Arc<Self>) {
         Self::wake(&self, AcceptedInputWakeReason::IdleRecheck);
+        let handoff = self
+            .inner
+            .handoff
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(handoff) = handoff {
+            handoff.wake();
+        }
     }
 }

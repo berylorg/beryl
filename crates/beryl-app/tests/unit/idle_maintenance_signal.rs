@@ -34,3 +34,28 @@ fn retained_response_waker_cannot_notify_a_replacement_scheduler() {
     assert!(wake.rechecks_idle_sessions());
     assert_eq!(replacement.diagnostics().wake_count(), 0);
 }
+
+#[test]
+fn home_observer_wakes_handoff_without_turning_maintenance_into_execution() {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        task::{Wake, Waker},
+    };
+    struct Count(AtomicUsize);
+    impl Wake for Count {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let signal = AcceptedInputSchedulerSignal::new();
+    let handoff = Arc::new(Count(AtomicUsize::new(0)));
+    signal.set_handoff_waker(Some(Waker::from(Arc::clone(&handoff))));
+    signal.idle_recheck_waker().wake();
+    assert_eq!(handoff.0.load(Ordering::SeqCst), 1);
+    assert!(!signal.wait().execution_ready());
+    signal.wake(AcceptedInputWakeReason::ExecutionReady);
+    assert_eq!(handoff.0.load(Ordering::SeqCst), 1);
+}

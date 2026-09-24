@@ -58,6 +58,7 @@ struct Flights {
 struct ActiveFlights {
     jobs: HashSet<JobId>,
     dispatch_wake: Option<Waker>,
+    coordinator_wake: Option<Waker>,
     dispatch_waiting: bool,
 }
 
@@ -77,6 +78,7 @@ impl DiscussionSettlementOperations {
                 active: Mutex::new(ActiveFlights {
                     jobs: HashSet::new(),
                     dispatch_wake: None,
+                    coordinator_wake: None,
                     dispatch_waiting: false,
                 }),
             }),
@@ -155,6 +157,33 @@ impl DiscussionSettlementOperations {
             wake.wake();
         }
     }
+
+    pub(super) fn set_coordinator_waker(&self, wake: Option<Waker>) -> bool {
+        let mut active = self
+            .flights
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if wake.is_some() && active.coordinator_wake.is_some() {
+            return false;
+        }
+        active.coordinator_wake = wake;
+        true
+    }
+
+    pub(super) fn capacity_ready(&self) -> bool {
+        let mut active = self
+            .flights
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if active.jobs.len() < self.flights.maximum.get() {
+            true
+        } else {
+            active.dispatch_waiting = true;
+            false
+        }
+    }
 }
 
 pub(super) struct Flight {
@@ -164,6 +193,18 @@ pub(super) struct Flight {
 }
 
 impl Flight {
+    pub(super) fn wake_dispatch(&self) {
+        let wake = self
+            .flights
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .dispatch_wake
+            .clone();
+        if let Some(wake) = wake {
+            wake.wake();
+        }
+    }
     pub(super) fn custody(&self) -> Result<Arc<RetainedAudits>, DiscussionSettlementError> {
         self.retained
             .upgrade()
@@ -210,14 +251,19 @@ impl Drop for Flight {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             active.jobs.remove(&self.job_id);
-            if active.dispatch_waiting && active.dispatch_wake.is_some() {
+            if active.dispatch_waiting
+                && (active.dispatch_wake.is_some() || active.coordinator_wake.is_some())
+            {
                 active.dispatch_waiting = false;
-                active.dispatch_wake.clone()
+                (
+                    active.dispatch_wake.clone(),
+                    active.coordinator_wake.clone(),
+                )
             } else {
-                None
+                (None, None)
             }
         };
-        if let Some(wake) = wake {
+        for wake in [wake.0, wake.1].into_iter().flatten() {
             wake.wake();
         }
     }

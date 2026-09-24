@@ -17,7 +17,10 @@ mod access;
 mod admission;
 pub use admission::DiscussionResolutionAdmission;
 mod candidate;
+pub(crate) mod coordinator;
 pub use candidate::{HandoffCandidateConvergenceError, HandoffCandidateConvergenceSummary};
+#[cfg(feature = "test-faults")]
+pub use coordinator::test_support::HandoffCoordinatorTestHarness;
 mod flight;
 mod nondispatch;
 pub use nondispatch::DiscussionParentNondispatch;
@@ -250,7 +253,7 @@ impl PreparedDiscussionSettlement<'_> {
             Some(permit) => permit.commit(commit),
             None => Ok(commit()),
         };
-        match outcome {
+        let outcome = match outcome {
             Ok(outcome) => outcome,
             Err(error) => {
                 *disposition = Disposition::NotCommitted;
@@ -258,7 +261,21 @@ impl PreparedDiscussionSettlement<'_> {
                     evidence: error.into(),
                 }
             }
+        };
+        drop(disposition);
+        if matches!(
+            outcome,
+            DiscussionSettlementOutcome::Committed {
+                result: DiscussionSettlementResult::StartingParent(_)
+                    | DiscussionSettlementResult::RetryResumed,
+                later_failure: None,
+                local_finalization: None,
+                ..
+            }
+        ) {
+            self.audit.0._flight.wake_dispatch();
         }
+        outcome
     }
 }
 impl Drop for PreparedDiscussionSettlement<'_> {

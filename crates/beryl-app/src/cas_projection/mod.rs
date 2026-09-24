@@ -42,7 +42,7 @@ mod context_compaction;
 mod error;
 mod execute;
 mod execution_error;
-mod initial_start;
+pub(crate) mod initial_start;
 mod input_replay;
 mod live_source;
 mod model;
@@ -172,12 +172,11 @@ pub use scheduled_ordinary::{
 #[cfg(any(test, feature = "test-faults"))]
 pub use service::SubmissionExecutionWakeTestProbe;
 pub use service::{
-    DiscussionResolutionOutcome, ScopedDiscussionResolutionOutcome,
-    CasProjectionCoordinator, LiveHomeCommand, ProcessWorkCursor, ProcessWorkError,
-    ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage, ProcessWorkPageLimits,
-    ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
+    CasProjectionCoordinator, DiscussionResolutionOutcome, LiveHomeCommand, ProcessWorkCursor,
+    ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
+    ProcessWorkPageLimits, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
-    SubmissionExecutionWake,
+    ScopedDiscussionResolutionOutcome, SubmissionExecutionWake,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,

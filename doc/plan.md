@@ -73,27 +73,23 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 552: Classify Generated Parent Preparation Outcomes (finished)
+# Phase 543: Schedule Durable Handoff Work After Publication (finished)
 
-Accepted exact generated-job reservation during managed preparation, typed stable target failures
-and retained runtime/CAS failure events. Eleven focused cases, all app test-target checks and
-independent review passed. Runtime recovery preserves the paused job; capacity, startup and
-retirement do not manufacture failures. Confirmed loss survives consuming session publication.
+Accepted bounded live coordination, shared publication fencing, fixed wake fanout and joined
+disposal with retained uncertain custody. Eighteen focused cases, app test-target checks and
+independent review passed. Behind-cursor capacity waits and concurrent pauses preserve progress;
+explicit retry wakes ordinary execution after commit guards release. Complete graph mounting
+remains separate; [wake and fixture lessons](failures/discussion-outcome-custody.md#coordinator-wake-ownership)
+record the corrected regression findings.
 
-# Phase 543: Schedule Durable Handoff Work After Publication (pending)
+# Phase 553: Verify Remaining Initial Service Factories (pending)
 
-Implement generation-owned bounded live scanning, duplicate suppression, ready admission and
-relevant coalesced wakes using accepted settlement/admission and ordinary dispatch boundaries.
-Disposal fences and joins owned work; replacement starts from durable facts. Complete factory
-acceptance before adding this service to complete-graph publication.
-
-Use the accepted admission, explicit retry, settlement and candidate-convergence components.
-Retain only bounded queued/running job identities and observed revisions, one scan page and
-coalesced rescan state; release waiting payloads and resume paused admission on capacity release.
-Connect parent work to ordinary dispatch and preserve the sole correlated tool response owner.
-Verify publication fencing, backlog beyond capacity, relevant behind-cursor changes, duplicate
-suppression, no automatic retry, uncertainty custody and disposal joins. Require focused service
-integration evidence and independent review before factory acceptance.
+Complete the bounded readiness inventory required before 423: scoped resolution-tool mounting,
+catalog, activity, attention, settings and shutdown factories, plus accepted coordinator ownership
+through initial and replacement graphs. Compare concrete constructors and disposal paths with
+initial-publication authority. Record any missing component or design boundary and derive separate
+phases before implementation; do not publish a partial graph. Accept the inventory through
+independent review, without claiming complete graph or GUI readiness.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

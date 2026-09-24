@@ -76,7 +76,7 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
             Box::new(provider.with_discussion_settlement(handoff))
         },
     );
-    let (_, input, _) =
+    let (_, input, receipt) =
         generated_handoff::seed_with_service(&fixture, "Prepared resolution", configured);
     let thread = input.thread_id();
     let job = JobId::from_bytes(*input.id().as_bytes());
@@ -98,6 +98,17 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
         execution.execution().root_id(),
         native(&path),
     );
+    let point = SyndicPointReadLimit::new(400_000).unwrap();
+    assert!(matches!(
+        fixture
+            .storage
+            .current_binding(&fixture.home(), thread, point)
+            .unwrap()
+            .unwrap()
+            .binding()
+            .state(),
+        BindingState::Unbound { .. }
+    ));
     support::commit(
         &fixture.home(),
         fixture.storage.clone(),
@@ -105,6 +116,44 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
             [syndic_storage::test_faults::FixtureRecord::ThreadExecution(
                 ThreadExecutionRecord::new(thread, binding.clone()),
             )],
+        ),
+    );
+    let turn = fixture
+        .storage
+        .turn(&fixture.home(), receipt.parent_turn_id, point)
+        .unwrap()
+        .unwrap();
+    let parent = fixture
+        .storage
+        .turn(&fixture.home(), turn.parent().turn().unwrap(), point)
+        .unwrap()
+        .unwrap();
+    let selected = fixture.selected_path(thread);
+    let represented = CasRepresentedPrefixProof::new(
+        Some(parent.id()),
+        selected.thread_revision(),
+        parent.chain_digest(),
+    );
+    let current = fixture
+        .storage
+        .current_binding(&fixture.home(), thread, point)
+        .unwrap()
+        .unwrap();
+    support::discussion_input::committed(
+        &fixture.home(),
+        fixture.storage.publish_valid_binding(
+            fixture.storage.revision(&fixture.home()).unwrap(),
+            PublishValidBinding::new(
+                thread,
+                current.binding().revision(),
+                selected,
+                binding.clone(),
+                CasThreadId::new("prepared-handoff-thread").unwrap(),
+                represented,
+                CasNativeTurnCount::new(parent.depth().get()),
+                beryl_app::conversation_tools::ConversationToolRegistry::canonical().profile(),
+                CasLineageProof::native(NativeCasLineage::Resume, represented).unwrap(),
+            ),
         ),
     );
     let executable = canonical(Path::new(env!("CARGO_BIN_EXE_managed-runtime-fixture")));
@@ -258,6 +307,7 @@ fn managed_rejection_pauses_generated_parent_and_runtime_retry_does_not_resume_h
     f.sessions
         .retry_runtime_session(failure, f.thread, f.binding.clone())
         .unwrap();
+    wait_until(|| f.root.path().join("handoff-projection-observed").exists());
     let deadline = Instant::now() + Duration::from_secs(20);
     while f.sessions.diagnostics().available != 1 {
         assert!(

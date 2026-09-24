@@ -5,6 +5,7 @@ use crate::cas_projection::initial_start::InitialStartOwner;
 
 pub(crate) struct PreparedCasServices {
     service: Option<ProjectionConnectionService>,
+    handoff: Option<crate::discussion_settlement::coordinator::HandoffCoordinator>,
     initial_start: Option<InitialStartOwner>,
     candidate: Option<HomeOpenPublication>,
 }
@@ -21,9 +22,60 @@ pub(crate) enum CasPreparationError {
     RuntimeInterest(#[from] crate::cas_projection::RuntimeInterestError),
     #[error("managed-session configuration failed: {0}")]
     Session(#[from] crate::cas_projection::RuntimeSessionPreparationError),
+    #[error(transparent)]
+    HandoffConvergence(#[from] crate::discussion_settlement::HandoffCandidateConvergenceError),
+    #[error(transparent)]
+    Handoff(#[from] crate::discussion_settlement::coordinator::HandoffCoordinatorError),
+    #[error("handoff coordinator is already prepared")]
+    HandoffAlreadyPrepared,
 }
 
 impl PreparedCasServices {
+    pub(crate) fn prepare_handoff(
+        mut self,
+        operations: crate::discussion_settlement::DiscussionSettlementOperations,
+        state: beryl_state::BerylState,
+        limits: crate::discussion_handoff_limits::HandoffScanLimits,
+        at: syndic_storage::SyndicTimestamp,
+        cancellation: beryl_home_store::CommandCancellation,
+    ) -> Result<Self, CasPreparationError> {
+        if self.handoff.is_some() {
+            return Err(CasPreparationError::HandoffAlreadyPrepared);
+        }
+        let candidate = self.candidate.as_mut().expect("prepared candidate custody");
+        let service = self.service.as_ref().expect("prepared CAS service custody");
+        {
+            let access = candidate.recovery_access()?;
+            operations.converge_candidate(
+                &access,
+                &state,
+                &service.storage,
+                limits,
+                at,
+                cancellation,
+            )?;
+        }
+        let settlement = crate::discussion_settlement::DiscussionSettlementService::new(
+            operations,
+            candidate.service_reference(),
+            state,
+            service.storage.clone(),
+        );
+        let handoff = crate::discussion_settlement::coordinator::HandoffCoordinator::prepare(
+            settlement,
+            limits,
+            self.initial_start
+                .as_ref()
+                .expect("publication fence custody")
+                .gate(),
+        )?;
+        service
+            .scheduler_signal
+            .set_handoff_waker(Some(handoff.waker()));
+        self.handoff = Some(handoff);
+        Ok(self)
+    }
+
     pub(crate) fn configure_managed_sessions(
         mut self,
         sessions: &crate::cas_projection::ScheduledExecutionSessions,
@@ -80,6 +132,7 @@ impl PreparedCasServices {
         )?;
         Ok(Self {
             service: Some(service),
+            handoff: None,
             initial_start: Some(initial_start),
             candidate: Some(candidate),
         })
@@ -89,6 +142,7 @@ impl PreparedCasServices {
 impl Drop for PreparedCasServices {
     fn drop(&mut self) {
         drop(self.initial_start.take());
+        drop(self.handoff.take());
         drop(self.service.take());
         drop(self.candidate.take());
     }

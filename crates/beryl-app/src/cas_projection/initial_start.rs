@@ -7,27 +7,27 @@ enum InitialStartState {
     Cancelled,
 }
 
-pub(super) struct InitialStartGate {
+pub(crate) struct InitialStartGate {
     state: Mutex<InitialStartState>,
     changed: Condvar,
 }
 
-pub(super) struct InitialStartOwner {
+pub(crate) struct InitialStartOwner {
     gate: Arc<InitialStartGate>,
 }
 
 impl InitialStartOwner {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             gate: InitialStartGate::with_state(InitialStartState::Waiting),
         }
     }
 
-    pub(super) fn gate(&self) -> Arc<InitialStartGate> {
+    pub(crate) fn gate(&self) -> Arc<InitialStartGate> {
         Arc::clone(&self.gate)
     }
 
-    pub(super) fn release(self) -> bool {
+    pub(crate) fn release(self) -> bool {
         self.gate.finish(InitialStartState::Released)
     }
 }
@@ -50,7 +50,7 @@ impl InitialStartGate {
         Self::with_state(InitialStartState::Released)
     }
 
-    pub(super) fn wait(&self) -> bool {
+    pub(crate) fn wait(&self) -> bool {
         let mut state = self
             .state
             .lock()
@@ -64,7 +64,7 @@ impl InitialStartGate {
         *state == InitialStartState::Released
     }
 
-    pub(super) fn cancel(&self) {
+    pub(crate) fn cancel(&self) {
         self.finish(InitialStartState::Cancelled);
     }
 

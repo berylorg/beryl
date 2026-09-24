@@ -68,6 +68,7 @@ pub(in crate::cas_projection) struct StartupRecoveryDiagnostics {
 pub(super) struct SignalInner {
     pub(super) state: Mutex<SignalState>,
     pub(super) changed: Condvar,
+    pub(super) handoff: Mutex<Option<std::task::Waker>>,
 }
 
 pub(super) struct SignalState {

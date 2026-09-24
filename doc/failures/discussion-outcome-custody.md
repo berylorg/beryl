@@ -77,3 +77,21 @@ The managed retry fixture initially rejected permitted projection requests after
 Extend its protocol coverage instead of adding a production checkout gate to satisfy the fixture.
 After changing this helper, explicitly build `managed-runtime-fixture`; the focused nextest
 invocation did not refresh the normal executable referenced by `CARGO_BIN_EXE`.
+
+## Coordinator Wake Ownership
+
+Coordinator review found that consuming the sole wake bit while a scan waited for capacity could
+lose an earlier-key change. Preserve a coalesced full-pass request after an in-scan wait. A job
+that changes between selection and preparation likewise requires a fresh revision check before
+treating an ineligible lifecycle as contradictory; unchanged-source contradictions still fail.
+
+Execution regression then exposed a deadlock when a successful handoff commit notified ordinary
+execution inside the process-permit commit guard. Its callback checks that same process authority.
+Publish the wake only after both the process guard and settlement-disposition lock are released.
+Keep the slot until notification returns so concurrent dispatch refusal retains its release wake.
+
+The managed-recovery fixture also changed canonical execution without establishing a matching
+native projection, leaving historical source execution unsuitable for the temporary root. Its
+current binding is explicitly unbound after seeding; publish a matching valid fixture binding
+before session configuration. Require the actual projection-request marker before asserting
+runtime recovery leaves the handoff paused, rather than accepting a transient available session.

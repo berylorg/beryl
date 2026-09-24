@@ -3,26 +3,28 @@
 mod archived_parent;
 #[path = "discussion_settlement/atomicity.rs"]
 mod atomicity;
-#[path = "discussion_settlement/cases.rs"]
-mod cases;
-#[path = "discussion_settlement/parent_input.rs"]
-mod parent_input;
-#[path = "discussion_settlement/parent_execution.rs"]
-mod parent_execution;
 #[path = "discussion_settlement/candidate_scan.rs"]
 mod candidate_scan;
-#[path = "discussion_settlement/recovery.rs"]
-mod recovery;
-#[path = "discussion_settlement/retry.rs"]
-mod retry;
+#[path = "discussion_settlement/cases.rs"]
+mod cases;
+#[path = "discussion_settlement/coordinator.rs"]
+mod coordinator;
 #[path = "discussion_settlement/nondispatch.rs"]
 mod nondispatch;
+#[path = "discussion_settlement/parent_execution.rs"]
+mod parent_execution;
+#[path = "discussion_settlement/parent_input.rs"]
+mod parent_input;
+#[path = "discussion_settlement/preactivation_failure.rs"]
+mod preactivation_failure;
+#[path = "discussion_settlement/recovery.rs"]
+mod recovery;
 #[path = "discussion_settlement/reservation.rs"]
 mod reservation;
 #[path = "discussion_settlement/retained_nondispatch.rs"]
 mod retained_nondispatch;
-#[path = "discussion_settlement/preactivation_failure.rs"]
-mod preactivation_failure;
+#[path = "discussion_settlement/retry.rs"]
+mod retry;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 

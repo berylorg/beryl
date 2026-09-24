@@ -194,7 +194,6 @@ fn process_scheduler_resumes_on_slot_release_but_requires_explicit_handoff_retry
             ..
         }
     ));
-    fixture.store.notify_scheduled_ordinary_execution_ready();
     wait_until(|| {
         fixture
             .storage

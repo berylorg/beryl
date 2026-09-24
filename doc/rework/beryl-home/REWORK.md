@@ -560,6 +560,7 @@
 - [x] Accepted generated-parent ordinary execution with exact eligibility, atomic nondispatch pause, explicit same-turn retry, unknown-dispatch fencing and production capacity wakes.
 - [x] Accepted pre-activation failure settlement preserving exact pending input and binding through existing bounded proof custody and fresh-candidate recovery.
 - [x] Accepted managed preparation failure classification and capture without pausing temporary waits or letting runtime recovery retry a handoff.
+- [x] Accepted bounded ordinary handoff coordination with shared publication fencing, coalesced wake routing and joined disposal before complete graph mounting.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

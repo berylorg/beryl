@@ -124,6 +124,69 @@ fn assert_reopens(directory: &tempfile::TempDir) {
 }
 
 #[test]
+fn handoff_factory_shares_publication_fence_and_joins_on_cancellation_or_abandonment() {
+    use crate::{
+        discussion_handoff_limits::{HandoffScanConfiguration, HandoffScanLimits},
+        discussion_settlement::DiscussionSettlementOperations,
+    };
+    for cancelled in [false, true] {
+        let (directory, candidate, storage, _, state) = candidate_with_state();
+        let observations = Arc::new(Observations::default());
+        let provider = provider(&candidate, &observations);
+        let process = crate::process_admission::ProcessAdmissionGate::new();
+        let operations = DiscussionSettlementOperations::new(
+            process.clone(),
+            std::num::NonZeroUsize::new(1).unwrap(),
+        );
+        let limits = HandoffScanLimits::try_from(HandoffScanConfiguration {
+            handoff_recovery_page_items: 1,
+            handoff_recovery_page_encoded_bytes: beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,
+            handoff_job_record_encoded_bytes: beryl_state::HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES,
+            handoff_reconcile_slots: 1,
+            handoff_ready_job_items: 1,
+        })
+        .unwrap();
+        let prepared =
+            PreparedCasServices::prepare(process, candidate, storage, config(), Box::new(provider))
+                .unwrap();
+        let cancellation = beryl_home_store::CommandCancellation::new();
+        if cancelled {
+            cancellation.cancel();
+        }
+        let prepared = prepared.prepare_handoff(
+            operations,
+            state,
+            limits,
+            syndic_storage::SyndicTimestamp::from_unix_millis(1),
+            cancellation,
+        );
+        if cancelled {
+            assert!(matches!(
+                prepared,
+                Err(CasPreparationError::HandoffConvergence(_))
+            ));
+        } else {
+            let prepared = prepared.unwrap();
+            assert!(prepared.handoff.is_some());
+            assert_eq!(
+                prepared
+                    .candidate
+                    .as_ref()
+                    .unwrap()
+                    .service_reference()
+                    .health()
+                    .state(),
+                HomeHealthState::Opening
+            );
+            assert_eq!(observations.issued.load(Ordering::SeqCst), 0);
+            drop(prepared);
+        }
+        assert_eq!(observations.shutdown.load(Ordering::SeqCst), 1);
+        assert_reopens(&directory);
+    }
+}
+
+#[test]
 fn prepared_workers_stay_dormant_and_abandonment_joins_before_candidate_retirement() {
     let (directory, candidate, storage, _) = candidate();
     let reference = candidate.service_reference();
