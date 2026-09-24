@@ -73,26 +73,42 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 538: Prove Durable Parent Execution Outcomes (finished)
+# Phase 539: Compose Parent Execution Settlement (finished)
 
-Accepted bounded generated-receipt, immutable CAS activation/acceptance and terminal-source proofs,
-including historical parent advancement and ordinary/candidate writer fencing. Seven focused tests,
-eighteen handoff/execution regressions, dependent test-target checks and independent review passed.
-Unknown dispatch waits; proven session loss releases without archive or invented CAS acceptance.
+Accepted exact parent CAS progress and atomic State terminal result with Syndic archive/release,
+using existing bounded custody and ordinary/candidate access. All twenty-two settlement cases,
+app test-target checks and independent review passed, including no-ACK session loss, historical
+parent advancement, exact CAS mismatch, cancellation, stale proofs and mixed/uncertain outcomes.
 
-# Phase 539: Compose Parent Execution Settlement (wip)
+# Phase 540: Establish Bounded Handoff Scan Admission (wip)
 
-Join accepted parent-execution proofs with State progress and terminal transitions under existing
-bounded custody. Preserve exact parent and CAS identities; publish CAS acceptance before terminal
-job settlement. Success archives and releases the child atomically; terminal failure releases
-without archive. Starting-parent session loss without acknowledgement uses the existing terminal
-post-append failure. Unknown dispatch remains waiting and never authorizes replay.
+Establish validated positive handoff recovery-page, record, reconciliation-slot and ready-job
+limits from the handoff system contract. Export the State-owned maximum record/page requirements
+without changing stored schema or shrinking the resolution contract. Authenticate live-index
+key/record identity and live lifecycle consistently for ordinary and candidate pages, preserving
+encoded-byte accounting and bounded continuation. Verify maximum resolution, item/byte caps,
+invalid configuration, stale handles and malformed live rows with focused tests and independent
+review. This phase admits no worker, creates no job and performs no CAS request.
 
-Use ordinary and explicit candidate access with original-handle/revision validation, cancellation,
-exact old/new/mixed outcome classification and existing reconciliation ownership. Verify normal
-success and failure, delayed observation after parent advancement, contradictory identities,
-writer races, uncertain commits and candidate convergence. Complete focused regression checks and
-independent review before coordinator scheduling, which remains a separate acceptance boundary.
+# Phase 541: Converge Handoff Jobs In Private Candidates (pending)
+
+Use one bounded live-index page and one current job to converge already durable steps through
+fresh explicit candidate access after CAS-live convergence. Preserve processed-key continuation,
+revision checks, cancellation and reconciliation custody; unresolved and retryable jobs stay
+waiting. Do not admit parent input, ordinary ready work or CAS requests before publication.
+
+# Phase 542: Compose Production Resolution Admission And Explicit Retry (pending)
+
+Join scoped resolution admission, exact idempotency and explicit retry with typed State/Syndic
+participants under process ownership. Preserve immutable payload, queued-input deferral, archived
+parent handling, bounded outcome custody and exact existing parent identities.
+
+# Phase 543: Schedule Durable Handoff Work After Publication (pending)
+
+Implement generation-owned bounded live scanning, duplicate suppression, ready admission and
+relevant coalesced wakes using accepted settlement/admission and ordinary dispatch boundaries.
+Disposal fences and joins owned work; replacement starts from durable facts. Complete factory
+acceptance before adding this service to complete-graph publication.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

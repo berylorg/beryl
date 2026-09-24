@@ -7,6 +7,8 @@ mod atomicity;
 mod cases;
 #[path = "discussion_settlement/parent_input.rs"]
 mod parent_input;
+#[path = "discussion_settlement/parent_execution.rs"]
+mod parent_execution;
 #[path = "discussion_settlement/recovery.rs"]
 mod recovery;
 #[path = "../../syndic-storage/tests/support/mod.rs"]

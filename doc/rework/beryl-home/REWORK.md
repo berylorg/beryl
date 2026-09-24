@@ -521,6 +521,11 @@
   Seven focused cases and eighteen handoff/execution regressions passed, with dependent checks
   and independent review. Unknown dispatch stays unresolved; session loss releases without
   invented acceptance, and execution success remains distinct from captured-history completeness.
+- [x] Accepted app parent CAS progress and atomic terminal job/archive/gate settlement with shared
+  custody and fresh candidate access. All twenty-two settlement cases, dependent checks and
+  independent review passed, including uncertain acceptance and terminal commit, exact CAS
+  mismatch, historical parent advancement and no-acknowledgement session loss. Production
+  resolution admission, bounded scans and the process coordinator remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

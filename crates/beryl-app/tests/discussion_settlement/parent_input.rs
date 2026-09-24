@@ -2,20 +2,20 @@ use super::*;
 use beryl_model::{SyndicAcceptedInputId, SyndicItemId, SyndicTurnId};
 use beryl_state::ParentHandoffIdentity;
 
-fn request() -> DiscussionParentInputRequest {
+pub(super) fn request() -> DiscussionParentInputRequest {
     DiscussionParentInputRequest {
         turn_id: SyndicTurnId::from_bytes([240; 16]),
         item_id: SyndicItemId::from_bytes([241; 16]),
         admitted_at: support::timestamp(500),
     }
 }
-fn identity(fixture: &Fixture) -> ParentHandoffIdentity {
+pub(super) fn identity(fixture: &Fixture) -> ParentHandoffIdentity {
     ParentHandoffIdentity::new(
         SyndicAcceptedInputId::from_bytes(*fixture.job.as_bytes()),
         request().turn_id,
     )
 }
-fn ready(fixture: &Fixture) {
+pub(super) fn ready(fixture: &Fixture) {
     fixture.finish_child();
     assert!(matches!(
         fixture.prepare().execute(),

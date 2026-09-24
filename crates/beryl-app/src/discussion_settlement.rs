@@ -25,6 +25,12 @@ pub enum DiscussionSettlementResult {
     ChildInputPending,
     ParentArchived,
     StartingParent(ParentHandoffIdentity),
+    ParentActive(ParentHandoffIdentity),
+    ParentSucceeded(ParentHandoffIdentity),
+    ParentFailed {
+        parent: ParentHandoffIdentity,
+        kind: beryl_state::HandoffFailureKind,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
