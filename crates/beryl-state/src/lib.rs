@@ -148,6 +148,7 @@ pub use durable_job::{
     BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
     CompleteResolvingTurn, DiscussionContextDigest, DiscussionContextOwnerId,
     DurableJobMutationError, DurableJobState, DurableJobValueError,
+    DurableJobReadError, HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES, HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES,
     HANDOFF_FAILURE_DETAIL_MAX_BYTES, HandoffFailureEvidence, HandoffFailureKind,
     HandoffJobTransition, HandoffJobTransitionStatus, HandoffJobTransitionWitness,
     LatestBranchHandoffAttempt, ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal,

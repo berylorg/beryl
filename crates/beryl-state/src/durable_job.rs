@@ -15,6 +15,7 @@ mod acquisition;
 mod codec;
 mod mutation;
 mod read;
+pub use read::DurableJobReadError;
 mod record;
 #[cfg(feature = "test-faults")]
 mod test_support;
@@ -48,6 +49,10 @@ pub use value::{
 };
 
 pub(crate) const BRANCH_HANDOFF_JOB_RECORD_LIMIT: usize = 320 * 1024;
+pub const HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES: usize =
+    BRANCH_HANDOFF_JOB_RECORD_LIMIT + beryl_home_store::RECORD_VERSION_BYTES;
+pub const HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES: usize = HANDOFF_JOB_RECORD_MAX_ENCODED_BYTES
+    + <LiveJobIndexCodec as beryl_home_store::RecordCodec<DurableJobDomain>>::MAX_KEY_BYTES;
 pub(crate) const REQUEST_IDEMPOTENCY_RECORD_LIMIT: usize = 64;
 
 const DURABLE_JOB_FAMILIES: &[RecordFamily<DurableJobDomain>] = &[
@@ -243,14 +248,14 @@ impl DurableJobState {
         store: &HomeStore,
         after: Option<JobId>,
         limits: CursorReadLimits,
-    ) -> Result<StatePage<BranchHandoffJobRecord>, ReadError> {
+    ) -> Result<StatePage<BranchHandoffJobRecord>, DurableJobReadError> {
         let page = store.read_cursor::<DurableJobDomain, LiveJobIndexCodec>(
             &self.handle,
             &read::live_range(after),
             CursorDirection::Forward,
             limits,
         )?;
-        Ok(read::live_page(page))
+        read::live_page(page)
     }
 
     #[must_use]

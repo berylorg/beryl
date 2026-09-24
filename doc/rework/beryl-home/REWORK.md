@@ -526,6 +526,10 @@
   independent review passed, including uncertain acceptance and terminal commit, exact CAS
   mismatch, historical parent advancement and no-acknowledgement session loss. Production
   resolution admission, bounded scans and the process coordinator remain separate.
+- [x] Accepted positive bounded handoff scan configuration preserving complete State record,
+  version and key envelopes, plus shared ordinary/candidate rejection of mis-keyed or terminal
+  live-index rows. Fourteen State cases, the app limit matrix, dependent checks and independent
+  review passed. Candidate convergence and ordinary scheduling remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

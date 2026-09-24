@@ -13,6 +13,10 @@ use beryl_state::{
     ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
 };
 
+#[cfg(feature = "test-faults")]
+#[path = "durable_job_candidate_read/live_identity.rs"]
+mod live_identity;
+
 fn candidate(
     directory: &tempfile::TempDir,
     faults: FaultController,
@@ -103,6 +107,16 @@ fn candidate_jobs_preserve_maximum_payload_and_independent_cursor_caps() {
     let mut ids = [admit(&access, &jobs, 1), admit(&access, &jobs, 2)];
     ids.sort();
     let first = jobs.job_candidate(&access, ids[0]).unwrap().unwrap();
+    let minimum_page = jobs
+        .list_live_candidate(
+            &access,
+            None,
+            CursorReadLimits::new(2, beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(minimum_page.records(), &[first.clone()]);
+    assert!(minimum_page.has_more());
+    assert!(minimum_page.stored_bytes() <= beryl_state::HANDOFF_LIVE_RECORD_MAX_ENCODED_BYTES);
     assert_eq!(
         first.resolution().as_str().len(),
         beryl_state::RESOLUTION_TEXT_MAX_BYTES

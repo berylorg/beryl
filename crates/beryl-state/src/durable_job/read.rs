@@ -2,6 +2,37 @@ use beryl_home_store::{CursorPage, HomeCandidateRecoveryAccess};
 
 use super::*;
 
+#[derive(Debug)]
+pub enum DurableJobReadError {
+    Read(ReadError),
+    InvalidLiveEntry { key: JobId },
+}
+
+impl fmt::Display for DurableJobReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read(error) => error.fmt(formatter),
+            Self::InvalidLiveEntry { key } => write!(
+                formatter,
+                "live handoff entry {key} has a contradictory identity or lifecycle"
+            ),
+        }
+    }
+}
+impl Error for DurableJobReadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+impl From<ReadError> for DurableJobReadError {
+    fn from(error: ReadError) -> Self {
+        Self::Read(error)
+    }
+}
+
 impl DurableJobState {
     pub fn revision_candidate(
         &self,
@@ -51,14 +82,14 @@ impl DurableJobState {
         access: &HomeCandidateRecoveryAccess<'_>,
         after: Option<JobId>,
         limits: CursorReadLimits,
-    ) -> Result<StatePage<BranchHandoffJobRecord>, ReadError> {
+    ) -> Result<StatePage<BranchHandoffJobRecord>, DurableJobReadError> {
         let page = access.read_cursor::<DurableJobDomain, LiveJobIndexCodec>(
             &self.handle,
             &live_range(after),
             CursorDirection::Forward,
             limits,
         )?;
-        Ok(live_page(page))
+        live_page(page)
     }
 }
 
@@ -74,18 +105,25 @@ pub(super) fn live_range(after: Option<JobId>) -> CursorRange<JobId> {
 
 pub(super) fn live_page(
     page: CursorPage<JobId, BranchHandoffJobRecord>,
-) -> StatePage<BranchHandoffJobRecord> {
+) -> Result<StatePage<BranchHandoffJobRecord>, DurableJobReadError> {
     let stored_bytes = page.stored_bytes();
     let decoded_bytes = page.decoded_bytes();
     let has_more = page.has_more();
-    StatePage {
-        records: page
-            .into_records()
-            .into_iter()
-            .map(|entry| entry.into_parts().1)
-            .collect(),
+    let records = page
+        .into_records()
+        .into_iter()
+        .map(|entry| {
+            let (key, record) = entry.into_parts();
+            if key != record.job_id() || !record.lifecycle().is_live() {
+                return Err(DurableJobReadError::InvalidLiveEntry { key });
+            }
+            Ok(record)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(StatePage {
+        records,
         stored_bytes,
         decoded_bytes,
         has_more,
-    }
+    })
 }

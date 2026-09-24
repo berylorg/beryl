@@ -73,29 +73,27 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 539: Compose Parent Execution Settlement (finished)
+# Phase 540: Establish Bounded Handoff Scan Admission (finished)
 
-Accepted exact parent CAS progress and atomic State terminal result with Syndic archive/release,
-using existing bounded custody and ordinary/candidate access. All twenty-two settlement cases,
-app test-target checks and independent review passed, including no-ACK session loss, historical
-parent advancement, exact CAS mismatch, cancellation, stale proofs and mixed/uncertain outcomes.
+Accepted positive handoff scan configuration covering full State record/version/key envelopes,
+checked overflow and independent page limits. Ordinary and candidate live pages now reject
+mis-keyed or terminal entries. Fourteen State cases, the app limit matrix, dependent test-target
+checks and independent review passed without schema or product-limit changes.
 
-# Phase 540: Establish Bounded Handoff Scan Admission (wip)
-
-Establish validated positive handoff recovery-page, record, reconciliation-slot and ready-job
-limits from the handoff system contract. Export the State-owned maximum record/page requirements
-without changing stored schema or shrinking the resolution contract. Authenticate live-index
-key/record identity and live lifecycle consistently for ordinary and candidate pages, preserving
-encoded-byte accounting and bounded continuation. Verify maximum resolution, item/byte caps,
-invalid configuration, stale handles and malformed live rows with focused tests and independent
-review. This phase admits no worker, creates no job and performs no CAS request.
-
-# Phase 541: Converge Handoff Jobs In Private Candidates (pending)
+# Phase 541: Converge Handoff Jobs In Private Candidates (wip)
 
 Use one bounded live-index page and one current job to converge already durable steps through
 fresh explicit candidate access after CAS-live convergence. Preserve processed-key continuation,
 revision checks, cancellation and reconciliation custody; unresolved and retryable jobs stay
 waiting. Do not admit parent input, ordinary ready work or CAS requests before publication.
+
+Compose the accepted child/parent settlement operations sequentially, reread exact current job
+identity, validate pending gates and retain typed uncertain/failure custody. Release each payload
+and stale page before requesting another page. A backlog larger than ready capacity must not
+block publication merely because ordinary work is fenced. Verify multi-page waiting jobs,
+removal of processed live keys, two-step parent convergence, stale/foreign handles, cancellation
+and injected command uncertainty. Keep initial/recovery graph mounting separate until factory
+acceptance; require focused regression checks and independent review.
 
 # Phase 542: Compose Production Resolution Admission And Explicit Retry (pending)
 
