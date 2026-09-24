@@ -188,6 +188,16 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Same-Home Replacement Contribution
 
+- The process root retains the bounded Activity enrollment owner across current and candidate
+  service graphs. Disposing either graph, including consuming close, retirement failure and
+  implicit drop, cannot dispose this outer custody. Fresh same-home candidate settlement joins
+  each original home reconciliation handle with its typed Syndic witness before CAS-live startup
+  convergence. Exact old or exact new agreement releases retired custody without publishing a
+  token for the ended runtime lifetime; read failure, disagreement or unresolved submission
+  retains the slot and blocks replacement. Final shutdown requires the owner to have no pending
+  slots; otherwise it reports failure and retains the process owner. This owner is not another
+  command-outcome registry and cannot authorize provider work or publish a partial graph.
+
 - The process graph owns one durable branch-handoff coordinator with the lifecycle and bounded
   scan policy in the [handoff system](../../../doc/systems/branch-discussion-handoff/design.md).
   Its private preparation follows CAS-live candidate convergence and uses fresh typed State and

@@ -867,3 +867,24 @@ stale-ended-head replacement, exact candidate outcomes, key aliases, mixed recor
 future periods and checked allocation exhaustion. App and all Syndic test-target checks passed;
 independent review accepted the corrected storage boundary. Runtime producer and service wiring
 remain separate work, and no complete graph or Activity GUI readiness is claimed.
+
+Producer readiness inspection found that runtime shutdown clears its entries and CAS retirement
+consumes the service. Keeping unresolved enrollment witnesses only in that owner would lose them
+on ordinary close, retirement failure or candidate abandonment. The process-owned handoff proof
+pattern supplies the bounded correction: one shared same-home enrollment owner outside replaceable
+graphs, charged against the configured runtime limit, retaining each original witness and exact
+home reconciliation handle. Candidate settlement joins both proofs and discards retired tokens.
+Runtime attachment and complete process-root/shutdown mounting remain separate integration gates.
+
+The first custody fault tests incorrectly assumed that acknowledgement uncertainty itself fails
+home health. Recovery correctly rejected that healthy store. Corrected recovery tests inject a
+separate read-confirmation failure before reopening; this preserves the distinction between an
+unresolved operation and a failed home rather than changing production recovery admission.
+
+The enrollment custody component passed nine real-storage cases across runs
+`4e58d553-a374-47f5-9e25-a16bdbcbe953` and `dede7692-2684-437f-ad63-673493c44fc7`:
+bounded duplicate/capacity admission, pre-submit abandonment, definitive release, service attachment
+disposal, cancellation, candidate abandonment and retry, exact-old physical write uncertainty,
+foreign-home rejection, and registry-terminal natural-read failure or disagreement. The app check
+passed and independent review accepted ownership and lock ordering. The component retains no
+service capability and does not yet claim runtime attachment or complete graph shutdown mounting.

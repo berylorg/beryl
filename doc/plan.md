@@ -73,13 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 556: Implement Exact Activity Enrollment (finished)
+# Phase 559: Preserve Activity Enrollment Custody Across Service Disposal (finished)
 
-Accepted independently reviewed exact-revision enrollment, bounded obsolete-running cleanup and
-ordinary/candidate outcome witnesses with unchanged V7 codecs. Fifteen focused cases passed across
-enrollment, Activity query/corruption and exhaustion checks; app and all storage test-target checks
-passed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-retains identity and cleanup reasoning. Runtime producers are not connected yet.
+Accepted independently reviewed process-owned bounded reservations and exact registry/witness
+candidate settlement without retired token publication. Nine real-storage custody/fault cases and
+the app check passed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
+records the lifecycle correction. Runtime attachment remains in 557; process-root and final shutdown
+mounting remain in 423.
 
 # Phase 557: Connect Runtime-Owned Activity Producers (wip)
 
@@ -120,6 +120,8 @@ This integration cannot absorb missing service implementations or accept restore
 Mount retained nondispatch settlement immediately before CAS-live candidate startup recovery,
 and include pending proofs in final shutdown readiness; unsettled proofs require explicit failed
 shutdown with custody retained, never successful pending preservation or process exit.
+Retain the Activity enrollment owner outside replaceable service graphs, settle its retired slots
+before candidate startup recovery, and include its pending slots in final shutdown readiness.
 Theme preparation and candidate managed-session configuration are accepted.
 Finish the remaining graph-factory inventory before activating this phase.
 

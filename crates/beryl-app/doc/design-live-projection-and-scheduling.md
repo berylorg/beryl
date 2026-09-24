@@ -47,12 +47,19 @@ topology and typed execution surfaces.
   durable enrollment token specified by the backend-runtime system. An admitted producer carries
   exact home/service, runtime/process, thread/turn and lifetime authority; cloned readiness facts
   alone cannot enroll or publish. Storage token equality never substitutes for those live fences.
-- The first producer reserves one enrollment slot in its existing bounded runtime owner. It
+- The first producer reserves one enrollment slot through its bounded runtime owner. It
   prepares the typed Syndic enrollment against an exact home revision and publishes the token
   only from a proven committed result. Later producers reuse that token after authenticating their
   own source. The slot and its move-only witness survive acknowledgement loss until exact outcome
   classification; cancellation and retirement cannot fabricate noncommit or free unresolved
   custody. No runtime-wide list of participating threads is retained.
+- One same-home process owner retains those slots independently of service generations, with
+  capacity equal to the configured runtime limit and at most one reservation per runtime. The
+  reservation retains the original typed witness before submission; an indeterminate result
+  synchronously installs its home reconciliation and retains the returned exact handle before
+  reporting, cancellation or retirement. Abandonment before submission and definitive outcomes
+  release their reservation. Unresolved outcomes remain charged across service disposal and
+  candidate failure, without retaining old services, sessions or execution capabilities.
 - Natural-record enrollment inspection is not settlement of an installed home reconciliation.
   After uncertainty, the owner joins that exact registry outcome and its original enrollment
   witness before publishing the token. A matching derived head alone grants no dispatch,

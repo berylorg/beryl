@@ -101,6 +101,14 @@ struct EnrollmentRecords {
 }
 
 impl PreparedActivityEnrollment {
+    pub fn home_id(&self) -> BerylHomeId {
+        self.records.home
+    }
+
+    pub fn runtime_id(&self) -> RuntimeId {
+        self.records.token.runtime
+    }
+
     pub fn is_cleanup(&self) -> bool {
         self.records.source.is_none()
     }

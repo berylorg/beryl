@@ -300,6 +300,8 @@ the selected head stale and completes a bounded new generation before publicatio
 a partially rebuilt view.
 
 Typed Activity enrollment consumes the caller's exact source and expected head/home revisions.
+The prepared command exposes immutable home/runtime provenance so the app can reserve the exact
+bounded runtime custody slot before submission; those identity facts grant no mutation authority.
 First-runtime enrollment writes the checked next home revision as `ActivityWorkPeriod` in the
 existing head; reuse consumes the caller's proven runtime token. Its opaque bounded witness
 distinguishes exact old, exact committed and conflicting outcomes without scanning other threads.
