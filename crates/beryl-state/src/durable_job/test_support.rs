@@ -18,6 +18,7 @@ pub enum HandoffJobIndexFault {
     MissingAttempt,
     MissingLatest,
     LiveCopy(super::BranchHandoffJobRecord),
+    LatestJobAtKey(JobId),
 }
 
 struct CorruptResolvingIndex {
@@ -49,6 +50,10 @@ impl DomainMutation<DurableJobDomain> for CorruptResolvingIndex {
     ) -> Result<(), Self::Error> {
         use super::codec::*;
         match self.fault {
+            HandoffJobIndexFault::LatestJobAtKey(_) => {
+                reservation.reserve_records::<JobRecordCodec>(1)?;
+                reservation.reserve_records::<LatestAttemptIndexCodec>(1)?;
+            }
             HandoffJobIndexFault::MissingJob => reservation.reserve_records::<JobRecordCodec>(1)?,
             HandoffJobIndexFault::MissingLive | HandoffJobIndexFault::LiveCopy(_) => {
                 reservation.reserve_records::<LiveJobIndexCodec>(1)?
@@ -72,6 +77,16 @@ impl DomainMutation<DurableJobDomain> for CorruptResolvingIndex {
         use super::codec::*;
         let job = prepared.job;
         match prepared.fault {
+            HandoffJobIndexFault::LatestJobAtKey(key) => {
+                builder.put::<JobRecordCodec>(&key, &job)?;
+                builder.put::<LatestAttemptIndexCodec>(
+                    &job.discussion_thread_id(),
+                    &super::LatestBranchHandoffAttempt {
+                        job_id: key,
+                        attempt_ordinal: job.attempt_ordinal(),
+                    },
+                )?;
+            }
             HandoffJobIndexFault::MissingJob => builder.delete::<JobRecordCodec>(&job.job_id())?,
             HandoffJobIndexFault::MissingLive => {
                 builder.delete::<LiveJobIndexCodec>(&job.job_id())?

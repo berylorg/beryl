@@ -73,31 +73,28 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 544: Prepare Exact Resolution Admission Outcomes (finished)
+# Phase 542: Compose Production Resolution Admission (finished)
 
-Accepted shared ordinary/prepared admission rules, exact five-record old/new witnesses and
-historical request lookup independent of the latest attempt. Eighteen State tests, dependent app
-checks and independent review passed, including maximum text, later attempts, damaged indexes,
-stale/foreign handles and recovered candidate inspection without admission permission.
+Accepted generation-scoped atomic admission with exact historical request lookup, queue deferral,
+archive rejection and process-retained uncertain audits. Ten admission cases, twenty-seven
+settlement regressions, State/app checks and independent review passed. Evidence includes lost
+caller audit, duplicate writers, contradictory latest identity and fresh candidate inspection.
+The [custody lesson](failures/discussion-outcome-custody.md) is retained; coordinator/tool mounting
+remains separate.
 
-# Phase 542: Compose Production Resolution Admission (wip)
-
-Join scoped resolution admission and exact idempotency with typed State/Syndic participants under
-process ownership. Preserve immutable payload, queued-input deferral, archived parent handling,
-bounded outcome custody and the existing correlated tool result. Keep process-graph mounting
-separate until coordinator factory acceptance.
-
-Derive admission from the exact routed child/CAS request and stable Syndic source revisions.
-Compose the prepared State admission and pending child gate in one durable command, retaining
-bounded natural-outcome and registry custody through uncertainty. Verify duplicate requests after
-progress, different requests while live, queue deferral, archived parents, races and recovery;
-require focused integration checks and independent review before accepting the boundary.
-
-# Phase 545: Compose Explicit Handoff Retry (pending)
+# Phase 545: Compose Explicit Handoff Retry (wip)
 
 Prepare and compose the existing exact retry transition with pending-gate/parent identity checks
 and bounded outcome custody. Retry resumes only the same retryable job and existing parent input;
 terminal attempts cannot retry and runtime or candidate scanning never retries automatically.
+
+Reuse the State transition witness and shared ordinary retry rule; retain checkpoint, payload,
+attempt and any Syndic/CAS parent identity. The app authenticates the exact pending child gate and
+parent provenance under original home revisions before changing only the State job/live pair.
+Verify all retryable checkpoints, nonretryable rejection, changed gate/parent, cancellation,
+stale writer, uncertain outcome and candidate inspection. Require focused State/app regressions,
+dependent checks and independent review. Existing candidate/runtime scans remain observation-only
+for retryable failures.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 

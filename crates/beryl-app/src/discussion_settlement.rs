@@ -5,13 +5,17 @@ use beryl_home_store::{
     ReconciliationHandle,
 };
 use beryl_model::{BerylHomeId, JobId, SyndicItemId, SyndicTurnId};
-use beryl_state::{BerylState, HandoffJobTransitionWitness, ParentHandoffIdentity};
+use beryl_state::{
+    BerylState, HandoffJobAdmissionWitness, HandoffJobTransitionWitness, ParentHandoffIdentity,
+};
 use std::sync::{Arc, Mutex};
 use syndic_storage::{
     DiscussionHandoffIntent, GeneratedDiscussionInputIntent, SyndicStorage, SyndicTimestamp,
 };
 
 mod access;
+mod admission;
+pub use admission::DiscussionResolutionAdmission;
 mod candidate;
 pub use candidate::{HandoffCandidateConvergenceError, HandoffCandidateConvergenceSummary};
 mod flight;
@@ -23,6 +27,7 @@ pub use recovery::DiscussionSettlementAuditOutcome;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiscussionSettlementResult {
+    ResolutionAdmitted(JobId),
     ReadyForParent,
     ChildInputPending,
     ParentArchived,
@@ -80,11 +85,15 @@ pub enum DiscussionSettlementError {
 pub struct DiscussionSettlementAudit(Arc<Attempt>);
 struct Attempt {
     home_id: BerylHomeId,
-    job: HandoffJobTransitionWitness,
+    job: JobWitness,
     syndic: Option<SyndicSettlementIntent>,
     result: DiscussionSettlementResult,
     disposition: Mutex<Disposition>,
     _flight: Flight,
+}
+enum JobWitness {
+    Admission(HandoffJobAdmissionWitness),
+    Transition(HandoffJobTransitionWitness),
 }
 enum SyndicSettlementIntent {
     Gate(DiscussionHandoffIntent),
@@ -122,6 +131,10 @@ pub struct DiscussionSettlementService {
     syndic: SyndicStorage,
 }
 impl DiscussionSettlementService {
+    pub(crate) fn matches_home(&self, home: &HomeStore) -> bool {
+        self.store.home_id() == home.home_id()
+            && self.store.health().generation() == home.health().generation()
+    }
     pub fn new(
         operations: DiscussionSettlementOperations,
         store: HomeServiceReference,
@@ -153,6 +166,10 @@ impl PreparedDiscussionSettlement<'_> {
         self.audit.clone()
     }
     pub fn execute(mut self) -> DiscussionSettlementOutcome {
+        let custody = match self.audit.0._flight.custody() {
+            Ok(custody) => custody,
+            Err(evidence) => return DiscussionSettlementOutcome::NotCommitted { evidence },
+        };
         let Ok(mut disposition) = self.audit.0.disposition.lock() else {
             return DiscussionSettlementOutcome::NotCommitted {
                 evidence: DiscussionSettlementError::CustodyUnavailable,
@@ -192,6 +209,7 @@ impl PreparedDiscussionSettlement<'_> {
                     reconciliation,
                 } => {
                     *disposition = Disposition::Indeterminate(reconciliation.install_and_handle());
+                    self.audit.0._flight.retain(&custody, self.audit.clone());
                     DiscussionSettlementOutcome::Indeterminate {
                         failure,
                         audit: self.audit.clone(),

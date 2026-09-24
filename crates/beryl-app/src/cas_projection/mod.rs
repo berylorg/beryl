@@ -172,6 +172,7 @@ pub use scheduled_ordinary::{
 #[cfg(any(test, feature = "test-faults"))]
 pub use service::SubmissionExecutionWakeTestProbe;
 pub use service::{
+    DiscussionResolutionOutcome, ScopedDiscussionResolutionOutcome,
     CasProjectionCoordinator, LiveHomeCommand, ProcessWorkCursor, ProcessWorkError,
     ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage, ProcessWorkPageLimits,
     ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,

@@ -63,6 +63,8 @@ use super::{
 
 mod admission;
 mod commands;
+mod resolution_admission;
+pub use resolution_admission::{DiscussionResolutionOutcome, ScopedDiscussionResolutionOutcome};
 mod compaction_work;
 mod construction;
 pub(crate) mod recovery_retirement;

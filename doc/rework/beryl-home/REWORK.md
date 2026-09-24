@@ -538,6 +538,11 @@
 - [x] Accepted shared prepared State admission with exact old/new record witnesses and historical
   request lookup independent of later attempts. Eighteen State tests, dependent checks and
   independent review passed; candidate access inspects outcomes without admitting new work.
+- [x] Accepted generation-scoped resolution admission with exact idempotency, queue deferral,
+  archive rejection and atomic State/Syndic publication. Ten admission cases, twenty-seven
+  settlement regressions, State/app checks and independent review passed. Process-owned uncertain
+  audits retain their bounded slots after caller disposal; fresh candidates inspect exact outcomes
+  without admission. Coordinator and tool mounting remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

@@ -297,7 +297,7 @@ fn prepare(
         command,
         DiscussionSettlementAudit(Arc::new(Attempt {
             home_id: access.home_id(),
-            job: witness,
+            job: JobWitness::Transition(witness),
             syndic: syndic_intent,
             result,
             disposition: Mutex::new(Disposition::Prepared),

@@ -90,6 +90,27 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   the audit must join that scope and honor pending or collision outcomes before reporting creation.
   GUI busy state, selection presentation and activation retry remain feature-owned.
 
+## Discussion Resolution Admission
+
+- The non-GUI admission boundary consumes the broker's exact discussion, resolving turn and CAS
+  request identity under the matching home and projection-service generations. Its scoped live
+  command remains owned through durable execution and the caller's typed outcome publication or
+  custody transfer. The ordinary broker remains the sole correlated response owner; lost response
+  delivery cannot roll back admission or authorize a replacement attempt.
+- Historical request lookup precedes fresh-attempt eligibility and returns the original job even
+  after terminal completion or a later attempt. A different request while live preserves the
+  original payload. Fresh admission derives immutable child/parent/context facts and the parent
+  accepted-input frontier from bounded typed reads. Future-turn input defers without mutation;
+  archived discussions or parents reject fresh admission.
+- One home command composes the prepared State admission with Syndic's pending discussion gate.
+  Original handle, domain and home revisions fence preparation; Syndic repeats the active CAS,
+  archive and empty-queue checks at the writer. No candidate path admits a new resolution.
+- Process operation custody retains uncertain audits in their existing bounded reconciliation
+  slots even if a response handler drops its copy. Exact-job lookup recovers that audit; its slot
+  stays unavailable until natural State/Syndic evidence and the home registry agree. Collision
+  remains unavailable. Retained audits hold no old home service; fresh candidate handles can
+  reconcile them. The same custody rule applies to subsequent handoff settlements.
+
 ## Discussion Parent Admission
 
 - Parent delivery is a non-GUI handoff operation owned by the process coordinator and its exact

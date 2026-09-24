@@ -108,13 +108,30 @@ impl Access<'_> {
         state: &BerylState,
     ) -> Result<HandoffJobTransitionStatus, DiscussionSettlementError> {
         let before = self.revision()?;
-        let job = match self {
-            Self::Ordinary(s) => state
-                .durable_jobs()
-                .handoff_job_transition_status(s, &audit.0.job)?,
-            Self::Candidate(s) => state
-                .durable_jobs()
-                .handoff_job_transition_status_candidate(s, &audit.0.job)?,
+        let job = match &audit.0.job {
+            JobWitness::Transition(witness) => match self {
+                Self::Ordinary(s) => state
+                    .durable_jobs()
+                    .handoff_job_transition_status(s, witness)?,
+                Self::Candidate(s) => state
+                    .durable_jobs()
+                    .handoff_job_transition_status_candidate(s, witness)?,
+            },
+            JobWitness::Admission(witness) => {
+                use beryl_state::HandoffJobAdmissionStatus;
+                match match self {
+                    Self::Ordinary(s) => state
+                        .durable_jobs()
+                        .handoff_job_admission_status(s, witness)?,
+                    Self::Candidate(s) => state
+                        .durable_jobs()
+                        .handoff_job_admission_status_candidate(s, witness)?,
+                } {
+                    HandoffJobAdmissionStatus::ExactOld => HandoffJobTransitionStatus::ExactOld,
+                    HandoffJobAdmissionStatus::ExactNew => HandoffJobTransitionStatus::ExactNew,
+                    HandoffJobAdmissionStatus::Collision => HandoffJobTransitionStatus::Collision,
+                }
+            }
         };
         let syndic_status = audit
             .0

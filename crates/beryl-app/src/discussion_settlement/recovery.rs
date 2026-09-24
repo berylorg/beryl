@@ -60,7 +60,7 @@ impl DiscussionSettlementAudit {
                 _ => *disposition = Disposition::Collision,
             }
         }
-        Ok(match (&*disposition, natural) {
+        let outcome = match (&*disposition, natural) {
             (Disposition::NotCommitted, HandoffJobTransitionStatus::ExactOld) => {
                 DiscussionSettlementAuditOutcome::NotCommitted
             }
@@ -68,6 +68,14 @@ impl DiscussionSettlementAudit {
                 DiscussionSettlementAuditOutcome::Settled(self.0.result)
             }
             _ => DiscussionSettlementAuditOutcome::Collision,
-        })
+        };
+        if matches!(
+            outcome,
+            DiscussionSettlementAuditOutcome::NotCommitted
+                | DiscussionSettlementAuditOutcome::Settled(_)
+        ) {
+            self.0._flight.release_retained();
+        }
+        Ok(outcome)
     }
 }

@@ -146,6 +146,24 @@ pub struct BranchDiscussionResolutionContext {
 }
 
 impl BranchDiscussionResolutionContext {
+    #[cfg(feature = "test-faults")]
+    pub fn for_test(
+        service: &crate::cas_projection::ProjectionConnectionService,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+        request: beryl_state::ResolutionRequestIdentity,
+    ) -> Self {
+        Self {
+            ordinary: OrdinaryDynamicToolContext::new(
+                service.home_id(),
+                service.home_generation(),
+                service.service_generation(),
+                thread_id,
+                turn_id,
+            ),
+            request,
+        }
+    }
     pub(super) fn from_routed_call(
         ordinary: OrdinaryDynamicToolContext,
         call: &crate::cas_projection::connection::RoutedDynamicToolCall,
