@@ -14,6 +14,8 @@ pub struct DiscussionParentDispatchReservation {
     flight: Arc<Flight>,
     permit: ProcessExecutionPermit,
     generation: beryl_home_store::HomeGeneration,
+    pending: syndic_storage::PendingDispatchEvidence,
+    binding: beryl_model::ExecutionBinding,
 }
 
 #[must_use]
@@ -83,9 +85,19 @@ impl DiscussionSettlementService {
             thread_id,
             SyndicPointReadLimit::new(400_000).expect("bounded parent dispatch evidence"),
         )?;
-        if pending
-            .is_none_or(|pending| pending.thread_id() != thread_id || pending.turn_id() != turn_id)
-        {
+        let pending = pending.ok_or(DiscussionSettlementError::IdentityMismatch)?;
+        if pending.thread_id() != thread_id || pending.turn_id() != turn_id {
+            return Err(DiscussionSettlementError::IdentityMismatch);
+        }
+        let execution = self
+            .syndic
+            .thread_execution(
+                &self.store,
+                thread_id,
+                SyndicPointReadLimit::new(400_000).expect("bounded execution binding evidence"),
+            )?
+            .ok_or(DiscussionSettlementError::IdentityMismatch)?;
+        if execution.thread_id() != thread_id {
             return Err(DiscussionSettlementError::IdentityMismatch);
         }
         if access.revision()? != revision {
@@ -101,18 +113,47 @@ impl DiscussionSettlementService {
             flight,
             permit,
             generation,
+            pending,
+            binding: execution.execution().clone(),
         })
     }
 }
 
 impl DiscussionParentDispatchReservation {
+    pub(crate) fn preparation_failed(
+        self,
+        failure: super::nondispatch::DiscussionPreparationFailure,
+    ) -> Result<ReservedDiscussionNondispatch, DiscussionSettlementError> {
+        let evidence = DiscussionParentNondispatch::before_activation(
+            self.pending,
+            self.binding.clone(),
+            failure,
+        );
+        self.nondispatched(evidence)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn preparation_failed_for_test(
+        self,
+        kind: beryl_state::HandoffFailureKind,
+    ) -> Result<ReservedDiscussionNondispatch, DiscussionSettlementError> {
+        use super::nondispatch::DiscussionPreparationFailure;
+        let failure = match kind {
+            beryl_state::HandoffFailureKind::RuntimeUnavailable => {
+                DiscussionPreparationFailure::Runtime
+            }
+            beryl_state::HandoffFailureKind::RootUnavailable => DiscussionPreparationFailure::Root,
+            beryl_state::HandoffFailureKind::CasUnavailable => DiscussionPreparationFailure::Cas,
+            _ => return Err(DiscussionSettlementError::IdentityMismatch),
+        };
+        self.preparation_failed(failure)
+    }
+
     pub fn nondispatched(
         self,
         evidence: DiscussionParentNondispatch,
     ) -> Result<ReservedDiscussionNondispatch, DiscussionSettlementError> {
-        if evidence.request.thread_id() != self.thread_id
-            || evidence.request.turn_id() != self.turn_id
-        {
+        if evidence.thread_id() != self.thread_id || evidence.turn_id() != self.turn_id {
             return Err(DiscussionSettlementError::IdentityMismatch);
         }
         let owner = Arc::new(());

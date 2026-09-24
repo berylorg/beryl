@@ -558,6 +558,7 @@
 - [x] Accepted exact pre-dispatch job reservations with original process authority and same-slot settlement re-preparation.
 - [x] Accepted bounded nondispatch proof retention, exact fresh-candidate settlement and coalesced slot-release wakes, with recovery-prefix and shutdown-readiness mounting reserved for complete graph composition.
 - [x] Accepted generated-parent ordinary execution with exact eligibility, atomic nondispatch pause, explicit same-turn retry, unknown-dispatch fencing and production capacity wakes.
+- [x] Accepted pre-activation failure settlement preserving exact pending input and binding through existing bounded proof custody and fresh-candidate recovery.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

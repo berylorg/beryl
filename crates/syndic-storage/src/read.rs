@@ -232,6 +232,18 @@ impl SyndicStorage {
     ) -> Result<Option<ThreadAttributesRecord>, SyndicReadError> {
         self.point::<ThreadAttributesFamily>(store, id, limit)
     }
+    pub fn thread_execution_candidate(
+        &self,
+        candidate: &beryl_home_store::HomeCandidateRecoveryAccess<'_>,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadExecutionRecord>, SyndicReadError> {
+        self.point_with_access::<ThreadExecutionsFamily>(
+            access::ReadAccess::Candidate(candidate),
+            id,
+            limit,
+        )
+    }
     pub fn thread_usage(
         &self,
         store: &HomeStore,

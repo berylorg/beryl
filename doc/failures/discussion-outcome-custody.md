@@ -48,3 +48,18 @@ unbounded queue, or relax known-rejection retry semantics. The owning system and
 define this boundary. The retained-proof component and exact-old/new candidate recovery passed
 fourteen distinct focused cases, dependent checks and independent review. Complete graph mounting
 must run the prefix before CAS-live recovery and reject successful shutdown while proofs remain.
+
+## Preparation Failure Is Not Generic Not-Ready
+
+Coordinator readiness review on 2026-09-24 found that ordinary session preparation reports
+`RuntimeNotReady` for in-progress work, capacity pressure and failure alike. Launch-target lookup
+also collapses read errors, identity drift and absent configuration. That result cannot authorize
+a retryable handoff failure. Activated nondispatch settlement alone leaves the earlier confirmed
+failure case uncovered.
+
+Use the existing reserved settlement slot to capture an authentic pre-activation failure event
+with exact pending-turn, job-revision and binding evidence. State-only pause preserves Syndic
+dispatch identity; retained-proof candidate recovery uses the same original custody. Separate
+production failure classification from this settlement component. Runtime recovery does not erase
+the captured event, but preparing, contention, stale identity and possible dispatch must never
+manufacture it. No runtime ownership lock may span the home writer.

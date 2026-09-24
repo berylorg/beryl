@@ -21,6 +21,8 @@ mod nondispatch;
 mod reservation;
 #[path = "discussion_settlement/retained_nondispatch.rs"]
 mod retained_nondispatch;
+#[path = "discussion_settlement/preactivation_failure.rs"]
+mod preactivation_failure;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 

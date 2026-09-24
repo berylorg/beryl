@@ -73,14 +73,20 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 548: Gate Generated Parent Ordinary Dispatch (finished)
+# Phase 551: Retain Handoff Failure Before Parent Activation (finished)
 
-Accepted shared ordinary dispatch reservations, atomic nondispatch settlement and generation-owned
-capacity wakes. Four live generated-handoff cases, ten ordinary/scheduler/native-lineage regressions,
-dependent checks and independent review passed. Missing/foreign authority and paused jobs reject
-before activation; explicit retry reuses the same turn; unknown dispatch remains fenced. Proof
-custody survives settlement cancellation. Recovery-prefix and shutdown-readiness mounting remain
-explicit complete-graph work under phase 423.
+Accepted State-only preparation-failure pause with exact pending-turn/binding proof and existing
+bounded nondispatch custody. Five new cases and thirteen custody/dispatch regressions passed,
+alongside dependent app checks and independent review. Candidate recovery covers both uncertain
+writer outcomes; activation and binding drift reject. Production event classification remains 552.
+
+# Phase 552: Classify Generated Parent Preparation Outcomes (pending)
+
+Distinguish preparation/capacity waiting from confirmed exact runtime, root and CAS failures in
+the existing session provider. Capture confirmed pre-activation failure through accepted handoff
+custody without a second runtime owner, sender, queue or automatic retry. Verify real preparation
+failure, healthy waiting, unrelated wakes, runtime recovery and unchanged parent identity before
+independent acceptance. This prerequisite precedes coordinator factory acceptance.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 

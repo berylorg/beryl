@@ -179,6 +179,16 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   This process-owned evidence adds no crash-persistent journal: a new process has only durable
   evidence and obeys the existing unknown-dispatch rule. Orderly disposal must not discard an
   unsettled proof as successful cleanup.
+- Confirmed parent runtime, root or CAS preparation failure before activation is a nondispatch
+  event for the exact reserved starting-parent job, pending input/turn and execution binding.
+  Preparation in progress, capacity contention, checkout contention, stale reads and shutdown
+  are not such evidence. The existing reconciliation slot retains the captured event until the
+  State retryable transition commits; Syndic input and dispatch identity remain unchanged.
+  Failure custody, candidate-prefix settlement and shutdown readiness follow the same rules as
+  activated nondispatch. Current job revision, binding and unattempted or exactly cancelled
+  dispatch provenance must still match; an activated, possibly dispatched or completed parent
+  follows execution convergence instead. Runtime recovery after authentic event capture does not
+  revoke the event or authorize handoff retry. Runtime ownership locks never span home storage.
 - If parent `turn/start` may have been dispatched but its response is unavailable, the parent turn is
   never replayed automatically. Proven loss of its execution session converges that parent turn to
   incomplete, moves the job to `terminal_failed`, leaves the discussion unarchived, and releases

@@ -191,6 +191,16 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   and retain only one reservation, reason and current command. Verify progress after successive
   unrelated commits and responsive disposal during contention.
 
+- Before-activation failure custody retains the reserved pending-dispatch evidence and exact
+  execution binding instead of an activation-cancellation request. Only confirmed runtime, root
+  or CAS preparation failure can construct that private event; generic not-ready results cannot.
+  Settlement revalidates the current pending turn, dispatch provenance, binding and captured job
+  revision, then publishes a State-only retryable transition under the exact home revision.
+  Candidate recovery uses fresh bounded pending-dispatch and thread-execution reads; it preserves
+  the original input and never manufactures an activation to cancel. The same process-owned
+  proof slot survives owner disposal, failed preparation and uncertain commit. Runtime recovery
+  does not erase an already captured event; replacement identity or possible dispatch rejects it.
+
 ## Tools And Lifecycle Yield
 
 - Every persistent conversation lineage uses one canonical versioned, deterministically ordered

@@ -5,10 +5,19 @@ use beryl_state::{
 };
 use syndic_storage::{BindingPublicationStatus, CancelBindingActivation, SyndicPointReadLimit};
 
+mod preactivation;
+pub(crate) use preactivation::DiscussionPreparationFailure;
+
 #[derive(Clone)]
 pub struct DiscussionParentNondispatch {
-    pub(super) request: CancelBindingActivation,
+    source: Source,
     kind: HandoffFailureKind,
+}
+
+#[derive(Clone)]
+enum Source {
+    Activated(CancelBindingActivation),
+    BeforeActivation(preactivation::BeforeActivation),
 }
 
 impl DiscussionParentNondispatch {
@@ -29,7 +38,10 @@ impl DiscussionParentNondispatch {
                 | NonIdempotentRequestOutcome::CompletionUnknown { .. },
             ) => return Err(DiscussionSettlementError::IdentityMismatch),
         };
-        Ok(Self { request, kind })
+        Ok(Self {
+            source: Source::Activated(request),
+            kind,
+        })
     }
 
     #[cfg(feature = "test-faults")]
@@ -40,7 +52,10 @@ impl DiscussionParentNondispatch {
                 | HandoffFailureKind::CasRejectedBeforeAcceptance
                 | HandoffFailureKind::TransientDeliveryFailure
         ));
-        Self { request, kind }
+        Self {
+            source: Source::Activated(request),
+            kind,
+        }
     }
 
     #[cfg(feature = "test-faults")]
@@ -70,37 +85,42 @@ pub(super) fn prepare(
         .state()
         .parent()
         .ok_or(DiscussionSettlementError::IdentityMismatch)?;
-    if evidence.request.thread_id() != job.parent_thread_id()
-        || evidence.request.turn_id() != parent.turn_id()
-    {
+    if evidence.thread_id() != job.parent_thread_id() || evidence.turn_id() != parent.turn_id() {
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
     super::candidate::validate_job_sources(access, syndic, job)?;
-    let limit = SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence");
-    let (status, revision) = match access {
-        Access::Ordinary(store) => (
-            syndic.cancelled_binding_activation_status(store, &evidence.request, limit)?,
-            syndic.revision(store)?,
-        ),
-        Access::Candidate(candidate) => (
-            syndic.cancelled_binding_activation_status_candidate(
-                candidate,
-                &evidence.request,
-                limit,
-            )?,
-            syndic.revision_candidate(candidate)?,
-        ),
+    let intent = match evidence.source {
+        Source::BeforeActivation(proof) => {
+            proof.validate(access, syndic)?;
+            None
+        }
+        Source::Activated(request) => {
+            let limit = SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence");
+            let (status, revision) = match access {
+                Access::Ordinary(store) => (
+                    syndic.cancelled_binding_activation_status(store, &request, limit)?,
+                    syndic.revision(store)?,
+                ),
+                Access::Candidate(candidate) => (
+                    syndic.cancelled_binding_activation_status_candidate(
+                        candidate, &request, limit,
+                    )?,
+                    syndic.revision_candidate(candidate)?,
+                ),
+            };
+            if status != BindingPublicationStatus::Prior {
+                return Err(DiscussionSettlementError::IdentityMismatch);
+            }
+            command.add(syndic.cancel_binding_activation(revision, request.clone()))?;
+            Some(SyndicSettlementIntent::Cancellation(request))
+        }
     };
-    if status != BindingPublicationStatus::Prior {
-        return Err(DiscussionSettlementError::IdentityMismatch);
-    }
-    command.add(syndic.cancel_binding_activation(revision, evidence.request.clone()))?;
     Ok((
         HandoffJobTransition::RetryableFailure(
             HandoffFailureEvidence::new(evidence.kind, None)
                 .expect("empty failure detail is bounded"),
         ),
-        Some(SyndicSettlementIntent::Cancellation(evidence.request)),
+        intent,
         DiscussionSettlementResult::ParentRetryable {
             parent,
             kind: evidence.kind,
