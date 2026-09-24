@@ -17,6 +17,8 @@ pub use outcome::DiscussionHandoffStatus;
 pub use parent::{
     DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
     PreparedDiscussionParent,
+    GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
+    GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
 };
 pub use settlement::{
     DiscussionChildSettlement, DiscussionChildSettlementDisposition,

@@ -1,17 +1,23 @@
-use beryl_home_store::DomainReader;
 use beryl_model::{SyndicPathDigest, SyndicTurnId};
 
 use crate::codec::*;
-use crate::domain::SyndicDomain;
+use crate::terminal_history::TerminalHistoryReader;
 use crate::{
     ConversationParent, SyndicMutationError, ThreadParentIndexRecord, ThreadRecord, TurnDepth,
     child_turn_chain_digest, root_turn_chain_digest,
 };
 
-use super::required;
+fn required<F: Family>(
+    reader: &impl TerminalHistoryReader,
+    key: &F::Key,
+) -> Result<F::Value, SyndicMutationError> {
+    reader
+        .read::<F>(key)?
+        .ok_or(SyndicMutationError::SourceTailConflict)
+}
 
 pub(super) fn turn_shape(
-    reader: &DomainReader<'_, SyndicDomain>,
+    reader: &impl TerminalHistoryReader,
     turn_id: SyndicTurnId,
     parent: ConversationParent,
 ) -> Result<(TurnDepth, SyndicPathDigest, Option<SyndicTurnId>), SyndicMutationError> {

@@ -28,6 +28,8 @@ pub(crate) mod discussion_mutation;
 pub use discussion_handoff::{
     DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
     PreparedDiscussionParent,
+    GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
+    GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
 };
 pub use discussion_handoff::{DiscussionChildSettlement, DiscussionChildSettlementDisposition, PreparedDiscussionChildSettlement};
 pub use discussion_handoff::{AdmitDiscussionHandoff, DiscussionParentFrontierProof, DiscussionHandoffMutation, DiscussionHandoffIntent, PreparedDiscussionHandoff, DiscussionHandoffStatus};

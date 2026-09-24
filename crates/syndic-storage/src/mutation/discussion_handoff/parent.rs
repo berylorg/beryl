@@ -4,7 +4,13 @@ use beryl_home_store::{
     DomainValidator, HomeCandidateRecoveryAccess, ReadError, ValidationContribution,
 };
 
+mod generated;
 mod probe;
+pub use generated::{
+    GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
+    GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus,
+    PreparedGeneratedDiscussionInput,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DiscussionParentRequest {

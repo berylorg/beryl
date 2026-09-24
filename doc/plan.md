@@ -73,20 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 534: Carry Generated Input Through Ordinary Execution (finished)
+# Phase 535: Admit Generated Parent Input Without Consuming Drafts (finished)
 
-Accepted ordinary dispatch, correlation, projection, stop and recovery support for generated
-handoff input. Sixteen focused schema/execution/regression tests, both package test-target checks,
-and independent review passed. Early CAS echoes preserve exact text and one canonical generated
-item; stop settlement, receipt mismatch rejection and single recovery replay are covered.
+Accepted atomic generated input, sealed content and pending-turn admission with draft preservation.
+Sixteen focused admission/schema/execution/eligibility regressions, both package test-target checks
+and independent review passed. Maximum text, uncertain old/new outcomes, stale/foreign handles,
+collisions, timestamp/order bounds and durable discovery after restart are covered.
 
-# Phase 535: Admit Generated Parent Input Without Consuming Drafts (wip)
-
-Implement sealed content preparation and one exact Syndic generated-input/turn participant with
-bounded outcome/discovery evidence. Verify permanent order, busy/special drafts, draft preservation,
-identity collision, stale/candidate proofs and maximum text. No State transition or CAS dispatch.
-
-# Phase 536: Compose Atomic Parent Input And Starting Job (pending)
+# Phase 536: Compose Atomic Parent Input And Starting Job (wip)
 
 Join accepted Syndic admission and State parent-start evidence under bounded process custody.
 Verify exact payload and identities, cancellation, races, uncertain outcomes and candidate

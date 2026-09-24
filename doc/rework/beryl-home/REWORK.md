@@ -502,7 +502,12 @@
 - [x] Accepted generated-input execution through the existing dispatch, CAS echo correlation,
   projection, stop and recovery paths. Exact Unicode transport with early echoes, one canonical
   item, stop settlement, bounded replay and ordinary regressions passed independent review;
-  generated admission and coordinator composition remain pending.
+  coordinator composition remains pending.
+- [x] Accepted atomic generated parent-input admission with exact sealed content, permanent order,
+  pending turn and draft preservation. Bounded natural outcomes and independent durable discovery
+  cover maximum text, uncertain commit, restart, identity/content collisions and stale handles;
+  focused regressions, dependent checks and independent review passed. Atomic State composition
+  remains separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

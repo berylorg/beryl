@@ -1,8 +1,29 @@
 use super as support;
 use beryl_home_store::HomeStore;
 use beryl_model::*;
-use sha2::{Digest, Sha256};
-use syndic_storage::{test_faults::*, *};
+use syndic_storage::*;
+
+pub fn seed_pending(store: &HomeStore, storage: &SyndicStorage) -> DiscussionParentRequest {
+    seed_parent_history(store, storage);
+    support::discussion_creation::create_child(store, storage, support::id(30), 36, 37);
+    let request = support::discussion_handoff::active_request(
+        store,
+        storage,
+        ResolutionIntentId::from_bytes([231; 16]),
+        JobId::from_bytes([231; 16]),
+    );
+    let admission = storage
+        .prepare_discussion_handoff(store, DiscussionHandoffMutation::Admit(request.clone()))
+        .unwrap();
+    let child_gate = admission.intent().new_gate();
+    support::discussion_input::committed(store, admission.contribution());
+    DiscussionParentRequest {
+        child_gate,
+        parent_thread_id: request.parent.thread_id,
+        context_owner: request.context_owner,
+        context_digest: request.context_digest,
+    }
+}
 
 pub fn seed(
     store: &HomeStore,
@@ -13,106 +34,44 @@ pub fn seed(
     DiscussionHandoffReceipt,
     DiscussionHandoffGateRecord,
 ) {
-    seed_parent_history(store, &storage);
-    support::discussion_creation::create_child(store, &storage, support::id(30), 36, 37);
-    let request = support::discussion_handoff::active_request(
-        &store,
-        &storage,
-        ResolutionIntentId::from_bytes([231; 16]),
-        JobId::from_bytes([231; 16]),
-    );
-    let parent = request.parent.thread_id;
-    let limit = SyndicPointReadLimit::new(400_000).unwrap();
-    let admission = storage
-        .prepare_discussion_handoff(&store, DiscussionHandoffMutation::Admit(request.clone()))
-        .unwrap();
-    let pending = admission.intent().new_gate();
-    support::discussion_input::committed(&store, admission.contribution());
-    let item_id = SyndicItemId::from_bytes([232; 16]);
-    let turn_id = support::exact_cas::submit_current_draft(
-        &store,
-        storage.clone(),
-        parent,
-        SyndicDraftId::from_bytes([233; 16]),
-        item_id,
-        &format!("Discussion resolution:\n\n{text}"),
-        support::timestamp(100),
-    );
-    let turn = storage.turn(&store, turn_id, limit).unwrap().unwrap();
-    let item = storage
-        .canonical_item(&store, item_id, limit)
-        .unwrap()
-        .unwrap();
-    let gate = storage.input_gate(&store, parent, limit).unwrap().unwrap();
-    let proof = DiscussionHandoffReceipt {
-        parent_thread_revision: request.parent.thread_revision,
-        parent_gate_revision: request.parent.input_gate_revision,
-        child_thread_id: request.thread_id,
-        intent_id: request.intent_id,
-        job_id: request.job_id,
-        context_owner: request.context_owner,
-        context_digest: request.context_digest,
-        resolving_turn_id: request.resolving_target.pending().active_turn_id(),
-        resolution_digest: Sha256::digest(text.as_bytes()).into(),
-        parent_turn_id: turn_id,
-        canonical_item_id: item_id,
+    let source = seed_pending(store, &storage);
+    let DiscussionParentEligibility::Proven(parent) =
+        storage.prepare_discussion_parent(store, source).unwrap()
+    else {
+        panic!("ready parent")
     };
-    let input = AcceptedInputRecord::new(
-        SyndicAcceptedInputId::from_bytes([231; 16]),
-        parent,
-        AcceptedInputOrdinal::FIRST,
-        AcceptedInputSource::DiscussionHandoff(proof),
-        item.presentation().content().unwrap(),
-        None,
-        turn.submitted_at(),
-    )
-    .unwrap();
-    let generated = CanonicalItemRecord::local_discussion_handoff(
-        item_id,
-        turn_id,
-        item.ordinal(),
-        item.revision(),
-        input.content(),
-        input.id(),
-    );
-    let batch = support::batch([
-        FixtureRecord::Turn(TurnRecord::new(
-            turn_id,
+    let prepared = storage
+        .prepare_generated_discussion_input(
+            store,
             parent,
-            TurnKind::BerylDiscussionHandoff,
-            turn.parent(),
-            turn.ancestor_skip(),
-            turn.depth(),
-            turn.chain_digest(),
-            turn.submitted_at(),
-        )),
-        FixtureRecord::CanonicalItem(generated.clone()),
-        FixtureRecord::AcceptedInput(input.clone()),
-        FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::from_source(
-            parent,
-            input.ordinal(),
-            input.id(),
-            AcceptedOrderSource::DiscussionHandoff,
-        )),
-        FixtureRecord::InputGate(
-            InputGateRecord::new(
-                parent,
-                gate.revision(),
-                gate.state().clone(),
-                1,
-                gate.route_generation_high_water(),
-                gate.selected_route(),
-                0,
-                0,
-                0,
-            )
+            GeneratedDiscussionInput {
+                parent_turn_id: SyndicTurnId::from_bytes([234; 16]),
+                canonical_item_id: SyndicItemId::from_bytes([232; 16]),
+                resolution: text.to_owned(),
+                admitted_at: support::timestamp(100),
+            },
+        )
+        .unwrap();
+    let intent = prepared.intent();
+    assert_eq!(
+        storage
+            .generated_discussion_input_status(store, &intent)
             .unwrap(),
-        ),
-    ]);
-    support::commit(&store, storage.clone(), batch);
-    (input, proof, pending)
+        GeneratedDiscussionInputStatus::ExactOld
+    );
+    support::discussion_input::committed(store, prepared.into_contribution());
+    assert_eq!(
+        storage
+            .generated_discussion_input_status(store, &intent)
+            .unwrap(),
+        GeneratedDiscussionInputStatus::ExactNew
+    );
+    let input = intent.input().clone();
+    let AcceptedInputSource::DiscussionHandoff(receipt) = input.source() else {
+        panic!("generated receipt")
+    };
+    (input, receipt, source.child_gate)
 }
-
 fn seed_parent_history(store: &HomeStore, storage: &SyndicStorage) {
     use support::{draft_id, exact_cas, id, timestamp};
     let thread = id(30);
