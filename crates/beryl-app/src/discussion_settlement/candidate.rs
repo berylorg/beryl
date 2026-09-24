@@ -179,7 +179,7 @@ impl DiscussionSettlementOperations {
     }
 }
 
-fn validate_retryable(
+pub(super) fn validate_retryable(
     access: Access<'_>,
     syndic: &SyndicStorage,
     job: &BranchHandoffJobRecord,

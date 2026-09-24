@@ -1,5 +1,19 @@
 use super::*;
 
+pub(in crate::durable_job::mutation) fn retry_job(
+    mut job: BranchHandoffJobRecord,
+) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
+    if job.lifecycle() != BranchHandoffJobLifecycle::RetryableFailed {
+        return Err(invalid_transition("retryable_failed", job.lifecycle()));
+    }
+    let BranchHandoffJobState::RetryableFailed { resume, .. } = job.state else {
+        return Err(invariant_transition());
+    };
+    job.state = resume.into_state();
+    advance(&mut job)?;
+    Ok(job)
+}
+
 pub(in crate::durable_job::mutation) fn parent_accepted_job(
     mut job: BranchHandoffJobRecord,
     cas: ParentCasIdentity,

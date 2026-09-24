@@ -12,6 +12,7 @@ mod execution;
 
 #[derive(Clone, Copy)]
 enum Selection {
+    Retry(beryl_model::JobRevision),
     Child,
     ParentInput(DiscussionParentInputRequest),
     ParentExecution(SyndicTimestamp),
@@ -24,6 +25,15 @@ type Transition = (
 );
 
 impl DiscussionSettlementService {
+    pub fn prepare_retry(
+        &self,
+        job_id: JobId,
+        expected_revision: beryl_model::JobRevision,
+        cancellation: CommandCancellation,
+    ) -> Result<PreparedDiscussionSettlement<'static>, DiscussionSettlementError> {
+        self.prepare_selected(job_id, Selection::Retry(expected_revision), cancellation)?
+            .ok_or(DiscussionSettlementError::IdentityMismatch)
+    }
     pub fn prepare_parent_execution(
         &self,
         job_id: JobId,
@@ -166,6 +176,10 @@ fn prepare(
         _ => None,
     };
     let allowed = match selection {
+        Selection::Retry(expected) => {
+            job.lifecycle() == BranchHandoffJobLifecycle::RetryableFailed
+                && job.revision() == expected
+        }
         Selection::ParentExecution(_) => matches!(
             job.lifecycle(),
             BranchHandoffJobLifecycle::StartingParent | BranchHandoffJobLifecycle::ParentActive
@@ -194,7 +208,14 @@ fn prepare(
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
     let mut command = HomeCommand::new(before).with_cancellation(cancellation);
-    let (transition, syndic_intent, result) = if let Selection::ParentExecution(at) = selection {
+    let (transition, syndic_intent, result) = if let Selection::Retry(_) = selection {
+        super::candidate::validate_retryable(access, syndic, &job)?;
+        (
+            HandoffJobTransition::Retry,
+            None,
+            DiscussionSettlementResult::RetryResumed,
+        )
+    } else if let Selection::ParentExecution(at) = selection {
         let prepared = execution::prepare(access, syndic, &job, gate, at, &mut command)?;
         if access.revision()? != before {
             return Err(DiscussionSettlementError::ConcurrentChange);

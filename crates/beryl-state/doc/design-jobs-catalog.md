@@ -97,6 +97,11 @@ durable job records and transitions plus compact catalog schema, normalization, 
 - All these immutable witnesses share their bounded old/new record ownership with the admitted
   operation and audit. Extending transition evidence does not add a new durable family, scan,
   request index, parent queue, scheduling permission or State dependency on Syndic records.
+- Prepared retry uses the same successor rule as ordinary retry: only `retryable_failed` resumes
+  its retained checkpoint, increments the job revision and preserves every attempt, request,
+  payload and parent identity. Its mutation and exact outcome closure remain the job/live pair.
+  This State primitive grants no automatic scheduling or parent dispatch permission; the app owns
+  explicit retry admission and its cross-domain source checks.
 
 ## Compact catalog
 

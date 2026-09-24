@@ -73,35 +73,28 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 542: Compose Production Resolution Admission (finished)
+# Phase 545: Compose Explicit Handoff Retry (finished)
 
-Accepted generation-scoped atomic admission with exact historical request lookup, queue deferral,
-archive rejection and process-retained uncertain audits. Ten admission cases, twenty-seven
-settlement regressions, State/app checks and independent review passed. Evidence includes lost
-caller audit, duplicate writers, contradictory latest identity and fresh candidate inspection.
-The [custody lesson](failures/discussion-outcome-custody.md) is retained; coordinator/tool mounting
-remains separate.
+Accepted shared State retry and revision-qualified app preparation preserving every checkpoint,
+attempt, payload and parent identity. Fourteen State cases, four app retry cases, the paused-scan
+regression, dependent checks and independent review passed. Changed sources, stale requests,
+terminal states and cancellation reject; uncertain retry reconciles through fresh candidate
+handles. Candidate scanning remains inspection-only for retryable jobs.
 
-# Phase 545: Compose Explicit Handoff Retry (wip)
-
-Prepare and compose the existing exact retry transition with pending-gate/parent identity checks
-and bounded outcome custody. Retry resumes only the same retryable job and existing parent input;
-terminal attempts cannot retry and runtime or candidate scanning never retries automatically.
-
-Reuse the State transition witness and shared ordinary retry rule; retain checkpoint, payload,
-attempt and any Syndic/CAS parent identity. The app authenticates the exact pending child gate and
-parent provenance under original home revisions before changing only the State job/live pair.
-Verify all retryable checkpoints, nonretryable rejection, changed gate/parent, cancellation,
-stale writer, uncertain outcome and candidate inspection. Require focused State/app regressions,
-dependent checks and independent review. Existing candidate/runtime scans remain observation-only
-for retryable failures.
-
-# Phase 543: Schedule Durable Handoff Work After Publication (pending)
+# Phase 543: Schedule Durable Handoff Work After Publication (wip)
 
 Implement generation-owned bounded live scanning, duplicate suppression, ready admission and
 relevant coalesced wakes using accepted settlement/admission and ordinary dispatch boundaries.
 Disposal fences and joins owned work; replacement starts from durable facts. Complete factory
 acceptance before adding this service to complete-graph publication.
+
+Use the accepted admission, explicit retry, settlement and candidate-convergence components.
+Retain only bounded queued/running job identities and observed revisions, one scan page and
+coalesced rescan state; release waiting payloads and resume paused admission on capacity release.
+Connect parent work to ordinary dispatch and preserve the sole correlated tool response owner.
+Verify publication fencing, backlog beyond capacity, relevant behind-cursor changes, duplicate
+suppression, no automatic retry, uncertainty custody and disposal joins. Require focused service
+integration evidence and independent review before factory acceptance.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

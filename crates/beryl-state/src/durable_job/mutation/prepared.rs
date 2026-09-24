@@ -15,6 +15,7 @@ use super::access::{ReadAccess, read_authenticated};
 
 #[derive(Clone, Debug)]
 pub enum HandoffJobTransition {
+    Retry,
     CompleteResolving,
     ChildInputPending(HandoffFailureEvidence),
     StartParent(ParentHandoffIdentity),
@@ -31,6 +32,7 @@ impl HandoffJobTransition {
         job: BranchHandoffJobRecord,
     ) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
         match self {
+            Self::Retry => super::transition::retry_job(job),
             Self::CompleteResolving => super::transition::complete_resolving_job(job),
             Self::StartParent(parent) => super::transition::start_parent_job(job, *parent),
             Self::ParentAccepted(cas) => super::transition::parent_accepted_job(job, cas.clone()),

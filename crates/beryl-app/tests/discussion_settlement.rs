@@ -13,6 +13,8 @@ mod parent_execution;
 mod candidate_scan;
 #[path = "discussion_settlement/recovery.rs"]
 mod recovery;
+#[path = "discussion_settlement/retry.rs"]
+mod retry;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 

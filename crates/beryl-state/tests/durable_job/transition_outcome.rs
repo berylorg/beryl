@@ -32,6 +32,10 @@ enum Checkpoint {
     Waiting,
     Starting,
     Active,
+    PausedResolving,
+    PausedWaiting,
+    PausedStarting,
+    PausedActive,
 }
 
 fn cas_identity() -> ParentCasIdentity {
@@ -45,7 +49,7 @@ fn failure(kind: HandoffFailureKind) -> HandoffFailureEvidence {
     HandoffFailureEvidence::new(kind, None).unwrap()
 }
 
-fn transitions() -> [(Checkpoint, HandoffJobTransition); 12] {
+fn transitions() -> [(Checkpoint, HandoffJobTransition); 16] {
     use Checkpoint::*;
     [
         (Resolving, HandoffJobTransition::CompleteResolving),
@@ -87,15 +91,19 @@ fn transitions() -> [(Checkpoint, HandoffJobTransition); 12] {
             )),
         ),
         (Active, HandoffJobTransition::Succeed),
+        (PausedResolving, HandoffJobTransition::Retry),
+        (PausedWaiting, HandoffJobTransition::Retry),
+        (PausedStarting, HandoffJobTransition::Retry),
+        (PausedActive, HandoffJobTransition::Retry),
     ]
 }
 
 fn advance_to_checkpoint(store: &HomeStore, state: &BerylState, id: JobId, checkpoint: Checkpoint) {
     let count = match checkpoint {
-        Checkpoint::Resolving => 0,
-        Checkpoint::Waiting => 1,
-        Checkpoint::Starting => 2,
-        Checkpoint::Active => 3,
+        Checkpoint::Resolving | Checkpoint::PausedResolving => 0,
+        Checkpoint::Waiting | Checkpoint::PausedWaiting => 1,
+        Checkpoint::Starting | Checkpoint::PausedStarting => 2,
+        Checkpoint::Active | Checkpoint::PausedActive => 3,
     };
     for transition in [
         HandoffJobTransition::CompleteResolving,
@@ -111,6 +119,32 @@ fn advance_to_checkpoint(store: &HomeStore, state: &BerylState, id: JobId, check
             .unwrap();
         assert!(matches!(
             execute(store, prepared.contribution()),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+    }
+    if matches!(
+        checkpoint,
+        Checkpoint::PausedResolving
+            | Checkpoint::PausedWaiting
+            | Checkpoint::PausedStarting
+            | Checkpoint::PausedActive
+    ) {
+        let paused = state
+            .durable_jobs()
+            .prepare_handoff_job_transition(
+                store,
+                id,
+                job(store, state, id).revision(),
+                HandoffJobTransition::RetryableFailure(failure(
+                    HandoffFailureKind::RuntimeUnavailable,
+                )),
+            )
+            .unwrap();
+        assert!(matches!(
+            execute(store, paused.contribution()),
             CommandOutcome::Committed {
                 later_failure: None,
                 ..

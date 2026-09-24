@@ -543,6 +543,10 @@
   settlement regressions, State/app checks and independent review passed. Process-owned uncertain
   audits retain their bounded slots after caller disposal; fresh candidates inspect exact outcomes
   without admission. Coordinator and tool mounting remain separate.
+- [x] Accepted exact explicit retry with shared State rules, captured job revision, pending-gate
+  and parent provenance checks, unchanged payload/identities and retained uncertainty custody.
+  Fourteen State cases, four app retry cases, the paused-scan regression, dependent checks and
+  independent review passed. Candidate and ordinary scans never retry automatically.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

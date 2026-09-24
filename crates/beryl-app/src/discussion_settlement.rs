@@ -27,6 +27,7 @@ pub use recovery::DiscussionSettlementAuditOutcome;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiscussionSettlementResult {
+    RetryResumed,
     ResolutionAdmitted(JobId),
     ReadyForParent,
     ChildInputPending,

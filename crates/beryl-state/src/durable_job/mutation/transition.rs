@@ -11,7 +11,7 @@ use super::{advance, ensure_revision, put_live_transition, put_terminal_transiti
 
 mod successor;
 pub(super) use successor::{
-    complete_resolving_job, parent_accepted_job, retryable_failed_job, start_parent_job,
+    complete_resolving_job, parent_accepted_job, retry_job, retryable_failed_job, start_parent_job,
     succeeded_job, terminal_failed_job,
 };
 
@@ -285,19 +285,11 @@ impl DomainMutation<DurableJobDomain> for RetryBranchHandoff {
         self,
         reader: &DomainReader<'_, DurableJobDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let mut job = validate_lifecycle(
+        retry_job(validate_current(
             reader,
             self.job_id,
             self.expected_job_revision,
-            BranchHandoffJobLifecycle::RetryableFailed,
-        )?;
-        let resume = match job.state {
-            BranchHandoffJobState::RetryableFailed { resume, .. } => resume,
-            _ => return Err(invariant_transition()),
-        };
-        job.state = resume.into_state();
-        advance(&mut job)?;
-        Ok(job)
+        )?)
     }
 
     fn reserve_reconciliation(

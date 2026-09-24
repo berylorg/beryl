@@ -141,6 +141,12 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   fixed-count Syndic command closure. Ordinary content chunking and record ceilings apply; no
   staging stream, queued job collection or retry can extend these per-operation bounds. The
   original job page is released before unrelated work is admitted.
+- Explicit retry names the exact job and captured job revision. It requires the same retryable
+  checkpoint, pending child gate and immutable parent provenance, including any accepted parent
+  Syndic/CAS identities. Stable original home revisions fence these source observations before
+  changing only State's job/live pair. Retry preserves the attempt and payload and performs no
+  Syndic mutation or CAS request. Candidate and ordinary scans do not invoke retry automatically;
+  outcome uncertainty uses the same retained process custody and exact State witness.
 
 ## Tools And Lifecycle Yield
 
