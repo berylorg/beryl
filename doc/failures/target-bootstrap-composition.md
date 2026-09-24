@@ -793,3 +793,41 @@ process launch, execution without views, runtime retirement and joined shutdown.
 compilation, exact-file formatting, diff checks and independent completion review passed. This
 accepts the configuration factory; complete graph publication still requires the remaining factory
 inventory and its separate integration boundary.
+
+## Remaining Graph Factory Inventory
+
+The 2026-09-24 inventory follows accepted handoff coordination and still rejects complete graph
+publication. The remaining non-GUI gaps are scoped resolution-tool routing and runtime-scoped
+Activity production, not another CAS sender or a replacement execution scheduler.
+
+- `cas_projection/process_tools.rs` still installs `UnavailableBranchResolution`. Exact parsed
+  requests, broker correlation and `service/resolution_admission.rs` already exist, but the ordinary
+  handler does not connect them. A separate handler boundary must preserve the single reply owner,
+  structured queued-input deferral, idempotency, generation checks and retained uncertain custody.
+- `CatalogState` provides bounded revision-bound queries, and `catalog_projection` supplies the
+  exact typed one-thread reconciliation operation. `SettingsState` provides fixed-key bounded
+  reads and atomic validated mutations. Their candidate registration is complete and owns no
+  additional thread or ordinary read. No new prepublication constructor is needed merely to hold
+  these working typed services; query/UI worker mounting and postpublication loading keep their
+  separate acceptance boundaries.
+- `ProcessLifecycleAttentionPool::new` allocates its fixed-cap records without storage or worker
+  startup; close invalidates tokens and clears records. CAS construction already owns its shutdown
+  coordinator, session registry and bounded execution workers. Theme and marker preparation have
+  accepted candidate factories. Complete graph composition still must share the exact owners,
+  inspect coordinator failure, settle retained proofs before CAS-live recovery, and include their
+  custody in successful shutdown readiness. These are integration obligations, not accepted
+  publication or replacement behavior.
+- Activity has a real producer gap. `RuntimeActivityPeriod` is allocated by the app runtime owner
+  and retained in admitted sessions, but is never supplied to Syndic activity mutation. Idle input,
+  generated parent input, accepted-input promotion and compaction continuation each advance the
+  durable `ActivityWorkPeriod` per turn and reset the query. Live activity advancement uses that
+  head without runtime identity; no live app activity-query consumer completes the boundary.
+  This cannot preserve completed rows across later turns in the same runtime period.
+
+The Activity correction must first specify its exact cross-package identity and enrollment cut in
+owning authority. The process-local counter cannot simply become a durable period id because it
+can repeat after restart. Canonical input admission precedes runtime readiness and must not launch
+CAS just to allocate Activity identity. Enroll only through admitted producer authority, preserve
+late canonical terminal custody, and make ended-period rows ineligible without deleting canonical
+history. Derive bounded producer and service implementation phases after that contract is ready;
+a paged read wrapper over the present per-turn index cannot certify the required Activity service.

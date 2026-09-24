@@ -428,6 +428,7 @@
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
+- [ ] Establish runtime-scoped Activity producer identity and bounded service readiness before complete graph publication.
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
 - [x] Implemented and accepted the bounded notice widget with selectable detail, exact commands, focus continuity, inert behavior, and themed rendering.

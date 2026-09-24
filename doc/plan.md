@@ -73,23 +73,31 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 543: Schedule Durable Handoff Work After Publication (finished)
+# Phase 553: Verify Remaining Initial Service Factories (finished)
 
-Accepted bounded live coordination, shared publication fencing, fixed wake fanout and joined
-disposal with retained uncertain custody. Eighteen focused cases, app test-target checks and
-independent review passed. Behind-cursor capacity waits and concurrent pauses preserve progress;
-explicit retry wakes ordinary execution after commit guards release. Complete graph mounting
-remains separate; [wake and fixture lessons](failures/discussion-outcome-custody.md#coordinator-wake-ownership)
-record the corrected regression findings.
+Accepted the independently reviewed [factory inventory](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory).
+Catalog, Settings and attention need no additional dormant constructor. Scoped resolution routing
+and runtime-scoped Activity remain prerequisites. No code changed or complete graph readiness was
+claimed; existing graph disposal and retained-proof integration obligations remain with 423.
 
-# Phase 553: Verify Remaining Initial Service Factories (pending)
+# Phase 554: Route Scoped Resolution Through Ordinary Tools (pending)
 
-Complete the bounded readiness inventory required before 423: scoped resolution-tool mounting,
-catalog, activity, attention, settings and shutdown factories, plus accepted coordinator ownership
-through initial and replacement graphs. Compare concrete constructors and disposal paths with
-initial-publication authority. Record any missing component or design boundary and derive separate
-phases before implementation; do not publish a partial graph. Accept the inventory through
-independent review, without claiming complete graph or GUI readiness.
+Replace the unavailable ordinary resolution handler with exact generation-owned admission using
+the accepted parser, broker correlation and settlement service. Preserve the sole response owner,
+bounded structured queued-input deferral, existing-request idempotency, live-attempt refusal and
+original uncertain outcome custody. Construct its authority privately before managed tool clones
+and ordinary release, without a strong service/session ownership cycle or window dependency.
+Verify a real correlated call, deferral, duplicate delivery, stale/retired authority, uncertainty and
+joined disposal with focused tool/admission regressions and independent review. This does not
+accept branch GUI creation or complete graph publication.
+
+# Phase 555: Specify Runtime Activity Identity And Enrollment (pending)
+
+Complete the owning runtime, Syndic and app contract for restart-safe runtime-period identity,
+producer enrollment after canonical input admission, across-turn retention and ended-period
+eligibility. Preserve lazy runtime warm-up and canonical late-terminal custody. Independently
+review the exact source/mutation boundary and derive separate producer and bounded service
+implementation phases before treating Activity as a ready graph member.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
