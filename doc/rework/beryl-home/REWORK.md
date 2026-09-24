@@ -516,6 +516,11 @@
   and terminal failure, and success. Shared ordinary/prepared transition rules retain the closed
   checkpoint matrix and original parent identities; twelve tests, dependent checks and independent
   review passed. Syndic execution observation and atomic terminal app settlement remain separate.
+- [x] Accepted bounded parent execution proofs joining generated input, immutable activation,
+  exact CAS acceptance and terminal source facts without a current-parent-tail dependency.
+  Seven focused cases and eighteen handoff/execution regressions passed, with dependent checks
+  and independent review. Unknown dispatch stays unresolved; session loss releases without
+  invented acceptance, and execution success remains distinct from captured-history completeness.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

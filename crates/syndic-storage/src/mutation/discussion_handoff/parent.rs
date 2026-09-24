@@ -4,7 +4,12 @@ use beryl_home_store::{
     DomainValidator, HomeCandidateRecoveryAccess, ReadError, ValidationContribution,
 };
 
+mod execution;
 mod generated;
+pub use execution::{
+    DiscussionParentExecution, DiscussionParentExecutionDisposition,
+    DiscussionParentExecutionRequest, PreparedDiscussionParentExecution,
+};
 mod probe;
 pub use generated::{
     GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,

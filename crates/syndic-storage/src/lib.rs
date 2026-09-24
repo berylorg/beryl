@@ -688,6 +688,8 @@ pub use mutation::{CreateDiscussion, DiscussionCreationIntent, PreparedDiscussio
 pub use mutation::{
     DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
     PreparedDiscussionParent,
+    DiscussionParentExecution, DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
+    PreparedDiscussionParentExecution,
     GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
     GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
 };

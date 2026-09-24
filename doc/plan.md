@@ -73,24 +73,26 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 537: Prepare Parent Execution Job Transitions (finished)
+# Phase 538: Prove Durable Parent Execution Outcomes (finished)
 
-Accepted shared State preparation/outcome support for CAS acceptance, retryable and terminal
-failure, and success without schema changes. Twelve transition/failure-matrix/corruption tests,
-State and app test-target checks and independent review passed, including source closure,
-historical identities, exact old/new/mixed outcomes, stale/foreign handles and candidate execution.
+Accepted bounded generated-receipt, immutable CAS activation/acceptance and terminal-source proofs,
+including historical parent advancement and ordinary/candidate writer fencing. Seven focused tests,
+eighteen handoff/execution regressions, dependent test-target checks and independent review passed.
+Unknown dispatch waits; proven session loss releases without archive or invented CAS acceptance.
 
-# Phase 538: Prove Durable Parent Execution Outcomes (wip)
-
-Establish bounded Syndic proofs joining the generated receipt to exact parent CAS acceptance and
-settled terminal disposition. Preserve historical identity, unresolved-dispatch fencing and
-ordinary/candidate writer validation without replay or alternate history.
-
-# Phase 539: Compose Parent Execution Settlement (pending)
+# Phase 539: Compose Parent Execution Settlement (wip)
 
 Join accepted parent-execution proofs with State progress and terminal transitions under existing
-custody. Success archives and releases the child atomically; terminal failure releases without
-archive. Verify races, uncertainty and candidate convergence before coordinator scheduling.
+bounded custody. Preserve exact parent and CAS identities; publish CAS acceptance before terminal
+job settlement. Success archives and releases the child atomically; terminal failure releases
+without archive. Starting-parent session loss without acknowledgement uses the existing terminal
+post-append failure. Unknown dispatch remains waiting and never authorizes replay.
+
+Use ordinary and explicit candidate access with original-handle/revision validation, cancellation,
+exact old/new/mixed outcome classification and existing reconciliation ownership. Verify normal
+success and failure, delayed observation after parent advancement, contradictory identities,
+writer races, uncertain commits and candidate convergence. Complete focused regression checks and
+independent review before coordinator scheduling, which remains a separate acceptance boundary.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

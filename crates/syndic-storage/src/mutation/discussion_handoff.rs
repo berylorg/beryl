@@ -17,6 +17,8 @@ pub use outcome::DiscussionHandoffStatus;
 pub use parent::{
     DiscussionParentDisposition, DiscussionParentEligibility, DiscussionParentRequest,
     PreparedDiscussionParent,
+    DiscussionParentExecution, DiscussionParentExecutionDisposition, DiscussionParentExecutionRequest,
+    PreparedDiscussionParentExecution,
     GeneratedDiscussionInput, GeneratedDiscussionInputDiscovery, GeneratedDiscussionInputIntent,
     GeneratedDiscussionInputLookup, GeneratedDiscussionInputStatus, PreparedGeneratedDiscussionInput,
 };
@@ -91,6 +93,7 @@ enum ReleaseProof {
     None,
     ChildSettlement(PreparedDiscussionChildSettlement),
     ParentArchived(PreparedDiscussionParent),
+    ParentExecution(PreparedDiscussionParentExecution),
 }
 
 impl PreparedDiscussionHandoff {
@@ -203,6 +206,7 @@ impl DomainMutation<SyndicDomain> for PreparedDiscussionHandoff {
             ReleaseProof::None => {}
             ReleaseProof::ChildSettlement(settlement) => settlement.validate_settlement(reader)?,
             ReleaseProof::ParentArchived(parent) => parent.validate_parent(reader)?,
+            ReleaseProof::ParentExecution(parent) => parent.validate_execution(reader)?,
         }
         let thread = self.intent.old_gate.thread_id();
         let actual = required::<DiscussionHandoffGatesFamily>(reader, &thread)?;

@@ -665,6 +665,10 @@ pub enum FixtureRecord {
         source: NonIdleGateSourceRecord,
     },
     AcceptedInput(AcceptedInputRecord),
+    AcceptedInputAtKey {
+        key: beryl_model::SyndicAcceptedInputId,
+        input: AcceptedInputRecord,
+    },
     StopOperation(StopOperationRecord),
     CompactionOperation(CompactionOperationRecord),
     CompactionSettlementReceipt(CompactionSettlementReceiptRecord),
@@ -773,6 +777,7 @@ impl FixtureRecord {
             Self::InputGate(_) => PhysicalFamily::InputGates,
             Self::NonIdleGateSource { .. } => PhysicalFamily::NonIdleGateSources,
             Self::AcceptedInput(_) => PhysicalFamily::AcceptedInputs,
+            Self::AcceptedInputAtKey { .. } => PhysicalFamily::AcceptedInputs,
             Self::StopOperation(_) => PhysicalFamily::StopOperations,
             Self::CompactionOperation(_) => PhysicalFamily::CompactionOperations,
             Self::CompactionSettlementReceipt(_) => PhysicalFamily::CompactionSettlementReceipts,

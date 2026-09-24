@@ -73,6 +73,9 @@ pub(super) fn put_record(
             builder.put::<NonIdleGateSourcesCodec>(thread_id, source)?
         }
         FixtureRecord::AcceptedInput(v) => builder.put::<AcceptedInputsCodec>(&v.id(), v)?,
+        FixtureRecord::AcceptedInputAtKey { key, input } => {
+            builder.put::<AcceptedInputsCodec>(key, input)?
+        }
         FixtureRecord::StopOperation(v) => builder.put::<StopOperationsCodec>(&v.id(), v)?,
         FixtureRecord::CompactionOperation(v) => {
             builder.put::<CompactionOperationsCodec>(&v.id(), v)?
