@@ -299,6 +299,16 @@ provider lifecycle, ordering keys, retained bytes, cutoff, and counters. A rebui
 the selected head stale and completes a bounded new generation before publication. It cannot expose
 a partially rebuilt view.
 
+Typed Activity enrollment consumes the caller's exact source and expected head/home revisions.
+First-runtime enrollment writes the checked next home revision as `ActivityWorkPeriod` in the
+existing head; reuse consumes the caller's proven runtime token. Its opaque bounded witness
+distinguishes exact old, exact committed and conflicting outcomes without scanning other threads.
+The receipt supplies the committed allocation identity. Same-period root enrollment preserves
+prior source memberships and retained rows; a different runtime token selects a fresh collection.
+Ordinary turn creation does not reset the collection. Current live mutation requires matching
+enrollment, while explicit ended-runtime canonical mutation cannot update a successor collection.
+These operations retain the V7 Activity field widths, family versions and key/value encodings.
+
 Projection construction consumes one exact current live or immutable canonical source snapshot.
 Source advance atomically stales the selected projection and supersedes an incomplete build;
 completed older generations remain coherent history. Terminal closure freezes source content before

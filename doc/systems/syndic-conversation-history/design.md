@@ -1601,6 +1601,39 @@ Keep canonical history, transcript-view records, Markdown projections, and resou
 
 ## Activity Presentation Projection
 
+- Runtime enrollment, rather than turn admission, selects an Activity work period. Its first
+  command uses the checked successor of the exact expected home revision as the period token and
+  atomically publishes that value with the enrolled head and source membership. The committed
+  receipt proves allocation; a predicted revision alone grants no identity or mutation authority.
+  The app runtime owner supplies the same proven token to later enrollment and live mutations.
+  Empty heads use the initial period sentinel without claiming a runtime or source. Reachable
+  populated periods never exceed the committed home revision: initialization starts at one,
+  allocation uses the current commit revision, and reuse does not increment it. Exhaustion or a
+  stored violation is an explicit failure, not wraparound or a guessed fresh period.
+- Canonical idle/generated input admission, accepted-input promotion and compaction continuation
+  do not clear retained Activity or allocate a new period. Before current producer publication,
+  exact enrollment authenticates the runtime-bound thread, selected turn, source frontier, current
+  head revision and retired prior root source. Same-period enrollment retains completed entries,
+  prior exact memberships, aggregate frontier and counters, and adds the new root membership;
+  repeated exact enrollment is idempotent. A fresh runtime period selects an empty collection and
+  its exact source without copying old rows. A source already owned by current admitted work cannot
+  be displaced. Old indexed generations remain derived data, never display eligibility authority.
+- Same-period enrollment cannot reactivate physically retained running-index entries from a
+  terminal prior root. While the old root remains inactive, bounded maintenance deletes those
+  obsolete running entries in fixed-size writer batches without changing its eligible completed
+  collection. Each pass resumes at the first remaining obsolete key; cancellation preserves a
+  coherent inactive head and needs no resident key inventory. New-root publication requires the
+  old running prefix to be empty under the same writer fence. Retired same-thread memberships
+  remain authenticated terminal roots; they are not reclassified as child handoffs. A fresh period
+  needs no scan or deletion of old-period indexes before selecting its empty collection.
+- Every current-period provider mutation carries exact enrolled period/source qualification and
+  advances canonical and Activity state atomically. A missing or mismatched current enrollment
+  cannot silently publish a partial current collection. Canonical capture or terminal reconciliation
+  for an ended runtime uses an explicit canonical-only path: it cannot enroll into a successor or
+  mutate that successor's Activity head, rows or counts. If its canonical changes invalidate an old
+  selected derived head, that old head becomes stale; it never becomes eligible again. Retirement
+  and app publication fencing exclude current-period use of this path. Recovery can reconstruct
+  canonical history without resurrecting ended-period display eligibility.
 - Activity presentation is a derived, non-transcript index over already admitted provider
   lifecycle records plus exact bounded GUI-derived facts. It does not replace, summarize away, or
   duplicate public provider fields in canonical history.

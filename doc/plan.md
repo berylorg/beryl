@@ -73,21 +73,37 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 554: Route Scoped Resolution Through Ordinary Tools (finished)
+# Phase 555: Specify Runtime Activity Identity And Enrollment (finished)
 
-Accepted independently reviewed generation-owned resolution routing with weak tool authority,
-atomic admission, structured deferral, immutable duplicate results and retained uncertainty custody.
-All 16 focused admission/tool tests and the app test-target check passed. Complete graph publication
-and replacement wiring remain with 423; the factory inventory remains in the
-[bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory).
+Accepted independently reviewed writer-derived runtime enrollment preserving V7 bytes, bounded
+first-enrollment custody, across-turn retention, obsolete-running cleanup and ended-period
+canonical-only handling. Source and authority checks support the separate storage, producer and
+service boundaries below; [bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
+retains the allocation proof and rejected process-counter shortcut. No Activity code changed yet.
 
-# Phase 555: Specify Runtime Activity Identity And Enrollment (wip)
+# Phase 556: Implement Exact Activity Enrollment (wip)
 
-Complete the owning runtime, Syndic and app contract for restart-safe runtime-period identity,
-producer enrollment after canonical input admission, across-turn retention and ended-period
-eligibility. Preserve lazy runtime warm-up and canonical late-terminal custody. Independently
-review the exact source/mutation boundary and derive separate producer and bounded service
-implementation phases before treating Activity as a ready graph member.
+Implement the typed Syndic enrollment and bounded outcome witness specified by the runtime and
+history authorities, retaining exact V7 bytes. Verify writer-derived first-token allocation,
+same-period source enrollment and idempotency, retained completed rows, fresh-period selection,
+revision/source races, token exhaustion, invalid stored periods, acknowledgement loss and exact
+candidate reconciliation. Cover bounded obsolete-running cleanup before same-period root activation,
+including interruption between cleanup pages. Independently review atomicity, constant-memory closure and collision
+classification. This accepts a storage primitive, not current runtime producer integration.
+
+# Phase 557: Connect Runtime-Owned Activity Producers (pending)
+
+Connect bounded first-enrollment custody and proven-token reuse to admitted runtime producers.
+Replace per-turn resets with exact enrollment, preserve current canonical/Activity atomicity and
+ended-runtime canonical terminal custody, and fence retirement/replacement. Verify across-turn and
+cross-thread retention, concurrent first enrollment, failure/reconciliation and joined disposal
+with real storage/runtime tests and independent review before claiming producer readiness.
+
+# Phase 558: Establish The Bounded Activity Service (pending)
+
+Provide generation-qualified revision-bound Activity pages and an initial dormant factory over
+accepted producer state. Verify current-period eligibility, late-result exclusion, bounded reads,
+failure/retry and disposal; keep GUI mounting and complete graph publication separate.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

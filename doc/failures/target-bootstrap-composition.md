@@ -831,3 +831,22 @@ CAS just to allocate Activity identity. Enroll only through admitted producer au
 late canonical terminal custody, and make ended-period rows ineligible without deleting canonical
 history. Derive bounded producer and service implementation phases after that contract is ready;
 a paged read wrapper over the present per-turn index cannot certify the required Activity service.
+
+The accepted identity correction preserves V7 bytes. The first runtime enrollment uses its
+committed home revision as the durable period token. `beryl-home-store/src/writer.rs` constructs
+the checked successor receipt and `writer/batch.rs` persists that revision with participant data;
+opening starts at one and same-home recovery does not reset it. Existing production Activity
+periods start at one and advance at most once per committed command, so a new allocation exceeds
+prior reachable periods. One token and unresolved enrollment witness per bounded runtime owner
+replace neither the live lifecycle fence nor canonical authority. The immutable thread runtime
+binding rules out switching a thread between concurrent runtimes. A new persisted runtime stamp,
+schema change, runtime-wide thread map and process-counter cast are unnecessary.
+
+Same-period reuse also needs bounded cleanup: terminal Activity currently hides running entries
+by zeroing logical counters and making the root inactive, leaving their physical keys. Activating
+another root in the same period would expose them again. Enrollment must first delete the obsolete
+running prefix in bounded revision-fenced batches while the old head remains inactive, then prove
+that prefix empty before publication. Completed rows and exact source memberships remain intact.
+The runtime/history/app authorities now state both boundaries, independently reviewed against the
+writer, codecs, producer sites and query validation. Storage enrollment, runtime producer wiring
+and bounded Activity service remain separate implementation work.

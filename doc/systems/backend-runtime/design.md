@@ -71,6 +71,23 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   Managed-process restart, runtime teardown or replacement, and same-home service replacement end
   it before old-period facts can publish. An unpublished candidate's fresh identity becomes current
   only in the atomic replacement publication; late facts for an ended period are rejected.
+- Runtime activity identity has a process-owned lifetime fence and one lazily enrolled durable
+  period token. The process-local readiness counter is never cast into durable identity. The first
+  exact thread enrollment for a runtime allocates its token from that command's committed home
+  revision; the writer stores the same value in the thread's existing Activity work-period field.
+  The runtime owner serializes this first enrollment and retains only one token and at most one
+  unresolved enrollment custody object. Concurrent demand waits through existing bounded runtime
+  demand; it cannot allocate competing tokens or retain a runtime-wide thread map.
+- A token becomes usable only after exact committed classification. A known noncommit permits a
+  new preparation against a fresh revision; an indeterminate result retains the original witness
+  and blocks token publication until reconciliation. Retirement revokes the lifetime fence before
+  draining enrollment and producer work; it never transfers a token or unresolved old-generation
+  authority into a replacement runtime. Canonical recovery may still settle original custody.
+- Runtime readiness and view warm-up need no Activity enrollment command. Canonical input may be
+  accepted before a runtime exists. Enrollment occurs only for exact admitted producer work before
+  its first current-period activity publication, and does not itself launch CAS or dispatch a turn.
+  Subsequent turns and other threads on that runtime reuse the proven token. The immutable thread
+  runtime/root binding prevents a thread from switching between concurrent runtime periods.
 - Foreground turns and bounded background operations use separate connections when sharing one would delay foreground streaming or terminal handling.
 - Every connection is created with its fixed parser, queue, payload, page, and concurrency bounds before reading its first byte. A request-only connection cannot later become a foreground capture connection.
 - Status and model lists remain cursor-paged and revision-bound; the `beryl-app` runtime

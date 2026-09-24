@@ -41,6 +41,25 @@ topology and typed execution surfaces.
   connection rather than forgetting exclusion. Other queues, prefixes, registrations, and worker
   sets use configured finite capacities, not tuning values as semantic authority.
 
+## Runtime Activity Enrollment
+
+- The runtime-interest owner separates its opaque process-local readiness lifetime from the
+  durable enrollment token specified by the backend-runtime system. An admitted producer carries
+  exact home/service, runtime/process, thread/turn and lifetime authority; cloned readiness facts
+  alone cannot enroll or publish. Storage token equality never substitutes for those live fences.
+- The first producer reserves one enrollment slot in its existing bounded runtime owner. It
+  prepares the typed Syndic enrollment against an exact home revision and publishes the token
+  only from a proven committed result. Later producers reuse that token after authenticating their
+  own source. The slot and its move-only witness survive acknowledgement loss until exact outcome
+  classification; cancellation and retirement cannot fabricate noncommit or free unresolved
+  custody. No runtime-wide list of participating threads is retained.
+- Enrollment precedes current live projection mutation and preserves lazy CAS warm-up. Admission
+  without a runtime remains canonical-only until an executor obtains the matching runtime and
+  enrolls the source. An ended lifetime cannot publish Activity, but its already-owned capture and
+  terminal custody still follows the canonical recovery path. Reader eligibility checks the live
+  runtime lifetime and proven token as well as the revision-bound storage head; persisted rows or
+  a reused numeric readiness counter alone cannot make a restarted runtime's collection current.
+
 ## Managed Session Preparation Outcomes
 
 - Managed preparation retains typed target lookup outcomes. Confirmed missing runtime/root
