@@ -31,6 +31,20 @@ impl ScopedDiscussionResolutionOutcome<'_> {
 }
 
 impl ProjectionConnectionService {
+    pub(in crate::cas_projection) fn resolution_authority(
+        &self,
+    ) -> &Arc<super::super::process_tools::ResolutionAuthority> {
+        &self.resolution
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_configure_discussion_resolution(
+        &self,
+        settlement: DiscussionSettlementService,
+    ) -> Result<(), DiscussionSettlementError> {
+        self.resolution.configure(settlement)
+    }
+
     pub fn admit_discussion_resolution(
         &self,
         settlement: &DiscussionSettlementService,
@@ -52,30 +66,41 @@ impl ProjectionConnectionService {
         if !settlement.matches_home(command.home()) {
             return Err(DiscussionSettlementError::ForeignHome);
         }
-        let outcome =
-            match settlement.prepare_resolution(context, intent_id, resolution, cancellation)? {
-                DiscussionResolutionAdmission::Existing(job) => {
-                    DiscussionResolutionOutcome::Existing(job)
-                }
-                DiscussionResolutionAdmission::AlreadyAdmitted(job) => {
-                    DiscussionResolutionOutcome::AlreadyAdmitted(job)
-                }
-                DiscussionResolutionAdmission::DeferredQueuedInput => {
-                    DiscussionResolutionOutcome::DeferredQueuedInput
-                }
-                DiscussionResolutionAdmission::ParentArchived => {
-                    DiscussionResolutionOutcome::ParentArchived
-                }
-                DiscussionResolutionAdmission::DiscussionArchived => {
-                    DiscussionResolutionOutcome::DiscussionArchived
-                }
-                DiscussionResolutionAdmission::Prepared(prepared) => {
-                    DiscussionResolutionOutcome::Command(prepared.execute())
-                }
-            };
+        let outcome = admit_resolution(settlement, context, intent_id, resolution, cancellation)?;
         Ok(ScopedDiscussionResolutionOutcome {
             outcome,
             _command: command,
         })
     }
+}
+
+pub(in crate::cas_projection) fn admit_resolution(
+    settlement: &DiscussionSettlementService,
+    context: &BranchDiscussionResolutionContext,
+    intent_id: ResolutionIntentId,
+    resolution: ResolutionText,
+    cancellation: CommandCancellation,
+) -> Result<DiscussionResolutionOutcome, DiscussionSettlementError> {
+    Ok(
+        match settlement.prepare_resolution(context, intent_id, resolution, cancellation)? {
+            DiscussionResolutionAdmission::Existing(job) => {
+                DiscussionResolutionOutcome::Existing(job)
+            }
+            DiscussionResolutionAdmission::AlreadyAdmitted(job) => {
+                DiscussionResolutionOutcome::AlreadyAdmitted(job)
+            }
+            DiscussionResolutionAdmission::DeferredQueuedInput => {
+                DiscussionResolutionOutcome::DeferredQueuedInput
+            }
+            DiscussionResolutionAdmission::ParentArchived => {
+                DiscussionResolutionOutcome::ParentArchived
+            }
+            DiscussionResolutionAdmission::DiscussionArchived => {
+                DiscussionResolutionOutcome::DiscussionArchived
+            }
+            DiscussionResolutionAdmission::Prepared(prepared) => {
+                DiscussionResolutionOutcome::Command(prepared.execute())
+            }
+        },
+    )
 }

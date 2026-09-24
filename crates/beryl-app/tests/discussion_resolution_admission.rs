@@ -1,6 +1,8 @@
 #![cfg(feature = "test-faults")]
 #[path = "discussion_resolution_admission/eligibility.rs"]
 mod eligibility;
+#[path = "discussion_resolution_admission/process_tools.rs"]
+mod process_tools;
 #[path = "discussion_resolution_admission/recovery.rs"]
 mod recovery;
 #[path = "../../syndic-storage/tests/support/mod.rs"]

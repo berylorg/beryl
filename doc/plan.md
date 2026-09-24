@@ -73,25 +73,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 553: Verify Remaining Initial Service Factories (finished)
+# Phase 554: Route Scoped Resolution Through Ordinary Tools (finished)
 
-Accepted the independently reviewed [factory inventory](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory).
-Catalog, Settings and attention need no additional dormant constructor. Scoped resolution routing
-and runtime-scoped Activity remain prerequisites. No code changed or complete graph readiness was
-claimed; existing graph disposal and retained-proof integration obligations remain with 423.
+Accepted independently reviewed generation-owned resolution routing with weak tool authority,
+atomic admission, structured deferral, immutable duplicate results and retained uncertainty custody.
+All 16 focused admission/tool tests and the app test-target check passed. Complete graph publication
+and replacement wiring remain with 423; the factory inventory remains in the
+[bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory).
 
-# Phase 554: Route Scoped Resolution Through Ordinary Tools (pending)
-
-Replace the unavailable ordinary resolution handler with exact generation-owned admission using
-the accepted parser, broker correlation and settlement service. Preserve the sole response owner,
-bounded structured queued-input deferral, existing-request idempotency, live-attempt refusal and
-original uncertain outcome custody. Construct its authority privately before managed tool clones
-and ordinary release, without a strong service/session ownership cycle or window dependency.
-Verify a real correlated call, deferral, duplicate delivery, stale/retired authority, uncertainty and
-joined disposal with focused tool/admission regressions and independent review. This does not
-accept branch GUI creation or complete graph publication.
-
-# Phase 555: Specify Runtime Activity Identity And Enrollment (pending)
+# Phase 555: Specify Runtime Activity Identity And Enrollment (wip)
 
 Complete the owning runtime, Syndic and app contract for restart-safe runtime-period identity,
 producer enrollment after canonical input admission, across-turn retention and ended-period

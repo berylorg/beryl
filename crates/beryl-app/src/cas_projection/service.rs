@@ -64,15 +64,16 @@ use super::{
 mod admission;
 mod commands;
 mod resolution_admission;
+pub(in crate::cas_projection) use resolution_admission::admit_resolution;
 pub use resolution_admission::{DiscussionResolutionOutcome, ScopedDiscussionResolutionOutcome};
 mod compaction_work;
 mod construction;
-pub(crate) mod recovery_retirement;
-pub(crate) mod recovery_preparation;
 mod control_work;
 mod flight_registry;
 mod graceful_shutdown;
 pub(crate) mod initial_preparation;
+pub(crate) mod recovery_preparation;
+pub(crate) mod recovery_retirement;
 #[cfg(feature = "test-faults")]
 pub use graceful_shutdown::GracefulShutdownProbe;
 pub(crate) use graceful_shutdown::{ShutdownAttemptId, ShutdownCoordinatorError, ShutdownProgress};
@@ -122,6 +123,7 @@ pub struct ProjectionConnectionService {
     persistent_failure: Option<PersistentFailureCoordinator>,
     connections: Arc<ProjectionServiceConnectionRegistry>,
     stop_coordinator: Arc<StopCoordinator>,
+    resolution: Arc<super::process_tools::ResolutionAuthority>,
     context_compaction: Option<Arc<super::context_compaction::ContextCompactionCoordinator>>,
     scheduler: Option<AcceptedInputScheduler>,
     scheduler_signal: AcceptedInputSchedulerSignal,

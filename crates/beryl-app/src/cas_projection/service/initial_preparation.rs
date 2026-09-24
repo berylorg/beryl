@@ -28,6 +28,8 @@ pub(crate) enum CasPreparationError {
     Handoff(#[from] crate::discussion_settlement::coordinator::HandoffCoordinatorError),
     #[error("handoff coordinator is already prepared")]
     HandoffAlreadyPrepared,
+    #[error(transparent)]
+    Resolution(#[from] crate::discussion_settlement::DiscussionSettlementError),
 }
 
 impl PreparedCasServices {
@@ -61,6 +63,7 @@ impl PreparedCasServices {
             state,
             service.storage.clone(),
         );
+        service.resolution.configure(settlement.clone())?;
         let handoff = crate::discussion_settlement::coordinator::HandoffCoordinator::prepare(
             settlement,
             limits,

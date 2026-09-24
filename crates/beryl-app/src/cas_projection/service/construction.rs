@@ -159,6 +159,11 @@ impl ProjectionConnectionService {
             persistent_failure: Some(persistent_failure),
             connections: Arc::clone(&connections),
             stop_coordinator: Arc::clone(&stop_coordinator),
+            resolution: Arc::new(super::super::process_tools::ResolutionAuthority::new(
+                home.home_id(),
+                home_generation,
+                command_authorizer.clone(),
+            )),
             context_compaction: None,
             scheduler: None,
             scheduler_signal: scheduler_signal.clone(),

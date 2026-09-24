@@ -12,6 +12,50 @@ struct CorrelatedBranch {
     calls: usize,
 }
 
+#[test]
+fn process_branch_handler_rejects_a_correlated_non_discussion_call() {
+    use beryl_app::{
+        discussion_settlement::{DiscussionSettlementOperations, DiscussionSettlementService},
+        process_admission::ProcessAdmissionGate,
+    };
+    let mut fixture = Fixture::new(230);
+    fixture.submit_text(SUBMITTED_TEXT);
+    let server = YieldServer::spawn();
+    let (session, projection) = support::obtain(&fixture, &server);
+    let pool = Arc::new(ProcessLifecycleAttentionPool::new());
+    let mut tools = fixture.store.ordinary_dynamic_tool_authority(&pool);
+    let operations = DiscussionSettlementOperations::new(
+        ProcessAdmissionGate::new(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    );
+    fixture
+        .store
+        .test_configure_discussion_resolution(DiscussionSettlementService::new(
+            operations,
+            fixture.home().service_reference(),
+            fixture.state.clone(),
+            fixture.storage.clone(),
+        ))
+        .unwrap();
+    let result = thread::scope(|scope| {
+        let worker =
+            scope.spawn(|| support::execute_with_authority(&fixture, projection, &mut tools));
+        server.wait_started();
+        let response = server.resolve_branch();
+        assert_eq!(response["result"]["success"], false);
+        assert!(!response.to_string().contains("private resolution"));
+        server.finish(false);
+        worker.join().unwrap().unwrap()
+    });
+    drop(result);
+    session.invalidate_connection();
+    drop(session);
+    server.join();
+    let (directory, service) = fixture.into_service();
+    service.close().unwrap();
+    drop(directory);
+}
+
 impl BranchDiscussionResolutionRequestHandler for CorrelatedBranch {
     fn respond_branch_discussion_resolution(
         &mut self,

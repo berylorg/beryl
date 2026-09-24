@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use beryl_backend::DynamicToolCallResponse;
+use crate::lifecycle_attention::ProcessLifecycleAttentionPool;
 
-use crate::{
-    BranchDiscussionResolutionRequest, BranchDiscussionResolutionRequestHandler,
-    lifecycle_attention::ProcessLifecycleAttentionPool,
-};
+mod resolution;
+use resolution::ProcessResolutionHandler;
+pub(in crate::cas_projection) use resolution::ResolutionAuthority;
 
 use super::{
     OrdinaryDynamicToolAuthority, OrdinaryDynamicToolHandlers, ProcessLifecycleYieldHandler,
@@ -15,7 +14,7 @@ use super::{
 #[derive(Clone)]
 pub struct ProcessOrdinaryDynamicToolAuthority {
     lifecycle: ProcessLifecycleYieldHandler,
-    branch: UnavailableBranchResolution,
+    branch: ProcessResolutionHandler,
 }
 
 impl ProjectionConnectionService {
@@ -25,7 +24,7 @@ impl ProjectionConnectionService {
     ) -> ProcessOrdinaryDynamicToolAuthority {
         ProcessOrdinaryDynamicToolAuthority {
             lifecycle: self.lifecycle_yield_handler(attention),
-            branch: UnavailableBranchResolution,
+            branch: ProcessResolutionHandler::new(Arc::downgrade(self.resolution_authority())),
         }
     }
 }
@@ -36,15 +35,17 @@ impl OrdinaryDynamicToolAuthority for ProcessOrdinaryDynamicToolAuthority {
     }
 }
 
-#[derive(Clone)]
-struct UnavailableBranchResolution;
-
-impl BranchDiscussionResolutionRequestHandler for UnavailableBranchResolution {
-    fn respond_branch_discussion_resolution(
+#[cfg(feature = "test-faults")]
+impl ProcessOrdinaryDynamicToolAuthority {
+    pub fn test_resolve(
         &mut self,
-        _context: crate::cas_projection::BranchDiscussionResolutionContext,
-        _request: BranchDiscussionResolutionRequest,
-    ) -> DynamicToolCallResponse {
-        DynamicToolCallResponse::failure_text("Branch discussion resolution is unavailable.")
+        context: super::BranchDiscussionResolutionContext,
+        resolution: String,
+    ) -> beryl_backend::DynamicToolCallResponse {
+        use crate::BranchDiscussionResolutionRequestHandler;
+        self.branch.respond_branch_discussion_resolution(
+            context,
+            crate::BranchDiscussionResolutionRequest::for_test(resolution),
+        )
     }
 }

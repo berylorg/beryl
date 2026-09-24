@@ -36,6 +36,14 @@ pub trait BranchDiscussionResolutionRequestHandler {
 }
 
 impl BranchDiscussionResolutionRequest {
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn for_test(resolution: String) -> Self {
+        assert!(beryl_state::ResolutionText::new(resolution.clone()).is_ok());
+        Self { resolution }
+    }
+    pub(crate) fn into_resolution(self) -> String {
+        self.resolution
+    }
     /// Borrows the admitted decoded resolution.
     #[must_use]
     pub fn resolution(&self) -> &str {
