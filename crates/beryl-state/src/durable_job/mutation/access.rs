@@ -1,5 +1,8 @@
 use super::*;
-use beryl_home_store::{ReadError, RecordCodec};
+use beryl_home_store::{
+    DomainHandle, HomeCandidateRecoveryAccess, HomeStore, ReadError, RecordCodec,
+};
+use beryl_model::{BerylHomeId, DomainRevision};
 
 pub(super) trait Reader {
     fn point<R: RecordCodec<DurableJobDomain>>(
@@ -23,6 +26,21 @@ pub(super) fn read_authenticated(
     reader: &impl Reader,
     job_id: JobId,
 ) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
+    let job = read_identity(reader, job_id)?;
+    let latest = reader
+        .point::<LatestAttemptIndexCodec>(&job.discussion_thread_id(), small_point_limit())?;
+    if !job.lifecycle().is_live() || latest != Some(LatestBranchHandoffAttempt::from_job(&job)) {
+        return Err(DurableJobMutationError::Invariant(
+            "handoff job latest-attempt closure disagrees",
+        ));
+    }
+    Ok(job)
+}
+
+pub(super) fn read_identity(
+    reader: &impl Reader,
+    job_id: JobId,
+) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
     let job = reader
         .point::<JobRecordCodec>(&job_id, job_point_limit())?
         .ok_or(DurableJobMutationError::JobMissing { job_id })?;
@@ -35,13 +53,10 @@ pub(super) fn read_authenticated(
         &DiscussionAttemptKey::new(job.discussion_thread_id(), job.attempt_ordinal()),
         small_point_limit(),
     )?;
-    let latest = reader
-        .point::<LatestAttemptIndexCodec>(&job.discussion_thread_id(), small_point_limit())?;
     if job.job_id() != job_id
-        || live.as_ref() != Some(&job)
+        || live.as_ref() != job.lifecycle().is_live().then_some(&job)
         || request != Some(ResolutionRequestAdmission::from_job(&job))
         || attempt != Some(job_id)
-        || latest != Some(LatestBranchHandoffAttempt::from_job(&job))
     {
         return Err(DurableJobMutationError::Invariant(
             "handoff job index closure disagrees",
@@ -101,7 +116,7 @@ impl ReadAccess<'_> {
     ) -> Result<(), DurableJobMutationError> {
         if self.revision(handle)? != expected {
             return Err(DurableJobMutationError::Invariant(
-                "handoff job transition source revision changed",
+                "handoff job source revision changed",
             ));
         }
         Ok(())

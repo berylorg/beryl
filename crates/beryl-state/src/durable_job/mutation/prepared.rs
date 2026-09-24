@@ -11,8 +11,7 @@ use super::super::{
 };
 use super::*;
 
-mod access;
-use access::{ReadAccess, read_authenticated};
+use super::access::{ReadAccess, read_authenticated};
 
 #[derive(Clone, Debug)]
 pub enum HandoffJobTransition {

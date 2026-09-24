@@ -30,6 +30,7 @@ use codec::{
     RequestIdempotencyIndexCodec, RequestIndexKey,
 };
 pub use mutation::{
+    PreparedHandoffJobAdmission, HandoffJobAdmissionWitness, HandoffJobAdmissionStatus,
     AdmitBranchHandoffJob, CompleteResolvingTurn, HandoffJobTransition, HandoffJobTransitionStatus,
     HandoffJobTransitionWitness, PreparedHandoffJobTransition, RecordParentCasAcceptance,
     RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, RetryBranchHandoff,

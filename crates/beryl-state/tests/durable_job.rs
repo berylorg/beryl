@@ -4,6 +4,9 @@ mod support;
 #[cfg(feature = "test-faults")]
 #[path = "durable_job/transition_outcome.rs"]
 mod transition_outcome;
+#[cfg(feature = "test-faults")]
+#[path = "durable_job/admission_outcome.rs"]
+mod admission_outcome;
 
 use beryl_home_store::{CommandOutcome, CursorReadLimits};
 use beryl_model::{

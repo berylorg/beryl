@@ -144,6 +144,7 @@ pub use catalog::{
 #[cfg(feature = "test-faults")]
 pub use durable_job::HandoffJobIndexFault;
 pub use durable_job::{
+    PreparedHandoffJobAdmission, HandoffJobAdmissionWitness, HandoffJobAdmissionStatus,
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
     BranchHandoffJobLifecycle, BranchHandoffJobRecord, BranchHandoffJobState,
     CompleteResolvingTurn, DiscussionContextDigest, DiscussionContextOwnerId,

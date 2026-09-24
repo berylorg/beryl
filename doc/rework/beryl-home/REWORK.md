@@ -535,6 +535,9 @@
   app checks and independent review passed, including backlog beyond ready capacity, undispatched
   generated input and an earlier child released after a later parent archive. Graph mounting and
   ordinary coordinator scheduling remain separate.
+- [x] Accepted shared prepared State admission with exact old/new record witnesses and historical
+  request lookup independent of later attempts. Eighteen State tests, dependent checks and
+  independent review passed; candidate access inspects outcomes without admitting new work.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

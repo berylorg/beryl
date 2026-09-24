@@ -73,35 +73,25 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 541: Converge Handoff Jobs In Private Candidates (finished)
+# Phase 544: Prepare Exact Resolution Admission Outcomes (finished)
 
-Accepted sequential candidate convergence with one page/current job, exact source and gate checks,
-processed-key continuation, coalesced rescans after own mutations, cancellation and retained
-uncertain outcome custody. Five focused cases, app test-target checks and independent review
-passed, including backlog beyond ready capacity and child-before-parent archive ordering.
+Accepted shared ordinary/prepared admission rules, exact five-record old/new witnesses and
+historical request lookup independent of the latest attempt. Eighteen State tests, dependent app
+checks and independent review passed, including maximum text, later attempts, damaged indexes,
+stale/foreign handles and recovered candidate inspection without admission permission.
 
-# Phase 544: Prepare Exact Resolution Admission Outcomes (wip)
-
-Production resolution composition requires a State admission witness, not just the existing
-mutation contribution. Establish ordinary original-handle/revision preparation and a bounded
-exact old/new/mixed closure for new job, live, request, attempt and latest-attempt records. Reuse
-ordinary admission rules, including prior terminal-failed attempt validation; do not add schema,
-replacement identities or a second admission route. Candidate access inspects/reconciles existing
-outcomes without creating a new attempt.
-
-Keep durable request-idempotency lookup distinct from a retained initial-command witness so a
-repeated tool request can find its existing result after job progress or terminal completion.
-Authenticate exact request/job/attempt identities without depending on the current latest attempt.
-Verify first and later attempts, duplicate/live/succeeded rejection, full payload bounds, partial
-or conflicting records, stale/foreign handles and recovered candidate inspection. Require focused
-State regression checks, dependent checks and independent review before app composition.
-
-# Phase 542: Compose Production Resolution Admission (pending)
+# Phase 542: Compose Production Resolution Admission (wip)
 
 Join scoped resolution admission and exact idempotency with typed State/Syndic participants under
 process ownership. Preserve immutable payload, queued-input deferral, archived parent handling,
 bounded outcome custody and the existing correlated tool result. Keep process-graph mounting
 separate until coordinator factory acceptance.
+
+Derive admission from the exact routed child/CAS request and stable Syndic source revisions.
+Compose the prepared State admission and pending child gate in one durable command, retaining
+bounded natural-outcome and registry custody through uncertainty. Verify duplicate requests after
+progress, different requests while live, queue deferral, archived parents, races and recovery;
+require focused integration checks and independent review before accepting the boundary.
 
 # Phase 545: Compose Explicit Handoff Retry (pending)
 
