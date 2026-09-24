@@ -19,6 +19,8 @@ pub use admission::DiscussionResolutionAdmission;
 mod candidate;
 pub use candidate::{HandoffCandidateConvergenceError, HandoffCandidateConvergenceSummary};
 mod flight;
+mod nondispatch;
+pub use nondispatch::DiscussionParentNondispatch;
 mod prepare;
 mod recovery;
 pub use flight::DiscussionSettlementOperations;
@@ -34,6 +36,10 @@ pub enum DiscussionSettlementResult {
     ParentArchived,
     StartingParent(ParentHandoffIdentity),
     ParentActive(ParentHandoffIdentity),
+    ParentRetryable {
+        parent: ParentHandoffIdentity,
+        kind: beryl_state::HandoffFailureKind,
+    },
     ParentSucceeded(ParentHandoffIdentity),
     ParentFailed {
         parent: ParentHandoffIdentity,
@@ -99,6 +105,7 @@ enum JobWitness {
 enum SyndicSettlementIntent {
     Gate(DiscussionHandoffIntent),
     Input(GeneratedDiscussionInputIntent),
+    Cancellation(syndic_storage::CancelBindingActivation),
 }
 enum Disposition {
     Prepared,

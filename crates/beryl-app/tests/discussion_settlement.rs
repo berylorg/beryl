@@ -15,6 +15,8 @@ mod candidate_scan;
 mod recovery;
 #[path = "discussion_settlement/retry.rs"]
 mod retry;
+#[path = "discussion_settlement/nondispatch.rs"]
+mod nondispatch;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 

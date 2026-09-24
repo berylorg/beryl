@@ -147,6 +147,22 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   changing only State's job/live pair. Retry preserves the attempt and payload and performs no
   Syndic mutation or CAS request. Candidate and ordinary scans do not invoke retry automatically;
   outcome uncertainty uses the same retained process custody and exact State witness.
+- The ordinary execution owner supplies exact activated-parent cancellation identity and a closed
+  proven-nondispatch disposition: CAS rejection, proven delivery failure or execution fencing.
+  This trusted internal evidence is not a tool or UI parameter; possible dispatch cannot construct
+  it. Preparation authenticates the starting-parent job, child gate, immutable generated input and
+  exact unaccepted activation, then joins Syndic cancellation and State retryable failure in one
+  command. The admitted input, turn, payload and discussion gate remain intact. Bounded process
+  custody retains the State witness and cancellation request; ordinary and fresh candidate audits
+  require both natural outcomes and the home registry to agree. Candidate access only reconciles
+  the original command and never invents new nondispatch evidence.
+- Before generated parent dispatch, ordinary execution reserves one existing handoff reconciliation
+  slot and authenticates the exact starting-parent job, input and turn. This noncloneable reservation
+  remains execution authority, not cloneable request policy or a parked native-lineage payload.
+  Proven nondispatch settlement consumes the reserved slot without reacquisition. A healthy writer
+  conflict may reprepare the same local settlement from fresh sources while retaining that slot
+  and exact reason; it never repeats CAS dispatch. Uncertainty transfers to existing process audit
+  custody. Generation disposal fences further preparation and preserves required outcome custody.
 
 ## Tools And Lifecycle Yield
 

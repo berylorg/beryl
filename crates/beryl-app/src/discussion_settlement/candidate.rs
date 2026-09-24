@@ -146,7 +146,7 @@ impl DiscussionSettlementOperations {
                         cancellation.clone(),
                     )?,
                 BranchHandoffJobLifecycle::RetryableFailed => {
-                    validate_retryable(access, syndic, &job)?;
+                    validate_job_sources(access, syndic, &job)?;
                     return Ok(transitions);
                 }
                 _ => {
@@ -179,7 +179,7 @@ impl DiscussionSettlementOperations {
     }
 }
 
-pub(super) fn validate_retryable(
+pub(super) fn validate_job_sources(
     access: Access<'_>,
     syndic: &SyndicStorage,
     job: &BranchHandoffJobRecord,

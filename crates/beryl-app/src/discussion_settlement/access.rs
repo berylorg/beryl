@@ -170,6 +170,28 @@ impl Access<'_> {
     ) -> Result<HandoffJobTransitionStatus, DiscussionSettlementError> {
         use syndic_storage::GeneratedDiscussionInputStatus;
         Ok(match intent {
+            SyndicSettlementIntent::Cancellation(request) => match match self {
+                Self::Ordinary(s) => syndic.cancelled_binding_activation_status(
+                    s,
+                    request,
+                    SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence"),
+                )?,
+                Self::Candidate(s) => syndic.cancelled_binding_activation_status_candidate(
+                    s,
+                    request,
+                    SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence"),
+                )?,
+            } {
+                syndic_storage::BindingPublicationStatus::Prior => {
+                    HandoffJobTransitionStatus::ExactOld
+                }
+                syndic_storage::BindingPublicationStatus::Exact => {
+                    HandoffJobTransitionStatus::ExactNew
+                }
+                syndic_storage::BindingPublicationStatus::Collision => {
+                    HandoffJobTransitionStatus::Collision
+                }
+            },
             SyndicSettlementIntent::Gate(intent) => match match self {
                 Self::Ordinary(s) => syndic.discussion_handoff_status(s, intent)?,
                 Self::Candidate(s) => syndic.discussion_handoff_status_candidate(s, intent)?,

@@ -551,6 +551,10 @@
   confirmation. Twenty-four binding cases, dependent checks and independent review passed,
   including uncertain recovery, stale handles and conflicting records. Atomic generated-parent
   failure settlement and ordinary scheduler eligibility remain separate prerequisites.
+- [x] Accepted atomic generated-parent nondispatch cancellation and retryable State failure with
+  exact shared outcome custody. Ten focused settlement/retry/terminal cases, dependent checks and
+  independent review passed; unknown dispatch rejects and uncertain or mixed outcomes remain gated.
+  Pre-dispatch reservation and ordinary scheduler integration remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

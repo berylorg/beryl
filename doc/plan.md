@@ -73,31 +73,33 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 546: Inspect Activation Cancellation Through Candidate Access (finished)
+# Phase 547: Settle Generated Parent Nondispatch Atomically (finished)
 
-Accepted shared bounded ordinary/candidate cancellation classification with stable domain revision
-confirmation. All twenty-four binding mutation cases, Syndic/app dependent checks and independent
-review passed. Prior, committed, conflicting and uncertain outcomes retain exact classification;
-stale handles and undersized reads reject. Inspection grants no dispatch or retry authority.
+Accepted exact generated-parent cancellation and State retryable failure in one home command.
+Ten focused settlement/retry/terminal cases, dependent checks and independent review passed.
+Unknown dispatch and accepted CAS identity reject; failure cuts preserve both participants, and
+retained uncertain custody reconciles through fresh candidates. Parent identity and payload remain
+unchanged. Ordinary sender integration still requires custody reserved before CAS dispatch.
 
-# Phase 547: Settle Generated Parent Nondispatch Atomically (wip)
+# Phase 549: Reserve Handoff Settlement Before Parent Dispatch (wip)
 
-Compose the existing Syndic activation cancellation and State retryable failure in one home command
-with bounded process-owned outcome custody and ordinary/candidate reconciliation. Preserve exact
-parent identity and reject possibly dispatched outcomes; verify atomic failure cuts and uncertainty.
-
-Authenticate the exact starting-parent job, pending child gate, generated input and activation.
-Retain the closed proven-nondispatch reason and original command identities through settlement;
-stale job/source, accepted CAS identity, cancellation and mixed outcomes reject or stay gated.
-Verify the existing parent turn and input remain unchanged, explicit retry is still required,
-and dropped caller custody remains reconcilable through fresh candidate handles. Require focused
-settlement regressions, dependent checks and independent review before scheduler integration.
+Extend the existing bounded settlement operations with a noncloneable dispatch reservation that
+authenticates the exact starting-parent job and generated input before external work. Reserved
+settlement preparation must reuse its slot, including healthy writer-conflict re-preparation,
+without losing the exact nondispatch proof or reacquiring capacity. Preserve uncertainty transfer,
+generation fencing and bounded ownership. Verify paused/foreign/stale identities, capacity refusal,
+duplicate suppression, release, re-preparation and candidate reconciliation; require focused checks
+and independent review. No CAS sender or scheduler mounting belongs to this boundary.
 
 # Phase 548: Gate Generated Parent Ordinary Dispatch (pending)
 
 Integrate exact generated-job eligibility and atomic nondispatch settlement into ordinary execution.
 Verify unrelated wakes cannot dispatch retryable jobs, explicit retry reuses the admitted turn,
 and unknown dispatch remains fenced. Preserve ordinary sender, execution flights and disposal.
+Carry settlement authority with execution authority rather than cloneable request policy. Reserve
+at the shared ordinary start boundary before activation; do not retain a slot while native-lineage
+work is parked. Integrate a bounded coalesced capacity-release wake without replacing the single
+home mutation observer, and preserve nondispatch custody through command conflicts and shutdown.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 

@@ -10,12 +10,13 @@ use syndic_storage::{
 
 mod execution;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Selection {
     Retry(beryl_model::JobRevision),
     Child,
     ParentInput(DiscussionParentInputRequest),
     ParentExecution(SyndicTimestamp),
+    ParentNondispatch(DiscussionParentNondispatch),
 }
 
 type Transition = (
@@ -25,6 +26,15 @@ type Transition = (
 );
 
 impl DiscussionSettlementService {
+    pub fn prepare_parent_nondispatch(
+        &self,
+        job_id: JobId,
+        evidence: DiscussionParentNondispatch,
+        cancellation: CommandCancellation,
+    ) -> Result<PreparedDiscussionSettlement<'static>, DiscussionSettlementError> {
+        self.prepare_selected(job_id, Selection::ParentNondispatch(evidence), cancellation)?
+            .ok_or(DiscussionSettlementError::IdentityMismatch)
+    }
     pub fn prepare_retry(
         &self,
         job_id: JobId,
@@ -171,14 +181,17 @@ fn prepare(
     }
     let before = access.revision()?;
     let job = access.job(state, job_id)?;
-    let parent_input = match selection {
-        Selection::ParentInput(request) => Some(request),
+    let parent_input = match &selection {
+        Selection::ParentInput(request) => Some(*request),
         _ => None,
     };
-    let allowed = match selection {
+    let allowed = match &selection {
+        Selection::ParentNondispatch(_) => {
+            job.lifecycle() == BranchHandoffJobLifecycle::StartingParent
+        }
         Selection::Retry(expected) => {
             job.lifecycle() == BranchHandoffJobLifecycle::RetryableFailed
-                && job.revision() == expected
+                && job.revision() == *expected
         }
         Selection::ParentExecution(_) => matches!(
             job.lifecycle(),
@@ -209,12 +222,14 @@ fn prepare(
     }
     let mut command = HomeCommand::new(before).with_cancellation(cancellation);
     let (transition, syndic_intent, result) = if let Selection::Retry(_) = selection {
-        super::candidate::validate_retryable(access, syndic, &job)?;
+        super::candidate::validate_job_sources(access, syndic, &job)?;
         (
             HandoffJobTransition::Retry,
             None,
             DiscussionSettlementResult::RetryResumed,
         )
+    } else if let Selection::ParentNondispatch(evidence) = selection {
+        super::nondispatch::prepare(access, syndic, &job, evidence, &mut command)?
     } else if let Selection::ParentExecution(at) = selection {
         let prepared = execution::prepare(access, syndic, &job, gate, at, &mut command)?;
         if access.revision()? != before {
