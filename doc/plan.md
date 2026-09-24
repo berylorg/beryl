@@ -73,18 +73,31 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 535: Admit Generated Parent Input Without Consuming Drafts (finished)
+# Phase 536: Compose Atomic Parent Input And Starting Job (finished)
 
-Accepted atomic generated input, sealed content and pending-turn admission with draft preservation.
-Sixteen focused admission/schema/execution/eligibility regressions, both package test-target checks
-and independent review passed. Maximum text, uncertain old/new outcomes, stale/foreign handles,
-collisions, timestamp/order bounds and durable discovery after restart are covered.
+Accepted one-command generated input and starting-parent job admission under shared bounded
+process custody. All fifteen settlement tests, app test-target checks and independent review
+passed, covering maximum text, draft preservation, cancellation, races, uncertain outcomes and
+candidate inspection without readmission. Durable coordinator scheduling remains separate.
 
-# Phase 536: Compose Atomic Parent Input And Starting Job (wip)
+# Phase 537: Prepare Parent Execution Job Transitions (wip)
 
-Join accepted Syndic admission and State parent-start evidence under bounded process custody.
-Verify exact payload and identities, cancellation, races, uncertain outcomes and candidate
-inspection without new input. Durable coordinator scheduling remains a later rework checkpoint.
+Extend State's existing preparation/outcome path to parent CAS acceptance, retryable and terminal
+failure, and success using the existing closed checkpoint matrix and schema. Share transition
+rules with ordinary commands; verify source authentication, exact old/new/mixed outcomes,
+stale/foreign handles and candidate access. No Syndic observation or provider dispatch.
+
+# Phase 538: Prove Durable Parent Execution Outcomes (pending)
+
+Establish bounded Syndic proofs joining the generated receipt to exact parent CAS acceptance and
+settled terminal disposition. Preserve historical identity, unresolved-dispatch fencing and
+ordinary/candidate writer validation without replay or alternate history.
+
+# Phase 539: Compose Parent Execution Settlement (pending)
+
+Join accepted parent-execution proofs with State progress and terminal transitions under existing
+custody. Success archives and releases the child atomically; terminal failure releases without
+archive. Verify races, uncertainty and candidate convergence before coordinator scheduling.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

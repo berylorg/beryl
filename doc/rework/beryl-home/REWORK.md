@@ -506,8 +506,12 @@
 - [x] Accepted atomic generated parent-input admission with exact sealed content, permanent order,
   pending turn and draft preservation. Bounded natural outcomes and independent durable discovery
   cover maximum text, uncertain commit, restart, identity/content collisions and stale handles;
-  focused regressions, dependent checks and independent review passed. Atomic State composition
-  remains separate.
+  focused regressions, dependent checks and independent review passed.
+- [x] Accepted app composition of generated parent input and the State starting-parent checkpoint
+  in one home command with existing bounded custody. Maximum payload, draft preservation,
+  cancellation, writer races, mixed/uncertain outcomes and candidate inspection passed all fifteen
+  settlement tests, dependent checks and independent review. Parent execution settlement and the
+  durable coordinator remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

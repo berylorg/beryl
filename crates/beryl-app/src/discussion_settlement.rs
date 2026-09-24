@@ -4,10 +4,12 @@ use beryl_home_store::{
     HomeCandidateRecoveryAccess, HomeCommand, HomeServiceReference, HomeStore,
     ReconciliationHandle,
 };
-use beryl_model::{BerylHomeId, JobId};
-use beryl_state::{BerylState, HandoffJobTransitionWitness};
+use beryl_model::{BerylHomeId, JobId, SyndicItemId, SyndicTurnId};
+use beryl_state::{BerylState, HandoffJobTransitionWitness, ParentHandoffIdentity};
 use std::sync::{Arc, Mutex};
-use syndic_storage::{DiscussionHandoffIntent, SyndicStorage};
+use syndic_storage::{
+    DiscussionHandoffIntent, GeneratedDiscussionInputIntent, SyndicStorage, SyndicTimestamp,
+};
 
 mod access;
 mod flight;
@@ -22,6 +24,14 @@ pub enum DiscussionSettlementResult {
     ReadyForParent,
     ChildInputPending,
     ParentArchived,
+    StartingParent(ParentHandoffIdentity),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DiscussionParentInputRequest {
+    pub turn_id: SyndicTurnId,
+    pub item_id: SyndicItemId,
+    pub admitted_at: SyndicTimestamp,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -63,10 +73,14 @@ pub struct DiscussionSettlementAudit(Arc<Attempt>);
 struct Attempt {
     home_id: BerylHomeId,
     job: HandoffJobTransitionWitness,
-    gate: Option<DiscussionHandoffIntent>,
+    syndic: Option<SyndicSettlementIntent>,
     result: DiscussionSettlementResult,
     disposition: Mutex<Disposition>,
     _flight: Flight,
+}
+enum SyndicSettlementIntent {
+    Gate(DiscussionHandoffIntent),
+    Input(GeneratedDiscussionInputIntent),
 }
 enum Disposition {
     Prepared,

@@ -5,6 +5,8 @@ mod archived_parent;
 mod atomicity;
 #[path = "discussion_settlement/cases.rs"]
 mod cases;
+#[path = "discussion_settlement/parent_input.rs"]
+mod parent_input;
 #[path = "discussion_settlement/recovery.rs"]
 mod recovery;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
@@ -42,6 +44,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new(queued: bool) -> Self {
+        Self::with_resolution(queued, "Resolution result")
+    }
+    fn with_resolution(queued: bool, resolution: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let faults = FaultController::new();
         let mut candidate = HomeOpenCandidate::open_with_faults(
@@ -81,7 +86,8 @@ impl Fixture {
                 .unwrap()
                 .revision();
         }
-        let (job, gate) = admit_request(&store, &state, &syndic, request);
+        let (job, gate) =
+            admit_request_with_resolution(&store, &state, &syndic, request, resolution);
         let process = ProcessAdmissionGate::new();
         let operations =
             DiscussionSettlementOperations::new(process.clone(), NonZeroUsize::new(1).unwrap());
@@ -125,7 +131,17 @@ fn admit_request(
     store: &HomeStore,
     state: &BerylState,
     syndic: &SyndicStorage,
+    request: AdmitDiscussionHandoff,
+) -> (JobId, DiscussionHandoffGateRecord) {
+    admit_request_with_resolution(store, state, syndic, request, "Resolution result")
+}
+
+fn admit_request_with_resolution(
+    store: &HomeStore,
+    state: &BerylState,
+    syndic: &SyndicStorage,
     mut request: AdmitDiscussionHandoff,
+    resolution: &str,
 ) -> (JobId, DiscussionHandoffGateRecord) {
     let admission = BranchHandoffJobAdmission::new(
         request.intent_id,
@@ -141,7 +157,7 @@ fn admit_request(
             beryl_model::DynamicToolCallId::new("resolve").unwrap(),
         ),
         ParentQueueOrdinal::new(request.parent.accepted_high_water),
-        ResolutionText::new("Resolution result").unwrap(),
+        ResolutionText::new(resolution).unwrap(),
     );
     let job = admission.job_id();
     request.job_id = job;

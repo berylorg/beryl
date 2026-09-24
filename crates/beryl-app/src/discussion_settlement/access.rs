@@ -108,41 +108,31 @@ impl Access<'_> {
         state: &BerylState,
     ) -> Result<HandoffJobTransitionStatus, DiscussionSettlementError> {
         let before = self.revision()?;
-        let (job, gate) = match self {
-            Self::Ordinary(s) => (
-                state
-                    .durable_jobs()
-                    .handoff_job_transition_status(s, &audit.0.job)?,
-                audit
-                    .0
-                    .gate
-                    .as_ref()
-                    .map(|g| syndic.discussion_handoff_status(s, g))
-                    .transpose()?,
-            ),
-            Self::Candidate(s) => (
-                state
-                    .durable_jobs()
-                    .handoff_job_transition_status_candidate(s, &audit.0.job)?,
-                audit
-                    .0
-                    .gate
-                    .as_ref()
-                    .map(|g| syndic.discussion_handoff_status_candidate(s, g))
-                    .transpose()?,
-            ),
+        let job = match self {
+            Self::Ordinary(s) => state
+                .durable_jobs()
+                .handoff_job_transition_status(s, &audit.0.job)?,
+            Self::Candidate(s) => state
+                .durable_jobs()
+                .handoff_job_transition_status_candidate(s, &audit.0.job)?,
         };
+        let syndic_status = audit
+            .0
+            .syndic
+            .as_ref()
+            .map(|intent| self.syndic_status(syndic, intent))
+            .transpose()?;
         if before != self.revision()? {
             return Err(DiscussionSettlementError::ConcurrentChange);
         }
-        Ok(match (job, gate) {
+        Ok(match (job, syndic_status) {
             (
                 HandoffJobTransitionStatus::ExactOld,
-                None | Some(DiscussionHandoffStatus::ExactOld),
+                None | Some(HandoffJobTransitionStatus::ExactOld),
             ) => HandoffJobTransitionStatus::ExactOld,
             (
                 HandoffJobTransitionStatus::ExactNew,
-                None | Some(DiscussionHandoffStatus::ExactNew),
+                None | Some(HandoffJobTransitionStatus::ExactNew),
             ) => HandoffJobTransitionStatus::ExactNew,
             _ => HandoffJobTransitionStatus::Collision,
         })
@@ -154,6 +144,33 @@ impl Access<'_> {
         Ok(match self {
             Self::Ordinary(s) => s.retry_reconciliation(handle)?,
             Self::Candidate(s) => s.retry_reconciliation(handle)?,
+        })
+    }
+    fn syndic_status(
+        self,
+        syndic: &SyndicStorage,
+        intent: &SyndicSettlementIntent,
+    ) -> Result<HandoffJobTransitionStatus, DiscussionSettlementError> {
+        use syndic_storage::GeneratedDiscussionInputStatus;
+        Ok(match intent {
+            SyndicSettlementIntent::Gate(intent) => match match self {
+                Self::Ordinary(s) => syndic.discussion_handoff_status(s, intent)?,
+                Self::Candidate(s) => syndic.discussion_handoff_status_candidate(s, intent)?,
+            } {
+                DiscussionHandoffStatus::ExactOld => HandoffJobTransitionStatus::ExactOld,
+                DiscussionHandoffStatus::ExactNew => HandoffJobTransitionStatus::ExactNew,
+                DiscussionHandoffStatus::Collision => HandoffJobTransitionStatus::Collision,
+            },
+            SyndicSettlementIntent::Input(intent) => match match self {
+                Self::Ordinary(s) => syndic.generated_discussion_input_status(s, intent)?,
+                Self::Candidate(s) => {
+                    syndic.generated_discussion_input_status_candidate(s, intent)?
+                }
+            } {
+                GeneratedDiscussionInputStatus::ExactOld => HandoffJobTransitionStatus::ExactOld,
+                GeneratedDiscussionInputStatus::ExactNew => HandoffJobTransitionStatus::ExactNew,
+                GeneratedDiscussionInputStatus::Collision => HandoffJobTransitionStatus::Collision,
+            },
         })
     }
 }
