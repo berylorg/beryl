@@ -73,6 +73,7 @@ pub fn run() {
                 &*fixture.home(),
                 &fixture.storage,
                 &fixture.state.assets(),
+                None,
                 projection,
                 &fixture.cancellation,
                 &execution_request,

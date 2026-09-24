@@ -73,29 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 550: Preserve Nondispatch Proof Through Worker Disposal (finished)
+# Phase 548: Gate Generated Parent Ordinary Dispatch (finished)
 
-Accepted bounded process-owned nondispatch proof retention and fresh-candidate settlement before
-generic recovery. Fourteen distinct focused cases, dependent checks and independent review passed,
-including cancellation, fencing, conflicts, foreign candidates, changed job revisions, uncertain
-exact-old/new recovery and coalesced slot-release wakes. No old service or execution permit survives
-in retained proof custody. Complete graph recovery and shutdown-readiness mounting remain phase 423.
-
-# Phase 548: Gate Generated Parent Ordinary Dispatch (wip)
-
-Integrate exact generated-job eligibility and atomic nondispatch settlement into ordinary execution.
-Verify unrelated wakes cannot dispatch retryable jobs, explicit retry reuses the admitted turn,
-and unknown dispatch remains fenced. Preserve ordinary sender, execution flights and disposal.
-Carry settlement authority with execution authority rather than cloneable request policy. Reserve
-at the shared ordinary start boundary before activation; do not retain a slot while native-lineage
-work is parked. Integrate a bounded coalesced capacity-release wake without replacing the single
-home mutation observer, and preserve nondispatch custody through command conflicts and shutdown.
-
-The [outcome custody correction](failures/discussion-outcome-custody.md#pre-command-nondispatch-disposal)
-is accepted. Integration remains uncommitted and unaccepted.
-App test targets compile. The focused generated-input execution test passes with authentic
-State/Syndic admission, missing-authority and duplicate-reservation rejection before activation,
-and successful ordinary CAS execution after slot release. Shutdown/recovery acceptance remains open.
+Accepted shared ordinary dispatch reservations, atomic nondispatch settlement and generation-owned
+capacity wakes. Four live generated-handoff cases, ten ordinary/scheduler/native-lineage regressions,
+dependent checks and independent review passed. Missing/foreign authority and paused jobs reject
+before activation; explicit retry reuses the same turn; unknown dispatch remains fenced. Proof
+custody survives settlement cancellation. Recovery-prefix and shutdown-readiness mounting remain
+explicit complete-graph work under phase 423.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 

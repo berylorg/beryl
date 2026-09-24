@@ -72,6 +72,7 @@ fn execute(
             &fixture.home(),
             &fixture.storage,
             &fixture.state.assets(),
+            None,
             projection,
             cancellation,
             &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),

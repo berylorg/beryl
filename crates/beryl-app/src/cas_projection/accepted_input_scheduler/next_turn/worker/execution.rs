@@ -48,7 +48,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
         }
         Err(_) => return PendingTurnExecutionDisposition::ProjectionRefused,
     };
-    lease.with_execution_authority(|session, policy, assets, tools, flight| {
+    lease.with_execution_authority(|session, policy, assets, handoff, tools, flight| {
         let projection_request = CasProjectionRequest::new(
             thread_id,
             selected_path,
@@ -92,6 +92,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
             &validator.home,
             storage,
             assets,
+            handoff,
             projection,
             cancellation,
             policy.turn(),

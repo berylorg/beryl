@@ -133,6 +133,7 @@ impl ScheduledOrdinaryExecutionProvider for CheckoutProvider {
                 Box::new(session),
                 self.policy.clone(),
                 self.assets.lock().unwrap().clone(),
+                None,
                 Box::new(ToolAuthority {
                     lifecycle: LifecycleHandler,
                     branch: BranchHandler,

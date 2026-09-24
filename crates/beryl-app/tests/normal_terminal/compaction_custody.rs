@@ -60,6 +60,7 @@ fn run(unwind: bool, before_registration: bool) {
             &*fixture.home(),
             &fixture.storage,
             &fixture.state.assets(),
+            None,
             projection,
             &fixture.cancellation,
             &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),

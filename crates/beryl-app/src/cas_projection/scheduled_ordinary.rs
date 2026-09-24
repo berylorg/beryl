@@ -196,6 +196,7 @@ impl ScheduledOrdinaryAdmission {
         mut session: Box<dyn ScheduledProjectionSessionAuthority>,
         policy: ScheduledOrdinaryRequestPolicy,
         assets: AssetState,
+        handoff: Option<crate::discussion_settlement::DiscussionSettlementService>,
         tools: Box<dyn OrdinaryDynamicToolAuthority>,
     ) -> Result<ScheduledOrdinaryExecutionLease, ScheduledOrdinaryAdmissionError> {
         let requested = self.execution_binding.runtime_id();
@@ -229,6 +230,7 @@ impl ScheduledOrdinaryAdmission {
             connection,
             policy,
             assets,
+            handoff,
             session,
             tools,
             _worker: self.worker,
@@ -273,6 +275,7 @@ pub struct ScheduledOrdinaryExecutionLease {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
+    handoff: Option<crate::discussion_settlement::DiscussionSettlementService>,
     session: Box<dyn ScheduledProjectionSessionAuthority>,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
     _worker: ProjectionWorkerPermit,
@@ -288,6 +291,7 @@ pub(in crate::cas_projection) struct ParkedScheduledOrdinaryExecution {
     connection: Arc<ProjectionConnection>,
     policy: ScheduledOrdinaryRequestPolicy,
     assets: AssetState,
+    handoff: Option<crate::discussion_settlement::DiscussionSettlementService>,
     session: Box<dyn ScheduledProjectionSessionAuthority>,
     tools: Box<dyn OrdinaryDynamicToolAuthority>,
     flight: ProjectionFlight,
@@ -312,6 +316,7 @@ impl ScheduledOrdinaryExecutionLease {
             connection,
             policy,
             assets,
+            handoff,
             session,
             tools,
             _worker,
@@ -327,6 +332,7 @@ impl ScheduledOrdinaryExecutionLease {
             connection,
             policy,
             assets,
+            handoff,
             session,
             tools,
             flight,
@@ -397,6 +403,7 @@ impl ScheduledOrdinaryExecutionLease {
             &mut AdmittedProjectionSession,
             &ScheduledOrdinaryRequestPolicy,
             &AssetState,
+            Option<&crate::discussion_settlement::DiscussionSettlementService>,
             OrdinaryDynamicToolHandlers<'_>,
             &ProjectionFlight,
         ) -> R,
@@ -404,12 +411,20 @@ impl ScheduledOrdinaryExecutionLease {
         let Self {
             policy,
             assets,
+            handoff,
             session,
             tools,
             flight,
             ..
         } = self;
-        use_authority(session.session(), policy, assets, tools.handlers(), flight)
+        use_authority(
+            session.session(),
+            policy,
+            assets,
+            handoff.as_ref(),
+            tools.handlers(),
+            flight,
+        )
     }
 }
 
@@ -427,6 +442,7 @@ impl ParkedScheduledOrdinaryExecution {
             connection,
             policy,
             assets,
+            handoff,
             session,
             tools,
             flight,
@@ -440,6 +456,7 @@ impl ParkedScheduledOrdinaryExecution {
             connection,
             policy,
             assets,
+            handoff,
             session,
             tools,
             _worker: worker,

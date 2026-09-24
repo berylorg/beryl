@@ -89,6 +89,25 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn ordinary_error_cut_co
         OrdinaryTurnExecutionError::HomeCommandNotCommitted(source) => {
             failure::is_cut_correlated_command(source, home_generation)
         }
+        OrdinaryTurnExecutionError::HandoffSettlement(source) => {
+            use crate::discussion_settlement::DiscussionSettlementError;
+            match source {
+                DiscussionSettlementError::Read(source)
+                | DiscussionSettlementError::Syndic(syndic_storage::SyndicReadError::Read(
+                    source,
+                ))
+                | DiscussionSettlementError::SyndicMutation(
+                    syndic_storage::SyndicMutationError::Read(source),
+                )
+                | DiscussionSettlementError::State(beryl_state::DurableJobMutationError::Read(
+                    source,
+                )) => failure::is_cut_correlated_read(source, home_generation),
+                DiscussionSettlementError::Command(source) => {
+                    failure::is_cut_correlated_command(source, home_generation)
+                }
+                _ => false,
+            }
+        }
         OrdinaryTurnExecutionError::HomeCommandCommitted { later_failure, .. } => {
             failure::is_cut_correlated_command(later_failure, home_generation)
         }

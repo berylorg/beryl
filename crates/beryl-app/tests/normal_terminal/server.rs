@@ -43,6 +43,8 @@ enum ServerScenario {
         thread: Box<str>,
         text: Box<str>,
         root: Box<str>,
+        reject_first: bool,
+        lose_response: bool,
     },
     ResumeNondispatch(Box<str>),
     ResumeDelayedRejection(Box<str>),
@@ -80,6 +82,7 @@ pub struct NormalTerminalServer {
     events: Receiver<ServerEvent>,
     commands: SyncSender<ServerCommand>,
     handle: Option<thread::JoinHandle<()>>,
+    generated_starts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl NormalTerminalServer {
@@ -122,11 +125,33 @@ impl NormalTerminalServer {
             thread: thread.into(),
             text: text.into(),
             root: root.into(),
+            reject_first: false,
+            lose_response: false,
+        })
+    }
+
+    pub fn spawn_generated_rejection_then_terminal(thread: &str, text: &str, root: &str) -> Self {
+        Self::spawn_scenario(ServerScenario::GeneratedTerminal {
+            thread: thread.into(),
+            text: text.into(),
+            root: root.into(),
+            reject_first: true,
+            lose_response: false,
         })
     }
 
     pub fn spawn_resume_nondispatch(cas_thread_id: impl Into<Box<str>>) -> Self {
         Self::spawn_scenario(ServerScenario::ResumeNondispatch(cas_thread_id.into()))
+    }
+
+    pub fn spawn_generated_response_loss(thread: &str, text: &str, root: &str) -> Self {
+        Self::spawn_scenario(ServerScenario::GeneratedTerminal {
+            thread: thread.into(),
+            text: text.into(),
+            root: root.into(),
+            reject_first: false,
+            lose_response: true,
+        })
     }
 
     pub fn spawn_resume_delayed_rejection(cas_thread_id: impl Into<Box<str>>) -> Self {
@@ -178,20 +203,35 @@ impl NormalTerminalServer {
         let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
         let (event_sender, events) = mpsc::sync_channel(1);
         let (commands, command_receiver) = mpsc::sync_channel(1);
+        let generated_starts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed_starts = generated_starts.clone();
         let handle = thread::Builder::new()
             .name("normal-terminal-server".to_owned())
-            .spawn(move || run_server(listener, event_sender, command_receiver, scenario))
+            .spawn(move || {
+                run_server(
+                    listener,
+                    event_sender,
+                    command_receiver,
+                    scenario,
+                    observed_starts,
+                )
+            })
             .unwrap();
         Self {
             endpoint,
             events,
             commands,
             handle: Some(handle),
+            generated_starts,
         }
     }
 
     pub fn endpoint(&self) -> BackendWebSocketEndpoint {
         self.endpoint.clone()
+    }
+    pub fn generated_turn_starts(&self) -> usize {
+        self.generated_starts
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn wait_for_projection(&self) {
@@ -243,6 +283,7 @@ fn run_server(
     events: SyncSender<ServerEvent>,
     commands: Receiver<ServerCommand>,
     scenario: ServerScenario,
+    generated_starts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 ) {
     let (stream, _) = listener.accept().unwrap();
     let mut socket = accept_hdr(
@@ -339,7 +380,13 @@ fn run_server(
             complete_unsubscribe(&mut socket, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }
-        ServerScenario::GeneratedTerminal { thread, text, root } => {
+        ServerScenario::GeneratedTerminal {
+            thread,
+            text,
+            root,
+            reject_first,
+            lose_response,
+        } => {
             let resume = read_json(&mut socket).unwrap();
             assert_eq!(resume["method"], "thread/resume");
             assert_eq!(resume["params"]["threadId"], thread.as_ref());
@@ -353,13 +400,35 @@ fn run_server(
                 &root,
             );
             events.send(ServerEvent::ProjectionReady).unwrap();
-            let request = read_json(&mut socket).unwrap();
+            let mut request = read_generated_start(&mut socket, &thread, &root);
             assert_eq!(request["method"], "turn/start");
             assert_eq!(request["params"]["threadId"], thread.as_ref());
             assert_eq!(
                 request["params"]["input"],
                 json!([{"type":"text", "text":text.as_ref()}])
             );
+            if reject_first {
+                generated_starts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let id = request["id"].as_u64().unwrap();
+                send_json(
+                    &mut socket,
+                    &json!({"error":{"code":-32602,"message":"exact rejection"},"id":id})
+                        .to_string(),
+                );
+                request = read_generated_start(&mut socket, &thread, &root);
+                assert_eq!(request["method"], "turn/start");
+                assert_eq!(request["params"]["threadId"], thread.as_ref());
+                assert_eq!(
+                    request["params"]["input"],
+                    json!([{"type":"text", "text":text.as_ref()}])
+                );
+            }
+            if lose_response {
+                generated_starts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                socket.close(None).unwrap();
+                events.send(ServerEvent::Closed).unwrap();
+                return;
+            }
             for (method, field, at) in [
                 ("item/started", "startedAtMs", STARTED_AT_MS),
                 ("item/completed", "completedAtMs", COMPLETED_AT_MS),
@@ -368,9 +437,16 @@ fn run_server(
                 message["params"][field] = json!(at);
                 send_json(&mut socket, &message.to_string());
             }
+            generated_starts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             send_turn_start_response(&mut socket, request["id"].as_u64().unwrap());
             send_json(&mut socket, &terminal_wire_for(&thread));
-            read_until_close(&mut socket).unwrap();
+            while let Some(request) = read_json(&mut socket) {
+                assert_eq!(request["method"], "thread/unsubscribe");
+                send_json(
+                    &mut socket,
+                    &json!({"id":request["id"],"result":{"status":"unsubscribed"}}).to_string(),
+                );
+            }
         }
         ServerScenario::ResumeNondispatch(cas_thread_id) => {
             events.send(ServerEvent::AdmissionReady).unwrap();
@@ -590,6 +666,29 @@ fn finish_ordinary_turn(socket: &mut WebSocket<TcpStream>, cas_thread_id: &str, 
     send_json(socket, &terminal_wire_for(cas_thread_id));
 }
 
+fn read_generated_start(socket: &mut WebSocket<TcpStream>, thread: &str, root: &str) -> Value {
+    loop {
+        let request = read_json(socket).unwrap();
+        match request["method"].as_str().unwrap() {
+            "thread/unsubscribe" => send_json(
+                socket,
+                &json!({"id":request["id"],"result":{"status":"unsubscribed"}}).to_string(),
+            ),
+            "thread/resume" => send_thread_load_metadata_at_root(
+                socket,
+                request["id"].as_u64().unwrap(),
+                thread,
+                true,
+                "gpt-5.6",
+                Some("high"),
+                root,
+            ),
+            "turn/start" => return request,
+            method => panic!("unexpected generated request: {method}"),
+        }
+    }
+}
+
 fn complete_delayed_turn_start_rejection(
     socket: &mut WebSocket<TcpStream>,
     events: &SyncSender<ServerEvent>,
@@ -605,7 +704,7 @@ fn complete_delayed_turn_start_rejection(
     send_json(
         socket,
         &format!(
-            r#"{{"id":{id},"error":{{"code":-32602,"message":" exact turn/start rejection"}}}}"#
+            r#"{{"error":{{"code":-32602,"message":" exact turn/start rejection"}},"id":{id}}}"#
         ),
     );
 }

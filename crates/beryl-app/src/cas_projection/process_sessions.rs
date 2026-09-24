@@ -61,6 +61,12 @@ impl ExecutionReadyNotifier {
     }
 }
 
+impl std::task::Wake for ExecutionReadyNotifier {
+    fn wake(self: Arc<Self>) {
+        self.notify();
+    }
+}
+
 impl ScheduledExecutionProviderContext {
     pub(in crate::cas_projection) fn new(
         home_id: BerylHomeId,
@@ -99,6 +105,7 @@ impl ScheduledExecutionProviderContext {
 
 pub struct ProcessScheduledExecutionProvider {
     sessions: ScheduledExecutionSessions,
+    handoff: Option<crate::discussion_settlement::DiscussionSettlementService>,
 }
 
 #[derive(Clone)]
@@ -181,6 +188,13 @@ struct SessionResources {
 }
 
 impl ProcessScheduledExecutionProvider {
+    pub fn with_discussion_settlement(
+        mut self,
+        service: crate::discussion_settlement::DiscussionSettlementService,
+    ) -> Self {
+        self.handoff = Some(service);
+        self
+    }
     pub fn new() -> (Self, ScheduledExecutionSessions) {
         let sessions = ScheduledExecutionSessions {
             work_identity: Arc::new(()),
@@ -200,6 +214,7 @@ impl ProcessScheduledExecutionProvider {
         (
             Self {
                 sessions: sessions.clone(),
+                handoff: None,
             },
             sessions,
         )

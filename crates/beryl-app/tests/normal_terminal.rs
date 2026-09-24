@@ -164,6 +164,7 @@ fn raw_websocket_ordinary_success_reaches_durable_terminal() {
             &*fixture.home(),
             &fixture.storage,
             &fixture.state.assets(),
+            None,
             projection,
             &fixture.cancellation,
             &execution_request,

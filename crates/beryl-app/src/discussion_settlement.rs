@@ -146,8 +146,16 @@ impl DiscussionSettlementService {
         self.operations.set_dispatch_capacity_waker(wake);
     }
     pub(crate) fn matches_home(&self, home: &HomeStore) -> bool {
-        self.store.home_id() == home.home_id()
-            && self.store.health().generation() == home.health().generation()
+        home.health()
+            .generation()
+            .is_some_and(|generation| self.matches_home_generation(home.home_id(), generation))
+    }
+    pub(crate) fn matches_home_generation(
+        &self,
+        home_id: BerylHomeId,
+        generation: beryl_home_store::HomeGeneration,
+    ) -> bool {
+        self.store.home_id() == home_id && self.store.health().generation() == Some(generation)
     }
     pub fn new(
         operations: DiscussionSettlementOperations,

@@ -12,6 +12,7 @@ use crate::cas_projection::{
 };
 
 mod capture_loop;
+mod handoff;
 mod identity;
 mod start;
 
@@ -29,6 +30,7 @@ impl CasProjectionCoordinator {
         store: &HomeStore,
         storage: &SyndicStorage,
         assets: &AssetState,
+        handoff: Option<&crate::discussion_settlement::DiscussionSettlementService>,
         projection: LoadedCasProjection,
         cancellation: &ProjectionCancellationToken,
         request: &OrdinaryTurnExecutionRequest,
@@ -39,6 +41,7 @@ impl CasProjectionCoordinator {
             store,
             storage,
             assets,
+            handoff,
             projection,
             cancellation,
             request,
@@ -55,6 +58,7 @@ impl CasProjectionCoordinator {
         store: &HomeStore,
         storage: &SyndicStorage,
         assets: &AssetState,
+        handoff: Option<&crate::discussion_settlement::DiscussionSettlementService>,
         projection: LoadedCasProjection,
         cancellation: &ProjectionCancellationToken,
         request: &OrdinaryTurnExecutionRequest,
@@ -66,6 +70,7 @@ impl CasProjectionCoordinator {
             store,
             storage,
             assets,
+            handoff,
             projection,
             cancellation,
             request,

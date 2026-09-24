@@ -12,6 +12,10 @@ use crate::cas_projection::{
 /// Closed failures while starting or capturing one ordinary Syndic turn.
 #[derive(Debug, Error)]
 pub enum OrdinaryTurnExecutionError {
+    #[error("generated parent execution requires its current handoff authority")]
+    HandoffAuthorityUnavailable,
+    #[error(transparent)]
+    HandoffSettlement(#[from] crate::discussion_settlement::DiscussionSettlementError),
     #[error(transparent)]
     Coordinator(#[from] ProjectionCoordinatorError),
     #[error("Beryl-home state could not be read while preparing ordinary execution")]

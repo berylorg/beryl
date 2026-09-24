@@ -98,6 +98,7 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
                 &*fixture.home(),
                 &fixture.storage,
                 &fixture.state.assets(),
+                None,
                 projection,
                 &fixture.cancellation,
                 &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),

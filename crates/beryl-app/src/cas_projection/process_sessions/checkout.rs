@@ -29,12 +29,22 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
 
     fn attach(&mut self, context: ScheduledExecutionProviderContext) {
         let mut state = self.sessions.lock();
-        if state.context.is_some() {
+        if state.context.is_some()
+            || self.handoff.as_ref().is_some_and(|handoff| {
+                !handoff.matches_home_generation(context.home_id, context.home_generation)
+            })
+        {
             state.closed = true;
-        } else {
-            state.context = Some(context);
+            state.work_changed();
+            return;
         }
+        let ready = context.ready.clone();
+        state.context = Some(context);
         state.work_changed();
+        drop(state);
+        if let Some(handoff) = &self.handoff {
+            handoff.set_dispatch_capacity_waker(std::task::Waker::from(Arc::new(ready)));
+        }
     }
 
     fn try_issue(
@@ -98,7 +108,13 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
             returned,
         };
         admission
-            .issue(Box::new(session), policy, assets, Box::new(tools))
+            .issue(
+                Box::new(session),
+                policy,
+                assets,
+                self.handoff.clone(),
+                Box::new(tools),
+            )
             .map(ScheduledOrdinaryAdmissionResult::Issued)
     }
 

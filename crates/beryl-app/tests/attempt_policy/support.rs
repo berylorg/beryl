@@ -100,6 +100,7 @@ pub fn execute(
         &*fixture.home(),
         &fixture.storage,
         &fixture.state.assets(),
+        None,
         projection,
         &fixture.cancellation,
         request,

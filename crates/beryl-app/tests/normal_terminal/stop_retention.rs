@@ -85,6 +85,7 @@ fn run(unwind: bool, cleanup: bool) {
                     &*fixture.home(),
                     &fixture.storage,
                     &fixture.state.assets(),
+                    None,
                     projection,
                     &fixture.cancellation,
                     &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),

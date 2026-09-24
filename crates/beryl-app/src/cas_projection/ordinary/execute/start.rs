@@ -35,6 +35,7 @@ pub(super) fn execute(
     store: &HomeStore,
     storage: &SyndicStorage,
     assets: &AssetState,
+    handoff: Option<&crate::discussion_settlement::DiscussionSettlementService>,
     projection: LoadedCasProjection,
     cancellation: &ProjectionCancellationToken,
     request: &OrdinaryTurnExecutionRequest,
@@ -58,6 +59,7 @@ pub(super) fn execute(
         store,
         storage,
         assets,
+        handoff,
         projection,
         cancellation,
         request,
@@ -75,6 +77,7 @@ pub(super) fn execute_in_flight(
     store: &HomeStore,
     storage: &SyndicStorage,
     assets: &AssetState,
+    handoff: Option<&crate::discussion_settlement::DiscussionSettlementService>,
     projection: LoadedCasProjection,
     cancellation: &ProjectionCancellationToken,
     request: &OrdinaryTurnExecutionRequest,
@@ -116,6 +119,8 @@ pub(super) fn execute_in_flight(
     pending.terminal_completion = Some(retain_projection!(
         flight.bind_terminal_completion(pending.turn_id)
     ));
+    let parent_dispatch =
+        retain_projection!(super::handoff::reserve(store, storage, &pending, handoff));
     let prepared = retain_projection!(InputReplayFactory::prepare(
         store,
         storage,
@@ -188,6 +193,7 @@ pub(super) fn execute_in_flight(
     ) {
         Ok(start) => start,
         Err(error) => {
+            drop(parent_dispatch);
             if let Some(outcome) = converge_target_loss(
                 store,
                 storage,
@@ -221,9 +227,12 @@ pub(super) fn execute_in_flight(
             active_gate_revision,
             snapshot_id,
             limit,
+            parent_dispatch,
+            cancellation,
         )
         .map_err(after_activation),
         Ok(NonIdempotentRequestOutcome::ExactResponse { response }) => {
+            drop(parent_dispatch);
             let cas_turn_id = response.turn_id().clone();
             begin_capture(
                 store,
@@ -240,6 +249,7 @@ pub(super) fn execute_in_flight(
             .map_err(after_activation)
         }
         Ok(NonIdempotentRequestOutcome::CompletionUnknown { .. }) => {
+            drop(parent_dispatch);
             converge_completion_unknown_start(
                 store,
                 storage,
@@ -312,6 +322,8 @@ fn finish_not_started(
     active_gate_revision: beryl_model::InputGateRevision,
     snapshot_id: SyndicExecutionSnapshotId,
     limit: SyndicPointReadLimit,
+    parent_dispatch: Option<crate::discussion_settlement::DiscussionParentDispatchReservation>,
+    cancellation_token: &ProjectionCancellationToken,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     let cancellation = CancelBindingActivation::new(
         pending.thread_id,
@@ -324,7 +336,19 @@ fn finish_not_started(
         snapshot_id,
         pending.turn_id,
     );
-    let (valid_revision, _) = publication::cancel_activation(store, storage, &cancellation, limit)?;
+    let valid_revision = if let Some(reservation) = parent_dispatch {
+        let evidence =
+            crate::discussion_settlement::DiscussionParentNondispatch::from_start_outcome(
+                cancellation.clone(),
+                start.outcome(),
+            )?;
+        super::handoff::settle(reservation, evidence, cancellation_token)?;
+        active_binding_revision.checked_next().map_err(|_| {
+            OrdinaryTurnExecutionError::Invariant("cancelled parent binding revision exhausted")
+        })?
+    } else {
+        publication::cancel_activation(store, storage, &cancellation, limit)?.0
+    };
     let projection = match target.into_not_started_projection(&start) {
         Ok(projection) => OrdinaryNotStartedProjection::Retained(Box::new(
             projection.with_binding_revision(valid_revision),

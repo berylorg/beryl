@@ -100,6 +100,7 @@ pub fn execute_with_handlers(
         home,
         &fixture.storage,
         &fixture.state.assets(),
+        None,
         projection,
         &fixture.cancellation,
         &OrdinaryTurnExecutionRequest::new(TurnStartOptions::default(), TIMEOUT),

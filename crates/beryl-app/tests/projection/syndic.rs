@@ -177,9 +177,48 @@ impl Fixture {
     fn from_store_with_provider(
         seed: u8,
         directory: tempfile::TempDir,
-        mut store: beryl_home_store::HomeOpenCandidate,
+        store: beryl_home_store::HomeOpenCandidate,
         worker_capacity: u64,
         create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
+        Self::from_store_with_execution_authority(
+            seed,
+            directory,
+            store,
+            worker_capacity,
+            |_, state, _, _| create_provider(state.assets()),
+        )
+    }
+
+    pub fn new_with_execution_authority(
+        seed: u8,
+        create_provider: impl FnOnce(
+            &HomeStore,
+            &BerylState,
+            &SyndicStorage,
+            &beryl_app::process_admission::ProcessAdmissionGate,
+        ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        Self::from_store_with_execution_authority(seed, directory, store, 128, create_provider)
+    }
+
+    fn from_store_with_execution_authority(
+        seed: u8,
+        directory: tempfile::TempDir,
+        mut store: beryl_home_store::HomeOpenCandidate,
+        worker_capacity: u64,
+        create_provider: impl FnOnce(
+            &HomeStore,
+            &BerylState,
+            &SyndicStorage,
+            &beryl_app::process_admission::ProcessAdmissionGate,
+        ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
         let storage = SyndicStorage::register(&mut store).unwrap();
         let state = BerylState::register(&mut store).unwrap();
@@ -213,8 +252,8 @@ impl Fixture {
             MinimumTurnCaptureReserve::try_new(1).unwrap(),
         )
         .unwrap();
-        let scheduled_provider = create_provider(state.assets());
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
+        let scheduled_provider = create_provider(&store, &state, &storage, &process_admission);
         let store = ProjectionConnectionService::new(
             process_admission.clone(),
             store,

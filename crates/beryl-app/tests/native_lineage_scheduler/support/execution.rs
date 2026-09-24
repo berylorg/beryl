@@ -181,6 +181,7 @@ impl ScheduledOrdinaryExecutionProvider for PooledCheckoutProvider {
                 }),
                 request_policy(),
                 self.assets.clone(),
+                None,
                 Box::new(ToolAuthority {
                     lifecycle: LifecycleHandler,
                     branch: BranchHandler,
@@ -210,6 +211,7 @@ impl ScheduledOrdinaryExecutionProvider for CheckoutProvider {
                 }),
                 request_policy(),
                 self.assets.clone(),
+                None,
                 Box::new(ToolAuthority {
                     lifecycle: LifecycleHandler,
                     branch: BranchHandler,

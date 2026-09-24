@@ -113,7 +113,7 @@ fn execute_work(
         Err(error) if expected_coordinator_drift(&error) => return WorkerDisposition::NextContinue,
         Err(_) => return WorkerDisposition::Fatal,
     };
-    let projection = lease.with_execution_authority(|session, _, _, _, _| match command {
+    let projection = lease.with_execution_authority(|session, _, _, _, _, _| match command {
         NativeLineageRecoveryCommand::Retry => coordinator.retry_native_lineage_retained_in_flight(
             &validator.home,
             storage,
@@ -154,7 +154,7 @@ fn execute_work(
             {
                 decision = successor;
             }
-            let retry_validation = lease.with_execution_authority(|session, _, _, _, _| {
+            let retry_validation = lease.with_execution_authority(|session, _, _, _, _, _| {
                 coordinator.validate_native_lineage_retry_in_flight(
                     &validator.home,
                     storage,
@@ -179,7 +179,7 @@ fn execute_work(
                     }
                 };
             }
-            let recovery_available = lease.with_execution_authority(|session, _, _, _, _| {
+            let recovery_available = lease.with_execution_authority(|session, _, _, _, _, _| {
                 coordinator
                     .validate_native_lineage_recovery_in_flight(
                         &validator.home,
@@ -195,11 +195,12 @@ fn execute_work(
         }
     };
     attempt.leaving();
-    let outcome = lease.with_execution_authority(|_, policy, assets, tools, flight| {
+    let outcome = lease.with_execution_authority(|_, policy, assets, handoff, tools, flight| {
         coordinator.execute_ordinary_turn_in_flight(
             &validator.home,
             storage,
             assets,
+            handoff,
             projection,
             &cancellation,
             policy.turn(),
