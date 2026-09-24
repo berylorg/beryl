@@ -17,6 +17,8 @@ mod recovery;
 mod retry;
 #[path = "discussion_settlement/nondispatch.rs"]
 mod nondispatch;
+#[path = "discussion_settlement/reservation.rs"]
+mod reservation;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
 

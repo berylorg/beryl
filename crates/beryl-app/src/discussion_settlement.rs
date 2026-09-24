@@ -23,9 +23,11 @@ mod nondispatch;
 pub use nondispatch::DiscussionParentNondispatch;
 mod prepare;
 mod recovery;
+mod reservation;
 pub use flight::DiscussionSettlementOperations;
 use flight::Flight;
 pub use recovery::DiscussionSettlementAuditOutcome;
+pub use reservation::{DiscussionParentDispatchReservation, ReservedDiscussionNondispatch};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiscussionSettlementResult {
@@ -96,7 +98,7 @@ struct Attempt {
     syndic: Option<SyndicSettlementIntent>,
     result: DiscussionSettlementResult,
     disposition: Mutex<Disposition>,
-    _flight: Flight,
+    _flight: Arc<Flight>,
 }
 enum JobWitness {
     Admission(HandoffJobAdmissionWitness),

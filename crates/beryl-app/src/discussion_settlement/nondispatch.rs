@@ -7,7 +7,7 @@ use syndic_storage::{BindingPublicationStatus, CancelBindingActivation, SyndicPo
 
 #[derive(Clone)]
 pub struct DiscussionParentNondispatch {
-    request: CancelBindingActivation,
+    pub(super) request: CancelBindingActivation,
     kind: HandoffFailureKind,
 }
 

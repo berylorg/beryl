@@ -257,7 +257,7 @@ impl DiscussionSettlementService {
                     syndic: Some(SyndicSettlementIntent::Gate(intent)),
                     result: DiscussionSettlementResult::ResolutionAdmitted(job_id),
                     disposition: Mutex::new(Disposition::Prepared),
-                    _flight: flight,
+                    _flight: Arc::new(flight),
                 })),
             },
         ))

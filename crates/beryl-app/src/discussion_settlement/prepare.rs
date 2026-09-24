@@ -16,7 +16,10 @@ enum Selection {
     Child,
     ParentInput(DiscussionParentInputRequest),
     ParentExecution(SyndicTimestamp),
-    ParentNondispatch(DiscussionParentNondispatch),
+    ParentNondispatch(
+        DiscussionParentNondispatch,
+        Option<beryl_model::JobRevision>,
+    ),
 }
 
 type Transition = (
@@ -32,8 +35,12 @@ impl DiscussionSettlementService {
         evidence: DiscussionParentNondispatch,
         cancellation: CommandCancellation,
     ) -> Result<PreparedDiscussionSettlement<'static>, DiscussionSettlementError> {
-        self.prepare_selected(job_id, Selection::ParentNondispatch(evidence), cancellation)?
-            .ok_or(DiscussionSettlementError::IdentityMismatch)
+        self.prepare_selected(
+            job_id,
+            Selection::ParentNondispatch(evidence, None),
+            cancellation,
+        )?
+        .ok_or(DiscussionSettlementError::IdentityMismatch)
     }
     pub fn prepare_retry(
         &self,
@@ -84,7 +91,7 @@ impl DiscussionSettlementService {
             job_id,
             selection,
             cancellation,
-            flight,
+            Arc::new(flight),
         )?
         else {
             return Ok(None);
@@ -153,7 +160,7 @@ impl DiscussionSettlementOperations {
             job_id,
             selection,
             cancellation,
-            flight,
+            Arc::new(flight),
         )?
         else {
             return Ok(None);
@@ -174,7 +181,7 @@ fn prepare(
     job_id: JobId,
     selection: Selection,
     cancellation: CommandCancellation,
-    flight: Flight,
+    flight: Arc<Flight>,
 ) -> Result<Option<(HomeCommand, DiscussionSettlementAudit)>, DiscussionSettlementError> {
     if cancellation.is_cancelled() {
         return Err(DiscussionSettlementError::Cancelled);
@@ -186,8 +193,9 @@ fn prepare(
         _ => None,
     };
     let allowed = match &selection {
-        Selection::ParentNondispatch(_) => {
+        Selection::ParentNondispatch(_, expected) => {
             job.lifecycle() == BranchHandoffJobLifecycle::StartingParent
+                && expected.is_none_or(|revision| job.revision() == revision)
         }
         Selection::Retry(expected) => {
             job.lifecycle() == BranchHandoffJobLifecycle::RetryableFailed
@@ -228,7 +236,7 @@ fn prepare(
             None,
             DiscussionSettlementResult::RetryResumed,
         )
-    } else if let Selection::ParentNondispatch(evidence) = selection {
+    } else if let Selection::ParentNondispatch(evidence, _) = selection {
         super::nondispatch::prepare(access, syndic, &job, evidence, &mut command)?
     } else if let Selection::ParentExecution(at) = selection {
         let prepared = execution::prepare(access, syndic, &job, gate, at, &mut command)?;
@@ -340,4 +348,32 @@ fn prepare(
             _flight: flight,
         })),
     )))
+}
+
+pub(super) fn prepare_reserved<'a>(
+    service: &DiscussionSettlementService,
+    job_id: JobId,
+    expected: beryl_model::JobRevision,
+    evidence: DiscussionParentNondispatch,
+    cancellation: CommandCancellation,
+    flight: Arc<Flight>,
+    permit: ProcessExecutionPermit,
+) -> Result<PreparedDiscussionSettlement<'a>, DiscussionSettlementError> {
+    permit.commit(|| ())?;
+    let (command, audit) = prepare(
+        Access::Ordinary(&service.store),
+        &service.state,
+        &service.syndic,
+        job_id,
+        Selection::ParentNondispatch(evidence, Some(expected)),
+        cancellation,
+        flight,
+    )?
+    .ok_or(DiscussionSettlementError::IdentityMismatch)?;
+    Ok(PreparedDiscussionSettlement {
+        command: Some(command),
+        execution: Execution::Ordinary(service.store.clone()),
+        permit: Some(permit),
+        audit,
+    })
 }

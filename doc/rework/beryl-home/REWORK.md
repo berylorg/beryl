@@ -555,6 +555,11 @@
   exact shared outcome custody. Ten focused settlement/retry/terminal cases, dependent checks and
   independent review passed; unknown dispatch rejects and uncertain or mixed outcomes remain gated.
   Pre-dispatch reservation and ordinary scheduler integration remain separate.
+- [x] Accepted pre-dispatch job reservation with exact source authentication, original process
+  permit and same-slot settlement re-preparation. Nine focused reservation/nondispatch/custody
+  cases, dependent checks and independent review passed. Capacity, duplicates, changed revisions,
+  process reopening and uncertain owner disposal preserve bounded custody; sender integration
+  and coalesced capacity wakes remain pending.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

@@ -73,25 +73,15 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 547: Settle Generated Parent Nondispatch Atomically (finished)
+# Phase 549: Reserve Handoff Settlement Before Parent Dispatch (finished)
 
-Accepted exact generated-parent cancellation and State retryable failure in one home command.
-Ten focused settlement/retry/terminal cases, dependent checks and independent review passed.
-Unknown dispatch and accepted CAS identity reject; failure cuts preserve both participants, and
-retained uncertain custody reconciles through fresh candidates. Parent identity and payload remain
-unchanged. Ordinary sender integration still requires custody reserved before CAS dispatch.
+Accepted exact noncloneable parent-dispatch reservation and same-slot nondispatch re-preparation.
+Nine focused reservation, nondispatch and custody cases, dependent checks and independent review
+passed. Paused/mismatched jobs, changed revisions and old process permits reject; capacity remains
+bounded, overlapping audits block preparation, and uncertainty survives owner disposal through
+fresh candidate reconciliation. CAS integration and capacity wakes remain the next boundary.
 
-# Phase 549: Reserve Handoff Settlement Before Parent Dispatch (wip)
-
-Extend the existing bounded settlement operations with a noncloneable dispatch reservation that
-authenticates the exact starting-parent job and generated input before external work. Reserved
-settlement preparation must reuse its slot, including healthy writer-conflict re-preparation,
-without losing the exact nondispatch proof or reacquiring capacity. Preserve uncertainty transfer,
-generation fencing and bounded ownership. Verify paused/foreign/stale identities, capacity refusal,
-duplicate suppression, release, re-preparation and candidate reconciliation; require focused checks
-and independent review. No CAS sender or scheduler mounting belongs to this boundary.
-
-# Phase 548: Gate Generated Parent Ordinary Dispatch (pending)
+# Phase 548: Gate Generated Parent Ordinary Dispatch (wip)
 
 Integrate exact generated-job eligibility and atomic nondispatch settlement into ordinary execution.
 Verify unrelated wakes cannot dispatch retryable jobs, explicit retry reuses the admitted turn,

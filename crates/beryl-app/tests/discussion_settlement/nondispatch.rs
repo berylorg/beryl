@@ -11,6 +11,11 @@ fn job(f: &Fixture) -> BranchHandoffJobRecord {
 
 fn activated() -> (Fixture, CancelBindingActivation) {
     let f = parent_execution::start();
+    let request = activate(&f);
+    (f, request)
+}
+
+pub(super) fn activate(f: &Fixture) -> CancelBindingActivation {
     let turn = parent_input::identity(&f).turn_id();
     let (_, snapshot) = support::exact_cas::activate_turn(
         &f.store,
@@ -43,7 +48,7 @@ fn activated() -> (Fixture, CancelBindingActivation) {
         snapshot,
         turn,
     );
-    (f, request)
+    request
 }
 
 fn prepare(
