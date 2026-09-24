@@ -73,21 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 536: Compose Atomic Parent Input And Starting Job (finished)
+# Phase 537: Prepare Parent Execution Job Transitions (finished)
 
-Accepted one-command generated input and starting-parent job admission under shared bounded
-process custody. All fifteen settlement tests, app test-target checks and independent review
-passed, covering maximum text, draft preservation, cancellation, races, uncertain outcomes and
-candidate inspection without readmission. Durable coordinator scheduling remains separate.
+Accepted shared State preparation/outcome support for CAS acceptance, retryable and terminal
+failure, and success without schema changes. Twelve transition/failure-matrix/corruption tests,
+State and app test-target checks and independent review passed, including source closure,
+historical identities, exact old/new/mixed outcomes, stale/foreign handles and candidate execution.
 
-# Phase 537: Prepare Parent Execution Job Transitions (wip)
-
-Extend State's existing preparation/outcome path to parent CAS acceptance, retryable and terminal
-failure, and success using the existing closed checkpoint matrix and schema. Share transition
-rules with ordinary commands; verify source authentication, exact old/new/mixed outcomes,
-stale/foreign handles and candidate access. No Syndic observation or provider dispatch.
-
-# Phase 538: Prove Durable Parent Execution Outcomes (pending)
+# Phase 538: Prove Durable Parent Execution Outcomes (wip)
 
 Establish bounded Syndic proofs joining the generated receipt to exact parent CAS acceptance and
 settled terminal disposition. Preserve historical identity, unresolved-dispatch fencing and

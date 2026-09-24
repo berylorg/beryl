@@ -512,6 +512,10 @@
   cancellation, writer races, mixed/uncertain outcomes and candidate inspection passed all fifteen
   settlement tests, dependent checks and independent review. Parent execution settlement and the
   durable coordinator remain separate.
+- [x] Accepted bounded State transition preparations for exact parent CAS acceptance, retryable
+  and terminal failure, and success. Shared ordinary/prepared transition rules retain the closed
+  checkpoint matrix and original parent identities; twelve tests, dependent checks and independent
+  review passed. Syndic execution observation and atomic terminal app settlement remain separate.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

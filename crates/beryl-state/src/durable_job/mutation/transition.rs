@@ -9,6 +9,12 @@ use super::super::{
 };
 use super::{advance, ensure_revision, put_live_transition, put_terminal_transition, required_job};
 
+mod successor;
+pub(super) use successor::{
+    complete_resolving_job, parent_accepted_job, retryable_failed_job, start_parent_job,
+    succeeded_job, terminal_failed_job,
+};
+
 /// Advance an admitted job after the resolving child turn is durably complete.
 pub struct CompleteResolvingTurn {
     job_id: JobId,
@@ -221,22 +227,8 @@ impl DomainMutation<DurableJobDomain> for RecordParentCasAcceptance {
         self,
         reader: &DomainReader<'_, DurableJobDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let mut job = validate_lifecycle(
-            reader,
-            self.job_id,
-            self.expected_job_revision,
-            BranchHandoffJobLifecycle::StartingParent,
-        )?;
-        let parent = match job.state {
-            BranchHandoffJobState::StartingParent { parent } => parent,
-            _ => return Err(invariant_transition()),
-        };
-        job.state = BranchHandoffJobState::ParentActive {
-            parent,
-            cas: self.cas,
-        };
-        advance(&mut job)?;
-        Ok(job)
+        let job = validate_current(reader, self.job_id, self.expected_job_revision)?;
+        parent_accepted_job(job, self.cas)
     }
 
     fn reserve_reconciliation(
@@ -264,31 +256,8 @@ impl DomainMutation<DurableJobDomain> for RecordRetryableHandoffFailure {
         self,
         reader: &DomainReader<'_, DurableJobDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let mut job = validate_current(reader, self.job_id, self.expected_job_revision)?;
-        if !matches!(
-            job.lifecycle(),
-            BranchHandoffJobLifecycle::WaitingResolvingTurn
-                | BranchHandoffJobLifecycle::WaitingParent
-                | BranchHandoffJobLifecycle::StartingParent
-                | BranchHandoffJobLifecycle::ParentActive
-        ) {
-            return Err(invalid_transition(
-                "a non-failed live checkpoint",
-                job.lifecycle(),
-            ));
-        }
-        validate_failure_checkpoint(
-            &job,
-            &self.evidence,
-            BranchHandoffJobLifecycle::RetryableFailed,
-        )?;
-        let resume = job.state.checkpoint().ok_or_else(invariant_transition)?;
-        job.state = BranchHandoffJobState::RetryableFailed {
-            resume,
-            evidence: self.evidence,
-        };
-        advance(&mut job)?;
-        Ok(job)
+        let job = validate_current(reader, self.job_id, self.expected_job_revision)?;
+        retryable_failed_job(job, self.evidence)
     }
 
     fn reserve_reconciliation(
@@ -385,19 +354,8 @@ impl DomainMutation<DurableJobDomain> for SucceedBranchHandoff {
         self,
         reader: &DomainReader<'_, DurableJobDomain>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let mut job = validate_lifecycle(
-            reader,
-            self.job_id,
-            self.expected_job_revision,
-            BranchHandoffJobLifecycle::ParentActive,
-        )?;
-        let (parent, cas) = match job.state {
-            BranchHandoffJobState::ParentActive { parent, cas } => (parent, cas),
-            _ => return Err(invariant_transition()),
-        };
-        job.state = BranchHandoffJobState::Succeeded { parent, cas };
-        advance(&mut job)?;
-        Ok(job)
+        let job = validate_current(reader, self.job_id, self.expected_job_revision)?;
+        succeeded_job(job)
     }
 
     fn reserve_reconciliation(
@@ -415,49 +373,6 @@ impl DomainMutation<DurableJobDomain> for SucceedBranchHandoff {
     ) -> Result<(), Self::Error> {
         put_terminal_transition(mutations, &job)
     }
-}
-
-pub(super) fn start_parent_job(
-    mut job: BranchHandoffJobRecord,
-    parent: ParentHandoffIdentity,
-) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
-    if job.lifecycle() != BranchHandoffJobLifecycle::WaitingParent {
-        return Err(invalid_transition("waiting parent", job.lifecycle()));
-    }
-    job.state = BranchHandoffJobState::StartingParent { parent };
-    advance(&mut job)?;
-    Ok(job)
-}
-
-pub(super) fn complete_resolving_job(
-    mut job: BranchHandoffJobRecord,
-) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
-    if job.lifecycle() != BranchHandoffJobLifecycle::WaitingResolvingTurn {
-        return Err(invalid_transition(
-            "waiting resolving turn",
-            job.lifecycle(),
-        ));
-    }
-    job.state = BranchHandoffJobState::WaitingParent;
-    advance(&mut job)?;
-    Ok(job)
-}
-
-pub(super) fn terminal_failed_job(
-    mut job: BranchHandoffJobRecord,
-    evidence: HandoffFailureEvidence,
-) -> Result<BranchHandoffJobRecord, DurableJobMutationError> {
-    if !job.lifecycle().is_live() {
-        return Err(invalid_transition("a live job", job.lifecycle()));
-    }
-    validate_failure_checkpoint(&job, &evidence, BranchHandoffJobLifecycle::TerminalFailed)?;
-    let stopped_at = job.state.checkpoint().ok_or_else(invariant_transition)?;
-    job.state = BranchHandoffJobState::TerminalFailed {
-        stopped_at,
-        evidence,
-    };
-    advance(&mut job)?;
-    Ok(job)
 }
 
 fn validate_lifecycle(

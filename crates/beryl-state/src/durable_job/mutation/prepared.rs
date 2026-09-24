@@ -6,7 +6,8 @@ use beryl_home_store::{
 use beryl_model::{BerylHomeId, DomainRevision};
 
 use super::super::{
-    DurableJobState, HandoffFailureEvidence, HandoffFailureKind, ParentHandoffIdentity,
+    DurableJobState, HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity,
+    ParentHandoffIdentity,
 };
 use super::*;
 
@@ -19,6 +20,10 @@ pub enum HandoffJobTransition {
     ChildInputPending(HandoffFailureEvidence),
     StartParent(ParentHandoffIdentity),
     ParentArchived(HandoffFailureEvidence),
+    ParentAccepted(ParentCasIdentity),
+    RetryableFailure(HandoffFailureEvidence),
+    TerminalFailure(HandoffFailureEvidence),
+    Succeed,
 }
 
 impl HandoffJobTransition {
@@ -29,6 +34,14 @@ impl HandoffJobTransition {
         match self {
             Self::CompleteResolving => super::transition::complete_resolving_job(job),
             Self::StartParent(parent) => super::transition::start_parent_job(job, *parent),
+            Self::ParentAccepted(cas) => super::transition::parent_accepted_job(job, cas.clone()),
+            Self::RetryableFailure(evidence) => {
+                super::transition::retryable_failed_job(job, evidence.clone())
+            }
+            Self::TerminalFailure(evidence) => {
+                super::transition::terminal_failed_job(job, evidence.clone())
+            }
+            Self::Succeed => super::transition::succeeded_job(job),
             Self::ChildInputPending(evidence) => {
                 if evidence.kind() != HandoffFailureKind::ChildInputPending {
                     return Err(DurableJobMutationError::FailureKindMismatch {

@@ -26,26 +26,88 @@ fn parent_identity() -> ParentHandoffIdentity {
     )
 }
 
-fn transitions() -> [(bool, HandoffJobTransition); 5] {
+#[derive(Clone, Copy)]
+enum Checkpoint {
+    Resolving,
+    Waiting,
+    Starting,
+    Active,
+}
+
+fn cas_identity() -> ParentCasIdentity {
+    ParentCasIdentity::new(
+        CasThreadId::new("parent-thread").unwrap(),
+        CasTurnId::new("parent-turn").unwrap(),
+    )
+}
+
+fn failure(kind: HandoffFailureKind) -> HandoffFailureEvidence {
+    HandoffFailureEvidence::new(kind, None).unwrap()
+}
+
+fn transitions() -> [(Checkpoint, HandoffJobTransition); 12] {
+    use Checkpoint::*;
     [
-        (false, HandoffJobTransition::CompleteResolving),
-        (false, fail_child()),
-        (false, fail_parent()),
-        (true, fail_parent()),
-        (true, HandoffJobTransition::StartParent(parent_identity())),
+        (Resolving, HandoffJobTransition::CompleteResolving),
+        (Resolving, fail_child()),
+        (Resolving, fail_parent()),
+        (Waiting, fail_parent()),
+        (
+            Waiting,
+            HandoffJobTransition::StartParent(parent_identity()),
+        ),
+        (
+            Starting,
+            HandoffJobTransition::ParentAccepted(cas_identity()),
+        ),
+        (
+            Starting,
+            HandoffJobTransition::RetryableFailure(failure(
+                HandoffFailureKind::CasRejectedBeforeAcceptance,
+            )),
+        ),
+        (
+            Starting,
+            HandoffJobTransition::TerminalFailure(failure(
+                HandoffFailureKind::UnrecoverablePostAppend,
+            )),
+        ),
+        (
+            Active,
+            HandoffJobTransition::TerminalFailure(failure(HandoffFailureKind::ParentInterrupted)),
+        ),
+        (
+            Active,
+            HandoffJobTransition::TerminalFailure(failure(HandoffFailureKind::ParentIncomplete)),
+        ),
+        (
+            Active,
+            HandoffJobTransition::TerminalFailure(failure(
+                HandoffFailureKind::ParentTerminalFailure,
+            )),
+        ),
+        (Active, HandoffJobTransition::Succeed),
     ]
 }
 
-fn wait_for_parent(store: &HomeStore, state: &BerylState, id: JobId, waiting: bool) {
-    if waiting {
+fn advance_to_checkpoint(store: &HomeStore, state: &BerylState, id: JobId, checkpoint: Checkpoint) {
+    let count = match checkpoint {
+        Checkpoint::Resolving => 0,
+        Checkpoint::Waiting => 1,
+        Checkpoint::Starting => 2,
+        Checkpoint::Active => 3,
+    };
+    for transition in [
+        HandoffJobTransition::CompleteResolving,
+        HandoffJobTransition::StartParent(parent_identity()),
+        HandoffJobTransition::ParentAccepted(cas_identity()),
+    ]
+    .into_iter()
+    .take(count)
+    {
         let jobs = state.durable_jobs();
         let prepared = jobs
-            .prepare_handoff_job_transition(
-                store,
-                id,
-                job(store, state, id).revision(),
-                HandoffJobTransition::CompleteResolving,
-            )
+            .prepare_handoff_job_transition(store, id, job(store, state, id).revision(), transition)
             .unwrap();
         assert!(matches!(
             execute(store, prepared.contribution()),
@@ -65,13 +127,18 @@ fn handoff_outcomes_require_both_mutation_records_and_preserve_attempt_identity(
         let first = admission(81, 1, 82, "resolving-closure");
         let id = first.job_id();
         admit(&store, &state, first);
-        wait_for_parent(&store, &state, id, waiting);
+        advance_to_checkpoint(&store, &state, id, waiting);
         let jobs = state.durable_jobs();
         let old = job(&store, &state, id);
         let prepared = jobs
             .prepare_handoff_job_transition(&store, id, old.revision(), transition)
             .unwrap();
         let witness = prepared.witness().clone();
+        assert_eq!(
+            witness.old_job().resolution(),
+            witness.new_job().resolution()
+        );
+        assert_eq!(witness.old_job().request(), witness.new_job().request());
         if witness.new_job().state().parent().is_some() {
             assert_eq!(witness.new_job().state().parent(), Some(parent_identity()));
         }
@@ -141,7 +208,7 @@ fn handoff_preparation_rejects_missing_index_closure_and_stale_source() {
             let first = admission(83, 1, 84, "missing-resolving-closure");
             let id = first.job_id();
             admit(&store, &state, first);
-            wait_for_parent(&store, &state, id, waiting);
+            advance_to_checkpoint(&store, &state, id, waiting);
             let jobs = state.durable_jobs();
             let old = job(&store, &state, id);
             let prepared = jobs
@@ -190,7 +257,7 @@ fn handoff_candidate_execution_rejects_old_handles_and_foreign_witnesses() {
         let first = admission(85, 1, 86, "candidate-resolving");
         let id = first.job_id();
         admit(&store, &state, first);
-        wait_for_parent(&store, &state, id, waiting);
+        advance_to_checkpoint(&store, &state, id, waiting);
         let old = job(&store, &state, id);
         let stale = state
             .durable_jobs()
@@ -269,6 +336,18 @@ fn parent_preparation_rejects_wrong_checkpoint_revision_and_failure_kind() {
     admit(&store, &state, first);
     let jobs = state.durable_jobs();
     let initial = job(&store, &state, id);
+    for transition in [
+        HandoffJobTransition::ParentAccepted(cas_identity()),
+        HandoffJobTransition::Succeed,
+        HandoffJobTransition::RetryableFailure(failure(HandoffFailureKind::ParentIncomplete)),
+        HandoffJobTransition::TerminalFailure(failure(HandoffFailureKind::CasUnavailable)),
+        HandoffJobTransition::TerminalFailure(failure(HandoffFailureKind::ParentInterrupted)),
+    ] {
+        assert!(
+            jobs.prepare_handoff_job_transition(&store, id, initial.revision(), transition)
+                .is_err()
+        );
+    }
     assert!(
         jobs.prepare_handoff_job_transition(
             &store,
@@ -298,7 +377,7 @@ fn parent_preparation_rejects_wrong_checkpoint_revision_and_failure_kind() {
         )
         .is_err()
     );
-    wait_for_parent(&store, &state, id, true);
+    advance_to_checkpoint(&store, &state, id, Checkpoint::Waiting);
     let waiting = job(&store, &state, id);
     assert!(
         jobs.prepare_handoff_job_transition(&store, id, initial.revision(), fail_parent())
@@ -329,6 +408,8 @@ fn parent_preparation_rejects_wrong_checkpoint_revision_and_failure_kind() {
     for transition in [
         fail_parent(),
         HandoffJobTransition::StartParent(parent_identity()),
+        HandoffJobTransition::Succeed,
+        HandoffJobTransition::TerminalFailure(failure(HandoffFailureKind::ParentIncomplete)),
     ] {
         assert!(
             jobs.prepare_handoff_job_transition(&store, id, started.revision(), transition)
