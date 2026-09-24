@@ -44,6 +44,17 @@ impl RuntimeInterestTestHarness {
         self.gate.close_for_shutdown();
     }
 
+    pub fn publication_readiness(
+        &self,
+        interest: &RuntimeInterest,
+        ready: RuntimeReadiness,
+    ) -> Result<(), RuntimeSessionAdmissionError> {
+        if !Arc::ptr_eq(&self.owner.shared, &interest.shared) {
+            return Err(RuntimeSessionAdmissionError::OwnerMismatch);
+        }
+        interest.publication_readiness(&self.owner.shared.lock(), ready)
+    }
+
     pub fn acquire_scheduled(
         &self,
         spec: ManagedBackendLaunchSpec,

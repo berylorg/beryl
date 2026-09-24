@@ -73,20 +73,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 551: Retain Handoff Failure Before Parent Activation (finished)
+# Phase 552: Classify Generated Parent Preparation Outcomes (finished)
 
-Accepted State-only preparation-failure pause with exact pending-turn/binding proof and existing
-bounded nondispatch custody. Five new cases and thirteen custody/dispatch regressions passed,
-alongside dependent app checks and independent review. Candidate recovery covers both uncertain
-writer outcomes; activation and binding drift reject. Production event classification remains 552.
-
-# Phase 552: Classify Generated Parent Preparation Outcomes (pending)
-
-Distinguish preparation/capacity waiting from confirmed exact runtime, root and CAS failures in
-the existing session provider. Capture confirmed pre-activation failure through accepted handoff
-custody without a second runtime owner, sender, queue or automatic retry. Verify real preparation
-failure, healthy waiting, unrelated wakes, runtime recovery and unchanged parent identity before
-independent acceptance. This prerequisite precedes coordinator factory acceptance.
+Accepted exact generated-job reservation during managed preparation, typed stable target failures
+and retained runtime/CAS failure events. Eleven focused cases, all app test-target checks and
+independent review passed. Runtime recovery preserves the paused job; capacity, startup and
+retirement do not manufacture failures. Confirmed loss survives consuming session publication.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 

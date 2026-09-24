@@ -21,6 +21,7 @@ pub use candidate::{HandoffCandidateConvergenceError, HandoffCandidateConvergenc
 mod flight;
 mod nondispatch;
 pub use nondispatch::DiscussionParentNondispatch;
+pub(crate) use nondispatch::DiscussionPreparationFailure;
 mod prepare;
 mod recovery;
 mod reservation;

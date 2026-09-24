@@ -43,6 +43,26 @@ impl DiscussionSettlementService {
         thread_id: SyndicThreadId,
         turn_id: SyndicTurnId,
     ) -> Result<DiscussionParentDispatchReservation, DiscussionSettlementError> {
+        self.reserve_parent(job_id, thread_id, turn_id, false)?
+            .ok_or(DiscussionSettlementError::IdentityMismatch)
+    }
+
+    pub(crate) fn reserve_parent_preparation(
+        &self,
+        job_id: JobId,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+    ) -> Result<Option<DiscussionParentDispatchReservation>, DiscussionSettlementError> {
+        self.reserve_parent(job_id, thread_id, turn_id, true)
+    }
+
+    fn reserve_parent(
+        &self,
+        job_id: JobId,
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+        allow_retryable: bool,
+    ) -> Result<Option<DiscussionParentDispatchReservation>, DiscussionSettlementError> {
         let permit = self.operations.permit();
         permit.commit(|| ())?;
         let generation = self
@@ -70,7 +90,9 @@ impl DiscussionSettlementService {
             return Err(DiscussionSettlementError::IdentityMismatch);
         }
         if job.job_id() != job_id
-            || job.lifecycle() != BranchHandoffJobLifecycle::StartingParent
+            || !(job.lifecycle() == BranchHandoffJobLifecycle::StartingParent
+                || (allow_retryable
+                    && job.lifecycle() == BranchHandoffJobLifecycle::RetryableFailed))
             || job.parent_thread_id() != thread_id
             || job
                 .state()
@@ -104,7 +126,10 @@ impl DiscussionSettlementService {
             return Err(DiscussionSettlementError::ConcurrentChange);
         }
         permit.commit(|| ())?;
-        Ok(DiscussionParentDispatchReservation {
+        if job.lifecycle() == BranchHandoffJobLifecycle::RetryableFailed {
+            return Ok(None);
+        }
+        Ok(Some(DiscussionParentDispatchReservation {
             service: self.clone(),
             job_id,
             job_revision: job.revision(),
@@ -115,11 +140,14 @@ impl DiscussionSettlementService {
             generation,
             pending,
             binding: execution.execution().clone(),
-        })
+        }))
     }
 }
 
 impl DiscussionParentDispatchReservation {
+    pub(crate) fn execution_binding(&self) -> &beryl_model::ExecutionBinding {
+        &self.binding
+    }
     pub(crate) fn preparation_failed(
         self,
         failure: super::nondispatch::DiscussionPreparationFailure,

@@ -63,3 +63,17 @@ dispatch identity; retained-proof candidate recovery uses the same original cust
 production failure classification from this settlement component. Runtime recovery does not erase
 the captured event, but preparing, contention, stale identity and possible dispatch must never
 manufacture it. No runtime ownership lock may span the home writer.
+
+## Consuming Preparation Outcomes
+
+Independent review found that foreground-session publication could consume an exact runtime
+interest and return generic unavailable after a confirmed connection loss. A second status read
+could likewise see retirement instead of the failure already observed during invalidation.
+Preserve the exact failure reason from the original locked observation through connector
+acquisition, invalidation and session publication; classify retirement separately. The caller
+captures the event into existing handoff custody before checking settlement cancellation.
+
+The managed retry fixture initially rejected permitted projection requests after backend recovery.
+Extend its protocol coverage instead of adding a production checkout gate to satisfy the fixture.
+After changing this helper, explicitly build `managed-runtime-fixture`; the focused nextest
+invocation did not refresh the normal executable referenced by `CARGO_BIN_EXE`.

@@ -19,6 +19,42 @@ use beryl_model::{
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
+#[test]
+fn session_publication_preserves_confirmed_loss_but_not_generation_retirement() {
+    use beryl_app::cas_projection::RuntimeSessionAdmissionError;
+    let mut owner = harness(1, 2);
+    let launch = probe(591);
+    let (spec, binding) = demand(1, 1);
+    let interest = owner
+        .acquire(
+            spec,
+            binding,
+            RuntimeInterestKind::RequiredWork,
+            launch.clone(),
+        )
+        .unwrap();
+    let readiness = ready(&interest);
+    owner.publication_readiness(&interest, readiness).unwrap();
+    launch.fail_health(RuntimeFailure::ConnectionLost);
+    assert_eq!(
+        interest.wait_for_change(RuntimeInterestStatus::Ready(readiness), TIMEOUT),
+        RuntimeInterestStatus::Unavailable(RuntimeFailure::ConnectionLost)
+    );
+    assert!(matches!(
+        owner.publication_readiness(&interest, readiness),
+        Err(RuntimeSessionAdmissionError::RuntimeFailed(
+            RuntimeFailure::ConnectionLost
+        ))
+    ));
+    owner.lose_generation();
+    assert!(matches!(
+        owner.publication_readiness(&interest, readiness),
+        Err(RuntimeSessionAdmissionError::RuntimeUnavailable)
+    ));
+    drop(interest);
+    assert!(owner.shutdown());
+}
+
 fn harness(runtimes: usize, interests: usize) -> RuntimeInterestTestHarness {
     RuntimeInterestTestHarness::new(
         RuntimeInterestConfig::new(

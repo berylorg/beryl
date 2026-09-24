@@ -9,6 +9,8 @@ pub enum RuntimeSessionAdmissionError {
     OwnerMismatch,
     #[error("runtime interest has no current production readiness")]
     RuntimeUnavailable,
+    #[error("the exact runtime interest failed: {0:?}")]
+    RuntimeFailed(RuntimeFailure),
     #[error("session admission timeout must be positive")]
     InvalidTimeout,
     #[error("the current service admission context is unavailable")]
@@ -30,8 +32,12 @@ impl RuntimeInterestOwner {
             return Err(RuntimeSessionAdmissionError::RequiredWorkInterest);
         }
         let state = self.shared.lock();
-        let RuntimeInterestStatus::Ready(ready) = interest.status_locked(&state) else {
-            return Err(RuntimeSessionAdmissionError::RuntimeUnavailable);
+        let ready = match interest.status_locked(&state) {
+            RuntimeInterestStatus::Ready(ready) => ready,
+            RuntimeInterestStatus::Unavailable(failure) => {
+                return Err(RuntimeSessionAdmissionError::RuntimeFailed(failure));
+            }
+            _ => return Err(RuntimeSessionAdmissionError::RuntimeUnavailable),
         };
         let connector = state
             .runtimes
@@ -43,9 +49,27 @@ impl RuntimeInterestOwner {
 }
 
 impl RuntimeInterest {
-    pub(in crate::cas_projection) fn invalidate_configuration(&self, ready: RuntimeReadiness) {
+    pub(super) fn publication_readiness(
+        &self,
+        state: &RuntimeInterestState,
+        ready: RuntimeReadiness,
+    ) -> Result<(), RuntimeSessionAdmissionError> {
+        match self.status_locked(state) {
+            RuntimeInterestStatus::Unavailable(failure) => {
+                Err(RuntimeSessionAdmissionError::RuntimeFailed(failure))
+            }
+            RuntimeInterestStatus::Ready(actual) if actual == ready => Ok(()),
+            _ => Err(RuntimeSessionAdmissionError::RuntimeUnavailable),
+        }
+    }
+
+    pub(in crate::cas_projection) fn invalidate_configuration(
+        &self,
+        ready: RuntimeReadiness,
+    ) -> Option<RuntimeFailure> {
         let mut state = self.shared.lock();
-        if self.status_locked(&state) == RuntimeInterestStatus::Ready(ready) {
+        let status = self.status_locked(&state);
+        if status == RuntimeInterestStatus::Ready(ready) {
             let entry = state
                 .runtimes
                 .get_mut(&self.runtime_id)
@@ -53,6 +77,11 @@ impl RuntimeInterest {
             entry.connector = None;
             entry.status = RuntimeInterestStatus::Unavailable(RuntimeFailure::Admission);
             self.shared.changed.notify_all();
+            return Some(RuntimeFailure::Admission);
+        }
+        match status {
+            RuntimeInterestStatus::Unavailable(failure) => Some(failure),
+            _ => None,
         }
     }
 
@@ -64,8 +93,8 @@ impl RuntimeInterest {
         let interest = Arc::new(self);
         let shared = Arc::clone(&interest.shared);
         let state = shared.lock();
-        if interest.status_locked(&state) != RuntimeInterestStatus::Ready(ready)
-            || session.runtime_id() != interest.runtime_id
+        interest.publication_readiness(&state, ready)?;
+        if session.runtime_id() != interest.runtime_id
             || session.process_generation() != ready.process_generation
         {
             return Err(RuntimeSessionAdmissionError::RuntimeUnavailable);

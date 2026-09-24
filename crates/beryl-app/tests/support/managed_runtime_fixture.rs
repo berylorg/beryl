@@ -13,6 +13,8 @@ use tungstenite::{
 
 #[path = "managed_runtime_fixture/execution.rs"]
 mod execution;
+#[path = "managed_runtime_fixture/paused_handoff.rs"]
+mod paused_handoff;
 
 fn main() {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
@@ -166,6 +168,10 @@ fn serve_connection(stream: TcpStream, authorization: &str, index: usize) {
             }
         }),
     );
+    if mode == "paused-handoff" && index > 0 {
+        paused_handoff::serve(&mut socket);
+        return;
+    }
     if matches!(
         mode.as_str(),
         "execution-lifetime"

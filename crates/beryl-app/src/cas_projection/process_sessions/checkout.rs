@@ -69,7 +69,7 @@ impl ScheduledOrdinaryExecutionProvider for ProcessScheduledExecutionProvider {
             }
             let Some(slot) = state.slots.get_mut(&admission.thread_id()) else {
                 drop(state);
-                return Ok(self.sessions.prepare(admission));
+                return Ok(self.sessions.prepare(admission, self.handoff.clone()));
             };
             if slot.retiring
                 || slot.connection.is_retired()

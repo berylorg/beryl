@@ -41,6 +41,29 @@ topology and typed execution surfaces.
   connection rather than forgetting exclusion. Other queues, prefixes, registrations, and worker
   sets use configured finite capacities, not tuning values as semantic authority.
 
+## Managed Session Preparation Outcomes
+
+- Managed preparation retains typed target lookup outcomes. Confirmed missing runtime/root
+  records are distinguished from changing sources, read failure, missing service configuration
+  and binding mismatch. Only exact stable target absence or an existing runtime owner's confirmed
+  failure supplies handoff failure evidence; a generic not-ready result supplies none.
+- A generated pending parent reserves its existing handoff settlement slot while the scheduled
+  same-thread acquisition owns preparation. Confirmed launch failure maps to runtime unavailable;
+  confirmed foreground connection, initialization, release admission or connection loss maps to
+  CAS unavailable. Stable absence of the exact configured root maps to root unavailable.
+  Other runtime-owner failures use runtime unavailable without inferring a root cause from text.
+  Confirmed failure is captured before settlement cancellation or retirement checks and survives
+  through the accepted proof custody. Successful preparation and temporary contention release
+  the reservation without pausing the job. Ordinary input retains its existing preparation path.
+  Possible parent dispatch is never classified by this pre-activation boundary.
+- An already retryable generated job may prepare its exact runtime under the existing runtime
+  recovery authority, without constructing another handoff failure event. Runtime recovery keeps
+  the job paused; ordinary dispatch still requires explicit handoff retry of the same input.
+- Session publication and connector acquisition preserve confirmed failure of the exact runtime
+  interest as a typed outcome under the existing runtime lock. Retirement, service closure and
+  readiness mismatch remain non-failure outcomes. Consuming an interest cannot erase a confirmed
+  failure between readiness and foreground-session publication.
+
 ## Passive Receive And Failure Retirement
 
 - The sole connection driver owns receive serialization and exact attachment/worker lifetime.

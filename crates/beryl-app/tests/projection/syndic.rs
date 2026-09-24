@@ -199,13 +199,32 @@ impl Fixture {
             &beryl_app::process_admission::ProcessAdmissionGate,
         ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
+        Self::new_with_execution_authority_and_capacity(seed, 128, create_provider)
+    }
+
+    pub fn new_with_execution_authority_and_capacity(
+        seed: u8,
+        worker_capacity: u64,
+        create_provider: impl FnOnce(
+            &HomeStore,
+            &BerylState,
+            &SyndicStorage,
+            &beryl_app::process_admission::ProcessAdmissionGate,
+        ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        Self::from_store_with_execution_authority(seed, directory, store, 128, create_provider)
+        Self::from_store_with_execution_authority(
+            seed,
+            directory,
+            store,
+            worker_capacity,
+            create_provider,
+        )
     }
 
     fn from_store_with_execution_authority(

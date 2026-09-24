@@ -4,6 +4,9 @@
 mod generated_handoff;
 #[path = "generated_input_execution/scheduler.rs"]
 mod scheduler;
+#[cfg(target_os = "windows")]
+#[path = "generated_input_execution/preparation.rs"]
+mod preparation;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "../../syndic-storage/tests/support/mod.rs"]

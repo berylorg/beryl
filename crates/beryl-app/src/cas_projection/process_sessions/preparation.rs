@@ -8,9 +8,12 @@ use beryl_state::RuntimeRootState;
 use syndic_storage::SyndicStorage;
 
 use super::*;
+mod handoff;
+mod run;
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../tests/unit/shutdown_preparation_capture.rs"]
 mod shutdown_capture_tests;
+mod target;
 use crate::cas_projection::{
     ProcessOrdinaryDynamicToolAuthority, RuntimeInterestError, RuntimeInterestStatus,
     ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionResult,
@@ -102,7 +105,7 @@ impl ScheduledExecutionSessions {
         context.revoke_obsolete_retry(binding.runtime_id());
         context
             .launch_spec_for(thread_id, &binding)
-            .ok_or(RuntimeSessionPreparationError::RetryUnavailable)?;
+            .map_err(|_| RuntimeSessionPreparationError::RetryUnavailable)?;
         context
             .owner
             .authorize_retry(snapshot, thread_id, binding)
@@ -141,6 +144,7 @@ impl ScheduledExecutionSessions {
     pub(super) fn prepare(
         &self,
         admission: ScheduledOrdinaryAdmission,
+        handoff: Option<crate::discussion_settlement::DiscussionSettlementService>,
     ) -> ScheduledOrdinaryAdmissionResult {
         let mut state = self.lock();
         let Some(context) = state.preparation.as_ref().cloned() else {
@@ -164,7 +168,7 @@ impl ScheduledExecutionSessions {
         let worker = thread::Builder::new()
             .name("beryl-session-preparation".to_owned())
             .spawn(move || {
-                context.run(&sessions, &admission);
+                context.run(&sessions, &admission, handoff.as_ref());
                 drop(context);
                 let mut state = sessions.lock();
                 drop(admission);
@@ -238,158 +242,5 @@ impl ScheduledExecutionSessions {
             let _ = worker.handle.join();
         }
         drop(context);
-    }
-}
-
-impl PreparationContext {
-    fn revoke_obsolete_retry(&self, runtime_id: RuntimeId) {
-        if let Some((thread_id, binding)) = self.owner.pending_retry(runtime_id)
-            && self.launch_spec_for(thread_id, &binding).is_none()
-        {
-            self.owner.revoke_retry(thread_id, &binding);
-        }
-    }
-
-    fn launch_spec(
-        &self,
-        admission: &ScheduledOrdinaryAdmission,
-    ) -> Option<ManagedBackendLaunchSpec> {
-        self.launch_spec_for(admission.thread_id(), admission.execution_binding())
-    }
-
-    fn launch_spec_for(
-        &self,
-        thread_id: SyndicThreadId,
-        binding: &ExecutionBinding,
-    ) -> Option<ManagedBackendLaunchSpec> {
-        if !self.commands.is_open() {
-            return None;
-        }
-        let execution = self
-            .storage
-            .thread_execution(
-                &self.home,
-                thread_id,
-                crate::cas_projection::input_replay::point_limit(),
-            )
-            .ok()??;
-        if execution.execution() != binding {
-            return None;
-        }
-        let runtime = self
-            .config
-            .runtime_roots
-            .runtime(&self.home, binding.runtime_id())
-            .ok()??;
-        let root = self
-            .config
-            .runtime_roots
-            .root(&self.home, binding.root_id())
-            .ok()??;
-        if root.runtime_id() != runtime.runtime_id() || root.canonical_path() != binding.root_path()
-        {
-            return None;
-        }
-        let tokens = self
-            .config
-            .token_directories
-            .iter()
-            .find(|entry| entry.runtime_id == binding.runtime_id())?;
-        ManagedBackendLaunchSpec::new(
-            runtime.runtime_id(),
-            runtime.canonical_executable().clone(),
-            runtime.mode().clone(),
-            runtime.runtime_native_executable().clone(),
-            root.canonical_path().clone(),
-            tokens.host.clone(),
-            tokens.runtime.clone(),
-        )
-        .ok()
-    }
-
-    fn run(&self, sessions: &ScheduledExecutionSessions, admission: &ScheduledOrdinaryAdmission) {
-        let Some(acquisition) = admission.acquisition() else {
-            return;
-        };
-        let admission_context = self.admission.with_acquisition(acquisition);
-        let Some(spec) = self.launch_spec(admission) else {
-            self.owner
-                .revoke_retry(admission.thread_id(), admission.execution_binding());
-            return;
-        };
-        let mut execution_workers = None;
-        let interest = self.owner.acquire_prepared_managed(
-            spec.clone(),
-            admission.execution_binding().clone(),
-            admission.thread_id(),
-            acquisition,
-            || {
-                let (readiness, execution) = self
-                    .workers
-                    .try_acquire_cold_preparation_or_arm()
-                    .map_err(|_| RuntimeInterestError::WorkerCapacity)?;
-                execution_workers = Some(execution);
-                Ok((admission_context.clone(), readiness))
-            },
-        );
-        let Ok(interest) = interest else { return };
-        let execution_workers = match execution_workers {
-            Some(workers) => workers,
-            None => match self.workers.try_acquire_warm_preparation_or_arm() {
-                Ok(workers) => workers,
-                Err(_) => return,
-            },
-        };
-        let mut status = interest.status();
-        while status == RuntimeInterestStatus::Starting {
-            if !self.commands.is_open() || sessions.lock().closed {
-                return;
-            }
-            status = interest.wait_for_change(status, self.timeout);
-        }
-        if !matches!(status, RuntimeInterestStatus::Ready(_))
-            || self.launch_spec(admission).as_ref() != Some(&spec)
-            || sessions.lock().closed
-        {
-            return;
-        }
-        let Ok((connector, ready)) = self.owner.session_connector(&interest) else {
-            return;
-        };
-        let Some(identity) = connector.launch_identity() else {
-            return;
-        };
-        let session = match admission_context.admit_with_reserved_workers(
-            &connector,
-            identity.runtime_id(),
-            identity.process_generation(),
-            Path::new(identity.working_directory().as_str()),
-            self.timeout,
-            execution_workers,
-        ) {
-            Ok(session) => session,
-            Err(error) => {
-                if matches!(error, crate::cas_projection::ProjectionSessionAdmissionError::CandidateConnection { .. }
-                    | crate::cas_projection::ProjectionSessionAdmissionError::Initialization { .. }
-                    | crate::cas_projection::ProjectionSessionAdmissionError::ReleaseAdmission { .. }) {
-                    interest.invalidate_configuration(ready);
-                }
-                return;
-            }
-        };
-        let Ok(session) = interest.publish_session(ready, session) else {
-            return;
-        };
-        if self.launch_spec(admission).as_ref() != Some(&spec) || sessions.lock().closed {
-            return;
-        }
-        let _ = sessions.register(
-            admission.thread_id(),
-            admission.execution_binding().clone(),
-            session,
-            self.config.policy.clone(),
-            self.config.assets.clone(),
-            Box::new(self.tools.clone()),
-        );
     }
 }
