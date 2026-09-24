@@ -547,6 +547,10 @@
   and parent provenance checks, unchanged payload/identities and retained uncertainty custody.
   Fourteen State cases, four app retry cases, the paused-scan regression, dependent checks and
   independent review passed. Candidate and ordinary scans never retry automatically.
+- [x] Accepted shared ordinary/candidate activation-cancellation inspection with stable revision
+  confirmation. Twenty-four binding cases, dependent checks and independent review passed,
+  including uncertain recovery, stale handles and conflicting records. Atomic generated-parent
+  failure settlement and ordinary scheduler eligibility remain separate prerequisites.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

@@ -1,4 +1,4 @@
-use beryl_home_store::HomeStore;
+use beryl_home_store::{HomeCandidateRecoveryAccess, HomeStore};
 
 use crate::{
     AbandonActiveBinding, ActivateBinding, ActiveCasBinding, ActiveCasTurnPublicationStatus,
@@ -10,6 +10,7 @@ use crate::{
 };
 
 use super::SyndicPointReadLimit;
+use super::access::ReadAccess;
 
 mod provenance;
 mod publication;
@@ -194,133 +195,178 @@ impl SyndicStorage {
         request: &CancelBindingActivation,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        self.with_current_gate_source(store, request.thread_id(), limit, || {
-            let Some(prior) = self.binding(
-                store,
-                request.thread_id(),
-                request.expected_binding_revision(),
-                limit,
-            )?
-            else {
-                return Ok(BindingPublicationStatus::Collision);
-            };
-            let BindingState::Active(active) = prior.state() else {
-                return Ok(BindingPublicationStatus::Collision);
-            };
-            if prior.selected_path() != request.selected_path()
-                || active.snapshot_id() != request.snapshot_id()
-                || active.turn_id() != request.turn_id()
-            {
-                return Ok(BindingPublicationStatus::Collision);
-            }
-            let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)?
-            else {
-                return Ok(BindingPublicationStatus::Collision);
-            };
-            if !crate::dispatch_provenance::activation_matches(
-                request.thread_id(),
-                request.turn_id(),
-                crate::TurnDispatchAnchor::new(
+        self.cancelled_binding_activation_status_with_access(
+            ReadAccess::Ordinary(store),
+            request,
+            limit,
+        )
+    }
+
+    pub fn cancelled_binding_activation_status_candidate(
+        &self,
+        access: &HomeCandidateRecoveryAccess<'_>,
+        request: &CancelBindingActivation,
+        limit: SyndicPointReadLimit,
+    ) -> Result<BindingPublicationStatus, SyndicReadError> {
+        self.cancelled_binding_activation_status_with_access(
+            ReadAccess::Candidate(access),
+            request,
+            limit,
+        )
+    }
+
+    fn cancelled_binding_activation_status_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        request: &CancelBindingActivation,
+        limit: SyndicPointReadLimit,
+    ) -> Result<BindingPublicationStatus, SyndicReadError> {
+        let observed_revision = self.revision_with_access(store)?;
+        let result =
+            self.with_current_gate_source_with_access(store, request.thread_id(), limit, || {
+                let Some(prior) = self.point_with_access::<BindingsFamily>(
+                    store,
+                    BindingKey {
+                        thread: request.thread_id(),
+                        revision: request.expected_binding_revision(),
+                    },
+                    limit,
+                )?
+                else {
+                    return Ok(BindingPublicationStatus::Collision);
+                };
+                let BindingState::Active(active) = prior.state() else {
+                    return Ok(BindingPublicationStatus::Collision);
+                };
+                if prior.selected_path() != request.selected_path()
+                    || active.snapshot_id() != request.snapshot_id()
+                    || active.turn_id() != request.turn_id()
+                {
+                    return Ok(BindingPublicationStatus::Collision);
+                }
+                let Some(snapshot) = self.point_with_access::<ExecutionSnapshotsFamily>(
+                    store,
+                    request.snapshot_id(),
+                    limit,
+                )?
+                else {
+                    return Ok(BindingPublicationStatus::Collision);
+                };
+                if !crate::dispatch_provenance::activation_matches(
+                    request.thread_id(),
+                    request.turn_id(),
+                    crate::TurnDispatchAnchor::new(
+                        request.snapshot_id(),
+                        request.expected_binding_revision(),
+                    ),
+                    &snapshot,
+                    &prior,
+                ) || snapshot.activation_gate_revision() != request.expected_gate_revision()
+                    || self
+                        .point_with_access::<ActiveCasTurnsFamily>(
+                            store,
+                            request.snapshot_id(),
+                            limit,
+                        )?
+                        .is_some()
+                {
+                    return Ok(BindingPublicationStatus::Collision);
+                }
+
+                let revision = next_binding_revision(request.expected_binding_revision())?;
+                let status = self.classify_binding_publication_with_access(
+                    store,
+                    request.thread_id(),
+                    request.expected_binding_revision(),
+                    BindingRecord::new(
+                        request.thread_id(),
+                        revision,
+                        request.selected_path(),
+                        BindingState::valid(active.usable().clone()),
+                    ),
+                    limit,
+                )?;
+                let status = self.classify_cas_thread_reservation_with_access(
+                    store,
+                    CasThreadReservationPublication {
+                        status,
+                        thread: request.thread_id(),
+                        cas_thread: active.usable().cas_thread_id(),
+                        revision,
+                        stale: false,
+                    },
+                    limit,
+                )?;
+                let gate =
+                    self.point_with_access::<InputGatesFamily>(store, request.thread_id(), limit)?;
+                let expected_next_gate =
+                    request
+                        .expected_gate_revision()
+                        .checked_next()
+                        .map_err(|_| {
+                            SyndicReadError::Invariant(
+                                "activation-cancellation gate frontier is exhausted",
+                            )
+                        })?;
+                let turn_state =
+                    self.point_with_access::<TurnStatesFamily>(store, request.turn_id(), limit)?;
+                let anchor = crate::TurnDispatchAnchor::new(
                     request.snapshot_id(),
                     request.expected_binding_revision(),
-                ),
-                &snapshot,
-                &prior,
-            ) || snapshot.activation_gate_revision() != request.expected_gate_revision()
-                || self
-                    .active_cas_turn(store, request.snapshot_id(), limit)?
-                    .is_some()
-            {
-                return Ok(BindingPublicationStatus::Collision);
-            }
-
-            let revision = next_binding_revision(request.expected_binding_revision())?;
-            let status = self.classify_binding_publication(
-                store,
-                request.thread_id(),
-                request.expected_binding_revision(),
-                BindingRecord::new(
-                    request.thread_id(),
-                    revision,
-                    request.selected_path(),
-                    BindingState::valid(active.usable().clone()),
-                ),
-                limit,
-            )?;
-            let status = self.classify_cas_thread_reservation(
-                store,
-                CasThreadReservationPublication {
-                    status,
-                    thread: request.thread_id(),
-                    cas_thread: active.usable().cas_thread_id(),
-                    revision,
-                    stale: false,
-                },
-                limit,
-            )?;
-            let gate = self.input_gate(store, request.thread_id(), limit)?;
-            let expected_next_gate =
-                request
-                    .expected_gate_revision()
-                    .checked_next()
-                    .map_err(|_| {
-                        SyndicReadError::Invariant(
-                            "activation-cancellation gate frontier is exhausted",
-                        )
-                    })?;
-            let turn_state = self.turn_state(store, request.turn_id(), limit)?;
-            let anchor = crate::TurnDispatchAnchor::new(
-                request.snapshot_id(),
-                request.expected_binding_revision(),
-            );
-            let next_state_revision =
-                request
+                );
+                let next_state_revision = request
                     .expected_state_revision()
                     .checked_next()
                     .map_err(|_| {
                         SyndicReadError::Invariant("cancellation turn-state revision is exhausted")
                     })?;
-            Ok(match status {
-                BindingPublicationStatus::Exact
-                    if turn_state.as_ref().is_some_and(|state| {
-                        state.revision() == next_state_revision
-                            && state.dispatch_provenance()
-                                == crate::TurnDispatchProvenance::Cancelled(anchor)
-                            && state.lifecycle() == crate::TurnLifecycle::Pending
-                            && state.source_event_count() == 0
-                    }) && gate.as_ref().is_some_and(|stored| {
-                        stored.revision() == expected_next_gate
-                            && stored.state() == &InputGateState::PendingTurn(request.turn_id())
-                            && stored.live_count() == 0
-                            && stored.live_logical_utf8_bytes() == 0
-                    }) =>
-                {
+                Ok(match status {
                     BindingPublicationStatus::Exact
-                }
-                BindingPublicationStatus::Prior
-                    if turn_state.as_ref().is_some_and(|state| {
-                        state.revision() == request.expected_state_revision()
-                            && state.dispatch_provenance()
-                                == crate::TurnDispatchProvenance::Activated(anchor)
-                            && state.lifecycle() == crate::TurnLifecycle::Pending
-                            && state.source_event_count() == 0
-                    }) && gate.as_ref().is_some_and(|stored| {
-                        stored.revision() == request.expected_gate_revision()
-                            && matches!(
-                                stored.state(),
-                                InputGateState::AwaitingSteering(turn)
-                                    if *turn == request.turn_id()
-                            )
-                            && stored.selected_route().is_some()
-                            && stored.live_count() == 0
-                            && stored.live_logical_utf8_bytes() == 0
-                    }) =>
-                {
+                        if turn_state.as_ref().is_some_and(|state| {
+                            state.revision() == next_state_revision
+                                && state.dispatch_provenance()
+                                    == crate::TurnDispatchProvenance::Cancelled(anchor)
+                                && state.lifecycle() == crate::TurnLifecycle::Pending
+                                && state.source_event_count() == 0
+                        }) && gate.as_ref().is_some_and(|stored| {
+                            stored.revision() == expected_next_gate
+                                && stored.state() == &InputGateState::PendingTurn(request.turn_id())
+                                && stored.live_count() == 0
+                                && stored.live_logical_utf8_bytes() == 0
+                        }) =>
+                    {
+                        BindingPublicationStatus::Exact
+                    }
                     BindingPublicationStatus::Prior
-                }
-                _ => BindingPublicationStatus::Collision,
-            })
-        })
+                        if turn_state.as_ref().is_some_and(|state| {
+                            state.revision() == request.expected_state_revision()
+                                && state.dispatch_provenance()
+                                    == crate::TurnDispatchProvenance::Activated(anchor)
+                                && state.lifecycle() == crate::TurnLifecycle::Pending
+                                && state.source_event_count() == 0
+                        }) && gate.as_ref().is_some_and(|stored| {
+                            stored.revision() == request.expected_gate_revision()
+                                && matches!(
+                                    stored.state(),
+                                    InputGateState::AwaitingSteering(turn)
+                                        if *turn == request.turn_id()
+                                )
+                                && stored.selected_route().is_some()
+                                && stored.live_count() == 0
+                                && stored.live_logical_utf8_bytes() == 0
+                        }) =>
+                    {
+                        BindingPublicationStatus::Prior
+                    }
+                    _ => BindingPublicationStatus::Collision,
+                })
+            });
+        if self.revision_with_access(store)? != observed_revision {
+            return Err(SyndicReadError::ConcurrentChange {
+                operation: "activation cancellation outcome",
+            });
+        }
+        result
     }
 
     /// Reconciles the one-way CAS-turn identity and its permanent reverse correlation.
@@ -398,7 +444,24 @@ impl SyndicStorage {
         expected: BindingRecord,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        match self.point::<BindingsFamily>(
+        self.classify_binding_publication_with_access(
+            ReadAccess::Ordinary(store),
+            thread,
+            prior_revision,
+            expected,
+            limit,
+        )
+    }
+
+    fn classify_binding_publication_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        thread: beryl_model::SyndicThreadId,
+        prior_revision: beryl_model::BindingRevision,
+        expected: BindingRecord,
+        limit: SyndicPointReadLimit,
+    ) -> Result<BindingPublicationStatus, SyndicReadError> {
+        match self.point_with_access::<BindingsFamily>(
             store,
             BindingKey {
                 thread,
@@ -412,7 +475,7 @@ impl SyndicStorage {
                 BindingPublicationStatus::Collision
             }),
             None => {
-                let current = self.current_binding(store, thread, limit)?;
+                let current = self.current_binding_with_access(store, thread, limit)?;
                 Ok(
                     if current.as_ref().is_some_and(|current| {
                         current.head().revision() == prior_revision
@@ -435,11 +498,27 @@ impl SyndicStorage {
         publication: CasThreadReservationPublication<'_>,
         limit: SyndicPointReadLimit,
     ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let owner = self.cas_thread_owner(store, publication.cas_thread.clone(), limit)?;
-        let membership = self.cas_thread_binding_membership(
+        self.classify_cas_thread_reservation_with_access(
+            ReadAccess::Ordinary(store),
+            publication,
+            limit,
+        )
+    }
+
+    fn classify_cas_thread_reservation_with_access(
+        &self,
+        store: ReadAccess<'_>,
+        publication: CasThreadReservationPublication<'_>,
+        limit: SyndicPointReadLimit,
+    ) -> Result<BindingPublicationStatus, SyndicReadError> {
+        let owner = self.point_with_access::<CasThreadIndexFamily>(
             store,
-            publication.cas_thread,
-            publication.revision,
+            CasThreadKey::Record(publication.cas_thread.clone()),
+            limit,
+        )?;
+        let membership = self.point_with_access::<CasThreadBindingIndexFamily>(
+            store,
+            CasThreadBindingKey::Record(publication.cas_thread.clone(), publication.revision),
             limit,
         )?;
         Ok(match (publication.status, owner, membership) {

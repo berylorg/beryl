@@ -134,6 +134,10 @@ The package exposes grouped typed operations rather than raw record mechanics:
   same bounded evidence and lifecycle distinction without releasing ordinary execution or custody.
 - Opaque proof preparation, command dispatch custody, receipt consumption, and targeted
   reconciliation for package operations that participate in HomeStore composition.
+- Activation-cancellation outcome reads support ordinary and explicit candidate access through
+  the same bounded classifier. They authenticate the activation snapshot, unchanged-authority
+  successor, CAS reservation and membership, turn provenance and gate/source under a stable domain
+  revision. Candidate inspection uses fresh handles and grants no dispatch or retry permission.
 
 Public APIs use stable Syndic identities and typed nonzero monotonic revisions. External CAS
 identities are bounded source metadata and never the sole primary key. Every correctness-sensitive

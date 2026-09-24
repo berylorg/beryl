@@ -163,6 +163,12 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   model-visible execution path. The generated canonical input is retained exactly once when CAS
   echoes it; neither correlation nor history repair changes its authorship to composer input.
 - CAS rejection before acceptance moves the job to `retryable_failed` and leaves the existing admitted parent turn pending for retry; it does not append another turn.
+- For a generated parent, proven nondispatch cancellation and the corresponding retryable job
+  failure publish in one home command. Syndic must not reopen pending dispatch before State
+  records the failure. Exact cancellation evidence supports ordinary and candidate reconciliation;
+  unresolved command custody suppresses further execution. The ordinary execution path checks the
+  exact generated input, parent turn and `starting_parent` job before dispatch. General execution
+  wakes do not authorize a retryable job; explicit retry resumes the same admitted parent.
 - If parent `turn/start` may have been dispatched but its response is unavailable, the parent turn is
   never replayed automatically. Proven loss of its execution session converges that parent turn to
   incomplete, moves the job to `terminal_failed`, leaves the discussion unarchived, and releases
