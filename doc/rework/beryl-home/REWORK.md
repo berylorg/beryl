@@ -559,7 +559,8 @@
   permit and same-slot settlement re-preparation. Nine focused reservation/nondispatch/custody
   cases, dependent checks and independent review passed. Capacity, duplicates, changed revisions,
   process reopening and uncertain owner disposal preserve bounded custody; sender integration
-  and coalesced capacity wakes remain pending.
+  remains pending.
+- [x] Accepted bounded nondispatch proof retention, exact fresh-candidate settlement and coalesced slot-release wakes, with recovery-prefix and shutdown-readiness mounting reserved for complete graph composition.
 - [ ] Implement resolution admission, queued-input deferral, durable parent handoff, busy-parent
   ordering, restart recovery, idempotency, retry, successful archive, and navigation outcomes.
 - [ ] Gate: confirm child creation and resolution handoff, including restart and ambiguous outcomes,

@@ -66,9 +66,6 @@ pub(super) fn prepare(
     ),
     DiscussionSettlementError,
 > {
-    let Access::Ordinary(store) = access else {
-        return Err(DiscussionSettlementError::IdentityMismatch);
-    };
     let parent = job
         .state()
         .parent()
@@ -79,16 +76,25 @@ pub(super) fn prepare(
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
     super::candidate::validate_job_sources(access, syndic, job)?;
-    if syndic.cancelled_binding_activation_status(
-        store,
-        &evidence.request,
-        SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence"),
-    )? != BindingPublicationStatus::Prior
-    {
+    let limit = SyndicPointReadLimit::new(400_000).expect("bounded cancellation evidence");
+    let (status, revision) = match access {
+        Access::Ordinary(store) => (
+            syndic.cancelled_binding_activation_status(store, &evidence.request, limit)?,
+            syndic.revision(store)?,
+        ),
+        Access::Candidate(candidate) => (
+            syndic.cancelled_binding_activation_status_candidate(
+                candidate,
+                &evidence.request,
+                limit,
+            )?,
+            syndic.revision_candidate(candidate)?,
+        ),
+    };
+    if status != BindingPublicationStatus::Prior {
         return Err(DiscussionSettlementError::IdentityMismatch);
     }
-    command
-        .add(syndic.cancel_binding_activation(syndic.revision(store)?, evidence.request.clone()))?;
+    command.add(syndic.cancel_binding_activation(revision, evidence.request.clone()))?;
     Ok((
         HandoffJobTransition::RetryableFailure(
             HandoffFailureEvidence::new(evidence.kind, None)

@@ -11,7 +11,7 @@ use syndic_storage::{
 mod execution;
 
 #[derive(Clone)]
-enum Selection {
+pub(super) enum Selection {
     Retry(beryl_model::JobRevision),
     Child,
     ParentInput(DiscussionParentInputRequest),
@@ -174,7 +174,7 @@ impl DiscussionSettlementOperations {
     }
 }
 
-fn prepare(
+pub(super) fn prepare(
     access: Access<'_>,
     state: &BerylState,
     syndic: &SyndicStorage,

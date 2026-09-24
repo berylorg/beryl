@@ -154,8 +154,8 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   exact unaccepted activation, then joins Syndic cancellation and State retryable failure in one
   command. The admitted input, turn, payload and discussion gate remain intact. Bounded process
   custody retains the State witness and cancellation request; ordinary and fresh candidate audits
-  require both natural outcomes and the home registry to agree. Candidate access only reconciles
-  the original command and never invents new nondispatch evidence.
+  require both natural outcomes and the home registry to agree. Candidate access first reconciles
+  any original uncertain command and never invents new nondispatch evidence.
 - Before generated parent dispatch, ordinary execution reserves one existing handoff reconciliation
   slot and authenticates the exact starting-parent job, input and turn. This noncloneable reservation
   remains execution authority, not cloneable request policy or a parked native-lineage payload.
@@ -163,6 +163,33 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
   conflict may reprepare the same local settlement from fresh sources while retaining that slot
   and exact reason; it never repeats CAS dispatch. Uncertainty transfers to existing process audit
   custody. Generation disposal fences further preparation and preserves required outcome custody.
+- Converting a dispatch reservation to exact nondispatch synchronously transfers the proof into
+  the existing bounded process settlement owner. The retained entry owns the same slot, home and
+  original generation, exact job revision, cancellation identity and closed reason; it retains no
+  home service, payload, session or ordinary execution capability. The ordinary owner and any
+  prepared attempt prevent overlapping preparation. Commit releases the proof; cancellation,
+  fencing, known noncommit and caller disposal do not. Submitted uncertainty keeps its original
+  audit alongside the proof until registry and natural evidence agree.
+- A fresh same-home candidate can settle retained proofs only after ordinary proof ownership and
+  outstanding prepared attempts have retired. It processes one existing slot at a time before
+  generic CAS-live convergence, authenticates current State/Syndic sources, and never sends CAS
+  requests. Exact-old audit reconciliation permits fresh atomic cancellation using the retained
+  reason; exact-new reconciliation releases it; collision or failure leaves custody intact and
+  stops recovery. Candidate retries retain the slot without reviving the old process permit.
+  Complete graph recovery must mount this prefix and final disposal must account for pending
+  proofs before claiming successful cleanup.
+- The shared ordinary start boundary requires this settlement authority for generated inputs and
+  rejects missing or foreign authority before activation. Scheduled leases carry it alongside
+  assets and tools; direct execution supplies the same authority. Capacity refusal arms one
+  coalesced execution wake under the slot-admission lock. Slot release wakes the current ordinary
+  scheduler outside that lock; no per-job waiter collection or replacement home-mutation observer
+  is introduced. Paused jobs remain ineligible even when unrelated execution wakes arrive.
+- After proven nondispatch, the same bounded ordinary worker may reprepare only following a typed
+  physical command conflict or concurrent source change. Every attempt rereads exact sources and
+  checks cancellation and generation; identity drift and other failures stop local preparation,
+  while uncertainty transfers to retained audit custody. These attempts never repeat CAS dispatch
+  and retain only one reservation, reason and current command. Verify progress after successive
+  unrelated commits and responsive disposal during contention.
 
 ## Tools And Lifecycle Yield
 

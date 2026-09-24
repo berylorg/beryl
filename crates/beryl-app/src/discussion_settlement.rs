@@ -24,6 +24,7 @@ pub use nondispatch::DiscussionParentNondispatch;
 mod prepare;
 mod recovery;
 mod reservation;
+mod retained_nondispatch;
 pub use flight::DiscussionSettlementOperations;
 use flight::Flight;
 pub use recovery::DiscussionSettlementAuditOutcome;
@@ -141,6 +142,9 @@ pub struct DiscussionSettlementService {
     syndic: SyndicStorage,
 }
 impl DiscussionSettlementService {
+    pub(crate) fn set_dispatch_capacity_waker(&self, wake: std::task::Waker) {
+        self.operations.set_dispatch_capacity_waker(wake);
+    }
     pub(crate) fn matches_home(&self, home: &HomeStore) -> bool {
         self.store.home_id() == home.home_id()
             && self.store.health().generation() == home.health().generation()
@@ -207,6 +211,12 @@ impl PreparedDiscussionSettlement<'_> {
                     local_finalization,
                 } => {
                     *disposition = Disposition::Committed;
+                    if matches!(
+                        self.audit.0.result,
+                        DiscussionSettlementResult::ParentRetryable { .. }
+                    ) {
+                        self.audit.0._flight.release_nondispatch();
+                    }
                     DiscussionSettlementOutcome::Committed {
                         result: self.audit.0.result,
                         receipt,

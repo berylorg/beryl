@@ -202,5 +202,24 @@ fn a_changed_job_revision_cannot_reuse_an_earlier_dispatch_reservation() {
             .state(),
         BindingState::Active(_)
     ));
-    f.store.close().unwrap();
+    assert_eq!(f.operations.pending_nondispatch_count(), 1);
+    f.faults.fail_next(FaultPoint::BeforeReadConfirmation);
+    assert!(f.store.home_revision().is_err());
+    let mut candidate = f.store.recover_same_home().unwrap();
+    let state = BerylState::reacquire_candidate(&candidate).unwrap();
+    let syndic = SyndicStorage::reacquire_candidate(&candidate).unwrap();
+    let access = candidate.recovery_access().unwrap();
+    assert!(matches!(
+        f.operations.settle_retained_nondispatch_candidate(
+            &access,
+            &state,
+            &syndic,
+            CommandCancellation::new(),
+        ),
+        Err(HandoffCandidateConvergenceError::Settlement(
+            DiscussionSettlementError::IdentityMismatch
+        ))
+    ));
+    assert_eq!(f.operations.pending_nondispatch_count(), 1);
+    candidate.publish().unwrap().close().unwrap();
 }

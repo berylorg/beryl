@@ -73,13 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 549: Reserve Handoff Settlement Before Parent Dispatch (finished)
+# Phase 550: Preserve Nondispatch Proof Through Worker Disposal (finished)
 
-Accepted exact noncloneable parent-dispatch reservation and same-slot nondispatch re-preparation.
-Nine focused reservation, nondispatch and custody cases, dependent checks and independent review
-passed. Paused/mismatched jobs, changed revisions and old process permits reject; capacity remains
-bounded, overlapping audits block preparation, and uncertainty survives owner disposal through
-fresh candidate reconciliation. CAS integration and capacity wakes remain the next boundary.
+Accepted bounded process-owned nondispatch proof retention and fresh-candidate settlement before
+generic recovery. Fourteen distinct focused cases, dependent checks and independent review passed,
+including cancellation, fencing, conflicts, foreign candidates, changed job revisions, uncertain
+exact-old/new recovery and coalesced slot-release wakes. No old service or execution permit survives
+in retained proof custody. Complete graph recovery and shutdown-readiness mounting remain phase 423.
 
 # Phase 548: Gate Generated Parent Ordinary Dispatch (wip)
 
@@ -90,6 +90,12 @@ Carry settlement authority with execution authority rather than cloneable reques
 at the shared ordinary start boundary before activation; do not retain a slot while native-lineage
 work is parked. Integrate a bounded coalesced capacity-release wake without replacing the single
 home mutation observer, and preserve nondispatch custody through command conflicts and shutdown.
+
+The [outcome custody correction](failures/discussion-outcome-custody.md#pre-command-nondispatch-disposal)
+is accepted. Integration remains uncommitted and unaccepted.
+App test targets compile. The focused generated-input execution test passes with authentic
+State/Syndic admission, missing-authority and duplicate-reservation rejection before activation,
+and successful ordinary CAS execution after slot release. Shutdown/recovery acceptance remains open.
 
 # Phase 543: Schedule Durable Handoff Work After Publication (pending)
 
@@ -126,6 +132,9 @@ After every required service factory is independently accepted, compose and publ
 private graph with the same home generation, then release ordinary workers. Verify last-constructor
 failure, cancellation, startup convergence and publication rejection with full cleanup ownership.
 This integration cannot absorb missing service implementations or accept restored GUI visibility.
+Mount retained nondispatch settlement immediately before CAS-live candidate startup recovery,
+and include pending proofs in final shutdown readiness; unsettled proofs require explicit failed
+shutdown with custody retained, never successful pending preservation or process exit.
 Theme preparation and candidate managed-session configuration are accepted.
 Finish the remaining graph-factory inventory before activating this phase.
 

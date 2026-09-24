@@ -76,6 +76,14 @@ impl DiscussionSettlementAudit {
         ) {
             self.0._flight.release_retained();
         }
+        if matches!(
+            outcome,
+            DiscussionSettlementAuditOutcome::Settled(
+                DiscussionSettlementResult::ParentRetryable { .. }
+            )
+        ) {
+            self.0._flight.release_nondispatch();
+        }
         Ok(outcome)
     }
 }

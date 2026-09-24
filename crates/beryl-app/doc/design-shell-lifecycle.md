@@ -194,6 +194,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   Syndic participants. Ordinary job scanning and exact execution admission remain fenced until
   whole-graph publication. Graph retirement joins its scanning and admitted work; no branch worker,
   page, queue, request response owner or reconciliation descriptor transfers to a replacement.
+  A narrow process-owned exception preserves bounded immutable parent nondispatch proofs and
+  their existing settlement slots across home replacement. They retain no old service handle,
+  session, execution capability or permit. Fresh candidate settlement of these proofs precedes
+  CAS-live startup convergence; ordinary handoff scanning still follows it. Pending proofs block
+  final shutdown readiness and successful pending preservation. If shutdown cannot settle them,
+  it reports failed shutdown and retains custody rather than completing process exit.
 
 - `beryl-app` contributes one complete unpublished app service graph to the process-wide same-home
   replacement. Before candidate construction, the old graph fences admission and disposes its

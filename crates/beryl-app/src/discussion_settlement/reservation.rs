@@ -13,13 +13,25 @@ pub struct DiscussionParentDispatchReservation {
     turn_id: SyndicTurnId,
     flight: Arc<Flight>,
     permit: ProcessExecutionPermit,
+    generation: beryl_home_store::HomeGeneration,
 }
 
 #[must_use]
 pub struct ReservedDiscussionNondispatch {
     reservation: DiscussionParentDispatchReservation,
-    evidence: DiscussionParentNondispatch,
-    last: Weak<Attempt>,
+    proof: Arc<RetainedNondispatch>,
+    _owner: Arc<()>,
+}
+
+pub(super) struct RetainedNondispatch {
+    pub(super) home_id: BerylHomeId,
+    pub(super) generation: beryl_home_store::HomeGeneration,
+    pub(super) job_id: JobId,
+    pub(super) job_revision: JobRevision,
+    pub(super) evidence: DiscussionParentNondispatch,
+    pub(super) flight: Arc<Flight>,
+    pub(super) owner: Weak<()>,
+    pub(super) last: Mutex<Weak<Attempt>>,
 }
 
 impl DiscussionSettlementService {
@@ -31,6 +43,11 @@ impl DiscussionSettlementService {
     ) -> Result<DiscussionParentDispatchReservation, DiscussionSettlementError> {
         let permit = self.operations.permit();
         permit.commit(|| ())?;
+        let generation = self
+            .store
+            .health()
+            .generation()
+            .ok_or(DiscussionSettlementError::ForeignHome)?;
         let flight = Arc::new(self.operations.acquire(job_id)?);
         let access = Access::Ordinary(&self.store);
         let revision = access.revision()?;
@@ -83,6 +100,7 @@ impl DiscussionSettlementService {
             turn_id,
             flight,
             permit,
+            generation,
         })
     }
 }
@@ -97,10 +115,24 @@ impl DiscussionParentDispatchReservation {
         {
             return Err(DiscussionSettlementError::IdentityMismatch);
         }
+        let owner = Arc::new(());
+        let proof = Arc::new(RetainedNondispatch {
+            home_id: self.service.store.home_id(),
+            generation: self.generation,
+            job_id: self.job_id,
+            job_revision: self.job_revision,
+            evidence,
+            flight: Arc::clone(&self.flight),
+            owner: Arc::downgrade(&owner),
+            last: Mutex::new(Weak::new()),
+        });
+        self.flight
+            .custody()?
+            .retain_nondispatch(self.job_id, Arc::clone(&proof));
         Ok(ReservedDiscussionNondispatch {
             reservation: self,
-            evidence,
-            last: Weak::new(),
+            proof,
+            _owner: owner,
         })
     }
 }
@@ -110,7 +142,12 @@ impl ReservedDiscussionNondispatch {
         &mut self,
         cancellation: CommandCancellation,
     ) -> Result<PreparedDiscussionSettlement<'_>, DiscussionSettlementError> {
-        if self.last.upgrade().is_some() {
+        let mut last = self
+            .proof
+            .last
+            .lock()
+            .map_err(|_| DiscussionSettlementError::CustodyUnavailable)?;
+        if last.upgrade().is_some() {
             return Err(DiscussionSettlementError::DuplicateIdentity);
         }
         let reservation = &self.reservation;
@@ -118,12 +155,12 @@ impl ReservedDiscussionNondispatch {
             &reservation.service,
             reservation.job_id,
             reservation.job_revision,
-            self.evidence.clone(),
+            self.proof.evidence.clone(),
             cancellation,
             Arc::clone(&reservation.flight),
             reservation.permit.clone(),
         )?;
-        self.last = Arc::downgrade(&prepared.audit.0);
+        *last = Arc::downgrade(&prepared.audit.0);
         Ok(prepared)
     }
 }

@@ -169,6 +169,16 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   unresolved command custody suppresses further execution. The ordinary execution path checks the
   exact generated input, parent turn and `starting_parent` job before dispatch. General execution
   wakes do not authorize a retryable job; explicit retry resumes the same admitted parent.
+- Once exact nondispatch is known, its existing reconciliation slot retains the proof independently
+  of the ordinary worker until cancellation and retryable failure commit atomically. Cancellation,
+  process fencing, read failure and a known noncommit preserve that proof; a submitted uncertain
+  command additionally preserves its original reconciliation audit. No unsubmitted command is
+  classified as indeterminate. Same-process home replacement first settles retained nondispatch
+  evidence through fresh candidate authority, before CAS-live incomplete convergence and the
+  ordinary handoff scan. Contradictory or unresolved evidence blocks that recovery prefix.
+  This process-owned evidence adds no crash-persistent journal: a new process has only durable
+  evidence and obeys the existing unknown-dispatch rule. Orderly disposal must not discard an
+  unsettled proof as successful cleanup.
 - If parent `turn/start` may have been dispatched but its response is unavailable, the parent turn is
   never replayed automatically. Proven loss of its execution session converges that parent turn to
   incomplete, moves the job to `terminal_failed`, leaves the discussion unarchived, and releases
@@ -227,14 +237,16 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Each decoded job record is released after reconciliation or bounded scheduler admission, and the
   page plus its decoded-byte accounting is released before the next cursor request. Cancellation,
   store invalidation, and startup failure release the current page, queued task ownership, and
-  reconciliation slot; restart resumes from durable job state rather than retained scan memory.
+  reconciliation slot except for required process-owned command or nondispatch custody; restart
+  resumes from durable job state rather than retained scan memory.
 - Recovery reconciles each live job with discussion revision, composer gate, parent existence, parent accepted-input identity, parent turn identity, CAS binding, and exact active-turn records.
 - Recovery requires the handoff composer gate for every live latest attempt and no handoff composer gate after `terminal_failed`; archived readonly behavior derives separately from the succeeded attempt's archive metadata.
 - Recovery advances an already completed durable step instead of repeating it.
 - Unknown CAS terminal state remains unresolved until exact evidence or the CAS-live recovery contract classifies the turn incomplete; it never causes duplicate delivery.
 - Job workers, retry tasks, and per-parent schedulers obey the configured reconciliation-slot and
   ready-job capacities, are keyed by exact job id, release their slot and queue ownership on every
-  terminal, cancellation, or supersession path, and wake only for relevant durable, explicit-retry,
+  terminal, cancellation, or supersession path unless required outcome custody retains that same
+  slot, and wake only for relevant durable, explicit-retry,
   or runtime state changes.
 
 ## Coordination Participants
