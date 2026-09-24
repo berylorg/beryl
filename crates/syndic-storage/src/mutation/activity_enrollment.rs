@@ -46,6 +46,7 @@ pub struct ActivityEnrollmentRequest {
     execution: ExecutionBinding,
     head_revision: ActivityQueryRevision,
     token: Option<ActivityPeriodToken>,
+    retired_pending: Option<ActivityRetirementFingerprint>,
 }
 
 impl ActivityEnrollmentRequest {
@@ -59,6 +60,7 @@ impl ActivityEnrollmentRequest {
             execution,
             head_revision,
             token: None,
+            retired_pending: None,
         }
     }
     pub fn reuse(
@@ -72,7 +74,13 @@ impl ActivityEnrollmentRequest {
             execution,
             head_revision,
             token: Some(token.clone()),
+            retired_pending: None,
         }
+    }
+
+    pub fn replace_retired_pending(mut self, fingerprint: ActivityRetirementFingerprint) -> Self {
+        self.retired_pending = Some(fingerprint);
+        self
     }
 }
 

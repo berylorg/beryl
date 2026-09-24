@@ -21,7 +21,7 @@ pub(super) fn command(completed: bool) -> ProviderItemV1 {
     })
 }
 
-fn retire(f: &mut Fixture, running: usize) -> ActivityQueryHeadRecord {
+pub(super) fn retire(f: &mut Fixture, running: usize) -> ActivityQueryHeadRecord {
     let source = establish_turn(&f.store, f.storage.clone(), id(30), f.turn, timestamp(101));
     admit_event(
         &f.store,

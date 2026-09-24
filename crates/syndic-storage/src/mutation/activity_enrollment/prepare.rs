@@ -57,6 +57,34 @@ impl SyndicStorage {
             },
         };
         let same_period = old_head.work_period() == token.period;
+        let replace_pending = if let Some(fingerprint) = &request.retired_pending {
+            if same_period
+                || old_head.source() != Some(request.source)
+                || !fingerprint.matches(store.home_id(), &old_head)
+                || (old_head.lifecycle() == ProjectionLifecycle::Current
+                    && !old_head.source_active())
+                || state.lifecycle() != TurnLifecycle::Pending
+                || state.source_event_count() != 0
+            {
+                return Err(invalid());
+            }
+            let proof = self
+                .pending_dispatch_evidence(store, thread_id, limit())?
+                .ok_or_else(invalid)?;
+            if proof.turn_id() != request.source.turn_id()
+                || proof.state_revision() != state.revision()
+                || proof.selected_path() != thread.selected_path()
+                || !matches!(
+                    proof.dispatch_provenance(),
+                    TurnDispatchProvenance::Unattempted | TurnDispatchProvenance::Cancelled(_)
+                )
+            {
+                return Err(invalid());
+            }
+            true
+        } else {
+            false
+        };
         let next_member = ActivityQuerySourceRecord::new(
             thread_id,
             token.period,
@@ -84,7 +112,7 @@ impl SyndicStorage {
             unchanged(store, expected_home)?;
             return Ok(ActivityEnrollmentPreparation::AlreadyEnrolled(token));
         }
-        if old_head.source_active()
+        if (!replace_pending && old_head.source_active())
             || old_head.running_row_count() != 0
             || state.source_event_count() != 0
             || (same_period && old_head.lifecycle() != ProjectionLifecycle::Current)
@@ -116,8 +144,9 @@ impl SyndicStorage {
                     || previous_turn.id() != source.turn_id()
                     || previous_turn.origin_thread_id() != thread_id
                     || state.turn_id() != source.turn_id()
-                    || !state.lifecycle().is_proven_terminal()
-                    || (!stale && member.active())
+                    || (!replace_pending && !state.lifecycle().is_proven_terminal())
+                    || (!replace_pending && !stale && member.active())
+                    || (replace_pending && !member.active())
                     || member.source() != source
                     || member.source_frontier() > state.source_event_count()
                     || (!stale && member.source_frontier() != state.source_event_count())

@@ -910,3 +910,25 @@ checks and independent review passed. The historical proof includes a real Start
 canonical completion, scrub before and after fresh enrollment, and rejection of a forged frame
 reference. The deliberate app compilation gap remains until runtime producers carry actual
 enrollment and lifetime authority; test-only tokens cannot satisfy that integration gate.
+
+Runtime integration exposed an enrolled-but-undispatched predecessor that terminal-only enrollment
+cannot replace. CAS-live pending preservation expressly retains the same canonical turn and forbids
+invented terminal history; managed-runtime retry only revalidates the target and wakes execution.
+The existing generated-input preparation regression preserves pending evidence across that retry.
+Enrollment nevertheless rejected every active/nonterminal predecessor in `activity_enrollment/prepare.rs`.
+The bounded correction is explicit retired-head replacement for that same pending source, using
+the full existing unattempted/authenticated-cancelled dispatch proof and a fresh period. Possibly
+dispatched sources retain their existing convergence requirement. This is a separate storage
+prerequisite, not permission to reuse a retired token or bypass live runtime retirement.
+The unaccepted runtime integration sketch was removed before proceeding. Its unconditional
+per-runtime reconciliation lookup also showed why original-attempt custody must distinguish live
+settlement from replacement settlement: the latter must discard an old committed token even when
+the durable home generation is unchanged.
+
+Retired-pending replacement is accepted after review required active pending membership and an
+active root on Current heads; otherwise replacement could preserve an invalid inactive pending
+member. The full enrollment run `5553f4b0-bc0c-46e2-b050-bd6002e2febb` passed 18 of 19 tests;
+its new fault test incorrectly used normal reads after injected home failure. Recovery candidate
+access corrects that test. Focused run `08a11e02-06b8-4ae0-823c-418ce544111b` passed all four
+replacement cases, including the added old completed-row preservation case, for 20 distinct
+passing enrollment cases. Independent review accepted the correction and exact revision fence.

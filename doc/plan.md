@@ -73,14 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 560: Require Exact Storage Activity Producer Qualification (finished)
+# Phase 561: Re-enroll An Undispatched Source After Runtime Retirement (finished)
 
-Accepted independently reviewed exact producer qualification, canonical-only retirement and
-admission retention. Storage test-target checks and 193 distinct focused regressions passed after
-fixture reconciliation, including historical-row scrub and corruption rejection.
+Accepted independently reviewed retired-pending replacement with exact nondispatch authentication
+and preserved canonical identity and old-period rows. All 20 distinct enrollment regressions passed
+across the full and corrected focused runs, including fault recovery and whole-home scrub.
 [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-records the validator correction. The explicit app API cutover gap remains until 557 supplies
-runtime-owned qualification; storage acceptance does not close it.
+records the prerequisite and review correction. The app API cutover gap remains until 557.
 
 # Phase 557: Connect Runtime-Owned Activity Producers (wip)
 
@@ -91,6 +90,9 @@ Replace per-turn resets with exact enrollment, preserve current canonical/Activi
 ended-runtime canonical terminal custody, and fence retirement/replacement. Verify across-turn and
 cross-thread retention, concurrent first enrollment, failure/reconciliation and joined disposal
 with real storage/runtime tests and independent review before claiming producer readiness.
+The enrolled-but-undispatched retry prerequisite is accepted. Bind unresolved
+enrollment settlement to its original runtime attempt; replacement settlement discards the old
+token and cannot publish it into the fresh attempt's token slot.
 
 # Phase 558: Establish The Bounded Activity Service (pending)
 

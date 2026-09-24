@@ -88,6 +88,12 @@ Preserve exact runtime, root, process, Syndic-thread, CAS-thread, turn, authenti
   its first current-period activity publication, and does not itself launch CAS or dispatch a turn.
   Subsequent turns and other threads on that runtime reuse the proven token. The immutable thread
   runtime/root binding prevents a thread from switching between concurrent runtime periods.
+- A runtime may end after enrollment commits but before provider dispatch. After its original
+  enrollment custody settles, the replacement preserves the same proven-undispatched pending turn
+  and explicitly replaces that source's retired Activity period using exact head and pending-dispatch
+  evidence. It allocates or reuses only its own proven token. It cannot reuse the ended attempt's
+  token, manufacture terminal history, or treat activated provenance without a CAS-turn id as
+  nondispatch. The storage package owns bounded authentication and atomic period replacement.
 - Foreground turns and bounded background operations use separate connections when sharing one would delay foreground streaming or terminal handling.
 - Every connection is created with its fixed parser, queue, payload, page, and concurrency bounds before reading its first byte. A request-only connection cannot later become a foreground capture connection.
 - Status and model lists remain cursor-paged and revision-bound; the `beryl-app` runtime

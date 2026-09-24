@@ -1,6 +1,8 @@
 #![cfg(feature = "test-faults")]
 #[path = "activity_enrollment/corruption.rs"]
 mod corruption;
+#[path = "activity_enrollment/pending_replacement.rs"]
+mod pending_replacement;
 #[path = "activity_enrollment/producer.rs"]
 mod producer;
 #[path = "activity_enrollment/recovery.rs"]

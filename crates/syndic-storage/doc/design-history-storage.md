@@ -311,6 +311,18 @@ Ordinary turn creation does not reset the collection. Current live mutation requ
 enrollment, while explicit ended-runtime canonical mutation cannot update a successor collection.
 These operations retain the V7 Activity field widths, family versions and key/value encodings.
 
+Fresh-period enrollment may explicitly replace an ended period's same pending source without
+changing its canonical identity or content. The caller supplies the exact retired-head fingerprint
+and owns proof that its previous runtime lifetime ended. Storage authenticates the fingerprint,
+head and membership together with the complete bounded pending-dispatch proof: the exact selected
+turn remains Pending with no source events and has unattempted or authenticated cancelled dispatch
+provenance. Activated or possibly dispatched provenance is rejected even without a CAS-turn id.
+The replacement selects an empty fresh period and preserves old-period rows and memberships;
+ordinary enrollment without this explicit replacement claim retains its terminal-predecessor rule.
+Reusing the retired period, changing source/home/head, or changing pending authority before the
+exact-revision command commits is rejected. Original uncertain enrollment custody must be settled
+before replacement; an ended attempt's token is never published as its replacement's token.
+
 Activity-producing mutation envelopes require explicit qualification separately from normalized
 canonical source-event identity. Current qualification carries the opaque home/runtime period token
 and exact root source; the writer authenticates it against the registered home, immutable thread
