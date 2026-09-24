@@ -73,13 +73,14 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 559: Preserve Activity Enrollment Custody Across Service Disposal (finished)
+# Phase 560: Require Exact Storage Activity Producer Qualification (finished)
 
-Accepted independently reviewed process-owned bounded reservations and exact registry/witness
-candidate settlement without retired token publication. Nine real-storage custody/fault cases and
-the app check passed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-records the lifecycle correction. Runtime attachment remains in 557; process-root and final shutdown
-mounting remain in 423.
+Accepted independently reviewed exact producer qualification, canonical-only retirement and
+admission retention. Storage test-target checks and 193 distinct focused regressions passed after
+fixture reconciliation, including historical-row scrub and corruption rejection.
+[Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
+records the validator correction. The explicit app API cutover gap remains until 557 supplies
+runtime-owned qualification; storage acceptance does not close it.
 
 # Phase 557: Connect Runtime-Owned Activity Producers (wip)
 

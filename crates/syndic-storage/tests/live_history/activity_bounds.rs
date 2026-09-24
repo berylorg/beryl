@@ -115,7 +115,7 @@ fn completed_retention_keeps_exact_newest_prefix_within_both_caps() {
             .fixture_activity_query_entry_count(
                 &store,
                 thread,
-                ActivityWorkPeriod::FIRST,
+                head.work_period(),
                 CursorReadLimits::new(300, 1_000_000).unwrap(),
             )
             .unwrap(),
@@ -250,7 +250,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
             .fixture_activity_query_entry_count(
                 &store,
                 thread,
-                ActivityWorkPeriod::FIRST,
+                active_head.work_period(),
                 CursorReadLimits::new(64, 1_000_000).unwrap(),
             )
             .unwrap(),
@@ -294,7 +294,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
             .fixture_activity_query_entry_count(
                 &store,
                 thread,
-                ActivityWorkPeriod::FIRST,
+                active_head.work_period(),
                 CursorReadLimits::new(64, 1_000_000).unwrap(),
             )
             .unwrap(),
@@ -303,7 +303,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
     );
     converge_and_release_terminal_history(&store, storage.clone(), thread, turn);
 
-    submit_current_draft(
+    let next_turn = submit_current_draft(
         &store,
         storage.clone(),
         thread,
@@ -312,12 +312,19 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         "next question",
         timestamp(52),
     );
+    assert_eq!(
+        storage
+            .activity_query_head(&store, thread, limit())
+            .unwrap(),
+        Some(terminal_head.clone())
+    );
+    let _ = support::enroll_fixture_activity(&store, &storage, thread, next_turn);
     let next = storage
         .activity_query_head(&store, thread, limit())
         .unwrap()
         .unwrap()
         .clone();
-    assert_eq!(next.work_period(), ActivityWorkPeriod::new(2).unwrap());
+    assert!(next.work_period() > active_head.work_period());
     assert_eq!(next.logical_row_count(), 0);
     assert!(matches!(
         storage.activity_query_page(
@@ -350,10 +357,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
         .unwrap()
         .unwrap()
         .clone();
-    assert_eq!(
-        reopened_head.work_period(),
-        ActivityWorkPeriod::new(2).unwrap()
-    );
+    assert_eq!(reopened_head.work_period(), next.work_period());
     assert!(
         reopened_storage
             .activity_query_page(
@@ -371,7 +375,7 @@ fn activity_pages_retire_stranded_rows_and_roll_work_periods_without_rewrites() 
             .fixture_activity_query_entry_count(
                 &reopened,
                 thread,
-                ActivityWorkPeriod::FIRST,
+                active_head.work_period(),
                 CursorReadLimits::new(64, 1_000_000).unwrap(),
             )
             .unwrap(),

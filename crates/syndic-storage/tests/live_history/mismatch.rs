@@ -236,7 +236,16 @@ fn segmented_completion_mismatch_retains_live_narrative_and_blocks_recovery_afte
     );
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), rejected),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            rejected.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                rejected.thread_id(),
+                rejected.turn_id(),
+            ),
+        ),
     ) else {
         panic!("expected definitive terminal-item audit rejection");
     };

@@ -888,3 +888,25 @@ disposal, cancellation, candidate abandonment and retry, exact-old physical writ
 foreign-home rejection, and registry-terminal natural-read failure or disagreement. The app check
 passed and independent review accepted ownership and lock ordering. The component retains no
 service capability and does not yet claim runtime attachment or complete graph shutdown mounting.
+
+Qualified storage mutations now separate normalized canonical events from Current, Retired and
+Unenrolled Activity envelopes. Admission, promotion, generated parent turns and compaction
+continuations preserve existing Activity heads. Retired canonical progress stales only the exact
+selected home/period/root and preserves historical rows. Review caught that the old validator
+still demanded latest canonical state and physically retained running rows after bounded cleanup.
+Stale and superseded entries now authenticate their immutable source frames; source memberships
+may lag canonical progress while retaining exact identities and monotonic frontiers. Current
+projections retain exact validation. Missing retirement-owner heads are errors, not unenrollment.
+
+Test fixtures also encoded the removed per-turn resets and fixed numeric periods. Explicit test
+enrollment and returned period identities replace those assumptions. Sixteen enrollment/producer
+cases passed across `f65c448a-e9fc-4291-9e28-cf21f383129d`,
+`3dfc457d-869d-4e11-b218-efca3f01a3d3` and `5d5f0300-6e89-4eb4-bf99-9bc7cde33e92`.
+The latter run passed all 51 selected cases after fixture correction; unchanged promotion,
+binding and compaction cases passed in `a7b1369c-6654-4814-9557-5fbcf5d941dc`.
+Another 33 admission, generated-parent and awaiting-terminal cases passed in
+`0a30a00a-9c8d-4607-a402-51875a8f23b4`, giving 193 distinct passing cases. Storage test-target
+checks and independent review passed. The historical proof includes a real Started row, retired
+canonical completion, scrub before and after fresh enrollment, and rejection of a forged frame
+reference. The deliberate app compilation gap remains until runtime producers carry actual
+enrollment and lifetime authority; test-only tokens cannot satisfy that integration gate.

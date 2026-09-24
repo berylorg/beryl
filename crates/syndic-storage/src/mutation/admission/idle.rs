@@ -3,10 +3,9 @@ use beryl_home_store::{DomainReader, MutationBuilder};
 use beryl_model::{DiscussionContextOwnerId, ProjectionRevision};
 
 use crate::{
-    ActivityQueryHeadRecord, ActivityQuerySource, ActivityQuerySourceRecord, BindingHeadRecord,
-    BindingLifecycle, BindingRecord, BindingState, CanonicalItemRecord, ConversationParent,
-    DraftRecord, DraftSubmissionIntent, HistorySummaryRecord, InputGateRecord, InputGateState,
-    ProjectionLifecycle, SelectedPathProof, ThreadRecord, TranscriptViewHeadRecord,
+    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, CanonicalItemRecord,
+    ConversationParent, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord, InputGateRecord,
+    InputGateState, ProjectionLifecycle, SelectedPathProof, ThreadRecord, TranscriptViewHeadRecord,
     TurnChildIndexRecord, TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle,
     TurnRecord, TurnStateRecord, TurnStateRevision, codec::Family, domain::SyndicDomain,
 };
@@ -141,42 +140,6 @@ pub(super) fn records(
         base.gate.live_next_turn_count(),
         base.gate.live_logical_utf8_bytes(),
     )?;
-    let current_activity = required::<ActivityQueryHeadsFamily>(reader, &thread.id())?;
-    if current_activity.source_active()
-        || current_activity.logical_row_count() != current_activity.completed_row_count()
-    {
-        return Err(SyndicMutationError::ActivityQueryConflict);
-    }
-    let work_period = if current_activity.source().is_none() {
-        current_activity.work_period()
-    } else {
-        current_activity.work_period().checked_next()?
-    };
-    let activity_source_key = ActivityQuerySource::new(thread.id(), turn_id);
-    let activity_head = ActivityQueryHeadRecord::new(
-        thread.id(),
-        work_period,
-        Some(activity_source_key),
-        true,
-        0,
-        current_activity.revision().checked_next()?,
-        1,
-        0,
-        0,
-        0,
-        0,
-        None,
-        ProjectionLifecycle::Current,
-    )?;
-    let activity_source = ActivityQuerySourceRecord::new(
-        thread.id(),
-        work_period,
-        activity_source_key,
-        None,
-        0,
-        true,
-        None,
-    );
     let binding_head = required::<BindingHeadsFamily>(reader, &thread.id())?;
     let binding_revision = binding_head.revision().checked_next()?;
     if point::<BindingsFamily>(
@@ -226,8 +189,6 @@ pub(super) fn records(
             item_index,
             transcript_head,
             transcript_build,
-            activity_head,
-            activity_source,
             binding,
             binding_head,
             context_move,
@@ -272,19 +233,6 @@ impl IdleRecords {
                 build,
             )?;
         }
-        mutations.put::<ActivityQueryHeadsCodec>(
-            &records.activity_head.thread_id(),
-            &records.activity_head,
-        )?;
-        mutations.put::<ActivityQuerySourcesCodec>(
-            &ActivityQuerySourceKey {
-                thread: records.activity_source.thread_id(),
-                work_period: records.activity_source.work_period(),
-                source_thread: records.activity_source.source().thread_id(),
-                source_turn: records.activity_source.source().turn_id(),
-            },
-            &records.activity_source,
-        )?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: records.binding.thread_id(),

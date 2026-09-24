@@ -43,7 +43,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     let owner = id(30);
     let child = id(36);
     converge_and_release_terminal_history(&store, storage.clone(), owner, populated::source_turn());
-    submit_current_draft(
+    let owner_turn = submit_current_draft(
         &store,
         storage.clone(),
         owner,
@@ -52,6 +52,7 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
         "owner continues",
         timestamp(10),
     );
+    let _ = support::enroll_fixture_activity(&store, &storage, owner, owner_turn);
     let submitted_child_item = SyndicItemId::from_bytes([202; 16]);
     let child_turn = submit_current_draft(
         &store,
@@ -115,7 +116,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     );
     let error = match execute(
         &store,
-        storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), nonterminal),
+        storage.publish_activity_child_handoff(
+            storage.revision(&store).unwrap(),
+            nonterminal,
+            support::fixture_activity(&store, &storage, owner, head.source().unwrap().turn_id()),
+        ),
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed nonterminal handoff, got {outcome:?}"),
@@ -188,7 +193,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     );
     let error = match execute(
         &store,
-        storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), existing),
+        storage.publish_activity_child_handoff(
+            storage.revision(&store).unwrap(),
+            existing,
+            support::fixture_activity(&store, &storage, owner, head.source().unwrap().turn_id()),
+        ),
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed preexisting handoff, got {outcome:?}"),
@@ -236,7 +245,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     );
     let error = match execute(
         &store,
-        storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), invalid),
+        storage.publish_activity_child_handoff(
+            storage.revision(&store).unwrap(),
+            invalid,
+            support::fixture_activity(&store, &storage, owner, head.source().unwrap().turn_id()),
+        ),
     ) {
         CommandOutcome::NotCommitted { evidence } => evidence,
         outcome => panic!("expected not-committed invalid handoff, got {outcome:?}"),
@@ -264,7 +277,11 @@ fn child_handoff_uses_exact_owner_source_range_and_revision_bound_source_pages()
     );
     match execute(
         &store,
-        storage.publish_activity_child_handoff(storage.revision(&store).unwrap(), request),
+        storage.publish_activity_child_handoff(
+            storage.revision(&store).unwrap(),
+            request,
+            support::fixture_activity(&store, &storage, owner, head.source().unwrap().turn_id()),
+        ),
     ) {
         CommandOutcome::Committed {
             later_failure: None,

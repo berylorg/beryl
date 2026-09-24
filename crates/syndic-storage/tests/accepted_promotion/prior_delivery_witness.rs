@@ -187,7 +187,15 @@ fn prior_retry_witness_survives_projection_loss_terminal_release_promotion_and_r
     )
     .unwrap();
     assert!(matches!(
-        store.execute_current(storage.current_admit_live_source_event(terminal)),
+        store.execute_current(storage.current_admit_live_source_event(
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id()
+            )
+        )),
         CommandOutcome::Committed {
             later_failure: None,
             ..

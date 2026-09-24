@@ -162,11 +162,17 @@ fn claimed_stop_reopens_then_converges_through_startup_abandonment_with_queued_w
         StopOperationTransitionStatus::Exact
     );
     let (_, abandonment) = super::abandonment::startup_abandonment(&fixture);
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_abandon_stop_operation(abandonment.clone()),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_abandon_stop_operation(
+            abandonment.clone(),
+            crate::support::retired_activity(
+                &fixture.store,
+                &fixture.storage,
+                abandonment.target().thread_id(),
+                abandonment.target().turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -204,11 +210,17 @@ fn pending_stop_without_activation_reopens_and_converges_through_startup_abandon
     fixture.admit_stop();
     let fixture = fixture.reopen();
     let (_, abandonment) = super::abandonment::startup_abandonment(&fixture);
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_abandon_stop_operation(abandonment.clone()),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_abandon_stop_operation(
+            abandonment.clone(),
+            crate::support::retired_activity(
+                &fixture.store,
+                &fixture.storage,
+                abandonment.target().thread_id(),
+                abandonment.target().turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

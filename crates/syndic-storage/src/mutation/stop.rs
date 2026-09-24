@@ -358,10 +358,15 @@ impl SyndicStorage {
         &self,
         expected_domain_revision: DomainRevision,
         request: AbandonStopOperation,
+        activity: crate::ActivitySourceQualification,
     ) -> MutationContribution {
         self.handle.contribution(
             expected_domain_revision,
-            AbandonStopOperationMutation { request },
+            AbandonStopOperationMutation {
+                request,
+                activity,
+                home: self.home_id,
+            },
         )
     }
 
@@ -370,8 +375,12 @@ impl SyndicStorage {
     pub fn current_abandon_stop_operation(
         &self,
         request: AbandonStopOperation,
+        activity: crate::ActivitySourceQualification,
     ) -> CurrentDomainCommand {
-        self.handle
-            .current_command(AbandonStopOperationMutation { request })
+        self.handle.current_command(AbandonStopOperationMutation {
+            request,
+            activity,
+            home: self.home_id,
+        })
     }
 }

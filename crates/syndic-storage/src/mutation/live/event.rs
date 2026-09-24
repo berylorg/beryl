@@ -245,6 +245,8 @@ impl LiveSourceEventMutation {
         };
         let activity = activity::advance(
             reader,
+            self.home,
+            &self.activity,
             thread.id(),
             turn.id(),
             request.sequence,

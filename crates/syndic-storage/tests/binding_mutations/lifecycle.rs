@@ -65,6 +65,7 @@ fn complete_active_terminal(
                 TurnTerminalOutcome::Complete,
                 timestamp(7),
             ),
+            crate::support::fixture_activity(store, storage, fixture.thread, fixture.turn),
         ),
     );
     fixture
@@ -211,11 +212,17 @@ fn queued_admission_descendant_preserves_activation_reconciliation() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        admitted.composer_admission().unwrap().expected_thread_revision(),
+        admitted
+            .composer_admission()
+            .unwrap()
+            .expected_thread_revision(),
         ThreadRevision::new(1).unwrap()
     );
     assert_eq!(
-        admitted.composer_admission().unwrap().expected_gate_revision(),
+        admitted
+            .composer_admission()
+            .unwrap()
+            .expected_gate_revision(),
         InputGateRevision::new(1).unwrap()
     );
 
@@ -423,7 +430,16 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
     );
     let outcome = execute_outcome(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            source_less.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                source_less.thread_id(),
+                source_less.turn_id(),
+            ),
+        ),
     );
     assert!(matches!(
         typed_error(&outcome),
@@ -460,6 +476,7 @@ fn exact_terminal_cas_authority_advances_native_count_once() {
                 TurnTerminalOutcome::Complete,
                 timestamp(7),
             ),
+            crate::support::fixture_activity(&store, &storage, fixture.thread, fixture.turn),
         ),
     );
     let binding = storage
@@ -578,7 +595,16 @@ fn source_less_terminal_requires_projection_unbinding() {
     .unwrap();
     let outcome = execute_outcome(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), terminal.clone()),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     );
     assert!(matches!(
         typed_error(&outcome),
@@ -603,7 +629,16 @@ fn source_less_terminal_requires_projection_unbinding() {
     );
     execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), terminal),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     );
     assert_eq!(
         storage

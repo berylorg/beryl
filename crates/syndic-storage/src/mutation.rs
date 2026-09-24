@@ -18,6 +18,8 @@ use crate::{
 mod accepted;
 mod activity;
 mod activity_enrollment;
+pub(crate) mod activity_qualification;
+pub use activity_qualification::{ActivityRetirementFingerprint, ActivitySourceQualification};
 pub use activity_enrollment::{
     ACTIVITY_ENROLLMENT_CLEANUP_ROWS, ActivityEnrollmentPreparation, ActivityEnrollmentRequest,
     ActivityEnrollmentStatus, ActivityEnrollmentWitness, ActivityPeriodToken,

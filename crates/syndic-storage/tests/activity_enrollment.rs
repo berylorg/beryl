@@ -1,6 +1,8 @@
 #![cfg(feature = "test-faults")]
 #[path = "activity_enrollment/corruption.rs"]
 mod corruption;
+#[path = "activity_enrollment/producer.rs"]
+mod producer;
 #[path = "activity_enrollment/recovery.rs"]
 mod recovery;
 #[path = "activity_enrollment/retention.rs"]
@@ -58,11 +60,11 @@ impl Fixture {
             "next",
             timestamp(100),
         );
-        // Supply the target admission boundary while ordinary producers are integrated separately.
-        commit(
-            &store,
-            storage.clone(),
-            batch([FixtureRecord::ActivityQueryHead(prior)]),
+        assert_eq!(
+            storage
+                .activity_query_head(&store, id(30), limit())
+                .unwrap(),
+            Some(prior)
         );
         Self {
             store,

@@ -202,7 +202,16 @@ fn restart_abandons_an_empty_retained_route_with_later_unknown_interval_work() {
     .unwrap();
     assert_clean(execute(
         &reopened,
-        storage.admit_live_source_event(storage.revision(&reopened).unwrap(), terminal),
+        storage.admit_live_source_event(
+            storage.revision(&reopened).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &reopened,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     ));
     converge_and_release_terminal_history(&reopened, &storage, thread, turn);
     let gate = storage
@@ -293,7 +302,15 @@ fn uncertain_terminal_fault_cuts_recover_only_prior_or_exact_whole_states() {
         } = fixture;
         match (
             point,
-            store.execute_current(storage.current_admit_live_source_event(event.clone())),
+            store.execute_current(storage.current_admit_live_source_event(
+                event.clone(),
+                crate::support::fixture_activity(
+                    &store,
+                    &storage,
+                    event.thread_id(),
+                    event.turn_id(),
+                ),
+            )),
         ) {
             (
                 FaultPoint::AfterCommitBeforePersist,

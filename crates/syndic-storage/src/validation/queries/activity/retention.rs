@@ -17,6 +17,9 @@ pub(super) fn validate_retained_projection(
     {
         return invariant("activity-query completed retention exceeds its bounds");
     }
+    if head.lifecycle() != crate::ProjectionLifecycle::Current {
+        return Ok(());
+    }
     let mut first_excluded = None;
     scan_range::<ActivityQuerySourcesFamily>(
         reader,
@@ -85,6 +88,9 @@ fn validate_candidate(
         order,
     };
     if order.running() {
+        if !member.active() || head.source() != Some(member.source()) {
+            return Ok(());
+        }
         if point::<ActivityQueryEntriesFamily>(reader, &key)?.is_none() {
             return invariant("activity-query running source item has no exact entry");
         }

@@ -101,9 +101,16 @@ fn context_fixture(name: &str, marker: bool) -> ContextFixture {
     .unwrap();
     crate::recovery_support::execute(
         &store,
-        storage
-            .clone()
-            .admit_live_source_event(storage.clone().revision(&store).unwrap(), terminal),
+        storage.clone().admit_live_source_event(
+            storage.clone().revision(&store).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     );
     builder.finalize_turn(predecessor.turn);
     let baseline = storage

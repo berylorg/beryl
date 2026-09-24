@@ -70,11 +70,17 @@ fn classified_abandonment_converges_without_losing_queued_input() {
         StopOperationTransitionStatus::Prior
     );
 
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_abandon_stop_operation(request.clone()),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_abandon_stop_operation(
+            request.clone(),
+            crate::support::retired_activity(
+                &fixture.store,
+                &fixture.storage,
+                request.target().thread_id(),
+                request.target().turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -173,11 +179,17 @@ fn cause_join_racing_abandonment_requires_the_exact_new_revision() {
         current_abandonment.expected_gate_revision(),
         current_abandonment.expected_stop_revision(),
     );
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_abandon_stop_operation(current_abandonment),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_abandon_stop_operation(
+            current_abandonment.clone(),
+            crate::support::retired_activity(
+                &fixture.store,
+                &fixture.storage,
+                current_abandonment.target().thread_id(),
+                current_abandonment.target().turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

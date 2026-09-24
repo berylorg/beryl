@@ -42,6 +42,12 @@ pub(super) fn terminal_target(fixture: &Fixture, with_issue: bool) -> RepairRequ
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
     let terminal = fixture

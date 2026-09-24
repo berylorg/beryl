@@ -21,6 +21,12 @@ fn duplicate_start_issue_with_the_wrong_reason_is_rejected_atomically() {
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
     assert!(matches!(
@@ -68,6 +74,12 @@ fn legally_admissible_completion_only_observation_cannot_be_published_as_an_issu
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
     assert!(matches!(

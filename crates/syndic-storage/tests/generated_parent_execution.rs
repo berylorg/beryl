@@ -368,7 +368,16 @@ fn lost_dispatch_authority_settles_incomplete_without_inventing_cas_acceptance()
         .unwrap();
         support::discussion_input::committed(
             &store,
-            storage.admit_live_source_event(storage.revision(&store).unwrap(), event),
+            storage.admit_live_source_event(
+                storage.revision(&store).unwrap(),
+                event.clone(),
+                crate::support::fixture_activity(
+                    &store,
+                    &storage,
+                    event.thread_id(),
+                    event.turn_id(),
+                ),
+            ),
         );
         let proof = proven(&store, &storage, &request);
         assert_eq!(

@@ -30,7 +30,11 @@ fn publish_live_event(
     .unwrap();
     execute(
         store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+        storage.admit_live_source_event(
+            storage.revision(store).unwrap(),
+            event.clone(),
+            crate::support::fixture_activity(store, &storage, event.thread_id(), event.turn_id()),
+        ),
     );
 }
 

@@ -7,21 +7,21 @@ use beryl_model::{DiscussionContextOwnerId, DraftRevision};
 use crate::{
     AcceptedInputRecord, AcceptedNextSourceRecord, AcceptedOrderIndexRecord,
     AcceptedReadySourceRecord, AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord,
-    AcceptedRouteLeafRecord, ActivityQueryHeadRecord, ActivityQuerySourceRecord, BindingHeadRecord,
-    BindingRecord, CanonicalItemRecord, ContextEnvelopeRecord, DraftByThreadRecord,
-    DraftComposerMaterializationsFamily, DraftEditHistoryFrontierV1,
-    DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily, DraftEditHistoryPolicyV1,
-    DraftEditorCandidateSessionDisposeRequestV1, DraftEditorCandidateSessionLifecycleV1,
-    DraftEditorCandidateSessionRecordKeyV1, DraftEditorCandidateSessionRecordV1,
-    DraftEditorCandidateSessionsCodec, DraftEditorCandidateSessionsFamily,
-    DraftImageLabelProtectionHeadV1, DraftPieceRootRecordV1, DraftPieceRootsCodec,
-    DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1, DraftSubmissionIntent,
-    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelOriginSpanRecord, InputGateRecord,
-    PreparedCandidateDisposal, ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord,
-    TranscriptViewHeadRecord, TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord,
-    TurnStateRecord, authenticate_draft_edit_history_frontier_v1,
-    canonical_empty_draft_edit_history_v1, canonical_empty_draft_piece_root_v1,
-    canonical_empty_draft_root_operation_id_v1, prepare_candidate_disposal,
+    AcceptedRouteLeafRecord, BindingHeadRecord, BindingRecord, CanonicalItemRecord,
+    ContextEnvelopeRecord, DraftByThreadRecord, DraftComposerMaterializationsFamily,
+    DraftEditHistoryFrontierV1, DraftEditHistoryFrontiersCodec, DraftEditHistoryFrontiersFamily,
+    DraftEditHistoryPolicyV1, DraftEditorCandidateSessionDisposeRequestV1,
+    DraftEditorCandidateSessionLifecycleV1, DraftEditorCandidateSessionRecordKeyV1,
+    DraftEditorCandidateSessionRecordV1, DraftEditorCandidateSessionsCodec,
+    DraftEditorCandidateSessionsFamily, DraftImageLabelProtectionHeadV1, DraftPieceRootRecordV1,
+    DraftPieceRootsCodec, DraftPieceRootsFamily, DraftRecord, DraftRootHistoryPairV1,
+    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelAuthorityHeadV1,
+    ImageLabelOriginSpanRecord, InputGateRecord, PreparedCandidateDisposal,
+    ThreadParentIndexRecord, ThreadRecord, TranscriptBuildRecord, TranscriptViewHeadRecord,
+    TurnChildIndexRecord, TurnItemIndexRecord, TurnRecord, TurnStateRecord,
+    authenticate_draft_edit_history_frontier_v1, canonical_empty_draft_edit_history_v1,
+    canonical_empty_draft_piece_root_v1, canonical_empty_draft_root_operation_id_v1,
+    prepare_candidate_disposal,
 };
 
 pub(super) struct AcceptanceBase {
@@ -80,8 +80,6 @@ pub(super) fn reserve_acceptance_records(
     reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
     reservation.reserve_records::<HistorySummariesCodec>(1)?;
     reserve_input_gate(reservation)?;
-    reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
-    reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
     reservation.reserve_records::<BindingsCodec>(1)?;
     reservation.reserve_records::<BindingHeadsCodec>(1)?;
     reservation.reserve_records::<ContextEnvelopesCodec>(2)?;
@@ -348,8 +346,6 @@ pub(super) struct IdleSpecificRecords {
     pub(super) item_index: TurnItemIndexRecord,
     pub(super) transcript_head: TranscriptViewHeadRecord,
     pub(super) transcript_build: Option<TranscriptBuildRecord>,
-    pub(super) activity_head: ActivityQueryHeadRecord,
-    pub(super) activity_source: ActivityQuerySourceRecord,
     pub(super) binding: BindingRecord,
     pub(super) binding_head: BindingHeadRecord,
     pub(super) context_move: Option<(DiscussionContextOwnerId, ContextEnvelopeRecord)>,

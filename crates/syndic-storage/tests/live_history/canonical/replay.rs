@@ -28,7 +28,16 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         evidence: duplicate,
     } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), activation.clone()),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            activation.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                activation.thread_id(),
+                activation.turn_id(),
+            ),
+        ),
     )
     else {
         panic!("expected definitive duplicate-event rejection");
@@ -58,7 +67,16 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     .unwrap();
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), collision),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            collision.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                collision.thread_id(),
+                collision.turn_id(),
+            ),
+        ),
     ) else {
         panic!("expected definitive source-event collision rejection");
     };
@@ -82,7 +100,16 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     .unwrap();
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), out_of_order),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            out_of_order.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                out_of_order.thread_id(),
+                out_of_order.turn_id(),
+            ),
+        ),
     ) else {
         panic!("expected definitive source-event sequence rejection");
     };
@@ -198,7 +225,16 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
     );
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), closed_event),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            closed_event.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                closed_event.thread_id(),
+                closed_event.turn_id(),
+            ),
+        ),
     ) else {
         panic!("expected definitive terminal-turn closure rejection");
     };
@@ -273,7 +309,16 @@ fn replay_order_terminal_closure_and_frontier_finalization_are_exact() {
         evidence: duplicate_terminal,
     } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), terminal),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     )
     else {
         panic!("expected definitive duplicate-terminal rejection");

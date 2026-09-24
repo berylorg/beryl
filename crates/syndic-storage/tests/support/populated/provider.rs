@@ -304,6 +304,7 @@ impl ProviderItemFixture {
                             turn.observed_at,
                         )
                         .unwrap(),
+                        super::super::fixture_activity(store, storage, turn.thread, turn.turn),
                     ),
                 ),
                 &operation,

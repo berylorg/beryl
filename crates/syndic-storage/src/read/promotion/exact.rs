@@ -197,45 +197,6 @@ impl PromotionObservation {
                 "accepted-input promotion gate successor cannot be constructed",
             )
         })?;
-        let work_period = expected_activity_work_period(basis)?;
-        let source = ActivityQuerySource::new(expected_thread.id(), promotion.successor_turn_id());
-        let expected_activity_head = ActivityQueryHeadRecord::new(
-            expected_thread.id(),
-            work_period,
-            Some(source),
-            true,
-            0,
-            basis
-                .activity_head()
-                .revision()
-                .checked_next()
-                .map_err(|_| {
-                    SyndicReadError::Invariant(
-                        "accepted-input promotion activity revision is exhausted",
-                    )
-                })?,
-            1,
-            0,
-            0,
-            0,
-            0,
-            None,
-            ProjectionLifecycle::Current,
-        )
-        .map_err(|_| {
-            SyndicReadError::Invariant(
-                "accepted-input promotion activity successor cannot be constructed",
-            )
-        })?;
-        let expected_activity_source = ActivityQuerySourceRecord::new(
-            expected_thread.id(),
-            work_period,
-            source,
-            None,
-            0,
-            true,
-            None,
-        );
         let binding_revision = basis
             .binding_head()
             .revision()
@@ -303,11 +264,6 @@ impl PromotionObservation {
             &expected_summary,
             admission_count,
             draft_advance,
-        ) && activity_agrees(
-            self.activity_head.as_ref(),
-            self.activity_source.as_ref(),
-            &expected_activity_head,
-            &expected_activity_source,
         ) && self.successor_binding.as_ref() == Some(&expected_binding)
             && self.binding_head.as_ref() == Some(&expected_binding_head)
             && self.thread_parent_index == expected_parent_index)

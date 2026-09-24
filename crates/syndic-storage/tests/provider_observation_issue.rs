@@ -458,6 +458,12 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         fixture.storage.clone().admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
 
@@ -503,6 +509,12 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
         fixture.storage.clone().admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
     assert!(matches!(
@@ -530,10 +542,16 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     let collision_error = not_committed_command(execute(
         &fixture.store,
-        fixture
-            .storage
-            .clone()
-            .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), collision),
+        fixture.storage.clone().admit_live_source_event(
+            fixture.storage.revision(&fixture.store).unwrap(),
+            collision.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                collision.thread_id(),
+                collision.turn_id(),
+            ),
+        ),
     ));
     assert!(matches!(
         typed_error(&collision_error),
@@ -592,9 +610,16 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     let terminal_error = not_committed_command(execute(
         &reopened,
-        storage
-            .clone()
-            .admit_live_source_event(storage.revision(&reopened).unwrap(), rejected_terminal),
+        storage.clone().admit_live_source_event(
+            storage.revision(&reopened).unwrap(),
+            rejected_terminal.clone(),
+            crate::support::fixture_activity(
+                &reopened,
+                &storage,
+                rejected_terminal.thread_id(),
+                rejected_terminal.turn_id(),
+            ),
+        ),
     ));
     assert!(matches!(
         typed_error(&terminal_error),
@@ -618,9 +643,16 @@ fn duplicate_start_issue_is_exact_durable_and_does_not_replace_the_canonical_ite
     );
     committed_command(execute(
         &reopened,
-        storage
-            .clone()
-            .admit_live_source_event(storage.revision(&reopened).unwrap(), accepted_terminal),
+        storage.clone().admit_live_source_event(
+            storage.revision(&reopened).unwrap(),
+            accepted_terminal.clone(),
+            crate::support::fixture_activity(
+                &reopened,
+                &storage,
+                accepted_terminal.thread_id(),
+                accepted_terminal.turn_id(),
+            ),
+        ),
     ));
     let terminal_state = storage
         .clone()

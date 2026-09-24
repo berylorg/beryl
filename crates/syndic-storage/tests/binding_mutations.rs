@@ -1067,6 +1067,7 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
                 timestamp(7),
             )
             .unwrap(),
+            support::fixture_activity(&store, &storage, fixture.thread, fixture.turn),
         ),
     );
     let request = abandonment(&store, &storage, fixture.thread, false);
@@ -1122,7 +1123,16 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
     .unwrap();
     let outcome = execute_outcome(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), late_activation),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            late_activation.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                late_activation.thread_id(),
+                late_activation.turn_id(),
+            ),
+        ),
     );
     assert!(matches!(
         typed_error(&outcome),
@@ -1166,7 +1176,16 @@ fn retired_projection_rejects_late_activation_and_source_less_complete() {
     .unwrap();
     let outcome = execute_outcome(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less_complete),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            source_less_complete.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                source_less_complete.thread_id(),
+                source_less_complete.turn_id(),
+            ),
+        ),
     );
     assert!(matches!(
         typed_error(&outcome),
@@ -1386,8 +1405,14 @@ fn queued_input_survives_abandonment_and_rebinding_without_reactivation() {
         .accepted_input(&store, accepted, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(retained.route_generation().unwrap(), lost_route.generation());
-    assert_eq!(retained.composer_admission().unwrap().source_draft_id(), draft_id(73));
+    assert_eq!(
+        retained.route_generation().unwrap(),
+        lost_route.generation()
+    );
+    assert_eq!(
+        retained.composer_admission().unwrap().source_draft_id(),
+        draft_id(73)
+    );
     store
         .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
         .unwrap();
@@ -1443,6 +1468,7 @@ fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
                 timestamp(7),
             )
             .unwrap(),
+            support::fixture_activity(&store, &storage, fixture.thread, fixture.turn),
         ),
     );
     let request = abandonment(&store, &storage, fixture.thread, false);
@@ -1475,6 +1501,7 @@ fn reopen_rejects_idle_gate_leaving_abandoned_turn_blocking() {
                 timestamp(8),
             )
             .unwrap(),
+            support::retired_activity(&store, &storage, fixture.thread, fixture.turn),
         ),
     );
     let binding = storage

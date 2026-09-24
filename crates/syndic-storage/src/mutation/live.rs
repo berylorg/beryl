@@ -212,9 +212,16 @@ impl FinalizeNextTurnItem {
 impl SyndicStorage {
     /// Commits one exact source event after the home writer captures current physical revisions.
     #[must_use]
-    pub fn current_admit_live_source_event(&self, event: LiveSourceEvent) -> CurrentDomainCommand {
-        self.handle
-            .current_command(LiveSourceEventMutation { event })
+    pub fn current_admit_live_source_event(
+        &self,
+        event: LiveSourceEvent,
+        activity: crate::ActivitySourceQualification,
+    ) -> CurrentDomainCommand {
+        self.handle.current_command(LiveSourceEventMutation {
+            event,
+            activity,
+            home: self.home_id,
+        })
     }
 
     /// Commits one exact source event and its canonical/lifecycle effects atomically.
@@ -223,9 +230,16 @@ impl SyndicStorage {
         &self,
         expected_domain_revision: DomainRevision,
         event: LiveSourceEvent,
+        activity: crate::ActivitySourceQualification,
     ) -> MutationContribution {
-        self.handle
-            .contribution(expected_domain_revision, LiveSourceEventMutation { event })
+        self.handle.contribution(
+            expected_domain_revision,
+            LiveSourceEventMutation {
+                event,
+                activity,
+                home: self.home_id,
+            },
+        )
     }
 
     /// Finalizes or advances exactly one terminal turn-item frontier entry.
@@ -298,6 +312,8 @@ impl SyndicStorage {
 
 struct LiveSourceEventMutation {
     event: LiveSourceEvent,
+    activity: crate::ActivitySourceQualification,
+    home: beryl_model::BerylHomeId,
 }
 
 #[cfg(feature = "test-faults")]

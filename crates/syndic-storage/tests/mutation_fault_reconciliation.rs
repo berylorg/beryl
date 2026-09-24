@@ -402,7 +402,16 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     let error = rejected_syndic_error(
         execute(
             &store,
-            storage.admit_live_source_event(storage.revision(&store).unwrap(), mismatched),
+            storage.admit_live_source_event(
+                storage.revision(&store).unwrap(),
+                mismatched.clone(),
+                crate::support::fixture_activity(
+                    &store,
+                    &storage,
+                    mismatched.thread_id(),
+                    mismatched.turn_id(),
+                ),
+            ),
         ),
         "mismatched source item frame",
     );
@@ -431,7 +440,16 @@ fn live_items_require_the_exact_active_cas_turn_and_item_identity() {
     let error = rejected_syndic_error(
         execute(
             &store,
-            storage.admit_live_source_event(storage.revision(&store).unwrap(), wrong_item),
+            storage.admit_live_source_event(
+                storage.revision(&store).unwrap(),
+                wrong_item.clone(),
+                crate::support::fixture_activity(
+                    &store,
+                    &storage,
+                    wrong_item.thread_id(),
+                    wrong_item.turn_id(),
+                ),
+            ),
         ),
         "colliding CAS item frame",
     );

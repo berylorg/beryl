@@ -168,8 +168,6 @@ impl DomainMutation<SyndicDomain> for PromoteAcceptedInputMutation {
         reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
         reserve_input_gate(reservation)?;
-        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
-        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
         reservation.reserve_records::<BindingsCodec>(1)?;
         reservation.reserve_records::<BindingHeadsCodec>(1)?;
         reservation.reserve_records::<ThreadParentCodec>(1)?;

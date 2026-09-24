@@ -311,6 +311,34 @@ Ordinary turn creation does not reset the collection. Current live mutation requ
 enrollment, while explicit ended-runtime canonical mutation cannot update a successor collection.
 These operations retain the V7 Activity field widths, family versions and key/value encodings.
 
+Activity-producing mutation envelopes require explicit qualification separately from normalized
+canonical source-event identity. Current qualification carries the opaque home/runtime period token
+and exact root source; the writer authenticates it against the registered home, immutable thread
+execution, selected head and enrolled membership before atomic canonical/Activity publication.
+Live source events, stop abandonment and child-handoff publication share this rule; child handoff
+accepts current qualification only and separately authenticates its owner root.
+
+Canonical-only qualification names either a genuinely unenrolled source or an exact retirement
+fingerprint. A bounded ordinary or candidate typed read may capture the selected home/period/root
+fingerprint for already-authorized canonical recovery; it cannot construct a live period token.
+The fingerprint must name the canonical mutation's exact source. The writer stales only a still
+matching selected head, making it inactive with zero logical running rows while preserving completed
+data, membership and source frontier. A successor head is untouched. An unenrolled claim contradicting
+a matching current enrolled head is rejected, never silently treated as missing Activity authority.
+The app owns runtime retirement and publication fencing for this explicit recovery path.
+
+Whole-home validation distinguishes current projections from stale or superseded periods. Current
+members and rows must match canonical frontiers; retired members may lag monotonically, and their
+rows remain authenticated against the exact immutable source-event frame rather than a later
+canonical item snapshot. Key, owner, source and retained-counter checks remain exact. Stale heads
+do not reconstruct eligibility from current canonical items, and inactive prior roots do not require
+running rows that bounded enrollment cleanup legitimately removed. Missing or mis-keyed owner heads
+are errors when capturing retirement fingerprints, never evidence of unenrolled work.
+
+Initial thread creation retains its empty Activity head. Later ordinary admission, accepted-input
+promotion, generated parent admission and compaction continuation neither reset Activity nor use it
+as canonical outcome evidence. Runtime enrollment alone selects a current collection and source.
+
 Projection construction consumes one exact current live or immutable canonical source snapshot.
 Source advance atomically stales the selected projection and supersedes an incomplete build;
 completed older generations remain coherent history. Terminal closure freezes source content before

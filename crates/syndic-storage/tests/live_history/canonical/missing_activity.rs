@@ -65,7 +65,7 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
         .delete(
             syndic_storage::test_faults::FixtureDelete::ActivityQueryEntry {
                 thread,
-                work_period: ActivityWorkPeriod::FIRST,
+                work_period: excluded_head.work_period(),
                 order: ActivityQueryOrder::new(true, timestamp(6), item),
             },
         )
@@ -101,7 +101,11 @@ fn provider_publication_fails_closed_when_activity_entry_is_missing() {
     );
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), event),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            event.clone(),
+            crate::support::fixture_activity(&store, &storage, event.thread_id(), event.turn_id()),
+        ),
     ) else {
         panic!("expected definitive missing-activity rejection");
     };

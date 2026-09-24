@@ -139,8 +139,15 @@ fn abandon_provider_stop(fixture: &CompactionFixture) {
     );
     match fixture
         .store
-        .execute_current(fixture.storage.current_abandon_stop_operation(request))
-    {
+        .execute_current(fixture.storage.current_abandon_stop_operation(
+            request.clone(),
+            crate::support::retired_activity(
+                &fixture.store,
+                &fixture.storage,
+                request.target().thread_id(),
+                request.target().turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

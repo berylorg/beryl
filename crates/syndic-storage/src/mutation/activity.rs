@@ -53,10 +53,15 @@ impl SyndicStorage {
         &self,
         expected_domain_revision: DomainRevision,
         request: PublishActivityChildHandoff,
+        activity: crate::ActivitySourceQualification,
     ) -> MutationContribution {
         self.handle.contribution(
             expected_domain_revision,
-            PublishActivityChildHandoffMutation { request },
+            PublishActivityChildHandoffMutation {
+                request,
+                activity,
+                home: self.home_id,
+            },
         )
     }
 
@@ -65,14 +70,21 @@ impl SyndicStorage {
     pub fn current_publish_activity_child_handoff(
         &self,
         request: PublishActivityChildHandoff,
+        activity: crate::ActivitySourceQualification,
     ) -> CurrentDomainCommand {
         self.handle
-            .current_command(PublishActivityChildHandoffMutation { request })
+            .current_command(PublishActivityChildHandoffMutation {
+                request,
+                activity,
+                home: self.home_id,
+            })
     }
 }
 
 struct PublishActivityChildHandoffMutation {
     request: PublishActivityChildHandoff,
+    activity: crate::ActivitySourceQualification,
+    home: beryl_model::BerylHomeId,
 }
 
 struct HandoffRecords {
@@ -88,7 +100,13 @@ impl PublishActivityChildHandoffMutation {
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<HandoffRecords, SyndicMutationError> {
         let request = self.request;
-        let head = required::<ActivityQueryHeadsFamily>(reader, &request.thread_id)?;
+        let crate::ActivitySourceQualification::Current { source, .. } = &self.activity else {
+            return Err(SyndicMutationError::ActivityQueryConflict);
+        };
+        if source.thread_id() != request.thread_id {
+            return Err(SyndicMutationError::ActivityQueryConflict);
+        }
+        let head = self.activity.current_head(reader, self.home, *source)?;
         if head.revision() != request.expected_activity_revision
             || !head.source_active()
             || head.lifecycle() != ProjectionLifecycle::Current

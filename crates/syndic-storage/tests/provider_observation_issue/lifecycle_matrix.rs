@@ -146,6 +146,12 @@ fn publish_issue(
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
         ),
     ));
 
@@ -464,9 +470,16 @@ fn source_less_loss_keeps_its_primary_reason_and_the_first_observation_issue() {
     .unwrap();
     committed_command(execute(
         &fixture.store,
-        fixture
-            .storage
-            .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), terminal),
+        fixture.storage.admit_live_source_event(
+            fixture.storage.revision(&fixture.store).unwrap(),
+            terminal.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                terminal.thread_id(),
+                terminal.turn_id(),
+            ),
+        ),
     ));
 
     let terminal_state = fixture

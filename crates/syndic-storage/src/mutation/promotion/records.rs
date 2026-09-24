@@ -6,14 +6,13 @@ use beryl_model::{ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId};
 use crate::{
     AcceptedInputLifecycle, AcceptedNextCandidateBasis, AcceptedNextSourceRecord,
     AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord, AcceptedRouteHeadProof,
-    AcceptedRouteLeafRecord, AcceptedRouteLeafState, AcceptedRouteTarget, ActivityQueryHeadRecord,
-    ActivityQuerySource, ActivityQuerySourceRecord, BindingHeadRecord, BindingLifecycle,
-    BindingRecord, BindingState, CanonicalItemRecord, ConversationParent, DraftByThreadRecord,
-    HistorySummaryRecord, InputGateRecord, InputGateState, NextTurnReason, ProjectionLifecycle,
-    SelectedPathProof, SyndicMutationError, ThreadParentIndexRecord, ThreadRecord,
-    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnChildIndexRecord, TurnItemIndexRecord,
-    TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord, TurnStateRevision,
-    codec::*, domain::SyndicDomain,
+    AcceptedRouteLeafRecord, AcceptedRouteLeafState, AcceptedRouteTarget, BindingHeadRecord,
+    BindingLifecycle, BindingRecord, BindingState, CanonicalItemRecord, ConversationParent,
+    DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState, NextTurnReason,
+    ProjectionLifecycle, SelectedPathProof, SyndicMutationError, ThreadParentIndexRecord,
+    ThreadRecord, TranscriptBuildRecord, TranscriptViewHeadRecord, TurnChildIndexRecord,
+    TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord, TurnStateRecord,
+    TurnStateRevision, codec::*, domain::SyndicDomain,
 };
 
 use super::PromoteAcceptedInput;
@@ -44,8 +43,6 @@ pub(super) struct PromotionRecords {
     transcript_build: Option<TranscriptBuildRecord>,
     summary: HistorySummaryRecord,
     gate: InputGateRecord,
-    activity_head: ActivityQueryHeadRecord,
-    activity_source: ActivityQuerySourceRecord,
     binding: BindingRecord,
     binding_head: BindingHeadRecord,
     thread_parent_index: Option<ThreadParentIndexRecord>,
@@ -142,8 +139,6 @@ impl PromotionRecords {
             transcript_build: projection.transcript_build,
             summary: projection.summary,
             gate: projection.gate,
-            activity_head: projection.activity_head,
-            activity_source: projection.activity_source,
             binding: projection.binding,
             binding_head: projection.binding_head,
             thread_parent_index: projection.thread_parent_index,
@@ -198,17 +193,6 @@ impl PromotionRecords {
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
         put_input_gate(mutations, &self.gate)?;
-        mutations
-            .put::<ActivityQueryHeadsCodec>(&self.activity_head.thread_id(), &self.activity_head)?;
-        mutations.put::<ActivityQuerySourcesCodec>(
-            &ActivityQuerySourceKey {
-                thread: self.activity_source.thread_id(),
-                work_period: self.activity_source.work_period(),
-                source_thread: self.activity_source.source().thread_id(),
-                source_turn: self.activity_source.source().turn_id(),
-            },
-            &self.activity_source,
-        )?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.binding.thread_id(),

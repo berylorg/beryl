@@ -97,6 +97,8 @@
   may not import or expose archived source.
 - Intentional cutover gaps stay visible. No compatibility alias, aggregate buffer, compile-only
   facade, universal governor, or other bridge may conceal an unimplemented target boundary.
+- Removing unqualified Activity producer APIs intentionally breaks dependent app callers until
+  runtime-owned qualification is connected; storage acceptance alone does not close this gap.
 - Runtime capability probes, hard-stop and coarse-cleanup surfaces, and retained-service adoption
   are removed before their replacements. Exact release admission, exact soft stop, and fresh-service
   recovery are the only retained runtime directions.

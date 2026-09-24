@@ -232,11 +232,17 @@ fn pending_published_target_stops_and_consumes_a_matching_terminal_without_activ
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_admit_live_source_event(event.clone()),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_admit_live_source_event(
+            event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -793,11 +799,17 @@ fn matching_terminal_atomically_consumes_the_live_stop() {
             .unwrap(),
         StopOperationTransitionStatus::Prior
     );
-    match fixture.store.execute_current(
-        fixture
-            .storage
-            .current_admit_live_source_event(event.clone()),
-    ) {
+    match fixture
+        .store
+        .execute_current(fixture.storage.current_admit_live_source_event(
+            event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..

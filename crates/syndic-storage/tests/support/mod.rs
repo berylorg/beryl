@@ -2,9 +2,9 @@
 
 pub mod generated_input;
 
-pub mod exact_cas;
 pub mod discussion_handoff;
 pub mod discussion_input;
+pub mod exact_cas;
 mod lifecycle;
 pub mod populated;
 pub mod semantic;
@@ -621,4 +621,7 @@ pub fn batch(records: impl IntoIterator<Item = FixtureRecord>) -> FixtureBatch {
     batch
 }
 
+mod activity;
 pub mod discussion_creation;
+#[allow(unused_imports)]
+pub use activity::{enroll_fixture_activity, fixture_activity, retired_activity};

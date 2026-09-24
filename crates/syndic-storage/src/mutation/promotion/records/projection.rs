@@ -5,8 +5,6 @@ pub(super) struct PromotionProjectionRecords {
     pub(super) transcript_build: Option<TranscriptBuildRecord>,
     pub(super) summary: HistorySummaryRecord,
     pub(super) gate: InputGateRecord,
-    pub(super) activity_head: ActivityQueryHeadRecord,
-    pub(super) activity_source: ActivityQuerySourceRecord,
     pub(super) binding: BindingRecord,
     pub(super) binding_head: BindingHeadRecord,
     pub(super) thread_parent_index: Option<ThreadParentIndexRecord>,
@@ -67,45 +65,6 @@ pub(super) fn projection_records(
             .ok_or(SyndicMutationError::AcceptedInputPromotionConflict)?,
     )?;
 
-    let current_activity = basis.activity_head();
-    if current_activity.thread_id() != thread.id()
-        || current_activity.source_active()
-        || current_activity.logical_row_count() != current_activity.completed_row_count()
-    {
-        return Err(SyndicMutationError::ActivityQueryConflict);
-    }
-    let work_period = if current_activity.source().is_none() {
-        current_activity.work_period()
-    } else {
-        current_activity.work_period().checked_next()?
-    };
-    let activity_source_identity =
-        ActivityQuerySource::new(thread.id(), promotion.successor_turn_id());
-    let activity_head = ActivityQueryHeadRecord::new(
-        thread.id(),
-        work_period,
-        Some(activity_source_identity),
-        true,
-        0,
-        current_activity.revision().checked_next()?,
-        1,
-        0,
-        0,
-        0,
-        0,
-        None,
-        ProjectionLifecycle::Current,
-    )?;
-    let activity_source = ActivityQuerySourceRecord::new(
-        thread.id(),
-        work_period,
-        activity_source_identity,
-        None,
-        0,
-        true,
-        None,
-    );
-
     let binding_revision = basis.binding_head().revision().checked_next()?;
     if point::<BindingsFamily>(
         reader,
@@ -136,8 +95,6 @@ pub(super) fn projection_records(
         transcript_build,
         summary,
         gate,
-        activity_head,
-        activity_source,
         binding,
         binding_head,
         thread_parent_index,

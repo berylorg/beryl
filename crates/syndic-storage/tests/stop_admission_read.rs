@@ -363,8 +363,15 @@ fn awaiting_terminal_is_typed_ineligible_without_stop_authority() {
     .unwrap();
     match fixture
         .store
-        .execute_current(fixture.storage.current_admit_live_source_event(event))
-    {
+        .execute_current(fixture.storage.current_admit_live_source_event(
+            event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
+        )) {
         CommandOutcome::Committed {
             later_failure: None,
             ..
@@ -591,8 +598,15 @@ fn matching_terminal_consumption_during_the_second_pass_is_concurrent_change() {
         assert!(blocks[32].wait_until_reached(Duration::from_secs(10)));
         match fixture
             .store
-            .execute_current(fixture.storage.current_admit_live_source_event(event))
-        {
+            .execute_current(fixture.storage.current_admit_live_source_event(
+                event.clone(),
+                crate::support::fixture_activity(
+                    &fixture.store,
+                    &fixture.storage,
+                    event.thread_id(),
+                    event.turn_id(),
+                ),
+            )) {
             CommandOutcome::Committed {
                 later_failure: None,
                 ..

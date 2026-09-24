@@ -276,11 +276,17 @@ fn abandonment_fault_cuts_reconcile_to_one_whole_state() {
         faults.fail_next(point);
         let retains_reconciliation = assert_fault_outcome(
             point,
-            fixture.store.execute_current(
-                fixture
-                    .storage
-                    .current_abandon_stop_operation(request.clone()),
-            ),
+            fixture
+                .store
+                .execute_current(fixture.storage.current_abandon_stop_operation(
+                    request.clone(),
+                    crate::support::retired_activity(
+                        &fixture.store,
+                        &fixture.storage,
+                        request.target().thread_id(),
+                        request.target().turn_id(),
+                    ),
+                )),
         );
         let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture
@@ -330,11 +336,17 @@ fn matching_terminal_fault_cuts_reconcile_to_one_whole_state() {
         faults.fail_next(point);
         let retains_reconciliation = assert_fault_outcome(
             point,
-            fixture.store.execute_current(
-                fixture
-                    .storage
-                    .current_admit_live_source_event(event.clone()),
-            ),
+            fixture
+                .store
+                .execute_current(fixture.storage.current_admit_live_source_event(
+                    event.clone(),
+                    crate::support::fixture_activity(
+                        &fixture.store,
+                        &fixture.storage,
+                        event.thread_id(),
+                        event.turn_id(),
+                    ),
+                )),
         );
         let fixture = recover_direct_fault(fixture, retains_reconciliation);
         let status = fixture

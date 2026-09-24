@@ -120,6 +120,12 @@ fn admit_unknown(fixture: &ActiveFixture, at: u64) {
         fixture.storage.admit_live_source_event(
             fixture.storage.revision(&fixture.store).unwrap(),
             unknown_event(fixture, at),
+            support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                fixture.thread,
+                fixture.turn,
+            ),
         ),
     ));
 }
@@ -488,7 +494,10 @@ fn uncertain_terminal_reclassifies_ready_work_and_reactivation_uses_a_fresh_rout
     let sources = next_sources(&fixture);
     assert_eq!(sources.len(), 2);
     assert_eq!(sources[0].generation(), original_waiting.generation());
-    assert_eq!(sources[1].generation(), second_record.route_generation().unwrap());
+    assert_eq!(
+        sources[1].generation(),
+        second_record.route_generation().unwrap()
+    );
 
     admit_event(
         &fixture.store,

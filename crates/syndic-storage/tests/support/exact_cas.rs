@@ -11,17 +11,16 @@ use beryl_model::{
 };
 use syndic_storage::test_faults::{FixtureDelete, FixtureRecord};
 use syndic_storage::{
-    ActivateBinding, ActivityQueryHeadRecord, ActivityQuerySource, ActivityQuerySourceRecord,
-    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, BindingLifecycle, BindingRecord,
-    BindingState, CanonicalItemPresentation, CanonicalItemRecord, CasItemSource, CasLineageProof,
-    CasRepresentedPrefixProof, CasTurnSource, CompleteTerminalHistory, ComposerAtom,
-    ComposerPayload, ContentEncoding, ContentLifecycle, ContentReference, ContextEnvelopeRecord,
-    DraftByThreadRecord, DraftImageLabelProtectionHeadV1, DraftRecord, DraftSubmissionIntent,
-    FinalizeNextTurnItem, FreezeNextTurnItem, GeneratedMediaResourceDisposition,
-    HistorySummaryRecord, ImageLabelAuthorityHeadV1, ImageLabelFrontier, ImageLabelOrdinal,
-    ImageLabelOriginOwner, ImageLabelOriginSpanRecord, InputGateRecord, InputGateState,
-    ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage, PreparedContent,
-    ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
+    ActivateBinding, AdvanceItemProjectionBuild, AdvanceTranscriptBuild, BindingLifecycle,
+    BindingRecord, BindingState, CanonicalItemPresentation, CanonicalItemRecord, CasItemSource,
+    CasLineageProof, CasRepresentedPrefixProof, CasTurnSource, CompleteTerminalHistory,
+    ComposerAtom, ComposerPayload, ContentEncoding, ContentLifecycle, ContentReference,
+    ContextEnvelopeRecord, DraftByThreadRecord, DraftImageLabelProtectionHeadV1, DraftRecord,
+    DraftSubmissionIntent, FinalizeNextTurnItem, FreezeNextTurnItem,
+    GeneratedMediaResourceDisposition, HistorySummaryRecord, ImageLabelAuthorityHeadV1,
+    ImageLabelFrontier, ImageLabelOrdinal, ImageLabelOriginOwner, ImageLabelOriginSpanRecord,
+    InputGateRecord, InputGateState, ItemProjectionGeneration, LiveSourceEvent, NativeCasLineage,
+    PreparedContent, ProjectionLifecycle, ProviderFrameOrdinalV1, ProviderFramePreparationPlan,
     ProviderFrameStageOutcome, ProviderItemBuildLifecycle, ProviderItemFrameV1,
     ProviderItemLifecycle, ProviderItemObservationV1, ProviderItemV1,
     ProviderLifecycleTimestampMsV1, ProviderSubmittedContentV1, ProviderUserMessageV1,
@@ -145,12 +144,6 @@ pub fn submit_prepared_current_draft(
         .history_summary(store, thread_id, point_limit())
         .unwrap()
         .expect("exact-CAS submission history summary exists");
-    let activity = storage
-        .activity_query_head(store, thread_id, point_limit())
-        .unwrap()
-        .expect("exact-CAS submission activity head exists");
-    assert!(!activity.source_active());
-    assert_eq!(activity.logical_row_count(), activity.completed_row_count());
     let binding = storage
         .current_binding(store, thread_id, point_limit())
         .unwrap()
@@ -253,28 +246,6 @@ pub fn submit_prepared_current_draft(
         next_draft_id,
     );
 
-    let next_activity_period = if activity.source().is_none() {
-        activity.work_period()
-    } else {
-        activity.work_period().checked_next().unwrap()
-    };
-    let activity_source = ActivityQuerySource::new(thread_id, turn_id);
-    let activity_head = ActivityQueryHeadRecord::new(
-        thread_id,
-        next_activity_period,
-        Some(activity_source),
-        true,
-        0,
-        activity.revision().checked_next().unwrap(),
-        1,
-        0,
-        0,
-        0,
-        0,
-        None,
-        ProjectionLifecycle::Current,
-    )
-    .unwrap();
     let binding_revision = binding.binding().revision().checked_next().unwrap();
     let next_draft_revision = DraftRevision::new(1).unwrap();
     let next_thread = ThreadRecord::new(
@@ -375,16 +346,6 @@ pub fn submit_prepared_current_draft(
             ProjectionLifecycle::Stale,
         )),
         FixtureRecord::HistorySummary(next_history),
-        FixtureRecord::ActivityQueryHead(activity_head),
-        FixtureRecord::ActivityQuerySource(ActivityQuerySourceRecord::new(
-            thread_id,
-            next_activity_period,
-            activity_source,
-            None,
-            0,
-            true,
-            None,
-        )),
         FixtureRecord::Binding(BindingRecord::new(
             thread_id,
             binding_revision,
@@ -589,6 +550,7 @@ pub fn activate_turn(
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
 ) -> (CasThreadId, SyndicExecutionSnapshotId) {
+    let _ = super::enroll_fixture_activity(store, &storage, thread, turn);
     let current = storage
         .current_binding(store, thread, point_limit())
         .unwrap()
@@ -739,11 +701,14 @@ pub fn admit_event(
         observed_at,
     )
     .unwrap();
+    let activity = super::enroll_fixture_activity(store, &storage, thread, turn);
     execute(
         store,
-        storage
-            .clone()
-            .admit_live_source_event(storage.clone().revision(store).unwrap(), event),
+        storage.clone().admit_live_source_event(
+            storage.clone().revision(store).unwrap(),
+            event,
+            activity,
+        ),
         "live-source event admission",
     );
 }
@@ -766,6 +731,30 @@ pub fn admit_item_frame(
     source: &CasTurnSource,
     frame: ProviderItemFrameV1,
     observed_at: SyndicTimestamp,
+) -> SealedProviderFrameReference {
+    let sealed = stage_item_frame(store, storage.clone(), turn, item_id, source, frame);
+    admit_event(
+        store,
+        storage,
+        thread,
+        turn,
+        source,
+        SourceEventPayload::ItemFrame {
+            item_id,
+            frame: Box::new(sealed.clone()),
+        },
+        observed_at,
+    );
+    sealed
+}
+
+pub fn stage_item_frame(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    turn: SyndicTurnId,
+    item_id: SyndicItemId,
+    source: &CasTurnSource,
+    frame: ProviderItemFrameV1,
 ) -> SealedProviderFrameReference {
     let state = storage
         .turn_state(store, turn, point_limit())
@@ -845,18 +834,6 @@ pub fn admit_item_frame(
         if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
             let sealed = prepared.target().clone();
             assert_eq!(build.target(), &sealed);
-            admit_event(
-                store,
-                storage.clone(),
-                thread,
-                turn,
-                source,
-                SourceEventPayload::ItemFrame {
-                    item_id,
-                    frame: Box::new(sealed.clone()),
-                },
-                observed_at,
-            );
             return sealed;
         }
         execute(

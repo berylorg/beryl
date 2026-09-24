@@ -276,6 +276,7 @@ where
 #[derive(Clone)]
 pub struct SyndicStorage {
     pub(crate) handle: DomainHandle<SyndicDomain>,
+    pub(crate) home_id: beryl_model::BerylHomeId,
     pub(crate) home_generation: beryl_home_store::HomeGeneration,
     pub(crate) reconstructed_cleanup_admissions: Box<[DraftMarkerAdmissionOwnerV1]>,
 }
@@ -296,6 +297,7 @@ impl SyndicStorage {
                 .expect("registered Syndic attachment is active");
             Self {
                 handle,
+                home_id: candidate.home_id(),
                 home_generation,
                 reconstructed_cleanup_admissions,
             }
@@ -317,6 +319,7 @@ impl SyndicStorage {
                     .expect("registered Syndic attachment is active");
                 Self {
                     handle,
+                    home_id: candidate.home_id(),
                     home_generation,
                     reconstructed_cleanup_admissions,
                 }
@@ -338,6 +341,7 @@ impl SyndicStorage {
                 .expect("reacquired Syndic attachment is active");
             Self {
                 handle,
+                home_id: store.home_id(),
                 home_generation,
                 reconstructed_cleanup_admissions,
             }
@@ -361,6 +365,7 @@ impl SyndicStorage {
                 .expect("reacquired Syndic attachment is active");
             Self {
                 handle,
+                home_id: candidate.home_id(),
                 home_generation,
                 reconstructed_cleanup_admissions,
             }

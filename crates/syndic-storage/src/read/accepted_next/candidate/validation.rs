@@ -16,7 +16,6 @@ pub(super) fn validate_candidate_basis(
     let binding = basis.binding();
     let transcript = basis.transcript_head();
     let summary = basis.summary();
-    let activity = basis.activity_head();
     let selected = thread.selected_path();
 
     if gate.state() != &InputGateState::Idle
@@ -84,8 +83,6 @@ pub(super) fn validate_candidate_basis(
         || summary.thread_revision() != thread.revision()
         || summary.committed_tail() != thread.committed_tail()
         || summary.selected_path_digest() != thread.selected_path_digest()
-        || activity.thread_id() != source.thread_id()
-        || activity.lifecycle() != ProjectionLifecycle::Current
     {
         return Err(SyndicReadError::Invariant(
             "accepted-next candidate thread projections are incoherent",

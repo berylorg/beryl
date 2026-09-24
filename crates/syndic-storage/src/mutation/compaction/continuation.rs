@@ -25,8 +25,6 @@ struct ContinuationRecords {
     transcript_build: Option<crate::TranscriptBuildRecord>,
     summary: crate::HistorySummaryRecord,
     gate: InputGateRecord,
-    activity_head: crate::ActivityQueryHeadRecord,
-    activity_source: crate::ActivityQuerySourceRecord,
     binding: crate::BindingRecord,
     binding_head: crate::BindingHeadRecord,
 }
@@ -64,8 +62,6 @@ impl DomainMutation<SyndicDomain> for SettleLifecycleMutation {
         reservation.reserve_records::<TranscriptHeadsCodec>(1)?;
         reservation.reserve_records::<TranscriptBuildsCodec>(1)?;
         reservation.reserve_records::<HistorySummariesCodec>(1)?;
-        reservation.reserve_records::<ActivityQueryHeadsCodec>(1)?;
-        reservation.reserve_records::<ActivityQuerySourcesCodec>(1)?;
         Ok(())
     }
 
@@ -282,42 +278,6 @@ impl SettleLifecycleMutation {
             0,
             0,
         )?;
-        let current_activity = required::<ActivityQueryHeadsFamily>(reader, &thread.id())?;
-        if current_activity.source_active()
-            || current_activity.logical_row_count() != current_activity.completed_row_count()
-        {
-            return Err(SyndicMutationError::ActivityQueryConflict);
-        }
-        let work_period = if current_activity.source().is_none() {
-            current_activity.work_period()
-        } else {
-            current_activity.work_period().checked_next()?
-        };
-        let source = crate::ActivityQuerySource::new(thread.id(), request.turn_id);
-        let activity_head = crate::ActivityQueryHeadRecord::new(
-            thread.id(),
-            work_period,
-            Some(source),
-            true,
-            0,
-            current_activity.revision().checked_next()?,
-            1,
-            0,
-            0,
-            0,
-            0,
-            None,
-            crate::ProjectionLifecycle::Current,
-        )?;
-        let activity_source = crate::ActivityQuerySourceRecord::new(
-            thread.id(),
-            work_period,
-            source,
-            None,
-            0,
-            true,
-            None,
-        );
         let binding_head = required::<BindingHeadsFamily>(reader, &thread.id())?;
         let current_binding = required::<BindingsFamily>(
             reader,
@@ -400,8 +360,6 @@ impl SettleLifecycleMutation {
             transcript_build,
             summary,
             gate,
-            activity_head,
-            activity_source,
             binding,
             binding_head,
         })
@@ -451,16 +409,6 @@ impl ContinuationRecords {
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
         put_input_gate(mutations, &self.gate)?;
-        mutations.put::<ActivityQueryHeadsCodec>(&self.thread.id(), &self.activity_head)?;
-        mutations.put::<ActivityQuerySourcesCodec>(
-            &ActivityQuerySourceKey {
-                thread: self.activity_source.thread_id(),
-                work_period: self.activity_source.work_period(),
-                source_thread: self.activity_source.source().thread_id(),
-                source_turn: self.activity_source.source().turn_id(),
-            },
-            &self.activity_source,
-        )?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.thread.id(),

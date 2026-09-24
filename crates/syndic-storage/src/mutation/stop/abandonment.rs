@@ -103,6 +103,8 @@ impl AbandonStopOperation {
 
 pub(super) struct AbandonStopOperationMutation {
     pub(super) request: AbandonStopOperation,
+    pub(super) activity: crate::ActivitySourceQualification,
+    pub(super) home: beryl_model::BerylHomeId,
 }
 
 impl DomainMutation<SyndicDomain> for AbandonStopOperationMutation {
@@ -418,6 +420,8 @@ impl AbandonStopOperationMutation {
             crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?;
         let activity = activity_advance(
             reader,
+            self.home,
+            &self.activity,
             request.target.thread_id(),
             request.target.turn_id(),
             sequence,

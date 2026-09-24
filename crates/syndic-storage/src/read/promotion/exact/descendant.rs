@@ -138,52 +138,6 @@ pub(super) fn summary_agrees(
     })
 }
 
-pub(super) fn activity_agrees(
-    head: Option<&ActivityQueryHeadRecord>,
-    source: Option<&ActivityQuerySourceRecord>,
-    expected_head: &ActivityQueryHeadRecord,
-    expected_source: &ActivityQuerySourceRecord,
-) -> bool {
-    let (Some(head), Some(source)) = (head, source) else {
-        return false;
-    };
-    if source != expected_source {
-        return false;
-    }
-    let Some(revision_advance) = head
-        .revision()
-        .get()
-        .checked_sub(expected_head.revision().get())
-    else {
-        return false;
-    };
-    if revision_advance == 0 {
-        return head == expected_head;
-    }
-    let Some(source_count) = expected_head.source_count().checked_add(revision_advance) else {
-        return false;
-    };
-    let Some(minimum_frontier) = revision_advance
-        .checked_mul(2)
-        .and_then(|advance| expected_head.source_frontier().checked_add(advance))
-    else {
-        return false;
-    };
-    head.thread_id() == expected_head.thread_id()
-        && head.work_period() == expected_head.work_period()
-        && head.source() == expected_head.source()
-        && head.source_active() == expected_head.source_active()
-        && head.lifecycle() == ProjectionLifecycle::Current
-        && head.source_count() == source_count
-        && head.source_frontier() >= minimum_frontier
-        && head.running_row_count() == 0
-        && head.logical_row_count() == head.completed_row_count()
-        && head.completed_row_count() != 0
-        && head.completed_row_count() <= revision_advance
-        && head.completed_stored_bytes() != 0
-        && head.completed_retention_cutoff().is_some()
-}
-
 pub(super) fn transcript_agrees(
     head: Option<&TranscriptViewHeadRecord>,
     build: Option<&TranscriptBuildRecord>,

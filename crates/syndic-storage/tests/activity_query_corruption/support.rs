@@ -64,7 +64,7 @@ pub fn child_handoff_candidate(name: &str, later_activity: bool) -> ChildHandoff
     let owner = id(30);
     let child = id(36);
     converge_and_release_terminal_history(&store, storage.clone(), owner, populated::source_turn());
-    submit_current_draft(
+    let owner_turn = submit_current_draft(
         &store,
         storage.clone(),
         owner,
@@ -73,6 +73,7 @@ pub fn child_handoff_candidate(name: &str, later_activity: bool) -> ChildHandoff
         "owner continues",
         timestamp(10),
     );
+    let _ = crate::support::enroll_fixture_activity(&store, &storage, owner, owner_turn);
     let submitted_child_item = SyndicItemId::from_bytes([222; 16]);
     let child_turn = submit_current_draft(
         &store,
@@ -190,6 +191,12 @@ pub fn published_child_handoff(name: &str) -> PublishedChildHandoff {
                 candidate.child_turn,
                 candidate.final_answer,
                 ProjectionSourceRange::new(0, 11).unwrap(),
+            ),
+            crate::support::fixture_activity(
+                &candidate.store,
+                &candidate.storage,
+                candidate.owner,
+                candidate.head.source().unwrap().turn_id(),
             ),
         ),
     );

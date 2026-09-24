@@ -7,10 +7,9 @@ use crate::{
     AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord, AcceptedNextSourceRecord,
     AcceptedOrderIndexRecord, AcceptedRouteGeneration, AcceptedRouteGenerationHeadRecord,
     AcceptedRouteGenerationRecord, AcceptedRouteLeafRecord, AcceptedRouteLeafState,
-    AcceptedRouteRevision, AcceptedRouteTarget, ActivityQueryHeadRecord, BindingHeadRecord,
-    BindingRecord, DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState,
-    NextTurnReason, ProjectionLifecycle, SyndicReadError, SyndicTimestamp,
-    TranscriptViewHeadRecord, codec::*, domain::SyndicStorage,
+    AcceptedRouteRevision, AcceptedRouteTarget, BindingHeadRecord, BindingRecord,
+    DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState, NextTurnReason,
+    SyndicReadError, SyndicTimestamp, TranscriptViewHeadRecord, codec::*, domain::SyndicStorage,
 };
 
 use super::SyndicPointReadLimit;
@@ -137,7 +136,6 @@ pub(crate) struct AcceptedNextCandidateBasis {
     binding: BindingRecord,
     transcript_head: TranscriptViewHeadRecord,
     summary: HistorySummaryRecord,
-    activity_head: ActivityQueryHeadRecord,
 }
 
 impl AcceptedNextCandidateBasis {
@@ -191,10 +189,6 @@ impl AcceptedNextCandidateBasis {
 
     pub(crate) const fn summary(&self) -> &HistorySummaryRecord {
         &self.summary
-    }
-
-    pub(crate) const fn activity_head(&self) -> &ActivityQueryHeadRecord {
-        &self.activity_head
     }
 }
 

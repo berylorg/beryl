@@ -272,47 +272,6 @@ pub(super) fn prepare(
         thread_id,
         NonIdleGateSourceRecord::new(thread_id, gate.revision())
     );
-    let activity = required::<ActivityQueryHeadsFamily>(reader, &thread_id)?;
-    if activity.source_active() || activity.logical_row_count() != activity.completed_row_count() {
-        return Err(SyndicMutationError::ActivityQueryConflict);
-    }
-    let period = if activity.source().is_none() {
-        activity.work_period()
-    } else {
-        activity.work_period().checked_next()?
-    };
-    let source = ActivityQuerySource::new(thread_id, turn_id);
-    change!(
-        Activity,
-        ActivityQueryHeadsFamily,
-        thread_id,
-        ActivityQueryHeadRecord::new(
-            thread_id,
-            period,
-            Some(source),
-            true,
-            0,
-            activity.revision().checked_next()?,
-            1,
-            0,
-            0,
-            0,
-            0,
-            None,
-            ProjectionLifecycle::Current
-        )?
-    );
-    insert!(
-        ActivitySource,
-        ActivityQuerySourcesFamily,
-        ActivityQuerySourceKey {
-            thread: thread_id,
-            work_period: period,
-            source_thread: thread_id,
-            source_turn: turn_id
-        },
-        ActivityQuerySourceRecord::new(thread_id, period, source, None, 0, true, None)
-    );
     let binding = required::<BindingHeadsFamily>(reader, &thread_id)?;
     let binding_revision = binding.revision().checked_next()?;
     insert!(

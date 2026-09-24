@@ -4,6 +4,7 @@ use crate::{codec::*, domain::SyndicDomain, error::SyndicValidationError};
 
 use super::super::scan::{point, require, scan, scan_range};
 
+mod historical;
 mod retention;
 
 pub(super) fn validate(
@@ -44,7 +45,13 @@ fn validate_heads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicV
             ActivityQuerySourceKey::first_for_period(thread.id(), head.work_period()),
             ActivityQuerySourceKey::last_for_period(thread.id(), head.work_period()),
             |key, member| {
-                validate_source_member(reader, key, member, thread.id())?;
+                validate_source_member(
+                    reader,
+                    key,
+                    member,
+                    thread.id(),
+                    head.lifecycle() == crate::ProjectionLifecycle::Current,
+                )?;
                 source_count =
                     checked_add(source_count, 1, "activity-query source count overflowed")?;
                 source_frontier = checked_add(
@@ -54,7 +61,9 @@ fn validate_heads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicV
                 )?;
                 if member.source() == source {
                     root_found = true;
-                    if member.active() != head.source_active() {
+                    if head.lifecycle() == crate::ProjectionLifecycle::Current
+                        && member.active() != head.source_active()
+                    {
                         return invariant("activity-query root source lifecycle disagrees");
                     }
                 }
@@ -136,7 +145,7 @@ fn validate_heads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicV
                 invariant("empty activity-query head retains current-period sources")
             };
         }
-        validate_source_member(reader, key, member, key.thread)
+        validate_source_member(reader, key, member, key.thread, false)
     })
 }
 
@@ -158,16 +167,27 @@ fn validate_entries(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
             &item.turn_id(),
             "activity-query source turn is missing",
         )?;
+        let head = require::<ActivityQueryHeadsFamily>(
+            reader,
+            &entry.thread_id(),
+            "activity-query entry owner head is missing",
+        )?;
+        let current = head.work_period() == entry.work_period()
+            && head.lifecycle() == crate::ProjectionLifecycle::Current;
         if entry.source().thread_id() != turn.origin_thread_id()
             || entry.source().turn_id() != item.turn_id()
             || entry.source().item_id() != item.id()
             || item.cas_source() != Some(entry.source().cas_item())
-            || item.source_event() != Some(entry.source_event())
             || item.provider_kind() != entry.provider_kind()
-            || item.provider_lifecycle() != entry.provider_lifecycle()
-            || key.order != activity_order(&item)?
+            || (current
+                && (item.source_event() != Some(entry.source_event())
+                    || item.provider_lifecycle() != entry.provider_lifecycle()
+                    || key.order != activity_order(&item)?))
         {
             return invariant("activity-query entry source authority disagrees");
+        }
+        if !current {
+            historical::validate_entry(reader, entry)?;
         }
         let owner = require::<ThreadsFamily>(
             reader,
@@ -225,6 +245,7 @@ fn validate_source_member(
     key: &ActivityQuerySourceKey,
     member: &crate::ActivityQuerySourceRecord,
     owner: beryl_model::SyndicThreadId,
+    current: bool,
 ) -> Result<(), SyndicValidationError> {
     validate_source_member_identity(reader, key, member, owner)?;
     let source_state = require::<TurnStatesFamily>(
@@ -232,8 +253,12 @@ fn validate_source_member(
         &member.source().turn_id(),
         "activity-query member source state is missing",
     )?;
-    if source_state.source_event_count() != member.source_frontier()
-        || member.active() == source_state.lifecycle().is_proven_terminal()
+    if source_state.turn_id() != member.source().turn_id()
+        || source_state.source_event_count() < member.source_frontier()
+        || (!member.active() && !source_state.lifecycle().is_proven_terminal())
+        || (current
+            && (source_state.source_event_count() != member.source_frontier()
+                || member.active() == source_state.lifecycle().is_proven_terminal()))
     {
         return invariant("activity-query source membership authority disagrees");
     }

@@ -224,6 +224,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
                     source_seed.observed_at,
                 )
                 .unwrap(),
+                super::super::fixture_activity(store, &storage, source_thread, source_turn),
             ),
         ),
         "source-turn activation",
@@ -247,6 +248,7 @@ pub fn seed_provider_records(store: &beryl_home_store::HomeStore, storage: Syndi
                     source_seed.observed_at,
                 )
                 .unwrap(),
+                super::super::fixture_activity(store, &storage, source_thread, source_turn),
             ),
         ),
         "source-turn terminal event",

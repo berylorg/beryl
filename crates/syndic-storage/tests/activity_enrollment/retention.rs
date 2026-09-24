@@ -3,7 +3,7 @@ use beryl_home_store::CursorReadLimits;
 use beryl_model::CasItemId;
 use support::exact_cas::{admit_event, admit_item_frame, correlate_user_item, establish_turn};
 
-fn command(completed: bool) -> ProviderItemV1 {
+pub(super) fn command(completed: bool) -> ProviderItemV1 {
     ProviderItemV1::CommandExecution(ProviderCommandExecutionV1 {
         command: ProviderTextV1::inline("cargo check"),
         cwd: ProviderTextV1::inline("C:/workspace"),
@@ -109,11 +109,7 @@ fn retire(f: &mut Fixture, running: usize) -> ActivityQueryHeadRecord {
         "later",
         timestamp(1001),
     );
-    commit(
-        &f.store,
-        f.storage.clone(),
-        batch([FixtureRecord::ActivityQueryHead(prior.clone())]),
-    );
+    assert_eq!(f.head(), prior);
     prior
 }
 
@@ -153,6 +149,9 @@ fn bounded_cleanup_preserves_completed_rows_across_interrupted_enrollment() {
         else {
             panic!("exact step")
         };
+        f.store
+            .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+            .unwrap();
         let after = f
             .storage
             .fixture_activity_query_entry_count(
@@ -210,6 +209,9 @@ fn a_fresh_runtime_selects_empty_activity_without_cleaning_old_indexes() {
         .unwrap();
     let new = f.enroll();
     assert!(new.work_period() > old.work_period());
+    f.store
+        .scrub_whole_home(beryl_home_store::WholeHomeScrubTrigger::Explicit)
+        .unwrap();
     assert_eq!(f.head().logical_row_count(), 0);
     assert_eq!(
         f.storage

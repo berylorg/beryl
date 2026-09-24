@@ -407,6 +407,12 @@ fn stage_and_publish(
                     SyndicTimestamp::from_unix_millis(100),
                 )
                 .unwrap(),
+                support::fixture_activity(
+                    store,
+                    storage,
+                    thread,
+                    prepared.initial_build().turn_id(),
+                ),
             ),
         ),
         "provider-frame live-source publication",

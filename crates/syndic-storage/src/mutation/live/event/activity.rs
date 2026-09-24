@@ -14,7 +14,13 @@ use crate::{
 const PRUNE_READ_ROWS: usize = crate::ACTIVITY_COMPLETED_RETAINED_ROWS as usize;
 const PRUNE_READ_BYTES: usize = crate::ACTIVITY_COMPLETED_RETAINED_BYTES as usize;
 
-pub(in crate::mutation) struct ActivityEffect {
+pub(in crate::mutation) enum ActivityEffect {
+    Current(CurrentActivityEffect),
+    Stale(ActivityQueryHeadRecord),
+    None,
+}
+
+pub(in crate::mutation) struct CurrentActivityEffect {
     head: ActivityQueryHeadRecord,
     source: ActivityQuerySourceRecord,
     delete: Vec<ActivityQueryEntryKey>,
@@ -23,13 +29,60 @@ pub(in crate::mutation) struct ActivityEffect {
 
 pub(in crate::mutation) fn advance(
     reader: &DomainReader<'_, SyndicDomain>,
+    home: beryl_model::BerylHomeId,
+    qualification: &crate::ActivitySourceQualification,
     thread_id: SyndicThreadId,
     source_turn_id: SyndicTurnId,
     source_frontier: SourceEventSequence,
     terminal: bool,
     next_item: Option<&CanonicalItemRecord>,
 ) -> Result<ActivityEffect, SyndicMutationError> {
-    let current_head = required::<ActivityQueryHeadsFamily>(reader, &thread_id)?;
+    let exact_source = crate::ActivityQuerySource::new(thread_id, source_turn_id);
+    let current_head = match qualification {
+        crate::ActivitySourceQualification::Current { .. } => {
+            qualification.current_head(reader, home, exact_source)?
+        }
+        crate::ActivitySourceQualification::Retired(fingerprint) => {
+            if !fingerprint.authenticates(home, exact_source) {
+                return Err(SyndicMutationError::ActivityQueryConflict);
+            }
+            let head = required::<ActivityQueryHeadsFamily>(reader, &thread_id)?;
+            if head.thread_id() != thread_id {
+                return Err(SyndicMutationError::ActivityQueryConflict);
+            }
+            return if fingerprint.matches(home, &head)
+                && head.lifecycle() == ProjectionLifecycle::Current
+            {
+                Ok(ActivityEffect::Stale(ActivityQueryHeadRecord::new(
+                    thread_id,
+                    head.work_period(),
+                    head.source(),
+                    false,
+                    head.source_frontier(),
+                    head.revision().checked_next()?,
+                    head.source_count(),
+                    head.completed_row_count(),
+                    0,
+                    head.completed_row_count(),
+                    head.completed_stored_bytes(),
+                    head.completed_retention_cutoff(),
+                    ProjectionLifecycle::Stale,
+                )?))
+            } else {
+                Ok(ActivityEffect::None)
+            };
+        }
+        crate::ActivitySourceQualification::Unenrolled => {
+            let head = required::<ActivityQueryHeadsFamily>(reader, &thread_id)?;
+            if head.thread_id() != thread_id
+                || (head.source() == Some(exact_source)
+                    && head.lifecycle() == ProjectionLifecycle::Current)
+            {
+                return Err(SyndicMutationError::ActivityQueryConflict);
+            }
+            return Ok(ActivityEffect::None);
+        }
+    };
     let source = current_head
         .source()
         .ok_or(SyndicMutationError::ActivityQueryConflict)?;
@@ -170,7 +223,7 @@ pub(in crate::mutation) fn advance(
         cutoff,
         ProjectionLifecycle::Current,
     )?;
-    Ok(ActivityEffect {
+    Ok(ActivityEffect::Current(CurrentActivityEffect {
         head,
         source: ActivityQuerySourceRecord::new(
             thread_id,
@@ -183,7 +236,7 @@ pub(in crate::mutation) fn advance(
         ),
         delete,
         entry,
-    })
+    }))
 }
 
 fn activity_source(
@@ -349,6 +402,21 @@ fn retained_prefix_len(
 }
 
 impl ActivityEffect {
+    pub(in crate::mutation) fn contribute(
+        self,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), SyndicMutationError> {
+        match self {
+            Self::Current(effect) => effect.contribute(mutations),
+            Self::Stale(head) => {
+                Ok(mutations.put::<ActivityQueryHeadsCodec>(&head.thread_id(), &head)?)
+            }
+            Self::None => Ok(()),
+        }
+    }
+}
+
+impl CurrentActivityEffect {
     pub(in crate::mutation) fn contribute(
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,

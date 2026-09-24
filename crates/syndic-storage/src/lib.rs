@@ -720,6 +720,7 @@ pub use mutation::{
     ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
     ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
     ProviderFrameStageError, ProviderFrameStageOutcome, ProviderObservationMutationError,
+    ActivityRetirementFingerprint, ActivitySourceQualification,
     PublishActiveCasTurn, PublishActivityChildHandoff, PublishCompactionProviderEvent,
     PublishCompactionRequestDisposition, PublishStaleBinding, PublishThreadUsage,
     PublishUnboundBinding, PublishValidBinding, RequireTerminalRepair, RetryAcceptedInputDelivery,

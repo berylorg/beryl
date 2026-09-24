@@ -22,6 +22,17 @@ pub struct ActivityPeriodToken {
 }
 
 impl ActivityPeriodToken {
+    #[cfg(feature = "test-faults")]
+    pub fn for_fixture(home: BerylHomeId, runtime: RuntimeId, period: ActivityWorkPeriod) -> Self {
+        Self {
+            home,
+            runtime,
+            period,
+        }
+    }
+    pub(crate) fn home_id(&self) -> BerylHomeId {
+        self.home
+    }
     pub fn work_period(&self) -> ActivityWorkPeriod {
         self.period
     }

@@ -28,6 +28,12 @@ fn publication_rejects_a_final_answer_with_later_activity_before_terminal() {
                 candidate.final_answer,
                 ProjectionSourceRange::new(0, 11).unwrap(),
             ),
+            support::fixture_activity(
+                &candidate.store,
+                &candidate.storage,
+                candidate.owner,
+                candidate.head.source().unwrap().turn_id(),
+            ),
         ))
         .unwrap();
     let error = match candidate.store.execute(command) {

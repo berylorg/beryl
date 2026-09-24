@@ -7,6 +7,7 @@ pub(super) fn establish_turn(
     turn: SyndicTurnId,
     started_at: SyndicTimestamp,
 ) -> CasTurnSource {
+    let _ = crate::support::enroll_fixture_activity(store, storage, thread, turn);
     let current = storage
         .current_binding(store, thread, point_limit())
         .unwrap()
@@ -173,7 +174,11 @@ pub fn admit_event(
     .unwrap();
     execute(
         store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+        storage.admit_live_source_event(
+            storage.revision(store).unwrap(),
+            event.clone(),
+            crate::support::fixture_activity(store, &storage, event.thread_id(), event.turn_id()),
+        ),
     );
 }
 

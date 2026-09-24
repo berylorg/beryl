@@ -110,6 +110,7 @@ fn active_sourced_unknown_terminal_enters_queue_only_wait_without_stop_authority
                 ),
                 timestamp(5),
             ),
+            crate::support::fixture_activity(&store, &storage, thread, turn),
         ),
     ));
 

@@ -39,9 +39,7 @@ pub(super) fn validate_current_basis(
         && point::<TranscriptHeadsFamily>(reader, &basis.thread().id())?.as_ref()
             == Some(basis.transcript_head())
         && point::<HistorySummariesFamily>(reader, &basis.thread().id())?.as_ref()
-            == Some(basis.summary())
-        && point::<ActivityQueryHeadsFamily>(reader, &basis.thread().id())?.as_ref()
-            == Some(basis.activity_head());
+            == Some(basis.summary());
     if exact {
         Ok(())
     } else {

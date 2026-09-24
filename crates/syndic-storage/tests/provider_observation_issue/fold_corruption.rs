@@ -19,9 +19,16 @@ fn publish_duplicate_start_issue(fixture: &Fixture, observation_byte: u8) {
     );
     committed_command(execute(
         &fixture.store,
-        fixture
-            .storage
-            .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), event),
+        fixture.storage.admit_live_source_event(
+            fixture.storage.revision(&fixture.store).unwrap(),
+            event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
+        ),
     ));
 }
 
@@ -43,9 +50,16 @@ fn publish_completion_mismatch_terminal(fixture: &Fixture) {
     );
     committed_command(execute(
         &fixture.store,
-        fixture
-            .storage
-            .admit_live_source_event(fixture.storage.revision(&fixture.store).unwrap(), event),
+        fixture.storage.admit_live_source_event(
+            fixture.storage.revision(&fixture.store).unwrap(),
+            event.clone(),
+            crate::support::fixture_activity(
+                &fixture.store,
+                &fixture.storage,
+                event.thread_id(),
+                event.turn_id(),
+            ),
+        ),
     ));
 }
 

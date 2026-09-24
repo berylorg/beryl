@@ -62,10 +62,6 @@ impl SyndicStorage {
             self.point::<HistorySummariesFamily>(store, source.thread_id(), limit)?,
             "accepted-next candidate history summary is missing",
         )?;
-        let activity_head = required(
-            self.point::<ActivityQueryHeadsFamily>(store, source.thread_id(), limit)?,
-            "accepted-next candidate activity head is missing",
-        )?;
         Ok(AcceptedNextCandidateBasis {
             source_revision,
             source,
@@ -81,7 +77,6 @@ impl SyndicStorage {
             binding,
             transcript_head,
             summary,
-            activity_head,
         })
     }
 }

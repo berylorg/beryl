@@ -57,7 +57,16 @@ fn a_live_event_cannot_mutate_another_threads_turn_or_gate() {
     .unwrap();
     let beryl_home_store::CommandOutcome::NotCommitted { evidence: error } = execute(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), mismatched),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            mismatched.clone(),
+            crate::support::fixture_activity(
+                &store,
+                &storage,
+                mismatched.thread_id(),
+                mismatched.turn_id(),
+            ),
+        ),
     ) else {
         panic!("expected definitive cross-thread rejection");
     };

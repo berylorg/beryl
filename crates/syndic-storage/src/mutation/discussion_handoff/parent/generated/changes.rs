@@ -45,8 +45,6 @@ changes! {
     Transcript: TranscriptHeadsFamily,
     TranscriptBuild: TranscriptBuildsFamily,
     Summary: HistorySummariesFamily,
-    Activity: ActivityQueryHeadsFamily,
-    ActivitySource: ActivityQuerySourcesFamily,
     Binding: BindingsFamily,
     BindingHead: BindingHeadsFamily,
     Parent: ThreadParentFamily,

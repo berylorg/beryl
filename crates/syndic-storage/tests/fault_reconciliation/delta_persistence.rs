@@ -51,7 +51,16 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         );
         let mut command = HomeCommand::new(store.home_revision().unwrap());
         command
-            .add(storage.admit_live_source_event(storage.revision(&store).unwrap(), delta.clone()))
+            .add(storage.admit_live_source_event(
+                storage.revision(&store).unwrap(),
+                delta.clone(),
+                crate::support::fixture_activity(
+                    &store,
+                    &storage,
+                    delta.thread_id(),
+                    delta.turn_id(),
+                ),
+            ))
             .unwrap();
 
         faults.fail_next(point);
@@ -139,7 +148,16 @@ fn delta_persistence_cuts_reconcile_to_wholly_old_or_wholly_new_history() {
         );
         let retry = execute(
             &reopened,
-            storage.admit_live_source_event(storage.revision(&reopened).unwrap(), delta),
+            storage.admit_live_source_event(
+                storage.revision(&reopened).unwrap(),
+                delta.clone(),
+                crate::support::fixture_activity(
+                    &reopened,
+                    &storage,
+                    delta.thread_id(),
+                    delta.turn_id(),
+                ),
+            ),
         );
         if !delta_persisted {
             assert_clean_committed(retry, "post-reconciliation delta retry");

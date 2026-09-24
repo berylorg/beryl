@@ -4,8 +4,7 @@ use beryl_model::{ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId};
 use crate::{
     AcceptedInputLifecycle, AcceptedInputPromotionStatus, AcceptedNextCandidateBasis,
     AcceptedNextSourceRecord, AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord,
-    AcceptedRouteHeadProof, AcceptedRouteLeafRecord, AcceptedRouteLeafState,
-    ActivityQueryHeadRecord, ActivityQuerySource, ActivityQuerySourceRecord, BindingHeadRecord,
+    AcceptedRouteHeadProof, AcceptedRouteLeafRecord, AcceptedRouteLeafState, BindingHeadRecord,
     BindingLifecycle, BindingRecord, BindingState, CanonicalItemRecord, ConversationParent,
     DraftByThreadRecord, DraftRecord, HistorySummaryRecord, InputGateRecord, InputGateState,
     ProjectionLifecycle, PromoteAcceptedInput, SelectedPathProof, SyndicReadError, SyndicStorage,
@@ -36,8 +35,6 @@ struct PromotionObservation {
     transcript_head: Option<TranscriptViewHeadRecord>,
     transcript_build: Option<TranscriptBuildRecord>,
     summary: Option<HistorySummaryRecord>,
-    activity_head: Option<ActivityQueryHeadRecord>,
-    activity_source: Option<ActivityQuerySourceRecord>,
     parent_turn: Option<TurnRecord>,
     parent_turn_state: Option<TurnStateRecord>,
     successor_ancestor_skip: Option<beryl_model::SyndicTurnId>,
@@ -116,8 +113,6 @@ impl PromotionObservation {
                         "accepted-input promotion binding revision is exhausted",
                     )
                 })?;
-        let activity_work_period = expected_activity_work_period(basis)?;
-        let activity_source = ActivityQuerySource::new(thread, promotion.successor_turn_id());
         let parent = basis
             .thread()
             .committed_tail()
@@ -216,17 +211,6 @@ impl PromotionObservation {
             transcript_head,
             transcript_build,
             summary: storage.point::<HistorySummariesFamily>(store, thread, limit)?,
-            activity_head: storage.point::<ActivityQueryHeadsFamily>(store, thread, limit)?,
-            activity_source: storage.point::<ActivityQuerySourcesFamily>(
-                store,
-                ActivityQuerySourceKey {
-                    thread,
-                    work_period: activity_work_period,
-                    source_thread: activity_source.thread_id(),
-                    source_turn: activity_source.turn_id(),
-                },
-                limit,
-            )?,
             parent_turn,
             parent_turn_state: storage.point::<TurnStatesFamily>(store, parent, limit)?,
             successor_ancestor_skip,
@@ -302,8 +286,6 @@ impl PromotionObservation {
             && self.successor_binding.is_none()
             && self.transcript_head.as_ref() == Some(basis.transcript_head())
             && self.summary.as_ref() == Some(basis.summary())
-            && self.activity_head.as_ref() == Some(basis.activity_head())
-            && self.activity_source.is_none()
             && self.source_parent_agrees(basis)
             && self.turn.is_none()
             && self.turn_state.is_none()
@@ -325,23 +307,5 @@ impl PromotionObservation {
         }) && self.parent_turn_state.as_ref().is_some_and(|state| {
             state.turn_id() == parent_id && state.lifecycle().is_proven_terminal()
         }) && self.successor_ancestor_skip.is_some()
-    }
-}
-
-fn expected_activity_work_period(
-    basis: &AcceptedNextCandidateBasis,
-) -> Result<crate::ActivityWorkPeriod, SyndicReadError> {
-    if basis.activity_head().source().is_none() {
-        Ok(basis.activity_head().work_period())
-    } else {
-        basis
-            .activity_head()
-            .work_period()
-            .checked_next()
-            .map_err(|_| {
-                SyndicReadError::Invariant(
-                    "accepted-input promotion activity work period is exhausted",
-                )
-            })
     }
 }
