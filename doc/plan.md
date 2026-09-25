@@ -98,6 +98,14 @@ all-test-target checks pass; independent review found no blockers. [Evidence](fa
 Mount the sole zero-runtime ordinary shell without a fabricated selected thread, composer or
 transcript; preserve bounded window identity, appearance, placement and startup disposal.
 
+Blocked on 2026-09-25 during placement readiness: the feature requires a deleted saved virtual
+desktop to fall back specifically to the first desktop. No native desktop-placement consumer
+exists in the app or inspected GPUI Windows boundary, and the documented Windows interface has
+no ordered desktop discovery. Choose explicit support for an undocumented platform boundary or
+revise the product fallback before implementing that promise. Recommended: preserve saved desktop
+placement when available and explicitly allow the current desktop when it cannot be restored.
+This recommendation is not approved authority; [evidence](failures/target-bootstrap-composition.md#virtual-desktop-placement-readiness).
+
 # Phase 570: Bind Window Creation To The Process-Owned Home (pending)
 
 Bind the existing runtime-backed acquisition/creation consumers

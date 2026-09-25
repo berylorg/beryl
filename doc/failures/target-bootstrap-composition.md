@@ -1168,3 +1168,30 @@ and native transfer regressions. The combined uncertain-first/sibling case verif
 second command cannot start until the first settles. App all-test-target and default checks
 passed; independent source review found no blocking defect. Complete-set native mounting remains
 separate.
+
+## Virtual Desktop Placement Readiness
+
+Preparing the threadless shell exposed an unimplemented native placement boundary shared by all
+startup windows. At Beryl commit `7c037478`, the app retains `WindowPlacement` through acquisition
+but its shell host opens native windows with default placement. The inspected GPUI Windows source
+contains no virtual-desktop integration. The main-windows feature requires returning to the saved
+desktop and, if it was deleted, specifically choosing the first desktop rather than the current one.
+
+Microsoft's documented [IVirtualDesktopManager interface](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ivirtualdesktopmanager)
+(updated 2024-02-22, accessed 2026-09-25) exposes getting a window's desktop ID, testing whether it
+is on the current desktop, and moving it to a known desktop ID. It does not expose ordered desktop
+enumeration or first-desktop discovery. The documented
+[move method](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ivirtualdesktopmanager-movewindowtodesktop)
+returns an HRESULT and does not supply a replacement desktop identity. These sources establish a
+gap in the documented boundary, not that private Windows mechanisms are impossible.
+
+For example, save a Beryl window on Desktop 3, delete that desktop, and restart Beryl from Desktop
+2. The current feature promises Desktop 1. Reopening on Desktop 2 would silently violate that
+promise; using undocumented Explorer state or private interfaces introduces a new platform
+support and failure contract. Root design prohibits an undocumented fallback or workaround.
+
+Recommended decision: retain restoration to the saved desktop when available and explicitly allow
+the current desktop when it cannot be restored, with no automatic desktop switch. Alternatively,
+authorize a separately designed Windows desktop-discovery boundary and its supported-version and
+failure policy. Neither choice has been accepted; phase 565 is blocked before shell implementation.
+The accepted claim-activation implementation and verification remain committed and unaffected.
