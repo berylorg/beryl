@@ -52,6 +52,17 @@ impl RestoredWindowShellUnpublished {
 }
 
 impl RestoredWindowShellPrepared {
+    pub(in crate::main_window) fn revalidate(
+        &self,
+        attempt: &RestoredWindowPreparationAttempt,
+    ) -> Result<(), String> {
+        let ShellContent::Restored { custody, .. } = &self.selected.content else {
+            unreachable!("restored shell preparation preserves custody kind")
+        };
+        custody.composer.validate_attempt(attempt)?;
+        self.selected.composer.validate_current()
+    }
+
     pub fn prepare(
         prepared: RestoredWindowComposerPrepared,
         attempt: &RestoredWindowPreparationAttempt,

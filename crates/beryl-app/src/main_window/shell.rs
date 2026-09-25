@@ -87,6 +87,18 @@ pub struct MainWindowShellPrepared {
 }
 
 impl MainWindowShellPrepared {
+    pub(in crate::main_window) fn session_revision(&self) -> beryl_model::SessionRevision {
+        self.composer.selection_identity().claim().generation()
+    }
+
+    pub(in crate::main_window) fn revalidate(
+        &self,
+        service: &RuntimeBackedWindowAcquisitionService,
+    ) -> Result<(), String> {
+        service.validate_shell_selection(&self.acquisition, self.composer.selection_identity())?;
+        self.composer.validate_current()
+    }
+
     pub(in crate::main_window) fn from_initial_composer(
         acquisition: RuntimeBackedWindowAcquisition,
         reservation: RuntimeBackedWindowMainWindowReservation,

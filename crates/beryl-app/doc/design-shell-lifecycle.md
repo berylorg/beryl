@@ -133,6 +133,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   durable restore set. Begin-restore and exact claim activation use their typed revision-checked
   session commands; a partial command sequence is reconciled through original custody, never
   undone by a guessed compensating command.
+- If a committed startup command still owns unavailable local-finalization custody, the
+  coordinator returns an explicit retained outcome identifying the begin-restore, initialization
+  or window-claim operation and exposes its original receipt and failure for diagnosis. The same
+  move-only attempt keeps the capability and cannot report prepared or disposed, silently retry
+  a new command, or authorize a conflicting Retry/Exit. The process owner retains that outcome
+  through its separate shutdown/recovery boundary.
 - An empty restore set with runtimes uses the accepted exact runtime/root selection and
   claim-or-create acquisition. Zero-runtime startup instead prepares the sole threadless shell,
   including when a validated session header already exists with no windows. That shell owns no

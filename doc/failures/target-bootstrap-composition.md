@@ -1244,3 +1244,35 @@ Run `2682e79d-b326-4e09-b8a8-3b6629e6f947` passed all 62 initial-editor, shell a
 including the three new restored-native cases. Together the 74 affected tests pass. App checks and
 independent source review pass. Complete-set coordination, native placement/publication and ordinary
 close retain their separate acceptance boundaries.
+
+## Complete Restore-Set Coordination
+
+One worker coordinator now owns the fixed discovered set, sequential restored-editor preparations
+and exact empty-session replacement. Discovery retains at most two original session commands,
+checks their exact successor headers and members, and never substitutes another set after a
+command race. Zero-runtime observation is fenced by the writer's expected home revision. Runtime
+replacement uses the header's retained runtime/root target; first-runtime onboarding's atomic
+contract excludes a valid populated registry without that fallback.
+
+Every required member is revalidated before the coordinator returns a prepared set, including a
+post-read cancellation and service-lifetime fence. Failed or cancelled attempts dispose their
+transient editors and reservations while preserving saved members; only a genuinely new fallback
+enters acquisition abandonment. Original uncertain claim activation resumes directly after editor
+activation rather than re-entering a source check that its unsettled command intentionally fences.
+
+Review found that an unavailable committed local-finalization capability would otherwise remain
+an indistinguishable pending result. The explicit retained outcome now identifies the original
+operation and exposes its original receipt, failure and borrowed capability while preserving the
+move-only owner. It cannot certify preparation or completed disposal. Process Retry/Exit owns the
+separate retained-outcome integration.
+
+The first replacement integration exceeded the debug test stack by combining large restored-editor
+and creation transitions in one function frame. Boxing retirement custody alone was insufficient;
+separate discovery, restored preparation and replacement helpers bound the active stack without
+increasing test stack limits or weakening custody.
+
+Run `c1f46e91-fe7c-4b0c-b0ee-eed9dad22d11` passed all 13 new restore-set cases, including real
+`AfterPersist` failures for begin-restore, threadless initialization and restored claim activation.
+Run `1f460627-98d6-4bf5-828d-6a7f840e3eab` passed all 74 affected editor, shell, creation and notice
+regressions. App all-test-target/default checks and independent review passed. This accepts worker
+coordination, not native placement, complete-set publication or executable startup.

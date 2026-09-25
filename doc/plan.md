@@ -87,35 +87,29 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 572: Transfer Restored Editors Into Hidden Native Shells (finished)
+# Phase 566: Coordinate The Bounded Complete Restore Set (finished)
 
-Accepted hidden native transfer with exact restored editor and reservation custody, shared selected
-construction and saved-member-preserving cleanup. All 74 affected tests, app checks and independent
-review pass; [evidence](failures/target-bootstrap-composition.md#restored-native-shell-custody).
+Accepted complete bounded worker preparation, exact empty-session branches and original-command
+settlement with typed retained outcomes for unavailable local finalization. All 13 new cases and
+74 affected regressions, app checks and independent review pass;
+[evidence](failures/target-bootstrap-composition.md#complete-restore-set-coordination).
 
-# Phase 566: Coordinate The Bounded Complete Restore Set (wip)
-
-Compose accepted session discovery, restored preparation and empty-session replacement branches
-under one exact startup attempt, retaining no more than the supported complete window set and
-rejecting missing, stale or failed members without partial admission.
-
-Retain original begin-restore or threadless-initialization command receipts, local finalization and
-reconciliation until exact settlement; fence zero-runtime observation with the command's expected
-home revision. Select an empty-set runtime replacement from the validated session fallback. Prepare
-restored members sequentially through their accepted claim/editor boundaries, then revalidate every
-member as one complete bounded set. Verify failed last-member preparation, stale first-member
-completion, cancelled or indeterminate commands, empty-header/no-runtime initialization and exact
-runtime fallback. Disposal preserves saved members and original unresolved custody; only a genuinely
-new fallback uses accepted prepublication abandonment. Native placement/publication and process
-Retry/Exit remain separate. Require focused regressions and independent completion review.
-
-# Phase 571: Apply Prepared Native Window Placement (pending)
+# Phase 571: Apply Prepared Native Window Placement (wip)
 
 Implement bounded startup placement for the prepared shell set: reachable saved geometry and
 monitor selection, saved-desktop restoration through the documented Windows boundary and the
 approved current-desktop fallback. Preserve hidden preparation, exact native identity and failure
 disposal before complete-set publication. Verify changed topology, missing desktop and failed
 desktop restoration without automatic desktop switching or changing another member's placement.
+
+Resolve saved outer logical geometry and monitor/work-area hints into bounded prepared facts off
+the GUI thread. Preserve fixed initial normal/maximized state through hidden construction. Apply
+the saved virtual-desktop identity through documented Windows integration while retaining exact
+native ownership; missing, removed or unavailable desktop restoration uses the current desktop.
+Verify reachability after topology/scale changes, extreme saved coordinates, hidden-state retention,
+identity-safe failure disposal and independent per-window fallback. Keep complete-set interaction
+gating/publication and process startup ownership in their following phases. Require native-boundary
+evidence, affected shell regressions and independent review before acceptance.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

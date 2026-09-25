@@ -47,7 +47,7 @@ impl MainWindowConversationComposerPreparedSelection {
         self.assets.clone()
     }
 
-    pub(super) fn validate_current(&self) -> Result<(), String> {
+    pub(in crate::main_window) fn validate_current(&self) -> Result<(), String> {
         if self.service.selected_identity() != Some(self.selection_identity()) {
             return Err("prepared conversation composer selection is stale".to_owned());
         }

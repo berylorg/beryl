@@ -440,6 +440,8 @@
   [84-case acceptance](../../failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
 - [x] Accepted restored-editor transfer into hidden ordinary native shells, retaining exact cleanup
   custody and saved members; [74-case acceptance](../../failures/target-bootstrap-composition.md#restored-native-shell-custody).
+- [x] Accepted complete bounded restore-set worker coordination, exact empty-session branches and
+  typed retained command outcomes; [87-case acceptance](../../failures/target-bootstrap-composition.md#complete-restore-set-coordination).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

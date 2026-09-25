@@ -23,6 +23,12 @@ pub(super) struct RestoredClaimActivation {
 }
 
 impl RestoredWindowComposer {
+    pub(in crate::main_window) fn claim_activation_local_finalization(
+        &self,
+    ) -> Option<&CommittedLocalFinalization> {
+        self.claim_activation.as_ref()?.local_finalization.as_ref()
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn test_arm_before_claim_activation(&mut self, fault: impl FnOnce() + Send + 'static) {
         self.before_claim_activation = Some(Box::new(fault));

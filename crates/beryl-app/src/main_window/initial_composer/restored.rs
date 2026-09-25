@@ -55,6 +55,19 @@ impl Drop for RestoredWindowPreparationAttempt {
 }
 
 impl RestoredWindowPreparationAttempt {
+    pub(in crate::main_window) fn validate_home(
+        &self,
+        store: &HomeServiceReference,
+    ) -> Result<(), String> {
+        self.validate_lifetime()?;
+        if store.home_id() != self.store.home_id()
+            || store.health().generation() != Some(self.generation)
+        {
+            return Err("restore services belong to another home generation".to_owned());
+        }
+        Ok(())
+    }
+
     pub(crate) fn validate_lifetime(&self) -> Result<(), String> {
         if !self.identity.live.load(Ordering::Acquire)
             || self.service.upgrade().is_none()
@@ -295,7 +308,10 @@ impl RestoredWindowComposer {
         )
     }
 
-    fn validate_attempt(&self, attempt: &RestoredWindowPreparationAttempt) -> Result<(), String> {
+    pub(in crate::main_window) fn validate_attempt(
+        &self,
+        attempt: &RestoredWindowPreparationAttempt,
+    ) -> Result<(), String> {
         if !Arc::ptr_eq(&self.source.attempt, &attempt.identity)
             || !Arc::ptr_eq(&self.source.store, &attempt.store)
         {
@@ -360,6 +376,11 @@ impl RestoredWindowComposer {
 }
 
 impl RestoredWindowComposerPrepared {
+    pub(in crate::main_window) fn into_custody(self) -> RestoredWindowComposer {
+        drop(self.prepared);
+        self.custody
+    }
+
     pub fn revalidate(&self, attempt: &RestoredWindowPreparationAttempt) -> Result<(), String> {
         self.custody.validate_attempt(attempt)
     }
