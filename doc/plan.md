@@ -121,15 +121,11 @@ mixed DPI, taskbar workspace offsets, stale monitors and actual hidden normal/ma
 Desktop application must retain the exact hidden native window until its COM worker finishes;
 cancellation cannot release or recycle that HWND while desktop movement is in flight.
 
-Blocked on tooling setup on 2026-09-25: `../zed-fork` documentation indexing discovers 181
-Markdown files but reconciliation reports `Blocked`, `MissingModel` for
-`BAAI/bge-small-en-v1.5`; doctor confirms the model is unavailable in
-`C:\Users\user\AppData\Local\rag-rat\models`. No model was installed. The fork has only
-ignored local rag-rat/MCP configuration and derived index changes; no tracked authority or source
-changes. Operator must restore existing model availability or install the configured model before
-fork documentation and implementation proceed. Reconnect the project MCP server after setup.
-Existing Beryl reconciliation previously passed; its success does not establish model availability
-for the newly initialized fork index. Do not bypass the required current-index gate.
+Operator clarified on 2026-09-25 that zed-fork does not need rag-rat because Beryl-owned
+Markdown is not authored there. Keep this prerequisite's design and planning authority in Beryl;
+do not create a fork documentation/indexing prerequisite. The unnecessary local fork setup was
+removed. Its `MissingModel` report referred to an unregistered model in the new index, not missing
+shared model files. This tooling issue does not block native placement work.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 
