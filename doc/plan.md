@@ -87,22 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 415: Specify Restore-Set Startup Composition (finished)
+# Phase 563: Initialize A Threadless Window From An Exact Empty Session (finished)
 
-Accepted the approved native-failure exception, distinct restored-window custody, bounded
-whole-set admission and serialized startup disposal/Retry. Feature, app, State and executable
-authority passed independent review; [evidence](failures/target-bootstrap-composition.md#restore-set-native-publication-boundary).
-The remaining implementation boundaries are separated below.
-
-# Phase 563: Initialize A Threadless Window From An Exact Empty Session (wip)
-
-Extend the typed session initialization boundary to distinguish an absent header from an exact
-observed empty header. Preserve absent-header rejection, require the expected session revision
-for an existing header, reject nonempty or fallback-bearing state and chosen-window identity
-collisions, and advance the existing revision without changing stored schema. Zero-runtime
-eligibility remains the startup composer's responsibility. Verify reopen after the last threadless
-window closes, stale revision, nonempty/fallback rejection, repeated initialization and original
-indeterminate command reconciliation. Run session/schema regressions and independent review.
+Accepted exact empty-header initialization with monotonic revision, collision rejection and
+original reconciliation custody. Eighteen session/schema/restart and corruption checks passed,
+along with the State all-test-target check and independent review. Zero-runtime eligibility
+remains the startup composer's responsibility; stored schema is unchanged.
 
 # Phase 564: Establish Exact Restored-Window Preparation Custody (pending)
 

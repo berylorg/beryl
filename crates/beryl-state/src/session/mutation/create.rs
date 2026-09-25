@@ -4,86 +4,16 @@ use beryl_model::{SessionRevision, SyndicThreadId, WindowId, WindowPlacement};
 use crate::RecordRevision;
 
 use crate::session::{
-    MAX_RESTORABLE_WINDOWS, RememberedTarget, SessionDomain, SessionExitIntent, SessionHeader,
-    SessionMutationError, SessionWindowRecord, ThreadClaimRecord, ThreadClaimState,
-    WindowClaimSelection,
+    MAX_RESTORABLE_WINDOWS, RememberedTarget, SessionDomain, SessionHeader, SessionMutationError,
+    SessionWindowRecord, ThreadClaimRecord, ThreadClaimState, WindowClaimSelection,
     codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec},
 };
 
 use super::shared::{
-    claim_by_thread, claim_by_window, delete_claim, ensure_claim_expectation, header,
-    initial_claim_revision, initial_session_revision, insert_reference, put_claim, put_header,
-    put_window, replace_reference, required_claim, required_header, required_window,
+    claim_by_thread, claim_by_window, delete_claim, ensure_claim_expectation,
+    initial_claim_revision, insert_reference, put_claim, put_header, put_window, replace_reference,
+    required_claim, required_header, required_window,
 };
-
-/// Initialize the sole permitted zero-runtime, threadless main window.
-pub struct InitializeThreadlessWindow {
-    window_id: WindowId,
-    placement: WindowPlacement,
-}
-
-pub(crate) struct InitializeThreadlessWindowPrepared {
-    header: SessionHeader,
-    window: SessionWindowRecord,
-}
-
-impl InitializeThreadlessWindow {
-    #[must_use]
-    pub const fn new(window_id: WindowId, placement: WindowPlacement) -> Self {
-        Self {
-            window_id,
-            placement,
-        }
-    }
-}
-
-impl DomainMutation<SessionDomain> for InitializeThreadlessWindow {
-    type Error = SessionMutationError;
-    type Prepared = InitializeThreadlessWindowPrepared;
-
-    fn prepare(
-        self,
-        reader: &DomainReader<'_, SessionDomain>,
-    ) -> Result<Self::Prepared, Self::Error> {
-        if header(reader)?.is_some() {
-            return Err(SessionMutationError::AlreadyInitialized);
-        }
-        let window = SessionWindowRecord {
-            window_id: self.window_id,
-            remembered_target: None,
-            selected_thread: None,
-            placement: self.placement,
-            revision: RecordRevision::INITIAL,
-        };
-        let header = SessionHeader {
-            revision: initial_session_revision(),
-            exit_intent: SessionExitIntent::Running,
-            fallback: None,
-            windows: vec![crate::session::SessionWindowReference::new(
-                window.window_id,
-                window.revision,
-            )],
-        };
-        Ok(InitializeThreadlessWindowPrepared { header, window })
-    }
-
-    fn reserve_reconciliation(
-        &self,
-        reservation: &mut ReconciliationReservation<'_, SessionDomain>,
-    ) -> Result<(), Self::Error> {
-        reservation.reserve_records::<SessionHeaderCodec>(1)?;
-        reservation.reserve_records::<SessionWindowCodec>(1)?;
-        Ok(())
-    }
-
-    fn contribute(
-        prepared: Self::Prepared,
-        mutations: &mut MutationBuilder<'_, SessionDomain>,
-    ) -> Result<(), Self::Error> {
-        put_window(mutations, &prepared.window)?;
-        put_header(mutations, &prepared.header)
-    }
-}
 
 /// Add one runtime-backed window only after its exclusive thread is known.
 pub struct CreateClaimedWindow {
@@ -393,6 +323,7 @@ mod tests {
     use beryl_model::{RootId, RuntimeId, WindowBounds, WindowDisplayState, WindowPlacement};
 
     use super::*;
+    use crate::InitializeThreadlessWindow;
 
     struct PutWindowClaimOnly(ThreadClaimRecord);
 
