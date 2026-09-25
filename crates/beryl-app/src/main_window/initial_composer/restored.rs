@@ -2,13 +2,23 @@ use super::*;
 use beryl_model::{SessionRevision, SyndicDraftId, WindowId};
 use beryl_state::{SessionState, SessionWindowRecord, ThreadClaimRecord, ThreadClaimState};
 use std::sync::{
-    Weak,
+    Mutex, Weak,
     atomic::{AtomicBool, Ordering},
 };
 use syndic_storage::{DraftPieceTextDemandV1, SyndicPointReadLimit};
 
+mod claim_activation;
+use claim_activation::RestoredClaimActivation;
+pub use claim_activation::RestoredClaimActivationProgress;
+
+struct RestoreAttemptSession {
+    revision: Option<SessionRevision>,
+    activation: Option<WindowId>,
+}
+
 struct RestoreAttemptIdentity {
     live: AtomicBool,
+    session: Mutex<RestoreAttemptSession>,
 }
 
 #[cfg(feature = "test-faults")]
@@ -95,7 +105,13 @@ impl RestoredWindowPreparationAttempt {
             retirement_operation,
             marker_authority,
         );
-        Ok(RestoredWindowComposer { source, candidate })
+        Ok(RestoredWindowComposer {
+            source,
+            candidate,
+            claim_activation: None,
+            #[cfg(feature = "test-faults")]
+            before_claim_activation: None,
+        })
     }
 
     pub(crate) fn new(
@@ -117,6 +133,10 @@ impl RestoredWindowPreparationAttempt {
         Ok(Self {
             identity: Arc::new(RestoreAttemptIdentity {
                 live: AtomicBool::new(true),
+                session: Mutex::new(RestoreAttemptSession {
+                    revision: None,
+                    activation: None,
+                }),
             }),
             service,
             store,
@@ -159,6 +179,9 @@ impl RestoredWindowPreparationAttempt {
             .map_err(|error| error.to_string())?
             .claim()
             .ok_or_else(|| "restore claim is missing".to_owned())?;
+        if claim.state() != ThreadClaimState::Restoring {
+            return Err("restore member is not restoring".to_owned());
+        }
         let draft_id = self
             .storage
             .current_draft_piece_text_demand(
@@ -183,6 +206,19 @@ impl RestoredWindowPreparationAttempt {
             claim,
             draft_id,
         };
+        {
+            let mut session = self
+                .identity
+                .session
+                .lock()
+                .map_err(|_| "restore session fence is poisoned".to_owned())?;
+            if session.activation.is_some()
+                || session.revision.is_some_and(|current| current != revision)
+            {
+                return Err("restore attempt session revision is stale or unsettled".to_owned());
+            }
+            session.revision = Some(revision);
+        }
         source.validate()?;
         if self
             .store
@@ -199,6 +235,9 @@ impl RestoredWindowPreparationAttempt {
 pub struct RestoredWindowComposer {
     source: RestoredWindowSource,
     candidate: InitialComposerCandidate,
+    claim_activation: Option<RestoredClaimActivation>,
+    #[cfg(feature = "test-faults")]
+    before_claim_activation: Option<Box<dyn FnOnce() + Send>>,
 }
 
 pub struct RestoredWindowComposerFailure {
@@ -259,6 +298,11 @@ impl RestoredWindowComposer {
         >,
     ) -> Result<RestoredWindowComposerPrepared, RestoredWindowComposerFailure> {
         let result = self.validate_attempt(attempt).and_then(|()| {
+            if self.source.claim.state() != ThreadClaimState::Active {
+                return Err(
+                    "restored claim must be active before selected-editor preparation".to_owned(),
+                );
+            }
             let source = &self.source;
             self.candidate
                 .prepare_selection(source.window.window_id(), configurator, &|| {
@@ -279,7 +323,14 @@ impl RestoredWindowComposer {
 
     pub fn retire(mut self, cancellation: CommandCancellation) -> RestoredWindowComposerRetirement {
         self.candidate.retirement_started = true;
-        match self.candidate.drive_retirement(cancellation) {
+        let result = self.settle_claim_for_retirement().and_then(|settled| {
+            if settled {
+                self.candidate.drive_retirement(cancellation)
+            } else {
+                Ok(false)
+            }
+        });
+        match result {
             Ok(true) => RestoredWindowComposerRetirement::Retired,
             result => RestoredWindowComposerRetirement::Pending(RestoredWindowComposerFailure {
                 custody: self,
@@ -314,12 +365,26 @@ impl RestoredWindowSource {
             .store
             .home_revision()
             .map_err(|error| error.to_string())?;
+        let expected_revision = {
+            let session = self
+                .attempt
+                .session
+                .lock()
+                .map_err(|_| "restore session fence is poisoned".to_owned())?;
+            if session.activation.is_some() {
+                return Err("restore claim activation remains unsettled".to_owned());
+            }
+            session
+                .revision
+                .ok_or_else(|| "restore attempt has no session revision".to_owned())?
+        };
         let bootstrap = self
             .session
             .minimal_bootstrap(&self.store)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "restore session is missing".to_owned())?;
-        if bootstrap.header().revision() != self.session_revision
+        if expected_revision < self.session_revision
+            || bootstrap.header().revision() != expected_revision
             || !bootstrap
                 .windows()
                 .iter()
@@ -340,7 +405,6 @@ impl RestoredWindowSource {
             || self.claim.window_id() != self.window.window_id()
             || self.claim.generation() != selection.generation()
             || self.claim.revision() != selection.revision()
-            || self.claim.state() != ThreadClaimState::Restoring
         {
             return Err("restore paired claim changed".to_owned());
         }

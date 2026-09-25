@@ -432,6 +432,8 @@
   unchanged schema and retained uncertain-command reconciliation; 18 checks and independent review passed.
 - [x] Accepted distinct restored-editor preparation and disposal with exact source and service-lifetime
   fences, preserving saved members and original reconciliation; [152-case acceptance](../../failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
+- [x] Accepted exact restored-claim activation before selected-editor binding, with serialized
+  sibling advancement and retained uncertain-command custody; [25-case acceptance](../../failures/target-bootstrap-composition.md#restored-claim-activation).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

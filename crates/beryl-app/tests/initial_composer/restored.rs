@@ -1,78 +1,6 @@
+use super::restoration_support::*;
 use super::*;
 use beryl_home_store::{CommandOutcome, HomeCommand};
-use beryl_state::{BeginSessionRestore, MinimalSessionBootstrap};
-
-fn snapshot(fixture: &Fixture) -> MinimalSessionBootstrap {
-    fixture
-        .state
-        .session()
-        .minimal_bootstrap(&fixture.store)
-        .unwrap()
-        .unwrap()
-}
-
-fn begin_restore(fixture: &Fixture) {
-    let session = fixture.state.session();
-    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
-    command
-        .add(session.begin_restore(
-            session.revision(&fixture.store).unwrap(),
-            BeginSessionRestore::new(snapshot(fixture).header().revision()),
-        ))
-        .unwrap();
-    assert!(matches!(
-        fixture.store.execute(command),
-        CommandOutcome::Committed {
-            later_failure: None,
-            ..
-        }
-    ));
-}
-
-fn attempt(
-    fixture: &Fixture,
-) -> (
-    RestoredWindowPreparationAttempt,
-    RestoredWindowServiceTestLifetime,
-) {
-    RestoredWindowPreparationAttempt::new_for_test(
-        fixture.store.clone(),
-        fixture.state.session(),
-        fixture.storage.clone(),
-    )
-    .unwrap()
-}
-
-fn begin(
-    fixture: &Fixture,
-    attempt: &RestoredWindowPreparationAttempt,
-    seed: u8,
-) -> RestoredWindowComposer {
-    let snapshot = snapshot(fixture);
-    let window = &snapshot.windows()[0];
-    attempt
-        .begin(
-            snapshot.header().revision(),
-            window.window_id(),
-            composer_support::activation(
-                window.selected_thread().unwrap().thread_id(),
-                seed,
-                seed.wrapping_add(1),
-                1,
-                0,
-            ),
-            composer_support::fixture::operation_id(seed.wrapping_add(2)),
-            MainWindowComposerMarkerMetadataAuthority::new(fixture.state.assets()),
-        )
-        .unwrap()
-}
-
-fn retire(custody: RestoredWindowComposer) {
-    match custody.retire(CommandCancellation::new()) {
-        RestoredWindowComposerRetirement::Retired => {}
-        RestoredWindowComposerRetirement::Pending(failure) => panic!("{}", failure.error),
-    }
-}
 
 #[test]
 fn restored_editor_preparation_and_retirement_preserve_saved_window_and_thread() {
@@ -81,7 +9,6 @@ fn restored_editor_preparation_and_retirement_preserve_saved_window_and_thread()
     let draft = acquired.draft_id();
     drop(acquired);
     begin_restore(&fixture);
-    let before = snapshot(&fixture);
     let (attempt, _service) = attempt(&fixture);
     let mut custody = begin(&fixture, &attempt, 133);
     assert_eq!(
@@ -90,6 +17,13 @@ fn restored_editor_preparation_and_retirement_preserve_saved_window_and_thread()
             .unwrap(),
         MainWindowInitialComposerProgress::Activated
     );
+    assert_eq!(
+        custody
+            .activate_claim(&attempt, &CommandCancellation::new())
+            .unwrap(),
+        RestoredClaimActivationProgress::Active
+    );
+    let before = snapshot(&fixture);
     let prepared = custody
         .prepare(&attempt, &mut config)
         .unwrap_or_else(|failure| panic!("{}", failure.error));
@@ -132,8 +66,20 @@ fn foreign_attempt_and_changed_session_reject_without_losing_editor_cleanup() {
             .unwrap(),
         MainWindowInitialComposerProgress::Activated
     );
+    let revision = fixture.store.home_revision().unwrap();
+    assert!(
+        custody
+            .activate_claim(&foreign, &CommandCancellation::new())
+            .is_err()
+    );
+    assert_eq!(fixture.store.home_revision().unwrap(), revision);
     begin_restore(&fixture);
     let before = snapshot(&fixture);
+    assert!(
+        custody
+            .activate_claim(&owner, &CommandCancellation::new())
+            .is_err()
+    );
     assert!(
         custody
             .advance(&owner, &CommandCancellation::new())
@@ -185,13 +131,20 @@ fn cancelled_restore_and_failed_configuration_preserve_all_durable_members() {
         let fixture = Fixture::new(161);
         drop(fixture.acquire(162));
         begin_restore(&fixture);
-        let before = snapshot(&fixture);
+        let mut before = snapshot(&fixture);
         let (owner, _service) = attempt(&fixture);
         let mut custody = begin(&fixture, &owner, 163);
         if after_open {
             custody
                 .advance(&owner, &CommandCancellation::new())
                 .unwrap();
+            assert_eq!(
+                custody
+                    .activate_claim(&owner, &CommandCancellation::new())
+                    .unwrap(),
+                RestoredClaimActivationProgress::Active
+            );
+            before = snapshot(&fixture);
             let failure = custody
                 .prepare(&owner, &mut |_| Err("configuration failed".to_owned()))
                 .err()
@@ -219,6 +172,13 @@ fn retired_service_rejects_preparation_but_preserves_cleanup_custody() {
         .advance(&owner, &CommandCancellation::new())
         .unwrap();
     drop(service);
+    let revision = fixture.store.home_revision().unwrap();
+    assert!(
+        custody
+            .activate_claim(&owner, &CommandCancellation::new())
+            .is_err()
+    );
+    assert_eq!(fixture.store.home_revision().unwrap(), revision);
     assert!(
         custody
             .advance(&owner, &CommandCancellation::new())
@@ -262,6 +222,13 @@ fn external_claim_activation_is_not_adopted_by_an_old_restore_editor() {
         }
     ));
     let active = snapshot(&fixture);
+    let revision = fixture.store.home_revision().unwrap();
+    assert!(
+        custody
+            .activate_claim(&owner, &CommandCancellation::new())
+            .is_err()
+    );
+    assert_eq!(fixture.store.home_revision().unwrap(), revision);
     assert!(
         custody
             .advance(&owner, &CommandCancellation::new())

@@ -87,23 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 564: Establish Exact Restored-Window Preparation Custody (finished)
+# Phase 569: Settle Restored Claim Activation Before Selected-Editor Transfer (finished)
 
-Accepted distinct restored-editor custody, exact source checks, graph/attempt lifetime fences and
-typed home service references. All 152 applicable regression cases, app all-test-target/default
-checks and independent semantic review passed; [evidence](failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
-Claim activation and native transfer retain their separate boundaries below.
+Accepted exact claim activation before selected-editor binding, shared attempt revision tracking
+and original command settlement during retirement. All 25 initial-editor cases, app default and
+all-test-target checks pass; independent review found no blockers. [Evidence](failures/target-bootstrap-composition.md#restored-claim-activation).
 
-# Phase 569: Settle Restored Claim Activation Before Selected-Editor Transfer (wip)
-
-After bounded editor-candidate readiness, execute and settle the exact restoring-to-active claim
-command before forming the final selected editor. Retain original command custody and the saved
-member after failure; no compensating delete or guessed reset. Carry the resulting exact claim
-into the selected editor, and recognize only the startup owner's known sibling session-revision
-advancements without adopting changed windows or claims. Verify uncertain activation, sibling
-ordering, stale external changes and cleanup before passing this component to whole-set startup.
-
-# Phase 565: Prepare The Threadless Initial Shell (pending)
+# Phase 565: Prepare The Threadless Initial Shell (wip)
 
 Mount the sole zero-runtime ordinary shell without a fabricated selected thread, composer or
 transcript; preserve bounded window identity, appearance, placement and startup disposal.

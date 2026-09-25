@@ -1148,3 +1148,23 @@ correction. Together all 152 applicable cases pass, including seven new restored
 the graph lifetime check and the three focused scale cases. The full scale case was intentionally
 stopped, not counted as passing. App all-test-target and default checks pass; independent semantic
 review accepts distinct restored custody and the service-lifetime correction.
+
+## Restored Claim Activation
+
+Claim activation changes the selected editor's exact claim identity. Building that editor against
+the old restoring claim would immediately stale its binding. Preparation now settles the typed
+activation command before selected-editor construction and carries the resulting exact claim.
+The attempt records only its own session-revision advances, allowing sequential siblings without
+adopting external header or member changes. One unsettled activation blocks sibling commands.
+
+Indeterminate activation retains its original reconciliation handle; retirement settles that
+command before releasing the transient editor and never deletes the saved session member.
+Cancellation at the writer boundary retains the not-committed failure and permits an explicit
+fresh retry. No replay or guessed compensating reset substitutes for exact settlement.
+
+Acceptance: run `e170e6ee-144e-4ea6-83e0-96788c27fec3` passed all 25 initial-editor tests,
+including seven activation cases, source/lifetime rejection, uncertain open and retirement,
+and native transfer regressions. The combined uncertain-first/sibling case verifies that the
+second command cannot start until the first settles. App all-test-target and default checks
+passed; independent source review found no blocking defect. Complete-set native mounting remains
+separate.
