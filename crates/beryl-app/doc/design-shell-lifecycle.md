@@ -125,6 +125,38 @@ governed by [design.md](design.md). It does not independently declare engineerin
   review covers the native lifetime and coordinate boundary. Beryl-owned authority for this fork
   requirement remains here; no fork Markdown or document index is required.
 
+## Hidden Native Operation Lifetime
+
+- A Windows desktop worker receives a move-only operation token for one exact hidden, never
+  published window. The native boundary admits at most one operation per window and rejects a
+  visible, previously published, closing, destroyed or already leased window. Retaining a raw
+  handle or a GUI entity alone is not sufficient. The token remains owned by the worker until
+  its native calls finish or unwind; cancelling its caller cannot release that protection.
+- While the operation is active, native destruction is deferred even if GPUI explicitly removes
+  or drops its window wrapper. Completion releases the deferred destruction on the GUI thread;
+  neither worker-side destruction nor a blocking GUI join is permitted. Each admitted window
+  retains only one operation and one completion continuation, without a retry or waiter queue.
+- A native close request during this hidden operation latches terminal close intent without
+  invoking ordinary close or destroying the root. That intent remains queryable after worker
+  completion and prevents publication or another operation. Completion does not replay ordinary
+  close: the app first extracts and disposes the original typed shell custody. Explicit wrapper
+  removal is a separate destruction request and completes native destruction after the operation.
+- Publication and activation cannot expose or focus the window while leased or after terminal
+  close intent. Native destruction is idempotent for the exact owned HWND; a later wrapper drop
+  must not issue a second destroy against a recycled handle.
+- The app retains the full shell and original acquired, restored or threadless cleanup custody
+  until the worker and GUI completion settle. Cancellation fences publication and then follows
+  the original disposal path. It is not a desktop fallback or permission to abandon a pending
+  native call. A pending call retains one bounded operation until completion.
+- This boundary requires a running GUI event loop. The process startup/shutdown owner must drain
+  native operations and their deferred GUI disposal before ordinary application quit or retry.
+  Fatal process termination remains governed by the separate crash contract. A token does not
+  promise cleanup after the GUI executor has stopped.
+- Acceptance requires real Windows evidence for worker-held lifetime across explicit removal,
+  hidden close intent, publication/activation fencing, worker release/unwind and exactly-once
+  native disposal, plus independent lifecycle review. Native lease acceptance does not accept the
+  desktop COM worker, app cleanup integration or process quit barrier.
+
 ## Window Placement Preparation
 
 - Worker placement preparation binds one exact window identity and its immutable saved placement
@@ -149,6 +181,15 @@ governed by [design.md](design.md). It does not independently declare engineerin
   oversized/offscreen windows, negative origins, fractional scale-derived work areas, deterministic
   ties, extreme saved values, no-monitor failure and exact prepared-window binding. Windows worker
   discovery must compose directly with the accepted bounded GPUI monitor visitor.
+- On Windows, restored and threadless startup shell construction requires that prepared placement.
+  The host checks exact window/saved-fact binding before allocating a controller or native window,
+  then supplies the resolved outer rectangle, monitor snapshot and fixed normal/maximized state
+  to GPUI. A before-construction failure returns the original selected-editor custody through its
+  existing typed failure boundary; threadless failure releases its transient reservation only.
+- Ordinary newly acquired windows may use platform-default placement. Startup's acquired
+  empty-session replacement instead supplies prepared placement through the same host boundary;
+  the complete startup-set owner must require preparation for every member. Geometry construction
+  alone never certifies saved-desktop restoration or complete-set publication.
 
 ## Startup And Activation
 

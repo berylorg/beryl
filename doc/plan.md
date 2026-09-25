@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 575: Construct Hidden Shells With Prepared Geometry (finished)
+# Phase 576: Retain Hidden Native Windows Across Worker Operations (finished)
 
-Accepted exact prepared geometry in restored, threadless and explicit startup acquisition hosts,
-with original failure custody and checked physical-edge-preserving conversion. All 91 focused
-and affected tests, app all-test/default checks and independent review pass;
-[evidence](failures/target-bootstrap-composition.md#hidden-shell-prepared-geometry).
+Accepted one worker lease per hidden native window, terminal close intent, exposure fencing and
+GUI-thread deferred destruction. All 92 focused/affected tests, app checks, canonical dependency
+validation and independent lifecycle review pass;
+[evidence](failures/target-bootstrap-composition.md#accepted-hidden-native-operation-lifetime).
 
 # Phase 571: Apply Prepared Native Window Placement (pending)
 
@@ -116,11 +116,10 @@ The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared
 Desktop application must retain the exact hidden native window until its COM worker finishes;
 cancellation cannot release or recycle that HWND while desktop movement is in flight.
 
-Readiness finding on 2026-09-25: retaining the app shell or GPUI inner object does not pin the
-native HWND. Explicit removal bypasses the close callback, and `WindowsWindow::drop` schedules
-native destruction independently of retained inner references. Desktop integration remains pending
-until an exact native lifetime boundary is specified and accepted; the bounded prerequisite is
-being assessed before implementation. See the [lifetime evidence](failures/target-bootstrap-composition.md#desktop-worker-native-lifetime).
+The separate native operation lifetime prerequisite above closes the HWND recycling gap;
+desktop integration must retain the original typed shell custody until both worker completion and
+GUI settlement, then apply close/cancellation before publication. See the
+[lifetime evidence](failures/target-bootstrap-composition.md#desktop-worker-native-lifetime).
 
 Operator clarified on 2026-09-25 that zed-fork does not need rag-rat because Beryl-owned
 Markdown is not authored there. Keep this prerequisite's design and planning authority in Beryl;
@@ -139,6 +138,8 @@ restore records under the approved transient-exposure exception.
 Connect accepted service-graph, restore-set and native-publication components to one process
 lifetime owner with serialized same-home Retry/Exit, exact failure surfaces and retained shutdown
 custody. Preserve the separate process-entry fatal-hook mounting gate.
+Drain native operation flights and deferred GUI destruction before ordinary application quit or
+Retry; a stopped GUI executor cannot complete their ownership protocol.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

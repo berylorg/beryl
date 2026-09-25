@@ -1353,5 +1353,37 @@ The clean prerequisite is an exact hidden native operation lifetime: a worker to
 native destruction until all calls finish or unwind, with disposal returning to the GUI thread.
 The app must retain the original shell and cleanup custody during that operation, fence publication
 on cancellation, and dispose only after worker completion. An indefinitely pending native call
-cannot be treated as completed disposal. The smallest dependency contract and its native evidence
-are being assessed before implementation; no raw-handle desktop worker is accepted yet.
+cannot be treated as completed disposal. The app's hidden native operation contract now requires
+one bounded worker token, separate terminal close/destruction intent, exposure fencing and GUI-side
+completion. Ordinary process quit must drain these flights while the event loop still runs; GPUI's
+post-loop shutdown timeout cannot replace that ownership. Dependency implementation and native
+evidence are a separate prerequisite; no raw-handle desktop worker is accepted yet.
+
+## Accepted Hidden Native Operation Lifetime
+
+The GPUI Windows boundary now issues one move-only worker token for a hidden unpublished window.
+Its detached GUI completion retains the exact native owner independently of the result observer.
+Wrapper removal defers native destruction until token release or unwind. Native close instead
+latches terminal intent, retains the root for typed app cleanup, and prevents publication. The
+native destruction marker precedes close callbacks so later wrapper disposal cannot destroy a
+recycled handle. Exposure checks cover public publication, queued backend activation, fullscreen,
+minimize/zoom, display changes, caption controls and native system commands.
+
+Final run `02571c2a-4350-4d8d-94fe-6361e034255b` passed all 92 tests across seven targets. The new
+real Windows lifecycle test covers removal before waiter polling, worker unwind, dropped observer,
+repeated close requests, native minimize/maximize/restore commands, normal/maximized publication,
+duplicate admission and an exact sequence of GUI-thread destruction calls. Public activation is
+tested; its existing unpublished-window fence means the backend's queued activation guard is
+established by independent source review. All-test/default app checks and that review pass.
+
+The fixture must remove its control window while the GUI loop still runs rather than assume
+`App::quit` will execute deferred disposal afterward. This reinforces the existing separate
+process-quit drain requirement, not a dependency promise after executor termination. The native
+operation prerequisite is accepted; desktop COM effects, typed app-flight integration and process
+quit ownership remain unimplemented boundaries.
+
+Published GPUI revision: `696900268c2793871a7e1b7b4839ca57a6cf3b6d`; aligned scrollbar,
+text-input and settings revisions: `b56f05842de75d423ac57b100ab2fc0b9fdfb340`,
+`54d5fee6a4af3b0f473ca3ae944b498f269fe2e0` and `e8a8da94720fbe03c81d6d67c49fb07892a8ec06`.
+Canonical locked Cargo metadata resolves one GPUI source. Manifest validation and focused app
+check passed before the successful Serena language-server refresh.

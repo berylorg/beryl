@@ -449,6 +449,8 @@
 - [x] Connected prepared geometry to hidden restored, threadless and startup acquisition shells,
   preserving original cleanup custody and fractional-scale pixel edges;
   [evidence](../../failures/target-bootstrap-composition.md#hidden-shell-prepared-geometry).
+- [x] Accepted exact hidden native worker lifetime, deferred GUI destruction and close/exposure
+  fencing; [evidence](../../failures/target-bootstrap-composition.md#accepted-hidden-native-operation-lifetime).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

@@ -23,6 +23,19 @@ The owner must retain the exact hidden HWND until that worker completes: `IsWind
 protect against handle recycling after concurrent destruction. Cancellation must fence publication
 without destroying a window still used by the worker.
 
+The follow-up lifetime inspection found that an inner `Rc` did not pin the HWND: wrapper drop
+scheduled destruction independently, and explicit GPUI removal bypassed `WM_CLOSE`. The accepted
+fork now supplies `lease_hidden_windows_window`, a worker token and an independent GUI release
+acknowledgement. Terminal native close intent remains queryable after release; it does not replay
+ordinary close before Beryl can extract original cleanup custody. One detached GUI waiter retains
+the exact native owner, including when the acknowledgement observer is dropped.
+
+The guarantee depends on a live event loop. Windows last-window destruction posts the platform's
+close-one-window message, which can terminate the loop; explicit quit also exits it before ordinary
+shutdown clears remaining windows. The app must therefore finish worker acknowledgements and
+deferred disposal before quit. Neither an inner reference nor a post-loop shutdown timeout extends
+that lifetime guarantee.
+
 # Sources
 
 - Beryl-owned GPUI, canonical repository `https://github.com/berylorg/zed-fork`, inspected commit
@@ -30,6 +43,12 @@ without destroying a window still used by the worker.
   `crates/gpui/src/platform.rs`, `src/window.rs`, `src/platform/windows/window.rs` and
   `src/platform/windows/display.rs` within that crate. The constructor, display lookup,
   `retrieve_window_placement` and `calculate_window_rect` establish the mismatch.
+- Follow-up inspected GPUI revision `cd3ad9f2c49d2ecdd7a8578c0e8946fdfdc3dcd3` and accepted
+  revision `696900268c2793871a7e1b7b4839ca57a6cf3b6d` in the same repository, accessed 2026-09-25.
+  Relevant added boundary: `crates/gpui/src/platform/windows/native_operation.rs`; lifecycle
+  sources: `src/platform/windows/{window,events,platform}.rs`, `src/window.rs`, `src/app.rs` and
+  `src/executor.rs`. Exact source inspection and Beryl's real native-operation test establish
+  retained ownership, disposal sequencing, exposure guards and the live-loop limitation.
 - Microsoft, [WINDOWPLACEMENT](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement),
   accessed 2026-09-25; defines workspace versus screen coordinate semantics.
 - Microsoft, [MoveWindowToDesktop](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ivirtualdesktopmanager-movewindowtodesktop),
