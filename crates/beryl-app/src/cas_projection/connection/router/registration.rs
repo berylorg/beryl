@@ -21,6 +21,7 @@ impl EventRouter {
         request_timeout: Duration,
         turn: TargetTurnRegistration,
     ) -> Result<TargetRegistration, LiveEventTargetRegistrationError> {
+        let runtime_interest = self.worker_retention.runtime_interest();
         let mut state = self
             .state
             .lock()
@@ -103,6 +104,9 @@ impl EventRouter {
             state.targets.insert(
                 key.cas_thread_id.clone(),
                 TargetEntry {
+                    runtime_interest: runtime_interest
+                        .as_ref()
+                        .map_or_else(std::sync::Weak::new, Arc::downgrade),
                     registration,
                     key: key.clone(),
                     owner,
@@ -131,6 +135,7 @@ impl EventRouter {
             advance_revision(&mut state);
             Ok((
                 TargetRegistration {
+                    runtime_interest: runtime_interest.clone(),
                     registration,
                     key,
                     owner,

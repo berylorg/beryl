@@ -194,6 +194,9 @@ pub fn establish_turn(
     CasTurnSource::new(cas_thread, cas_turn)
 }
 
+#[path = "../../../../syndic-storage/tests/support/activity.rs"]
+mod activity;
+
 pub fn admit_event(
     store: &HomeStore,
     storage: &SyndicStorage,
@@ -203,6 +206,7 @@ pub fn admit_event(
     payload: SourceEventPayload,
     observed_at: SyndicTimestamp,
 ) {
+    let activity = activity::enroll_fixture_activity(store, storage, thread, turn);
     let state = storage
         .turn_state(store, turn, point_limit())
         .unwrap()
@@ -224,7 +228,7 @@ pub fn admit_event(
     .unwrap();
     execute(
         store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+        storage.admit_live_source_event(storage.revision(store).unwrap(), event, activity),
     );
 }
 

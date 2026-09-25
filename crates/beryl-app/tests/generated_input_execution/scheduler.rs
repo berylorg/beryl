@@ -108,9 +108,9 @@ fn process_scheduler_resumes_on_slot_release_but_requires_explicit_handoff_retry
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), server::AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(59_902).unwrap(),
             Path::new(execution.root_path().as_str()),
             server::TIMEOUT,

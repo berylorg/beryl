@@ -1,4 +1,6 @@
 use super::*;
+#[path = "../../../syndic-storage/tests/support/activity.rs"]
+mod activity;
 use beryl_state::{HandoffFailureKind, ParentHandoffIdentity};
 
 #[path = "parent_execution/recovery.rs"]
@@ -326,7 +328,8 @@ fn unknown_dispatch_waits_then_session_loss_fails_without_cas_identity() {
         &fixture.store,
         fixture
             .syndic
-            .admit_live_source_event(fixture.syndic.revision(&fixture.store).unwrap(), event),
+            .admit_live_source_event(fixture.syndic.revision(&fixture.store).unwrap(), event,
+                activity::retired_activity(&fixture.store, &fixture.syndic, id(30), turn)),
     );
     assert!(matches!(
         observe(&fixture).unwrap().execute(),

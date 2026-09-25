@@ -152,6 +152,7 @@ impl Ingester {
             frame,
             limit,
             self.live_command(),
+            &self.runtime_interest,
         ) {
             if error.authority().is_some() {
                 permit.settle_authority_lost();
@@ -334,6 +335,7 @@ fn publish_checked_user_frame(
     submitted: SubmittedUserFrame,
     limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
+    runtime: &crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
 ) -> Result<(), crate::cas_projection::provider_frame::ProviderFramePublicationError> {
     let item = ProviderItemV1::UserMessage(ProviderUserMessageV1 {
         client_id: None,
@@ -368,6 +370,7 @@ fn publish_checked_user_frame(
         },
         limit,
         command,
+        runtime,
     )
     .map(|_| ())
 }

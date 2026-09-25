@@ -16,7 +16,7 @@ use crate::cas_projection::{
         LiveEventTargetCloseReason, ProvenTerminalOutcome, SourcePublicationFinishError,
         SourcePublicationPermit, SourcePublicationPermitError, TargetInvalidation,
     },
-    live_source::{LiveSourceFrontier, LiveSourceTarget, publish_reconciled},
+    live_source::{LiveSourceFrontier, LiveSourceTarget, publish_provider_reconciled},
 };
 
 const TERMINAL_ITEM_PAGE_RECORDS: usize = 64;
@@ -177,13 +177,15 @@ impl Ingester {
             Err(_) => return self.failed_normal_terminal_permit(permit, terminal),
         };
         let observed_at = event.observed_at();
-        if publish_reconciled(
+        if publish_provider_reconciled(
             &self.home,
             self.home_id,
             home_generation,
             &storage,
             &event,
             limit,
+            self.live_command(),
+            &self.runtime_interest,
         )
         .is_err()
         {

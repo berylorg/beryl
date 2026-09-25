@@ -161,7 +161,13 @@ impl Ingester {
             .enter_current_home(&self.home, self.home_id, home_generation)
             .map_err(SourceActivationError::Authority)?;
         let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            publication::admit_live_event(&self.home, storage, activation, limit)
+            publication::admit_runtime_live_event(
+                &self.home,
+                storage,
+                activation,
+                limit,
+                &self.runtime_interest,
+            )
         }))
         .map_err(|_| SourceActivationError::PublicationPanicked)
         .and_then(|result| result.map_err(SourceActivationError::Publication));

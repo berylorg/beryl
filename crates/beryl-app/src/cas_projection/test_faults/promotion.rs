@@ -18,6 +18,7 @@ enum PromotionBarrierStage {
     BeforeReservation,
     Reserved,
     BeforeReconciliation,
+    ReservationReleased,
     GenerationInvalidated,
 }
 
@@ -65,6 +66,12 @@ pub fn install_scheduled_promotion_reconciliation_barrier(
     thread_id: SyndicThreadId,
 ) -> ScheduledPromotionBarrierController {
     install_barrier(thread_id, PromotionBarrierStage::BeforeReconciliation)
+}
+
+pub fn install_scheduled_promotion_released_barrier(
+    thread_id: SyndicThreadId,
+) -> ScheduledPromotionBarrierController {
+    install_barrier(thread_id, PromotionBarrierStage::ReservationReleased)
 }
 
 /// Installs one exact-thread pause after a worker proves its home generation obsolete.
@@ -215,6 +222,10 @@ pub(crate) fn pause_scheduled_promotion_reservation(thread_id: SyndicThreadId) {
 
 pub(crate) fn pause_scheduled_promotion_reconciliation(thread_id: SyndicThreadId) {
     pause_scheduled_promotion_at(thread_id, PromotionBarrierStage::BeforeReconciliation);
+}
+
+pub(crate) fn pause_scheduled_promotion_released(thread_id: SyndicThreadId) {
+    pause_scheduled_promotion_at(thread_id, PromotionBarrierStage::ReservationReleased);
 }
 
 pub(crate) fn pause_scheduled_generation_invalidation(thread_id: SyndicThreadId) {

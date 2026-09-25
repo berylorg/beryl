@@ -186,6 +186,7 @@ impl Fixture {
             directory,
             store,
             worker_capacity,
+            Self::runtime_config(),
             |_, state, _, _| create_provider(state.assets()),
         )
     }
@@ -212,6 +213,28 @@ impl Fixture {
             &beryl_app::process_admission::ProcessAdmissionGate,
         ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
     ) -> Self {
+        Self::new_with_execution_authority_and_runtime_config(
+            seed,
+            worker_capacity,
+            Self::runtime_config(),
+            create_provider,
+        )
+    }
+
+    pub fn new_with_execution_authority_and_runtime_config(
+        seed: u8,
+        worker_capacity: u64,
+        runtime_config: (
+            beryl_app::cas_projection::RuntimeInterestConfig,
+            std::num::NonZeroUsize,
+        ),
+        create_provider: impl FnOnce(
+            &HomeStore,
+            &BerylState,
+            &SyndicStorage,
+            &beryl_app::process_admission::ProcessAdmissionGate,
+        ) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let store = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
@@ -223,6 +246,7 @@ impl Fixture {
             directory,
             store,
             worker_capacity,
+            runtime_config,
             create_provider,
         )
     }
@@ -232,6 +256,10 @@ impl Fixture {
         directory: tempfile::TempDir,
         mut store: beryl_home_store::HomeOpenCandidate,
         worker_capacity: u64,
+        runtime_config: (
+            beryl_app::cas_projection::RuntimeInterestConfig,
+            std::num::NonZeroUsize,
+        ),
         create_provider: impl FnOnce(
             &HomeStore,
             &BerylState,
@@ -273,7 +301,8 @@ impl Fixture {
         .unwrap();
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let scheduled_provider = create_provider(&store, &state, &storage, &process_admission);
-        let store = ProjectionConnectionService::new(
+        let home_id = store.home_id();
+        let mut store = ProjectionConnectionService::new(
             process_admission.clone(),
             store,
             storage.clone(),
@@ -281,6 +310,15 @@ impl Fixture {
             scheduled_provider,
         )
         .unwrap();
+        store
+            .configure_runtime_interest(
+                runtime_config.0,
+                beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                    home_id,
+                    runtime_config.1,
+                ),
+            )
+            .unwrap();
         Self {
             _directory: directory,
             store,
@@ -293,6 +331,22 @@ impl Fixture {
             next_item: 80,
             clock: 2,
         }
+    }
+
+    fn runtime_config() -> (
+        beryl_app::cas_projection::RuntimeInterestConfig,
+        std::num::NonZeroUsize,
+    ) {
+        let capacity = std::num::NonZeroUsize::new(128).unwrap();
+        (
+            beryl_app::cas_projection::RuntimeInterestConfig::new(
+                capacity,
+                std::num::NonZeroUsize::new(512).unwrap(),
+                std::time::Duration::from_secs(10),
+            )
+            .unwrap(),
+            capacity,
+        )
     }
 
     pub fn into_service(self) -> (tempfile::TempDir, ProjectionConnectionService) {

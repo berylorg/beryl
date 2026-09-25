@@ -219,16 +219,13 @@ fn run_native_lineage_server(
     match scenario {
         NativeLineageServerScenario::RetrySucceeds => {
             complete_counted_resume_projection(&mut socket, &cas_thread_id, resume_requests);
-            if expected_input.is_none() {
-                complete_turn_after_preflight_retries(
-                    &mut socket,
-                    &events,
-                    &cas_thread_id,
-                    resume_requests,
-                );
-            } else {
-                complete_turn_and_report(&mut socket, &events, &cas_thread_id, expected_input);
-            }
+            complete_turn_after_preflight_retries(
+                &mut socket,
+                &events,
+                &cas_thread_id,
+                resume_requests,
+                expected_input,
+            );
             complete_unsubscribe(&mut socket, &cas_thread_id);
             read_until_close(&mut socket).unwrap();
         }
@@ -393,17 +390,24 @@ fn complete_turn_after_preflight_retries(
     events: &SyncSender<NativeLineageServerEvent>,
     cas_thread_id: &str,
     resume_requests: &AtomicUsize,
+    expected_input: Option<&str>,
 ) {
     for _ in 0..16 {
         let request = read_json(socket).expect("pending execution or preflight cleanup");
         if request["method"] == "thread/unsubscribe" {
             assert_eq!(request["params"]["threadId"], cas_thread_id);
             let id = request["id"].as_u64().unwrap();
-            send_json(socket, &format!(r#"{{"id":{id},"result":{{}}}}"#));
+            send_json(
+                socket,
+                &format!(r#"{{"id":{id},"result":{{"status":"unsubscribed"}}}}"#),
+            );
             complete_counted_resume_projection(socket, cas_thread_id, resume_requests);
             continue;
         }
         let (id, input) = any_ordinary_turn_start(request, cas_thread_id);
+        if let Some(expected) = expected_input {
+            assert_eq!(&*input, expected);
+        }
         events
             .send(NativeLineageServerEvent::TurnStartObserved)
             .unwrap();

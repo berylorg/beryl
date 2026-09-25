@@ -25,6 +25,61 @@ pub(in crate::cas_projection) struct ProjectionAdmissionContext {
 }
 
 impl ProjectionConnectionService {
+    #[cfg(feature = "test-faults")]
+    pub fn enroll_lifecycle_test_activity(
+        &self,
+        projection: &super::super::LoadedCasProjection,
+        turn: beryl_model::SyndicTurnId,
+    ) -> Result<(), super::super::OrdinaryTurnExecutionError> {
+        let command = self
+            .live_home_command()
+            .map_err(ProjectionCoordinatorError::AcquisitionServiceUnavailable)?;
+        projection.enroll_activity(
+            command.home(),
+            &self.storage,
+            turn,
+            &super::super::ProjectionCancellationToken::new(),
+        )
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn admit_runtime_lifecycle_test_candidate(
+        &self,
+        connector: &ManagedBackendClientConnector,
+        binding: ExecutionBinding,
+        process_generation: CasProcessGeneration,
+        config_cwd: &Path,
+        timeout: Duration,
+    ) -> Result<AdmittedProjectionSession, super::super::RuntimeSessionAdmissionError> {
+        use super::super::{RuntimeInterestStatus, RuntimeSessionAdmissionError};
+        if timeout.is_zero() {
+            return Err(RuntimeSessionAdmissionError::InvalidTimeout);
+        }
+        let runtime_id = binding.runtime_id();
+        let interest = self
+            .runtime_interest
+            .as_ref()
+            .ok_or(RuntimeSessionAdmissionError::ServiceUnavailable)?
+            .acquire_lifecycle_test_interest(binding, process_generation)
+            .map_err(|_| RuntimeSessionAdmissionError::RuntimeUnavailable)?;
+        let ready = match interest.wait_for_change(RuntimeInterestStatus::Starting, timeout) {
+            RuntimeInterestStatus::Ready(ready)
+                if ready.process_generation() == process_generation =>
+            {
+                ready
+            }
+            _ => return Err(RuntimeSessionAdmissionError::RuntimeUnavailable),
+        };
+        let session = self.admit_lifecycle_test_candidate(
+            connector,
+            runtime_id,
+            process_generation,
+            config_cwd,
+            timeout,
+        )?;
+        interest.publish_session(ready, session)
+    }
+
     pub fn admit(
         &self,
         connector: &ManagedBackendClientConnector,

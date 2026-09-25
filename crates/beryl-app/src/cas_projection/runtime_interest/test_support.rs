@@ -11,8 +11,68 @@ pub struct RuntimeInterestTestHarness {
     gate: MasterCommandGate,
 }
 
+impl RuntimeInterestOwner {
+    pub(in crate::cas_projection) fn acquire_lifecycle_test_interest(
+        &self,
+        binding: ExecutionBinding,
+        generation: CasProcessGeneration,
+    ) -> Result<RuntimeInterest, RuntimeInterestError> {
+        use beryl_model::{AdmittedHostPath, PathFlavor, RuntimeNativePath};
+        let host_executable = format!(r"C:\test-runtimes\{}\codex.exe", binding.runtime_id());
+        let native_executable = match binding.root_path().flavor() {
+            PathFlavor::Windows => host_executable.clone(),
+            PathFlavor::Posix => format!("/test-runtimes/{}/codex", binding.runtime_id()),
+        };
+        let native_tokens = match binding.root_path().flavor() {
+            PathFlavor::Windows => r"C:\test-tokens",
+            PathFlavor::Posix => "/test-tokens",
+        };
+        let native = |path: &str| {
+            RuntimeNativePath::from_admitted(
+                binding.root_path().mode().clone(),
+                binding.root_path().flavor(),
+                path,
+            )
+            .expect("fixture native runtime path")
+        };
+        let spec = ManagedBackendLaunchSpec::new(
+            binding.runtime_id(),
+            AdmittedHostPath::from_admitted(PathFlavor::Windows, &host_executable)
+                .expect("fixture executable path"),
+            binding.root_path().mode().clone(),
+            native(&native_executable),
+            binding.root_path().clone(),
+            AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\test-tokens")
+                .expect("fixture token path"),
+            native(native_tokens),
+        )
+        .expect("fixture launch specification");
+        let probe = RuntimeInterestTestProbe::new(generation);
+        self.acquire(spec, binding, RuntimeInterestKind::RequiredWork, || {
+            Ok(Box::new(move || probe.launch()))
+        })
+    }
+}
+
 impl RuntimeInterestTestHarness {
     pub fn new(config: RuntimeInterestConfig) -> Self {
+        Self::for_home(config, beryl_model::BerylHomeId::from_bytes([1; 16]))
+    }
+
+    pub fn for_home(config: RuntimeInterestConfig, home: beryl_model::BerylHomeId) -> Self {
+        Self::with_enrollments(
+            config,
+            crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                home,
+                config.runtime_capacity,
+            ),
+        )
+    }
+
+    pub fn with_enrollments(
+        config: RuntimeInterestConfig,
+        enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
+    ) -> Self {
         let gate = MasterCommandGate::new(
             Default::default(),
             ProjectionServiceGeneration::allocate().unwrap(),
@@ -24,6 +84,7 @@ impl RuntimeInterestTestHarness {
                 gate.authorizer(),
                 crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(
                 ),
+                enrollments,
             ),
             gate,
         }
@@ -91,6 +152,32 @@ impl RuntimeInterestTestHarness {
     pub fn retained_counts(&self) -> (usize, usize) {
         let state = self.owner.shared.lock();
         (state.runtimes.len(), state.interest_count)
+    }
+}
+
+impl RuntimeInterest {
+    pub fn enroll_activity_for_test(
+        &self,
+        home: &beryl_home_store::HomeStore,
+        storage: &syndic_storage::SyndicStorage,
+        thread: SyndicThreadId,
+        turn: beryl_model::SyndicTurnId,
+    ) -> Result<(), crate::cas_projection::OrdinaryTurnExecutionError> {
+        self.enroll_activity(
+            home,
+            storage,
+            thread,
+            turn,
+            &crate::cas_projection::ProjectionCancellationToken::new(),
+        )
+    }
+
+    pub fn with_activity_for_test<T>(
+        &self,
+        source: syndic_storage::ActivityQuerySource,
+        publish: impl FnOnce(syndic_storage::ActivitySourceQualification) -> T,
+    ) -> Option<T> {
+        self.with_activity(source, publish)
     }
 }
 

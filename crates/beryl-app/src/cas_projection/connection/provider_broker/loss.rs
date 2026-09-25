@@ -20,7 +20,8 @@ use crate::cas_projection::{
         },
     },
     live_source::{
-        LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget, publish_reconciled,
+        LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget,
+        publish_runtime_reconciled,
     },
     publication,
 };
@@ -320,6 +321,9 @@ impl ProviderBrokerControl {
             .ok_or(ProviderBrokerLossError::StorageUnavailable)?;
         let storage = SyndicStorage::reacquire(&self.home)
             .map_err(|_| ProviderBrokerLossError::StorageUnavailable)?;
+        let runtime = authority
+            .runtime_interest()
+            .ok_or(ProjectionPublicationFailure::ActivityAuthorityUnavailable)?;
         let limit = point_limit();
         let binding = storage
             .current_binding(&self.home, authority.syndic_thread_id(), limit)?
@@ -335,6 +339,7 @@ impl ProviderBrokerControl {
                 &storage,
                 authority,
                 limit,
+                runtime,
             )?;
         }
         if self
@@ -368,14 +373,7 @@ impl ProviderBrokerControl {
             None,
             SourceEventPayload::TurnEnded(TurnEndStatus::incomplete(cause)),
         )?;
-        publish_reconciled(
-            &self.home,
-            self.home_id,
-            home_generation,
-            &storage,
-            &terminal,
-            limit,
-        )?;
+        publish_runtime_reconciled(&self.home, &storage, &terminal, limit, runtime)?;
         Ok(())
     }
 
@@ -485,6 +483,7 @@ fn publish_loss_activation(
     storage: &SyndicStorage,
     authority: &crate::cas_projection::connection::router::TargetLossPublicationAuthority,
     limit: SyndicPointReadLimit,
+    runtime: &crate::cas_projection::RuntimeInterest,
 ) -> Result<(), ProviderBrokerLossError> {
     let active_turn = authority
         .active_turn_request()
@@ -500,13 +499,6 @@ fn publish_loss_activation(
     let activation = authority
         .activation_event(published_gate)?
         .ok_or(ProviderBrokerLossError::TargetMismatch)?;
-    publication::admit_live_event_reconciled(
-        home,
-        home_id,
-        home_generation,
-        storage,
-        &activation,
-        limit,
-    )?;
+    publication::admit_retained_runtime_live_event(home, storage, &activation, limit, runtime)?;
     Ok(())
 }

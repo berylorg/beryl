@@ -59,7 +59,6 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
         current_cas_thread_id(command_home.home(), &storage, thread)
     };
     let execution = syndic::execution_binding();
-    let runtime_id = execution.runtime_id();
     assert!(
         fixture
             .store
@@ -74,9 +73,9 @@ fn same_process_next_turn_promotes_projects_and_dispatches_once() {
     );
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            runtime_id,
+            execution.clone(),
             CasProcessGeneration::new(62_001).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -238,9 +237,9 @@ fn turn_start_reserve_denials_park_queued_candidate_without_dispatch() {
         );
         let session = fixture
             .store
-            .admit_lifecycle_test_candidate(
+            .admit_runtime_lifecycle_test_candidate(
                 &connector,
-                execution.runtime_id(),
+                execution.clone(),
                 CasProcessGeneration::new(62_100 + u64::from(seed)).unwrap(),
                 Path::new(EXECUTION_ROOT),
                 TIMEOUT,
@@ -335,9 +334,9 @@ fn queued_turn_start_threshold_requires_the_same_composed_total() {
     );
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(62_275).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -402,9 +401,9 @@ fn connection_retirement_cannot_overtake_reserved_promotion() {
     );
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(62_002).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -487,9 +486,9 @@ fn connection_retirement_before_reservation_leaves_the_candidate_queued() {
     );
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(62_003).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

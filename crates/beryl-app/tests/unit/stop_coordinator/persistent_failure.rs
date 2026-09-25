@@ -5,6 +5,7 @@ fn persistent_failure_freezes_claimed_owner_without_durable_settlement() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
@@ -164,8 +165,14 @@ fn persistent_failure_cut_and_stop_claim_have_deterministic_two_order_linearizat
     let coordinator = Arc::clone(&claim_first.coordinator);
     let router = Arc::clone(&claim_first.router);
     let proof = claim_first.proof.clone();
+    let runtime_source = claim_first.runtime_source.clone();
     let claim = std::thread::spawn(move || {
-        coordinator.coordinate(&router, proof, StopCause::SelectedOperationControl)
+        coordinator.coordinate(
+            &router,
+            proof,
+            StopCause::SelectedOperationControl,
+            &runtime_source,
+        )
     });
     assert!(
         claim_pause.wait_until_reached(Duration::from_secs(10)),
@@ -222,8 +229,14 @@ fn persistent_failure_cut_and_stop_claim_have_deterministic_two_order_linearizat
     let coordinator = Arc::clone(&cut_first.coordinator);
     let router = Arc::clone(&cut_first.router);
     let proof = cut_first.proof.clone();
+    let runtime_source = cut_first.runtime_source.clone();
     let claim = std::thread::spawn(move || {
-        coordinator.coordinate(&router, proof, StopCause::SelectedOperationControl)
+        coordinator.coordinate(
+            &router,
+            proof,
+            StopCause::SelectedOperationControl,
+            &runtime_source,
+        )
     });
     assert!(
         claim_pause.wait_until_reached(Duration::from_secs(10)),
@@ -262,6 +275,7 @@ fn dispatch_winning_before_cut_is_retained_as_ambiguous() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
@@ -310,6 +324,7 @@ fn persistent_failure_cut_and_begin_dispatch_have_deterministic_two_order_linear
         &dispatch_first.router,
         dispatch_first.proof.clone(),
         StopCause::SelectedOperationControl,
+        &dispatch_first.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("dispatch-first stop unexpectedly joined"),
@@ -368,6 +383,7 @@ fn persistent_failure_cut_and_begin_dispatch_have_deterministic_two_order_linear
         &cut_first.router,
         cut_first.proof.clone(),
         StopCause::SelectedOperationControl,
+        &cut_first.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("cut-first stop unexpectedly joined"),
@@ -448,8 +464,14 @@ fn exact_gate_rejection_before_stop_writer_preserves_one_volatile_proof() {
     let coordinator = Arc::clone(&fixture.coordinator);
     let router = Arc::clone(&fixture.router);
     let proof = fixture.proof.clone();
+    let runtime_source = fixture.runtime_source.clone();
     let coordinate = std::thread::spawn(move || {
-        coordinator.coordinate(&router, proof, StopCause::SelectedOperationControl)
+        coordinator.coordinate(
+            &router,
+            proof,
+            StopCause::SelectedOperationControl,
+            &runtime_source,
+        )
     });
     assert!(pause.wait_until_reached(Duration::from_secs(10)));
 

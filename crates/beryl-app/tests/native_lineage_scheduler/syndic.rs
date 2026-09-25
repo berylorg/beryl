@@ -213,7 +213,8 @@ impl Fixture {
         )
         .unwrap();
         let scheduled_provider = create_provider(state.assets());
-        let store = ProjectionConnectionService::new(
+        let home_id = store.home_id();
+        let mut store = ProjectionConnectionService::new(
             Default::default(),
             store,
             storage.clone(),
@@ -221,6 +222,21 @@ impl Fixture {
             scheduled_provider,
         )
         .unwrap();
+        let runtime_capacity = std::num::NonZeroUsize::new(128).unwrap();
+        store
+            .configure_runtime_interest(
+                beryl_app::cas_projection::RuntimeInterestConfig::new(
+                    runtime_capacity,
+                    std::num::NonZeroUsize::new(512).unwrap(),
+                    std::time::Duration::from_secs(10),
+                )
+                .unwrap(),
+                beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                    home_id,
+                    runtime_capacity,
+                ),
+            )
+            .unwrap();
         Self {
             _directory: directory,
             store,

@@ -109,6 +109,7 @@ pub(super) fn execute_in_flight(
     }
     retain_projection!(coordinator.ensure_projection_flight(flight, projection.syndic_thread_id()));
     let limit = point_limit();
+    #[cfg(not(feature = "test-faults"))]
     let mut pending = retain_projection!(PendingOrdinaryExecution::read(
         store,
         storage,
@@ -116,8 +117,20 @@ pub(super) fn execute_in_flight(
         &projection,
         limit,
     ));
-    pending.terminal_completion = Some(retain_projection!(
-        flight.bind_terminal_completion(pending.turn_id)
+    #[cfg(feature = "test-faults")]
+    let mut pending = retain_projection!(PendingOrdinaryExecution::read_with_confirmation_hook(
+        store,
+        storage,
+        assets,
+        &projection,
+        limit,
+        || {
+            if let Some(acquisition) = flight.acquisition() {
+                acquisition.pause_for_test(
+                    crate::cas_projection::test_faults::AcquisitionBarrierStage::OrdinaryPreflightConfirmation,
+                );
+            }
+        },
     ));
     let parent_dispatch =
         retain_projection!(super::handoff::reserve(store, storage, &pending, handoff));
@@ -137,6 +150,10 @@ pub(super) fn execute_in_flight(
     let started_at = retain_projection!(system_timestamp_at_least(pending.minimum_observed_at));
     retain_projection!(check_cancelled(cancellation));
     let start_options = retain_projection!(request.resolve_start_options(store, &projection));
+    retain_projection!(projection.enroll_activity(store, storage, pending.turn_id, cancellation));
+    pending.terminal_completion = Some(retain_projection!(
+        flight.bind_terminal_completion(pending.turn_id)
+    ));
     let snapshot_id = execution_snapshot_id(coordinator, &projection, &pending);
     let activation = ActivateBinding::new(
         pending.thread_id,

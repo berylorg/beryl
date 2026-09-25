@@ -28,7 +28,7 @@ use syndic::{Fixture, point_limit};
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 
 #[test]
-fn owned_tool_dispatch_accepts_lifecycle_and_refuses_deferred_branch_without_mutation() {
+fn owned_tool_dispatch_accepts_lifecycle_and_refuses_unconfigured_branch_without_mutation() {
     let mut fixture = Fixture::new(233);
     let submitted = fixture.submit_text(SUBMITTED_TEXT);
     let server = YieldServer::spawn();
@@ -45,7 +45,13 @@ fn owned_tool_dispatch_accepts_lifecycle_and_refuses_deferred_branch_without_mut
         let response = server.resolve_branch();
         assert_eq!(response["result"]["success"], false);
         let serialized = response.to_string();
-        assert!(serialized.contains("Branch discussion resolution is unavailable."));
+        let rejection: serde_json::Value = serde_json::from_str(
+            response["result"]["contentItems"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rejection, serde_json::json!({"status": "unavailable"}));
         assert!(!serialized.contains("private resolution"));
         assert!(serialized.len() < 512);
         assert_eq!(fixture.home().home_revision().unwrap(), revision);
@@ -131,9 +137,9 @@ fn scheduled_checkout_lends_production_tool_authority_and_releases_it_on_retirem
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            syndic::execution_binding().runtime_id(),
+            syndic::execution_binding(),
             CasProcessGeneration::new(980_001).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

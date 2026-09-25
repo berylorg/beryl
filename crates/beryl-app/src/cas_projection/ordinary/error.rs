@@ -12,6 +12,8 @@ use crate::cas_projection::{
 /// Closed failures while starting or capturing one ordinary Syndic turn.
 #[derive(Debug, Error)]
 pub enum OrdinaryTurnExecutionError {
+    #[error(transparent)]
+    ActivityEnrollment(#[from] crate::runtime_activity_enrollment::ActivityEnrollmentCustodyError),
     #[error("generated parent execution requires its current handoff authority")]
     HandoffAuthorityUnavailable,
     #[error(transparent)]

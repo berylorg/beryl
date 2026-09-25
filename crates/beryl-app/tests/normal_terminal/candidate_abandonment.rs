@@ -368,14 +368,14 @@ fn candidate_stop_abandonment_refuses_stale_foreign_conflicting_and_failed_comma
     let access = recovered.recovery_access().unwrap();
     assert!(matches!(
         abandon_stop_candidate(&access, &stale_storage, &request),
-        Err(ProjectionPublicationFailure::Command(_))
+        Err(ProjectionPublicationFailure::Reconciliation(_))
     ));
     let (foreign_directory, _, _, _) = stopping_home();
     let (foreign_publication, foreign_storage) =
         open_candidate(foreign_directory.path(), FaultController::new());
     assert!(matches!(
         abandon_stop_candidate(&access, &foreign_storage, &request),
-        Err(ProjectionPublicationFailure::Command(_))
+        Err(ProjectionPublicationFailure::Reconciliation(_))
     ));
     foreign_publication.close().unwrap();
     abandon_stop_candidate(&access, &fresh, &request).unwrap();

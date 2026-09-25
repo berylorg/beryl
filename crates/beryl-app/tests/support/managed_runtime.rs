@@ -50,6 +50,7 @@ pub(crate) struct Fixture {
     pub(crate) state: BerylState,
     pub(crate) storage: SyndicStorage,
     faults: beryl_home_store::test_faults::FaultController,
+    enrollments: beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
 }
 
 impl Fixture {
@@ -88,6 +89,11 @@ impl Fixture {
             .publish()
             .unwrap();
         let home_reference = home.service_reference();
+        let enrollments =
+            beryl_app::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                home.home_id(),
+                NonZeroUsize::new(1).unwrap(),
+            );
         let process_admission = beryl_app::process_admission::ProcessAdmissionGate::new();
         let mut service = ProjectionConnectionService::new(
             process_admission.clone(),
@@ -110,9 +116,11 @@ impl Fixture {
                     TIMEOUT,
                 )
                 .unwrap(),
+                enrollments.clone(),
             )
             .unwrap();
         Self {
+            enrollments,
             service: Some(service),
             home_reference,
             process_admission,
@@ -189,6 +197,7 @@ impl Fixture {
                     TIMEOUT,
                 )
                 .unwrap(),
+                self.enrollments.clone(),
             )
             .unwrap();
         self.service = Some(service);

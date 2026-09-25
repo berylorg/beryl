@@ -132,7 +132,15 @@ pub(super) fn abandon_stop(
 ) -> Result<(), ProjectionPublicationFailure> {
     dispatch(
         store,
-        storage.current_abandon_stop_operation(request.clone()),
+        storage.current_abandon_stop_operation(
+            request.clone(),
+            retired_activity(
+                store,
+                storage,
+                request.target().thread_id(),
+                request.target().turn_id(),
+            )?,
+        ),
     )
 }
 
@@ -153,7 +161,15 @@ pub(super) fn abandon_stop_candidate(
     request: &AbandonStopOperation,
 ) -> Result<(), ProjectionPublicationFailure> {
     interpret_outcome(
-        store.execute_current(storage.current_abandon_stop_operation(request.clone())),
+        store.execute_current(storage.current_abandon_stop_operation(
+            request.clone(),
+            retired_activity_candidate(
+                store,
+                storage,
+                request.target().thread_id(),
+                request.target().turn_id(),
+            )?,
+        )),
     )
 }
 
@@ -162,10 +178,11 @@ pub(super) fn admit_live_event(
     storage: &SyndicStorage,
     request: &LiveSourceEvent,
     _limit: SyndicPointReadLimit,
+    activity: syndic_storage::ActivitySourceQualification,
 ) -> Result<(), ProjectionPublicationFailure> {
     dispatch(
         store,
-        storage.current_admit_live_source_event(request.clone()),
+        storage.current_admit_live_source_event(request.clone(), activity),
     )
 }
 
@@ -177,7 +194,37 @@ pub(super) fn admit_live_event_reconciled(
     request: &LiveSourceEvent,
     limit: SyndicPointReadLimit,
 ) -> Result<(), ProjectionPublicationFailure> {
-    admit_live_event(store, storage, request, limit)
+    let activity = retired_activity(store, storage, request.thread_id(), request.turn_id())?;
+    admit_live_event(store, storage, request, limit, activity)
+}
+
+pub(super) fn admit_runtime_live_event(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    request: &LiveSourceEvent,
+    limit: SyndicPointReadLimit,
+    runtime: &super::service_config::ConnectionRuntimeInterestSource,
+) -> Result<(), ProjectionPublicationFailure> {
+    with_runtime_activity(
+        runtime,
+        syndic_storage::ActivityQuerySource::new(request.thread_id(), request.turn_id()),
+        |activity| admit_live_event(store, storage, request, limit, activity),
+    )?
+}
+
+pub(super) fn admit_retained_runtime_live_event(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    request: &LiveSourceEvent,
+    limit: SyndicPointReadLimit,
+    runtime: &super::RuntimeInterest,
+) -> Result<(), ProjectionPublicationFailure> {
+    runtime
+        .with_activity(
+            syndic_storage::ActivityQuerySource::new(request.thread_id(), request.turn_id()),
+            |activity| admit_live_event(store, storage, request, limit, activity),
+        )
+        .ok_or(ProjectionPublicationFailure::ActivityAuthorityUnavailable)?
 }
 
 pub(super) fn admit_live_event_candidate(
@@ -186,8 +233,58 @@ pub(super) fn admit_live_event_candidate(
     request: &LiveSourceEvent,
 ) -> Result<(), ProjectionPublicationFailure> {
     interpret_outcome(
-        store.execute_current(storage.current_admit_live_source_event(request.clone())),
+        store.execute_current(storage.current_admit_live_source_event(
+            request.clone(),
+            retired_activity_candidate(store, storage, request.thread_id(), request.turn_id())?,
+        )),
     )
+}
+
+pub(super) fn retired_activity(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    turn: beryl_model::SyndicTurnId,
+) -> Result<syndic_storage::ActivitySourceQualification, ProjectionPublicationFailure> {
+    let source = syndic_storage::ActivityQuerySource::new(thread, turn);
+    storage
+        .activity_retirement_fingerprint(store, source)
+        .map(|fingerprint| {
+            fingerprint.map_or(
+                syndic_storage::ActivitySourceQualification::Unenrolled,
+                syndic_storage::ActivitySourceQualification::Retired,
+            )
+        })
+        .map_err(ProjectionPublicationFailure::Reconciliation)
+}
+
+fn retired_activity_candidate(
+    store: &HomeCandidateRecoveryAccess<'_>,
+    storage: &SyndicStorage,
+    thread: beryl_model::SyndicThreadId,
+    turn: beryl_model::SyndicTurnId,
+) -> Result<syndic_storage::ActivitySourceQualification, ProjectionPublicationFailure> {
+    let source = syndic_storage::ActivityQuerySource::new(thread, turn);
+    storage
+        .activity_retirement_fingerprint_candidate(store, source)
+        .map(|fingerprint| {
+            fingerprint.map_or(
+                syndic_storage::ActivitySourceQualification::Unenrolled,
+                syndic_storage::ActivitySourceQualification::Retired,
+            )
+        })
+        .map_err(ProjectionPublicationFailure::Reconciliation)
+}
+
+pub(super) fn with_runtime_activity<T>(
+    runtime: &super::service_config::ConnectionRuntimeInterestSource,
+    source: syndic_storage::ActivityQuerySource,
+    publish: impl FnOnce(syndic_storage::ActivitySourceQualification) -> T,
+) -> Result<T, ProjectionPublicationFailure> {
+    runtime
+        .interest()
+        .and_then(|interest| interest.with_activity(source, publish))
+        .ok_or(ProjectionPublicationFailure::ActivityAuthorityUnavailable)
 }
 
 fn next_binding_revision(

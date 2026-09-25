@@ -319,6 +319,11 @@ fn recovered_managed_session_configuration_keeps_work_fenced_and_rejects_foreign
         if mode == "cancelled" {
             cancellation.cancel();
         }
+        let enrollments =
+            crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                reference.home_id(),
+                NonZeroUsize::new(1).unwrap(),
+            );
         let result = prepared.configure_managed_sessions(
             if foreign {
                 &foreign_sessions
@@ -331,6 +336,7 @@ fn recovered_managed_session_configuration_keeps_work_fenced_and_rejects_foreign
                 Duration::from_secs(1),
             )
             .unwrap(),
+            enrollments,
             RuntimeSessionPreparationConfig {
                 runtime_roots: state.runtime_roots(),
                 assets: state.assets(),

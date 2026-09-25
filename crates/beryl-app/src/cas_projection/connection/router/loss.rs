@@ -29,6 +29,7 @@ pub(in crate::cas_projection) enum TargetLossFinishError {
 
 /// Sole non-cloneable authority to converge one abnormal target loss.
 pub(in crate::cas_projection) struct TargetLossPublicationAuthority {
+    runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     router: Arc<EventRouter>,
     cas_thread_id: CasThreadId,
     cas_turn_id: Option<CasTurnId>,
@@ -55,8 +56,10 @@ impl TargetLossPublicationAuthority {
         activation: Option<PendingTurnActivation>,
         activation_durable: bool,
         steering_token: Option<u64>,
+        runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     ) -> Self {
         Self {
+            runtime_interest,
             router,
             cas_thread_id,
             cas_turn_id,
@@ -69,6 +72,12 @@ impl TargetLossPublicationAuthority {
             steering_token,
             finished: false,
         }
+    }
+
+    pub(in crate::cas_projection) fn runtime_interest(
+        &self,
+    ) -> Option<&crate::cas_projection::RuntimeInterest> {
+        self.runtime_interest.as_deref()
     }
 
     pub(in crate::cas_projection) const fn syndic_thread_id(&self) -> SyndicThreadId {
@@ -331,6 +340,7 @@ impl EventRouter {
                     activation,
                     target.activation_durable,
                     None,
+                    registration.runtime_interest.clone(),
                 );
                 advance_revision(&mut state);
                 Ok(TargetLossAcquisition::Authority(authority))
@@ -442,6 +452,7 @@ impl EventRouter {
                     Some(activation),
                     target.activation_durable,
                     Some(permit.token),
+                    permit.runtime_interest.clone(),
                 );
                 state
                     .active_steering_attempt

@@ -5,6 +5,7 @@ fn dropping_claimed_stop_owner_preserves_durable_claim_without_home_io() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
@@ -36,6 +37,7 @@ fn dropping_dispatching_stop_owner_widens_ambiguity_without_home_io() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
@@ -68,9 +70,12 @@ fn router_valid_proof_for_the_wrong_storage_target_is_rejected() {
     let wrong = fixture.wrong_storage_target_proof(31);
 
     assert!(matches!(
-        fixture
-            .coordinator
-            .coordinate(&fixture.router, wrong, StopCause::SelectedOperationControl,),
+        fixture.coordinator.coordinate(
+            &fixture.router,
+            wrong,
+            StopCause::SelectedOperationControl,
+            &fixture.runtime_source
+        ),
         Err(StopCoordinationError::TargetUnavailable)
     ));
     assert!(matches!(
@@ -89,6 +94,7 @@ fn matching_causes_join_one_primary_and_each_new_operation_gets_a_new_attempt() 
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first request must own dispatch"),
@@ -101,6 +107,7 @@ fn matching_causes_join_one_primary_and_each_new_operation_gets_a_new_attempt() 
         &fixture.router,
         fixture.proof.clone(),
         StopCause::DiagnosticControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Joined { operation_id, .. }) => operation_id,
         Ok(StopOwnership::Primary(_)) => panic!("matching cause must not own a second dispatch"),
@@ -130,6 +137,7 @@ fn matching_causes_join_one_primary_and_each_new_operation_gets_a_new_attempt() 
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("reopened operation must admit a new primary"),
@@ -154,6 +162,7 @@ fn proven_nondispatch_reopens_without_approval_but_approval_ownership_abandons()
         &safe.router,
         safe.proof.clone(),
         StopCause::SelectedOperationControl,
+        &safe.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first safe stop must own dispatch"),
@@ -175,6 +184,7 @@ fn proven_nondispatch_reopens_without_approval_but_approval_ownership_abandons()
         &approval.router,
         approval.proof.clone(),
         StopCause::SelectedOperationControl,
+        &approval.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first approval fixture stop must own dispatch"),
@@ -186,6 +196,7 @@ fn proven_nondispatch_reopens_without_approval_but_approval_ownership_abandons()
             &approval.router,
             approval.proof.clone(),
             StopCause::InterruptingApproval,
+            &approval.runtime_source,
         ),
         Ok(StopOwnership::Joined {
             operation_id: joined,
@@ -232,6 +243,7 @@ fn safe_reopen_requires_the_exact_local_and_durable_dispatch_authority() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),

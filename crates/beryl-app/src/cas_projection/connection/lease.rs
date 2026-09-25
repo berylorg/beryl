@@ -93,6 +93,12 @@ impl RawLoadedLeaseSeed {
 }
 
 impl LoadedProjectionLease {
+    pub(in crate::cas_projection) fn runtime_interest(
+        &self,
+    ) -> Option<Arc<crate::cas_projection::RuntimeInterest>> {
+        self.connection.runtime_interest()
+    }
+
     pub(in crate::cas_projection) fn new(
         connection: Arc<ProjectionConnection>,
         key: LoadedThreadKey,

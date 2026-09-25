@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use super::persistent_failure::LiveCommandAuthorizer;
 
+mod activity;
 mod managed;
 mod owner;
 mod retry;
@@ -164,6 +165,7 @@ pub struct RuntimeInterest {
     interest: u64,
     binding: ExecutionBinding,
     kind: RuntimeInterestKind,
+    activity: Arc<Mutex<activity::RuntimeActivityState>>,
 }
 
 impl std::fmt::Debug for RuntimeInterest {
@@ -270,6 +272,7 @@ struct RuntimeInterestShared {
     changed: Condvar,
     commands: LiveCommandAuthorizer,
     config: RuntimeInterestConfig,
+    enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
     scheduler_signal: super::accepted_input_scheduler::AcceptedInputSchedulerSignal,
 }
 
@@ -304,6 +307,7 @@ struct RuntimeInterestState {
 }
 
 struct RuntimeEntry {
+    activity: Arc<Mutex<activity::RuntimeActivityState>>,
     failed_acquisition: Option<super::acquisition::ProjectionAcquisition>,
     spec: ManagedBackendLaunchSpec,
     attempt: u64,

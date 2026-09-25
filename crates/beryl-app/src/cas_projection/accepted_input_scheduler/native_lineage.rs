@@ -3,8 +3,8 @@ use super::{
     WorkerDisposition, failure,
     next_turn::{
         LeaseValidationAuthority, OrdinaryTurnSettlement, PendingTurnExecutionDisposition,
-        classify_projection_error, classify_projection_error_ref, expected_admission_drift,
-        expected_coordinator_drift, settle_ordinary_outcome,
+        classify_projection_error, classify_projection_error_ref, execute_retained_projection,
+        expected_admission_drift, expected_coordinator_drift, settle_ordinary_outcome,
     },
 };
 use crate::cas_projection::{
@@ -195,18 +195,20 @@ fn execute_work(
         }
     };
     attempt.leaving();
-    let outcome = lease.with_execution_authority(|_, policy, assets, handoff, tools, flight| {
-        coordinator.execute_ordinary_turn_in_flight(
-            &validator.home,
-            storage,
-            assets,
-            handoff,
-            projection,
-            &cancellation,
-            policy.turn(),
-            tools,
-            flight,
-        )
+    let outcome = lease.with_execution_authority(|_, policy, assets, handoff, mut tools, flight| {
+        execute_retained_projection(projection, |projection| {
+            coordinator.execute_ordinary_turn_in_flight(
+                &validator.home,
+                storage,
+                assets,
+                handoff,
+                projection,
+                &cancellation,
+                policy.turn(),
+                tools.reborrow(),
+                flight,
+            )
+        })
     });
     match settle_ordinary_outcome(validator, outcome) {
         OrdinaryTurnSettlement::Settled => WorkerDisposition::NextContinue,

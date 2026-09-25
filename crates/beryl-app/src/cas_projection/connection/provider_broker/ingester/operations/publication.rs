@@ -157,6 +157,7 @@ impl Ingester {
             point_limit(),
             &self.cancelled,
             self.live_command(),
+            &self.runtime_interest,
         );
         match publication {
             Ok(()) => {}

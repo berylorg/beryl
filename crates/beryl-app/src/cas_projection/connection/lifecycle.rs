@@ -126,7 +126,16 @@ impl ProjectionConnection {
         &self,
         acquisition: &crate::cas_projection::acquisition::ProjectionAcquisition,
     ) -> Result<bool, ProjectionCoordinatorError> {
-        Ok(acquisition.belongs_to(&self.current_attachment()?.commands))
+        if self.authority.is_retired() {
+            return Err(self.unavailable());
+        }
+        let attachment = self.current_attachment().map_err(|error| match error {
+            ProjectionCoordinatorError::ProjectionWorkerStopped if self.authority.is_retired() => {
+                self.unavailable()
+            }
+            error => error,
+        })?;
+        Ok(acquisition.belongs_to(&attachment.commands))
     }
 
     pub(in crate::cas_projection::connection) fn process_fact_observation(
@@ -381,7 +390,7 @@ impl ProjectionConnection {
         let router = self
             .current_router()
             .map_err(|_| StopCoordinationError::ConnectionUnavailable)?;
-        coordinator.coordinate(&router, proof, cause)
+        coordinator.coordinate(&router, proof, cause, &self.runtime_interest_source)
     }
 
     pub(in crate::cas_projection) fn dispatch_exact_stop(
@@ -585,6 +594,12 @@ impl ProjectionConnection {
             Ok(false) => {}
         }
         drop(command);
+    }
+
+    pub(in crate::cas_projection::connection) fn runtime_interest(
+        &self,
+    ) -> Option<Arc<crate::cas_projection::RuntimeInterest>> {
+        self.runtime_interest_source.interest()
     }
 
     pub(in crate::cas_projection) fn retain_runtime_interest(

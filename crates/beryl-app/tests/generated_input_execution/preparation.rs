@@ -57,9 +57,18 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
     let mut configured = None;
     let mut registry = None;
     let mut operations = None;
-    let mut fixture = syndic::Fixture::new_with_execution_authority_and_capacity(
+    let mut fixture = syndic::Fixture::new_with_execution_authority_and_runtime_config(
         138,
         capacity,
+        (
+            RuntimeInterestConfig::new(
+                NonZeroUsize::new(1).unwrap(),
+                NonZeroUsize::new(4).unwrap(),
+                Duration::from_secs(10),
+            )
+            .unwrap(),
+            NonZeroUsize::new(1).unwrap(),
+        ),
         |home, state, storage, process| {
             let custody =
                 DiscussionSettlementOperations::new(process.clone(), NonZeroUsize::new(1).unwrap());
@@ -203,17 +212,6 @@ fn prepared(mode: &str, capacity: u64, missing_root: bool) -> PreparedFixture {
             SyndicPointReadLimit::new(400_000).unwrap(),
         )
         .unwrap()
-        .unwrap();
-    fixture
-        .store
-        .configure_runtime_interest(
-            RuntimeInterestConfig::new(
-                NonZeroUsize::new(1).unwrap(),
-                NonZeroUsize::new(4).unwrap(),
-                Duration::from_secs(10),
-            )
-            .unwrap(),
-        )
         .unwrap();
     let sessions = registry.unwrap();
     let tokens = canonical(&root.path().join("tokens"));

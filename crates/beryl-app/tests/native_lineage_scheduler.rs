@@ -2,6 +2,8 @@
 
 pub(crate) const EXECUTION_ROOT: &str = r"C:\work\beryl";
 
+#[path = "native_lineage_scheduler/preflight_retry.rs"]
+mod preflight_retry;
 #[path = "native_lineage_scheduler/scheduler.rs"]
 mod scheduler_support;
 #[path = "native_lineage_scheduler/support.rs"]
@@ -92,9 +94,9 @@ fn attach_session(
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(generation).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -110,13 +112,18 @@ fn attach_pooled_session(
     runtime_id: RuntimeId,
     generation: u64,
 ) {
+    let execution = if runtime_id == syndic::execution_binding().runtime_id() {
+        syndic::execution_binding()
+    } else {
+        scheduler_support::execution_binding(runtime_id)
+    };
     let connector =
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            runtime_id,
+            execution,
             CasProcessGeneration::new(generation).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

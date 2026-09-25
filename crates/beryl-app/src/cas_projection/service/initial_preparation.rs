@@ -83,11 +83,12 @@ impl PreparedCasServices {
         mut self,
         sessions: &crate::cas_projection::ScheduledExecutionSessions,
         interest: crate::cas_projection::RuntimeInterestConfig,
+        enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
         config: crate::cas_projection::RuntimeSessionPreparationConfig,
         attention: &Arc<crate::lifecycle_attention::ProcessLifecycleAttentionPool>,
     ) -> Result<Self, CasPreparationError> {
         let service = self.service.as_mut().expect("prepared CAS service custody");
-        service.configure_runtime_interest(interest)?;
+        service.configure_runtime_interest(interest, enrollments)?;
         let access = self
             .candidate
             .as_mut()

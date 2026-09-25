@@ -23,6 +23,8 @@ mod execution;
 mod preparation;
 mod settlement;
 
+pub(in crate::cas_projection::accepted_input_scheduler) use settlement::execute_retained_projection;
+
 pub(in crate::cas_projection::accepted_input_scheduler) use execution::{
     PendingTurnExecutionDisposition, classify_projection_error, classify_projection_error_ref,
     execute_pending_turn,
@@ -232,6 +234,8 @@ fn execute_candidate(
     if connection_closed {
         return WorkerDisposition::NextParked;
     }
+    #[cfg(feature = "test-faults")]
+    crate::cas_projection::test_faults::pause_scheduled_promotion_released(promotion.thread_id());
     let promotion_result = reconcile_promotion(validator, &storage, &lease.assets(), &promotion)
         .map(|status| Some((true, status)));
     let Some((dispatch_succeeded, status)) = (match promotion_result {

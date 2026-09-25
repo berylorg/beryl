@@ -1,6 +1,8 @@
 #![cfg(feature = "test-faults")]
 #[path = "../../syndic-storage/tests/support/mod.rs"]
 mod support;
+#[path = "runtime_activity_enrollment/runtime.rs"]
+mod runtime;
 
 use beryl_app::runtime_activity_enrollment::*;
 use beryl_home_store::{

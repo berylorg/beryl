@@ -35,6 +35,11 @@ struct Attempt {
     reconciliation: Option<ReconciliationHandle>,
 }
 
+pub(crate) struct ActivityEnrollmentAttempt {
+    runtime: RuntimeId,
+    entry: Arc<Entry>,
+}
+
 pub struct ReservedActivityEnrollment<'a> {
     owner: RuntimeActivityEnrollmentOperations,
     runtime: RuntimeId,
@@ -75,6 +80,78 @@ pub enum ActivityEnrollmentCustodyError {
 }
 
 impl RuntimeActivityEnrollmentOperations {
+    pub(crate) fn matches(&self, home: BerylHomeId, capacity: usize) -> bool {
+        self.0.home == home && self.0.capacity.get() == capacity
+    }
+
+    pub(crate) fn settle_attempt(
+        &self,
+        home: &HomeStore,
+        syndic: &SyndicStorage,
+        original: &ActivityEnrollmentAttempt,
+    ) -> Result<ActivityEnrollmentStatus, ActivityEnrollmentCustodyError> {
+        if home.home_id() != self.0.home
+            || home.health().generation() != Some(original.entry.generation)
+            || !self
+                .0
+                .entries
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&original.runtime)
+                .is_some_and(|entry| Arc::ptr_eq(entry, &original.entry))
+        {
+            return Err(ActivityEnrollmentCustodyError::Identity);
+        }
+        let attempt = original
+            .entry
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let handle = attempt
+            .reconciliation
+            .as_ref()
+            .ok_or(ActivityEnrollmentCustodyError::SubmissionPending)?;
+        let witness = attempt
+            .witness
+            .as_ref()
+            .ok_or(ActivityEnrollmentCustodyError::SubmissionPending)?;
+        let result = home.retry_reconciliation(handle)?;
+        let natural = syndic.activity_enrollment_status(home, witness)?;
+        if !matches!(
+            (&result, &natural),
+            (
+                ReconciliationResolution::ExactOld,
+                ActivityEnrollmentStatus::NotCommitted
+            ) | (
+                ReconciliationResolution::ExactNew { .. },
+                ActivityEnrollmentStatus::Committed { .. }
+            )
+        ) {
+            return Err(ActivityEnrollmentCustodyError::Conflict);
+        }
+        self.release(original.runtime, &original.entry);
+        Ok(natural)
+    }
+
+    pub(crate) fn settle_retired_runtime(
+        &self,
+        home: &HomeStore,
+        syndic: &SyndicStorage,
+        runtime: RuntimeId,
+    ) -> Result<(), ActivityEnrollmentCustodyError> {
+        let entry = self
+            .0
+            .entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&runtime)
+            .cloned();
+        if let Some(entry) = entry {
+            self.settle_attempt(home, syndic, &ActivityEnrollmentAttempt { runtime, entry })?;
+        }
+        Ok(())
+    }
+
     pub fn new(home: BerylHomeId, capacity: NonZeroUsize) -> Self {
         Self(Arc::new(Slots {
             home,
@@ -197,6 +274,13 @@ impl RuntimeActivityEnrollmentOperations {
 }
 
 impl ReservedActivityEnrollment<'_> {
+    pub(crate) fn attempt(&self) -> ActivityEnrollmentAttempt {
+        ActivityEnrollmentAttempt {
+            runtime: self.runtime,
+            entry: Arc::clone(&self.entry),
+        }
+    }
+
     pub fn execute(mut self) -> ActivityEnrollmentCommandOutcome {
         let mut attempt = self.entry.state.lock().unwrap_or_else(|e| e.into_inner());
         let outcome = self

@@ -132,6 +132,7 @@ pub(super) fn publish_frame(
     publication: ProviderFramePublication,
     limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
+    runtime: &super::service_config::ConnectionRuntimeInterestSource,
 ) -> Result<PublishedProviderFrame, ProviderFramePublicationError> {
     let ProviderFramePublication {
         target,
@@ -216,6 +217,7 @@ pub(super) fn publish_frame(
         &event,
         limit,
         command,
+        runtime,
     )?;
     Ok(PublishedProviderFrame { completion })
 }

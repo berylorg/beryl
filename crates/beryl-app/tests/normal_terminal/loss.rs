@@ -38,9 +38,9 @@ pub fn run() {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution_binding().runtime_id(),
+            execution_binding(),
             CasProcessGeneration::new(37_138).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

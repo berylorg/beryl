@@ -499,6 +499,7 @@ struct ActiveStopElectionKey {
 
 #[derive(Debug)]
 struct TargetEntry {
+    runtime_interest: std::sync::Weak<crate::cas_projection::RuntimeInterest>,
     registration: u64,
     key: LoadedThreadKey,
     owner: SyndicThreadId,
@@ -634,6 +635,7 @@ impl EventRouter {
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct TargetRegistration {
+    runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     registration: u64,
     key: LoadedThreadKey,
     owner: SyndicThreadId,
@@ -650,6 +652,7 @@ pub(in crate::cas_projection) struct TargetRegistration {
 
 #[derive(Clone, Debug)]
 pub(in crate::cas_projection) struct TargetRegistrationProof {
+    runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     registration: u64,
     key: LoadedThreadKey,
     owner: SyndicThreadId,
@@ -748,6 +751,7 @@ impl TargetRegistration {
 
     pub(in crate::cas_projection) fn proof(&self) -> TargetRegistrationProof {
         TargetRegistrationProof {
+            runtime_interest: self.runtime_interest.clone(),
             registration: self.registration,
             key: self.key.clone(),
             owner: self.owner,

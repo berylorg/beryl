@@ -227,6 +227,8 @@ pub(in crate::cas_projection::connection) struct PreparedProviderBroker {
 pub(in crate::cas_projection::connection) struct ProviderBroker;
 
 pub(in crate::cas_projection::connection) struct ProviderBrokerControl {
+    pub(super) runtime_interest:
+        crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
     pub(in crate::cas_projection::connection) passive_approval: Arc<super::PassiveApprovalFence>,
     pub(super) home: Arc<HomeServiceReference>,
     pub(super) home_id: BerylHomeId,
@@ -292,6 +294,7 @@ pub(in crate::cas_projection::connection) enum ProviderBrokerResponseActivationF
 }
 
 struct Ingester {
+    runtime_interest: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
     passive: passive::PassiveIngress,
     home: Arc<HomeServiceReference>,
     home_id: BerylHomeId,

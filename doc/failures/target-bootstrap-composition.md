@@ -932,3 +932,53 @@ its new fault test incorrectly used normal reads after injected home failure. Re
 access corrects that test. Focused run `08a11e02-06b8-4ae0-823c-418ce544111b` passed all four
 replacement cases, including the added old completed-row preservation case, for 20 distinct
 passing enrollment cases. Independent review accepted the correction and exact revision fence.
+
+Runtime integration review also rejected dropping a definitive committed enrollment witness
+before the confirming read succeeds. That read can race unrelated Syndic progress and return
+ConcurrentChange while the runtime remains live; token absence would then wrongly authorize a
+fresh period as though the head were retired. The attempt now retains its committed witness
+through classification, separately from indeterminate outer registry custody. A real postcommit
+read barrier and unrelated write reproduced the race; retry retained the same period. A successful
+command alone does not remove the need to retain the evidence required by later token publication.
+
+Delayed steering-loss publication exposed a second lifetime mismatch: the broker's weak runtime
+source could expire when its workers exited, while the exact target still owned canonical loss
+settlement. Run `163837bd-b0e1-4021-a5a2-36cd1177f25f` confirmed ActivityAuthorityUnavailable with
+the runtime source absent. External target registrations, proofs and loss authorities now retain
+the original runtime interest; router entries keep only weak references. Strong ownership inside
+router entries was rejected because removal under the service gate could run RuntimeInterest's
+locking destructor and deadlock. Connection loss does not itself retire runtime Activity.
+
+Concurrent native-lineage recovery also exposed stranded pending work after a proven preactivation
+conflict. Releasing its projection and restarting the pending scan was rejected: the completed
+recovery prompt still owns its Leaving route until GUI acknowledgment, so reacquiring the same
+route fails. Run `3509ef76-50d3-4de4-98f9-30ccca37f6bd` reproduced this deterministically. The
+correction retains the exact loaded projection within its existing bounded worker and retries only
+proven local preactivation conflicts, rechecking cancellation and current authority each time.
+Terminal completion binds after retryable preparation/enrollment and before activation; binding
+earlier would leave an occupied completion slot on retry. Stable refusal and possibly dispatched
+work never enter this path. The retry fixture also required a valid unsubscribe status instead of
+an empty mock response. Integration acceptance remains pending.
+
+Stress run `202aad95-caf9-4b2e-86ca-d95a7dd42144` isolated an intermittent promotion failure:
+after exact reconciliation releases its reservation, requested connection retirement can finish
+before projection acquisition checks the attachment. The detached attachment returned
+ProjectionWorkerStopped, incorrectly failing the scheduler while its service gate remained open.
+Acquisition now checks exact connection retirement and classifies that expected unavailability;
+only the same proven retirement remaps a racing missing attachment. Unexpected worker stops and
+other errors retain their existing failure handling. The regression pauses after reservation
+release, joins complete connection detachment, then resumes acquisition, preserving the original
+promotion, reconciliation and process-custody assertions and verifying no new worker after reopen.
+
+Runtime producer integration is accepted. Final run `b10f7017-5c6b-4c35-914c-89e597dda715`
+passed 100 of 101 selected runtime, stop, terminal, native-lineage and scheduler cases; the remaining
+retirement race passed ten deterministic paired repetitions in
+`b5e34806-5052-4f34-b212-4c0a28513a9d` and all 16 scheduler cases passed in
+`2f9ebf00-630e-47f7-8f75-411519f1f2ec`. Broader run
+`750cc0e8-7f6b-4cd4-be46-a668e680ebc4` passed 137 of 140 streaming, compaction, lifecycle,
+session, tool and discussion cases; corrected fixture identities and structured refusal expectations
+passed their complete focused targets in `b83cb7c8` and `f3ede4e7`. App test-target and default
+checks passed, and independent review accepted original enrollment witness custody, external
+target capability lifetimes, retained preactivation retries and exact retirement classification.
+No temporary diagnostic probes remain. Bounded Activity reads and complete graph mounting remain
+separate acceptance boundaries.

@@ -233,6 +233,7 @@ impl ProviderBroker {
         initial_start: Arc<InitialStartGate>,
         build_fault: ProviderBrokerBuildFault,
     ) -> Result<PreparedProviderBroker, ProviderBrokerBuildError> {
+        let runtime_interest = worker.runtime_interest_source();
         let worker = Arc::new(ProviderBrokerWorkerOwner::new(worker));
         if let Some(error) = build_fault.page_pool_failure() {
             return Err(ProviderBrokerBuildError::new(
@@ -292,6 +293,7 @@ impl ProviderBroker {
             Arc::clone(&test_metrics),
         );
         let control = Arc::new(ProviderBrokerControl {
+            runtime_interest: runtime_interest.clone(),
             passive_approval: Arc::clone(&passive_approval),
             passive_ready: Arc::clone(&passive_ready),
             outage_inventory: Arc::clone(&outage_inventory),
@@ -317,6 +319,7 @@ impl ProviderBroker {
         sink.set_passive_approval(passive_approval);
         let launch = Arc::new(ProviderBrokerLaunchEscrow {
             ingester: Mutex::new(Some(Ingester {
+                runtime_interest,
                 passive: super::passive::PassiveIngress::new(
                     crate::cas_projection::persistent_failure::PersistentFailureCutIdentity::new(
                         home_id, home_generation, commands.service_generation(),

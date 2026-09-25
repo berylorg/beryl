@@ -77,7 +77,7 @@ impl PendingOrdinaryExecution {
         Self::read_inner(store, storage, assets, witness, limit, || {})
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-faults"))]
     pub(in crate::cas_projection) fn read_with_confirmation_hook(
         store: &HomeStore,
         storage: &SyndicStorage,

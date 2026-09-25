@@ -5,7 +5,7 @@ use super::{
         super::failure,
         authority::{LeaseValidationAuthority, expected_coordinator_drift},
     },
-    settlement::{OrdinaryTurnSettlement, settle_ordinary_outcome},
+    settlement::{OrdinaryTurnSettlement, execute_retained_projection, settle_ordinary_outcome},
 };
 use crate::cas_projection::{
     CasProjectionCoordinator, CasProjectionRequest, LoadedProjectionReleaseError,
@@ -48,7 +48,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
         }
         Err(_) => return PendingTurnExecutionDisposition::ProjectionRefused,
     };
-    lease.with_execution_authority(|session, policy, assets, handoff, tools, flight| {
+    lease.with_execution_authority(|session, policy, assets, handoff, mut tools, flight| {
         let projection_request = CasProjectionRequest::new(
             thread_id,
             selected_path,
@@ -88,17 +88,19 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn execute_pending_turn(
             }
             Err(error) => return classify_projection_error(error, validator.home_generation()),
         };
-        let outcome = coordinator.execute_ordinary_turn_in_flight(
-            &validator.home,
-            storage,
-            assets,
-            handoff,
-            projection,
-            cancellation,
-            policy.turn(),
-            tools,
-            flight,
-        );
+        let outcome = execute_retained_projection(projection, |projection| {
+            coordinator.execute_ordinary_turn_in_flight(
+                &validator.home,
+                storage,
+                assets,
+                handoff,
+                projection,
+                cancellation,
+                policy.turn(),
+                tools.reborrow(),
+                flight,
+            )
+        });
         match settle_ordinary_outcome(validator, outcome) {
             OrdinaryTurnSettlement::Settled => PendingTurnExecutionDisposition::Settled,
             OrdinaryTurnSettlement::PersistentHomeFailure => {

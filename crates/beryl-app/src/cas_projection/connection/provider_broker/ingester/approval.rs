@@ -58,6 +58,7 @@ impl Ingester {
                 &self.router,
                 proof,
                 syndic_storage::StopCause::InterruptingApproval,
+                &self.runtime_interest,
             ) {
                 Ok(StopOwnership::Primary(owner)) => {
                     if let Some(custody) = &custody {

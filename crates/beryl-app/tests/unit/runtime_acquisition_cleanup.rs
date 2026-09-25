@@ -20,6 +20,10 @@ fn failed_runtime_cleanup_retains_acquisition_and_prevents_reopening() {
             .unwrap(),
             gate.authorizer(),
             crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+            crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                beryl_model::BerylHomeId::from_bytes([1; 16]),
+                NonZeroUsize::new(1).unwrap(),
+            ),
         ),
         gate,
     };

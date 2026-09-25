@@ -49,6 +49,7 @@ fn stop_cancels_only_the_exact_automatic_phase_continuation() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::SelectedOperationControl,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first stop must own dispatch"),
@@ -81,6 +82,7 @@ fn window_close_barrier_retains_exact_convergence_classification() {
         &fixture.router,
         fixture.proof.clone(),
         StopCause::HealthyHomeWindowClose,
+        &fixture.runtime_source,
     ) {
         Ok(StopOwnership::Primary(owner)) => owner,
         Ok(StopOwnership::Joined { .. }) => panic!("first close stop must own dispatch"),

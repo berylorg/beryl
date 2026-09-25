@@ -61,9 +61,9 @@ fn fresh_execution_wake_revisits_retained_pending_work_and_dispatches_the_existi
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            syndic::execution_binding().runtime_id(),
+            syndic::execution_binding(),
             CasProcessGeneration::new(62_181).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

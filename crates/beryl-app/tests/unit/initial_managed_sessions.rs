@@ -54,8 +54,18 @@ fn attached_sessions_configure_without_releasing_startup() {
             .configure_runtime_session_preparation(&sessions, session_config(&state), &attention,),
         Err(RuntimeSessionPreparationError::ServiceUnavailable)
     ));
+    let enrollments = crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+        reference.home_id(),
+        NonZeroUsize::new(1).unwrap(),
+    );
     let prepared = prepared
-        .configure_managed_sessions(&sessions, interest(), session_config(&state), &attention)
+        .configure_managed_sessions(
+            &sessions,
+            interest(),
+            enrollments,
+            session_config(&state),
+            &attention,
+        )
         .unwrap();
     let signal = prepared.service.as_ref().unwrap().scheduler_signal.clone();
     thread::sleep(Duration::from_millis(50));
@@ -117,9 +127,15 @@ fn configuration_rejection_retires_private_custody() {
         } else {
             &sessions
         };
+        let enrollments =
+            crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+                prepared.service.as_ref().unwrap().home_id,
+                NonZeroUsize::new(1).unwrap(),
+            );
         let result = prepared.configure_managed_sessions(
             selected,
             interest(),
+            enrollments,
             configuration,
             &Arc::new(ProcessLifecycleAttentionPool::new()),
         );

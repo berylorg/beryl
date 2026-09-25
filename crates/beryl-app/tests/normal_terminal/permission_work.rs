@@ -63,9 +63,9 @@ fn permission_work_survives_preparation_driver_cleanup_and_target_loss() {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution_binding().runtime_id(),
+            execution_binding(),
             CasProcessGeneration::new(37_161).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

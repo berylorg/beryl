@@ -32,6 +32,10 @@ use crate::{
 
 #[allow(dead_code)]
 mod exact_cas_support {
+    #[path = "../../../../../syndic-storage/tests/support/activity.rs"]
+    mod activity;
+    use activity::enroll_fixture_activity;
+
     use beryl_home_store::{CommandOutcome, HomeCommand, HomeStore};
     use beryl_model::{
         BindingRevision, ContentRevision, SyndicContentId, SyndicDraftId, SyndicThreadId,
@@ -293,6 +297,15 @@ struct StopFixture {
     turn: SyndicTurnId,
     target: StopOperationTarget,
     proof: StopTargetProof,
+    runtime_source: crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
+    runtime_harness: crate::cas_projection::runtime_interest::RuntimeInterestTestHarness,
+    _runtime_custody: Box<dyn Send + Sync>,
+}
+
+impl Drop for StopFixture {
+    fn drop(&mut self) {
+        assert!(self.runtime_harness.shutdown());
+    }
 }
 
 impl StopFixture {
@@ -332,6 +345,11 @@ impl StopFixture {
             "coordinator stop target",
             timestamp(2),
         );
+        let (runtime_harness, runtime_interest) = stop_runtime(&home);
+        runtime_interest
+            .enroll_activity_for_test(&home, &storage, thread, turn)
+            .unwrap();
+        let (runtime_source, runtime_custody) = crate::cas_projection::service_config::ConnectionRuntimeInterestSource::retained_for_test(runtime_interest);
         let source = exact_cas::establish_turn(&home, storage.clone(), thread, turn, timestamp(3));
         exact_cas::admit_event(
             &home,
@@ -420,6 +438,9 @@ impl StopFixture {
             turn,
             target,
             proof,
+            runtime_source,
+            runtime_harness,
+            _runtime_custody: Box::new(runtime_custody),
         }
     }
 
@@ -468,6 +489,61 @@ impl StopFixture {
             other => panic!("fixture must retain a live stop, observed {other:?}"),
         }
     }
+}
+
+fn stop_runtime(
+    home: &HomeStore,
+) -> (
+    crate::cas_projection::runtime_interest::RuntimeInterestTestHarness,
+    Arc<crate::cas_projection::RuntimeInterest>,
+) {
+    use crate::cas_projection::runtime_interest::{
+        RuntimeInterestTestHarness, RuntimeInterestTestProbe,
+    };
+    use crate::cas_projection::{
+        RuntimeInterestConfig, RuntimeInterestKind, RuntimeInterestStatus,
+    };
+    use beryl_model::{
+        AdmittedHostPath, CasProcessGeneration, PathFlavor, RuntimeMode, RuntimeNativePath,
+    };
+    let binding = exact_cas::execution_binding();
+    let native = |path: &str| {
+        RuntimeNativePath::from_admitted(RuntimeMode::Host, PathFlavor::Windows, path).unwrap()
+    };
+    let spec = beryl_backend::ManagedBackendLaunchSpec::new(
+        binding.runtime_id(),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\runtime\codex.exe").unwrap(),
+        RuntimeMode::Host,
+        native(r"C:\runtime\codex.exe"),
+        native(r"C:\syndic-test-root-history"),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\tokens").unwrap(),
+        native(r"C:\tokens"),
+    )
+    .unwrap();
+    let harness = RuntimeInterestTestHarness::for_home(
+        RuntimeInterestConfig::new(
+            std::num::NonZeroUsize::new(1).unwrap(),
+            std::num::NonZeroUsize::new(1).unwrap(),
+            Duration::from_secs(5),
+        )
+        .unwrap(),
+        home.home_id(),
+    );
+    let interest = Arc::new(
+        harness
+            .acquire(
+                spec,
+                binding,
+                RuntimeInterestKind::RequiredWork,
+                RuntimeInterestTestProbe::new(CasProcessGeneration::new(1).unwrap()),
+            )
+            .unwrap(),
+    );
+    assert!(matches!(
+        interest.wait_for_change(RuntimeInterestStatus::Starting, Duration::from_secs(5)),
+        RuntimeInterestStatus::Ready(_)
+    ));
+    (harness, interest)
 }
 
 fn failure_identity(

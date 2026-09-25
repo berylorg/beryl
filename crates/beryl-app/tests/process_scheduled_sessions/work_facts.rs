@@ -35,7 +35,7 @@ fn session_fact_pages_are_ordered_bounded_and_do_not_reap_or_authorize_work() {
         &sessions,
         second_thread,
         second_server.endpoint(),
-        73_002,
+        73_001,
     );
     first_server.wait_for_admission();
     second_server.wait_for_admission();

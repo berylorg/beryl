@@ -73,26 +73,13 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 561: Re-enroll An Undispatched Source After Runtime Retirement (finished)
+# Phase 557: Connect Runtime-Owned Activity Producers (finished)
 
-Accepted independently reviewed retired-pending replacement with exact nondispatch authentication
-and preserved canonical identity and old-period rows. All 20 distinct enrollment regressions passed
-across the full and corrected focused runs, including fault recovery and whole-home scrub.
-[Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-records the prerequisite and review correction. The app API cutover gap remains until 557.
-
-# Phase 557: Connect Runtime-Owned Activity Producers (wip)
-
-Connect bounded first-enrollment custody and proven-token reuse to admitted runtime producers.
-Join installed home reconciliation and original enrollment witness before publishing uncertain
-first-enrollment identity; a natural-record match alone does not settle that registry custody.
-Replace per-turn resets with exact enrollment, preserve current canonical/Activity atomicity and
-ended-runtime canonical terminal custody, and fence retirement/replacement. Verify across-turn and
-cross-thread retention, concurrent first enrollment, failure/reconciliation and joined disposal
-with real storage/runtime tests and independent review before claiming producer readiness.
-The enrolled-but-undispatched retry prerequisite is accepted. Bind unresolved
-enrollment settlement to its original runtime attempt; replacement settlement discards the old
-token and cannot publish it into the fresh attempt's token slot.
+Accepted runtime enrollment custody, proven-token reuse and exact producer/retirement fencing,
+including delayed target loss and retained-projection preactivation retries. Real storage/runtime,
+streaming, compaction, scheduler and disposal regressions, app checks and independent review passed;
+the producer API cutover gap is closed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
+records corrected races and acceptance. Activity reader readiness and graph publication remain open.
 
 # Phase 558: Establish The Bounded Activity Service (pending)
 

@@ -32,9 +32,9 @@ fn connect(
     );
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            syndic::execution_binding().runtime_id(),
+            syndic::execution_binding(),
             CasProcessGeneration::new(generation).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -225,7 +225,10 @@ fn process_fence_waits_for_a_winning_promotion_reservation_to_release() {
 
 #[test]
 fn indeterminate_promotion_retains_process_custody_through_worker_reconciliation() {
-    use beryl_app::cas_projection::test_faults::install_scheduled_promotion_reconciliation_barrier;
+    use beryl_app::cas_projection::test_faults::{
+        install_scheduled_promotion_reconciliation_barrier,
+        install_scheduled_promotion_released_barrier,
+    };
     use beryl_home_store::test_faults::FaultPoint;
 
     let faults = FaultController::new();
@@ -242,6 +245,7 @@ fn indeterminate_promotion_retains_process_custody_through_worker_reconciliation
     let retirement = connect(&fixture, &slot, &server, 62_034);
     let reserved = install_scheduled_promotion_barrier(fixture.thread);
     let outcome = install_scheduled_promotion_reconciliation_barrier(fixture.thread);
+    let released = install_scheduled_promotion_released_barrier(fixture.thread);
     let ids = admit_runtime_next_input(&mut fixture, 214);
     assert!(reserved.wait_until_paused(TIMEOUT));
     let fence = fixture.process_admission.test_fence().unwrap();
@@ -263,15 +267,38 @@ fn indeterminate_promotion_retains_process_custody_through_worker_reconciliation
     });
     assert!(!retirement_worker.is_finished());
     outcome.release();
+    assert!(released.wait_until_paused(TIMEOUT));
     retirement_worker.join().unwrap();
+    assert!(retirement.is_detached());
+    released.release();
     wait_for_worker(&fixture, &slot);
     assert_eq!(
         accepted_route_state(command.home(), &fixture.storage, &ids),
         AcceptedRouteEffectiveState::Promoted
     );
     assert!(command.home().pending_reconciliations().is_empty());
+    let before_reopen = fixture.store.accepted_input_scheduler_diagnostics();
     fence.try_reopen(true).unwrap();
     drop(command);
+    fixture.store.notify_scheduled_ordinary_execution_ready();
+    wait_until("reopened pending scan rejects the retired session", || {
+        let diagnostics = fixture.store.accepted_input_scheduler_diagnostics();
+        assert!(!diagnostics.fatal());
+        (diagnostics.recovered_pending_execution_unavailable()
+            > before_reopen.recovered_pending_execution_unavailable()
+            && !diagnostics.recovered_pending_retained_source_cursor()
+            && diagnostics.workers_active() == 0
+            && slot.is_ready())
+        .then_some(())
+    });
+    assert_eq!(
+        fixture
+            .store
+            .accepted_input_scheduler_diagnostics()
+            .workers_started(),
+        before_reopen.workers_started(),
+        "retired connection cannot admit another execution worker"
+    );
     drop(retirement);
     finish(fixture, slot, server);
 }

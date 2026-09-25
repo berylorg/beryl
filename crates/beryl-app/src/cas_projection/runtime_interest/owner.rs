@@ -67,6 +67,7 @@ impl RuntimeInterestOwner {
         config: RuntimeInterestConfig,
         commands: LiveCommandAuthorizer,
         scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+        enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
     ) -> Self {
         Self {
             shared: Arc::new(RuntimeInterestShared {
@@ -82,6 +83,7 @@ impl RuntimeInterestOwner {
                 commands,
                 config,
                 scheduler_signal,
+                enrollments,
             }),
         }
     }
@@ -189,6 +191,7 @@ impl RuntimeInterestOwner {
                 return Err(RuntimeInterestError::Retiring);
             }
             let attempt = entry.attempt;
+            let activity = Arc::clone(&entry.activity);
             command
                 .commit_if_current(|| {
                     entry.interests.insert(
@@ -209,6 +212,7 @@ impl RuntimeInterestOwner {
                 interest,
                 binding,
                 kind,
+                activity,
             });
         }
         if state.runtimes.len() == self.shared.config.runtime_capacity.get() {
@@ -221,11 +225,13 @@ impl RuntimeInterestOwner {
         }) {
             return Err(RuntimeInterestError::ConfigurationMismatch);
         }
+        let activity = Arc::new(Mutex::new(activity::RuntimeActivityState::default()));
         command
             .commit_if_current(|| {
                 state.runtimes.insert(
                     runtime_id,
                     RuntimeEntry {
+                        activity: Arc::clone(&activity),
                         spec,
                         attempt: interest,
                         interests: HashMap::from([(
@@ -289,6 +295,7 @@ impl RuntimeInterestOwner {
             interest,
             binding,
             kind,
+            activity,
         })
     }
 

@@ -111,6 +111,7 @@ pub(super) fn publish(
     limit: SyndicPointReadLimit,
     cancelled: &AtomicBool,
     command: &crate::cas_projection::LiveCommandPermit,
+    runtime: &crate::cas_projection::service_config::ConnectionRuntimeInterestSource,
 ) -> Result<(), ProviderObservationPublicationError> {
     let PreparedProviderObservationPublication {
         target,
@@ -152,6 +153,7 @@ pub(super) fn publish(
         &event,
         limit,
         command,
+        runtime,
     )?;
     Ok(())
 }

@@ -13,6 +13,7 @@ pub enum AcquisitionBarrierStage {
     SessionPrepared,
     ProjectionAdmitted,
     OrdinaryExecutionAdmitted,
+    OrdinaryPreflightConfirmation,
 }
 
 struct Pending {

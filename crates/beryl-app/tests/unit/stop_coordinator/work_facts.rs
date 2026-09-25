@@ -46,6 +46,7 @@ fn stop_work_pages_preserve_removed_primary_and_terminal_driver_cleanup() {
             &fixture.router,
             fixture.proof.clone(),
             StopCause::SelectedOperationControl,
+            &fixture.runtime_source,
         )
         .unwrap()
     else {
@@ -110,6 +111,7 @@ fn stop_work_pages_bound_retained_records_and_merge_same_thread_owners() {
             &fixture.router,
             fixture.proof.clone(),
             StopCause::SelectedOperationControl,
+            &fixture.runtime_source,
         )
         .unwrap()
     else {
@@ -277,6 +279,7 @@ fn exhausted_permission_serial_permanently_rejects_observation_without_admission
             &fixture.router,
             fixture.proof.clone(),
             StopCause::SelectedOperationControl,
+            &fixture.runtime_source,
         )
         .unwrap();
     assert!(matches!(ownership, StopOwnership::Primary(_)));

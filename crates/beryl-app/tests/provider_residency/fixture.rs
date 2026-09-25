@@ -1,3 +1,6 @@
+#[path = "../../../syndic-storage/tests/support/activity.rs"]
+mod activity;
+
 use std::{
     path::Path,
     thread,
@@ -82,9 +85,9 @@ impl LiveHarness {
         let process_generation = CasProcessGeneration::new(35_000 + u64::from(seed)).unwrap();
         let mut session = fixture
             .store
-            .admit_lifecycle_test_candidate(
+            .admit_runtime_lifecycle_test_candidate(
                 &connector,
-                execution_binding().runtime_id(),
+                execution_binding(),
                 process_generation,
                 Path::new(EXECUTION_ROOT),
                 TIMEOUT,
@@ -362,6 +365,10 @@ fn activate_projection(
     submitted: SubmittedTurn,
     projection: &beryl_app::cas_projection::LoadedCasProjection,
 ) -> CasTurnSource {
+    fixture
+        .store
+        .enroll_lifecycle_test_activity(projection, submitted.turn)
+        .unwrap();
     let binding = fixture
         .storage
         .current_binding(&*fixture.home(), fixture.thread, point_limit())
@@ -473,9 +480,17 @@ fn activate_projection(
         started_at,
     )
     .unwrap();
-    let outcome = fixture
-        .home()
-        .execute_current(fixture.storage.current_admit_live_source_event(activation));
+    let activity = activity::enroll_fixture_activity(
+        &fixture.home(),
+        &fixture.storage,
+        fixture.thread,
+        submitted.turn,
+    );
+    let outcome = fixture.home().execute_current(
+        fixture
+            .storage
+            .current_admit_live_source_event(activation, activity),
+    );
     match outcome {
         CommandOutcome::Committed {
             later_failure: None,

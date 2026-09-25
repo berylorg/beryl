@@ -1,12 +1,13 @@
 use std::sync::{Arc, OnceLock, Weak};
 
-use super::{ProjectionWorkerAdmission, ProjectionWorkerPermitPair};
+use super::{ProjectionWorkerAdmission, ProjectionWorkerPermit, ProjectionWorkerPermitPair};
 use crate::cas_projection::{RuntimeInterest, RuntimeSessionAdmissionError};
 
 pub(super) struct ConnectionRuntimeInterestCustody {
     interest: OnceLock<Arc<RuntimeInterest>>,
 }
 
+#[derive(Clone)]
 pub(in crate::cas_projection) struct ConnectionRuntimeInterestSource {
     custody: Weak<ConnectionRuntimeInterestCustody>,
 }
@@ -20,6 +21,22 @@ impl ConnectionRuntimeInterestCustody {
 }
 
 impl ConnectionRuntimeInterestSource {
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn retained_for_test(
+        interest: Arc<RuntimeInterest>,
+    ) -> (Self, impl Send + Sync + 'static) {
+        let custody = ConnectionRuntimeInterestCustody::new();
+        let source = Self {
+            custody: Arc::downgrade(&custody),
+        };
+        source.retain(interest).expect("fresh test runtime custody");
+        (source, custody)
+    }
+
+    pub(in crate::cas_projection) fn interest(&self) -> Option<Arc<RuntimeInterest>> {
+        self.custody.upgrade()?.interest.get().cloned()
+    }
+
     pub(in crate::cas_projection) fn retain(
         &self,
         interest: Arc<RuntimeInterest>,
@@ -30,6 +47,20 @@ impl ConnectionRuntimeInterestSource {
             .interest
             .set(interest)
             .map_err(|_| RuntimeSessionAdmissionError::RuntimeUnavailable)
+    }
+}
+
+impl ProjectionWorkerPermit {
+    pub(in crate::cas_projection) fn runtime_interest_source(
+        &self,
+    ) -> ConnectionRuntimeInterestSource {
+        ConnectionRuntimeInterestSource {
+            custody: self
+                .admission
+                .runtime_interest
+                .as_ref()
+                .map_or_else(Weak::new, Arc::downgrade),
+        }
     }
 }
 
@@ -96,6 +127,11 @@ impl ProjectionWorkerPermitPair {
 }
 
 impl ConnectionWorkerRetentionSource {
+    pub(in crate::cas_projection) fn runtime_interest(&self) -> Option<Arc<RuntimeInterest>> {
+        let admission = self.driver.upgrade().or_else(|| self.ingester.upgrade())?;
+        admission.runtime_interest.as_ref()?.interest.get().cloned()
+    }
+
     pub(in crate::cas_projection) fn retain_for_cut(&self) -> Option<ConnectionCutWorkerRetention> {
         let driver = self.driver.upgrade();
         let ingester = self.ingester.upgrade();

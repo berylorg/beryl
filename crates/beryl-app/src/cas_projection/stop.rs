@@ -57,13 +57,14 @@ pub enum StopDispatchWorkState {
 
 use StopDispatchWorkState as LocalDispatchState;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct LocalStop {
     operation_id: StopOperationId,
     target: StopOperationTarget,
     attempt: Option<StopAttemptNonce>,
     dispatch: LocalDispatchState,
     timeout: std::time::Duration,
+    runtime_interest: Arc<super::runtime_interest::RuntimeInterest>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -454,12 +455,16 @@ impl StopCoordinator {
         router: &Arc<EventRouter>,
         proof: StopTargetProof,
         cause: StopCause,
+        runtime: &super::service_config::ConnectionRuntimeInterestSource,
     ) -> Result<StopOwnership, StopCoordinationError> {
         let command = self
             .commands
             .authorize()
             .map_err(|_| StopCoordinationError::HomeAuthorityLost)?;
         self.ensure_current()?;
+        let runtime_interest = runtime
+            .interest()
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)?;
         let mut state = self
             .state
             .lock()
@@ -574,6 +579,7 @@ impl StopCoordinator {
                 attempt: None,
                 dispatch: LocalDispatchState::AdmittedNotClaimed,
                 timeout: proof.request_timeout(),
+                runtime_interest,
             },
         );
         let attempt = match random_attempt_nonce() {
@@ -1392,9 +1398,44 @@ impl StopCoordinator {
             stale,
         );
         let home = self.current_home()?;
-        require_stop_committed(
-            home.execute_current(self.storage.current_abandon_stop_operation(request.clone())),
-        )?;
+        let runtime = self
+            .state
+            .lock()
+            .map_err(|_| StopCoordinationError::LocalAuthorityMismatch)?
+            .stops
+            .get(&operation_id.thread_id())
+            .filter(|local| local.operation_id == operation_id)
+            .map(|local| Arc::clone(&local.runtime_interest))
+            .ok_or(StopCoordinationError::LocalAuthorityMismatch)?;
+        if live.target().turn_kind()
+            == syndic_storage::TurnKind::ProviderOperation(
+                syndic_storage::ProviderOperationKind::ContextCompaction,
+            )
+        {
+            require_stop_committed(home.execute_current(
+                self.storage.current_abandon_stop_operation(
+                    request.clone(),
+                    syndic_storage::ActivitySourceQualification::Unenrolled,
+                ),
+            ))?;
+        } else {
+            runtime
+                .with_activity(
+                    syndic_storage::ActivityQuerySource::new(
+                        live.target().thread_id(),
+                        live.target().turn_id(),
+                    ),
+                    |activity| {
+                        require_stop_committed(
+                            home.execute_current(
+                                self.storage
+                                    .current_abandon_stop_operation(request.clone(), activity),
+                            ),
+                        )
+                    },
+                )
+                .ok_or(StopCoordinationError::LocalAuthorityMismatch)??;
+        }
         let mut state = self
             .state
             .lock()

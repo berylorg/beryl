@@ -122,11 +122,12 @@ pub use promotion::{
     ProjectionConnectionRetirementHandle, ScheduledPromotionBarrierController,
     install_scheduled_generation_invalidation_barrier, install_scheduled_promotion_barrier,
     install_scheduled_promotion_reconciliation_barrier,
-    install_scheduled_promotion_reservation_barrier,
+    install_scheduled_promotion_released_barrier, install_scheduled_promotion_reservation_barrier,
 };
 pub(crate) use promotion::{
     pause_scheduled_generation_invalidation, pause_scheduled_promotion,
-    pause_scheduled_promotion_reconciliation, pause_scheduled_promotion_reservation,
+    pause_scheduled_promotion_reconciliation, pause_scheduled_promotion_released,
+    pause_scheduled_promotion_reservation,
 };
 pub use provider::*;
 pub use publication::{

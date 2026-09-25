@@ -121,6 +121,7 @@ impl ProjectionConnectionService {
     pub fn configure_runtime_interest(
         &mut self,
         config: RuntimeInterestConfig,
+        enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
     ) -> Result<(), RuntimeInterestError> {
         if !self.command_authorizer.is_open() {
             return Err(RuntimeInterestError::Closed);
@@ -128,10 +129,14 @@ impl ProjectionConnectionService {
         if self.runtime_interest.is_some() {
             return Err(RuntimeInterestError::AlreadyConfigured);
         }
+        if !enrollments.matches(self.home_id, config.runtime_capacity()) {
+            return Err(RuntimeInterestError::ConfigurationMismatch);
+        }
         self.runtime_interest = Some(Arc::new(RuntimeInterestOwner::new(
             config,
             self.command_authorizer.clone(),
             self.scheduler_signal.clone(),
+            enrollments,
         )));
         Ok(())
     }

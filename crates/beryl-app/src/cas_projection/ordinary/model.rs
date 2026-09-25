@@ -194,6 +194,10 @@ pub struct OrdinaryDynamicToolHandlers<'a> {
 }
 
 impl<'a> OrdinaryDynamicToolHandlers<'a> {
+    pub(in crate::cas_projection) fn reborrow(&mut self) -> OrdinaryDynamicToolHandlers<'_> {
+        OrdinaryDynamicToolHandlers::new(self.lifecycle, self.branch)
+    }
+
     /// Binds the feature-owned handlers used for one ordinary execution.
     #[must_use]
     pub fn new(

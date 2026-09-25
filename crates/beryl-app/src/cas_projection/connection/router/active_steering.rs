@@ -11,6 +11,7 @@ use super::{
 
 /// One connection-wide non-cloneable outbound steering attempt.
 pub(in crate::cas_projection) struct ActiveSteeringAttemptPermit {
+    pub(super) runtime_interest: Option<Arc<crate::cas_projection::RuntimeInterest>>,
     pub(super) router: Arc<EventRouter>,
     pub(super) token: u64,
     pub(super) thread_id: CasThreadId,
@@ -189,7 +190,8 @@ impl EventRouter {
         let Some(target) = state.targets.get(target_proof.pending().cas_thread_id()) else {
             return Err(ActiveSteeringTargetLookupError::MissingOrStale);
         };
-        let registration = TargetRegistrationProof {
+        let mut registration = TargetRegistrationProof {
+            runtime_interest: None,
             registration: target.registration,
             key: target.key.clone(),
             owner: target.owner,
@@ -203,7 +205,11 @@ impl EventRouter {
         if target.owner != owner {
             return Err(ActiveSteeringTargetLookupError::MissingOrStale);
         }
-        Ok((registration, target.request_timeout))
+        let request_timeout = target.request_timeout;
+        let runtime_interest = target.runtime_interest.clone();
+        drop(state);
+        registration.runtime_interest = runtime_interest.upgrade();
+        Ok((registration, request_timeout))
     }
 
     pub(in crate::cas_projection) fn acquire_active_steering_attempt(
@@ -284,6 +290,7 @@ impl EventRouter {
             })
             .unwrap_or(Err(ActiveSteeringAttemptAcquireError::Router))?;
         let permit = ActiveSteeringAttemptPermit {
+            runtime_interest: registration.runtime_interest.clone(),
             router: Arc::clone(self),
             token: admission.0,
             thread_id: thread_id.clone(),

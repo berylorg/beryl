@@ -405,6 +405,21 @@ impl LoadedCasProjection {
             .admit_ordinary_execution()
     }
 
+    pub(in crate::cas_projection) fn enroll_activity(
+        &self,
+        home: &beryl_home_store::HomeStore,
+        storage: &syndic_storage::SyndicStorage,
+        turn: beryl_model::SyndicTurnId,
+        cancellation: &super::ProjectionCancellationToken,
+    ) -> Result<(), super::OrdinaryTurnExecutionError> {
+        let interest = self
+            .lease
+            .as_ref()
+            .and_then(|lease| lease.runtime_interest())
+            .ok_or(super::ProjectionExecutionError::RuntimeInterestUnavailable)?;
+        interest.enroll_activity(home, storage, self.syndic_thread_id(), turn, cancellation)
+    }
+
     /// Consumes this projection into the sole provisional target registered before `turn/start`.
     pub fn into_pending_live_event_target(
         self,

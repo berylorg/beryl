@@ -47,9 +47,9 @@ fn install_session(
     let connector = ManagedBackendClientConnector::for_lifecycle_test(endpoint, AUTHORIZATION);
     let session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            binding.runtime_id(),
+            binding.clone(),
             CasProcessGeneration::new(generation).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,
@@ -152,7 +152,7 @@ fn process_sessions_dispatch_and_capture_independent_threads_without_views() {
         &sessions,
         second.thread,
         second_server.endpoint(),
-        71_002,
+        71_001,
     );
     assert!(
         second_server.wait_for_turn_start(0),

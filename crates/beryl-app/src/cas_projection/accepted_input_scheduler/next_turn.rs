@@ -23,7 +23,7 @@ use worker::spawn_worker;
 pub(super) use worker::{
     OrdinaryTurnSettlement, PendingTurnExecutionDisposition, classify_projection_error,
     classify_projection_error_ref, current_selected_path, current_timestamp, execute_pending_turn,
-    ordinary_error_cut_correlated, settle_ordinary_outcome,
+    execute_retained_projection, ordinary_error_cut_correlated, settle_ordinary_outcome,
 };
 
 #[derive(Default)]

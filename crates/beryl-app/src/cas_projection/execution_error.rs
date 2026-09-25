@@ -16,6 +16,8 @@ use crate::conversation_tools::ConversationToolRegistryError;
 /// Failure to durably publish or reconcile one exact CAS-binding transition.
 #[derive(Debug, Error)]
 pub enum ProjectionPublicationFailure {
+    #[error("the producer has no exact runtime Activity publication authority")]
+    ActivityAuthorityUnavailable,
     #[error("Beryl-home revision could not be read before projection publication")]
     HomeRead(#[source] ReadError),
     #[error("projection publication command failed and did not reconcile as exact")]

@@ -54,9 +54,9 @@ pub fn admit(fixture: &Fixture, server: &AttemptServer, process: u64) -> Admitte
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), AUTHORIZATION);
     fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution_binding().runtime_id(),
+            execution_binding(),
             CasProcessGeneration::new(process).unwrap(),
             Path::new(EXECUTION_ROOT),
             TIMEOUT,

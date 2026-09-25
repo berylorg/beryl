@@ -3,9 +3,44 @@ use super::{
     execution::projection_error_cut_correlated,
 };
 use crate::cas_projection::{
-    LoadedProjectionReleaseError, OrdinaryNotStartedProjection, OrdinaryTurnCaptureLoss,
-    OrdinaryTurnExecutionError, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
+    LoadedCasProjection, LoadedProjectionReleaseError, OrdinaryNotStartedProjection,
+    OrdinaryTurnCaptureLoss, OrdinaryTurnExecutionError, OrdinaryTurnExecutionFailure,
+    OrdinaryTurnExecutionOutcome,
 };
+
+pub(in crate::cas_projection::accepted_input_scheduler) fn execute_retained_projection(
+    mut projection: LoadedCasProjection,
+    mut execute: impl FnMut(
+        LoadedCasProjection,
+    ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure>,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
+    loop {
+        match execute(projection) {
+            Err(OrdinaryTurnExecutionFailure::PreActivation {
+                projection: retained,
+                source,
+            }) if matches!(
+                source,
+                OrdinaryTurnExecutionError::ConcurrentChange { .. }
+                    | OrdinaryTurnExecutionError::Read(
+                        syndic_storage::SyndicReadError::ConcurrentChange { .. }
+                    )
+                    | OrdinaryTurnExecutionError::ActivityEnrollment(
+                        crate::runtime_activity_enrollment::ActivityEnrollmentCustodyError::Read(
+                            syndic_storage::SyndicReadError::ConcurrentChange { .. }
+                        )
+                    )
+                    | OrdinaryTurnExecutionError::HomeCommandNotCommitted(
+                        beryl_home_store::CommandError::Conflict { .. }
+                    )
+            ) =>
+            {
+                projection = *retained;
+            }
+            outcome => return outcome,
+        }
+    }
+}
 
 pub(in crate::cas_projection::accepted_input_scheduler) fn settle_ordinary_outcome(
     validator: &LeaseValidationAuthority,
@@ -37,7 +72,7 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn settle_ordinary_outco
         ) => {}
     }
     let settlement = ordinary_typed_settlement(cut_correlated);
-    if settlement != OrdinaryTurnSettlement::Settled {
+    if settlement == OrdinaryTurnSettlement::PersistentHomeFailure {
         let _ = validator.observe_persistent_failure();
     }
     settlement
@@ -128,6 +163,11 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn ordinary_error_cut_co
         OrdinaryTurnExecutionError::Read(syndic_storage::SyndicReadError::Read(source)) => {
             failure::is_cut_correlated_read(source, home_generation)
         }
+        OrdinaryTurnExecutionError::ActivityEnrollment(
+            crate::runtime_activity_enrollment::ActivityEnrollmentCustodyError::Read(
+                syndic_storage::SyndicReadError::Read(source),
+            ),
+        ) => failure::is_cut_correlated_read(source, home_generation),
         OrdinaryTurnExecutionError::AssetRead(beryl_state::AssetReadError::Read(source)) => {
             failure::is_cut_correlated_read(source, home_generation)
         }

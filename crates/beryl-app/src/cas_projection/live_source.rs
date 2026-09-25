@@ -318,6 +318,20 @@ pub(super) fn publish_reconciled(
     Ok(())
 }
 
+pub(super) fn publish_runtime_reconciled(
+    store: &HomeStore,
+    storage: &SyndicStorage,
+    event: &LiveSourceEvent,
+    limit: SyndicPointReadLimit,
+    runtime: &super::RuntimeInterest,
+) -> Result<(), LiveSourcePublicationError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        publication::admit_retained_runtime_live_event(store, storage, event, limit, runtime)
+    }))
+    .map_err(|_| LiveSourcePublicationError::PublicationPanicked)??;
+    Ok(())
+}
+
 pub(super) fn publish_provider_reconciled(
     store: &HomeStore,
     expected_home_id: BerylHomeId,
@@ -326,36 +340,44 @@ pub(super) fn publish_provider_reconciled(
     event: &LiveSourceEvent,
     _limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
+    runtime: &super::service_config::ConnectionRuntimeInterestSource,
 ) -> Result<(), LiveSourcePublicationError> {
     let verification = command
         .enter_current_home(store, expected_home_id, expected_home_generation)
         .map_err(LiveSourcePublicationError::Authority)?;
     let dispatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        store.execute_current(storage.current_admit_live_source_event(event.clone()))
+        publication::with_runtime_activity(
+            runtime,
+            syndic_storage::ActivityQuerySource::new(event.thread_id(), event.turn_id()),
+            |activity| match store
+                .execute_current(storage.current_admit_live_source_event(event.clone(), activity))
+            {
+                beryl_home_store::CommandOutcome::Indeterminate {
+                    failure,
+                    reconciliation,
+                } => {
+                    reconciliation.install();
+                    Err(ProjectionPublicationFailure::CommandIndeterminate { failure })
+                }
+                outcome => Ok(outcome),
+            },
+        )
+        .and_then(|result| result)
     }));
     let dispatch = match dispatch {
-        Ok(dispatch) => dispatch,
+        Ok(Ok(dispatch)) => dispatch,
+        Ok(Err(failure)) => {
+            verification
+                .settle_after_operation()
+                .map_err(LiveSourcePublicationError::Authority)?;
+            return Err(LiveSourcePublicationError::Publication(failure));
+        }
         Err(_) => {
             verification
                 .settle_after_operation()
                 .map_err(LiveSourcePublicationError::Authority)?;
             return Err(LiveSourcePublicationError::PublicationPanicked);
         }
-    };
-    let dispatch = match dispatch {
-        beryl_home_store::CommandOutcome::Indeterminate {
-            failure,
-            reconciliation,
-        } => {
-            reconciliation.install();
-            verification
-                .settle_after_operation()
-                .map_err(LiveSourcePublicationError::Authority)?;
-            return Err(LiveSourcePublicationError::Publication(
-                ProjectionPublicationFailure::CommandIndeterminate { failure },
-            ));
-        }
-        dispatch => dispatch,
     };
     verification
         .settle_after_operation()

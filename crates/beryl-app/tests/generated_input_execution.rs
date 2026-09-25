@@ -2,11 +2,11 @@
 
 #[path = "support/generated_handoff.rs"]
 mod generated_handoff;
-#[path = "generated_input_execution/scheduler.rs"]
-mod scheduler;
 #[cfg(target_os = "windows")]
 #[path = "generated_input_execution/preparation.rs"]
 mod preparation;
+#[path = "generated_input_execution/scheduler.rs"]
+mod scheduler;
 #[path = "normal_terminal/server.rs"]
 mod server;
 #[path = "../../syndic-storage/tests/support/mod.rs"]
@@ -139,9 +139,9 @@ fn run_generated_execution(reject_first: bool, lose_response: bool) {
         ManagedBackendClientConnector::for_lifecycle_test(server.endpoint(), server::AUTHORIZATION);
     let mut session = fixture
         .store
-        .admit_lifecycle_test_candidate(
+        .admit_runtime_lifecycle_test_candidate(
             &connector,
-            execution.runtime_id(),
+            execution.clone(),
             CasProcessGeneration::new(59_901).unwrap(),
             Path::new(execution.root_path().as_str()),
             server::TIMEOUT,
