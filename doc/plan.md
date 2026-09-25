@@ -111,6 +111,26 @@ identity-safe failure disposal and independent per-window fallback. Keep complet
 gating/publication and process startup ownership in their following phases. Require native-boundary
 evidence, affected shell regressions and independent review before acceptance.
 
+Readiness finding on 2026-09-25: the owned GPUI fork interprets creation bounds as client
+geometry and expands the native frame; Beryl saves outer logical geometry. Its Windows monitor
+lookup also uses a transient enumeration index with an unchecked failure, and initial HWND DPI
+can belong to the default monitor. Before placement integration, define a bounded fork prerequisite
+for explicit outer-coordinate bounds and fallible prepared monitor identity/DPI validation. Keep
+one rectangle, preserve existing client-coordinate semantics, and verify negative coordinates,
+mixed DPI, taskbar workspace offsets, stale monitors and actual hidden normal/maximized windows.
+Desktop application must retain the exact hidden native window until its COM worker finishes;
+cancellation cannot release or recycle that HWND while desktop movement is in flight.
+
+Blocked on tooling setup on 2026-09-25: `../zed-fork` documentation indexing discovers 181
+Markdown files but reconciliation reports `Blocked`, `MissingModel` for
+`BAAI/bge-small-en-v1.5`; doctor confirms the model is unavailable in
+`C:\Users\user\AppData\Local\rag-rat\models`. No model was installed. The fork has only
+ignored local rag-rat/MCP configuration and derived index changes; no tracked authority or source
+changes. Operator must restore existing model availability or install the configured model before
+fork documentation and implementation proceed. Reconnect the project MCP server after setup.
+Existing Beryl reconciliation previously passed; its success does not establish model availability
+for the newly initialized fork index. Do not bypass the required current-index gate.
+
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 
 Keep every prepared native member interaction-gated until whole-set publication succeeds; verify
