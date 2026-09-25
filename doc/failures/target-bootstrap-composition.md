@@ -1387,3 +1387,32 @@ text-input and settings revisions: `b56f05842de75d423ac57b100ab2fc0b9fdfb340`,
 `54d5fee6a4af3b0f473ca3ae944b498f269fe2e0` and `e8a8da94720fbe03c81d6d67c49fb07892a8ec06`.
 Canonical locked Cargo metadata resolves one GPUI source. Manifest validation and focused app
 check passed before the successful Serena language-server refresh.
+
+## Hidden Desktop Qualification
+
+Documentation alone did not establish whether a never-shown HWND could retain a saved desktop
+assignment through its first show. The bounded native qualification uses one published control,
+at most 256 streamed read-only HWND observations to find one existing alternate desktop, and
+three independently owned targets. It creates or switches no desktop and moves no foreign window.
+All COM calls run on workers; hidden movement holds the accepted lease, and post-publication
+queries complete before fixture disposal. Callback-directed enumeration termination is not
+reported as a native enumeration failure.
+
+Run `90516945-e5e8-4ab5-96ac-2b698d3c11be` passed on Windows 25H2 build `26200.9168`:
+
+- Moving the hidden owned window to an existing alternate GUID returned success. First publication
+  retained that exact GUID and reported the window was not on the current desktop; the control
+  remained current and the foreground window did not change.
+- A generated nonexistent GUID returned `0x8002802B`; first publication placed that target on the
+  same current desktop as the control. The untouched target behaved the same way.
+- Before first publication, desktop-ID queries returned `0x8002802B` even after successful saved
+  assignment, while current-desktop queries reported true. These hidden observations cannot be
+  used to reject or certify the pending assignment. The movement result and the first-show
+  boundary have different meanings.
+
+Hidden-state, nonactivation and exact GUI-thread destruction checks passed for all owned windows.
+The fixture reports limited coverage if no alternate desktop is available; this run did exercise
+one. It is qualification of the supported best-effort behavior, not proof of every COM error's
+atomicity or a realtime guarantee against desktop changes. App check and manifest validation pass;
+the successful Serena refresh followed both. Production worker and app-flight integration remain
+separate implementation work.

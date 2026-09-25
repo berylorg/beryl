@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 576: Retain Hidden Native Windows Across Worker Operations (finished)
+# Phase 577: Qualify Hidden Windows Desktop Restoration (finished)
 
-Accepted one worker lease per hidden native window, terminal close intent, exposure fencing and
-GUI-thread deferred destruction. All 92 focused/affected tests, app checks, canonical dependency
-validation and independent lifecycle review pass;
-[evidence](failures/target-bootstrap-composition.md#accepted-hidden-native-operation-lifetime).
+Qualified a real hidden move to an existing alternate desktop through first publication, plus
+nonexistent-desktop and untouched current-desktop defaults. Nonactivation, exact disposal and
+worker COM ownership pass. Hidden desktop-ID queries cannot certify an accepted assignment;
+[evidence](failures/target-bootstrap-composition.md#hidden-desktop-qualification).
 
 # Phase 571: Apply Prepared Native Window Placement (pending)
 

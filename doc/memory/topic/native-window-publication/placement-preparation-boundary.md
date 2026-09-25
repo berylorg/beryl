@@ -36,6 +36,15 @@ shutdown clears remaining windows. The app must therefore finish worker acknowle
 deferred disposal before quit. Neither an inner reference nor a post-loop shutdown timeout extends
 that lifetime guarantee.
 
+Real qualification on Windows build `26200.9168` accepted `MoveWindowToDesktop` for a never-shown
+owned window targeting an existing noncurrent desktop. Its first nonactivating show retained the
+requested GUID. A generated nonexistent GUID failed with `0x8002802B`, and that target's first
+show used the control window's current desktop, as did an untouched target. Before showing, both
+desktop-ID queries around the successful move still failed with `0x8002802B`, while the current-
+desktop query returned true. Do not use either hidden query as a saved-assignment proof. These
+observations qualify best-effort first-show behavior; they do not establish arbitrary failed-call
+atomicity. Reproducible evidence is in the native desktop qualification test and its failure note.
+
 # Sources
 
 - Beryl-owned GPUI, canonical repository `https://github.com/berylorg/zed-fork`, inspected commit
@@ -53,6 +62,15 @@ that lifetime guarantee.
   accessed 2026-09-25; defines workspace versus screen coordinate semantics.
 - Microsoft, [MoveWindowToDesktop](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ivirtualdesktopmanager-movewindowtodesktop),
   accessed 2026-09-25; documented movement to a known desktop GUID.
+- Microsoft, [IVirtualDesktopManager](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ivirtualdesktopmanager),
+  [GetWindowDesktopId](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ivirtualdesktopmanager-getwindowdesktopid)
+  and [IsWindowOnCurrentVirtualDesktop](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ivirtualdesktopmanager-iswindowoncurrentvirtualdesktop),
+  accessed 2026-09-25; public methods and their limits.
+- Microsoft, Raymond Chen, [Virtual desktop window assignment](https://devblogs.microsoft.com/oldnewthing/20171002-00/?p=97116),
+  published 2017-10-02, accessed 2026-09-25; new-window assignment occurs when shown.
+- Beryl `crates/beryl-app/tests/native_desktop_qualification.rs`, nextest run
+  `90516945-e5e8-4ab5-96ac-2b698d3c11be`, 2026-09-25; real alternate-desktop, missing-desktop
+  and untouched-default observations with exact owned native disposal.
 - Microsoft, [IsWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindow),
   accessed 2026-09-25; identifies the handle recycling race.
 - Microsoft, [Initializing the COM Library](https://learn.microsoft.com/en-us/windows/win32/learnwin32/initializing-the-com-library),
