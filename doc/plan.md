@@ -87,29 +87,51 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 423: Publish The Complete Initial App Service Graph (finished)
+# Phase 415: Specify Restore-Set Startup Composition (finished)
 
-Accepted complete initial graph preparation/publication, retained outer proof custody, postpublication
-theme loading and joined retirement. All sixty graph/component regressions, app checks and independent
-review passed; [evidence](failures/target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement).
-Full-stack same-home recovery, native startup and restored GUI visibility remain separate gates.
+Accepted the approved native-failure exception, distinct restored-window custody, bounded
+whole-set admission and serialized startup disposal/Retry. Feature, app, State and executable
+authority passed independent review; [evidence](failures/target-bootstrap-composition.md#restore-set-native-publication-boundary).
+The remaining implementation boundaries are separated below.
 
-# Phase 415: Specify Restore-Set Startup Composition (wip)
+# Phase 563: Initialize A Threadless Window From An Exact Empty Session (wip)
 
-Resolve exact restoration custody, complete-set first visibility, threadless empty-session startup,
-placement and native process-lifetime composition in owning authority, using the accepted session,
-window and graceful-shutdown components. Derive bounded implementation phases before wiring the
-ordinary executable. The [bootstrap readiness evidence](failures/target-bootstrap-composition.md)
-identifies the remaining gaps without authorizing alternate startup behavior.
+Extend the typed session initialization boundary to distinguish an absent header from an exact
+observed empty header. Preserve absent-header rejection, require the expected session revision
+for an existing header, reject nonempty or fallback-bearing state and chosen-window identity
+collisions, and advance the existing revision without changing stored schema. Zero-runtime
+eligibility remains the startup composer's responsibility. Verify reopen after the last threadless
+window closes, stale revision, nonempty/fallback rejection, repeated initialization and original
+indeterminate command reconciliation. Run session/schema regressions and independent review.
 
-Blocked on 2026-09-25 at the native complete-set publication contract. Existing GPUI publication
-is per-window and fallible; a later native show failure can leave an earlier window visible.
-The inspected Windows batch API does not prove zero partial exposure on final failure. The
-Operator must decide whether startup may briefly expose already-validated windows while the
-entire attempted set is closed after native failure, preserving durable restore records and
-presenting startup failure. That clarification changes the strict visibility guarantee; do not
-silently implement it as an app cleanup detail. [Evidence and concrete proposal](failures/target-bootstrap-composition.md#restore-set-native-publication-boundary)
-preserve the remaining bounded prerequisites and the exact decision.
+# Phase 564: Establish Exact Restored-Window Preparation Custody (pending)
+
+Prepare existing session windows and paired restoring claims without new-window acquisition or
+abandonment authority; retain exact command outcomes and transient editor cleanup through failure,
+cancellation and retry while preserving every durable restore member.
+
+# Phase 565: Prepare The Threadless Initial Shell (pending)
+
+Mount the sole zero-runtime ordinary shell without a fabricated selected thread, composer or
+transcript; preserve bounded window identity, appearance, placement and startup disposal.
+
+# Phase 566: Coordinate The Bounded Complete Restore Set (pending)
+
+Compose accepted session discovery, restored preparation and empty-session replacement branches
+under one exact startup attempt, retaining no more than the supported complete window set and
+rejecting missing, stale or failed members without partial admission.
+
+# Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
+
+Keep every prepared native member interaction-gated until whole-set publication succeeds; verify
+reentrancy and later native failure dispose the entire attempted set while preserving durable
+restore records under the approved transient-exposure exception.
+
+# Phase 568: Compose The Native Startup Attempt Owner (pending)
+
+Connect accepted service-graph, restore-set and native-publication components to one process
+lifetime owner with serialized same-home Retry/Exit, exact failure surfaces and retained shutdown
+custody. Preserve the separate process-entry fatal-hook mounting gate.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

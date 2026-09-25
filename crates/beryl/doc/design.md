@@ -33,6 +33,12 @@ Provide the Beryl executable entry point and composition root.
   partial-registration, partial-typed-handle, or session-only registration path.
 - This crate passes either the published complete typed stack or its typed busy/open failure into
   the appropriate `beryl-app` startup surface.
+- Ordinary startup retains one process lifetime owner for the configured home, exact attempt and
+  app-owned restore-set coordinator. Native restore preparation/publication and failure disposal
+  follow the app's [startup ownership contract](../../beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership).
+  Retry cannot overlap a previous attempt or discard its unresolved command/home custody; after
+  required disposal it reopens and validates the same configured home. A failed attempt after
+  graph publication does not authorize reuse of that graph as a new initial publication.
 - This crate does not expose Fjall, raw keyspaces, lock handles, or storage codecs to `beryl-app` while composing those services.
 - This crate owns the diagnostic-target startup mode that launches Beryl as a controlled child process with an explicit isolated Beryl home directory and a stdio control channel.
 - Diagnostic-target startup mode is the compatibility entry point for any Beryl executable selected by a supervisor diagnostic child launch, including a source-built executable that differs from the supervisor process executable.

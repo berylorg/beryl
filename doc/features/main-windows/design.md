@@ -171,6 +171,13 @@ Preserve each window's visible identity and placement without requiring auxiliar
 - Startup presents the complete valid restore set or presents the established startup-failure
   surface. It never exposes an arbitrary prefix, subset, overflow window, or substitute thread when
   any required restored-window state is missing, invalid, duplicated, or unreadable.
+- Every required window is validated and prepared before native publication starts. Native
+  publication failure is the explicit exception to whole-set visibility: already-validated windows
+  may briefly become visible before another window fails to show. The attempted set remains
+  noninteractive until every native publication succeeds. On failure Beryl closes the entire
+  attempted set, preserves its durable restore records, and presents startup failure. It neither
+  accepts the visible subset as successful restoration nor claims that an observed frame was
+  rolled back. Simultaneous OS compositor painting is not guaranteed.
 - Every restored or replacement window becomes visible only when its selected thread and durable
   draft form one coherent first-presentable editor state. Its first composer can display the
   current visible content and accept input without racing unseen persisted text.

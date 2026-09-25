@@ -116,6 +116,63 @@ governed by [design.md](design.md). It does not independently declare engineerin
   [conversation-threads feature](../../../doc/features/conversation-threads/design.md); this
   package owns only typed preparation, fencing, and publication.
 
+## Restore-Set Startup Ownership
+
+- One process-owned startup attempt retains the complete published service graph and at most the
+  session's 256 exact main-window members. It discovers the minimal session only after service
+  publication, loads Settings/theme through their startup boundaries, and selects one complete
+  restored set or the feature-defined empty-session replacement. It does not accumulate an
+  unbounded queue of restore preparations or discover additional windows from catalog history.
+- Restored-window custody is distinct from newly acquired-window custody. It binds the exact
+  attempt, home and service generation, session revision, window record, paired restoring claim,
+  selected thread, durable draft and prepared first-presentable editor. It grants no pristine
+  thread substitution or session-record deletion. Cancellation or preparation failure releases
+  transient editors, view interest, subscriptions and hidden native windows while preserving the
+  durable restore set. Begin-restore and exact claim activation use their typed revision-checked
+  session commands; a partial command sequence is reconciled through original custody, never
+  undone by a guessed compensating command.
+- An empty restore set with runtimes uses the accepted exact runtime/root selection and
+  claim-or-create acquisition. Zero-runtime startup instead prepares the sole threadless shell,
+  including when a validated session header already exists with no windows. That shell owns no
+  thread claim, selected composer or fabricated transcript seed. Empty-header initialization must
+  be revision-checked and cannot overwrite nonempty, changed or runtime-backed session state.
+- All required shell identities, placement decisions, appearance and first-presentable state are
+  prepared and checked while hidden. One bounded startup-set owner retains the exact native and
+  controller handles through publication. A missing member, stale attempt, changed generation,
+  closed native window or failed preparation rejects the entire set before any native exposure.
+  Revalidation cannot silently drop a member, select a replacement thread or create an overflow
+  shell. Final GUI-side admission uses only prepared facts and short identity checks; storage,
+  native placement discovery and editor loading stay on their accepted worker boundaries.
+- Native publication follows the main-windows feature's explicit failure exception. The set stays
+  interaction-gated until all of its exact native publication calls succeed; individual success
+  does not transfer a member to ordinary window-close ownership. Reentrant callbacks cannot admit
+  an editor mutation, another startup attempt or an ordinary-close session deletion during this
+  transition. Whole-set success transfers the members to the ordinary process window owner and
+  releases interaction. It does not wait for simultaneous compositor painting.
+- Once native publication has started, failure or cancellation before whole-set success keeps one disposal owner for every
+  attempted member, including possibly visible windows. It closes the entire native set, joins
+  transient work and preserves durable restore records and unresolved command custody before
+  presenting startup failure. This disposal is not ordinary window close or prepublication
+  acquisition abandonment and cannot remove a restored session member. No native batch or hide
+  operation is treated as evidence that an earlier exposure never happened.
+- Before native publication starts, a genuinely newly acquired runtime-backed fallback uses the
+  existing exact prepublication acquisition-abandonment protocol when cancelled or rejected.
+  Original restored records are never eligible for that protocol. Once native publication starts,
+  the attempted set instead preserves its durable records through native-failure disposal; a
+  successfully or possibly exposed member cannot be reclassified as never visible to delete it.
+- The process lifetime owns startup-attempt identity, failure-surface commands and retained
+  enrollment, nondispatch and home-reconciliation custody outside each attempted graph. Retry
+  admits only one new attempt for the same configured home after prior native/transient disposal
+  and required graph shutdown settle. It rereads and validates the durable session; it does not
+  reuse failed prepared shells or an old graph's authority. A failure after service publication
+  uses the graph's shutdown/disposal boundary. Unsettled custody retains its exact owner and
+  blocks successful shutdown or a conflicting reopen; it is not cleared to enable Retry or Exit.
+- Startup verification includes failure of the last required preparation, stale first-member
+  completion, native failure after an earlier member shows, reentrant close/Retry, cancellation,
+  unchanged durable restore records after failed restoration, exact empty-header threadless
+  initialization and preservation of unresolved custody. Full-set success is separate from later
+  progressive catalog/transcript loading and runtime warm-up.
+
 ## Window Detachment And Process Shutdown
 
 - [Fatal crash reporting](../../../doc/systems/crash-reporting/design.md) bypasses this ordinary

@@ -1092,6 +1092,13 @@ exposure of already-validated windows during a native failure; it does not claim
 observed frame or simultaneous compositor paint. A native batch may improve presentation, but
 cannot supply an undocumented rollback guarantee.
 
-This is a user-visible failure-contract clarification, not an implementation-private choice.
-No feature authority or GPUI behavior has been changed. Restore-set composition remains paused
-at that decision; accepted service-graph and provider work does not need reopening.
+The Operator approved this user-visible failure-contract clarification on 2026-09-25. Feature
+and app authority now explicitly permit transient exposure during native publication failure,
+while retaining full-set validation before any exposure and original durable restore custody.
+The app also defines distinct restored-window ownership, an interaction-gated native set and
+serialized attempt disposal/Retry. No GPUI transactional-visibility promise or provider change
+is required. Independent review accepted startup composition after reconciling the older
+fresh-home-only threadless sentence and distinguishing never-exposed new acquisition abandonment
+from restored or possibly exposed record preservation. Bounded storage, restored-custody,
+threadless-shell, restore-set, native-publication and native-attempt phases now carry implementation;
+the process-entry fatal-hook gate remains separate.

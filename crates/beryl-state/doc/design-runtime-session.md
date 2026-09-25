@@ -40,6 +40,14 @@ runtime/root, session/window, and thread-claim durable state.
   target, selected thread, claim, or fallback. Minimal discovery reads only the fixed header and
   referenced windows, rereads the header, and rejects concurrent publication; it does not load
   catalog, transcript, CAS, or draft state.
+- Threadless initialization distinguishes an absent header from an exact observed empty header.
+  An existing header must match the supplied session revision, contain no window references and
+  carry no runtime/root fallback; success advances its session revision and installs one fresh
+  threadless window with Running exit intent. An absent-header request cannot initialize over an
+  existing header, and an exact-header request cannot recreate a missing one. Both paths reject
+  pre-existing records for the chosen window identity and preserve ordinary command outcome and
+  reconciliation semantics. Zero-runtime eligibility remains the composing startup owner's
+  responsibility; an empty session alone does not prove an empty runtime registry.
 
 ## Reverse thread claims
 

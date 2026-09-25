@@ -46,7 +46,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
   claim without changing its exact execution, queued input, compaction, or terminal-history
   state.
 - Once at least one runtime exists, every visible main conversation window has one selected Syndic thread.
-- A fresh Beryl home with zero configured runtimes is the sole state in which the initial main conversation window may be threadless.
+- A Beryl home with zero configured runtimes may have only the sole initial threadless main
+  conversation window. Startup restores that exact window when present, or creates it when the
+  validated restore set is empty, including after reopening an existing empty session.
 - Two windows never share a default new thread. Each window claims or creates its own eligible thread.
 - Activating an existing thread shows that thread with its already bound runtime and root.
   Activation never changes the binding.
