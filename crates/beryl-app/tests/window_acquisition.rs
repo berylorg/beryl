@@ -43,8 +43,6 @@ use syndic_storage::{
 };
 
 struct Fixture {
-    _directory: tempfile::TempDir,
-    store: Arc<HomeStore>,
     state: BerylState,
     syndic: SyndicStorage,
     process: RuntimeBackedWindowProcessRegistry,
@@ -53,6 +51,89 @@ struct Fixture {
     runtime_id: RuntimeId,
     root_id: RootId,
     execution: ExecutionBinding,
+    store: Arc<HomeStore>,
+    _directory: tempfile::TempDir,
+}
+
+#[test]
+fn retired_acquisition_service_neither_keeps_the_home_locked_nor_adopts_a_reopened_home() {
+    let fixture = Fixture::new(21);
+    let request = fixture.request(22);
+    let Fixture {
+        _directory,
+        store,
+        process,
+        service,
+        ..
+    } = fixture;
+    let original_reference = service.home_reference();
+    let original_home = store.home_id();
+    assert_eq!(Arc::strong_count(&store), 1);
+    drop(store);
+    assert!(matches!(
+        service.acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::NotCommitted {
+            evidence: RuntimeBackedWindowAcquisitionNotCommitted::Preparation(_),
+            ..
+        }
+    ));
+    let mut candidate = beryl_home_store::HomeOpenCandidate::open(HomeOpenOptions::new(
+        _directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .expect("old service references cannot keep the home lock");
+    let state = BerylState::register(&mut candidate).unwrap();
+    let syndic = SyndicStorage::register(&mut candidate).unwrap();
+    let reopened = candidate
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .publish()
+        .unwrap();
+    assert_eq!(reopened.home_id(), original_home);
+    assert!(original_reference.home_revision().is_err());
+    let before = reopened.home_revision().unwrap();
+    assert!(matches!(
+        service.acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::NotCommitted {
+            evidence: RuntimeBackedWindowAcquisitionNotCommitted::Preparation(_),
+            ..
+        }
+    ));
+    assert_eq!(reopened.home_revision().unwrap(), before);
+    let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &process,
+        Arc::new(reopened.service_reference()),
+        state.clone(),
+        syndic,
+    );
+    let outcome = fresh.acquire(request.clone(), CommandCancellation::new());
+    assert!(
+        matches!(outcome, RuntimeBackedWindowAcquisitionOutcome::Committed { ref acquisition, later_failure: None, .. } if acquisition.window_id() == request.window_id()),
+        "{outcome:?}"
+    );
+    let committed = reopened.home_revision().unwrap();
+    assert!(matches!(
+        service.acquire(request.clone(), CommandCancellation::new()),
+        RuntimeBackedWindowAcquisitionOutcome::NotCommitted { .. }
+    ));
+    assert_eq!(reopened.home_revision().unwrap(), committed);
+    assert_eq!(
+        state
+            .session()
+            .minimal_bootstrap(&reopened)
+            .unwrap()
+            .unwrap()
+            .windows()
+            .len(),
+        1
+    );
+    drop((outcome, fresh, service, original_reference));
+    reopened.close().unwrap();
 }
 
 impl Fixture {
@@ -117,7 +198,7 @@ impl Fixture {
         let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
-            Arc::clone(&store),
+            Arc::new(store.service_reference()),
             state.clone(),
             syndic.clone(),
         );
@@ -366,7 +447,7 @@ fn ack_loss_retains_sole_identity_custody_until_exact_new_reconciliation() {
     };
     let fresh = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
@@ -455,8 +536,12 @@ fn ack_loss_is_exactly_reconstructed_after_process_exit_and_reopen() {
     )
     .expect("reopened request");
     let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
-    let fresh =
-        RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
+    let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &process,
+        Arc::new(reopened.service_reference()),
+        state,
+        syndic,
+    );
     let RuntimeBackedWindowAcquisitionOutcome::ExactCommitted { acquisition } =
         fresh.acquire(request.clone(), CommandCancellation::new())
     else {
@@ -641,7 +726,7 @@ fn fresh_service_classifies_exact_old_created_and_request_collision() {
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
@@ -768,8 +853,12 @@ fn absent_window_with_exact_fallback_is_collision_before_and_after_reopen() {
         .publish()
         .expect("publish reopened home");
     let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
-    let fresh =
-        RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
+    let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &process,
+        Arc::new(reopened.service_reference()),
+        state,
+        syndic,
+    );
     assert!(matches!(
         fresh.reconcile_natural_state(&request),
         RuntimeBackedWindowAcquisitionNaturalReconciliationOutcome::Collision { .. }
@@ -833,7 +922,7 @@ fn fresh_service_reconstructs_the_exact_reused_result() {
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
@@ -873,7 +962,7 @@ fn reverse_claim_disagreement_is_collision_and_never_creates_a_substitute() {
 
     let fresh = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
@@ -1048,7 +1137,7 @@ fn the_257th_live_identity_is_rejected_before_any_syndic_side_effect() {
     let fixture = Fixture::new(115);
     let sibling = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );

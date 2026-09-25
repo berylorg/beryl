@@ -55,7 +55,7 @@ pub fn services(fixture: &Fixture) -> (Arc<MainWindowCreationServices>, Arc<Appe
         submission_execution:
             beryl_app::cas_projection::SubmissionExecutionWake::storage_only_for_test(),
         acquisition: fixture.service.clone(),
-        store: fixture.store.clone(),
+        store: fixture.service.home_reference(),
         state: fixture.state.clone(),
         storage: fixture.storage.clone(),
         request_source,

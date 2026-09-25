@@ -6,7 +6,7 @@ pub use owner::*;
 use super::*;
 use crate::composer_host::ComposerHostActivationRequest;
 use crate::window_acquisition::*;
-use beryl_home_store::{CommandCancellation, HomeStore};
+use beryl_home_store::{CommandCancellation, HomeServiceReference};
 use beryl_model::WindowId;
 use beryl_state::{BerylState, RememberedTarget};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub type MainWindowCreationConfiguratorSource =
 
 pub struct MainWindowCreationServices {
     pub acquisition: RuntimeBackedWindowAcquisitionService,
-    pub store: Arc<HomeStore>,
+    pub store: Arc<HomeServiceReference>,
     pub state: BerylState,
     pub storage: SyndicStorage,
     pub request_source: MainWindowCreationRequestSource,

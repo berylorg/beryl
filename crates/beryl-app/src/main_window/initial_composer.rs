@@ -118,7 +118,7 @@ impl MainWindowInitialComposerPrepared {
 }
 
 pub struct MainWindowInitialComposer {
-    acquisition_store: Arc<HomeStore>,
+    acquisition_store: Arc<HomeServiceReference>,
     acquisition_service: RuntimeBackedWindowAcquisitionService,
     acquisition: RuntimeBackedWindowAcquisition,
     reservation: RuntimeBackedWindowMainWindowReservation,
@@ -159,7 +159,7 @@ impl MainWindowInitialComposer {
         acquisition: RuntimeBackedWindowAcquisition,
         reservation: RuntimeBackedWindowMainWindowReservation,
         acquisition_service: RuntimeBackedWindowAcquisitionService,
-        store: Arc<HomeStore>,
+        store: Arc<HomeServiceReference>,
         storage: SyndicStorage,
         claim: WindowClaimSelection,
         request: ComposerHostActivationRequest,
@@ -202,7 +202,7 @@ impl MainWindowInitialComposer {
             acquisition,
             reservation,
             candidate: InitialComposerCandidate::new(
-                Arc::new(store.service_reference()),
+                store,
                 storage,
                 home_generation,
                 claim,

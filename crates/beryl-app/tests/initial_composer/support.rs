@@ -18,7 +18,7 @@ impl Fixture {
         let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
-            store.clone(),
+            Arc::new(store.service_reference()),
             state.clone(),
             storage.clone(),
         );
@@ -125,7 +125,7 @@ impl Fixture {
             acquisition,
             reservation,
             self.service.clone(),
-            self.store.clone(),
+            self.service.home_reference(),
             self.storage.clone(),
             claim,
             request,

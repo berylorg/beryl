@@ -262,9 +262,9 @@ impl RuntimeBackedWindowAcquisitionService {
         &self,
         acquisition: &RuntimeBackedWindowAcquisition,
         claim: beryl_state::WindowClaimSelection,
-        store: &HomeStore,
+        store: &std::sync::Arc<beryl_home_store::HomeServiceReference>,
     ) -> Result<(), String> {
-        if !std::ptr::eq(store, self.store.as_ref())
+        if !std::sync::Arc::ptr_eq(store, &self.store)
             || acquisition.home_id != store.home_id()
             || claim.thread_id() != acquisition.thread_id
         {

@@ -77,7 +77,7 @@ impl ShellFixture {
         let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
-            Arc::clone(&store),
+            Arc::new(store.service_reference()),
             state.clone(),
             storage.clone(),
         );

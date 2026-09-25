@@ -186,7 +186,7 @@ fn foreign_home_admission_returns_original_acquisition_and_reservation_without_o
         acquisition,
         reservation,
         foreign.service.clone(),
-        foreign.store.clone(),
+        foreign.service.home_reference(),
         foreign.storage.clone(),
         claim,
         request,
@@ -200,6 +200,39 @@ fn foreign_home_admission_returns_original_acquisition_and_reservation_without_o
         DraftEditorCandidateSessionReadOutcomeV1::Absent
     ));
     let custody = source.from_acquired(failure.acquisition, failure.reservation, 82, false);
+    source.retire_and_release(custody);
+}
+
+#[test]
+fn independently_minted_same_home_reference_cannot_replace_acquisition_service_custody() {
+    let source = Fixture::new(86);
+    let acquisition = source.acquire(87);
+    let reservation = source
+        .process
+        .reserve_main_window(acquisition.window_id())
+        .unwrap();
+    let claim = source.claim(acquisition.window_id());
+    let request = composer_support::activation(acquisition.thread_id(), 87, 88, 1, 0);
+    let result = MainWindowInitialComposer::new(
+        acquisition,
+        reservation,
+        source.service.clone(),
+        Arc::new(source.store.service_reference()),
+        source.storage.clone(),
+        claim,
+        request,
+        composer_support::fixture::operation_id(89),
+        MainWindowComposerMarkerMetadataAuthority::new(source.state.assets()),
+    );
+    let failure = result
+        .err()
+        .expect("exact acquisition service reference required");
+    assert_eq!(source.process.main_window_occupancy(), 1);
+    assert!(matches!(
+        source.session(failure.acquisition.draft_id(), 87),
+        DraftEditorCandidateSessionReadOutcomeV1::Absent
+    ));
+    let custody = source.from_acquired(failure.acquisition, failure.reservation, 87, false);
     source.retire_and_release(custody);
 }
 

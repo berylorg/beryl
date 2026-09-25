@@ -1123,6 +1123,14 @@ holds a restore attempt across shutdown and home reopen to verify that preparati
 old home alive. Restoring-to-active claim settlement remains a separate boundary before final
 selected-editor transfer, since activation changes the exact claim identity used by the editor.
 
+The same owning-handle correction now covers acquisition, creation and initial-editor custody.
+The acquisition service supplies its shared exact reference; initial-editor admission rejects an
+independently minted reference even for the same home, preserving source affinity and original
+cleanup custody. Retaining an old service across owner disposal no longer keeps the home locked,
+and it cannot act on the reopened home. Run `81261851-2dab-4720-977e-6ba531cc1aff` passed all 84
+acquisition, abandonment, initial-editor, creation and shell cases. App all-test-target/default
+checks and independent review passed.
+
 The wider mounted-editor run caught three fixture destructures that discarded their sole owning
 home through `..` after the reference conversion. Their editor correctly lost storage access;
 weakening production ownership would have hidden the fixture error. Retain the home explicitly

@@ -87,22 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 565: Prepare The Threadless Initial Shell (finished)
+# Phase 570: Bind Window Creation To The Process-Owned Home (finished)
 
-Accepted exact zero-runtime source preparation and the ordinary shell's explicit threadless mode,
-including appearance adoption and native disposal without acquired-window abandonment. All 70
-app and seven session tests, app checks and independent review pass; [evidence](failures/target-bootstrap-composition.md#threadless-shell-custody).
-Complete-set revalidation and native placement remain separate boundaries.
+Accepted typed service references for acquisition, window creation and initial-editor custody,
+preserving exact source provenance and process ownership of the home lifecycle. All 84 affected
+tests, app all-test-target/default checks and independent review pass; [evidence](failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
 
-# Phase 570: Bind Window Creation To The Process-Owned Home (wip)
-
-Bind the existing runtime-backed acquisition/creation consumers
-to process-owned home service references; their current owning-handle constructor is not a valid
-graph handoff. Keep exact acquisition provenance and typed prepublication abandonment while
-preserving process lifecycle ownership. Verify foreign/stale reference rejection, cancellation,
-uncertain acquisition/abandonment and graph disposal before empty-session composition.
-
-# Phase 566: Coordinate The Bounded Complete Restore Set (pending)
+# Phase 566: Coordinate The Bounded Complete Restore Set (wip)
 
 Compose accepted session discovery, restored preparation and empty-session replacement branches
 under one exact startup attempt, retaining no more than the supported complete window set and

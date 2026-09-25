@@ -5,8 +5,8 @@ use std::{
 
 use beryl_home_store::{
     CommandCancellation, CommandError, CommandOutcome, CommitReceipt, CommittedLocalFinalization,
-    CursorReadLimits, HomeCommand, HomeStore, ReconciliationFailure, ReconciliationHandle,
-    ReconciliationResolution,
+    CursorReadLimits, HomeCommand, HomeServiceReference, HomeStore, ReconciliationFailure,
+    ReconciliationHandle, ReconciliationResolution,
 };
 use beryl_model::{ExecutionBinding, SyndicDraftId, SyndicThreadId, WindowId, WindowPlacement};
 use beryl_state::{
@@ -397,7 +397,7 @@ impl RuntimeBackedWindowAcquisitionRepairReconciliation {
 #[derive(Clone)]
 pub struct RuntimeBackedWindowAcquisitionService {
     process_admission: crate::process_admission::ProcessAdmissionGate,
-    store: Arc<HomeStore>,
+    store: Arc<HomeServiceReference>,
     state: BerylState,
     syndic: SyndicStorage,
     flights: Arc<Mutex<AcquisitionFlights>>,
@@ -515,7 +515,7 @@ impl RuntimeBackedWindowAcquisitionService {
     #[must_use]
     pub fn new(
         process: &RuntimeBackedWindowProcessRegistry,
-        store: Arc<HomeStore>,
+        store: Arc<HomeServiceReference>,
         state: BerylState,
         syndic: SyndicStorage,
     ) -> Self {
@@ -529,6 +529,10 @@ impl RuntimeBackedWindowAcquisitionService {
             #[cfg(feature = "test-faults")]
             before_execute: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn home_reference(&self) -> Arc<HomeServiceReference> {
+        self.store.clone()
     }
 
     #[cfg(feature = "test-faults")]

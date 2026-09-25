@@ -197,6 +197,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
 
 ## Prepublication Window Abandonment
 
+- Acquisition, creation and initial-editor consumers retain typed home service references; the
+  process owns the home lifecycle. Initial-editor admission uses the exact reference supplied by
+  its acquisition service and preserves acquisition custody on a provenance mismatch. Retained
+  consumers cannot keep a retired home open or adopt a replacement home generation.
 - The app admits abandonment only for an exact acquired main window that has not been published
   visible. Once visibility is published, only the separately owned ordinary-close and Exit
   lifecycles apply.

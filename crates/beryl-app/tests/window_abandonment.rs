@@ -35,8 +35,6 @@ use syndic_storage::{
 };
 
 struct Fixture {
-    _directory: tempfile::TempDir,
-    store: Arc<HomeStore>,
     state: BerylState,
     syndic: SyndicStorage,
     process: RuntimeBackedWindowProcessRegistry,
@@ -45,6 +43,8 @@ struct Fixture {
     runtime_id: RuntimeId,
     root_id: RootId,
     execution: ExecutionBinding,
+    store: Arc<HomeStore>,
+    _directory: tempfile::TempDir,
 }
 
 impl Fixture {
@@ -105,7 +105,7 @@ impl Fixture {
         let process = RuntimeBackedWindowProcessRegistry::new(Default::default());
         let service = RuntimeBackedWindowAcquisitionService::new(
             &process,
-            Arc::clone(&store),
+            Arc::new(store.service_reference()),
             state.clone(),
             syndic.clone(),
         );
@@ -304,7 +304,7 @@ fn cancellation_duplicate_and_unrelated_progress_preserve_move_only_custody() {
     let fixture = Fixture::new(70);
     let sibling = RuntimeBackedWindowAcquisitionService::new(
         &fixture.process,
-        Arc::clone(&fixture.store),
+        Arc::new(fixture.store.service_reference()),
         fixture.state.clone(),
         fixture.syndic.clone(),
     );
@@ -419,8 +419,12 @@ fn acknowledgement_loss_reconciles_exact_new_and_reopens_from_the_natural_seed()
         .expect("prepare reopened home publication")
         .publish()
         .expect("publish reopened home");
-    let fresh =
-        RuntimeBackedWindowAcquisitionService::new(&process, Arc::new(reopened), state, syndic);
+    let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &process,
+        Arc::new(reopened.service_reference()),
+        state,
+        syndic,
+    );
     assert!(matches!(
         fresh.reconcile_abandonment(seed, CommandCancellation::new()),
         RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::ExactAbandoned { .. }
@@ -469,8 +473,12 @@ fn exact_acquired_seed_rearms_only_after_true_same_home_reopen() {
         .publish()
         .expect("publish reopened home");
     let store = Arc::new(reopened);
-    let fresh =
-        RuntimeBackedWindowAcquisitionService::new(&process, Arc::clone(&store), state, syndic);
+    let fresh = RuntimeBackedWindowAcquisitionService::new(
+        &process,
+        Arc::new(store.service_reference()),
+        state,
+        syndic,
+    );
     let outcome = fresh.reconcile_abandonment(seed, CommandCancellation::new());
     let RuntimeBackedWindowAbandonmentNaturalReconciliationOutcome::ExactAcquired { abandonment } =
         outcome
