@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 566: Coordinate The Bounded Complete Restore Set (finished)
+# Phase 573: Support Prepared Outer Bounds At The Native Boundary (finished)
 
-Accepted complete bounded worker preparation, exact empty-session branches and original-command
-settlement with typed retained outcomes for unavailable local finalization. All 13 new cases and
-74 affected regressions, app checks and independent review pass;
-[evidence](failures/target-bootstrap-composition.md#complete-restore-set-coordination).
+Accepted explicit outer-coordinate GPUI construction with bounded monitor snapshots, checked
+conversion and exact partial-native cleanup. Three new native/conversion tests, 74 regressions,
+app checks, canonical single-GPUI resolution and independent review pass;
+[evidence](failures/target-bootstrap-composition.md#prepared-native-outer-bounds).
 
 # Phase 571: Apply Prepared Native Window Placement (wip)
 
@@ -111,13 +111,8 @@ identity-safe failure disposal and independent per-window fallback. Keep complet
 gating/publication and process startup ownership in their following phases. Require native-boundary
 evidence, affected shell regressions and independent review before acceptance.
 
-Readiness finding on 2026-09-25: the owned GPUI fork interprets creation bounds as client
-geometry and expands the native frame; Beryl saves outer logical geometry. Its Windows monitor
-lookup also uses a transient enumeration index with an unchecked failure, and initial HWND DPI
-can belong to the default monitor. Before placement integration, define a bounded fork prerequisite
-for explicit outer-coordinate bounds and fallible prepared monitor identity/DPI validation. Keep
-one rectangle, preserve existing client-coordinate semantics, and verify negative coordinates,
-mixed DPI, taskbar workspace offsets, stale monitors and actual hidden normal/maximized windows.
+The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared monitor facts;
+[investigation](memory/topic/native-window-publication/placement-preparation-boundary.md).
 Desktop application must retain the exact hidden native window until its COM worker finishes;
 cancellation cannot release or recycle that HWND while desktop movement is in flight.
 

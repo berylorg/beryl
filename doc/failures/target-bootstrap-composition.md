@@ -1276,3 +1276,31 @@ Run `c1f46e91-fe7c-4b0c-b0ee-eed9dad22d11` passed all 13 new restore-set cases, 
 Run `1f460627-98d6-4bf5-828d-6a7f840e3eab` passed all 74 affected editor, shell, creation and notice
 regressions. App all-test-target/default checks and independent review passed. This accepts worker
 coordination, not native placement, complete-set publication or executable startup.
+
+## Prepared Native Outer Bounds
+
+Passing saved outer logical bounds to GPUI's client-bound constructor would expand the frame;
+transient monitor-index lookup and default-monitor initial DPI also fail the prepared placement
+contract. The owned fork now exposes explicit outer-coordinate construction with immutable bounded
+monitor snapshots, a streaming monitor visitor, checked screen/workspace conversion and exact
+monitor/DPI revalidation. It rejects conflicting inputs and stale facts before exposure. A native
+construction guard revokes drag/drop registration and destroys a partial HWND before returning
+failure. Ordinary successfully constructed windows retain their existing scheduled teardown.
+
+The native test checks actual hidden normal/maximized windows, exact restore placement, first
+publication without activation, stale monitor rejection and injected post-allocation cleanup.
+Maximized windows use `rcNormalPosition` for saved geometry; their current outer rectangle is
+naturally maximized. Pure conversion tests cover negative coordinates, multiple scales, top/left
+work-area offsets, tool-window coordinates and invalid/overflowing numbers. Native qualification
+covers the attached selected monitor, not a physical multi-monitor topology change.
+
+Run `eeb74786-3cac-459c-b46e-5a8627d465de` passed all three new tests. Run
+`1cfd4038-4b48-4e23-a65c-324706f9707f` passed all 74 affected shell/editor/notice regressions.
+App all-test/default checks and independent native-boundary review passed. Canonical locked Cargo
+metadata resolves exactly one GPUI revision after propagating widget pins; Serena was refreshed
+after successful manifest validation and the focused check.
+
+Published GPUI revision: `cd3ad9f2c49d2ecdd7a8578c0e8946fdfdc3dcd3`; aligned scrollbar,
+text-input and settings revisions are `4f49c46b624276c6dddaa0ee0179313420667df6`,
+`36516394ae6532b9e1b1e820ece54bdfa2368105` and `e3cd45f7afe99f7655a4cd44ad11983b047aea4f`.
+App geometry selection and virtual-desktop application remain the following boundary.

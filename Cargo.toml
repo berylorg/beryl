@@ -45,10 +45,10 @@ clap = { version = "4.6.1", features = ["derive"] }
 fjall = { path = "../fjall-fork", version = "=3.1.6" }
 getrandom = "0.4.2"
 hex = "0.4.3"
-gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "a674a1550992a04fe6601ebcf06ee3849564d0d1", default-features = false, features = ["windows-manifest"] }
-gpui-scrollbar = { git = "https://github.com/berylorg/gpui-scrollbar.git", rev = "ad073c5d033e65251512f4bf19dea1a3814ea066" }
-gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "e160b2931ecc05824ac991ad1c4297b6f5c78113" }
-gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "04e0b567afc4f15b61b2b2de65fcbccab2392228" }
+gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "cd3ad9f2c49d2ecdd7a8578c0e8946fdfdc3dcd3", default-features = false, features = ["windows-manifest"] }
+gpui-scrollbar = { git = "https://github.com/berylorg/gpui-scrollbar.git", rev = "4f49c46b624276c6dddaa0ee0179313420667df6" }
+gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "e3cd45f7afe99f7655a4cd44ad11983b047aea4f" }
+gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "36516394ae6532b9e1b1e820ece54bdfa2368105" }
 gpui_sum_tree = "0.2.2"
 image = "0.25.1"
 jsonc-parser = { version = "0.32.4", default-features = false }

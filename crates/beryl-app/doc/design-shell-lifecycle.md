@@ -100,6 +100,31 @@ governed by [design.md](design.md). It does not independently declare engineerin
   and retains its complete fallback and typed failure outcomes. No service factory independently
   publishes the home or makes a partial graph available to consumers.
 
+## Prepared Native Placement Dependency
+
+- Saved placement uses the outer window rectangle in platform logical screen coordinates. The
+  app requires an explicit outer-coordinate mode from the owned GPUI boundary; ordinary client
+  bounds keep their existing meaning. One creation rectangle carries the initial normal or
+  maximized state. Outer mode requires explicit bounds and a prepared monitor, rejects a competing
+  display index or fullscreen state, and never adds client-frame borders to saved outer geometry.
+- Monitor discovery runs on a worker and visits one bounded snapshot at a time, without retaining
+  an unbounded monitor list. A snapshot carries immutable native identity, device identity,
+  physical monitor/work rectangles and scale. The app can retain the selected snapshot per
+  admitted window; a snapshot is neither a native-window owner nor authority to switch desktops.
+- Native construction validates the selected monitor's identity, geometry and DPI fallibly and
+  creates the hidden window on that monitor before using its DPI. Disconnection or changed facts
+  reject preparation without a panic or silent alternate-monitor substitution. The native owner
+  disposes any partially constructed window on failure. No temporary visible window is permitted.
+- Outer conversion uses checked finite positive geometry, physical screen coordinates and the
+  selected monitor's scale. Windows placement workspace offsets account for top/left work-area
+  exclusions; negative screen coordinates remain valid. The actual window DPI must agree with
+  the prepared scale. Fixed normal/maximized state survives first publication without activation.
+- Dependency acceptance requires focused conversion and invalid-input tests plus real Windows
+  hidden normal/maximized construction, exact outer placement and nonactivation evidence.
+  Prepared-monitor drift and construction failure must preserve disposal ownership. Independent
+  review covers the native lifetime and coordinate boundary. Beryl-owned authority for this fork
+  requirement remains here; no fork Markdown or document index is required.
+
 ## Startup And Activation
 
 - Startup accepts only the validated minimal session plus each restored window's selected thread,
