@@ -98,6 +98,13 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                 {
                     return Err(AdapterFailureClass::Rejected);
                 }
+                if controller.is_threadless() {
+                    return if controller.composer_mount.is_none() {
+                        Ok(())
+                    } else {
+                        Err(AdapterFailureClass::Rejected)
+                    };
+                }
                 let composer = controller
                     .composer_mount
                     .as_ref()
@@ -118,18 +125,17 @@ impl PreparedWindowAppearance for PreparedShellAppearance {
                     .controller
                     .as_mut()
                     .expect("validated shell controller");
-                controller
-                    .composer_mount
-                    .as_ref()
-                    .expect("validated shell composer")
-                    .update(app, |mount, cx| {
-                        mount.apply_appearance(
-                            self.appearance.text.clone(),
-                            self.appearance.scrollbar,
-                            cx,
-                        )
-                    })
-                    .expect("validated mounted editor accepts appearance");
+                if let Some(composer) = controller.composer_mount.as_ref() {
+                    composer
+                        .update(app, |mount, cx| {
+                            mount.apply_appearance(
+                                self.appearance.text.clone(),
+                                self.appearance.scrollbar,
+                                cx,
+                            )
+                        })
+                        .expect("validated mounted editor accepts appearance");
+                }
                 root.notices.widget.update(app, |widget, cx| {
                     widget.set_appearance(self.appearance.generation.clone(), window, cx);
                 });

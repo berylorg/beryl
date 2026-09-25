@@ -306,7 +306,16 @@ impl MainWindowShellRoot {
     }
 
     pub(super) fn notice_chrome_height(&self) -> f32 {
-        if self.creation.is_some() { 44. } else { 0. }
+        if self.creation.is_some()
+            || self
+                .controller
+                .as_ref()
+                .is_some_and(|controller| controller.is_threadless())
+        {
+            44.
+        } else {
+            0.
+        }
     }
 
     pub(super) fn sync_notices(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -171,7 +171,7 @@ pub use session::{
     SESSION_WINDOW_V1_BYTES, SessionExitIntent, SessionHeader, SessionMutationError,
     SessionReadError, SessionState, SessionWindowRecord, SessionWindowReference,
     ThreadClaimCatalogSource, ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState,
-    UpdateWindowPlacement, WindowClaimSelection,
+    UpdateWindowPlacement, WindowClaimCatalogSource, WindowClaimSelection,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,

@@ -8,6 +8,8 @@ mod custody;
 mod gpui_cases;
 #[path = "main_window_shell/support.rs"]
 mod support;
+#[path = "main_window_shell/threadless.rs"]
+mod threadless;
 
 use std::sync::Arc;
 

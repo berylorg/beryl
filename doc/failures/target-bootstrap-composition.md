@@ -1196,3 +1196,23 @@ the active desktop or changing other members' restoration. This removes the need
 ordering discovery. Threadless shell preparation resumes; native placement remains a separate
 implementation boundary before complete-set publication. The accepted claim-activation work is
 unaffected.
+
+## Threadless Shell Custody
+
+The existing shell required acquired-window custody and a selected editor. Treating a missing
+controller as threadless would instead render a disposed root; fabricating an acquisition would
+also grant inappropriate session abandonment. The ordinary root now has an explicit threadless
+content variant, sharing appearance, focus, notices and native identity while retaining no editor.
+
+Worker preparation proves one exact threadless member, no window claim and an empty runtime
+registry under stable revisions. A bounded State point source exposes exact window-key claim
+absence or validates the present reverse pair. Whole-home validation continues to own complete
+index consistency. Graph/attempt lifetime checks stay cheap on the GUI thread. Dropping source
+custody never retains the home lifecycle owner or deletes its saved member.
+
+Acceptance: `d61b3927-3bca-4bce-9970-34e5a7d64370` passed all 69 initial-editor, shell,
+window-creation and notice regressions; `93527bb9-83cf-42f7-853e-7a1377b366b7` passed the added
+foreign-appearance rejection. State run `17823adb-6f44-4e50-8839-2d993f7b2d69` passed all seven
+session cases. App all-test-target/default checks and independent review passed. Final off-GUI
+source revalidation before complete-set publication and real native placement are not accepted by
+this component's tests and retain their explicit later gates.

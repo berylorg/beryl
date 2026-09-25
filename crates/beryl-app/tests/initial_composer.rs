@@ -14,6 +14,8 @@ mod restored_cases;
 mod restored_claims;
 #[path = "initial_composer/support.rs"]
 mod support;
+#[path = "initial_composer/threadless.rs"]
+mod threadless;
 
 use beryl_app::main_window::*;
 use beryl_app::window_acquisition::*;

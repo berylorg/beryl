@@ -51,6 +51,10 @@ runtime/root, session/window, and thread-claim durable state.
 
 ## Reverse thread claims
 
+- Exact claim sources may be read by window or thread identity. A present source validates its
+  requested identity and matching reverse copy; an absent source proves absence at that exact
+  key without scanning the claim collection. Whole-home validation and atomic paired mutations
+  retain responsibility for complete reverse-index consistency.
 - A claim records its exact window id and Syndic thread id in both reverse forms, publishing
   session revision, active-or-restoring state, and a separate monotonic claim revision. One window
   has at most one active/restoring claim and one thread has at most one active/restoring window.

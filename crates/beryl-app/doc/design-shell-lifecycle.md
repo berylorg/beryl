@@ -24,8 +24,10 @@ governed by [design.md](design.md). It does not independently declare engineerin
 - `beryl-app` is the sole GPUI shell-composition boundary described by
   [GUI integration](../../../doc/gui/integration.md). Feature controllers mount only into declared
   windows and slots.
-- Each main window owns one controller, `WindowId`, exact selected-thread claim, bounded navigation
-  and transient interaction state, composer host, transcript host, and presentation projections.
+- Each main window owns one controller, `WindowId` and bounded transient interaction state.
+  Runtime-backed windows additionally own their exact selected-thread claim, bounded navigation,
+  composer host, transcript host and presentation projections. The sole zero-runtime initial
+  shell retains its exact threadless session member without those selected-thread resources.
   No main-window controller or GPUI entity is shared between windows.
 - Selection and nonfinal close release only view/editor/subscription ownership after the required
   flush and durable claim/session transaction. They do not dispose an execution session or cancel

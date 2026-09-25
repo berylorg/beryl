@@ -42,6 +42,90 @@ fn identity(value: u128) -> [u8; 16] {
 }
 
 #[test]
+fn window_keyed_claim_source_authenticates_absence_pair_and_home() {
+    let directory = tempdir().unwrap();
+    let (store, state) = support::open(directory.path());
+    let session = state.session();
+    let window = WindowId::from_bytes([0; 16]);
+    let thread = SyndicThreadId::from_bytes([0; 16]);
+    let absent = session.window_claim_catalog_source(&store, window).unwrap();
+    assert_eq!(absent.window_id(), window);
+    assert_eq!(absent.claim(), None);
+    assert!(matches!(
+        execute(
+            &store,
+            session.initialize_threadless(
+                session.revision(&store).unwrap(),
+                InitializeThreadlessWindow::new(window, placement(1))
+            )
+        ),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    let initial = bootstrap(&store, &session);
+    assert!(matches!(
+        execute(
+            &store,
+            session.replace_claim(
+                session.revision(&store).unwrap(),
+                ReplaceWindowClaim::new(
+                    initial.header().revision(),
+                    window,
+                    initial.windows()[0].revision(),
+                    None,
+                    target(1, 2),
+                    thread
+                )
+            )
+        ),
+        CommandOutcome::Committed {
+            later_failure: None,
+            ..
+        }
+    ));
+    let source = session.window_claim_catalog_source(&store, window).unwrap();
+    assert_eq!(source.window_id(), window);
+    assert_eq!(
+        source.claim(),
+        session
+            .thread_claim_catalog_source(&store, thread)
+            .unwrap()
+            .claim()
+    );
+    assert!(source.claim().is_some());
+    let foreign_directory = tempdir().unwrap();
+    let (foreign, _) = support::open(foreign_directory.path());
+    assert!(
+        session
+            .window_claim_catalog_source(&foreign, window)
+            .is_err()
+    );
+
+    #[cfg(feature = "test-faults")]
+    {
+        assert!(matches!(
+            execute(
+                &store,
+                session.delete_thread_claim_copy_for_test(
+                    session.revision(&store).unwrap(),
+                    window,
+                    thread
+                )
+            ),
+            CommandOutcome::Committed {
+                later_failure: None,
+                ..
+            }
+        ));
+        assert!(
+            matches!(session.window_claim_catalog_source(&store, window), Err(beryl_state::ThreadClaimCatalogSourceError::ReverseCopiesDisagree { thread_id }) if thread_id == thread)
+        );
+    }
+}
+
+#[test]
 fn minimal_session_discovery_after_complete_registration_accepts_all_zero_identities() {
     let directory = tempdir().unwrap();
     let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(

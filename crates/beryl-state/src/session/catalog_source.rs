@@ -4,7 +4,7 @@ use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, DomainReader, DomainValidator, HomeStore,
     PointReadLimit, ReadError, ValidationContribution,
 };
-use beryl_model::{DomainRevision, SyndicThreadId};
+use beryl_model::{DomainRevision, SyndicThreadId, WindowId};
 
 use super::{
     CLAIM_V1_BYTES, SessionDomain, SessionState, ThreadClaimRecord,
@@ -30,7 +30,51 @@ impl ThreadClaimCatalogSource {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WindowClaimCatalogSource {
+    window_id: WindowId,
+    claim: Option<ThreadClaimRecord>,
+}
+
+impl WindowClaimCatalogSource {
+    pub const fn window_id(self) -> WindowId {
+        self.window_id
+    }
+
+    pub const fn claim(self) -> Option<ThreadClaimRecord> {
+        self.claim
+    }
+}
+
 impl SessionState {
+    pub fn window_claim_catalog_source(
+        &self,
+        store: &HomeStore,
+        window_id: WindowId,
+    ) -> Result<WindowClaimCatalogSource, ThreadClaimCatalogSourceError> {
+        let claim = store.read_point::<SessionDomain, ClaimByWindowCodec>(
+            &self.handle,
+            &window_id,
+            point_limit(),
+        )?;
+        if let Some(claim) = claim {
+            if claim.window_id() != window_id {
+                return Err(ThreadClaimCatalogSourceError::WindowCopyMismatch { window_id });
+            }
+            let by_thread = store.read_point::<SessionDomain, ClaimByThreadCodec>(
+                &self.handle,
+                &claim.thread_id(),
+                point_limit(),
+            )?;
+            if by_thread != Some(claim) {
+                return Err(ThreadClaimCatalogSourceError::ReverseCopiesDisagree {
+                    thread_id: claim.thread_id(),
+                });
+            }
+        }
+        Ok(WindowClaimCatalogSource { window_id, claim })
+    }
+
     /// Reads one claim through both reverse copies or proves it is unclaimed.
     pub fn thread_claim_catalog_source(
         &self,
@@ -103,6 +147,7 @@ impl DomainValidator<SessionDomain> for ThreadClaimCatalogSource {
 #[derive(Debug)]
 pub enum ThreadClaimCatalogSourceError {
     Read(ReadError),
+    WindowCopyMismatch { window_id: WindowId },
     ThreadCopyMismatch { thread_id: SyndicThreadId },
     ReverseCopiesDisagree { thread_id: SyndicThreadId },
     SourceChanged { thread_id: SyndicThreadId },
@@ -112,6 +157,10 @@ impl fmt::Display for ThreadClaimCatalogSourceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read(source) => source.fmt(formatter),
+            Self::WindowCopyMismatch { window_id } => write!(
+                formatter,
+                "claim-by-window key and record identity disagree for {window_id}"
+            ),
             Self::ThreadCopyMismatch { thread_id } => write!(
                 formatter,
                 "claim-by-thread key and record identity disagree for {thread_id}"

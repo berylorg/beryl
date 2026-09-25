@@ -21,7 +21,9 @@ use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionW
 
 pub(crate) use acquisition::{SessionAbandonmentSource, SessionAcquisitionSource};
 
-pub use catalog_source::{ThreadClaimCatalogSource, ThreadClaimCatalogSourceError};
+pub use catalog_source::{
+    ThreadClaimCatalogSource, ThreadClaimCatalogSourceError, WindowClaimCatalogSource,
+};
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
     AbandonSessionWindow, ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow,

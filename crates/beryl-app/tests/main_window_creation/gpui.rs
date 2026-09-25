@@ -168,6 +168,7 @@ fn pointer_and_accelerator_create_independent_windows_and_preserve_invoker(
                 .controller()
                 .unwrap()
                 .acquisition()
+                .expect("runtime-backed shell acquisition")
                 .target())
             .unwrap(),
         target(&mounted.fixture)

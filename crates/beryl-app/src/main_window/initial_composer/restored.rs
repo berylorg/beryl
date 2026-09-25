@@ -8,8 +8,10 @@ use std::sync::{
 use syndic_storage::{DraftPieceTextDemandV1, SyndicPointReadLimit};
 
 mod claim_activation;
+mod threadless;
 use claim_activation::RestoredClaimActivation;
 pub use claim_activation::RestoredClaimActivationProgress;
+pub use threadless::ThreadlessWindowSource;
 
 struct RestoreAttemptSession {
     revision: Option<SessionRevision>,

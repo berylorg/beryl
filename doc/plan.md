@@ -87,26 +87,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 569: Settle Restored Claim Activation Before Selected-Editor Transfer (finished)
+# Phase 565: Prepare The Threadless Initial Shell (finished)
 
-Accepted exact claim activation before selected-editor binding, shared attempt revision tracking
-and original command settlement during retirement. All 25 initial-editor cases, app default and
-all-test-target checks pass; independent review found no blockers. [Evidence](failures/target-bootstrap-composition.md#restored-claim-activation).
+Accepted exact zero-runtime source preparation and the ordinary shell's explicit threadless mode,
+including appearance adoption and native disposal without acquired-window abandonment. All 70
+app and seven session tests, app checks and independent review pass; [evidence](failures/target-bootstrap-composition.md#threadless-shell-custody).
+Complete-set revalidation and native placement remain separate boundaries.
 
-# Phase 565: Prepare The Threadless Initial Shell (wip)
-
-Prepare and mount the sole zero-runtime ordinary shell without a fabricated selected thread,
-composer or transcript. Preserve exact session-member identity and placement facts, appearance,
-bounded native reservation and startup disposal. Reuse the ordinary shell root with explicit
-threadless custody that cannot enter acquired-window abandonment. Verify rejection of nonempty
-runtime registries, foreign or stale session/appearance facts, duplicate reservation, hidden mount,
-appearance changes without an editor and disposal preserving the saved member. Keep full native
-placement and complete-set admission in their separate phases.
-
-The Operator approved current-desktop fallback on 2026-09-25, resolving the placement policy
-blocker; [evidence](failures/target-bootstrap-composition.md#virtual-desktop-placement-readiness).
-
-# Phase 570: Bind Window Creation To The Process-Owned Home (pending)
+# Phase 570: Bind Window Creation To The Process-Owned Home (wip)
 
 Bind the existing runtime-backed acquisition/creation consumers
 to process-owned home service references; their current owning-handle constructor is not a valid

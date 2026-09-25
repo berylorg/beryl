@@ -1,6 +1,20 @@
 use super::*;
 use crate::main_window::{MainWindowCreationOwner, NewWindow};
 
+mod threadless;
+pub use threadless::*;
+
+enum ShellContent {
+    Acquired {
+        custody: MainWindowShellUnpublished,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    },
+    Threadless {
+        source: crate::main_window::ThreadlessWindowSource,
+        reservation: RuntimeBackedWindowMainWindowReservation,
+    },
+}
+
 pub struct GpuiMainWindowShellHost<'a> {
     app: &'a mut App,
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
@@ -47,11 +61,15 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
         let minimum_size = composer.shell_minimum_size();
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
-                acquisition,
-                reservation,
-                initial_composer,
+                content: ShellContent::Acquired {
+                    custody: MainWindowShellUnpublished {
+                        acquisition,
+                        reservation,
+                        initial_composer,
+                    },
+                    selection,
+                },
                 appearance,
-                selection,
                 minimum_size,
                 composer_mount: None,
             },
@@ -124,17 +142,19 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     .borrow_mut()
                     .take()
                     .expect("failed native construction leaves shell preparation intact");
+                let appearance = controller.appearance.clone();
+                let custody = controller.into_unpublished();
                 MainWindowShellHostFailure::BeforeConstruction {
                     error: error.to_string(),
                     prepared: MainWindowShellPrepared {
-                        acquisition: controller.acquisition,
-                        reservation: controller.reservation,
-                        initial_composer: controller.initial_composer,
+                        acquisition: custody.acquisition,
+                        reservation: custody.reservation,
+                        initial_composer: custody.initial_composer,
                         composer: composer.0,
                         composer_configurator: composer.1,
                         marker_seals: composer.2,
                         submission_request_source: composer.3,
-                        appearance: controller.appearance,
+                        appearance,
                     },
                 }
             })?;
@@ -207,37 +227,47 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
             }
             Err((error, controller)) => Err(MainWindowShellHostFailure::Construction {
                 error,
-                unpublished: MainWindowShellUnpublished {
-                    acquisition: controller.acquisition,
-                    reservation: controller.reservation,
-                    initial_composer: controller.initial_composer,
-                },
+                unpublished: controller.into_unpublished(),
             }),
         }
     }
 }
 
 pub struct MainWindowShellController {
-    acquisition: RuntimeBackedWindowAcquisition,
-    reservation: RuntimeBackedWindowMainWindowReservation,
-    initial_composer: Option<Box<InitialComposerCandidate>>,
+    content: ShellContent,
     pub(super) appearance: MainWindowShellAppearance,
-    selection: crate::main_window::MainWindowComposerSelectionIdentity,
     minimum_size: gpui::Size<gpui::Pixels>,
     pub(super) composer_mount: Option<Entity<MainWindowConversationComposerMount>>,
 }
 
 impl MainWindowShellController {
-    pub fn acquisition(&self) -> &RuntimeBackedWindowAcquisition {
-        &self.acquisition
+    pub fn acquisition(&self) -> Option<&RuntimeBackedWindowAcquisition> {
+        match &self.content {
+            ShellContent::Acquired { custody, .. } => Some(&custody.acquisition),
+            ShellContent::Threadless { .. } => None,
+        }
+    }
+
+    pub fn is_threadless(&self) -> bool {
+        matches!(self.content, ShellContent::Threadless { .. })
+    }
+
+    pub fn placement(&self) -> &beryl_model::WindowPlacement {
+        match &self.content {
+            ShellContent::Acquired { custody, .. } => custody.acquisition.placement(),
+            ShellContent::Threadless { source, .. } => source.placement(),
+        }
     }
 
     pub fn minimum_size(&self) -> gpui::Size<gpui::Pixels> {
         self.minimum_size
     }
     #[must_use]
-    pub const fn window_id(&self) -> beryl_model::WindowId {
-        self.acquisition.window_id()
+    pub fn window_id(&self) -> beryl_model::WindowId {
+        match &self.content {
+            ShellContent::Acquired { custody, .. } => custody.window_id(),
+            ShellContent::Threadless { source, .. } => source.window_id(),
+        }
     }
 
     #[must_use]
@@ -252,10 +282,11 @@ impl MainWindowShellController {
 
     #[must_use]
     fn into_unpublished(self) -> MainWindowShellUnpublished {
-        MainWindowShellUnpublished {
-            acquisition: self.acquisition,
-            reservation: self.reservation,
-            initial_composer: self.initial_composer,
+        match self.content {
+            ShellContent::Acquired { custody, .. } => custody,
+            ShellContent::Threadless { .. } => {
+                unreachable!("threadless shells have no acquisition abandonment")
+            }
         }
     }
 }
@@ -302,13 +333,21 @@ impl MainWindowShell {
                 root.controller.as_ref().is_some_and(|controller| {
                     appearance.active
                         && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
-                        && controller.composer_mount.as_ref().is_some_and(|mount| {
-                            let mount = mount.read(app);
-                            mount.selected_first_presentable(app)
-                                && mount.contribution().is_some_and(|composer| {
-                                    composer.read(app).selection_identity() == controller.selection
+                        && match &controller.content {
+                            ShellContent::Threadless { source, .. } => {
+                                source.validate_lifetime().is_ok()
+                                    && controller.composer_mount.is_none()
+                            }
+                            ShellContent::Acquired { selection, .. } => {
+                                controller.composer_mount.as_ref().is_some_and(|mount| {
+                                    let mount = mount.read(app);
+                                    mount.selected_first_presentable(app)
+                                        && mount.contribution().is_some_and(|composer| {
+                                            composer.read(app).selection_identity() == *selection
+                                        })
                                 })
-                        })
+                            }
+                        }
                 })
             })
             .unwrap_or(false)
@@ -343,7 +382,14 @@ impl MainWindowShell {
         self,
         app: &mut App,
     ) -> Result<MainWindowShellUnpublished, MainWindowShell> {
-        if self.published {
+        if self.published
+            || self
+                .root
+                .read(app)
+                .controller
+                .as_ref()
+                .is_none_or(|controller| controller.is_threadless())
+        {
             return Err(self);
         }
         self.appearance_owner
@@ -377,172 +423,4 @@ pub struct MainWindowShellRoot {
     pub(super) notices: notices::MainWindowShellNotices,
 }
 
-impl MainWindowShellRoot {
-    fn new(
-        controller: MainWindowShellController,
-        construction_error: Option<String>,
-        publication: Arc<crate::theme_runtime::GpuiAppearancePublicationTarget>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let shell_focus = cx.focus_handle();
-        let notices =
-            notices::MainWindowShellNotices::new(&controller, publication, shell_focus.clone(), cx);
-        let mut root = Self {
-            controller: Some(controller),
-            construction_error,
-            composer_observer: None,
-            creation: None,
-            creation_observer: None,
-            appearance_release: None,
-            command_focus: cx.focus_handle(),
-            shell_focus,
-            notices,
-        };
-        root.subscribe_notices(window, cx);
-        root
-    }
-
-    #[must_use]
-    pub fn controller(&self) -> Option<&MainWindowShellController> {
-        self.controller.as_ref()
-    }
-
-    pub(in crate::main_window) fn creation_target(
-        &self,
-        app: &App,
-    ) -> Option<(
-        crate::main_window::MainWindowComposerSelectionIdentity,
-        beryl_state::RememberedTarget,
-    )> {
-        let controller = self.controller.as_ref()?;
-        let mount = controller.composer_mount.as_ref()?.read(app);
-        let composer = mount.contribution()?.read(app);
-        (composer.selection_identity() == controller.selection
-            && mount.selected_first_presentable(app))
-        .then_some((controller.selection, controller.acquisition.target()))
-    }
-
-    pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {
-        let Some(owner) = self.creation.as_ref().and_then(|owner| owner.upgrade()) else {
-            return Some("New Window is not available.".to_owned());
-        };
-        let Some(controller) = self.controller.as_ref() else {
-            return Some("The selected thread is unavailable.".to_owned());
-        };
-        if let Some(reason) = owner.read(app).disabled_reason(controller.window_id()) {
-            return Some(reason.to_owned());
-        }
-        self.creation_target(app)
-            .is_none()
-            .then(|| "The selected thread is not ready for New Window.".to_owned())
-    }
-
-    pub(in crate::main_window) fn invoke_new_window(&mut self, cx: &mut Context<Self>) {
-        if self.new_window_disabled_reason(cx).is_some() {
-            return;
-        }
-        let Some(owner) = self.creation.as_ref().and_then(|owner| owner.upgrade()) else {
-            return;
-        };
-        let Some((selection, target)) = self.creation_target(cx) else {
-            return;
-        };
-        let source = cx.weak_entity();
-        let _ = owner.update(cx, |owner, cx| {
-            owner.activate_captured(source, selection, target, cx)
-        });
-    }
-}
-
-impl Render for MainWindowShellRoot {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sync_notices(window, cx);
-        let Some(controller) = self.controller.as_ref() else {
-            return div().id("main-window-shell-empty").into_any_element();
-        };
-        let appearance = &controller.appearance;
-        let composer = controller.composer_mount();
-        let content_height = composer
-            .as_ref()
-            .and_then(|mount| mount.read(cx).contribution())
-            .and_then(|composer| {
-                composer
-                    .read(cx)
-                    .gpui_input()
-                    .read(cx)
-                    .surface()
-                    .map(|surface| surface.content_height())
-            })
-            .unwrap_or(px(0.));
-        let minimum_panel_height = controller.minimum_size.height * 0.5;
-        let composer_height = (content_height + px(22.))
-            .max(minimum_panel_height)
-            .min((window.viewport_size().height * 0.5).max(minimum_panel_height));
-        let command = self
-            .creation
-            .as_ref()
-            .map(|_| crate::main_window::creation::command::render(self, &self.command_focus, cx));
-        div()
-            .id("main-window-shell")
-            .relative()
-            .track_focus(&self.shell_focus)
-            .key_context("MainWindow")
-            .on_action(cx.listener(|root, _: &NewWindow, _, cx| root.invoke_new_window(cx)))
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(appearance.background)
-            .child(
-                div()
-                    .id("main-window-toolbar")
-                    .h(px(self.notice_chrome_height()))
-                    .flex()
-                    .items_center()
-                    .justify_end()
-                    .px(px(12.))
-                    .flex_none()
-                    .bg(appearance.toolbar)
-                    .children(command),
-            )
-            .child(
-                div()
-                    .id("main-window-conversation-body")
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .id("main-window-transcript-region")
-                            .debug_selector(|| "main-window-transcript-region".to_owned())
-                            .flex_1()
-                            .min_h_0(),
-                    )
-                    .child(
-                        div()
-                            .id("main-window-user-input-panel")
-                            .debug_selector(|| "main-window-user-input-panel".to_owned())
-                            .flex()
-                            .h(composer_height)
-                            .min_h(minimum_panel_height)
-                            .px(px(12.))
-                            .py(px(10.))
-                            .border_1()
-                            .flex_none()
-                            .bg(appearance.input_panel)
-                            .border_color(appearance.separator)
-                            .children(composer),
-                    ),
-            )
-            .child(
-                div()
-                    .id("main-window-status-line")
-                    .h(px(0.))
-                    .flex_none()
-                    .bg(appearance.status),
-            )
-            .child(self.notices.widget.clone())
-            .into_any_element()
-    }
-}
+mod root;
