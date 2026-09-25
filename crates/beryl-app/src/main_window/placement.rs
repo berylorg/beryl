@@ -10,6 +10,24 @@ pub struct WindowPlacementRect {
 }
 
 impl WindowPlacementRect {
+    pub fn gpui_bounds(
+        self,
+        scale_factor: f32,
+    ) -> Result<gpui::Bounds<gpui::Pixels>, WindowPlacementPreparationError> {
+        if !self.valid() || !scale_factor.is_finite() || scale_factor <= 0.0 {
+            return Err(WindowPlacementPreparationError::NativeBounds(
+                "logical bounds and scale must be finite with positive dimensions".to_owned(),
+            ));
+        }
+        let scale = f64::from(scale_factor);
+        let (x, width) = gpui_axis(self.x, self.width, scale)?;
+        let (y, height) = gpui_axis(self.y, self.height, scale)?;
+        Ok(gpui::Bounds::new(
+            gpui::point(gpui::px(x), gpui::px(y)),
+            gpui::size(gpui::px(width), gpui::px(height)),
+        ))
+    }
+
     fn from_saved(bounds: WindowBounds) -> Self {
         Self {
             x: f64::from(bounds.x()),
@@ -45,6 +63,52 @@ impl WindowPlacementRect {
     }
 }
 
+fn gpui_axis(
+    origin: f64,
+    extent: f64,
+    scale: f64,
+) -> Result<(f32, f32), WindowPlacementPreparationError> {
+    let physical_start = (origin * scale).round();
+    let physical_end = ((origin + extent) * scale).round();
+    if !physical_start.is_finite()
+        || !physical_end.is_finite()
+        || physical_start <= f64::from(i32::MIN)
+        || physical_end > f64::from(i32::MAX)
+        || physical_end <= physical_start
+        || physical_end - physical_start > f64::from(i32::MAX)
+    {
+        return Err(WindowPlacementPreparationError::NativeBounds(
+            "rounded physical coordinates exceed the native position or size range".to_owned(),
+        ));
+    }
+    let nearest_origin = origin as f32;
+    let nearest_extent = extent as f32;
+    for origin in [
+        nearest_origin,
+        nearest_origin.next_down(),
+        nearest_origin.next_up(),
+    ] {
+        if !origin.is_finite() || (f64::from(origin) * scale).round() != physical_start {
+            continue;
+        }
+        for extent in [
+            nearest_extent,
+            nearest_extent.next_down(),
+            nearest_extent.next_up(),
+        ] {
+            if extent.is_finite()
+                && extent > 0.0
+                && ((f64::from(origin) + f64::from(extent)) * scale).round() == physical_end
+            {
+                return Ok((origin, extent));
+            }
+        }
+    }
+    Err(WindowPlacementPreparationError::NativeBounds(
+        "adjacent GPUI coordinates cannot preserve the resolved physical rectangle".to_owned(),
+    ))
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct WindowPlacementMonitor {
     pub id: MonitorId,
@@ -66,6 +130,8 @@ pub enum WindowPlacementPreparationError {
     SavedPlacementChanged,
     #[error("native monitor discovery failed: {0}")]
     MonitorDiscovery(String),
+    #[error("resolved placement cannot be used as native outer bounds: {0}")]
+    NativeBounds(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -283,6 +349,53 @@ impl PreparedWindowsWindowPlacement {
 
     pub fn monitor(&self) -> gpui::WindowsWindowPlacementMonitor {
         self.monitor
+    }
+
+    pub fn gpui_window_bounds(
+        &self,
+    ) -> Result<gpui::WindowBounds, WindowPlacementPreparationError> {
+        let resolved = self.resolved.bounds();
+        let bounds = resolved.gpui_bounds(self.monitor.scale_factor())?;
+        let physical = self
+            .monitor
+            .outer_placement(bounds, false)
+            .map_err(|error| WindowPlacementPreparationError::NativeBounds(error.to_string()))?
+            .screen_bounds();
+        let scale = f64::from(self.monitor.scale_factor());
+        let expected = [resolved.x, resolved.y, resolved.right(), resolved.bottom()]
+            .map(|value| (value * scale).round());
+        let actual = [
+            i64::from(physical.origin.x.0),
+            i64::from(physical.origin.y.0),
+            i64::from(physical.origin.x.0) + i64::from(physical.size.width.0),
+            i64::from(physical.origin.y.0) + i64::from(physical.size.height.0),
+        ];
+        if actual
+            .into_iter()
+            .zip(expected)
+            .any(|(actual, expected)| actual as f64 != expected)
+        {
+            return Err(WindowPlacementPreparationError::NativeBounds(
+                "GPUI coordinate precision changes the resolved physical rectangle".to_owned(),
+            ));
+        }
+        let work = self.monitor.work_area();
+        if actual[0] < i64::from(work.origin.x.0)
+            || actual[1] < i64::from(work.origin.y.0)
+            || actual[2] > i64::from(work.origin.x.0) + i64::from(work.size.width.0)
+            || actual[3] > i64::from(work.origin.y.0) + i64::from(work.size.height.0)
+            || actual[0] == i64::from(i32::MIN)
+            || actual[1] == i64::from(i32::MIN)
+        {
+            return Err(WindowPlacementPreparationError::NativeBounds(
+                "physical outer bounds do not fit the prepared work area or native position range"
+                    .to_owned(),
+            ));
+        }
+        Ok(match self.resolved.saved_placement().display_state() {
+            beryl_model::WindowDisplayState::Normal => gpui::WindowBounds::Windowed(bounds),
+            beryl_model::WindowDisplayState::Maximized => gpui::WindowBounds::Maximized(bounds),
+        })
     }
 
     pub fn validate_binding(

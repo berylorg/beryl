@@ -57,6 +57,19 @@ impl GpuiMainWindowShellHost<'_> {
             return Err("threadless shell appearance is no longer current".to_owned());
         }
         let minimum_size = gpui::size(px(160.), px(64.));
+        let mut options = WindowOptions {
+            show: false,
+            focus: false,
+            ..Default::default()
+        };
+        #[cfg(target_os = "windows")]
+        self.apply_prepared_placement(
+            &mut options,
+            prepared.window_id(),
+            prepared.placement(),
+            true,
+        )?;
+        options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some(MainWindowShellController {
             content: ShellContent::Threadless {
                 source: prepared.source,
@@ -69,21 +82,13 @@ impl GpuiMainWindowShellHost<'_> {
         let root_pending = pending.clone();
         let window = self
             .app
-            .open_window(
-                WindowOptions {
-                    show: false,
-                    focus: false,
-                    window_min_size: Some(minimum_size),
-                    ..Default::default()
-                },
-                move |window, cx| {
-                    let controller = root_pending
-                        .borrow_mut()
-                        .take()
-                        .expect("one threadless root construction");
-                    cx.new(|cx| MainWindowShellRoot::new(controller, None, publication, window, cx))
-                },
-            )
+            .open_window(options, move |window, cx| {
+                let controller = root_pending
+                    .borrow_mut()
+                    .take()
+                    .expect("one threadless root construction");
+                cx.new(|cx| MainWindowShellRoot::new(controller, None, publication, window, cx))
+            })
             .map_err(|error| error.to_string())?;
         let root = window.entity(self.app).expect("new hidden threadless root");
         let adapter_id = crate::theme_runtime::WindowAdapterId::new(

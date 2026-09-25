@@ -446,6 +446,9 @@
   [evidence](../../failures/target-bootstrap-composition.md#prepared-native-outer-bounds).
 - [x] Accepted bounded worker geometry resolution and exact saved-window/native-monitor binding;
   [evidence](../../failures/target-bootstrap-composition.md#worker-placement-resolution).
+- [x] Connected prepared geometry to hidden restored, threadless and startup acquisition shells,
+  preserving original cleanup custody and fractional-scale pixel edges;
+  [evidence](../../failures/target-bootstrap-composition.md#hidden-shell-prepared-geometry).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

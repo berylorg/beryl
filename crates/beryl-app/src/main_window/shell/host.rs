@@ -45,6 +45,8 @@ enum SelectedShellHostFailure {
 pub struct GpuiMainWindowShellHost<'a> {
     app: &'a mut App,
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
+    #[cfg(target_os = "windows")]
+    prepared_placement: Option<crate::main_window::PreparedWindowsWindowPlacement>,
     #[cfg(feature = "test-faults")]
     reject_mount: bool,
 }
@@ -55,9 +57,20 @@ impl<'a> GpuiMainWindowShellHost<'a> {
         Self {
             app,
             appearance_owner,
+            #[cfg(target_os = "windows")]
+            prepared_placement: None,
             #[cfg(feature = "test-faults")]
             reject_mount: false,
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn with_prepared_placement(
+        mut self,
+        placement: crate::main_window::PreparedWindowsWindowPlacement,
+    ) -> Self {
+        self.prepared_placement = Some(placement);
+        self
     }
 
     #[cfg(feature = "test-faults")]
@@ -67,10 +80,60 @@ impl<'a> GpuiMainWindowShellHost<'a> {
 }
 
 impl GpuiMainWindowShellHost<'_> {
+    #[cfg(target_os = "windows")]
+    fn apply_prepared_placement(
+        &self,
+        options: &mut WindowOptions,
+        window_id: beryl_model::WindowId,
+        saved: &beryl_model::WindowPlacement,
+        required: bool,
+    ) -> Result<(), String> {
+        let Some(placement) = &self.prepared_placement else {
+            return if required {
+                Err("startup shell construction requires prepared window placement".to_owned())
+            } else {
+                Ok(())
+            };
+        };
+        placement
+            .validate_binding(window_id, saved)
+            .map_err(|error| error.to_string())?;
+        let bounds = placement
+            .gpui_window_bounds()
+            .map_err(|error| error.to_string())?;
+        options.window_bounds = Some(bounds);
+        options.windows_outer_bounds_monitor = Some(placement.monitor());
+        Ok(())
+    }
+
     fn construct_selected_hidden(
         &mut self,
         prepared: SelectedShellPrepared,
     ) -> Result<MainWindowShell, SelectedShellHostFailure> {
+        let mut options = WindowOptions {
+            show: false,
+            focus: false,
+            ..Default::default()
+        };
+        #[cfg(target_os = "windows")]
+        {
+            let (window_id, saved, required) = match &prepared.content {
+                ShellContent::Acquired { custody, .. } => {
+                    (custody.window_id(), custody.acquisition.placement(), false)
+                }
+                ShellContent::Restored { custody, .. } => {
+                    (custody.window_id(), custody.composer.placement(), true)
+                }
+                ShellContent::Threadless { source, .. } => {
+                    (source.window_id(), source.placement(), true)
+                }
+            };
+            if let Err(error) =
+                self.apply_prepared_placement(&mut options, window_id, saved, required)
+            {
+                return Err(SelectedShellHostFailure::BeforeConstruction { error, prepared });
+            }
+        }
         let SelectedShellPrepared {
             content,
             composer,
@@ -80,6 +143,7 @@ impl GpuiMainWindowShellHost<'_> {
             appearance,
         } = prepared;
         let minimum_size = composer.shell_minimum_size();
+        options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
                 content,
@@ -100,57 +164,42 @@ impl GpuiMainWindowShellHost<'_> {
         let reject_mount = std::mem::take(&mut self.reject_mount);
         let window = self
             .app
-            .open_window(
-                WindowOptions {
-                    show: false,
-                    focus: false,
-                    window_min_size: Some(minimum_size),
-                    ..Default::default()
-                },
-                move |window, cx| {
-                    let (mut controller, composer) = root_pending
-                        .borrow_mut()
-                        .take()
-                        .expect("main-window shell host invokes its root constructor once");
-                    let (composer, configurator, marker_seals, submission_request_source) =
-                        composer;
-                    let mount = || {
-                        MainWindowConversationComposerMount::from_prepared_entity(
-                            composer,
-                            configurator,
-                            marker_seals,
-                            submission_request_source,
-                            window,
-                            cx,
-                        )
-                    };
-                    #[cfg(feature = "test-faults")]
-                    let mounted = if reject_mount {
-                        Err("injected post-native composer mount rejection".to_owned())
-                    } else {
-                        mount()
-                    };
-                    #[cfg(not(feature = "test-faults"))]
-                    let mounted = mount();
-                    match mounted {
-                        Ok(composer) => {
-                            controller.composer_mount = Some(composer);
-                            cx.new(|cx| {
-                                MainWindowShellRoot::new(controller, None, publication, window, cx)
-                            })
-                        }
-                        Err(error) => cx.new(|cx| {
-                            MainWindowShellRoot::new(
-                                controller,
-                                Some(error),
-                                publication,
-                                window,
-                                cx,
-                            )
-                        }),
+            .open_window(options, move |window, cx| {
+                let (mut controller, composer) = root_pending
+                    .borrow_mut()
+                    .take()
+                    .expect("main-window shell host invokes its root constructor once");
+                let (composer, configurator, marker_seals, submission_request_source) = composer;
+                let mount = || {
+                    MainWindowConversationComposerMount::from_prepared_entity(
+                        composer,
+                        configurator,
+                        marker_seals,
+                        submission_request_source,
+                        window,
+                        cx,
+                    )
+                };
+                #[cfg(feature = "test-faults")]
+                let mounted = if reject_mount {
+                    Err("injected post-native composer mount rejection".to_owned())
+                } else {
+                    mount()
+                };
+                #[cfg(not(feature = "test-faults"))]
+                let mounted = mount();
+                match mounted {
+                    Ok(composer) => {
+                        controller.composer_mount = Some(composer);
+                        cx.new(|cx| {
+                            MainWindowShellRoot::new(controller, None, publication, window, cx)
+                        })
                     }
-                },
-            )
+                    Err(error) => cx.new(|cx| {
+                        MainWindowShellRoot::new(controller, Some(error), publication, window, cx)
+                    }),
+                }
+            })
             .map_err(|error| {
                 let (controller, composer) = pending
                     .borrow_mut()

@@ -120,6 +120,13 @@ impl RestoredWindowShellPrepared {
         self.selected.composer.selection_identity().window_id()
     }
 
+    pub fn placement(&self) -> &beryl_model::WindowPlacement {
+        let ShellContent::Restored { custody, .. } = &self.selected.content else {
+            unreachable!("restored shell preparation preserves custody kind")
+        };
+        custody.composer.placement()
+    }
+
     pub fn into_unpublished(self) -> RestoredWindowShellUnpublished {
         let ShellContent::Restored { custody, .. } = self.selected.content else {
             unreachable!("restored shell preparation preserves custody kind")

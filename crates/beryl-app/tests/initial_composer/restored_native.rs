@@ -14,6 +14,9 @@ mod editor;
 
 const SAVED_TEXT: &str = "Saved restored draft 🦀";
 
+#[path = "../support/window_placement.rs"]
+mod placement_support;
+
 struct PreparedFixture {
     prepared: RestoredWindowComposerPrepared,
     attempt: RestoredWindowPreparationAttempt,
@@ -172,7 +175,16 @@ fn restored_hidden_native_mount_and_failure_retire_only_transient_custody(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(gpui_text_input::ensure_text_input_bindings);
-    for failed_mount in [false, true] {
+    for (failed_mount, placement_case) in [
+        (false, "valid"),
+        (true, "valid"),
+        #[cfg(target_os = "windows")]
+        (false, "missing"),
+        #[cfg(target_os = "windows")]
+        (false, "foreign"),
+        #[cfg(target_os = "windows")]
+        (false, "changed"),
+    ] {
         let (fixture, attempt, service, shell_prepared, appearance, before, draft, selection) =
             home_support::join(
                 home_support::worker(move || {
@@ -208,14 +220,46 @@ fn restored_hidden_native_mount_and_failure_retire_only_transient_custody(
         let appearance_owner = cx.update(|app| {
             GpuiAppearanceWindowSet::new(appearance, NonZeroUsize::new(4).unwrap(), app)
         });
+        let native_window = if placement_case == "foreign" {
+            beryl_model::WindowId::from_bytes([199; 16])
+        } else {
+            shell_prepared.window_id()
+        };
+        let native_saved = if placement_case == "changed" {
+            beryl_model::WindowPlacement::new(
+                beryl_model::WindowBounds::new(321, 123, 640, 480).unwrap(),
+                beryl_model::WindowDisplayState::Maximized,
+                None,
+                None,
+            )
+        } else {
+            shell_prepared.placement().clone()
+        };
+        let native_placement = placement_support::prepare(native_window, &native_saved);
+        let windows_before = cx.update(|app| app.windows().len());
         let result = cx.update(|app| {
-            let mut host = GpuiMainWindowShellHost::new(app, appearance_owner.clone());
+            let host = GpuiMainWindowShellHost::new(app, appearance_owner.clone());
+            let mut host = if placement_case == "missing" {
+                host
+            } else {
+                placement_support::attach(host, native_placement)
+            };
             if failed_mount {
                 host.test_reject_mount_after_native();
             }
             host.construct_restored_hidden(shell_prepared)
         });
-        let unpublished = if failed_mount {
+        let unpublished = if placement_case != "valid" {
+            let failure = result
+                .err()
+                .expect("invalid placement must fail before construction");
+            assert!(matches!(
+                failure,
+                RestoredWindowShellHostFailure::BeforeConstruction { .. }
+            ));
+            assert_eq!(cx.update(|app| app.windows().len()), windows_before);
+            failure.into_unpublished()
+        } else if failed_mount {
             let failure = result.err().expect("forced failure after native creation");
             assert!(matches!(
                 failure,
@@ -372,9 +416,14 @@ fn expired_restore_attempt_refuses_native_construction_and_returns_original_edit
     );
     let appearance_owner = cx
         .update(|app| GpuiAppearanceWindowSet::new(appearance, NonZeroUsize::new(4).unwrap(), app));
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
     let failure = cx
         .update(|app| {
-            GpuiMainWindowShellHost::new(app, appearance_owner).construct_restored_hidden(prepared)
+            placement_support::attach(
+                GpuiMainWindowShellHost::new(app, appearance_owner),
+                native_placement,
+            )
+            .construct_restored_hidden(prepared)
         })
         .err()
         .expect("expired attempt cannot construct native shell");

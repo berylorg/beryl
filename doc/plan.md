@@ -87,14 +87,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 574: Resolve Bounded Worker Window Placement (finished)
+# Phase 575: Construct Hidden Shells With Prepared Geometry (finished)
 
-Accepted deterministic one-candidate monitor selection, translated/clamped outer geometry and
-exact saved-window binding, composed with native worker discovery. All nine focused tests,
-app check and independent semantic review pass;
-[evidence](failures/target-bootstrap-composition.md#worker-placement-resolution).
+Accepted exact prepared geometry in restored, threadless and explicit startup acquisition hosts,
+with original failure custody and checked physical-edge-preserving conversion. All 91 focused
+and affected tests, app all-test/default checks and independent review pass;
+[evidence](failures/target-bootstrap-composition.md#hidden-shell-prepared-geometry).
 
-# Phase 571: Apply Prepared Native Window Placement (wip)
+# Phase 571: Apply Prepared Native Window Placement (pending)
 
 Implement bounded startup placement for the prepared shell set: reachable saved geometry and
 monitor selection, saved-desktop restoration through the documented Windows boundary and the
@@ -115,6 +115,12 @@ The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared
 [investigation](memory/topic/native-window-publication/placement-preparation-boundary.md).
 Desktop application must retain the exact hidden native window until its COM worker finishes;
 cancellation cannot release or recycle that HWND while desktop movement is in flight.
+
+Readiness finding on 2026-09-25: retaining the app shell or GPUI inner object does not pin the
+native HWND. Explicit removal bypasses the close callback, and `WindowsWindow::drop` schedules
+native destruction independently of retained inner references. Desktop integration remains pending
+until an exact native lifetime boundary is specified and accepted; the bounded prerequisite is
+being assessed before implementation. See the [lifetime evidence](failures/target-bootstrap-composition.md#desktop-worker-native-lifetime).
 
 Operator clarified on 2026-09-25 that zed-fork does not need rag-rat because Beryl-owned
 Markdown is not authored there. Keep this prerequisite's design and planning authority in Beryl;

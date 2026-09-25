@@ -26,6 +26,47 @@ fn monitor(id: &str, work_area: WindowPlacementRect) -> WindowPlacementMonitor {
     }
 }
 
+#[test]
+fn gpui_conversion_preserves_half_pixel_edges_at_fractional_scale() {
+    for (x, scale) in [
+        (128.4, 1.25_f32),
+        (101.0 + 1.0 / 1.5, 1.5_f32),
+        (-128.4, 1.25_f32),
+    ] {
+        let original = rect(x, -x, 800.0, 600.0);
+        let bounds = original.gpui_bounds(scale).unwrap();
+        let scale = f64::from(scale);
+        assert_eq!(
+            (f64::from(bounds.origin.x) * scale).round(),
+            (original.x * scale).round()
+        );
+        assert_eq!(
+            (f64::from(bounds.origin.y) * scale).round(),
+            (original.y * scale).round()
+        );
+        assert_eq!(
+            ((f64::from(bounds.origin.x) + f64::from(bounds.size.width)) * scale).round(),
+            ((original.x + original.width) * scale).round()
+        );
+        assert_eq!(
+            ((f64::from(bounds.origin.y) + f64::from(bounds.size.height)) * scale).round(),
+            ((original.y + original.height) * scale).round()
+        );
+    }
+}
+
+#[test]
+fn gpui_conversion_rejects_unrepresentable_edges_and_invalid_scale() {
+    assert!(
+        rect(2_000_000_001.0, 0., 800., 600.)
+            .gpui_bounds(1.0)
+            .is_err()
+    );
+    for scale in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        assert!(rect(0., 0., 800., 600.).gpui_bounds(scale).is_err());
+    }
+}
+
 fn saved(
     x: i32,
     y: i32,

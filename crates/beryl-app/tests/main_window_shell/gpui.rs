@@ -5,6 +5,68 @@ use beryl_app::theme_runtime::{
     PreviewSource, PreviewSourceIdentity,
 };
 
+#[path = "../support/window_placement.rs"]
+mod placement_support;
+
+#[cfg(target_os = "windows")]
+#[gpui::test]
+fn acquired_startup_shell_applies_only_its_exact_prepared_geometry(cx: &mut gpui::TestAppContext) {
+    cx.update(ensure_text_input_bindings);
+    for foreign in [false, true] {
+        let (mut fixture, prepared) = support::join(
+            support::worker(|| {
+                let mut fixture = ShellFixture::new(151);
+                let prepared = fixture.prepare();
+                (fixture, prepared)
+            }),
+            cx,
+        );
+        let owner = fixture.owner(cx);
+        let native = placement_support::prepare(
+            beryl_model::WindowId::from_bytes([if foreign { 152 } else { 151 }; 16]),
+            &placement(),
+        );
+        let expected = native.gpui_window_bounds().unwrap();
+        let before = cx.update(|app| app.windows().len());
+        let result = cx.update(|app| {
+            GpuiMainWindowShellHost::new(app, owner)
+                .with_prepared_placement(native)
+                .construct_hidden(prepared)
+        });
+        let unpublished = if foreign {
+            let Err(MainWindowShellHostFailure::BeforeConstruction { prepared, .. }) = result
+            else {
+                panic!("foreign placement must return original acquired preparation")
+            };
+            assert_eq!(cx.update(|app| app.windows().len()), before);
+            prepared.into_unpublished()
+        } else {
+            let shell = result.unwrap_or_else(|_| panic!("placed startup acquisition"));
+            shell
+                .window()
+                .update(cx, |_, window, _| {
+                    assert_eq!(window.window_bounds(), expected)
+                })
+                .unwrap();
+            assert!(!cx.window_visibility(shell.window().into()).is_visible);
+            cx.update(|app| shell.close_before_publication(app))
+                .unwrap_or_else(|_| panic!("close placed acquired shell"))
+        };
+        let occupancy = support::join(
+            support::worker(move || {
+                let beryl_app::main_window::MainWindowShellAbandonmentPreparationOutcome::ExactAcquired { abandonment } = unpublished.prepare_abandonment(&fixture.service, CommandCancellation::new()) else { panic!("exact placement cleanup") };
+                assert!(matches!(
+                    abandonment.abandon(&fixture.service, CommandCancellation::new()),
+                    beryl_app::main_window::MainWindowShellAbandonmentOutcome::Committed { .. }
+                ));
+                fixture.process.main_window_occupancy()
+            }),
+            cx,
+        );
+        assert_eq!(occupancy, 0);
+    }
+}
+
 fn preview(
     coordinator: &mut AppearanceCoordinator,
     source: u64,

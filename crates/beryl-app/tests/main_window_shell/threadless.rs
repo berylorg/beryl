@@ -1,4 +1,7 @@
 use super::*;
+
+#[path = "../support/window_placement.rs"]
+mod placement_support;
 use beryl_app::main_window::{
     RestoredWindowPreparationAttempt, RestoredWindowServiceTestLifetime,
     ThreadlessWindowShellPrepared,
@@ -21,6 +24,10 @@ struct Fixture {
 
 impl Fixture {
     fn new(seed: u8) -> Self {
+        Self::with_placement(seed, placement())
+    }
+
+    fn with_placement(seed: u8, saved: WindowPlacement) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
             directory.path(),
@@ -47,7 +54,7 @@ impl Fixture {
         command
             .add(session.initialize_threadless(
                 session.revision(&store).unwrap(),
-                InitializeThreadlessWindow::new(window, placement()),
+                InitializeThreadlessWindow::new(window, saved),
             ))
             .unwrap();
         assert!(matches!(
@@ -111,6 +118,99 @@ impl Fixture {
     }
 }
 
+#[cfg(target_os = "windows")]
+#[gpui::test]
+fn startup_geometry_is_required_and_bound_before_threadless_allocation(
+    cx: &mut gpui::TestAppContext,
+) {
+    for mode in ["missing", "foreign", "changed"] {
+        let (mut fixture, prepared) = support::join(
+            support::worker(|| {
+                let fixture = Fixture::new(141);
+                let prepared = fixture.prepare().unwrap();
+                (fixture, prepared)
+            }),
+            cx,
+        );
+        let owner = fixture.owner(cx);
+        let native = match mode {
+            "missing" => None,
+            "foreign" => Some(placement_support::prepare(
+                beryl_model::WindowId::from_bytes([142; 16]),
+                prepared.placement(),
+            )),
+            _ => Some(placement_support::prepare(
+                prepared.window_id(),
+                &WindowPlacement::new(
+                    WindowBounds::new(321, 123, 640, 480).unwrap(),
+                    WindowDisplayState::Maximized,
+                    None,
+                    None,
+                ),
+            )),
+        };
+        let before = cx.update(|app| app.windows().len());
+        assert!(
+            cx.update(|app| {
+                let host = GpuiMainWindowShellHost::new(app, owner);
+                match native {
+                    Some(native) => host.with_prepared_placement(native),
+                    None => host,
+                }
+                .construct_threadless_hidden(prepared)
+            })
+            .is_err()
+        );
+        assert_eq!(cx.update(|app| app.windows().len()), before);
+        assert_eq!(fixture.process.main_window_occupancy(), 0);
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[gpui::test]
+fn threadless_hidden_construction_uses_prepared_normal_and_maximized_geometry(
+    cx: &mut gpui::TestAppContext,
+) {
+    for state in [WindowDisplayState::Normal, WindowDisplayState::Maximized] {
+        let (mut fixture, prepared) = support::join(
+            support::worker(move || {
+                let fixture = Fixture::with_placement(
+                    143,
+                    WindowPlacement::new(
+                        WindowBounds::new(80, 60, 800, 600).unwrap(),
+                        state,
+                        None,
+                        None,
+                    ),
+                );
+                let prepared = fixture.prepare().unwrap();
+                (fixture, prepared)
+            }),
+            cx,
+        );
+        let owner = fixture.owner(cx);
+        let native = placement_support::prepare(prepared.window_id(), prepared.placement());
+        let expected = native.gpui_window_bounds().unwrap();
+        let shell = cx
+            .update(|app| {
+                GpuiMainWindowShellHost::new(app, owner)
+                    .with_prepared_placement(native)
+                    .construct_threadless_hidden(prepared)
+            })
+            .unwrap();
+        shell
+            .window()
+            .update(cx, |_, window, _| {
+                assert_eq!(window.window_bounds(), expected)
+            })
+            .unwrap();
+        assert!(!cx.window_visibility(shell.window().into()).is_visible);
+        cx.update(|app| shell.close_threadless_before_publication(app))
+            .unwrap_or_else(|_| panic!("dispose placed threadless shell"));
+        assert_eq!(fixture.process.main_window_occupancy(), 0);
+    }
+}
+
 #[test]
 fn threadless_preparation_rejects_foreign_appearance_without_reserving_or_writing() {
     let fixture = Fixture::new(125);
@@ -153,10 +253,14 @@ fn threadless_publication_keeps_no_editor_and_releases_native_reservation_on_clo
         cx,
     );
     let owner = fixture.owner(cx);
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
     let mut shell = cx.update(|app| {
-        GpuiMainWindowShellHost::new(app, owner.clone())
-            .construct_threadless_hidden(prepared)
-            .unwrap()
+        placement_support::attach(
+            GpuiMainWindowShellHost::new(app, owner.clone()),
+            native_placement,
+        )
+        .construct_threadless_hidden(prepared)
+        .unwrap()
     });
     draw(shell.window(), cx);
     cx.update(|app| shell.publish(app)).unwrap();
@@ -199,9 +303,13 @@ fn retired_threadless_preparation_releases_reservation_without_native_mount(
     );
     let owner = fixture.owner(cx);
     drop(fixture.lifetime.take());
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
     assert!(
-        cx.update(|app| GpuiMainWindowShellHost::new(app, owner.clone())
-            .construct_threadless_hidden(prepared))
+        cx.update(|app| placement_support::attach(
+            GpuiMainWindowShellHost::new(app, owner.clone()),
+            native_placement
+        )
+        .construct_threadless_hidden(prepared))
             .is_err()
     );
     assert_eq!(fixture.process.main_window_occupancy(), 0);
@@ -229,10 +337,14 @@ fn threadless_hidden_shell_has_no_editor_and_disposal_preserves_saved_member(
         cx,
     );
     let owner = fixture.owner(cx);
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
     let shell = cx.update(|app| {
-        GpuiMainWindowShellHost::new(app, owner.clone())
-            .construct_threadless_hidden(prepared)
-            .unwrap()
+        placement_support::attach(
+            GpuiMainWindowShellHost::new(app, owner.clone()),
+            native_placement,
+        )
+        .construct_threadless_hidden(prepared)
+        .unwrap()
     });
     assert!(!cx.window_visibility(shell.window().into()).is_visible);
     assert!(cx.update(|app| shell.ready_to_publish(app)));
@@ -302,8 +414,9 @@ fn threadless_shell_adopts_appearance_without_composer_and_retired_attempt_block
         cx,
     );
     let owner = fixture.owner(cx);
+    let native_placement = placement_support::prepare(prepared.window_id(), prepared.placement());
     let shell = cx.update(|app| {
-        GpuiMainWindowShellHost::new(app, owner)
+        placement_support::attach(GpuiMainWindowShellHost::new(app, owner), native_placement)
             .construct_threadless_hidden(prepared)
             .unwrap()
     });

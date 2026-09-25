@@ -1320,3 +1320,38 @@ discovery, moved/missing monitors, competing overlap/distance preferences, deter
 fractional work areas, invalid facts, extreme sizes and binding failures. The app check and
 independent semantic review passed. Conversion into native creation options, desktop movement
 and lifetime integration remain separate work.
+
+## Hidden Shell Prepared Geometry
+
+Windows restored and threadless hosts now require the exact prepared window and saved facts before
+controller or native allocation. Explicit startup acquisitions use the same placement path;
+ordinary acquisitions retain their existing defaults. Missing or mismatched preparation returns
+original selected-editor custody, while threadless failure releases only its transient reservation.
+Resolved outer bounds, selected monitor and fixed normal/maximized state reach hidden construction.
+
+Review exposed a fractional-scale conversion failure: at 125%, logical origin `128.4` rounds to
+physical edge 161, but its nearest `f32` rounds to 160. A direct cast could therefore reject valid
+restoration. The checked converter examines at most nine adjacent origin/extent combinations per
+axis and requires both physical edges to match the resolved rectangle. Regression cases cover
+125%, 150%, negative coordinates and genuinely unrepresentable input.
+
+Run `83a05c05-2d9d-4fe4-a2eb-f89c9eb7d158` passed all 91 tests across placement preparation,
+native placement, shell construction, initial editor, creation and notice targets. App all-test
+and default checks and independent review passed. Host integration uses GPUI's test platform;
+real Windows geometry/publication evidence remains the accepted native-boundary test. Desktop
+movement and whole-set publication are separate acceptance boundaries.
+
+## Desktop Worker Native Lifetime
+
+Retaining `MainWindowShell` or a GPUI inner `Rc` cannot protect a worker's raw HWND from reuse.
+At GPUI revision `cd3ad9f2c49d2ecdd7a8578c0e8946fdfdc3dcd3`, `WindowsWindow::drop` schedules
+`RevokeDragDrop` and `DestroyWindow` despite other inner references. `Window::remove_window`
+bypasses the close callback; `on_window_should_close` also defaults to allowing close if its
+app update fails. A callback alone therefore cannot guarantee identity-safe desktop movement.
+
+The clean prerequisite is an exact hidden native operation lifetime: a worker token must prevent
+native destruction until all calls finish or unwind, with disposal returning to the GUI thread.
+The app must retain the original shell and cleanup custody during that operation, fence publication
+on cancellation, and dispose only after worker completion. An indefinitely pending native call
+cannot be treated as completed disposal. The smallest dependency contract and its native evidence
+are being assessed before implementation; no raw-handle desktop worker is accepted yet.
