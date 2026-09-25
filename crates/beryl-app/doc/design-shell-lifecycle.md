@@ -157,6 +157,35 @@ governed by [design.md](design.md). It does not independently declare engineerin
   native disposal, plus independent lifecycle review. Native lease acceptance does not accept the
   desktop COM worker, app cleanup integration or process quit barrier.
 
+## Windows Desktop Worker
+
+- Desktop preparation is one synchronous worker operation consuming the exact hidden native lease
+  and an optional saved `VirtualDesktopId`. It performs no GUI work, durable write, desktop
+  enumeration, active-desktop switch or visible-window workaround. The app associates its result
+  with the original shell flight and waits for GUI lease settlement before any publication.
+- The identity's 16 bytes encode the GUID's canonical numeric value in big-endian order, not the
+  native in-memory structure layout. Capture and restoration use the same explicit conversion.
+- Without a saved identity, leave Windows' first-show desktop assignment untouched and report
+  the current-desktop default. With a saved identity, initialize COM on the worker, create the
+  documented `IVirtualDesktopManager` and attempt exactly one `MoveWindowToDesktop` for the leased
+  HWND. Interface destruction and balanced successful COM uninitialization precede lease release;
+  no COM interface crosses threads or outlives its apartment.
+- Report accepted saved assignment separately from current-desktop default. COM initialization,
+  manager creation or movement failure selects that best-effort default and records only a bounded
+  stage and native error code. Do not invent a current-desktop GUID, use private interfaces, retry
+  the move or rewrite saved placement. The default outcome names the selected fallback, not a
+  claim that a hidden window's eventual desktop has already been observed.
+- Do not gate the operation on hidden `GetWindowDesktopId` or current-desktop queries: those
+  observations do not establish a pending assignment before first show. Accepted movement remains
+  best-effort under the feature's topology/desktop-change policy. Cancellation or native close is
+  handled by the owning flight after worker completion and is never classified as desktop fallback.
+- Verification covers exact GUID conversion, absent identity without a desktop effect, accepted
+  movement and rejected movement on owned native windows, COM initialization failure with balanced
+  apartment lifetime, hidden-state retention and original native lease release. Qualify alternate-
+  desktop retention and default fallback through first nonactivating publication; state any absent
+  environment coverage. Require independent semantic review of identity, COM lifetime and outcome
+  mapping. Full shell custody and startup-set publication retain their separate acceptance gates.
+
 ## Window Placement Preparation
 
 - Worker placement preparation binds one exact window identity and its immutable saved placement

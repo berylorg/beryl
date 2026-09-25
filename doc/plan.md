@@ -87,29 +87,22 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 577: Qualify Hidden Windows Desktop Restoration (finished)
+# Phase 578: Implement The Saved Desktop Worker (finished)
 
-Qualified a real hidden move to an existing alternate desktop through first publication, plus
-nonexistent-desktop and untouched current-desktop defaults. Nonactivation, exact disposal and
-worker COM ownership pass. Hidden desktop-ID queries cannot certify an accepted assignment;
-[evidence](failures/target-bootstrap-composition.md#hidden-desktop-qualification).
+Accepted exact GUID conversion, one worker-owned COM attempt and bounded saved/default outcomes,
+with COM teardown before native lease release. All seven focused native tests, app all-test/default
+checks and independent semantic review pass;
+[evidence](failures/target-bootstrap-composition.md#saved-desktop-worker).
 
-# Phase 571: Apply Prepared Native Window Placement (pending)
+# Phase 571: Integrate Prepared Native Window Placement (pending)
 
-Implement bounded startup placement for the prepared shell set: reachable saved geometry and
-monitor selection, saved-desktop restoration through the documented Windows boundary and the
-approved current-desktop fallback. Preserve hidden preparation, exact native identity and failure
-disposal before complete-set publication. Verify changed topology, missing desktop and failed
-desktop restoration without automatic desktop switching or changing another member's placement.
-
-Resolve saved outer logical geometry and monitor/work-area hints into bounded prepared facts off
-the GUI thread. Preserve fixed initial normal/maximized state through hidden construction. Apply
-the saved virtual-desktop identity through documented Windows integration while retaining exact
-native ownership; missing, removed or unavailable desktop restoration uses the current desktop.
-Verify reachability after topology/scale changes, extreme saved coordinates, hidden-state retention,
-identity-safe failure disposal and independent per-window fallback. Keep complete-set interaction
-gating/publication and process startup ownership in their following phases. Require native-boundary
-evidence, affected shell regressions and independent review before acceptance.
+Compose accepted worker geometry, hidden shell construction and saved-desktop preparation into
+one exact startup member flight. Retain the original shell and typed cleanup custody through
+worker completion and GUI lease settlement; cancellation or close intent prevents publication and
+returns the original disposal path. Verify late completion, cancellation, independent per-window
+fallback and selected/threadless cleanup without durable restore-record changes. Keep complete-set
+interaction gating/publication and process startup ownership in their following phases. Require
+native-boundary evidence, affected shell regressions and independent review before acceptance.
 
 The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared monitor facts;
 [investigation](memory/topic/native-window-publication/placement-preparation-boundary.md).

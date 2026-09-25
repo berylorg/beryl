@@ -1416,3 +1416,26 @@ one. It is qualification of the supported best-effort behavior, not proof of eve
 atomicity or a realtime guarantee against desktop changes. App check and manifest validation pass;
 the successful Serena refresh followed both. Production worker and app-flight integration remain
 separate implementation work.
+
+## Saved Desktop Worker
+
+The Windows worker consumes the exact hidden lease and optional saved identity, converts canonical
+GUID numeric bytes explicitly, and performs one documented movement attempt. Absence bypasses COM.
+Initialization, manager-creation and movement failures select the best-effort current-desktop
+default with a bounded stage and HRESULT. Successful movement reports acceptance of the saved
+assignment, not a pre-show identity observation. The manager and balanced apartment initialization
+are released before the native lease, including unwind paths.
+
+Run `0ac27f23-4794-4114-b555-8fb65e184899` passed all seven tests across native desktop worker,
+desktop qualification, native operation and native geometry targets. Production movement retained
+an actual alternate GUID through first show from both fresh and explicitly initialized MTA workers.
+Missing identity, missing desktop and incompatible STA initialization used the current desktop.
+The STA failure retained `RPC_E_CHANGED_MODE` at the initialization stage and preserved the
+caller's apartment. Before/after apartment kind and qualifier, followed by caller-owner release,
+verified balanced initialization for fresh, STA and existing-MTA cases. Exact GUID component bytes,
+hidden-state retention, nonactivation and GUI-thread native disposal also passed.
+
+All-test/default app checks and independent semantic review passed. Manager-creation failure
+mapping has source-review coverage; no dedicated fault framework was added. The worker performs
+no desktop enumeration, switching, GUI work or durable writes. Shell-flight cancellation and
+original editor/claim cleanup remain the next integration boundary.

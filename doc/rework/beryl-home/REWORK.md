@@ -453,6 +453,8 @@
   fencing; [evidence](../../failures/target-bootstrap-composition.md#accepted-hidden-native-operation-lifetime).
 - [x] Qualified documented hidden desktop assignment and current-desktop fallback through real
   first publication; [evidence](../../failures/target-bootstrap-composition.md#hidden-desktop-qualification).
+- [x] Accepted the saved-desktop worker with exact GUID conversion, bounded fallback diagnostics
+  and balanced COM/native lifetime; [evidence](../../failures/target-bootstrap-composition.md#saved-desktop-worker).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
