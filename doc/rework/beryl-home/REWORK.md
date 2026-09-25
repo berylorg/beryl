@@ -438,6 +438,8 @@
   acquisition or editor state; [77-case acceptance](../../failures/target-bootstrap-composition.md#threadless-shell-custody).
 - [x] Bound acquisition, creation and initial editors to process-owned home service references;
   [84-case acceptance](../../failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
+- [x] Accepted restored-editor transfer into hidden ordinary native shells, retaining exact cleanup
+  custody and saved members; [74-case acceptance](../../failures/target-bootstrap-composition.md#restored-native-shell-custody).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

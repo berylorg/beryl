@@ -39,13 +39,19 @@ impl MainWindowShellRoot {
         beryl_state::RememberedTarget,
     )> {
         let controller = self.controller.as_ref()?;
-        let ShellContent::Acquired { custody, selection } = &controller.content else {
-            return None;
+        let (selection, target) = match &controller.content {
+            ShellContent::Acquired { custody, selection } => {
+                (*selection, custody.acquisition.target())
+            }
+            ShellContent::Restored { custody, selection } => {
+                (*selection, custody.composer.target())
+            }
+            ShellContent::Threadless { .. } => return None,
         };
         let mount = controller.composer_mount.as_ref()?.read(app);
         let composer = mount.contribution()?.read(app);
-        (composer.selection_identity() == *selection && mount.selected_first_presentable(app))
-            .then_some((*selection, custody.acquisition.target()))
+        (composer.selection_identity() == selection && mount.selected_first_presentable(app))
+            .then_some((selection, target))
     }
 
     pub fn new_window_disabled_reason(&self, app: &App) -> Option<String> {

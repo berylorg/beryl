@@ -3,6 +3,9 @@ use crate::main_window::{MainWindowCreationOwner, NewWindow};
 
 mod threadless;
 pub use threadless::*;
+mod restored;
+mod selected;
+pub use restored::*;
 
 enum ShellContent {
     Acquired {
@@ -12,6 +15,30 @@ enum ShellContent {
     Threadless {
         source: crate::main_window::ThreadlessWindowSource,
         reservation: RuntimeBackedWindowMainWindowReservation,
+    },
+    Restored {
+        custody: Box<RestoredWindowShellUnpublished>,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    },
+}
+
+struct SelectedShellPrepared {
+    content: ShellContent,
+    composer: MainWindowConversationComposerPreparedSelection,
+    composer_configurator: MainWindowShellComposerConfigurator,
+    marker_seals: DraftMarkerSealService,
+    submission_request_source: MainWindowComposerSubmissionRequestSource,
+    appearance: MainWindowShellAppearance,
+}
+
+enum SelectedShellHostFailure {
+    BeforeConstruction {
+        error: String,
+        prepared: SelectedShellPrepared,
+    },
+    Construction {
+        error: String,
+        controller: MainWindowShellController,
     },
 }
 
@@ -39,36 +66,23 @@ impl<'a> GpuiMainWindowShellHost<'a> {
     }
 }
 
-impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
-    type Shell = MainWindowShell;
-    type Error = String;
-
-    fn construct_hidden(
+impl GpuiMainWindowShellHost<'_> {
+    fn construct_selected_hidden(
         &mut self,
-        prepared: MainWindowShellPrepared,
-    ) -> Result<Self::Shell, MainWindowShellHostFailure<Self::Error>> {
-        let MainWindowShellPrepared {
-            acquisition,
-            reservation,
-            initial_composer,
+        prepared: SelectedShellPrepared,
+    ) -> Result<MainWindowShell, SelectedShellHostFailure> {
+        let SelectedShellPrepared {
+            content,
             composer,
             composer_configurator,
             marker_seals,
             submission_request_source,
             appearance,
         } = prepared;
-        let selection = composer.selection_identity();
         let minimum_size = composer.shell_minimum_size();
         let pending = Rc::new(RefCell::new(Some((
             MainWindowShellController {
-                content: ShellContent::Acquired {
-                    custody: MainWindowShellUnpublished {
-                        acquisition,
-                        reservation,
-                        initial_composer,
-                    },
-                    selection,
-                },
+                content,
                 appearance,
                 minimum_size,
                 composer_mount: None,
@@ -142,19 +156,15 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     .borrow_mut()
                     .take()
                     .expect("failed native construction leaves shell preparation intact");
-                let appearance = controller.appearance.clone();
-                let custody = controller.into_unpublished();
-                MainWindowShellHostFailure::BeforeConstruction {
+                SelectedShellHostFailure::BeforeConstruction {
                     error: error.to_string(),
-                    prepared: MainWindowShellPrepared {
-                        acquisition: custody.acquisition,
-                        reservation: custody.reservation,
-                        initial_composer: custody.initial_composer,
+                    prepared: SelectedShellPrepared {
+                        content: controller.content,
                         composer: composer.0,
                         composer_configurator: composer.1,
                         marker_seals: composer.2,
                         submission_request_source: composer.3,
-                        appearance,
+                        appearance: controller.appearance,
                     },
                 }
             })?;
@@ -212,9 +222,9 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                             root.controller.take().expect("unpublished controller")
                         })
                         .expect("new hidden shell");
-                    return Err(MainWindowShellHostFailure::Construction {
+                    return Err(SelectedShellHostFailure::Construction {
                         error: error.to_string(),
-                        unpublished: controller.into_unpublished(),
+                        controller,
                     });
                 }
                 Ok(MainWindowShell {
@@ -225,10 +235,9 @@ impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
                     published: false,
                 })
             }
-            Err((error, controller)) => Err(MainWindowShellHostFailure::Construction {
-                error,
-                unpublished: controller.into_unpublished(),
-            }),
+            Err((error, controller)) => {
+                Err(SelectedShellHostFailure::Construction { error, controller })
+            }
         }
     }
 }
@@ -244,7 +253,7 @@ impl MainWindowShellController {
     pub fn acquisition(&self) -> Option<&RuntimeBackedWindowAcquisition> {
         match &self.content {
             ShellContent::Acquired { custody, .. } => Some(&custody.acquisition),
-            ShellContent::Threadless { .. } => None,
+            ShellContent::Threadless { .. } | ShellContent::Restored { .. } => None,
         }
     }
 
@@ -256,6 +265,7 @@ impl MainWindowShellController {
         match &self.content {
             ShellContent::Acquired { custody, .. } => custody.acquisition.placement(),
             ShellContent::Threadless { source, .. } => source.placement(),
+            ShellContent::Restored { custody, .. } => custody.composer.placement(),
         }
     }
 
@@ -267,6 +277,7 @@ impl MainWindowShellController {
         match &self.content {
             ShellContent::Acquired { custody, .. } => custody.window_id(),
             ShellContent::Threadless { source, .. } => source.window_id(),
+            ShellContent::Restored { custody, .. } => custody.composer.window_id(),
         }
     }
 
@@ -284,8 +295,8 @@ impl MainWindowShellController {
     fn into_unpublished(self) -> MainWindowShellUnpublished {
         match self.content {
             ShellContent::Acquired { custody, .. } => custody,
-            ShellContent::Threadless { .. } => {
-                unreachable!("threadless shells have no acquisition abandonment")
+            ShellContent::Threadless { .. } | ShellContent::Restored { .. } => {
+                unreachable!("only acquired shells have acquisition abandonment")
             }
         }
     }
@@ -338,7 +349,14 @@ impl MainWindowShell {
                                 source.validate_lifetime().is_ok()
                                     && controller.composer_mount.is_none()
                             }
-                            ShellContent::Acquired { selection, .. } => {
+                            ShellContent::Acquired { selection, .. }
+                            | ShellContent::Restored { selection, .. } => {
+                                if let ShellContent::Restored { custody, .. } = &controller.content
+                                {
+                                    if custody.composer.validate_shell_lifetime().is_err() {
+                                        return false;
+                                    }
+                                }
                                 controller.composer_mount.as_ref().is_some_and(|mount| {
                                     let mount = mount.read(app);
                                     mount.selected_first_presentable(app)
@@ -388,7 +406,9 @@ impl MainWindowShell {
                 .read(app)
                 .controller
                 .as_ref()
-                .is_none_or(|controller| controller.is_threadless())
+                .is_none_or(|controller| {
+                    !matches!(controller.content, ShellContent::Acquired { .. })
+                })
         {
             return Err(self);
         }

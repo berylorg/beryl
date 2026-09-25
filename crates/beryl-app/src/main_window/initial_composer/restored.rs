@@ -258,6 +258,21 @@ pub struct RestoredWindowComposerPrepared {
 }
 
 impl RestoredWindowComposer {
+    pub(in crate::main_window) fn validate_shell_lifetime(&self) -> Result<(), String> {
+        self.source.validate_lifetime()
+    }
+
+    pub(in crate::main_window) fn placement(&self) -> &beryl_model::WindowPlacement {
+        self.source.window.placement()
+    }
+
+    pub(in crate::main_window) fn target(&self) -> beryl_state::RememberedTarget {
+        self.source
+            .window
+            .remembered_target()
+            .expect("validated restored runtime target")
+    }
+
     pub fn window_id(&self) -> WindowId {
         self.source.window.window_id()
     }
@@ -345,6 +360,19 @@ impl RestoredWindowComposer {
 }
 
 impl RestoredWindowComposerPrepared {
+    pub fn revalidate(&self, attempt: &RestoredWindowPreparationAttempt) -> Result<(), String> {
+        self.custody.validate_attempt(attempt)
+    }
+
+    pub(in crate::main_window) fn into_shell_parts(
+        self,
+    ) -> (
+        MainWindowConversationComposerPreparedSelection,
+        RestoredWindowComposer,
+    ) {
+        (self.prepared, self.custody)
+    }
+
     pub fn selection_identity(&self) -> super::super::MainWindowComposerSelectionIdentity {
         self.prepared.selection_identity()
     }
@@ -356,6 +384,16 @@ impl RestoredWindowComposerPrepared {
 }
 
 impl RestoredWindowSource {
+    fn validate_lifetime(&self) -> Result<(), String> {
+        if !self.attempt.live.load(Ordering::Acquire)
+            || self.service.upgrade().is_none()
+            || self.store.health().generation() != Some(self.generation)
+        {
+            return Err("restore attempt or service generation is retired".to_owned());
+        }
+        Ok(())
+    }
+
     fn validate(&self) -> Result<(), String> {
         if !self.attempt.live.load(Ordering::Acquire) || self.service.upgrade().is_none() {
             return Err("restore attempt or service generation is retired".to_owned());

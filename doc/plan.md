@@ -87,17 +87,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 570: Bind Window Creation To The Process-Owned Home (finished)
+# Phase 572: Transfer Restored Editors Into Hidden Native Shells (finished)
 
-Accepted typed service references for acquisition, window creation and initial-editor custody,
-preserving exact source provenance and process ownership of the home lifecycle. All 84 affected
-tests, app all-test-target/default checks and independent review pass; [evidence](failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
+Accepted hidden native transfer with exact restored editor and reservation custody, shared selected
+construction and saved-member-preserving cleanup. All 74 affected tests, app checks and independent
+review pass; [evidence](failures/target-bootstrap-composition.md#restored-native-shell-custody).
 
 # Phase 566: Coordinate The Bounded Complete Restore Set (wip)
 
 Compose accepted session discovery, restored preparation and empty-session replacement branches
 under one exact startup attempt, retaining no more than the supported complete window set and
 rejecting missing, stale or failed members without partial admission.
+
+Retain original begin-restore or threadless-initialization command receipts, local finalization and
+reconciliation until exact settlement; fence zero-runtime observation with the command's expected
+home revision. Select an empty-set runtime replacement from the validated session fallback. Prepare
+restored members sequentially through their accepted claim/editor boundaries, then revalidate every
+member as one complete bounded set. Verify failed last-member preparation, stale first-member
+completion, cancelled or indeterminate commands, empty-header/no-runtime initialization and exact
+runtime fallback. Disposal preserves saved members and original unresolved custody; only a genuinely
+new fallback uses accepted prepublication abandonment. Native placement/publication and process
+Retry/Exit remain separate. Require focused regressions and independent completion review.
 
 # Phase 571: Apply Prepared Native Window Placement (pending)
 

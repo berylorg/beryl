@@ -12,6 +12,8 @@ mod restoration_support;
 mod restored_cases;
 #[path = "initial_composer/restored_claims.rs"]
 mod restored_claims;
+#[path = "initial_composer/restored_native.rs"]
+mod restored_native;
 #[path = "initial_composer/support.rs"]
 mod support;
 #[path = "initial_composer/threadless.rs"]

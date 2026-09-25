@@ -1224,3 +1224,23 @@ foreign-appearance rejection. State run `17823adb-6f44-4e50-8839-2d993f7b2d69` p
 session cases. App all-test-target/default checks and independent review passed. Final off-GUI
 source revalidation before complete-set publication and real native placement are not accepted by
 this component's tests and retain their explicit later gates.
+
+## Restored Native Shell Custody
+
+Restored editors now enter the shared selected-shell constructor with their original candidate and
+bounded native reservation. Worker preparation revalidates the attempt and appearance home; native
+construction checks current appearance and graph lifetime without storage discovery. Failure after
+native allocation and explicit hidden disposal return restored custody. Cancelled retirement keeps
+the same editor reconciliation and reservation until settlement; saved session members remain.
+
+An inline restored-custody enum variant enlarged every shell controller and caused five existing
+GUI creation tests to overflow their stack. Boxing that move-only variant bounds controller size
+without changing ownership; all 12 creation tests pass in `3dc55931-7601-4b23-ae2a-f8455a79cdd7`.
+The new Unicode fixture initially reused a helper requesting eight pages beyond its short draft.
+Using the existing exact single-page marker-proof helper preserves the real saved text and tests
+the native transfer rather than invalid out-of-range demands.
+
+Run `2682e79d-b326-4e09-b8a8-3b6629e6f947` passed all 62 initial-editor, shell and notice tests,
+including the three new restored-native cases. Together the 74 affected tests pass. App checks and
+independent source review pass. Complete-set coordination, native placement/publication and ordinary
+close retain their separate acceptance boundaries.
