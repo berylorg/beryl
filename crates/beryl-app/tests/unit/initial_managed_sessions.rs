@@ -34,12 +34,12 @@ fn interest() -> RuntimeInterestConfig {
 
 #[test]
 fn attached_sessions_configure_without_releasing_startup() {
-    let (directory, candidate, storage, _, state) = candidate_with_state();
+    let (directory, mut candidate, storage, _, state) = candidate_with_state();
     let reference = candidate.service_reference();
     let (provider, sessions) = ProcessScheduledExecutionProvider::new();
     let prepared = PreparedCasServices::prepare(
         Default::default(),
-        candidate,
+        &mut candidate,
         storage,
         config(),
         Box::new(provider),
@@ -60,6 +60,7 @@ fn attached_sessions_configure_without_releasing_startup() {
     );
     let prepared = prepared
         .configure_managed_sessions(
+            &mut candidate,
             &sessions,
             interest(),
             enrollments,
@@ -74,6 +75,65 @@ fn attached_sessions_configure_without_releasing_startup() {
     assert!(reference.home_revision().is_err());
     drop(prepared);
     assert!(signal.diagnostics().stopped());
+    drop(candidate);
+    assert_reopens(&directory);
+}
+
+#[test]
+fn reopened_candidate_cannot_configure_services_from_retired_custody() {
+    let (directory, mut candidate, storage, _, _) = candidate_with_state();
+    let home_id = candidate.home_id();
+    let generation = candidate.generation();
+    let (provider, sessions) = ProcessScheduledExecutionProvider::new();
+    let prepared = PreparedCasServices::prepare(
+        Default::default(),
+        &mut candidate,
+        storage,
+        config(),
+        Box::new(provider),
+    )
+    .unwrap();
+    let signal = prepared.service.as_ref().unwrap().scheduler_signal.clone();
+    drop(candidate);
+    let mut candidate = HomeOpenCandidate::open(HomeOpenOptions::new(
+        directory.path(),
+        HomeSchemaVersion::CURRENT,
+    ))
+    .unwrap();
+    let _storage = SyndicStorage::register(&mut candidate).unwrap();
+    let state = BerylState::register(&mut candidate).unwrap();
+    let mut candidate = candidate
+        .prepare_publication(
+            BerylState::required_domains()
+                .unwrap()
+                .merge(SyndicStorage::required_domains().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(candidate.home_id(), home_id);
+    assert_eq!(candidate.generation(), generation);
+    let enrollments = crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations::new(
+        home_id,
+        NonZeroUsize::new(1).unwrap(),
+    );
+    let result = prepared.configure_managed_sessions(
+        &mut candidate,
+        &sessions,
+        interest(),
+        enrollments,
+        session_config(&state),
+        &Arc::new(ProcessLifecycleAttentionPool::new()),
+    );
+    assert!(matches!(
+        result,
+        Err(CasPreparationError::Service(
+            ProjectionCoordinatorError::SyndicRevisionUnavailable { .. }
+        ))
+    ));
+    assert!(signal.diagnostics().stopped());
+    assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+    assert!(candidate.recovery_access().is_ok());
+    drop(candidate);
     assert_reopens(&directory);
 }
 
@@ -81,18 +141,20 @@ fn attached_sessions_configure_without_releasing_startup() {
 fn configuration_rejection_retires_private_custody() {
     for failure in [
         "foreign_owner",
+        "foreign_candidate",
         "foreign_assets",
         "missing_runtime",
         "capacity",
         "confirmation",
     ] {
-        let (directory, candidate, storage, faults, state) = candidate_with_state();
-        let (_foreign_directory, _foreign_candidate, _, _, foreign_state) = candidate_with_state();
+        let (directory, mut candidate, storage, faults, state) = candidate_with_state();
+        let (_foreign_directory, mut foreign_candidate, _, _, foreign_state) =
+            candidate_with_state();
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let (_unused_provider, foreign_sessions) = ProcessScheduledExecutionProvider::new();
         let prepared = PreparedCasServices::prepare(
             Default::default(),
-            candidate,
+            &mut candidate,
             storage,
             config(),
             Box::new(provider),
@@ -133,6 +195,11 @@ fn configuration_rejection_retires_private_custody() {
                 NonZeroUsize::new(1).unwrap(),
             );
         let result = prepared.configure_managed_sessions(
+            if failure == "foreign_candidate" {
+                &mut foreign_candidate
+            } else {
+                &mut candidate
+            },
             selected,
             interest(),
             enrollments,
@@ -144,11 +211,24 @@ fn configuration_rejection_retires_private_custody() {
         } else {
             RuntimeSessionPreparationError::InvalidConfiguration
         };
-        assert!(
-            matches!(result, Err(CasPreparationError::Session(error)) if error == expected),
-            "{failure}"
-        );
+        match failure {
+            "foreign_candidate" => assert!(matches!(
+                result,
+                Err(CasPreparationError::CandidateIdentity)
+            )),
+            "confirmation" => assert!(matches!(
+                result,
+                Err(CasPreparationError::Service(
+                    ProjectionCoordinatorError::SyndicRevisionUnavailable { .. }
+                ))
+            )),
+            _ => assert!(
+                matches!(result, Err(CasPreparationError::Session(error)) if error == expected),
+                "{failure}"
+            ),
+        }
         assert!(signal.diagnostics().stopped());
+        drop(candidate);
         assert_reopens(&directory);
     }
 }

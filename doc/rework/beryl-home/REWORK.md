@@ -117,7 +117,7 @@
   and repair families join in their owning phases rather than existing as empty placeholders.
 - Recovery discovery uses accepted compact sources; new inventory composition must preserve
   source-only discovery and cannot reintroduce broad input-gate or history sweeps.
-- Marker-seal construction consumes the private home candidate and exposes no ordinary constructor
+- Marker-seal construction borrows the graph-owned private home candidate and exposes no ordinary constructor
   or global discovery. Complete-graph composition must retain that single construction owner and
   distribute its shared clones only after publication; isolated test construction grants no
   production replacement or duplicate-capacity authority.
@@ -409,7 +409,8 @@
 - [ ] Publish the complete initialized process service graph after prerequisite recovery and handoff service acceptance, before restore discovery and native startup.
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
-- [x] Accepted private candidate-owned marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership). Complete-graph publication and clone distribution remain open.
+- [x] Accepted private marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership).
+- [x] Accepted shared initial candidate custody across CAS and marker preparation with exact provenance and joined disposal; [acceptance evidence](../../failures/target-bootstrap-composition.md#shared-initial-candidate-custody).
 - [x] Accepted dormant physical theme watchers with exact-generation release and joined cancellation; [acceptance evidence](../../failures/target-bootstrap-composition.md#dormant-physical-theme-watchers).
 - [x] Accepted typed theme subscription preparation with candidate qualification and joined activity custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#typed-theme-subscription-preparation).
 - [x] Accepted private app theme-runtime preparation and shared postpublication loading with exact-generation fencing; [acceptance evidence](../../failures/target-bootstrap-composition.md#app-theme-runtime-preparation). Complete graph composition remains open.

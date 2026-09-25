@@ -4,7 +4,6 @@ use super::*;
 
 pub(crate) struct PreparedMarkerServices {
     service: DraftMarkerSealService,
-    candidate: HomeOpenPublication,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -19,7 +18,7 @@ pub(crate) enum MarkerPreparationError {
 
 impl PreparedMarkerServices {
     pub(crate) fn prepare(
-        mut candidate: HomeOpenPublication,
+        candidate: &mut HomeOpenPublication,
         storage: SyndicStorage,
         assets: AssetState,
         limits: DraftMarkerSealServiceLimits,
@@ -36,7 +35,7 @@ impl PreparedMarkerServices {
             inner: new_shared_home_state(home_id, access.generation(), storage, assets, limits),
             home_id,
         };
-        Ok(Self { service, candidate })
+        Ok(Self { service })
     }
 }
 

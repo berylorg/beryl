@@ -73,12 +73,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 558: Establish The Bounded Activity Service (finished)
+# Phase 562: Share Initial Candidate Custody Across Service Preparation (finished)
 
-Accepted generation- and runtime-qualified bounded Activity queries, captured-scope initial/page
-retry, nonblocking result publication and dormant candidate preparation. All thirteen real-storage
-reader regressions, app checks and independent review passed. [Reader evidence](failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry)
-records publication/retry corrections. GUI mounting and complete graph publication remain open.
+Accepted borrowed CAS/marker preparation under one graph-owned candidate, with exact later CAS
+provenance validation and joined component disposal before home retirement. All sixteen focused
+tests, the app check and independent lifecycle review passed; [evidence](failures/target-bootstrap-composition.md#shared-initial-candidate-custody).
+Complete graph publication remains the next acceptance boundary.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
@@ -94,7 +94,7 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 423: Publish The Complete Initial App Service Graph (pending)
+# Phase 423: Publish The Complete Initial App Service Graph (wip)
 
 After every required service factory is independently accepted, compose and publish the complete
 private graph with the same home generation, then release ordinary workers. Verify last-constructor
@@ -105,16 +105,11 @@ and include pending proofs in final shutdown readiness; unsettled proofs require
 shutdown with custody retained, never successful pending preservation or process exit.
 Retain the Activity enrollment owner outside replaceable service graphs, settle its retired slots
 before candidate startup recovery, and include its pending slots in final shutdown readiness.
-Theme preparation and candidate managed-session configuration are accepted.
-Finish the remaining graph-factory inventory before activating this phase.
-
-Prerequisite gap identified on 2026-09-16: the required durable-job coordinator is not implemented. The current
-ordinary tool dispatcher explicitly refuses branch resolution; typed durable-job records and
-read-only process-work inventory do not implement handoff recovery or execution. The rework gate
-now admits non-GUI recovery prerequisites before branch handoff and complete graph publication,
-separately from product mounting. Finish those service gates before activating this phase; do not
-publish a partial graph or substitute an inert service. See
-[factory readiness evidence](failures/target-bootstrap-composition.md#durable-job-factory-readiness).
+The required components and target contracts are accepted, including handoff coordination and
+resolution-tool routing and shared initial candidate custody. Compose the graph
+with no fallible constructor or attachment after publication. Typed catalog/settings services need
+no additional idle worker. Theme loading remains postpublication. Initial composition does not
+accept full-stack same-home recovery, native startup or GUI visibility; those retain their own gates.
 
 # Phase 415: Specify Restore-Set Startup Composition (pending)
 

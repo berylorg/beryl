@@ -45,16 +45,29 @@ fn assert_reopens(directory: &tempfile::TempDir) {
         directory.path(),
         HomeSchemaVersion::CURRENT,
     ))
+    .unwrap()
+    .close()
     .unwrap();
+}
+
+fn assert_still_owned(directory: &tempfile::TempDir) {
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .is_err()
+    );
 }
 
 #[test]
 fn preparation_preserves_candidate_identity_and_abandonment_retires_shared_state() {
-    let (directory, candidate, storage, assets, _) = candidate();
+    let (directory, mut candidate, storage, assets, _) = candidate();
     let reference = candidate.service_reference();
     let generation = candidate.generation();
-    let prepared = PreparedMarkerServices::prepare(candidate, storage, assets, limits()).unwrap();
-    assert_eq!(prepared.candidate.generation(), generation);
+    let prepared =
+        PreparedMarkerServices::prepare(&mut candidate, storage, assets, limits()).unwrap();
+    assert_eq!(candidate.generation(), generation);
     assert_eq!(reference.health().state(), HomeHealthState::Opening);
     assert!(reference.home_revision().is_err());
     let shared = prepared.service.clone();
@@ -69,18 +82,65 @@ fn preparation_preserves_candidate_identity_and_abandonment_retires_shared_state
         lock_state(&shared.inner).lifecycle,
         ServiceLifecycle::Retired(_)
     ));
+    assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+    assert_eq!(
+        candidate.recovery_access().unwrap().generation(),
+        generation
+    );
+    assert_still_owned(&directory);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
-fn foreign_handles_fail_preparation_and_release_candidate_custody() {
+fn abandoned_component_can_be_prepared_again_on_the_same_owned_candidate() {
+    let (directory, mut candidate, storage, assets, _) = candidate();
+    let revisions = {
+        let access = candidate.recovery_access().unwrap();
+        (
+            storage.revision_candidate(&access).unwrap(),
+            assets.revision_candidate(&access).unwrap(),
+        )
+    };
+    let prepared =
+        PreparedMarkerServices::prepare(&mut candidate, storage.clone(), assets.clone(), limits())
+            .unwrap();
+    let old = prepared.service.clone();
+    drop(prepared);
+    let fresh =
+        PreparedMarkerServices::prepare(&mut candidate, storage.clone(), assets.clone(), limits())
+            .unwrap();
+    assert!(!Arc::ptr_eq(&old.inner, &fresh.service.inner));
+    assert!(matches!(
+        lock_state(&old.inner).lifecycle,
+        ServiceLifecycle::Retired(_)
+    ));
+    {
+        let access = candidate.recovery_access().unwrap();
+        assert_eq!(
+            (
+                storage.revision_candidate(&access).unwrap(),
+                assets.revision_candidate(&access).unwrap(),
+            ),
+            revisions,
+        );
+    }
+    drop(fresh);
+    assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+    assert_still_owned(&directory);
+    drop(candidate);
+    assert_reopens(&directory);
+}
+
+#[test]
+fn foreign_handles_fail_preparation_without_consuming_candidate_custody() {
     for foreign_assets in [false, true] {
-        let (directory, candidate, storage, assets, _) = candidate();
+        let (directory, mut candidate, storage, assets, _) = candidate();
         let (_other_directory, other_candidate, other_storage, other_assets, _) = self::candidate();
         let result = if foreign_assets {
-            PreparedMarkerServices::prepare(candidate, storage, other_assets, limits())
+            PreparedMarkerServices::prepare(&mut candidate, storage, other_assets, limits())
         } else {
-            PreparedMarkerServices::prepare(candidate, other_storage, assets, limits())
+            PreparedMarkerServices::prepare(&mut candidate, other_storage, assets, limits())
         };
         if foreign_assets {
             assert!(matches!(result, Err(MarkerPreparationError::Asset(_))));
@@ -88,35 +148,47 @@ fn foreign_handles_fail_preparation_and_release_candidate_custody() {
             assert!(matches!(result, Err(MarkerPreparationError::Syndic(_))));
         }
         assert_eq!(other_candidate.health().state(), HomeHealthState::Opening);
+        assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+        assert!(candidate.recovery_access().is_ok());
+        assert_still_owned(&directory);
+        drop(candidate);
         assert_reopens(&directory);
     }
 }
 
 #[test]
 fn failed_candidate_read_confirmation_aborts_preparation() {
-    let (directory, candidate, storage, assets, faults) = candidate();
+    let (directory, mut candidate, storage, assets, faults) = candidate();
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(matches!(
-        PreparedMarkerServices::prepare(candidate, storage, assets, limits()),
+        PreparedMarkerServices::prepare(&mut candidate, storage, assets, limits()),
         Err(MarkerPreparationError::Syndic(_))
     ));
+    assert_eq!(candidate.health().state(), HomeHealthState::Failed);
+    assert_still_owned(&directory);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
 fn failed_asset_confirmation_aborts_after_successful_syndic_validation() {
-    let (directory, candidate, storage, assets, faults) = candidate();
+    let (directory, mut candidate, storage, assets, faults) = candidate();
     let block = faults.block_next(FaultPoint::BeforeReadConfirmation);
-    let worker = std::thread::spawn(move || {
-        PreparedMarkerServices::prepare(candidate, storage, assets, limits())
+    std::thread::scope(|scope| {
+        let worker = scope
+            .spawn(|| PreparedMarkerServices::prepare(&mut candidate, storage, assets, limits()));
+        let reached = block.wait_until_reached(std::time::Duration::from_secs(5));
+        if reached {
+            faults.fail_next(FaultPoint::BeforeReadConfirmation);
+        }
+        block.release();
+        let result = worker.join().unwrap();
+        assert!(reached);
+        assert!(matches!(result, Err(MarkerPreparationError::Asset(_))));
     });
-    assert!(block.wait_until_reached(std::time::Duration::from_secs(5)));
-    faults.fail_next(FaultPoint::BeforeReadConfirmation);
-    block.release();
-    assert!(matches!(
-        worker.join().unwrap(),
-        Err(MarkerPreparationError::Asset(_))
-    ));
+    assert_eq!(candidate.health().state(), HomeHealthState::Failed);
+    assert_still_owned(&directory);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
@@ -132,7 +204,7 @@ fn handles_from_an_abandoned_candidate_cannot_authorize_a_reopened_candidate() {
         .unwrap();
         let storage = SyndicStorage::register(&mut candidate).unwrap();
         let assets = BerylState::register(&mut candidate).unwrap().assets();
-        let candidate = candidate
+        let mut candidate = candidate
             .prepare_publication(
                 BerylState::required_domains()
                     .unwrap()
@@ -141,15 +213,19 @@ fn handles_from_an_abandoned_candidate_cannot_authorize_a_reopened_candidate() {
             )
             .unwrap();
         let result = if stale_assets {
-            PreparedMarkerServices::prepare(candidate, storage, old_assets, limits())
+            PreparedMarkerServices::prepare(&mut candidate, storage, old_assets, limits())
         } else {
-            PreparedMarkerServices::prepare(candidate, old_storage, assets, limits())
+            PreparedMarkerServices::prepare(&mut candidate, old_storage, assets, limits())
         };
         if stale_assets {
             assert!(matches!(result, Err(MarkerPreparationError::Asset(_))));
         } else {
             assert!(matches!(result, Err(MarkerPreparationError::Syndic(_))));
         }
+        assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+        assert!(candidate.recovery_access().is_ok());
+        assert_still_owned(&directory);
+        drop(candidate);
         assert_reopens(&directory);
     }
 }

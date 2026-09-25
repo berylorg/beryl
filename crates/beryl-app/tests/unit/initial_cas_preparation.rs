@@ -124,13 +124,63 @@ fn assert_reopens(directory: &tempfile::TempDir) {
 }
 
 #[test]
+fn cas_and_marker_share_candidate_and_dispose_before_home_retirement() {
+    use crate::composer_marker_seal::{
+        DraftMarkerSealServiceLimits, initial_preparation::PreparedMarkerServices,
+    };
+    use std::num::NonZeroUsize;
+
+    let (directory, mut candidate, storage, _, state) = candidate_with_state();
+    let observations = Arc::new(Observations::default());
+    let provider = provider(&candidate, &observations);
+    let cas = PreparedCasServices::prepare(
+        Default::default(),
+        &mut candidate,
+        storage.clone(),
+        config(),
+        Box::new(provider),
+    )
+    .unwrap();
+    let marker = PreparedMarkerServices::prepare(
+        &mut candidate,
+        storage,
+        state.assets(),
+        DraftMarkerSealServiceLimits::new(
+            NonZeroUsize::new(2).unwrap(),
+            NonZeroUsize::new(1).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+    assert_eq!(observations.issued.load(Ordering::SeqCst), 0);
+    drop(marker);
+    drop(cas);
+    assert_eq!(observations.shutdown.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        *observations.shutdown_health.lock().unwrap(),
+        Some(HomeHealthState::Opening)
+    );
+    assert!(
+        HomeOpenCandidate::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT
+        ))
+        .is_err()
+    );
+    assert!(candidate.recovery_access().is_ok());
+    drop(candidate);
+    assert_reopens(&directory);
+}
+
+#[test]
 fn handoff_factory_shares_publication_fence_and_joins_on_cancellation_or_abandonment() {
     use crate::{
         discussion_handoff_limits::{HandoffScanConfiguration, HandoffScanLimits},
         discussion_settlement::DiscussionSettlementOperations,
     };
     for cancelled in [false, true] {
-        let (directory, candidate, storage, _, state) = candidate_with_state();
+        let (directory, mut candidate, storage, _, state) = candidate_with_state();
         let observations = Arc::new(Observations::default());
         let provider = provider(&candidate, &observations);
         let process = crate::process_admission::ProcessAdmissionGate::new();
@@ -146,14 +196,20 @@ fn handoff_factory_shares_publication_fence_and_joins_on_cancellation_or_abandon
             handoff_ready_job_items: 1,
         })
         .unwrap();
-        let prepared =
-            PreparedCasServices::prepare(process, candidate, storage, config(), Box::new(provider))
-                .unwrap();
+        let prepared = PreparedCasServices::prepare(
+            process,
+            &mut candidate,
+            storage,
+            config(),
+            Box::new(provider),
+        )
+        .unwrap();
         let cancellation = beryl_home_store::CommandCancellation::new();
         if cancelled {
             cancellation.cancel();
         }
         let prepared = prepared.prepare_handoff(
+            &mut candidate,
             operations,
             state,
             limits,
@@ -168,27 +224,19 @@ fn handoff_factory_shares_publication_fence_and_joins_on_cancellation_or_abandon
         } else {
             let prepared = prepared.unwrap();
             assert!(prepared.handoff.is_some());
-            assert_eq!(
-                prepared
-                    .candidate
-                    .as_ref()
-                    .unwrap()
-                    .service_reference()
-                    .health()
-                    .state(),
-                HomeHealthState::Opening
-            );
+            assert_eq!(candidate.health().state(), HomeHealthState::Opening);
             assert_eq!(observations.issued.load(Ordering::SeqCst), 0);
             drop(prepared);
         }
         assert_eq!(observations.shutdown.load(Ordering::SeqCst), 1);
+        drop(candidate);
         assert_reopens(&directory);
     }
 }
 
 #[test]
 fn prepared_workers_stay_dormant_and_abandonment_joins_before_candidate_retirement() {
-    let (directory, candidate, storage, _) = candidate();
+    let (directory, mut candidate, storage, _) = candidate();
     let reference = candidate.service_reference();
     let observations = Arc::new(Observations::default());
     let mut provider = provider(&candidate, &observations);
@@ -197,7 +245,7 @@ fn prepared_workers_stay_dormant_and_abandonment_joins_before_candidate_retireme
     provider.shutdown_barrier = Some((arrived, proceed));
     let prepared = PreparedCasServices::prepare(
         Default::default(),
-        candidate,
+        &mut candidate,
         storage,
         config(),
         Box::new(provider),
@@ -233,12 +281,13 @@ fn prepared_workers_stay_dormant_and_abandonment_joins_before_candidate_retireme
         Some(HomeHealthState::Opening)
     );
     assert_eq!(observations.shutdown.load(Ordering::SeqCst), 1);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
 fn attachment_panic_cancels_partial_service_before_candidate_retirement() {
-    let (directory, candidate, storage, _) = candidate();
+    let (directory, mut candidate, storage, _) = candidate();
     let observations = Arc::new(Observations::default());
     let mut provider = provider(&candidate, &observations);
     provider.panic_on_attach = true;
@@ -246,7 +295,7 @@ fn attachment_panic_cancels_partial_service_before_candidate_retirement() {
         catch_unwind(AssertUnwindSafe(|| {
             let _ = PreparedCasServices::prepare(
                 Default::default(),
-                candidate,
+                &mut candidate,
                 storage,
                 config(),
                 Box::new(provider),
@@ -259,19 +308,20 @@ fn attachment_panic_cancels_partial_service_before_candidate_retirement() {
         *observations.shutdown_health.lock().unwrap(),
         Some(HomeHealthState::Opening)
     );
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
 fn recovery_read_failure_returns_original_error_before_provider_attachment() {
-    let (directory, candidate, storage, faults) = candidate();
+    let (directory, mut candidate, storage, faults) = candidate();
     let observations = Arc::new(Observations::default());
     let provider = provider(&candidate, &observations);
     faults.fail_next(FaultPoint::BeforeReadConfirmation);
     assert!(matches!(
         PreparedCasServices::prepare(
             Default::default(),
-            candidate,
+            &mut candidate,
             storage,
             config(),
             Box::new(provider)
@@ -282,19 +332,20 @@ fn recovery_read_failure_returns_original_error_before_provider_attachment() {
     ));
     assert_eq!(observations.attached.load(Ordering::SeqCst), 0);
     assert_eq!(observations.issued.load(Ordering::SeqCst), 0);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
 fn foreign_storage_is_rejected_before_provider_attachment() {
-    let (directory, candidate, _, _) = candidate();
+    let (directory, mut candidate, _, _) = candidate();
     let (_foreign_directory, foreign, storage, _) = self::candidate();
     let observations = Arc::new(Observations::default());
     let provider = provider(&candidate, &observations);
     assert!(matches!(
         PreparedCasServices::prepare(
             Default::default(),
-            candidate,
+            &mut candidate,
             storage,
             config(),
             Box::new(provider)
@@ -305,25 +356,26 @@ fn foreign_storage_is_rejected_before_provider_attachment() {
     ));
     assert_eq!(observations.attached.load(Ordering::SeqCst), 0);
     assert_eq!(foreign.health().state(), HomeHealthState::Opening);
+    drop(candidate);
     assert_reopens(&directory);
 }
 
 #[test]
 fn test_publication_releases_prepared_workers_in_the_same_generation() {
-    let (_directory, candidate, storage, _) = candidate();
+    let (_directory, mut candidate, storage, _) = candidate();
     let generation = candidate.generation();
     let observations = Arc::new(Observations::default());
     let provider = provider(&candidate, &observations);
     let mut prepared = PreparedCasServices::prepare(
         Default::default(),
-        candidate,
+        &mut candidate,
         storage,
         config(),
         Box::new(provider),
     )
     .unwrap();
     let mut service = prepared.service.take().unwrap();
-    let home = prepared.candidate.take().unwrap().publish().unwrap();
+    let home = candidate.publish().unwrap();
     assert_eq!(home.health().generation(), Some(generation));
     assert_eq!(service.home_generation, generation);
     service.owned_home = Some(home);

@@ -796,6 +796,15 @@ inventory and its separate integration boundary.
 
 ## Remaining Graph Factory Inventory
 
+Current readiness after Activity reader acceptance: resolution routing was accepted in `f72191dd`,
+runtime producers in `3c9cf058`, and the reader in `3657e6a8`; handoff coordination is also accepted.
+The historical gaps below are resolved. Complete initial graph composition has no identified
+missing service implementation or target decision. Its next prerequisite is shared candidate
+custody: CAS and marker component factories currently consume the candidate independently, while
+the graph needs one owner that disposes all prepared components before discarding it. Private
+borrowed preparation preserves the accepted provenance and cleanup contracts. Final publication,
+outer proof custody and shutdown integration remain unaccepted until their composed tests pass.
+
 The 2026-09-24 inventory follows accepted handoff coordination and still rejects complete graph
 publication. The remaining non-GUI gaps are scoped resolution-tool routing and runtime-scoped
 Activity production, not another CAS sender or a replacement execution scheduler.
@@ -1013,3 +1022,17 @@ late-result exclusion, bounded capacity, active-read disposal and candidate prov
 App test-target and final default checks passed; independent source and test review found no
 remaining blocker. Reader custody never acquires runtime demand, and candidate construction starts
 no ordinary work. GUI adapters and complete service-graph publication remain separate.
+
+## Shared Initial Candidate Custody
+
+CAS and marker factories previously each consumed the same initial candidate, preventing their
+composition into a single unpublished graph. Both now borrow the graph owner's candidate, matching
+theme and Activity preparation. Later CAS session configuration and handoff preparation validate
+the original typed storage provenance in addition to home identity and generation: a reopened
+candidate can have equal public values while belonging to another exclusive lifetime.
+
+Run `5ca3179a-3bab-4dfc-bef2-4099ae82cc0d` passed all sixteen initial CAS, managed-session and
+marker preparation tests. Combined preparation, equal-identity reopened-candidate rejection,
+foreign handles, cancellation, constructor failures and blocked worker shutdown preserve explicit
+component-before-candidate disposal. The default app check and independent lifecycle review passed.
+No factory publishes the home; complete graph publication remains separately unaccepted.

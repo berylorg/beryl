@@ -7,11 +7,12 @@ pub(crate) struct PreparedCasServices {
     service: Option<ProjectionConnectionService>,
     handoff: Option<crate::discussion_settlement::coordinator::HandoffCoordinator>,
     initial_start: Option<InitialStartOwner>,
-    candidate: Option<HomeOpenPublication>,
 }
 
 #[derive(Debug, Error)]
 pub(crate) enum CasPreparationError {
+    #[error("CAS preparation belongs to another initial candidate")]
+    CandidateIdentity,
     #[error("CAS service preparation was cancelled")]
     Cancelled,
     #[error("CAS candidate access failed: {0}")]
@@ -35,6 +36,7 @@ pub(crate) enum CasPreparationError {
 impl PreparedCasServices {
     pub(crate) fn prepare_handoff(
         mut self,
+        candidate: &mut HomeOpenPublication,
         operations: crate::discussion_settlement::DiscussionSettlementOperations,
         state: beryl_state::BerylState,
         limits: crate::discussion_handoff_limits::HandoffScanLimits,
@@ -44,7 +46,7 @@ impl PreparedCasServices {
         if self.handoff.is_some() {
             return Err(CasPreparationError::HandoffAlreadyPrepared);
         }
-        let candidate = self.candidate.as_mut().expect("prepared candidate custody");
+        self.validate_candidate(candidate)?;
         let service = self.service.as_ref().expect("prepared CAS service custody");
         {
             let access = candidate.recovery_access()?;
@@ -81,19 +83,17 @@ impl PreparedCasServices {
 
     pub(crate) fn configure_managed_sessions(
         mut self,
+        candidate: &mut HomeOpenPublication,
         sessions: &crate::cas_projection::ScheduledExecutionSessions,
         interest: crate::cas_projection::RuntimeInterestConfig,
         enrollments: crate::runtime_activity_enrollment::RuntimeActivityEnrollmentOperations,
         config: crate::cas_projection::RuntimeSessionPreparationConfig,
         attention: &Arc<crate::lifecycle_attention::ProcessLifecycleAttentionPool>,
     ) -> Result<Self, CasPreparationError> {
+        self.validate_candidate(candidate)?;
         let service = self.service.as_mut().expect("prepared CAS service custody");
         service.configure_runtime_interest(interest, enrollments)?;
-        let access = self
-            .candidate
-            .as_mut()
-            .expect("prepared candidate custody")
-            .recovery_access()?;
+        let access = candidate.recovery_access()?;
         service.configure_runtime_session_preparation_with_access(
             sessions,
             config,
@@ -105,7 +105,7 @@ impl PreparedCasServices {
 
     pub(crate) fn prepare(
         process: crate::process_admission::ProcessAdmissionGate,
-        mut candidate: HomeOpenPublication,
+        candidate: &mut HomeOpenPublication,
         storage: SyndicStorage,
         config: ProjectionServiceConfig,
         scheduled_ordinary_provider: Box<dyn ScheduledOrdinaryExecutionProvider>,
@@ -138,8 +138,25 @@ impl PreparedCasServices {
             service: Some(service),
             handoff: None,
             initial_start: Some(initial_start),
-            candidate: Some(candidate),
         })
+    }
+
+    fn validate_candidate(
+        &self,
+        candidate: &mut HomeOpenPublication,
+    ) -> Result<(), CasPreparationError> {
+        let service = self.service.as_ref().expect("prepared CAS service custody");
+        if candidate.home_id() != service.home_id
+            || candidate.generation() != service.home_generation
+        {
+            return Err(CasPreparationError::CandidateIdentity);
+        }
+        let access = candidate.recovery_access()?;
+        service
+            .storage
+            .revision_candidate(&access)
+            .map_err(|source| ProjectionCoordinatorError::SyndicRevisionUnavailable { source })?;
+        Ok(())
     }
 }
 
@@ -148,7 +165,6 @@ impl Drop for PreparedCasServices {
         drop(self.initial_start.take());
         drop(self.handoff.take());
         drop(self.service.take());
-        drop(self.candidate.take());
     }
 }
 
