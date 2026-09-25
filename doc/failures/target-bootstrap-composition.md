@@ -1065,3 +1065,33 @@ failure, cancellation, failed publication, seeded startup convergence, joined di
 attention and exact enrollment custody. App test-target and default checks passed; independent
 review accepted the corrected publication and retirement boundaries. This accepts neither native
 startup nor restore-set visibility nor full-stack same-home recovery.
+
+## Restore-Set Native Publication Boundary
+
+Independent startup readiness review found that restoration policy, placement fallback, the
+256-window bound, runtime/root fallback and zero-runtime onboarding are already prescribed.
+Implementation still needs restored-window custody distinct from new-window acquisition, since
+new-window abandonment deletes session records that an unsuccessful restore must preserve.
+The threadless storage mutation also currently rejects an existing empty header; an exact
+revision-checked empty-header path is a bounded prerequisite. These findings require no new
+product policy by themselves.
+
+Complete-set native visibility is different. The existing shell publishes windows individually,
+and the accepted GPUI Windows backend performs a fallible native show during each publication.
+With two fully prepared restored windows, the first can become visible and the second can fail.
+An app-only preparation loop therefore cannot prove the strict all-or-nothing visibility promise.
+The [bounded source/API investigation](../memory/topic/native-window-publication/complete-set-failure-boundary.md)
+found no existing complete-set native transaction or documented failure rollback guarantee.
+
+The proposed clean contract, pending Operator decision, is to validate and prepare the complete
+restore set before any native exposure; centralize publication in one bounded set owner; and on
+native publication failure close every window in that attempted set, disable its interactions,
+preserve durable restore records and original unresolved custody, and present the startup failure
+surface. Success is reported only for the entire set. The proposal explicitly allows transient
+exposure of already-validated windows during a native failure; it does not claim rollback of an
+observed frame or simultaneous compositor paint. A native batch may improve presentation, but
+cannot supply an undocumented rollback guarantee.
+
+This is a user-visible failure-contract clarification, not an implementation-private choice.
+No feature authority or GPUI behavior has been changed. Restore-set composition remains paused
+at that decision; accepted service-graph and provider work does not need reopening.

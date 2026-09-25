@@ -102,6 +102,15 @@ window and graceful-shutdown components. Derive bounded implementation phases be
 ordinary executable. The [bootstrap readiness evidence](failures/target-bootstrap-composition.md)
 identifies the remaining gaps without authorizing alternate startup behavior.
 
+Blocked on 2026-09-25 at the native complete-set publication contract. Existing GPUI publication
+is per-window and fallible; a later native show failure can leave an earlier window visible.
+The inspected Windows batch API does not prove zero partial exposure on final failure. The
+Operator must decide whether startup may briefly expose already-validated windows while the
+entire attempted set is closed after native failure, preserving durable restore records and
+presenting startup failure. That clarification changes the strict visibility guarantee; do not
+silently implement it as an app cleanup detail. [Evidence and concrete proposal](failures/target-bootstrap-composition.md#restore-set-native-publication-boundary)
+preserve the remaining bounded prerequisites and the exact decision.
+
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 
 After target executable bootstrap exists, connect the accepted reporter and GUI boundaries before
