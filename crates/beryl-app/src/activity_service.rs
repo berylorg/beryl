@@ -19,7 +19,7 @@ mod preparation;
 pub(crate) use collection::{
     ActivityCollection, ActivityCollectionRequest, ActivityContinuation, ActivityPage,
 };
-pub(crate) use preparation::PreparedActivityService;
+pub(crate) use preparation::{ActivityPreparationError, PreparedActivityService};
 
 #[derive(Clone, Copy)]
 pub(crate) struct ActivityServiceLimits {

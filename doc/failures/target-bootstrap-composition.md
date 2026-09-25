@@ -1036,3 +1036,32 @@ marker preparation tests. Combined preparation, equal-identity reopened-candidat
 foreign handles, cancellation, constructor failures and blocked worker shutdown preserve explicit
 component-before-candidate disposal. The default app check and independent lifecycle review passed.
 No factory publishes the home; complete graph publication remains separately unaccepted.
+
+## Complete Initial Graph Publication And Retirement
+
+The first graph composition attempted fallible Activity admission after home publication. Review
+rejected that extra failure boundary: all provenance validation belongs to private preparation,
+and the uniquely owned prepared Activity service now transfers infallibly alongside the other
+components. No constructor or attachment follows publication. Theme repository loading remains
+the explicitly separate postpublication startup operation.
+
+Review also found that retained attention-pool clones survived graph retirement with admission
+open. Graph disposal and explicit close now close the shared pool after retiring execution workers;
+retained attempts and clones cannot create old-generation attention afterward.
+
+Real enrollment custody exposed an unreachable final shutdown check in run
+`976da1ff-bc8d-479e-acf6-924530aecadb`: CAS maps pending home reconciliation to retry, while the
+graph checked outer proof counts only after CAS reported ready. The pending proof therefore kept
+the graph waiting forever. The graph now also checks retained proof counts on that waiting result
+and returns explicit pending-custody failure without disposing the graph or original proof owner.
+The initial corrected run passed that custody assertion. The shared populated fixture also contains
+an unrelated active turn without a process execution owner; after exact enrollment settlement,
+the test verifies that precise unproven-execution refusal instead of demanding successful shutdown.
+
+Complete initial graph composition is accepted. Run `f80d1d4d-f119-4b95-adc9-871ccbf80ae6`
+passed all sixty graph, Activity, CAS/marker preparation, graceful-shutdown and theme-preparation
+tests. Eight graph cases cover complete publication, delayed theme loading, last-constructor
+failure, cancellation, failed publication, seeded startup convergence, joined disposal, retained
+attention and exact enrollment custody. App test-target and default checks passed; independent
+review accepted the corrected publication and retirement boundaries. This accepts neither native
+startup nor restore-set visibility nor full-stack same-home recovery.

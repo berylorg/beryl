@@ -406,7 +406,7 @@
 - [x] Accepted gated candidate service references with exclusive retirement ownership and [lifecycle evidence](../../failures/target-bootstrap-composition.md#gated-service-references).
 - [x] Joined partial ordinary compaction-worker construction before owner disposal; [acceptance evidence](../../failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
 - [x] Adapted ordinary CAS consumers to non-owning service references with exclusive owner retirement and explicit joined shutdown; [acceptance evidence](../../failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
-- [ ] Publish the complete initialized process service graph after prerequisite recovery and handoff service acceptance, before restore discovery and native startup.
+- [x] Accepted complete initial process service-graph publication and joined retirement with retained proof custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement).
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 - [x] Accepted private marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership).

@@ -76,7 +76,9 @@ pub(crate) mod recovery_preparation;
 pub(crate) mod recovery_retirement;
 #[cfg(feature = "test-faults")]
 pub use graceful_shutdown::GracefulShutdownProbe;
-pub(crate) use graceful_shutdown::{ShutdownAttemptId, ShutdownCoordinatorError, ShutdownProgress};
+pub(crate) use graceful_shutdown::{
+    ShutdownAttemptId, ShutdownCoordinatorError, ShutdownFailure, ShutdownProgress,
+};
 mod process_work;
 pub use process_work::*;
 mod runtime_interest;

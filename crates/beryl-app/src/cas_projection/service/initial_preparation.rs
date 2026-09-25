@@ -34,6 +34,28 @@ pub(crate) enum CasPreparationError {
 }
 
 impl PreparedCasServices {
+    pub(crate) fn activity_read_source(
+        &self,
+    ) -> Option<crate::cas_projection::RuntimeActivityReadSource> {
+        self.service.as_ref()?.activity_read_source()
+    }
+
+    pub(crate) fn into_published_parts(
+        mut self,
+    ) -> (
+        ProjectionConnectionService,
+        crate::discussion_settlement::coordinator::HandoffCoordinator,
+        InitialStartOwner,
+    ) {
+        let handoff = self.handoff.take().expect("complete handoff preparation");
+        let service = self.service.take().expect("prepared CAS service custody");
+        let initial_start = self
+            .initial_start
+            .take()
+            .expect("publication fence custody");
+        (service, handoff, initial_start)
+    }
+
     pub(crate) fn prepare_handoff(
         mut self,
         candidate: &mut HomeOpenPublication,

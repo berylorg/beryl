@@ -49,6 +49,18 @@ impl PreparedActivityService {
         })
     }
 
+    pub(crate) fn into_service(mut self) -> ActivityService {
+        let shared =
+            Arc::get_mut(&mut self.service.shared).expect("unshared prepared Activity service");
+        shared
+            .state
+            .get_mut()
+            .expect("unobserved Activity state")
+            .live = true;
+        self.service
+    }
+
+    #[cfg(test)]
     pub(crate) fn admit_published(
         self,
         home: &HomeStore,

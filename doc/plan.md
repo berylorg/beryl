@@ -73,13 +73,6 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 562: Share Initial Candidate Custody Across Service Preparation (finished)
-
-Accepted borrowed CAS/marker preparation under one graph-owned candidate, with exact later CAS
-provenance validation and joined component disposal before home retirement. All sixteen focused
-tests, the app check and independent lifecycle review passed; [evidence](failures/target-bootstrap-composition.md#shared-initial-candidate-custody).
-Complete graph publication remains the next acceptance boundary.
-
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 
 Only after new exact evidence proves the route and its implementation prerequisites are ready, implement the
@@ -94,24 +87,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 423: Publish The Complete Initial App Service Graph (wip)
+# Phase 423: Publish The Complete Initial App Service Graph (finished)
 
-After every required service factory is independently accepted, compose and publish the complete
-private graph with the same home generation, then release ordinary workers. Verify last-constructor
-failure, cancellation, startup convergence and publication rejection with full cleanup ownership.
-This integration cannot absorb missing service implementations or accept restored GUI visibility.
-Mount retained nondispatch settlement immediately before CAS-live candidate startup recovery,
-and include pending proofs in final shutdown readiness; unsettled proofs require explicit failed
-shutdown with custody retained, never successful pending preservation or process exit.
-Retain the Activity enrollment owner outside replaceable service graphs, settle its retired slots
-before candidate startup recovery, and include its pending slots in final shutdown readiness.
-The required components and target contracts are accepted, including handoff coordination and
-resolution-tool routing and shared initial candidate custody. Compose the graph
-with no fallible constructor or attachment after publication. Typed catalog/settings services need
-no additional idle worker. Theme loading remains postpublication. Initial composition does not
-accept full-stack same-home recovery, native startup or GUI visibility; those retain their own gates.
+Accepted complete initial graph preparation/publication, retained outer proof custody, postpublication
+theme loading and joined retirement. All sixty graph/component regressions, app checks and independent
+review passed; [evidence](failures/target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement).
+Full-stack same-home recovery, native startup and restored GUI visibility remain separate gates.
 
-# Phase 415: Specify Restore-Set Startup Composition (pending)
+# Phase 415: Specify Restore-Set Startup Composition (wip)
 
 Resolve exact restoration custody, complete-set first visibility, threadless empty-session startup,
 placement and native process-lifetime composition in owning authority, using the accepted session,

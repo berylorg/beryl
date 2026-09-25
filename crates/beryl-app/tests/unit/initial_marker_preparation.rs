@@ -70,7 +70,7 @@ fn preparation_preserves_candidate_identity_and_abandonment_retires_shared_state
     assert_eq!(candidate.generation(), generation);
     assert_eq!(reference.health().state(), HomeHealthState::Opening);
     assert!(reference.home_revision().is_err());
-    let shared = prepared.service.clone();
+    let shared = prepared.service.as_ref().unwrap().clone();
     let state = lock_state(&shared.inner);
     assert_eq!(state.home_id, reference.home_id());
     assert_eq!(state.home_generation, generation);
@@ -105,12 +105,15 @@ fn abandoned_component_can_be_prepared_again_on_the_same_owned_candidate() {
     let prepared =
         PreparedMarkerServices::prepare(&mut candidate, storage.clone(), assets.clone(), limits())
             .unwrap();
-    let old = prepared.service.clone();
+    let old = prepared.service.as_ref().unwrap().clone();
     drop(prepared);
     let fresh =
         PreparedMarkerServices::prepare(&mut candidate, storage.clone(), assets.clone(), limits())
             .unwrap();
-    assert!(!Arc::ptr_eq(&old.inner, &fresh.service.inner));
+    assert!(!Arc::ptr_eq(
+        &old.inner,
+        &fresh.service.as_ref().unwrap().inner
+    ));
     assert!(matches!(
         lock_state(&old.inner).lifecycle,
         ServiceLifecycle::Retired(_)
@@ -128,6 +131,30 @@ fn abandoned_component_can_be_prepared_again_on_the_same_owned_candidate() {
     drop(fresh);
     assert_eq!(candidate.health().state(), HomeHealthState::Opening);
     assert_still_owned(&directory);
+    drop(candidate);
+    assert_reopens(&directory);
+}
+
+#[test]
+fn consuming_transfer_preserves_service_until_the_graph_retires_it() {
+    let (directory, mut candidate, storage, assets, _) = candidate();
+    let prepared =
+        PreparedMarkerServices::prepare(&mut candidate, storage, assets, limits()).unwrap();
+    let retained = prepared.service.as_ref().unwrap().clone();
+    let service = prepared.into_service();
+    assert!(Arc::ptr_eq(&retained.inner, &service.inner));
+    assert!(matches!(
+        lock_state(&retained.inner).lifecycle,
+        ServiceLifecycle::Active
+    ));
+    assert_eq!(candidate.health().state(), HomeHealthState::Opening);
+    assert_still_owned(&directory);
+    service.retire_home_generation();
+    assert!(matches!(
+        lock_state(&retained.inner).lifecycle,
+        ServiceLifecycle::Retired(_)
+    ));
+    drop(service);
     drop(candidate);
     assert_reopens(&directory);
 }

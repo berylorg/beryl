@@ -174,12 +174,16 @@ pub use scheduled_ordinary::{
 };
 #[cfg(any(test, feature = "test-faults"))]
 pub use service::SubmissionExecutionWakeTestProbe;
+pub(crate) use service::initial_preparation::{CasPreparationError, PreparedCasServices};
 pub use service::{
     CasProjectionCoordinator, DiscussionResolutionOutcome, LiveHomeCommand, ProcessWorkCursor,
     ProcessWorkError, ProcessWorkFacts, ProcessWorkInventory, ProcessWorkPage,
     ProcessWorkPageLimits, ProcessWorkRecord, ProcessWorkRevision, ProjectionConnectionService,
     ProjectionConnectionServiceCloseError, ProjectionConnectionServiceCloseOutcome,
     ScopedDiscussionResolutionOutcome, SubmissionExecutionWake,
+};
+pub(crate) use service::{
+    ShutdownAttemptId, ShutdownCoordinatorError, ShutdownFailure, ShutdownProgress,
 };
 pub use service_config::{
     ProjectionServiceConfig, ProjectionServiceConfigError, ProjectionWorkerPoolDiagnostics,

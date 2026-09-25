@@ -3,7 +3,7 @@ use beryl_home_store::{HomeCandidateError, HomeOpenPublication, ReadError};
 use super::*;
 
 pub(crate) struct PreparedMarkerServices {
-    service: DraftMarkerSealService,
+    service: Option<DraftMarkerSealService>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -17,6 +17,12 @@ pub(crate) enum MarkerPreparationError {
 }
 
 impl PreparedMarkerServices {
+    pub(crate) fn into_service(mut self) -> DraftMarkerSealService {
+        self.service
+            .take()
+            .expect("prepared marker service custody")
+    }
+
     pub(crate) fn prepare(
         candidate: &mut HomeOpenPublication,
         storage: SyndicStorage,
@@ -35,13 +41,17 @@ impl PreparedMarkerServices {
             inner: new_shared_home_state(home_id, access.generation(), storage, assets, limits),
             home_id,
         };
-        Ok(Self { service })
+        Ok(Self {
+            service: Some(service),
+        })
     }
 }
 
 impl Drop for PreparedMarkerServices {
     fn drop(&mut self) {
-        self.service.retire_home_generation();
+        if let Some(service) = self.service.take() {
+            service.retire_home_generation();
+        }
     }
 }
 

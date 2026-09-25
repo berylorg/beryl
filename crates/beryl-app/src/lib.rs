@@ -180,6 +180,7 @@
 mod branch_discussion_dynamic_tools;
 pub mod cas_projection;
 mod activity_service;
+mod app_services;
 
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../syndic-storage/tests/support/mod.rs"]
