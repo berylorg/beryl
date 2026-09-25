@@ -15,7 +15,7 @@ use crate::runtime_activity_enrollment::{
 
 #[derive(Default)]
 pub(super) struct RuntimeActivityState {
-    token: Option<ActivityPeriodToken>,
+    pub(super) token: Option<ActivityPeriodToken>,
     pending: Option<ActivityEnrollmentAttempt>,
     committed: Option<ActivityEnrollmentWitness>,
 }

@@ -13,12 +13,16 @@ use thiserror::Error;
 use super::persistent_failure::LiveCommandAuthorizer;
 
 mod activity;
+mod activity_read;
 mod managed;
 mod owner;
 mod retry;
 mod session;
 mod worker;
 
+pub(crate) use activity_read::{
+    RuntimeActivityObservation, RuntimeActivityReadError, RuntimeActivityReadSource,
+};
 pub use session::RuntimeSessionAdmissionError;
 
 #[cfg(feature = "test-faults")]

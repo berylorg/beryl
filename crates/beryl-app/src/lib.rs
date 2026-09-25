@@ -179,6 +179,11 @@
 
 mod branch_discussion_dynamic_tools;
 pub mod cas_projection;
+mod activity_service;
+
+#[cfg(all(test, feature = "test-faults"))]
+#[path = "../../syndic-storage/tests/support/mod.rs"]
+mod support;
 pub mod catalog_projection;
 pub mod composer_host;
 pub mod composer_marker_seal;

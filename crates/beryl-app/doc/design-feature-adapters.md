@@ -42,6 +42,11 @@ This supplement is normative only for its bounded beryl-app feature-adapter role
 - One runtime-activity-period identity scopes process-wide activity across turns and switches.
   Runtime teardown, replacement, restart, or same-home replacement ends it; late facts cannot enter
   the next period.
+- Activity readers capture bounded request authority before storage work and preserve that exact
+  runtime scope across failed initial or page reads. Consuming prepared results revalidates their
+  original authority without waiting on runtime locks held by storage work. A busy publication
+  fence invokes no consumer update and permits later revalidation of the same retained result;
+  it never certifies current eligibility or replaces an ended period's authority.
 - Notice adapters accept bounded typed records and exact eligibility and route them to the
   [notifications feature](../../../doc/features/notifications/design.md); they do not choose
   treatment, persistence, dismissal, or sound eligibility.

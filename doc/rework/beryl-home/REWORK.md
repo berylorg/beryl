@@ -428,8 +428,7 @@
   creation, and zero-runtime onboarding through the accepted bounded main-window boundary.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
-- [x] Accepted runtime-scoped Activity producers and closed the unqualified-producer cutover gap; see [integration evidence](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory).
-- [ ] Establish bounded Activity reader service readiness before complete graph publication.
+- [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
 - [x] Established and independently accepted the bounded per-window notice arbiter with protected-condition capacity, exact updates, and stale-action rejection.
 - [x] Established and independently accepted canonical notice color and typography roles with exact supported fallbacks.
 - [x] Implemented and accepted the bounded notice widget with selectable detail, exact commands, focus continuity, inert behavior, and themed rendering.

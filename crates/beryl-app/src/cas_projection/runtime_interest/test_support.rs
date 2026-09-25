@@ -55,6 +55,19 @@ impl RuntimeInterestOwner {
 }
 
 impl RuntimeInterestTestHarness {
+    #[cfg(test)]
+    pub(crate) fn activity_read_source(
+        &self,
+        home_id: beryl_model::BerylHomeId,
+        home_generation: beryl_home_store::HomeGeneration,
+    ) -> Option<super::RuntimeActivityReadSource> {
+        self.owner.activity_read_source(
+            home_id,
+            home_generation,
+            self.owner.shared.commands.service_generation(),
+        )
+    }
+
     pub fn new(config: RuntimeInterestConfig) -> Self {
         Self::for_home(config, beryl_model::BerylHomeId::from_bytes([1; 16]))
     }

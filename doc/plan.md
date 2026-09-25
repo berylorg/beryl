@@ -73,19 +73,12 @@ composition before restore-set and native process-entry integration. Preserve ea
 acceptance boundary and the intentional removal gaps; complete registration alone does not accept
 the service graph or visible startup.
 
-# Phase 557: Connect Runtime-Owned Activity Producers (finished)
+# Phase 558: Establish The Bounded Activity Service (finished)
 
-Accepted runtime enrollment custody, proven-token reuse and exact producer/retirement fencing,
-including delayed target loss and retained-projection preactivation retries. Real storage/runtime,
-streaming, compaction, scheduler and disposal regressions, app checks and independent review passed;
-the producer API cutover gap is closed. [Bootstrap evidence](failures/target-bootstrap-composition.md#remaining-graph-factory-inventory)
-records corrected races and acceptance. Activity reader readiness and graph publication remain open.
-
-# Phase 558: Establish The Bounded Activity Service (pending)
-
-Provide generation-qualified revision-bound Activity pages and an initial dormant factory over
-accepted producer state. Verify current-period eligibility, late-result exclusion, bounded reads,
-failure/retry and disposal; keep GUI mounting and complete graph publication separate.
+Accepted generation- and runtime-qualified bounded Activity queries, captured-scope initial/page
+retry, nonblocking result publication and dormant candidate preparation. All thirteen real-storage
+reader regressions, app checks and independent review passed. [Reader evidence](failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry)
+records publication/retry corrections. GUI mounting and complete graph publication remain open.
 
 # Phase 465: Implement The Private Exact Terminal Repair Adapter (pending)
 

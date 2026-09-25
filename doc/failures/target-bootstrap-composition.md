@@ -982,3 +982,34 @@ checks passed, and independent review accepted original enrollment witness custo
 target capability lifetimes, retained preactivation retries and exact retirement classification.
 No temporary diagnostic probes remain. Bounded Activity reads and complete graph mounting remain
 separate acceptance boundaries.
+
+## Activity Reader Publication And Initial Retry
+
+Early reader review rejected coupling capacity release to the lifecycle/publication mutex.
+Publishing a replacement naturally drops a previous page or collection inside its callback;
+reacquiring that mutex from the capacity destructor deadlocks. Separate atomic capacity counters
+retain fixed bounds while allowing these ordinary drops under the publication fence.
+
+A failed initial read also cannot discard its runtime observation and retry through an unqualified
+thread-only entry point. Such a retry could silently observe a replacement runtime. The reader now
+creates a bounded request with a captured original period before storage I/O, revalidates the
+thread's canonical runtime binding, excludes simultaneous attempts, and retains its scope after
+failure. One successful request produces only one collection; pages share that collection's slot.
+The GUI remains responsible for feedback and selection, while this capability preserves the exact
+identity required to reject obsolete retries and their results. Acceptance remains pending.
+
+Final reader review also rejected blocking runtime mutex acquisition in the consumption-time
+publication fence. Producer enrollment and publication can hold those locks across storage work;
+a worker-side eligibility check cannot protect later GUI use from intervening retirement. The
+final fence must instead return transient busy without invoking its consumer when those locks
+are occupied, preserving the same bounded result for later revalidation. Ordinary off-thread
+observation and storage reads keep their separate worker boundary.
+
+The bounded reader and initial dormant factory are accepted. Run
+`e3b50192-b457-461e-bfb0-e3805910835d` passed all thirteen real-storage reader tests, including
+producer-lock contention, exact initial/page retry scope, old-result release during publication,
+late-result exclusion, bounded capacity, active-read disposal and candidate provenance. The prior
+`c2f875c8-88f0-41a0-9bec-b44f07771a9d` run also passed the existing runtime cleanup regression.
+App test-target and final default checks passed; independent source and test review found no
+remaining blocker. Reader custody never acquires runtime demand, and candidate construction starts
+no ordinary work. GUI adapters and complete service-graph publication remain separate.

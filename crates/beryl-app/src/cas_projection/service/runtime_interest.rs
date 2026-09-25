@@ -7,6 +7,16 @@ use crate::cas_projection::runtime_interest::{
 };
 
 impl ProjectionConnectionService {
+    pub(crate) fn activity_read_source(
+        &self,
+    ) -> Option<crate::cas_projection::RuntimeActivityReadSource> {
+        self.runtime_interest.as_ref()?.activity_read_source(
+            self.home_id,
+            self.home_generation,
+            self.service_generation,
+        )
+    }
+
     #[cfg(feature = "test-faults")]
     pub fn runtime_interest_count_for_test(
         &self,

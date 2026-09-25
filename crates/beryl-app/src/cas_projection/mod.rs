@@ -156,6 +156,9 @@ pub use process_sessions::{
 };
 pub use process_tools::ProcessOrdinaryDynamicToolAuthority;
 pub use runtime::AdmittedProjectionSession;
+pub(crate) use runtime_interest::{
+    RuntimeActivityObservation, RuntimeActivityReadError, RuntimeActivityReadSource,
+};
 pub use runtime_interest::{
     RuntimeActivityPeriod, RuntimeFailure, RuntimeFailureSnapshot, RuntimeInterest,
     RuntimeInterestConfig, RuntimeInterestError, RuntimeInterestKind, RuntimeInterestStatus,
