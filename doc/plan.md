@@ -95,16 +95,16 @@ all-test-target checks pass; independent review found no blockers. [Evidence](fa
 
 # Phase 565: Prepare The Threadless Initial Shell (wip)
 
-Mount the sole zero-runtime ordinary shell without a fabricated selected thread, composer or
-transcript; preserve bounded window identity, appearance, placement and startup disposal.
+Prepare and mount the sole zero-runtime ordinary shell without a fabricated selected thread,
+composer or transcript. Preserve exact session-member identity and placement facts, appearance,
+bounded native reservation and startup disposal. Reuse the ordinary shell root with explicit
+threadless custody that cannot enter acquired-window abandonment. Verify rejection of nonempty
+runtime registries, foreign or stale session/appearance facts, duplicate reservation, hidden mount,
+appearance changes without an editor and disposal preserving the saved member. Keep full native
+placement and complete-set admission in their separate phases.
 
-Blocked on 2026-09-25 during placement readiness: the feature requires a deleted saved virtual
-desktop to fall back specifically to the first desktop. No native desktop-placement consumer
-exists in the app or inspected GPUI Windows boundary, and the documented Windows interface has
-no ordered desktop discovery. Choose explicit support for an undocumented platform boundary or
-revise the product fallback before implementing that promise. Recommended: preserve saved desktop
-placement when available and explicitly allow the current desktop when it cannot be restored.
-This recommendation is not approved authority; [evidence](failures/target-bootstrap-composition.md#virtual-desktop-placement-readiness).
+The Operator approved current-desktop fallback on 2026-09-25, resolving the placement policy
+blocker; [evidence](failures/target-bootstrap-composition.md#virtual-desktop-placement-readiness).
 
 # Phase 570: Bind Window Creation To The Process-Owned Home (pending)
 
@@ -119,6 +119,14 @@ uncertain acquisition/abandonment and graph disposal before empty-session compos
 Compose accepted session discovery, restored preparation and empty-session replacement branches
 under one exact startup attempt, retaining no more than the supported complete window set and
 rejecting missing, stale or failed members without partial admission.
+
+# Phase 571: Apply Prepared Native Window Placement (pending)
+
+Implement bounded startup placement for the prepared shell set: reachable saved geometry and
+monitor selection, saved-desktop restoration through the documented Windows boundary and the
+approved current-desktop fallback. Preserve hidden preparation, exact native identity and failure
+disposal before complete-set publication. Verify changed topology, missing desktop and failed
+desktop restoration without automatic desktop switching or changing another member's placement.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

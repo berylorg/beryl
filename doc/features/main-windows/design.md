@@ -161,9 +161,11 @@ Preserve each window's visible identity and placement without requiring auxiliar
 ## Restore Placement
 
 - Restored main windows return to their previous positions and sizes when those placements remain valid.
-- A window returns to its prior Windows virtual desktop when that desktop still exists.
-- When its prior virtual desktop no longer exists, the window is placed deterministically on the first virtual desktop rather than the currently active desktop.
-- Remaining windows whose prior virtual desktops still exist retain their own prior desktop and placement.
+- Beryl attempts to return each window to its saved Windows virtual desktop.
+- When the saved desktop no longer exists, no saved desktop is known, or Windows cannot restore
+  that placement, the window opens on the current virtual desktop. Beryl does not switch the
+  user's active desktop automatically.
+- A fallback for one window does not change the saved-desktop restoration of other windows.
 - Placement is best-effort when monitor topology, work areas, scale factors, or virtual-desktop configuration changed. Beryl keeps restored windows reachable rather than reproducing invalid off-screen geometry.
 
 ## Startup Surface

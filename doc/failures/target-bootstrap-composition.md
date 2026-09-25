@@ -1174,8 +1174,8 @@ separate.
 Preparing the threadless shell exposed an unimplemented native placement boundary shared by all
 startup windows. At Beryl commit `7c037478`, the app retains `WindowPlacement` through acquisition
 but its shell host opens native windows with default placement. The inspected GPUI Windows source
-contains no virtual-desktop integration. The main-windows feature requires returning to the saved
-desktop and, if it was deleted, specifically choosing the first desktop rather than the current one.
+contains no virtual-desktop integration. The former main-windows contract required returning to
+the saved desktop and, if it was deleted, specifically choosing the first desktop.
 
 Microsoft's documented [IVirtualDesktopManager interface](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ivirtualdesktopmanager)
 (updated 2024-02-22, accessed 2026-09-25) exposes getting a window's desktop ID, testing whether it
@@ -1186,12 +1186,13 @@ returns an HRESULT and does not supply a replacement desktop identity. These sou
 gap in the documented boundary, not that private Windows mechanisms are impossible.
 
 For example, save a Beryl window on Desktop 3, delete that desktop, and restart Beryl from Desktop
-2. The current feature promises Desktop 1. Reopening on Desktop 2 would silently violate that
+2. The former feature promised Desktop 1. Reopening on Desktop 2 would have silently violated that
 promise; using undocumented Explorer state or private interfaces introduces a new platform
 support and failure contract. Root design prohibits an undocumented fallback or workaround.
 
-Recommended decision: retain restoration to the saved desktop when available and explicitly allow
-the current desktop when it cannot be restored, with no automatic desktop switch. Alternatively,
-authorize a separately designed Windows desktop-discovery boundary and its supported-version and
-failure policy. Neither choice has been accepted; phase 565 is blocked before shell implementation.
-The accepted claim-activation implementation and verification remain committed and unaffected.
+The Operator approved the current-desktop fallback on 2026-09-25. Feature authority now permits
+that fallback when no saved desktop is known or its restoration is unavailable, without switching
+the active desktop or changing other members' restoration. This removes the need for desktop
+ordering discovery. Threadless shell preparation resumes; native placement remains a separate
+implementation boundary before complete-set publication. The accepted claim-activation work is
+unaffected.
