@@ -45,10 +45,11 @@ struct MountRoot {
 }
 
 struct MountedSubmissionFixture {
-    _directory: tempfile::TempDir,
     root: Entity<MountRoot>,
     mount: Entity<MainWindowConversationComposerMount>,
     service: Arc<MainWindowConversationComposerService>,
+    _store: beryl_home_store::HomeStore,
+    _directory: tempfile::TempDir,
 }
 
 impl Render for MountRoot {
@@ -91,7 +92,7 @@ fn mounted_enter_flushes_the_dirty_binding_once_then_opens_the_editable_successo
             .unwrap();
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -233,7 +234,7 @@ fn mounted_direct_admission_denial_preserves_the_coherent_draft_and_releases_the
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -352,7 +353,7 @@ fn mounted_empty_submission_preserves_the_coherent_editor_without_retaining_work
             .unwrap();
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -465,6 +466,7 @@ fn mounted_held_submission_suppresses_duplicate_enter_then_drop_drains_without_r
     }));
 
     let MountedSubmissionFixture {
+        _store,
         _directory,
         root,
         mount,
@@ -804,7 +806,7 @@ fn mounted_submission_fixture<'a>(
     let slot = MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority)
         .expect("mounted fixture slot");
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -826,6 +828,7 @@ fn mounted_submission_fixture<'a>(
     drive(cx, 16);
     (
         MountedSubmissionFixture {
+            _store: store,
             _directory: directory,
             root,
             mount,

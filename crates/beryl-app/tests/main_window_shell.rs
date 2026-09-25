@@ -41,8 +41,6 @@ use std::num::NonZeroUsize;
 use syndic_storage::{DraftEditHistoryPolicyV1, SyndicTimestamp};
 
 struct ShellFixture {
-    _directory: tempfile::TempDir,
-    store: Arc<beryl_home_store::HomeStore>,
     service: RuntimeBackedWindowAcquisitionService,
     process: RuntimeBackedWindowProcessRegistry,
     composer: Arc<MainWindowConversationComposerService>,
@@ -54,6 +52,8 @@ struct ShellFixture {
     state: BerylState,
     storage: syndic_storage::SyndicStorage,
     target: RememberedTarget,
+    store: Arc<beryl_home_store::HomeStore>,
+    _directory: tempfile::TempDir,
 }
 
 impl ShellFixture {
@@ -132,7 +132,7 @@ impl ShellFixture {
         )
         .expect("exact window composer slot");
         let composer = Arc::new(MainWindowConversationComposerService::new(
-            store.clone(),
+            store.service_reference(),
             slot,
         ));
         let theme = state.themes();
@@ -253,7 +253,7 @@ impl ShellFixture {
         )
         .unwrap();
         let composer = Arc::new(MainWindowConversationComposerService::new(
-            self.store.clone(),
+            self.store.service_reference(),
             slot,
         ));
         MainWindowShellPrepared::prepare(

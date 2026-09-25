@@ -110,7 +110,7 @@ pub fn mounted<'a>(
             .unwrap();
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -154,6 +154,7 @@ fn configure(
         selection.binding().presentation_generation(),
     );
     config.viewport_extent = px(96.);
+    config.limits.max_realized_block_extent = config.viewport_extent;
     MainWindowConversationComposerConfig::new(selection, config).map_err(|error| error.to_string())
 }
 

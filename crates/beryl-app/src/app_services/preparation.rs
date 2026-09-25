@@ -142,6 +142,7 @@ impl PreparedAppServices {
             .expect("prepared CAS")
             .into_published_parts();
         let graph = PublishedAppServices {
+            restore_lifetime: Some(Arc::new(())),
             process: self.process.clone(),
             shutdown: None,
             shutdown_ready: false,

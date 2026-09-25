@@ -430,6 +430,8 @@
 - [x] Clarified complete restore-set validation and the approved native-publication failure exception; [decision evidence](../../failures/target-bootstrap-composition.md#restore-set-native-publication-boundary).
 - [x] Accepted exact empty-session threadless initialization with revision and identity fencing,
   unchanged schema and retained uncertain-command reconciliation; 18 checks and independent review passed.
+- [x] Accepted distinct restored-editor preparation and disposal with exact source and service-lifetime
+  fences, preserving saved members and original reconciliation; [152-case acceptance](../../failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use beryl_home_store::{
-    CommandCancellation, CommitReceipt, HomeGeneration, HomeStore, ReconciliationHandle,
+    CommandCancellation, CommitReceipt, HomeGeneration, HomeServiceReference, HomeStore,
+    ReconciliationHandle,
 };
 use beryl_state::WindowClaimSelection;
 use syndic_storage::{
@@ -21,7 +22,10 @@ use crate::window_acquisition::{
 };
 
 mod activation;
+mod restored;
 mod retirement;
+
+pub use restored::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MainWindowInitialComposerProgress {
@@ -63,7 +67,6 @@ impl MainWindowInitialComposerPrepared {
         let validation = (|| {
             custody.validate_source()?;
             custody
-                .candidate
                 .acquisition_service
                 .validate_shell_selection(&custody.acquisition, prepared.selection_identity())?;
             let binding = prepared.selection_identity().binding();
@@ -84,6 +87,8 @@ impl MainWindowInitialComposerPrepared {
             acquisition,
             reservation,
             candidate,
+            acquisition_service: _,
+            acquisition_store: _,
         } = custody;
         Ok(super::MainWindowShellPrepared::from_initial_composer(
             acquisition,
@@ -113,14 +118,15 @@ impl MainWindowInitialComposerPrepared {
 }
 
 pub struct MainWindowInitialComposer {
+    acquisition_store: Arc<HomeStore>,
+    acquisition_service: RuntimeBackedWindowAcquisitionService,
     acquisition: RuntimeBackedWindowAcquisition,
     reservation: RuntimeBackedWindowMainWindowReservation,
     candidate: InitialComposerCandidate,
 }
 
 pub(in crate::main_window) struct InitialComposerCandidate {
-    acquisition_service: RuntimeBackedWindowAcquisitionService,
-    store: Arc<HomeStore>,
+    store: Arc<HomeServiceReference>,
     storage: SyndicStorage,
     home_generation: HomeGeneration,
     claim: WindowClaimSelection,
@@ -191,37 +197,19 @@ impl MainWindowInitialComposer {
             }
         };
         Ok(Self {
+            acquisition_store: store.clone(),
+            acquisition_service,
             acquisition,
             reservation,
-            candidate: InitialComposerCandidate {
-                acquisition_service,
-                store,
-                host: Some(SyndicComposerHost::new(storage.clone())),
+            candidate: InitialComposerCandidate::new(
+                Arc::new(store.service_reference()),
                 storage,
                 home_generation,
                 claim,
                 request,
                 retirement_operation,
-                marker_authority: Some(marker_authority),
-                service: None,
-                open: None,
-                open_reconciliation: None,
-                open_receipt: None,
-                opened: None,
-                open_terminal: false,
-                activated: false,
-                retirement_started: false,
-                preparation_started: false,
-                abandonment: None,
-                abandonment_reconciliation: None,
-                abandonment_receipt: None,
-                #[cfg(feature = "test-faults")]
-                before_open: None,
-                #[cfg(feature = "test-faults")]
-                before_retirement: None,
-                #[cfg(feature = "test-faults")]
-                before_open_classification: None,
-            },
+                marker_authority,
+            ),
         })
     }
 
@@ -233,13 +221,11 @@ impl MainWindowInitialComposer {
         if self.candidate.store.health().generation() != Some(self.candidate.home_generation) {
             return Err("initial composer home generation changed".to_owned());
         }
-        self.candidate
-            .acquisition_service
-            .validate_initial_composer_claim(
-                &self.acquisition,
-                self.candidate.claim,
-                &self.candidate.store,
-            )
+        self.acquisition_service.validate_initial_composer_claim(
+            &self.acquisition,
+            self.candidate.claim,
+            &self.acquisition_store,
+        )
     }
 
     #[cfg(feature = "test-faults")]
@@ -276,5 +262,46 @@ impl MainWindowInitialComposer {
         fault: impl FnOnce(&HomeStore, SyndicStorage) + Send + 'static,
     ) {
         self.candidate.before_open_classification = Some(Box::new(fault));
+    }
+}
+
+impl InitialComposerCandidate {
+    pub(super) fn new(
+        store: Arc<HomeServiceReference>,
+        storage: SyndicStorage,
+        home_generation: HomeGeneration,
+        claim: WindowClaimSelection,
+        request: ComposerHostActivationRequest,
+        retirement_operation: DraftPieceOperationIdV1,
+        marker_authority: MainWindowComposerMarkerMetadataAuthority,
+    ) -> Self {
+        InitialComposerCandidate {
+            store,
+            host: Some(SyndicComposerHost::new(storage.clone())),
+            storage,
+            home_generation,
+            claim,
+            request,
+            retirement_operation,
+            marker_authority: Some(marker_authority),
+            service: None,
+            open: None,
+            open_reconciliation: None,
+            open_receipt: None,
+            opened: None,
+            open_terminal: false,
+            activated: false,
+            retirement_started: false,
+            preparation_started: false,
+            abandonment: None,
+            abandonment_reconciliation: None,
+            abandonment_receipt: None,
+            #[cfg(feature = "test-faults")]
+            before_open: None,
+            #[cfg(feature = "test-faults")]
+            before_retirement: None,
+            #[cfg(feature = "test-faults")]
+            before_open_classification: None,
+        }
     }
 }

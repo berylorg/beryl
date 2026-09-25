@@ -30,6 +30,7 @@ use support::{activation, drive, fixture::Fixture, widget_config};
 struct SelectedFixture {
     service: Arc<MainWindowConversationComposerService>,
     marker_seals: DraftMarkerSealService,
+    _store: beryl_home_store::HomeStore,
     _directory: tempfile::TempDir,
 }
 
@@ -71,10 +72,11 @@ impl SelectedFixture {
         let (directory, store, _) = fixture.into_store();
         Self {
             service: Arc::new(MainWindowConversationComposerService::new(
-                Arc::new(store),
+                store.service_reference(),
                 slot,
             )),
             marker_seals,
+            _store: store,
             _directory: directory,
         }
     }

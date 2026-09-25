@@ -33,9 +33,10 @@ use std::{
 mod composer_support;
 
 pub struct ComposerFixture {
-    _directory: tempfile::TempDir,
     service: Arc<MainWindowConversationComposerService>,
     seals: DraftMarkerSealService,
+    _store: beryl_home_store::HomeStore,
+    _directory: tempfile::TempDir,
 }
 
 impl ComposerFixture {
@@ -71,10 +72,11 @@ impl ComposerFixture {
         Self {
             _directory: directory,
             service: Arc::new(MainWindowConversationComposerService::new(
-                Arc::new(store),
+                store.service_reference(),
                 slot,
             )),
             seals,
+            _store: store,
         }
     }
 

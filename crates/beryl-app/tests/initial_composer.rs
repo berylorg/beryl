@@ -6,6 +6,8 @@ mod composer_support;
 mod gpui_cases;
 #[path = "main_window_shell/support.rs"]
 mod home_support;
+#[path = "initial_composer/restored.rs"]
+mod restored_cases;
 #[path = "initial_composer/support.rs"]
 mod support;
 

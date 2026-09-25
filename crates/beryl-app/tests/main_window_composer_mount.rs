@@ -65,14 +65,14 @@ use syndic_storage::{
 use support::{Fixture, operation_id};
 
 struct MountedMarkerFixture {
-    directory: tempfile::TempDir,
-    store: Arc<beryl_home_store::HomeStore>,
     service: Arc<MainWindowConversationComposerService>,
     target_thread: SyndicThreadId,
     target_claim: beryl_state::WindowClaimSelection,
     assets: beryl_state::AssetState,
     marker_seals: beryl_app::composer_marker_seal::DraftMarkerSealService,
     image_asset: AssetId,
+    store: Arc<beryl_home_store::HomeStore>,
+    directory: tempfile::TempDir,
 }
 
 fn mounted_marker_fixture(
@@ -109,7 +109,10 @@ fn mounted_marker_fixture(
     MountedMarkerFixture {
         directory,
         store: store.clone(),
-        service: Arc::new(MainWindowConversationComposerService::new(store, slot)),
+        service: Arc::new(MainWindowConversationComposerService::new(
+            store.service_reference(),
+            slot,
+        )),
         target_thread,
         target_claim,
         assets,
@@ -200,7 +203,7 @@ fn native_lineage_recovery_restores_the_exact_selected_composer(cx: &mut gpui::T
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
@@ -445,7 +448,7 @@ fn native_lineage_routes_cycle_without_duplicate_or_stale_gui_custody(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let (_directory, service, marker_seals, thread, unrelated_thread, target_claim) =
+    let (_directory, _store, service, marker_seals, thread, unrelated_thread, target_claim) =
         native_lineage_cycles_fixture();
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
     let first_key = control
@@ -772,7 +775,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
 
@@ -1029,7 +1032,7 @@ fn native_lineage_capacity_denial_stays_visible_and_rearms_after_exact_retiremen
 #[gpui::test]
 fn native_lineage_late_flights_drain_after_route_cancellation(cx: &mut gpui::TestAppContext) {
     cx.update(ensure_text_input_bindings);
-    let (_directory, service, marker_seals, thread) = native_lineage_late_flights_fixture();
+    let (_directory, _store, service, marker_seals, thread) = native_lineage_late_flights_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1135,7 +1138,7 @@ fn native_lineage_late_settlement_drains_after_actual_mount_and_service_drop(
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let gate = service.test_gate_next_native_lineage_validation().unwrap();
@@ -1263,7 +1266,7 @@ fn native_lineage_disposal_reconciliation_drains_after_actual_mount_and_service_
         MainWindowComposerSlot::new(window_id, claim, host, storage.clone(), marker_authority)
             .unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     let weak_service = Arc::downgrade(&service);
@@ -1413,7 +1416,7 @@ fn native_lineage_prompt_survives_disposal_admission_and_advance_failures(
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
@@ -1546,7 +1549,7 @@ fn native_lineage_pending_turn_leaves_without_remounting_or_focusing_a_composer(
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let control = NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap());
@@ -1639,7 +1642,7 @@ fn mounted_commands_are_selection_qualified_and_shift_enter_stays_a_newline(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let (_directory, service, marker_seals) = mounted_commands_fixture();
+    let (_directory, _store, service, marker_seals) = mounted_commands_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -1724,6 +1727,7 @@ fn mount_retains_one_coherent_contribution_until_exact_publish_and_disposal(
     cx.update(ensure_text_input_bindings);
     let MountedMarkerFixture {
         directory: _directory,
+        store: _store,
         service,
         target_thread,
         target_claim,
@@ -2085,6 +2089,7 @@ fn mounted_terminal_anchor_marker_run_remains_proven_for_successive_edits(
     cx.update(ensure_text_input_bindings);
     let MountedMarkerFixture {
         directory: _directory,
+        store: _store,
         service,
         marker_seals,
         image_asset,
@@ -2180,6 +2185,7 @@ fn recoverable_mounted_autosave_releases_rearms_and_does_not_spin(cx: &mut gpui:
     cx.update(ensure_text_input_bindings);
     let MountedMarkerFixture {
         directory: _directory,
+        store: _store,
         service,
         assets,
         marker_seals,
@@ -2310,7 +2316,7 @@ fn disposal_flush_joins_mounted_autosave_and_publishes_live_dirty_successor(
     cx: &mut gpui::TestAppContext,
 ) {
     cx.update(ensure_text_input_bindings);
-    let (_directory, service, marker_seals, assets) = autosave_disposal_fixture();
+    let (_directory, _store, service, marker_seals, assets) = autosave_disposal_fixture();
     let mounted_service = service.clone();
     let (root, cx) = cx.add_window_view(|window, cx| {
         let mount = cx.new(|mount_cx| {
@@ -3245,6 +3251,7 @@ fn dispose_selected_marker_mount(
 
 fn mounted_commands_fixture() -> (
     tempfile::TempDir,
+    beryl_home_store::HomeStore,
     Arc<MainWindowConversationComposerService>,
     beryl_app::composer_marker_seal::DraftMarkerSealService,
 ) {
@@ -3268,14 +3275,15 @@ fn mounted_commands_fixture() -> (
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
-    (_directory, service, marker_seals)
+    (_directory, store, service, marker_seals)
 }
 
 fn autosave_disposal_fixture() -> (
     tempfile::TempDir,
+    beryl_home_store::HomeStore,
     Arc<MainWindowConversationComposerService>,
     beryl_app::composer_marker_seal::DraftMarkerSealService,
     beryl_state::AssetState,
@@ -3301,14 +3309,15 @@ fn autosave_disposal_fixture() -> (
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
-    (_directory, service, marker_seals, assets)
+    (_directory, store, service, marker_seals, assets)
 }
 
 fn native_lineage_cycles_fixture() -> (
     tempfile::TempDir,
+    beryl_home_store::HomeStore,
     Arc<MainWindowConversationComposerService>,
     beryl_app::composer_marker_seal::DraftMarkerSealService,
     SyndicThreadId,
@@ -3336,11 +3345,12 @@ fn native_lineage_cycles_fixture() -> (
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     (
         _directory,
+        store,
         service,
         marker_seals,
         thread,
@@ -3351,6 +3361,7 @@ fn native_lineage_cycles_fixture() -> (
 
 fn native_lineage_late_flights_fixture() -> (
     tempfile::TempDir,
+    beryl_home_store::HomeStore,
     Arc<MainWindowConversationComposerService>,
     beryl_app::composer_marker_seal::DraftMarkerSealService,
     SyndicThreadId,
@@ -3365,7 +3376,7 @@ fn native_lineage_late_flights_fixture() -> (
     let (_directory, store, storage) = fixture.into_store();
     let binding = seed_native_lineage_marker_candidate(&store, &storage, thread, marker_asset);
     let service = reopen_native_lineage_service(
-        store,
+        &store,
         storage,
         window_id,
         claim,
@@ -3373,7 +3384,7 @@ fn native_lineage_late_flights_fixture() -> (
         thread,
         binding,
     );
-    (_directory, service, marker_seals, thread)
+    (_directory, store, service, marker_seals, thread)
 }
 
 fn seed_native_lineage_marker_candidate(
@@ -3414,7 +3425,7 @@ fn seed_native_lineage_marker_candidate(
 }
 
 fn reopen_native_lineage_service(
-    store: beryl_home_store::HomeStore,
+    store: &beryl_home_store::HomeStore,
     storage: syndic_storage::SyndicStorage,
     window_id: beryl_model::WindowId,
     claim: beryl_state::WindowClaimSelection,
@@ -3439,7 +3450,7 @@ fn reopen_native_lineage_service(
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     service

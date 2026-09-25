@@ -182,7 +182,10 @@ fn production_owner_settles_committed_edit_and_failed_cut_through_widget(
         ));
     }
     let store = Arc::new(store);
-    let service = Arc::new(MainWindowConversationComposerService::new(store, slot));
+    let service = Arc::new(MainWindowConversationComposerService::new(
+        store.service_reference(),
+        slot,
+    ));
     let writes = Arc::new(AtomicUsize::new(0));
     let observed_writes = writes.clone();
     let configuration = MainWindowConversationComposerConfig::new(selection, base_widget).unwrap();
@@ -317,7 +320,7 @@ fn composite_clipboard_orders_markers_and_cuts_only_after_write(cx: &mut gpui::T
     let selection = slot.selected_identity().unwrap();
     assert_eq!(selection.binding(), binding);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let writes = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -441,7 +444,7 @@ fn composite_clipboard_enforces_cap_and_release_fence(cx: &mut gpui::TestAppCont
     let selection = slot.selected_identity().unwrap();
     assert_eq!(selection.binding(), binding);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let writes = Arc::new(AtomicUsize::new(0));
@@ -581,7 +584,7 @@ fn marker_menu_and_preview_mount_and_dismiss_through_real_gpui_surfaces(
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let selection = slot.selected_identity().unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let mut input_config = widget_config(selection.binding().range_binding(), 1024);
@@ -856,7 +859,7 @@ fn cancelled_marker_removal_releases_the_exact_surface_attachment(cx: &mut gpui:
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let selection = slot.selected_identity().unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let configuration = MainWindowConversationComposerConfig::new(
@@ -953,7 +956,7 @@ fn late_cut_preparation_is_fenced_after_successful_clipboard_write(cx: &mut gpui
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let selection = slot.selected_identity().unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let writes = Arc::new(Mutex::new(Vec::<String>::new()));

@@ -42,11 +42,12 @@ impl Render for Root {
 }
 
 struct Fixture {
-    _directory: tempfile::TempDir,
     service: Arc<MainWindowConversationComposerService>,
     mount: Entity<MainWindowConversationComposerMount>,
     control: NativeLineageRecoveryControl,
     fail_config: Arc<AtomicBool>,
+    _store: beryl_home_store::HomeStore,
+    _directory: tempfile::TempDir,
 }
 
 fn fixture(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, &mut gpui::VisualTestContext) {
@@ -71,7 +72,7 @@ fn fixture(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, &mut gpui::Visu
     let slot =
         MainWindowComposerSlot::new(window_id, claim, host, storage, marker_authority).unwrap();
     let service = Arc::new(MainWindowConversationComposerService::new(
-        Arc::new(store),
+        store.service_reference(),
         slot,
     ));
     let mounted_service = service.clone();
@@ -119,6 +120,7 @@ fn fixture(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, &mut gpui::Visu
         mount,
         control: NativeLineageRecoveryControl::for_test(NonZeroUsize::new(1).unwrap()),
         fail_config,
+        _store: store,
     };
     wait(cx, &fixture.mount, "initial editor", |cx| {
         fixture.mount.read_with(cx, |mount, app| {

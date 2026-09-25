@@ -244,14 +244,32 @@ fn pending_and_ready_close_preserve_resident_interaction_and_failure_releases_on
     navigate(&input, "ctrl-home shift-right shift-right shift-right", cx);
     let selected = input.read_with(cx, |input, _| input.surface().unwrap().selection());
     assert_ne!(selected, before.1);
-    let scroll_before = input.read_with(cx, |input, _| input.surface().unwrap().scroll_position());
+    input
+        .update(cx, |input, cx| input.request_absolute_scroll(px(0.), cx))
+        .unwrap();
+    drive_until(cx, "readonly wheel initial viewport", |cx| {
+        input.read_with(cx, |input, _| {
+            input.is_quiescent() && input.surface().unwrap().scroll_block() == px(0.)
+        })
+    });
+    let frame = cx.debug_bounds("composer-frame").unwrap();
+    let scroll_before = input.read_with(cx, |input, _| {
+        let surface = input.surface().unwrap();
+        assert!(surface.content_height() > frame.size.height);
+        assert_eq!(surface.selection(), selected);
+        surface.scroll_block()
+    });
     cx.simulate_event(ScrollWheelEvent {
         position: frame.center(),
         delta: ScrollDelta::Pixels(point(px(0.), px(-48.))),
         modifiers: Modifiers::none(),
         ..Default::default()
     });
-    drive(cx, 4);
+    drive_until(cx, "readonly wheel scroll", |cx| {
+        input.read_with(cx, |input, _| {
+            input.is_quiescent() && input.surface().unwrap().scroll_block() > scroll_before
+        })
+    });
     let interactive_state = input.read_with(cx, |input, _| {
         let surface = input.surface().unwrap();
         (
@@ -260,8 +278,8 @@ fn pending_and_ready_close_preserve_resident_interaction_and_failure_releases_on
             surface.scroll_position(),
         )
     });
-    assert_ne!(
-        interactive_state.2, scroll_before,
+    assert!(
+        input.read_with(cx, |input, _| input.surface().unwrap().scroll_block()) > scroll_before,
         "readonly wheel input must scroll the resident viewport"
     );
     ready(&fixture, close.ticket, cx);

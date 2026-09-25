@@ -9,10 +9,10 @@ pub(super) struct ScaleSetup {
     pub marker_asset: beryl_model::AssetId,
     pub assets: beryl_state::AssetState,
     pub marker_seals: beryl_app::composer_marker_seal::DraftMarkerSealService,
-    pub directory: tempfile::TempDir,
-    pub store: Arc<beryl_home_store::HomeStore>,
     pub storage: syndic_storage::SyndicStorage,
     pub service: Arc<MainWindowConversationComposerService>,
+    pub store: Arc<beryl_home_store::HomeStore>,
+    pub directory: tempfile::TempDir,
 }
 
 #[inline(never)]
@@ -50,7 +50,7 @@ pub(super) fn prepare_scale_fixture() -> ScaleSetup {
     .unwrap();
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     ScaleSetup {

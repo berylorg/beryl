@@ -52,6 +52,7 @@ impl ProcessServiceOwner {
             .as_mut()
             .ok_or(AppServiceCloseError::Unavailable)?;
         let fence = self.process.fence()?;
+        drop(graph.restore_lifetime.take());
         graph.shutdown = Some(
             graph
                 .cas
@@ -86,6 +87,7 @@ impl ProcessServiceOwner {
             ShutdownProgress::Failed { reason, reopened } => {
                 if reopened {
                     graph.shutdown = None;
+                    graph.restore_lifetime = Some(Arc::new(()));
                 }
                 Ok(AppServiceShutdownProgress::Failed { reason, reopened })
             }

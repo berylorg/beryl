@@ -87,23 +87,34 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 563: Initialize A Threadless Window From An Exact Empty Session (finished)
+# Phase 564: Establish Exact Restored-Window Preparation Custody (finished)
 
-Accepted exact empty-header initialization with monotonic revision, collision rejection and
-original reconciliation custody. Eighteen session/schema/restart and corruption checks passed,
-along with the State all-test-target check and independent review. Zero-runtime eligibility
-remains the startup composer's responsibility; stored schema is unchanged.
+Accepted distinct restored-editor custody, exact source checks, graph/attempt lifetime fences and
+typed home service references. All 152 applicable regression cases, app all-test-target/default
+checks and independent semantic review passed; [evidence](failures/target-bootstrap-composition.md#restored-editor-service-lifetime).
+Claim activation and native transfer retain their separate boundaries below.
 
-# Phase 564: Establish Exact Restored-Window Preparation Custody (pending)
+# Phase 569: Settle Restored Claim Activation Before Selected-Editor Transfer (wip)
 
-Prepare existing session windows and paired restoring claims without new-window acquisition or
-abandonment authority; retain exact command outcomes and transient editor cleanup through failure,
-cancellation and retry while preserving every durable restore member.
+After bounded editor-candidate readiness, execute and settle the exact restoring-to-active claim
+command before forming the final selected editor. Retain original command custody and the saved
+member after failure; no compensating delete or guessed reset. Carry the resulting exact claim
+into the selected editor, and recognize only the startup owner's known sibling session-revision
+advancements without adopting changed windows or claims. Verify uncertain activation, sibling
+ordering, stale external changes and cleanup before passing this component to whole-set startup.
 
 # Phase 565: Prepare The Threadless Initial Shell (pending)
 
 Mount the sole zero-runtime ordinary shell without a fabricated selected thread, composer or
 transcript; preserve bounded window identity, appearance, placement and startup disposal.
+
+# Phase 570: Bind Window Creation To The Process-Owned Home (pending)
+
+Bind the existing runtime-backed acquisition/creation consumers
+to process-owned home service references; their current owning-handle constructor is not a valid
+graph handoff. Keep exact acquisition provenance and typed prepublication abandonment while
+preserving process lifecycle ownership. Verify foreign/stale reference rejection, cancellation,
+uncertain acquisition/abandonment and graph disposal before empty-session composition.
 
 # Phase 566: Coordinate The Bounded Complete Restore Set (pending)
 

@@ -89,7 +89,7 @@ pub(super) fn configured_mount(
             )
             .unwrap();
             let service = Arc::new(MainWindowConversationComposerService::new(
-                fixture.store.clone(),
+                fixture.store.service_reference(),
                 slot,
             ));
             *captured.lock().unwrap() = Some(service.clone());

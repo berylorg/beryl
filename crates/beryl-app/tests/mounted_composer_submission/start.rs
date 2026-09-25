@@ -262,6 +262,7 @@ fn dropping_a_start_wait_cancels_the_timer_without_admitting_submission(
     let weak = fixture.mount.downgrade();
     let MountedSubmissionFixture {
         _directory,
+        _store,
         root,
         mount,
         service,
@@ -287,6 +288,7 @@ fn dropping_a_start_wait_cancels_the_timer_without_admitting_submission(
     cx.update(|window, _| window.remove_window());
     drop((composer, input, root, service));
     cx.run_until_parked();
+    drop(_store);
     _directory.close().unwrap();
 }
 
@@ -342,11 +344,13 @@ fn finish(fixture: MountedSubmissionFixture, cx: &mut gpui::VisualTestContext) {
     cx.update(|window, _| window.remove_window());
     let MountedSubmissionFixture {
         _directory,
+        _store,
         root,
         mount,
         service,
     } = fixture;
     drop((root, mount, service));
     cx.run_until_parked();
+    drop(_store);
     _directory.close().unwrap();
 }

@@ -16,6 +16,24 @@ impl ProcessServiceOwner {
 }
 
 impl PublishedAppServices {
+    pub(crate) fn restored_window_attempt(
+        &self,
+    ) -> Result<crate::main_window::RestoredWindowPreparationAttempt, String> {
+        if self.shutdown.is_some() {
+            return Err("service graph is shutting down".to_owned());
+        }
+        crate::main_window::RestoredWindowPreparationAttempt::new(
+            Arc::new(self.home().service_reference()),
+            self.state.session(),
+            self.syndic.clone(),
+            Arc::downgrade(
+                self.restore_lifetime
+                    .as_ref()
+                    .ok_or_else(|| "restore service generation is retired".to_owned())?,
+            ),
+        )
+    }
+
     pub(crate) fn home(&self) -> &HomeStore {
         self.home.as_ref().expect("published home")
     }

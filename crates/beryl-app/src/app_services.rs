@@ -90,6 +90,7 @@ pub(crate) struct ProcessServiceOwner {
 }
 
 pub(crate) struct PublishedAppServices {
+    restore_lifetime: Option<Arc<()>>,
     process: ProcessAdmissionGate,
     shutdown: Option<crate::cas_projection::ShutdownAttemptId>,
     shutdown_ready: bool,
@@ -165,6 +166,7 @@ impl ProcessServiceOwner {
 
 impl Drop for PublishedAppServices {
     fn drop(&mut self) {
+        drop(self.restore_lifetime.take());
         let _ = self.process.fence();
         drop(self.handoff.take());
         if let Some(activity) = self.activity.take() {

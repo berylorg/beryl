@@ -1102,3 +1102,49 @@ fresh-home-only threadless sentence and distinguishing never-exposed new acquisi
 from restored or possibly exposed record preservation. Bounded storage, restored-custody,
 threadless-shell, restore-set, native-publication and native-attempt phases now carry implementation;
 the process-entry fatal-hook gate remains separate.
+
+## Restored Editor Service Lifetime
+
+Restored-window preparation cannot reuse newly acquired-window validation: that path proves
+pristine-thread and acquisition provenance and grants record abandonment. A restored conversation
+instead needs an exact session member, paired restoring claim, execution binding and durable draft,
+with transient editor retirement that cannot delete the saved member.
+
+Initial implementation review exposed a second boundary: home identity alone did not prove that
+the published service graph and startup attempt were still live. A unique graph-owned lifetime
+fence now retires with shutdown or disposal, and a reopened graph grants new authority rather than
+reviving old attempts. The attempt has its own retirement fence. Cleanup keeps original editor
+command custody even after those admission fences retire.
+
+Connecting that fence exposed the selected editor's older `Arc<HomeStore>` ownership requirement.
+The process graph owns the lifecycle handle, so shared editor state now takes only a typed
+`HomeServiceReference`; test fixtures explicitly retain their lifecycle owners. A graph regression
+holds a restore attempt across shutdown and home reopen to verify that preparation cannot keep the
+old home alive. Restoring-to-active claim settlement remains a separate boundary before final
+selected-editor transfer, since activation changes the exact claim identity used by the editor.
+
+The wider mounted-editor run caught three fixture destructures that discarded their sole owning
+home through `..` after the reference conversion. Their editor correctly lost storage access;
+weakening production ownership would have hidden the fixture error. Retain the home explicitly
+through consumer disposal, including before any explicit temporary-directory close.
+
+The initial regression selection also included the full 257-marker scale gate, whose accepted
+[runtime evidence](composer-scale-workflow-runtime.md#final-scale-verification) records about
+85 minutes. That run was stopped after confirming its exact child identity, and its exact
+temporary fixture was reclaimed. This ownership change uses the accepted focused large-draft
+disposal, EOF and boundary-movement regressions; it does not reopen the full scale acceptance gate.
+
+One close test also assumed a forward wheel event would move an already bottom-clamped viewport
+and compared a logical source anchor rather than pixel scrolling. A bounded completion wait alone
+did not fix that invalid precondition. Its ordinary-interaction fixture also supplied 64 pixels
+of rendering capacity for a 96-pixel viewport. The corrected test uses matching capacity, establishes
+pixel scroll zero and available range, then verifies real read-only wheel scrolling and settlement
+while preserving selection/copy and close-state assertions. No widget implementation changed.
+
+Acceptance: the broad run `9e95833c-d389-4a24-858f-59db15a8ba0c` supplied 148 passing cases;
+`cbe8516b-b633-4a13-a46f-9c4323704dce` passed the three corrected ownership cases and five submission
+start cases; `7b4116f1-d50d-4a09-af9b-d1e40addae84` passed all ten close cases after the wheel fixture
+correction. Together all 152 applicable cases pass, including seven new restored-editor cases,
+the graph lifetime check and the three focused scale cases. The full scale case was intentionally
+stopped, not counted as passing. App all-test-target and default checks pass; independent semantic
+review accepts distinct restored custody and the service-lifetime correction.

@@ -8,7 +8,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use beryl_home_store::{CommandCancellation, HomeStore};
+use beryl_home_store::{CommandCancellation, HomeServiceReference, HomeStore};
 use gpui::BackgroundExecutor;
 use gpui_text_input::{
     RangePrepublicationValidationRequest, RangePrepublicationValidationResponse,
@@ -192,7 +192,7 @@ impl Future for PendingCompletionTestGate {
 }
 
 pub struct MainWindowConversationComposerService {
-    pub(super) store: Arc<HomeStore>,
+    pub(super) store: Arc<HomeServiceReference>,
     pub(super) slot: Mutex<MainWindowComposerSlot>,
     window_close: Mutex<Option<crate::main_window::MainWindowConversationComposerCloseTicket>>,
     native_lineage_sources: Mutex<Vec<Arc<MainWindowNativeLineagePrepublicationSource>>>,
@@ -310,9 +310,9 @@ impl MainWindowConversationComposerService {
             .test_submission_diagnostics())
     }
 
-    pub fn new(store: Arc<HomeStore>, slot: MainWindowComposerSlot) -> Self {
+    pub fn new(store: HomeServiceReference, slot: MainWindowComposerSlot) -> Self {
         Self {
-            store,
+            store: Arc::new(store),
             slot: Mutex::new(slot),
             window_close: Mutex::new(None),
             native_lineage_sources: Mutex::new(Vec::with_capacity(2)),

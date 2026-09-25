@@ -488,7 +488,7 @@ fn recovery_switch_fixture() -> (
     .unwrap();
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     (

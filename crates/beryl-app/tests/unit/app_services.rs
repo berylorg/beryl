@@ -157,6 +157,8 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
         )
         .unwrap();
     let graph = owner.graph_mut().unwrap();
+    let restore_attempt = graph.restored_window_attempt().unwrap();
+    assert!(restore_attempt.validate_lifetime().is_ok());
     assert_eq!(graph.home().home_id(), home_id);
     assert_eq!(graph.home().health().generation(), Some(generation));
     assert_eq!(graph.home().health().state(), HomeHealthState::Healthy);
@@ -181,6 +183,7 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
         Err(AppServiceOpenError::AlreadyInstalled)
     ));
     close(&mut owner);
+    assert!(restore_attempt.validate_lifetime().is_err());
     assert!(owner.graph().is_none());
     assert_eq!(themes.diagnostics().active_subscriptions(), 0);
     assert_reopens(&directory);

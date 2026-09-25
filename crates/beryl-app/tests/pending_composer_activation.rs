@@ -123,7 +123,7 @@ fn activate_mounted_composer_fixture(
     slot_setup(&mut slot);
     let store = Arc::new(store);
     let service = Arc::new(MainWindowConversationComposerService::new(
-        store.clone(),
+        store.service_reference(),
         slot,
     ));
     MountedComposerFixture {
