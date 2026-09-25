@@ -444,6 +444,8 @@
   typed retained command outcomes; [87-case acceptance](../../failures/target-bootstrap-composition.md#complete-restore-set-coordination).
 - [x] Accepted prepared native outer bounds, exact monitor validation and failed-construction cleanup;
   [evidence](../../failures/target-bootstrap-composition.md#prepared-native-outer-bounds).
+- [x] Accepted bounded worker geometry resolution and exact saved-window/native-monitor binding;
+  [evidence](../../failures/target-bootstrap-composition.md#worker-placement-resolution).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

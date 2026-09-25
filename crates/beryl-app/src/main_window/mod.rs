@@ -7,6 +7,7 @@ mod image_marker_surface;
 mod initial_composer;
 mod marker_metadata_authority;
 mod notices;
+mod placement;
 mod restoration;
 mod shell;
 
@@ -19,5 +20,6 @@ pub use image_marker_surface::*;
 pub use initial_composer::*;
 pub use marker_metadata_authority::*;
 pub use notices::*;
+pub use placement::*;
 pub use restoration::*;
 pub use shell::*;

@@ -125,6 +125,31 @@ governed by [design.md](design.md). It does not independently declare engineerin
   review covers the native lifetime and coordinate boundary. Beryl-owned authority for this fork
   requirement remains here; no fork Markdown or document index is required.
 
+## Window Placement Preparation
+
+- Worker placement preparation binds one exact window identity and its immutable saved placement
+  to one chosen monitor snapshot and resolved outer logical rectangle. It creates no HWND and
+  changes no durable placement. The native consumer must match the window and saved facts before
+  construction; another window's preparation is not interchangeable.
+- Monitor selection visits current monitors once and retains only the best candidate. Prefer an
+  exact saved monitor identity. Otherwise choose greatest intersection with the saved logical
+  rectangle, then shortest squared distance between rectangle centers; use monitor identity as a
+  deterministic tie-breaker. Windows monitor identities use the GPUI snapshot UUID's canonical
+  string form. No match depends on monitor enumeration order.
+- For an exact identity whose work area moved, translate the saved rectangle by the displacement
+  from the saved work-area origin to the current origin. Otherwise retain the saved origin before
+  clamping. Preserve the saved size whenever it fits; cap oversized dimensions to the chosen work
+  area and clamp the origin so the resolved rectangle is inside that area. This is best-effort
+  restore geometry; the shell's normal minimum-size policy still applies at native construction.
+- Use finite checked geometry throughout, including extreme persisted integer coordinates and
+  dimensions. Invalid monitor facts or no usable monitor fail preparation explicitly. Normal or
+  maximized state and the optional saved virtual-desktop identity pass through unchanged; geometry
+  fallback cannot silently substitute a desktop or rewrite the saved record.
+- Verification covers unchanged geometry, moved or missing saved monitors, changed work areas,
+  oversized/offscreen windows, negative origins, fractional scale-derived work areas, deterministic
+  ties, extreme saved values, no-monitor failure and exact prepared-window binding. Windows worker
+  discovery must compose directly with the accepted bounded GPUI monitor visitor.
+
 ## Startup And Activation
 
 - Startup accepts only the validated minimal session plus each restored window's selected thread,

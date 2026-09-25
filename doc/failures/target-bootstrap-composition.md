@@ -1304,3 +1304,19 @@ Published GPUI revision: `cd3ad9f2c49d2ecdd7a8578c0e8946fdfdc3dcd3`; aligned scr
 text-input and settings revisions are `4f49c46b624276c6dddaa0ee0179313420667df6`,
 `36516394ae6532b9e1b1e820ece54bdfa2368105` and `e3cd45f7afe99f7655a4cd44ad11983b047aea4f`.
 App geometry selection and virtual-desktop application remain the following boundary.
+
+## Worker Placement Resolution
+
+The app resolver streams monitor candidates and retains one winner, preferring the exact saved
+monitor before intersection, distance and deterministic identity ordering. Matching moved work
+areas translate saved offsets; oversized and offscreen rectangles are clamped into the selected
+work area. Checked finite `f64` intermediates cover persisted `i32`/`u32` extremes without overflow
+or unbounded monitor retention. Complete saved-placement equality fences reuse by another window
+or changed placement; display state and desktop remain unchanged. The Windows wrapper retains
+the selected native snapshot inside the same private candidate, without creating a window.
+
+Final run `a54b2e08-0a90-4d0c-8cb0-ac2ddcb26894` passed all nine tests, including actual worker
+discovery, moved/missing monitors, competing overlap/distance preferences, deterministic ties,
+fractional work areas, invalid facts, extreme sizes and binding failures. The app check and
+independent semantic review passed. Conversion into native creation options, desktop movement
+and lifetime integration remain separate work.

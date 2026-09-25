@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 573: Support Prepared Outer Bounds At The Native Boundary (finished)
+# Phase 574: Resolve Bounded Worker Window Placement (finished)
 
-Accepted explicit outer-coordinate GPUI construction with bounded monitor snapshots, checked
-conversion and exact partial-native cleanup. Three new native/conversion tests, 74 regressions,
-app checks, canonical single-GPUI resolution and independent review pass;
-[evidence](failures/target-bootstrap-composition.md#prepared-native-outer-bounds).
+Accepted deterministic one-candidate monitor selection, translated/clamped outer geometry and
+exact saved-window binding, composed with native worker discovery. All nine focused tests,
+app check and independent semantic review pass;
+[evidence](failures/target-bootstrap-composition.md#worker-placement-resolution).
 
 # Phase 571: Apply Prepared Native Window Placement (wip)
 
