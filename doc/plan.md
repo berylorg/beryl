@@ -87,12 +87,17 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 580: Expose Exact Native Window Destruction Completion (finished)
+# Phase 581: Preserve Acquired Records Through Transient Retirement (finished)
 
-Accepted exact-instance terminal destruction receipts with one completion channel, lease deferral
-and explicit failure. Real native scenarios, 59 affected regressions, package checks and independent
-lifecycle review pass. The qualified fork and aligned widget revisions are published;
-[evidence](failures/target-bootstrap-composition.md#native-destruction-completion).
+Accepted distinct record-preserving cleanup with original candidate/reservation retention through
+uncertainty. Both new tests, 65 regressions, default package check and independent semantic review
+pass; [evidence](failures/target-bootstrap-composition.md#acquired-record-preserving-retirement).
+
+# Phase 582: Fence Startup Interaction And Reentrant Close (pending)
+
+Keep enrolled shell commands and composer mutation closed through complete-set admission, including
+lifecycle promotion and native close reentrancy. Qualify the required dependency close boundary
+before startup-set integration; preserve ordinary window behavior after transfer.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

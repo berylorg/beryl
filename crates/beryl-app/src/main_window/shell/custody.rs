@@ -34,25 +34,31 @@ impl MainWindowShellUnpublished {
         self.acquisition.window_id()
     }
 
+    pub fn preserve_records(self) -> MainWindowShellRecordPreservingRetirement {
+        MainWindowShellRecordPreservingRetirement { custody: self }
+    }
+
+    fn retire_initial_composer(&mut self, cancellation: CommandCancellation) -> Result<(), String> {
+        if let Some(candidate) = self.initial_composer.as_mut() {
+            if !candidate.drive_retirement(cancellation)? {
+                return Err("initial composer retirement remains pending".to_owned());
+            }
+            self.initial_composer = None;
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn prepare_abandonment(
         mut self,
         service: &RuntimeBackedWindowAcquisitionService,
         cancellation: CommandCancellation,
     ) -> MainWindowShellAbandonmentPreparationOutcome {
-        if let Some(candidate) = self.initial_composer.as_mut() {
-            let error = match candidate.drive_retirement(cancellation.clone()) {
-                Ok(true) => None,
-                Ok(false) => Some("initial composer retirement remains pending".to_owned()),
-                Err(error) => Some(error),
+        if let Err(error) = self.retire_initial_composer(cancellation.clone()) {
+            return MainWindowShellAbandonmentPreparationOutcome::InitialComposerPending {
+                unpublished: self,
+                error,
             };
-            if let Some(error) = error {
-                return MainWindowShellAbandonmentPreparationOutcome::InitialComposerPending {
-                    unpublished: self,
-                    error,
-                };
-            }
-            self.initial_composer = None;
         }
         let Self {
             acquisition,
@@ -82,6 +88,37 @@ impl MainWindowShellUnpublished {
             RuntimeBackedWindowAbandonmentPreparationOutcome::Collision { window_id } => {
                 MainWindowShellAbandonmentPreparationOutcome::Collision { window_id }
             }
+        }
+    }
+}
+
+pub struct MainWindowShellRecordPreservingRetirement {
+    custody: MainWindowShellUnpublished,
+}
+
+pub enum MainWindowShellRecordPreservingRetirementOutcome {
+    Retired,
+    Pending {
+        custody: MainWindowShellRecordPreservingRetirement,
+        error: String,
+    },
+}
+
+impl MainWindowShellRecordPreservingRetirement {
+    pub fn window_id(&self) -> beryl_model::WindowId {
+        self.custody.window_id()
+    }
+
+    pub fn retire(
+        mut self,
+        cancellation: CommandCancellation,
+    ) -> MainWindowShellRecordPreservingRetirementOutcome {
+        match self.custody.retire_initial_composer(cancellation) {
+            Ok(()) => MainWindowShellRecordPreservingRetirementOutcome::Retired,
+            Err(error) => MainWindowShellRecordPreservingRetirementOutcome::Pending {
+                custody: self,
+                error,
+            },
         }
     }
 }

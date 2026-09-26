@@ -1494,6 +1494,24 @@ the matching rag-rat walker traverses non-Markdown directories and propagates ra
 Discovery and reconciliation succeeded after test cleanup. Git-ignoring `/.tmp/` now prunes that
 temporary tree before traversal; a target-file exclusion alone would not do so in the pinned build.
 
+## Acquired Record-Preserving Retirement
+
+The existing acquired-shell cleanup retires its fresh candidate and then exposes acquisition
+abandonment, which may delete pristine fallback records. That authority cannot be reused once
+startup publication begins. A separate opaque move-only owner now settles only the original fresh
+candidate and releases its reservation after proof, with no conversion back to abandonment.
+Cancellation, uncertainty and changed-candidate rejection retain the original custody.
+
+Focused run `748a7bcc-2ff6-44e0-a047-dbf086b4d1bd` passes both new tests, covering normal settlement,
+cancellation, acknowledgement loss, exact retry, unchanged session/claim, candidate disposal,
+subsequent restoration and an already-retired candidate. The initial test fixture omitted the
+required begin-restore transition; correcting the fixture makes restoration use the normal protocol.
+All 65 existing initial-composer, shell and creation regressions pass in
+`11d5dcc6-0e2f-4f8d-b76e-878f300f6f3e`, including changed-candidate rejection through the shared
+retirement implementation. Default package check and independent semantic review pass.
+This accepts worker-side transient retirement only; native destruction and set interaction remain
+separate prerequisites.
+
 ## Saved Desktop Worker
 
 The Windows worker consumes the exact hidden lease and optional saved identity, converts canonical

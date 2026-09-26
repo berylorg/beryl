@@ -335,6 +335,12 @@ governed by [design.md](design.md). It does not independently declare engineerin
   Original restored records are never eligible for that protocol. Once native publication starts,
   the attempted set instead preserves its durable records through native-failure disposal; a
   successfully or possibly exposed member cannot be reclassified as never visible to delete it.
+- Acquired fallback transient retirement has a distinct move-only custody type with no acquisition
+  abandonment operation. It settles only the original fresh editor candidate, retaining its exact
+  reservation on cancellation, rejection or uncertain settlement. Proven retirement releases the
+  transient reservation without deleting the acquired window, thread, draft or session record.
+  This worker-side boundary does not certify native destruction or ordinary mutable-editor close;
+  native-set ownership separately proves destruction and keeps interaction gated throughout.
 - The process lifetime owns startup-attempt identity, failure-surface commands and retained
   enrollment, nondispatch and home-reconciliation custody outside each attempted graph. Retry
   admits only one new attempt for the same configured home after prior native/transient disposal
