@@ -103,6 +103,19 @@ Publish the fence while the required validation guards remain held; verify conte
 evidence and refusal preserve execution authority. Keep native confirmation and process-owner
 mounting in phase 595.
 
+Architectural blocker identified on 2026-09-26: retaining exact guards for every registered
+connection through publication violates the shutdown bound independent of historical registry
+size. Retired connections can retain mutable cleanup/promotion custody after their workers release,
+so worker capacity and terminal-only classification cannot bound the remaining guard collection.
+Independent concurrency/resource review confirmed the [evidence](failures/shutdown-confirmation-admission.md#retaining-every-source-guard-violates-the-connection-bound).
+The unaccepted prototype was removed; accepted observation primitives remain intact.
+
+Recommend a service-owned connection-work observation/election boundary covering membership and
+custody transitions, so atomic validation retains constant observation state. This introduces a
+shared synchronization boundary requiring Operator architectural direction and owning design
+authority before implementation. Do not substitute a historical-entry quota or pre-confirmation
+retirement/drain. Re-derive bounded verification and publication composition after that decision.
+
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the

@@ -1,4 +1,4 @@
-# Shutdown Confirmation Admission Lock Ordering
+# Shutdown Confirmation Admission Ordering And Retention
 
 ## Invalidated Composition
 
@@ -61,5 +61,47 @@ validates exact observation/store identity and unchanged mutation interval, then
 mutation, reconciliation and health guards through the caller's publication. Observation precedes
 the durable reads; returning successfully does not retain proof for a later publication. All 27
 focused tests passed as run `399f44a3-f217-49d1-baac-d8afffed4616`, together with the default package
-check and independent concurrency/integrity review. Runtime-source validation and complete
-shutdown admission remain unimplemented and are not accepted by this home-store evidence.
+check and independent concurrency/integrity review. Nonblocking runtime-only revision checks
+and a borrowed backend response read guard were subsequently accepted. Complete shutdown
+admission remains unaccepted; point-in-time reads alone do not supply atomic publication proof.
+
+## Retaining Every Source Guard Violates The Connection Bound
+
+On 2026-09-26, the phase 603 prototype retained authority, forwarding attachment, router and
+response guards for every registered connection through observed home election and process-fence
+publication. Five focused admission tests passed, including guard retention, stale home intervals,
+contention and unchanged execution authority on refusal. Those tests did not cover registry growth.
+Independent resource/concurrency review rejected the whole-registry guard collection, and the
+unaccepted prototype was removed. The accepted backend response guard remains available.
+
+The app [shutdown connection contract](../../crates/beryl-app/doc/design-live-projection-and-scheduling.md)
+requires bounded retained handles independently of historical registry size. The regression
+`tests/unit/shutdown_connection_traversal.rs::failed_inventory_exceeds_worker_capacity_with_one_borrowed_handle`
+demonstrates nine retained failed connections with worker capacity four. Four guard vectors
+indexed by that complete registry violate the contract even without cloning connection Arcs.
+
+Terminal classification alone does not establish a bound on the remaining mutable entries:
+
+- `connection/driver.rs::DriverContext::retire_attachment` calls nonwaiting `retire_locked`.
+  In `connection/authority.rs`, `complete_retirement_locked` leaves retirement incomplete while
+  cleanup or promotion owners remain.
+- Driver exit and `connection/provider_broker/ingester/lifecycle.rs::mark_terminal` can return
+  worker custody. `ConnectionCleanupOwner` and `ConnectionPromotionReservation` retain command
+  and connection custody without worker permits, so retired mutable entries can exceed capacity.
+- Cleanup/promotion acquisition uses an already-held command permit under connection authority;
+  retaining process and command-gate locks does not by itself freeze every custody transition.
+- `persistent_failure/coordinator/worker.rs::freeze_and_dispatch_targets` closes/drains admission
+  and seals router state. Its bounded worker-backed capture cannot be copied into a side-effect-free
+  shutdown decision or refusal.
+
+These source paths are relative to `crates/beryl-app/src/cas_projection/`. A fully retired, detached
+entry with completed retirement and no remaining owners can be folded into counters, but that
+does not cover all supported mutable retired entries.
+
+Recommended architectural correction: establish a service-owned connection-work observation and
+election boundary covering membership and custody transitions, allowing exact revision validation
+and publication with constant retained observation state. Its ownership, mutation coverage and
+lock ordering need explicit design authority before implementation. Do not impose an arbitrary
+historical-entry quota, discard failed-join evidence, speculate retirement or drain admission before
+confirmation. Phase 603 is paused for Operator direction on this architectural boundary; ordinary
+close/Exit mounting remains dependent on its acceptance.
