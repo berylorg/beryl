@@ -9,6 +9,18 @@ pub(super) enum InitialServiceAttemptState {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn initial_attempt_is_settled(&self) -> bool {
+        self.graph.is_none()
+            && self.failed_close.is_none()
+            && self.failed_retirement.is_none()
+            && matches!(
+                self.attempt,
+                InitialServiceAttemptState::Initial | InitialServiceAttemptState::Retired(_)
+            )
+            && self.windows.main_window_occupancy() == 0
+            && self.require_settled_custody().is_ok()
+    }
+
     pub(super) fn admit_initial_attempt(
         &mut self,
         candidate: &HomeOpenPublication,

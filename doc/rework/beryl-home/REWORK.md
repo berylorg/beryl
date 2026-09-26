@@ -466,7 +466,7 @@
 - [x] Qualified explicit GPUI application lifetime across zero-window cleanup and reopening; [evidence](../../failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
 - [x] Accepted explicit blocked-startup cleanup presentation and user-requested Quit Anyway, preserving exact attempt and ordinary Exit semantics.
 - [x] Accepted failed-home retirement of the complete startup service graph, retaining exact failure custody and granting Retry only after proven disposal.
-- [ ] Compose the native startup owner using the accepted explicit application lifetime option.
+- [x] Accepted the native startup owner with fixed-home Retry/Exit, exact retained cleanup and immediate complete-set handoff; [evidence](../../failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation). Executable mounting and ordinary running-window shutdown remain separate.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).

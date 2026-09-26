@@ -52,6 +52,11 @@ mod window_services {
     ));
 }
 
+#[cfg(target_os = "windows")]
+mod startup_owner {
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/app_services/startup_owner.rs"));
+}
+
 fn fixture() -> (
     tempfile::TempDir,
     HomeOpenPublication,

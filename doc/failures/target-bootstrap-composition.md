@@ -1887,10 +1887,10 @@ The [main-window startup contract](../features/main-windows/design.md#startup-su
 [app startup ownership](../../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership)
 require closing the complete attempted set before failure presentation, while retaining unresolved
 native, command and home custody. The [home failure contract](../features/beryl-home/design.md#unreadable-store-at-startup)
-defines Exit as a cleanup request, not permission to discard that custody. It does not yet define
-presentation when cleanup itself cannot complete. Current `StartupSurface::complete_failure`
-reenables Retry; `request_exit` permanently closes local admission and rejects later failure-detail
-updates. Neither is a blocked-cleanup presentation protocol.
+defined Exit as a cleanup request, not permission to discard that custody. At review time it lacked
+presentation when cleanup itself could not complete. `StartupSurface::complete_failure` then
+reenabled Retry; `request_exit` permanently closed local admission and rejected later failure-detail
+updates. Neither supplied a blocked-cleanup presentation protocol.
 
 Operator approved the blocked-cleanup exception and a distinct explicit Quit Anyway action.
 The [feature](../features/beryl-home/design.md#startup-cleanup-blocked) now authorizes bounded
@@ -1931,3 +1931,21 @@ retained exact home reconciliation, failure after graph consumption, and narrow 
 classification. The other 27 affected service/recovery cases passed in the preceding broad run;
 default app-library check and independent custody review pass. This is startup-only retirement,
 not the running-session replacement supervisor or completed native startup-owner mounting.
+
+The native startup controller is now accepted. It retains fixed configured-home and immutable
+factory inputs, serializes Retry, replaces preparation cancellation with the native cancellation
+handle, and joins original completions before service disposal or ordinary Exit. Native success
+immediately hands the complete graph, set, appearance and sticky Exit intent to ordinary process
+ownership, including any still-owned Retry-surface destruction receipt. Auxiliary disposal after
+that transfer cannot reclassify interactive main windows as failed restoration. Presentation
+unavailability returns original custody through a required callback; native, command, home or
+consumed-service failure never becomes Retry or clean-quit proof merely because handles are gone.
+
+Nextest run `4f528653-2285-4be8-bb86-b5c9e9867b6c` passes all 47 selected app-service and startup-
+surface cases. Six real owner cases cover busy Exit, exact same-home serialized Retry with Exit
+during opening, native validation cancellation/join, full-set success with deferred Exit surviving
+auxiliary removal, native failure followed by fresh service Retry with the original session member,
+and consumed retirement failure that blocks Retry and orderly Exit. Native cases use the explicit
+zero-window lifetime without a sentinel and a durably installed system-font fixture theme.
+Default app-library check and independent lifecycle review pass. Ordinary running-window shutdown
+and the executable composition root remain separate unmounted boundaries.

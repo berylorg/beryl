@@ -347,6 +347,21 @@ by the executable composition root.
 
 ## Restore-Set Startup Ownership
 
+- The process startup controller retains one fixed configured-home path and immutable service and
+  window-source inputs. Its required composition-root opener receives that path and the current
+  preparation cancellation, returning the complete private typed candidate, busy ownership, or an
+  explicit failure with any original unsuccessful-close custody. Retry cannot replace the opener,
+  path or unsettled service owner. Storage opening, Settings/theme loading, restore preparation and
+  service disposal run on workers; GUI callbacks admit only bounded command intent.
+- Native whole-set success invokes the required process-owner handoff immediately with the complete
+  service graph, published set, appearance owner, sticky Exit intent and any remaining auxiliary
+  startup-surface destruction custody. The old error surface stays present throughout pending Retry.
+  After success its separate native destruction may settle under ordinary process ownership; neither
+  wrapper removal nor transfer grants clean-quit proof. An admitted deferred Exit survives removal
+  through the persistent command owner. Auxiliary disposal failure after that handoff cannot turn
+  already-interactive main windows back into a failed startup set. Failure-surface allocation or
+  destruction-authority failure returns explicit unavailable-presentation custody to the required
+  process callback, without claiming disposal or authorizing ordinary quit.
 - One process-owned startup attempt retains the complete published service graph and at most the
   session's 256 exact main-window members. It discovers the minimal session only after service
   publication, loads Settings/theme through their startup boundaries, and selects one complete

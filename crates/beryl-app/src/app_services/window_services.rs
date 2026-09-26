@@ -12,6 +12,7 @@ use crate::{
 };
 use beryl_model::{WindowId, WindowPlacement};
 
+#[derive(Clone)]
 pub(crate) struct MainWindowServiceInputs {
     pub(crate) request_source: MainWindowCreationRequestSource,
     pub(crate) activation_source: MainWindowCreationActivationSource,

@@ -87,28 +87,29 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 594: Retire Failed Published Startup Services (finished)
+# Phase 568: Compose The Native Startup Attempt Owner (finished)
 
-Accepted whole-graph failed-startup retirement with exact CAS terminal proof, joined components,
-retained failure/home custody and original-fence reopening. Six new cases and 27 affected
-regressions, default package check and independent custody review pass.
+Accepted fixed-home serialized Retry/Exit, worker preparation and graph disposal, immediate complete
+native success handoff with auxiliary destruction custody, and blocked original failure retention.
+All 47 selected service/surface cases, including six real owner integration cases, pass; the default
+app-library check and independent lifecycle review pass.
 [Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
 
-# Phase 568: Compose The Native Startup Attempt Owner (pending)
+# Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
-Connect accepted service-graph, restore-set and native-publication components to one process
-lifetime owner with serialized same-home Retry/Exit, exact failure surfaces and retained shutdown
-custody. Preserve the separate process-entry fatal-hook mounting gate.
-Drain native operation flights and deferred GUI destruction before ordinary application quit or
-Retry; a stopped GUI executor cannot complete their ownership protocol.
+Connect the accepted process shutdown coordinator and resident-preserving close primitives to the
+ordinary process window owner. Share serialized final-window designation with construction,
+implement exact side-effect-free native confirmation, preserve ordinary-close versus Exit restore
+modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
+slices and verification from the main-windows feature and app lifecycle authority before activation.
 
-Use the accepted startup-only `with_quit_on_last_window_close(false)` GPUI lifetime option;
-[the zero-window executor failure](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime)
-must not be concealed by a production sentinel window.
+# Phase 596: Reconstruct The Executable Bootstrap (pending)
 
-Operator approved the blocked-cleanup presentation and explicit Quit Anyway exception. Complete
-phases 593 and 594 before this composition; retain original custody until proven disposal or
-explicit user-requested termination. [Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
+Connect normalized fixed-home configuration, complete private domain registration, immutable
+service/window inputs and required startup/running ownership at the sole executable entry.
+Preserve the explicit zero-window GPUI lifetime, diagnostic-target protocol, required unavailable
+feature states and fatal-hook ordering; remove the intentional placeholder only at this boundary.
+Phase 382 owns production crash-reporter mounting and its isolated process evidence.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

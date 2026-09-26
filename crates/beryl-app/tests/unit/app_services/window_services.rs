@@ -3,7 +3,7 @@ use crate::{main_window::*, theme_runtime::AppearanceGeneration};
 use beryl_model::{RootId, RuntimeId, WindowBounds, WindowDisplayState, WindowId, WindowPlacement};
 use beryl_state::RememberedTarget;
 
-fn inputs() -> MainWindowServiceInputs {
+pub(super) fn inputs() -> MainWindowServiceInputs {
     MainWindowServiceInputs {
         request_source: Arc::new(|_, _| panic!("request source must remain uncalled")),
         activation_source: Arc::new(|_| Err("no acquired editor in this fixture".to_owned())),
@@ -37,7 +37,7 @@ fn appearance(owner: &mut ProcessServiceOwner) -> Arc<AppearanceGeneration> {
     graph.theme().unwrap().current().unwrap()
 }
 
-fn placement() -> WindowPlacement {
+pub(super) fn placement() -> WindowPlacement {
     WindowPlacement::new(
         WindowBounds::new(0, 0, 800, 600).unwrap(),
         WindowDisplayState::Normal,

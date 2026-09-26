@@ -40,6 +40,7 @@ use attempt::InitialServiceAttemptState;
 pub(crate) use shutdown::{AppServiceCloseError, AppServiceShutdownProgress};
 pub(crate) use window_services::{MainWindowServiceInputs, PublishedMainWindowServices};
 
+#[derive(Clone)]
 pub(crate) struct AppServiceConfiguration {
     pub(crate) projection: ProjectionServiceConfig,
     pub(crate) runtime_interest: RuntimeInterestConfig,
