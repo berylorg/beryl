@@ -31,6 +31,13 @@ mod initial_disposal {
     ));
 }
 
+mod reopening {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/reopening.rs"
+    ));
+}
+
 fn fixture() -> (
     tempfile::TempDir,
     HomeOpenPublication,

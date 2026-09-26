@@ -25,12 +25,15 @@ impl ProcessServiceOwner {
         &mut self,
         result: Result<(), beryl_home_store::HomeCloseError>,
     ) {
+        self.attempt = InitialServiceAttemptState::Blocked;
         if let Err(error) = result {
             assert!(
                 self.failed_close.is_none(),
                 "initial disposal cannot replace retained close custody"
             );
             self.failed_close = Some(error);
+        } else if self.failed_close.is_none() {
+            let _ = self.record_initial_retirement();
         }
     }
 
@@ -45,6 +48,11 @@ impl ProcessServiceOwner {
     #[cfg(feature = "test-faults")]
     pub(crate) fn test_cancel_initial_worker_release(&mut self) {
         self.cancel_initial_worker_release = true;
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub(crate) fn test_fail_shutdown_completion(&mut self) {
+        self.fail_shutdown_completion = true;
     }
 }
 

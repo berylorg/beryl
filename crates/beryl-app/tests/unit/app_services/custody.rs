@@ -217,3 +217,46 @@ fn rejected_foreign_initial_candidate_does_not_discard_retained_enrollment() {
     assert!(home.pending_reconciliations().is_empty());
     home.close().unwrap();
 }
+
+#[test]
+fn same_home_candidate_cannot_replace_pending_process_enrollment_custody() {
+    let (directory, candidate, _, syndic, faults) = fixture();
+    let mut owner = owner(&candidate);
+    let home = candidate.publish().unwrap();
+    install_uncertain_enrollment(&owner, &home, &syndic, &faults);
+    let original = home.pending_reconciliations().pop().unwrap();
+    assert!(matches!(
+        home.retry_reconciliation(&original).unwrap(),
+        beryl_home_store::ReconciliationResolution::ExactNew { .. }
+    ));
+    assert_eq!(owner.enrollments.pending_count(), 1);
+    home.close().unwrap();
+    let (candidate, state, syndic) = super::reopening::candidate_at(&directory);
+    let reference = candidate.service_reference();
+    let failure = owner
+        .open_initial(
+            candidate,
+            state,
+            syndic,
+            configuration(),
+            support::timestamp(101),
+            CommandCancellation::new(),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        failure.error,
+        AppServiceOpenError::UnsettledCustody(AppServiceCloseError::PendingCustody {
+            enrollments: 1,
+            nondispatch: 0
+        })
+    ));
+    assert_eq!(owner.enrollments.pending_count(), 1);
+    assert!(owner.graph().is_none());
+    let candidate = failure.rejected_candidate.unwrap();
+    assert_eq!(candidate.home_id(), owner.home_id);
+    let home = candidate.publish().unwrap();
+    assert!(reference.home_revision().is_ok());
+    assert_eq!(owner.enrollments.pending_count(), 1);
+    drop(owner);
+    home.close().unwrap();
+}

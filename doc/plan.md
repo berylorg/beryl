@@ -87,18 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 588: Retain Failed Initial Service Disposal Custody (finished)
+# Phase 589: Reopen Proven-Retired Initial Service Attempts (finished)
 
-Accepted consuming prepared/unstarted-service disposal, explicit home closure, returned rejected
-candidates and retained original close failures. All 70 selected tests, package checks and
-independent lifecycle review pass, including real uncertain-command custody;
-[evidence](failures/target-bootstrap-composition.md#initial-service-attempt-disposal-prerequisite).
-
-# Phase 589: Reopen Proven-Retired Initial Service Attempts (pending)
-
-Add exact same-home service-attempt reopening after joined graph/home retirement, preserving the
-original process gate, enrollment and nondispatch owners. Reject unresolved or stale reopening and
-keep ordinary running-session shutdown cancellation separate.
+Accepted explicit attempt state and exact-fence reopening before fresh service construction,
+preserving original process custody and stale-reference rejection. All 37 selected service,
+admission and shutdown tests, both package checks and independent lifecycle review pass;
+[evidence](failures/target-bootstrap-composition.md#proven-retired-initial-service-reopening).
 
 # Phase 590: Build Window Services From The Published Graph (pending)
 

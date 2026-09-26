@@ -430,6 +430,14 @@ governed by [design.md](design.md). It does not independently declare engineerin
   graph retirement and home closure have settled, using the exact process reopening fence. A
   retained close or reconciliation failure blocks reopening. This startup-attempt transition does
   not reopen ordinary mutable windows after a cancelled running-session shutdown.
+  The service owner distinguishes initial admission, owned preparation, an installed graph, proven
+  retirement and blocked retirement. Only initial or proven-retired authority may admit another
+  candidate, and rejection returns that candidate unchanged. Proven retirement retains its exact
+  process fence; Retry cannot replace a stale fence with a newly observed one. Reopening checks
+  settled outer custody and admission reservations, reopens that exact gate, then constructs fresh
+  services behind their separate worker-start fence. Fresh services must not capture execution
+  permits while the process gate is fenced, and old permits/references remain invalid. Failed graph
+  shutdown never creates retirement authority, including errors after graph consumption.
 - Startup verification includes failure of the last required preparation, stale first-member
   completion, native failure after an earlier member shows, reentrant close/Retry, cancellation,
   unchanged durable restore records after failed restoration, exact empty-header threadless

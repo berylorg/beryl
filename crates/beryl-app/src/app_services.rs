@@ -22,17 +22,19 @@ use crate::{
         coordinator::HandoffCoordinator,
     },
     lifecycle_attention::ProcessLifecycleAttentionPool,
-    process_admission::ProcessAdmissionGate,
+    process_admission::{ProcessAdmissionError, ProcessAdmissionFence, ProcessAdmissionGate},
     runtime_activity_enrollment::{
         ActivityEnrollmentCustodyError, RuntimeActivityEnrollmentOperations,
     },
     theme_runtime::{PreparedThemeRuntime, ThemeRuntimeConfig, ThemeRuntimeStartError},
 };
 
+mod attempt;
 mod initial_disposal;
 mod preparation;
 mod published;
 mod shutdown;
+use attempt::InitialServiceAttemptState;
 pub(crate) use shutdown::{AppServiceCloseError, AppServiceShutdownProgress};
 
 pub(crate) struct AppServiceConfiguration {
@@ -58,6 +60,10 @@ pub(crate) enum AppServiceOpenError {
     RuntimeUnavailable,
     #[error("prepared worker startup was cancelled")]
     StartupCancelled,
+    #[error("initial service reopening failed: {0}")]
+    Reopening(ProcessAdmissionError),
+    #[error("initial service reopening retains unsettled custody: {0}")]
+    UnsettledCustody(AppServiceCloseError),
     #[error(transparent)]
     Candidate(#[from] HomeCandidateError),
     #[error(transparent)]
@@ -110,7 +116,7 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 pub(crate) struct ProcessServiceOwner {
     graph: Option<PublishedAppServices>,
     failed_close: Option<beryl_home_store::HomeCloseError>,
-    published_once: bool,
+    attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
     process: ProcessAdmissionGate,
     enrollments: RuntimeActivityEnrollmentOperations,
@@ -120,6 +126,8 @@ pub(crate) struct ProcessServiceOwner {
         Option<Box<dyn FnOnce(&mut HomeOpenPublication, &BerylState, &SyndicStorage) + Send>>,
     #[cfg(feature = "test-faults")]
     cancel_initial_worker_release: bool,
+    #[cfg(feature = "test-faults")]
+    fail_shutdown_completion: bool,
 }
 
 pub(crate) struct PublishedAppServices {
@@ -150,7 +158,7 @@ impl ProcessServiceOwner {
         Self {
             graph: None,
             failed_close: None,
-            published_once: false,
+            attempt: InitialServiceAttemptState::Initial,
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
             settlements: DiscussionSettlementOperations::new(process.clone(), settlement_slots),
@@ -159,6 +167,8 @@ impl ProcessServiceOwner {
             before_initial_publication: None,
             #[cfg(feature = "test-faults")]
             cancel_initial_worker_release: false,
+            #[cfg(feature = "test-faults")]
+            fail_shutdown_completion: false,
         }
     }
 
@@ -175,15 +185,9 @@ impl ProcessServiceOwner {
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
     ) -> Result<(), AppServiceOpenFailure> {
-        if self.published_once || self.graph.is_some() || self.failed_close.is_some() {
+        if let Err(error) = self.admit_initial_attempt(&candidate) {
             return Err(AppServiceOpenFailure {
-                error: AppServiceOpenError::AlreadyInstalled,
-                rejected_candidate: Some(candidate),
-            });
-        }
-        if candidate.home_id() != self.home_id {
-            return Err(AppServiceOpenFailure {
-                error: AppServiceOpenError::ForeignHome,
+                error,
                 rejected_candidate: Some(candidate),
             });
         }
@@ -231,7 +235,7 @@ impl ProcessServiceOwner {
                 rejected_candidate: None,
             });
         }
-        self.published_once = true;
+        self.attempt = InitialServiceAttemptState::Published;
         Ok(())
     }
 }

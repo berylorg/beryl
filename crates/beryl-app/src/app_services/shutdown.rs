@@ -108,6 +108,10 @@ impl ProcessServiceOwner {
             return Err(AppServiceCloseError::NotReady);
         }
         self.require_settled_custody()?;
+        if self.failed_close.is_some() {
+            return Err(AppServiceCloseError::Home);
+        }
+        self.attempt = InitialServiceAttemptState::Blocked;
         let mut graph = self.graph.take().expect("ready graph");
         let handoff = graph.handoff.as_mut().expect("graph handoff").shutdown();
         drop(graph.handoff.take());
@@ -139,10 +143,16 @@ impl ProcessServiceOwner {
         if self.failed_close.is_some() {
             return Err(AppServiceCloseError::Home);
         }
+        drop(graph);
+        #[cfg(feature = "test-faults")]
+        if std::mem::take(&mut self.fail_shutdown_completion) {
+            return Err(AppServiceCloseError::PersistentFailure);
+        }
+        self.record_initial_retirement()?;
         Ok(())
     }
 
-    fn require_settled_custody(&self) -> Result<(), AppServiceCloseError> {
+    pub(super) fn require_settled_custody(&self) -> Result<(), AppServiceCloseError> {
         let enrollments = self.enrollments.pending_count();
         let nondispatch = self.settlements.pending_nondispatch_count();
         if enrollments != 0 || nondispatch != 0 {

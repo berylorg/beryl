@@ -1746,3 +1746,31 @@ worker/Activity/marker/shutdown cases and seven theme-preparation cases. Default
 test-fault library/test-target checks passed. Independent review found no blocking issue.
 Worker joins have existing shutdown-path source evidence plus subscription and lock-release
 assertions; ownership-lock release I/O failure is source-reviewed without a new fault mechanism.
+
+## Proven-Retired Initial Service Reopening
+
+The service owner now distinguishes initial, preparing, published, proven-retired and blocked
+attempts. Successful explicit cleanup retains its exact process fence. Retry checks original
+outer custody and outstanding admissions, reopens that stored fence, and only then constructs
+fresh services behind the separate worker-start fence. Constructing before reopening would capture
+permanently invalid permits. Rejected candidates return unchanged; stale fences are never refreshed.
+Consumed shutdown is blocked before any fallible cleanup and grants retirement only on complete
+success. The original gate, enrollment and nondispatch authorities remain process-owned.
+
+Two test assumptions were corrected. An old enrollment reconciliation scope cannot be settled
+through a newly opened home: it returns `StaleScope`. The pending-custody test now verifies retained
+ownership and unchanged candidate publication, then explicitly drops the owner only for teardown;
+that is not successful protocol settlement. A read fault after ordinary shutdown election does
+not necessarily make closure fail. The consumed-shutdown test therefore injects a completion error
+after real component joins, home closure and graph destruction, proving blocked authority without
+claiming to simulate an I/O error.
+
+Run `306f146c-f226-4ca4-a53d-72d650b7b19e` passed all 37 service-attempt, process-admission and
+graceful-shutdown cases in 149.126 seconds. Retry passes after early/late cancellation, constructor
+failure, publication rejection, cancelled worker release and repeated complete shutdown. Exact
+stale fences, outstanding admissions, original failed-close custody and pending enrollment all
+reject replacement. Old permits, home and marker references and restoration attempts remain
+retired after reopening. Fresh permits, theme workers and restoration sources work; actual
+scheduled-job execution is not exercised here, and constructor permit capture is source-reviewed.
+Default-library and test-fault library/test-target checks passed. Independent lifecycle review has
+no blocking findings. Native process Retry/Exit mounting remains a separate acceptance boundary.

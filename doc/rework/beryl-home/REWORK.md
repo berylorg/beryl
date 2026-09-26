@@ -460,6 +460,7 @@
 - [x] Integrated native desktop placement with original shell custody, cancellation fences and typed cleanup; [evidence](../../failures/target-bootstrap-composition.md#shell-desktop-placement-flight).
 - [x] Exposed exact native destruction receipts for startup disposal; [evidence](../../failures/target-bootstrap-composition.md#native-destruction-completion).
 - [x] Accepted complete native startup-set validation, interaction-gated publication and exact failure disposal/retention; [evidence](../../failures/target-bootstrap-composition.md#complete-native-startup-set). Process Retry/Exit and executable mounting remain separate.
+- [x] Accepted proven-retired initial-service Retry using exact process fences and original recovery custody; [37-case evidence](../../failures/target-bootstrap-composition.md#proven-retired-initial-service-reopening).
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.
 - [x] Accepted runtime-scoped Activity producers and the bounded reader service before complete graph publication; see [integration](../../failures/target-bootstrap-composition.md#remaining-graph-factory-inventory) and [reader evidence](../../failures/target-bootstrap-composition.md#activity-reader-publication-and-initial-retry).
