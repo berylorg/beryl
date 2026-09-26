@@ -89,34 +89,14 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 616: Preserve Foreground Progress Through Native Modal Dispatch (finished)
+# Phase 615: Add Owned Windows Native Confirmation (finished)
 
-Accepted one-at-a-time receive with a finite entry-snapshot budget. Pending work remains reachable
-through nested native dispatch, and self-waking work yields to native close. Both native dispatch
-regressions, existing destruction/hidden-operation tests, default app library check and independent
-lifecycle review pass. [Failure evidence](failures/native-modal-foreground-dispatch.md) preserves the
-queue lesson. Canonical dependency publication remains phase 617 after confirmation qualification.
-
-# Phase 615: Add Owned Windows Native Confirmation (pending)
-
-Implement the [owned GPUI native confirmation contract](../../zed-fork/doc/design.md#owned-native-confirmation-on-windows)
-before its app mount. Add bounded immutable requests, exact move-only control and completion,
-single-owner admission, Cancel-default native presentation, reveal/cancel, and owner-destruction
-coordination. Preserve the generic prompt and existing hidden-window operation behavior.
-
-Acceptance requires real native tests for title/default, positive choice, Escape/dismissal,
-queued and active cancellation, duplicate admission/reveal, receiver/control drop and parent
-destruction ordering. Inject native creation and settlement-evidence failure; verify neither can
-authorize confirmation or claim cleanup. Run the affected existing native lifecycle tests and
-default app library check, then obtain independent callback/lifetime review. The fork's empty
-local plan is superseded for this bounded dependency slice by this root phase.
-
-Readiness: the fork root design owns its GPUI public boundary; app lifecycle owns confirmation
-consumption. Independent authority review identified the preceding dispatcher prerequisite and
-requires rechecking visible/enabled parent eligibility before queued native creation. Initial source
-is incomplete and unaccepted; resume it only after phase 616. Include same-batch dialog cancellation
-and owner-removal evidence. Fresh observation under an unchanged confirmed shutdown intent does not
-require repeated confirmation merely because work changed.
+Accepted bounded requests, exact move-only control/completion and native Cancel-default dialogs.
+Cancellation, duplicate handling, focus restoration, queued/active owner removal and accepted
+native close preserve dialog settlement before parent destruction; missing evidence grants no
+confirmation or disposal authority. All ten focused native confirmation/dispatch/lifecycle tests,
+default app library check and independent lifecycle review pass. Generic prompts remain separate.
+Canonical dependency publication and app mounting remain phases 617 and 595.
 
 # Phase 617: Publish The Qualified Native Confirmation Dependency Graph (pending)
 
