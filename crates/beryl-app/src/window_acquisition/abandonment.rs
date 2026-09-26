@@ -49,6 +49,18 @@ impl From<&RuntimeBackedWindowAcquisition> for AbandonmentFingerprint {
     }
 }
 
+#[cfg(target_os = "windows")]
+impl RuntimeBackedWindowAcquisition {
+    pub(crate) fn shell_selection_validation(
+        &self,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> impl Fn(&RuntimeBackedWindowAcquisitionService) -> Result<(), String> + Send + use<> {
+        let facts = AbandonmentFingerprint::from(self);
+        let home_id = self.home_id;
+        move |service| service.validate_shell_facts(home_id, &facts, selection)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeBackedWindowAbandonmentAuditSeed {
     fingerprint: AbandonmentFingerprint,
@@ -245,9 +257,22 @@ impl RuntimeBackedWindowAcquisitionService {
         acquisition: &RuntimeBackedWindowAcquisition,
         selection: crate::main_window::MainWindowComposerSelectionIdentity,
     ) -> Result<(), String> {
+        self.validate_shell_facts(
+            acquisition.home_id,
+            &AbandonmentFingerprint::from(acquisition),
+            selection,
+        )
+    }
+
+    fn validate_shell_facts(
+        &self,
+        home_id: beryl_model::BerylHomeId,
+        acquisition: &AbandonmentFingerprint,
+        selection: crate::main_window::MainWindowComposerSelectionIdentity,
+    ) -> Result<(), String> {
         let binding = selection.binding();
-        if acquisition.home_id != self.store.home_id()
-            || binding.home_id() != acquisition.home_id
+        if home_id != self.store.home_id()
+            || binding.home_id() != home_id
             || self.store.health().generation() != Some(binding.home_generation())
             || selection.window_id() != acquisition.window_id
             || selection.claim().thread_id() != acquisition.thread_id
@@ -255,7 +280,7 @@ impl RuntimeBackedWindowAcquisitionService {
         {
             return Err("shell selection belongs to a different acquisition or home".to_owned());
         }
-        self.validate_initial_composer_claim(acquisition, selection.claim(), &self.store)
+        self.validate_initial_composer_facts(home_id, acquisition, selection.claim(), &self.store)
     }
 
     pub(crate) fn validate_initial_composer_claim(
@@ -264,8 +289,23 @@ impl RuntimeBackedWindowAcquisitionService {
         claim: beryl_state::WindowClaimSelection,
         store: &std::sync::Arc<beryl_home_store::HomeServiceReference>,
     ) -> Result<(), String> {
+        self.validate_initial_composer_facts(
+            acquisition.home_id,
+            &AbandonmentFingerprint::from(acquisition),
+            claim,
+            store,
+        )
+    }
+
+    fn validate_initial_composer_facts(
+        &self,
+        home_id: beryl_model::BerylHomeId,
+        acquisition: &AbandonmentFingerprint,
+        claim: beryl_state::WindowClaimSelection,
+        store: &std::sync::Arc<beryl_home_store::HomeServiceReference>,
+    ) -> Result<(), String> {
         if !std::sync::Arc::ptr_eq(store, &self.store)
-            || acquisition.home_id != store.home_id()
+            || home_id != store.home_id()
             || claim.thread_id() != acquisition.thread_id
         {
             return Err(
@@ -289,7 +329,7 @@ impl RuntimeBackedWindowAcquisitionService {
             let WindowAcquisitionNaturalState::Committed(state) = state else {
                 return Err("shell acquisition no longer owns its exact claim".to_owned());
             };
-            if !state_matches_acquisition(&state, acquisition)
+            if !state_matches_fingerprint(&state, acquisition)
                 || state.claim_generation() != claim.generation()
                 || state.claim_revision() != claim.revision()
             {
@@ -306,7 +346,7 @@ impl RuntimeBackedWindowAcquisitionService {
                     &acquisition.fallback_execution,
                 )
                 .map_err(|error| error.to_string())?;
-            if !matches!(candidate, PristineThreadAudit::Exact(ref candidate) if candidate_matches_acquisition(candidate, acquisition))
+            if !matches!(candidate, PristineThreadAudit::Exact(ref candidate) if candidate_matches_fingerprint(candidate, acquisition))
             {
                 return Err(
                     "shell editor does not match the acquired draft and execution binding"
@@ -740,6 +780,13 @@ impl RuntimeBackedWindowAcquisitionService {
 fn state_matches_acquisition(
     state: &WindowAcquisitionCommittedFacts,
     acquisition: &RuntimeBackedWindowAcquisition,
+) -> bool {
+    state_matches_fingerprint(state, &AbandonmentFingerprint::from(acquisition))
+}
+
+fn state_matches_fingerprint(
+    state: &WindowAcquisitionCommittedFacts,
+    acquisition: &AbandonmentFingerprint,
 ) -> bool {
     state.window_id() == acquisition.window_id
         && state.thread_id() == acquisition.thread_id

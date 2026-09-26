@@ -13,6 +13,13 @@ pub(super) struct ThreadlessShellBeforeFailure {
 }
 
 impl ThreadlessWindowShellPrepared {
+    #[cfg(target_os = "windows")]
+    pub(in crate::main_window) fn native_validation(
+        &self,
+    ) -> crate::main_window::restoration::NativeMemberValidation {
+        self.source.native_validation()
+    }
+
     pub fn new(
         source: ThreadlessWindowSource,
         registry: &RuntimeBackedWindowProcessRegistry,

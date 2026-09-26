@@ -87,18 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 587: Retain Failed Startup Construction Until Native Destruction (finished)
+# Phase 567: Publish And Dispose The Complete Native Startup Set (finished)
 
-Accepted pre-mount native receipt ownership, retained partial editors and non-publishable failed
-shells using shared construction and disposal stages. Eleven real-native construction scenarios,
-all 107 affected regressions, package checks and independent ownership review pass;
-[evidence](failures/target-bootstrap-composition.md#startup-construction-failure-custody).
-
-# Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
-
-Keep every prepared native member interaction-gated until whole-set publication succeeds; verify
-reentrancy and later native failure dispose the entire attempted set while preserving durable
-restore records under the approved transient-exposure exception.
+Accepted bounded native set ownership through worker validation, gated publication, interaction
+release and exact disposal/retention. Six native tests cover thirteen scenarios; all 122 affected
+regressions, package checks and independent review pass. Process Retry/Exit remains separate;
+[evidence](failures/target-bootstrap-composition.md#complete-native-startup-set).
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 

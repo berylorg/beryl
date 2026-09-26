@@ -1,5 +1,25 @@
 use super::*;
 
+#[cfg(target_os = "windows")]
+impl MainWindowShellPrepared {
+    pub(in crate::main_window) fn native_validation(
+        &self,
+    ) -> crate::main_window::restoration::NativeMemberValidation {
+        let facts = self
+            .acquisition
+            .shell_selection_validation(self.composer.selection_identity());
+        let selection = self.composer.native_selection_validation();
+        Box::new(move |_, services| {
+            facts(&services.acquisition)?;
+            selection()
+        })
+    }
+
+    pub(in crate::main_window) fn startup_placement(&self) -> &beryl_model::WindowPlacement {
+        self.acquisition.placement()
+    }
+}
+
 impl MainWindowShellHost for GpuiMainWindowShellHost<'_> {
     type Shell = MainWindowShell;
     type Error = String;

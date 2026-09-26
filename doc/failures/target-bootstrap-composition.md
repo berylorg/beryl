@@ -1668,3 +1668,43 @@ All-test/default app checks and independent semantic review passed. Manager-crea
 mapping has source-review coverage; no dedicated fault framework was added. The worker performs
 no desktop enumeration, switching, GUI work or durable writes. Shell-flight cancellation and
 original editor/claim cleanup remain the next integration boundary.
+
+## Complete Native Startup Set
+
+The complete-set owner now consumes the exact prepared members and retains their original attempt
+anchor through serial hidden construction, desktop settlement, observed readiness, worker-side
+final validation, publication and failure disposal. Read-only validation capsules reuse the member
+validators without cloning acquisition, reservation or retirement authority. Every member is sealed
+for record preservation before the first publication call; interaction opens only after all calls
+succeed in the same outer GUI transition.
+
+Native disposal starts for all independent members before joining their exact completions. Worker
+retirement then retains original pending, not-committed, indeterminate and committed-local-finalization
+custody explicitly. The coarse creation-abandonment wrapper discards optional local-finalization
+custody, so this coordinator composes the underlying typed abandonment outcomes directly. It does
+not retry or treat dropping custody as settlement. The process owner must retain the published
+service graph and replace preparation cancellation with the returned native cancellation handle.
+
+The initial storage-fault test incorrectly expected only the first retirement to remain pending.
+`BeforeCommit` transitions the shared home to Failed, so both original retirements correctly remain
+retained while every native window is destroyed. The corrected test verifies both exact owners and
+reservations, then uses explicit test teardown and same-home recovery to inspect the unchanged saved
+session. That teardown is not successful protocol disposal. Likewise, the test-only successful-set
+disposal helper applies only to untouched startup editors, not ordinary mutable-editor shutdown.
+
+Run `ece7d529-2124-49c5-9265-e63e1b2af7b9` passed all 122 tests across restore-set, initial-composer,
+shell, creation and acquisition targets in 258.978 seconds. Six real-native tests cover thirteen
+scenarios: ordered restored/threadless success, close reentrancy while a prefix is visible,
+observer/cancellation-handle drop, last construction failure, stale final validation, cancellation
+after desktop and during final validation, a held last desktop worker, readiness-wait cancellation,
+later publication failure, unsealed versus sealed fallback disposal, release rollback and retained
+storage retirement. Existing member tests supply native desktop failure coverage.
+
+Independent review corrected the readiness test hook to signal only after real readiness succeeds,
+then force the aggregate wait. Focused run `f4c48474-b433-425e-9d1f-e26b8abdb39b` passed that corrected
+case in 2.093 seconds. Default-library and test-fault all-target checks passed; ownership, bounded
+observation, storage-thread separation, validator equivalence and publication review has no remaining
+blocking findings. Publication failure is injected before the later call, proving visible-prefix
+cleanup rather than inducing a fresh Win32 error. Loading notification delivery has successful
+startup and source-review evidence; this is not a held-real-loading stress test. Process Retry/Exit,
+failure surfaces, full service-graph lifetime mounting and executable entry remain separate work.

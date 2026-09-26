@@ -54,6 +54,20 @@ impl MainWindowConversationComposerPreparedSelection {
         Ok(())
     }
 
+    #[cfg(target_os = "windows")]
+    pub(in crate::main_window) fn native_selection_validation(
+        &self,
+    ) -> impl Fn() -> Result<(), String> + Send + use<> {
+        let service = self.service.clone();
+        let selection = self.selection_identity();
+        move || {
+            if service.selected_identity() != Some(selection) {
+                return Err("prepared conversation composer selection is stale".to_owned());
+            }
+            Ok(())
+        }
+    }
+
     pub fn mount(
         self,
         clipboard_writer: ComposerClipboardWriter,

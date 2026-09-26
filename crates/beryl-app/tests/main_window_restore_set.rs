@@ -10,6 +10,9 @@ mod faults;
 mod home_support;
 #[path = "initial_composer/support.rs"]
 mod initial_support;
+#[cfg(target_os = "windows")]
+#[path = "main_window_restore_set/native.rs"]
+mod native;
 #[path = "main_window_restore_set/support.rs"]
 mod support;
 

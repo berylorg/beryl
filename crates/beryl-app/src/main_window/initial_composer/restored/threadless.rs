@@ -73,6 +73,31 @@ impl RestoredWindowPreparationAttempt {
 }
 
 impl ThreadlessWindowSource {
+    #[cfg(target_os = "windows")]
+    pub(in crate::main_window) fn native_validation(
+        &self,
+    ) -> crate::main_window::restoration::NativeMemberValidation {
+        let source = Self {
+            attempt: self.attempt.clone(),
+            service: self.service.clone(),
+            store: self.store.clone(),
+            session: self.session.clone(),
+            runtime_roots: self.runtime_roots.clone(),
+            generation: self.generation,
+            session_revision: self.session_revision,
+            runtime_revision: self.runtime_revision,
+            window: self.window.clone(),
+        };
+        Box::new(move |attempt, _| {
+            if !Arc::ptr_eq(&source.attempt, &attempt.identity)
+                || !Arc::ptr_eq(&source.store, &attempt.store)
+            {
+                return Err("threadless source belongs to another startup attempt".to_owned());
+            }
+            source.revalidate()
+        })
+    }
+
     pub fn window_id(&self) -> WindowId {
         self.window.window_id()
     }

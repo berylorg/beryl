@@ -9,6 +9,8 @@ mod selected;
 mod startup;
 #[cfg(target_os = "windows")]
 mod startup_construction;
+#[cfg(target_os = "windows")]
+mod startup_readiness;
 pub use restored::*;
 #[cfg(target_os = "windows")]
 pub use startup_construction::*;

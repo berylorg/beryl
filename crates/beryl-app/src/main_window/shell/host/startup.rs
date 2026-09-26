@@ -1,6 +1,24 @@
 use super::*;
 
 impl MainWindowShell {
+    #[cfg(all(target_os = "windows", feature = "test-faults"))]
+    pub(in crate::main_window) fn test_regate_startup(
+        &mut self,
+        app: &mut App,
+    ) -> Result<(), String> {
+        self.window
+            .update(app, |root, window, cx| {
+                root.startup_interaction
+                    .as_ref()
+                    .ok_or_else(|| "test startup member has no interaction gate".to_owned())?
+                    .set(true);
+                let result = root.regate_startup_composer(cx);
+                root.refresh_startup_notice_gate(window, cx);
+                result
+            })
+            .map_err(|error| error.to_string())?
+    }
+
     pub fn gate_startup_interaction(&mut self, app: &mut App) -> Result<(), String> {
         if self.published || self.root.read(app).startup_interaction.is_some() {
             return Err("startup interaction requires a new hidden shell".to_owned());

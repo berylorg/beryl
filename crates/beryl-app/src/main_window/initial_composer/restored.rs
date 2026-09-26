@@ -35,6 +35,7 @@ pub struct RestoredWindowPreparationAttempt {
     generation: HomeGeneration,
 }
 
+#[derive(Clone)]
 struct RestoredWindowSource {
     attempt: Arc<RestoreAttemptIdentity>,
     service: Weak<()>,
@@ -312,12 +313,15 @@ impl RestoredWindowComposer {
         &self,
         attempt: &RestoredWindowPreparationAttempt,
     ) -> Result<(), String> {
-        if !Arc::ptr_eq(&self.source.attempt, &attempt.identity)
-            || !Arc::ptr_eq(&self.source.store, &attempt.store)
-        {
-            return Err("restored editor belongs to another startup attempt".to_owned());
-        }
-        self.source.validate()
+        self.source.validate_attempt(attempt)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(in crate::main_window) fn native_validation(
+        &self,
+    ) -> crate::main_window::restoration::NativeMemberValidation {
+        let source = self.source.clone();
+        Box::new(move |attempt, _| source.validate_attempt(attempt))
     }
 
     pub fn prepare(
@@ -409,6 +413,15 @@ impl RestoredWindowComposerPrepared {
 }
 
 impl RestoredWindowSource {
+    fn validate_attempt(&self, attempt: &RestoredWindowPreparationAttempt) -> Result<(), String> {
+        if !Arc::ptr_eq(&self.attempt, &attempt.identity)
+            || !Arc::ptr_eq(&self.store, &attempt.store)
+        {
+            return Err("restored editor belongs to another startup attempt".to_owned());
+        }
+        self.validate()
+    }
+
     fn validate_lifetime(&self) -> Result<(), String> {
         if !self.attempt.live.load(Ordering::Acquire)
             || self.service.upgrade().is_none()

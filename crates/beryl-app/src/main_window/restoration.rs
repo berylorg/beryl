@@ -9,10 +9,20 @@ use syndic_storage::DraftPieceOperationIdV1;
 
 mod discovery;
 mod disposal;
+#[cfg(target_os = "windows")]
+mod native;
 mod preparation;
 mod retained;
 use discovery::{DiscoveredRestoreSet, RestoreSetDiscovery};
+#[cfg(target_os = "windows")]
+pub use native::*;
 pub use retained::*;
+
+#[cfg(target_os = "windows")]
+pub(in crate::main_window) type NativeMemberValidation = Box<
+    dyn Fn(&RestoredWindowPreparationAttempt, &MainWindowCreationServices) -> Result<(), String>
+        + Send,
+>;
 
 pub type RestoredWindowActivationSource = Arc<
     dyn Fn(
@@ -225,15 +235,35 @@ impl MainWindowRestoreSet {
     }
 
     fn revalidate_complete(&self) -> Result<(), String> {
+        self.revalidate_members(self.members.len(), |index, expected| {
+            let member = &self.members[index];
+            if member.window_id() != expected {
+                return Err("prepared restore member identity changed".to_owned());
+            }
+            match member {
+                PreparedRestoreSetMember::Restored(prepared) => prepared.revalidate(&self.attempt),
+                PreparedRestoreSetMember::Threadless(prepared) => prepared.revalidate(),
+                PreparedRestoreSetMember::Replacement(prepared) => {
+                    prepared.revalidate(&self.services.acquisition)
+                }
+            }
+        })
+    }
+
+    fn revalidate_members(
+        &self,
+        count: usize,
+        mut validate: impl FnMut(usize, WindowId) -> Result<(), String>,
+    ) -> Result<(), String> {
         if self.disposing
             || self.cancellation.is_cancelled()
             || !self.discovered
             || !self.remaining.is_empty()
             || self.current.is_some()
             || self.replacement.is_some()
-            || self.members.is_empty()
-            || self.members.len() != self.expected_windows.len()
-            || self.members.len() > MAX_RESTORABLE_WINDOWS
+            || count == 0
+            || count != self.expected_windows.len()
+            || count > MAX_RESTORABLE_WINDOWS
         {
             return Err("restore set is incomplete or cancelled".to_owned());
         }
@@ -262,19 +292,8 @@ impl MainWindowRestoreSet {
         {
             return Err("complete restore membership or session revision changed".to_owned());
         }
-        for (member, expected) in self.members.iter().zip(&self.expected_windows) {
-            if member.window_id() != *expected {
-                return Err("prepared restore member identity changed".to_owned());
-            }
-            match member {
-                PreparedRestoreSetMember::Restored(prepared) => {
-                    prepared.revalidate(&self.attempt)?
-                }
-                PreparedRestoreSetMember::Threadless(prepared) => prepared.revalidate()?,
-                PreparedRestoreSetMember::Replacement(prepared) => {
-                    prepared.revalidate(&self.services.acquisition)?
-                }
-            }
+        for (index, expected) in self.expected_windows.iter().copied().enumerate() {
+            validate(index, expected)?;
         }
         if self
             .services

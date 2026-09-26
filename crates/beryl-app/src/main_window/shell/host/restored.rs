@@ -44,6 +44,21 @@ impl RestoredWindowShellUnpublished {
 }
 
 impl RestoredWindowShellPrepared {
+    #[cfg(target_os = "windows")]
+    pub(in crate::main_window) fn native_validation(
+        &self,
+    ) -> crate::main_window::restoration::NativeMemberValidation {
+        let ShellContent::Restored { custody, .. } = &self.selected.content else {
+            unreachable!("restored shell preparation preserves custody kind")
+        };
+        let source = custody.composer.native_validation();
+        let selection = self.selected.composer.native_selection_validation();
+        Box::new(move |attempt, services| {
+            source(attempt, services)?;
+            selection()
+        })
+    }
+
     pub(in crate::main_window) fn revalidate(
         &self,
         attempt: &RestoredWindowPreparationAttempt,

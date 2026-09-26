@@ -337,6 +337,15 @@ governed by [design.md](design.md). It does not independently declare engineerin
   an editor mutation, another startup attempt or an ordinary-close session deletion during this
   transition. Whole-set success transfers the members to the ordinary process window owner and
   releases interaction. It does not wait for simultaneous compositor painting.
+- Consuming native startup returns the cancellation handle for that native operation. The process
+  owner replaces its preparation-phase cancellation slot with this handle before admitting further
+  cancellation. It both fences the operation and wakes its bounded readiness observer; a previously
+  retained preparation token is not the native operation's cancellation API. Dropping the native
+  handle or an external completion observer does not cancel the owned operation. Readiness observes
+  the exact roots, selected composers, appearance and native closure without a polling queue.
+  Final storage validation uses private read-only facts captured before preparations move into
+  shells, with the original attempt retained. It provides a bounded consistency check followed by
+  short GUI admission, not a storage lock across native publication.
 - Each enrolled shell closes command, notice, editor and ordinary-close admission before exposure.
   Editor gating composes with lifecycle promotion and resume; background first-presentable loading
   remains allowed. Existing enabled/read-only controls must actually accept the disabled state.
