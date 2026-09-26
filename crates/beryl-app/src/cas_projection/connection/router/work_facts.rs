@@ -123,6 +123,13 @@ impl EventRouter {
         }
         let target = state.targets.get(thread_id)?;
         if response
+            .register_mutation_observer(self.state.boundary.clone())
+            .is_err()
+        {
+            state.work_revision = None;
+            return None;
+        }
+        if response
             .register_completion_waker(self.scheduler_signal.idle_recheck_waker())
             .is_err()
         {

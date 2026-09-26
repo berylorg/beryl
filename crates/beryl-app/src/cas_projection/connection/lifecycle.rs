@@ -255,6 +255,7 @@ impl ProjectionConnection {
             Some(terminal_disposer.clone()),
             process_fact.observe(),
             worker_permits.retention_source(),
+            authority.work_boundary.clone(),
         )?);
         let forwarding_hub = ForwardingHub::new(Arc::clone(&authority));
         let persistent_failure = Arc::new(persistent_failure::PersistentFailureDriverSlot::new());

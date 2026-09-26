@@ -275,9 +275,8 @@ impl EventRouter {
             if target.publication_in_flight.is_none() && !steering_attempt_in_flight {
                 break;
             }
-            state = self
-                .publication_changed
-                .wait(state)
+            state = state
+                .wait(&self.publication_changed)
                 .map_err(|_| TargetLossRequestError::Router)?;
         }
         let target = state
@@ -408,9 +407,8 @@ impl EventRouter {
             if target.publication_in_flight.is_none() {
                 break;
             }
-            state = self
-                .publication_changed
-                .wait(state)
+            state = state
+                .wait(&self.publication_changed)
                 .map_err(|_| TargetLossRequestError::Router)?;
         }
         let final_command = self

@@ -89,19 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 609: Track Connection Attachment Changes (finished)
+# Phase 607: Track Router And Backend Response Work Changes (finished)
 
-Accepted lazy mutation tracking and unwind invalidation across all forwarding-hub guard routes,
-including initial attachment publication, inert retention, detachment and poisoned disposal.
-All 15 focused attachment/shutdown tests, the default app library check and independent concurrency
-review pass. Real lifecycle cases cover admitted attachment removal and failed-join retention.
-
-# Phase 607: Track Router And Backend Response Work Changes (pending)
-
-Extend the same boundary through router work and passive backend response mutation
-registration before request publication. Verify registration races, response completion/release,
-retirement and notification behavior; retain no response capability or service graph. Keep final
-process-fence composition in phase 603.
+Accepted shared-boundary router mutation guards, queue-consumer coverage and passive response
+registration before publication. Condition waits release their mutation interval; response guards
+retain no service graph. All 86 distinct router/boundary/real connection-work tests, the default
+app library check and independent mutation-coverage/concurrency review pass. Atomic process-fence
+publication remains phase 603.
 
 # Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
 

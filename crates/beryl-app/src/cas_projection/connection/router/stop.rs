@@ -303,9 +303,8 @@ impl EventRouter {
             let Some(remaining) = deadline.checked_duration_since(now) else {
                 return Err(StopElectionAcquireError::Busy);
             };
-            let (next, wait) = self
-                .publication_changed
-                .wait_timeout(state, remaining)
+            let (next, wait) = state
+                .wait_timeout(&self.publication_changed, remaining)
                 .map_err(|_| StopElectionAcquireError::Router)?;
             state = next;
             if wait.timed_out() {

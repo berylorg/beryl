@@ -41,6 +41,7 @@ mod target;
 #[cfg(test)]
 mod tests;
 mod work_facts;
+mod work_state;
 
 pub(in crate::cas_projection::connection) use activation::ResponseActivationProofError;
 pub(in crate::cas_projection) use activation::TargetTurnRegistration;
@@ -583,7 +584,7 @@ pub(in crate::cas_projection) struct EventRouter {
     worker_retention: crate::cas_projection::service_config::ConnectionWorkerRetentionSource,
     terminal_disposer:
         Option<crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer>,
-    state: Arc<Mutex<RouterState>>,
+    state: Arc<work_state::RouterWorkState>,
     publication_changed: Condvar,
     scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     #[cfg(test)]
@@ -642,7 +643,7 @@ pub(in crate::cas_projection) struct TargetRegistration {
     loaded_generation: CasLoadedSessionGeneration,
     receiver: Receiver<QueuedTargetOperation>,
     queued_operations: Arc<AtomicUsize>,
-    work_state: std::sync::Weak<Mutex<RouterState>>,
+    work_state: std::sync::Weak<work_state::RouterWorkState>,
     terminal: Arc<Mutex<TargetTerminalSignal>>,
     loss_receipt: Arc<AtomicBool>,
     compaction: Option<crate::cas_projection::context_compaction::ContextCompactionTargetAuthority>,

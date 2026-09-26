@@ -383,9 +383,8 @@ impl EventRouter {
         if status != ActiveSteeringAttemptStatus::Active {
             return status;
         }
-        let (state, _) = self
-            .publication_changed
-            .wait_timeout(state, timeout)
+        let (state, _) = state
+            .wait_timeout(&self.publication_changed, timeout)
             .unwrap_or_else(|poison| poison.into_inner());
         attempt_status(self, &state, permit)
     }

@@ -31,6 +31,14 @@ pub(in crate::cas_projection) struct ConnectionWorkMutation {
     owner: Option<Arc<Boundary>>,
 }
 
+impl beryl_backend::ResponseWorkMutation for ConnectionWorkMutation {}
+
+impl beryl_backend::ResponseWorkMutationObserver for ConnectionWorkBoundary {
+    fn begin_change(&self) -> Box<dyn beryl_backend::ResponseWorkMutation + '_> {
+        Box::new(ConnectionWorkBoundary::begin_change(self))
+    }
+}
+
 impl ConnectionWorkBoundary {
     pub(in crate::cas_projection) fn new() -> Self {
         Self {

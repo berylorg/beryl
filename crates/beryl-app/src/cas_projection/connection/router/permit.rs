@@ -410,9 +410,8 @@ impl EventRouter {
                     .commit_if_current(|| fail_busy_terminal_publication(&mut state, thread_id))
                     .unwrap_or(Err(Router));
             };
-            let (next, wait) = self
-                .publication_changed
-                .wait_timeout(state, remaining)
+            let (next, wait) = state
+                .wait_timeout(&self.publication_changed, remaining)
                 .map_err(|_| Router)?;
             state = next;
             if wait.timed_out() {

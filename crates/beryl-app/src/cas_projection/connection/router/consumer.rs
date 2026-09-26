@@ -387,6 +387,7 @@ impl TargetRegistration {
         match self.receiver.recv_timeout(timeout) {
             Ok(queued) => {
                 if let Some(work_state) = self.work_state.upgrade() {
+                    let _change = work_state.boundary.begin_change();
                     match work_state.lock() {
                         Ok(mut state) => {
                             self.queued_operations.fetch_sub(1, Ordering::AcqRel);

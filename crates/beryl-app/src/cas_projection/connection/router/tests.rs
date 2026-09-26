@@ -34,6 +34,8 @@ mod queue_capacity;
 mod response_wake;
 mod retirement;
 mod stop_election;
+#[path = "../../../../tests/unit/router_work_mutation.rs"]
+mod work_mutation;
 
 fn process() -> CasProcessGeneration {
     CasProcessGeneration::new(7).unwrap()

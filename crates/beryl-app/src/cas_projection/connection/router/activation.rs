@@ -61,9 +61,8 @@ impl EventRouter {
             if target.publication_in_flight.is_none() {
                 break;
             }
-            state = self
-                .publication_changed
-                .wait(state)
+            state = state
+                .wait(&self.publication_changed)
                 .map_err(|_| ResponseActivationProofError::Router)?;
         }
 
