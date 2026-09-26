@@ -87,13 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 568: Compose The Native Startup Attempt Owner (finished)
+# Phase 597: Serialize Close Admission With Window Construction (finished)
 
-Accepted fixed-home serialized Retry/Exit, worker preparation and graph disposal, immediate complete
-native success handoff with auxiliary destruction custody, and blocked original failure retention.
-All 47 selected service/surface cases, including six real owner integration cases, pass; the default
-app-library check and independent lifecycle review pass.
-[Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
+Accepted exact resident-set snapshots and one close lease excluding construction and overlapping
+closes, with stale/foreign rejection and cancellation preserving execution authority. Seven new
+close-admission cases and five reservation regressions pass; the default app-library check and
+independent concurrency review pass. Native close, confirmation, and shutdown integration remain
+in phase 595; its owner must retain and revalidate the lease before effects.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

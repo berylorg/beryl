@@ -29,8 +29,10 @@ use crate::catalog_projection::{
 };
 
 mod abandonment;
+mod close_admission;
 
 pub use abandonment::*;
+pub(crate) use close_admission::*;
 
 const CATALOG_PAGE_ITEMS: usize = 16;
 const CATALOG_PAGE_BYTES: usize = CATALOG_PAGE_ITEMS * CATALOG_MAX_STORED_RECENCY_BYTES;
@@ -415,6 +417,7 @@ pub struct RuntimeBackedWindowProcessRegistry {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeBackedWindowMainWindowReservationError {
     ProcessAdmission(crate::process_admission::ProcessAdmissionError),
+    CloseInProgress,
     DuplicateWindowIdentity,
     Capacity,
 }
@@ -456,6 +459,9 @@ impl RuntimeBackedWindowProcessRegistry {
                     .flights
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if registry.close_owner.is_some() {
+                    return Err(RuntimeBackedWindowMainWindowReservationError::CloseInProgress);
+                }
                 if registry.main_window_reservations.contains(&window_id) {
                     return Err(
                         RuntimeBackedWindowMainWindowReservationError::DuplicateWindowIdentity,
@@ -465,6 +471,7 @@ impl RuntimeBackedWindowProcessRegistry {
                     return Err(RuntimeBackedWindowMainWindowReservationError::Capacity);
                 }
                 registry.main_window_reservations.insert(window_id);
+                registry.membership_revision = Arc::new(());
                 Ok(())
             })
             .map_err(RuntimeBackedWindowMainWindowReservationError::ProcessAdmission)??;
@@ -495,11 +502,13 @@ impl RuntimeBackedWindowMainWindowReservation {
 impl Drop for RuntimeBackedWindowMainWindowReservation {
     fn drop(&mut self) {
         self.process_admission.settle(|| {
-            self.flights
+            let mut registry = self
+                .flights
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .main_window_reservations
-                .remove(&self.window_id)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if registry.main_window_reservations.remove(&self.window_id) {
+                registry.membership_revision = Arc::new(());
+            }
         });
     }
 }
@@ -1300,6 +1309,8 @@ fn project_unclaimed_facts(
 struct AcquisitionFlights {
     active: HashSet<WindowId>,
     main_window_reservations: HashSet<WindowId>,
+    membership_revision: Arc<()>,
+    close_owner: Option<Arc<()>>,
 }
 
 struct AcquisitionFlight {
