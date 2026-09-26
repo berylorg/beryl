@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(target_os = "windows")]
+#[path = "threadless_desktop.rs"]
+mod desktop;
+
 #[path = "../support/window_placement.rs"]
 mod placement_support;
 use beryl_app::main_window::{

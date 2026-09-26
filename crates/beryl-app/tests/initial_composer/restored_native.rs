@@ -1,6 +1,9 @@
 use super::restoration_support::*;
 
 #[cfg(target_os = "windows")]
+#[path = "restored_desktop.rs"]
+mod desktop;
+#[cfg(target_os = "windows")]
 #[path = "native_selected.rs"]
 mod native_selected;
 use super::*;

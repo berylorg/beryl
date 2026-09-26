@@ -209,6 +209,10 @@ impl MainWindowShell {
         self,
         app: &mut App,
     ) -> Result<RestoredWindowShellUnpublished, Self> {
+        #[cfg(target_os = "windows")]
+        if !self.desktop_cleanup_allowed() {
+            return Err(self);
+        }
         if self.published
             || !self
                 .root

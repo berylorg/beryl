@@ -87,45 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 579: Bound Selected Composer Native Worker Stack Use (finished)
+# Phase 571: Integrate Prepared Native Window Placement (finished)
 
-Accepted reduced overlapping dispatch and storage-validation frames without changing the executor,
-stack budget, storage format or authentication. Native ordinary/Undo/Redo restoration, 69 storage
-and 73 app regressions, both package checks and independent semantic review pass;
-[evidence](failures/target-bootstrap-composition.md#native-selected-dispatch-stack).
-
-# Phase 571: Integrate Prepared Native Window Placement (wip)
-
-Compose accepted worker geometry, hidden shell construction and saved-desktop preparation into
-one exact startup member flight. Retain the original shell and typed cleanup custody through
-worker completion and GUI lease settlement; cancellation or close intent prevents publication and
-returns the original disposal path. Verify late completion, cancellation, independent per-window
-fallback and selected/threadless cleanup without durable restore-record changes. Keep complete-set
-interaction gating/publication and process startup ownership in their following phases. Require
-native-boundary evidence, affected shell regressions and independent review before acceptance.
-
-Implement the [shell desktop placement flight](../crates/beryl-app/doc/design-shell-lifecycle.md#shell-desktop-placement-flight)
-as a consuming admission with original-shell failure and one detached GUI continuation owning the
-required completion callback. Keep pending/rejected and late-cancelled shells unpublishable;
-settlement failure retains cleanup custody rather than pretending native disposal. Verify real
-selected and threadless shell integration, dropped observation, cancellation timing and native
-close/removal using the original cleanup boundaries. Preserve ordinary never-enrolled creation.
-
-The accepted GPUI prerequisite supplies explicit outer bounds and exact prepared monitor facts;
-[investigation](memory/topic/native-window-publication/placement-preparation-boundary.md).
-Desktop application must retain the exact hidden native window until its COM worker finishes;
-cancellation cannot release or recycle that HWND while desktop movement is in flight.
-
-The separate native operation lifetime prerequisite above closes the HWND recycling gap;
-desktop integration must retain the original typed shell custody until both worker completion and
-GUI settlement, then apply close/cancellation before publication. See the
-[lifetime evidence](failures/target-bootstrap-composition.md#desktop-worker-native-lifetime).
-
-Operator clarified on 2026-09-25 that zed-fork does not need rag-rat because Beryl-owned
-Markdown is not authored there. Keep this prerequisite's design and planning authority in Beryl;
-do not create a fork documentation/indexing prerequisite. The unnecessary local fork setup was
-removed. Its `MissingModel` report referred to an unregistered model in the new index, not missing
-shared model files. This tooling issue does not block native placement work.
+Accepted consuming desktop flights retaining original shell custody through worker and GUI
+settlement, publication fences and original typed cleanup. Twelve real native scenarios and 80
+affected regressions pass with package checks and independent review;
+[evidence](failures/target-bootstrap-composition.md#shell-desktop-placement-flight).
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

@@ -6,6 +6,10 @@ pub use threadless::*;
 mod restored;
 mod selected;
 pub use restored::*;
+#[cfg(target_os = "windows")]
+mod desktop_flight;
+#[cfg(target_os = "windows")]
+pub use desktop_flight::*;
 
 enum ShellContent {
     Acquired {
@@ -282,6 +286,10 @@ impl GpuiMainWindowShellHost<'_> {
                     appearance_owner: self.appearance_owner.clone(),
                     adapter_id,
                     published: false,
+                    #[cfg(target_os = "windows")]
+                    desktop_placement: None,
+                    #[cfg(all(target_os = "windows", feature = "test-faults"))]
+                    desktop_worker_gate: None,
                 })
             }
             Err((error, controller)) => {
@@ -357,6 +365,10 @@ pub struct MainWindowShell {
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
     adapter_id: crate::theme_runtime::WindowAdapterId,
     published: bool,
+    #[cfg(target_os = "windows")]
+    desktop_placement: Option<desktop_flight::ShellDesktopPlacementAdmission>,
+    #[cfg(all(target_os = "windows", feature = "test-faults"))]
+    desktop_worker_gate: Option<std::sync::mpsc::Receiver<()>>,
 }
 
 impl MainWindowShell {
@@ -374,6 +386,12 @@ impl MainWindowShell {
         if self.published {
             return Ok(());
         }
+        #[cfg(target_os = "windows")]
+        if !self.desktop_publication_allowed() {
+            return Err(
+                "main-window desktop placement is pending, rejected or cancelled".to_owned(),
+            );
+        }
         if !self.ready_to_publish(app) {
             return Err("hidden main-window composer is not first-presentable".to_owned());
         }
@@ -385,7 +403,11 @@ impl MainWindowShell {
         Ok(())
     }
 
-    pub fn ready_to_publish(&self, app: &App) -> bool {
+    pub fn ready_to_publish(&self, app: &mut App) -> bool {
+        #[cfg(target_os = "windows")]
+        if !self.desktop_publication_allowed() || !self.desktop_native_publication_allowed(app) {
+            return false;
+        }
         use crate::theme_runtime::AppearancePublicationTarget;
         let appearance = self.appearance_owner.read(app).target().snapshot();
         self.window
@@ -449,6 +471,10 @@ impl MainWindowShell {
         self,
         app: &mut App,
     ) -> Result<MainWindowShellUnpublished, MainWindowShell> {
+        #[cfg(target_os = "windows")]
+        if !self.desktop_cleanup_allowed() {
+            return Err(self);
+        }
         if self.published
             || self
                 .root

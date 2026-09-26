@@ -1417,6 +1417,24 @@ atomicity or a realtime guarantee against desktop changes. App check and manifes
 the successful Serena refresh followed both. Production worker and app-flight integration remain
 separate implementation work.
 
+## Shell Desktop Placement Flight
+
+Accepted consuming shell admission and one detached GUI continuation retaining the original shell
+and required completion callback through worker completion and native lease settlement. Cancellation,
+close intent and native loss fence publication; an unproven settlement prohibits typed cleanup.
+Successful or rejected completion retains the existing restored, threadless or acquired custody.
+Never-enrolled ordinary shells preserve their existing publication path.
+
+Real native run `f23534c7-a15a-41b6-a7f3-9ea4de68e585` passes both integration tests, covering nine
+threadless and three restored scenarios. These include admission refusal, dropped observation,
+late cancellation, hidden close/removal, missing-desktop fallback, exactly-once destruction and
+unchanged saved state. Restored cleanup retains the exact editor and cancelled-retirement custody.
+The surrounding shell, initial-composer, creation, notice and native-desktop-worker targets pass
+80 tests (`4eea2aa0-5bdd-4b19-b4b9-24862dc14ade`), excluding the two already-passed integration tests.
+Package all-test/default checks and independent semantic review pass. Settlement-error fencing is
+source-reviewed; accepted alternate-desktop movement inherits the earlier worker qualification.
+Whole-set publication, failure disposal and process quit draining remain separate boundaries.
+
 ## Native Selected Dispatch Stack
 
 Real restored-shell construction under the Windows GPUI executor overflows an unnamed worker's

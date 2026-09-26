@@ -186,6 +186,34 @@ governed by [design.md](design.md). It does not independently declare engineerin
   environment coverage. Require independent semantic review of identity, COM lifetime and outcome
   mapping. Full shell custody and startup-set publication retain their separate acceptance gates.
 
+## Shell Desktop Placement Flight
+
+- An admitted flight consumes one unpublished main-window shell and derives the saved desktop
+  from that shell's retained controller. Admission failure returns the original shell and starts
+  no worker. Cancellation already requested at admission performs no desktop effect.
+- One detached GUI continuation owns the full shell and a required completion callback through
+  both the desktop worker and native lease settlement. The callback retains its startup owner
+  strongly and transfers the original shell into publication or typed-cleanup custody. An optional
+  observer or result channel is never the owner of that custody. Cancellation signals intent; it
+  does not cancel the continuation or abandon the worker.
+- Once enrolled, the shell retains pending, ready or terminal rejected placement admission plus
+  its cancellation signal. Publication rejects pending/rejected admission and cancellation even
+  after successful completion delivery. Native close/window loss rejects the flight separately
+  from desktop fallback. A successful result exposes the accepted/default desktop outcome; the
+  later startup-set owner requires actual successful flight admission for every member.
+- Never-enrolled ordinary shell behavior is unchanged. Desktop readiness does not replace existing
+  selected-editor, source-generation or first-presentable checks. Complete-set publication and its
+  final cancellation fence remain separate from per-member desktop completion.
+- Settlement failure retains the original shell, prohibits publication and cannot certify native
+  disposal. Its ordinary prepublication cleanup methods must not release typed custody while native
+  settlement remains unproven. Cancellation, native close and proven native loss after successful
+  settlement may instead enter the existing acquired/restored/threadless cleanup boundaries.
+- The GUI executor remains live until completion delivery and subsequent cleanup. Generic worker
+  panic continues to use the fatal-panic contract. Verification covers admission failure, cancellation
+  during work and after ready delivery, close/window loss, observer disposal and original selected
+  and threadless cleanup, with real native integration and independent semantic review. No fake
+  native lease or global abandoned-flight queue substitutes for this ownership.
+
 ## Window Placement Preparation
 
 - Worker placement preparation binds one exact window identity and its immutable saved placement
