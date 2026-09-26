@@ -95,6 +95,28 @@ pub(crate) struct ShutdownExecutionCapture {
     compactions: BTreeMap<CompactionOperationId, ShutdownCompactionObligation>,
 }
 
+pub(in crate::cas_projection::service) struct PreparedShutdownExecutionCapture {
+    service_generation: ProjectionServiceGeneration,
+    ordinary_limit: usize,
+    compaction_limit: usize,
+}
+
+impl PreparedShutdownExecutionCapture {
+    pub(in crate::cas_projection::service) fn bind(
+        self,
+        fence: &ProcessAdmissionFence,
+    ) -> ShutdownExecutionCapture {
+        ShutdownExecutionCapture {
+            service_generation: self.service_generation,
+            fence: fence.clone(),
+            ordinary_limit: self.ordinary_limit,
+            compaction_limit: self.compaction_limit,
+            ordinary: Vec::new(),
+            compactions: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ShutdownCompactionObligation {
     service_generation: ProjectionServiceGeneration,
@@ -108,6 +130,13 @@ impl ProjectionConnectionService {
     ) -> Result<ShutdownExecutionCapture, ShutdownExecutionCaptureError> {
         validate_service(self)?;
         validate_fence(self, fence)?;
+        Ok(self.prepare_shutdown_execution_capture()?.bind(fence))
+    }
+
+    pub(in crate::cas_projection::service) fn prepare_shutdown_execution_capture(
+        &self,
+    ) -> Result<PreparedShutdownExecutionCapture, ShutdownExecutionCaptureError> {
+        validate_service(self)?;
         let compaction_limit = self
             .context_compaction
             .as_ref()
@@ -118,13 +147,10 @@ impl ProjectionConnectionService {
             .checked_add(compaction_limit)
             .and_then(|count| count.checked_mul(CAPTURE_PAGE_BYTES))
             .ok_or(ProcessWorkError::CountOverflow)?;
-        Ok(ShutdownExecutionCapture {
+        Ok(PreparedShutdownExecutionCapture {
             service_generation: self.service_generation,
-            fence: fence.clone(),
             ordinary_limit,
             compaction_limit,
-            ordinary: Vec::new(),
-            compactions: BTreeMap::new(),
         })
     }
 }

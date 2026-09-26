@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use super::{ProjectionConnectionService, ShutdownExecutionCapture, ShutdownExecutionCaptureError};
+use super::{
+    ProjectionConnectionService, ShutdownExecutionCapture, ShutdownExecutionCaptureError,
+    ShutdownWorkError, ShutdownWorkObservation,
+};
 use crate::{
     cas_projection::*,
     process_admission::{ProcessAdmissionError, ProcessAdmissionFence},
@@ -59,6 +62,8 @@ pub(crate) enum ShutdownCoordinatorError {
     Unavailable,
     #[error(transparent)]
     Capture(#[from] ShutdownExecutionCaptureError),
+    #[error(transparent)]
+    Work(#[from] ShutdownWorkError),
 }
 
 #[derive(Default)]
@@ -78,6 +83,41 @@ struct ShutdownAttempt {
 }
 
 impl ProjectionConnectionService {
+    pub(crate) fn try_begin_observed_shutdown(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        observation: &ShutdownWorkObservation,
+    ) -> Result<ShutdownAttemptId, ShutdownCoordinatorError> {
+        let mut coordinator = self
+            .graceful_shutdown
+            .try_lock()
+            .map_err(|_| ShutdownCoordinatorError::Unavailable)?;
+        if coordinator.attempt.is_some() {
+            return Err(ShutdownCoordinatorError::StaleAttempt);
+        }
+        let serial = coordinator
+            .serial
+            .checked_add(1)
+            .ok_or(ShutdownCoordinatorError::Unavailable)?;
+        let prepared = self.prepare_shutdown_execution_capture()?;
+        let fence = self.try_admit_observed_shutdown(sessions, observation)?;
+        let execution = prepared.bind(&fence);
+        let id = ShutdownAttemptId {
+            service: self.service_generation,
+            serial,
+        };
+        coordinator.serial = serial;
+        coordinator.attempt = Some(ShutdownAttempt {
+            id,
+            fence,
+            execution,
+            stops: BTreeMap::new(),
+            progress_after: None,
+            failure: None,
+        });
+        Ok(id)
+    }
+
     pub(crate) fn begin_graceful_shutdown(
         &self,
         fence: &ProcessAdmissionFence,

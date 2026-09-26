@@ -560,6 +560,13 @@ by the executable composition root.
   stale, foreign or unavailable evidence refuses without a fence; a caller must collect fresh
   evidence before retrying. This boundary admits the observed work set; native confirmation and
   final-window policy determine when that admission is authorized.
+- Running shutdown admission and coordinator installation form one service-owned handoff. The
+  coordinator reserves its exclusive empty attempt slot, successor identity and bounded capture
+  configuration before publishing the observed process fence. Refusal leaves execution authority
+  and coordinator state unchanged. After fence publication, installation is infallible and retains
+  that exact fence before returning the attempt identity; no fallible setup or caller-owned gap may
+  lose it. This handoff issues no stop or durable command. Progress and coherent failure reopening
+  remain owned by the existing shutdown coordinator.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

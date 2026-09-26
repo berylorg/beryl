@@ -15,13 +15,26 @@ fn observe(fixture: &Fixture) -> ShutdownWorkObservation {
 fn observed_shutdown_admits_idle_and_pending_work_and_invalidates_old_permits() {
     for pending in [false, true] {
         let fixture = Fixture::with_pending(pending);
-        let observation = observe(&fixture);
+        let mut observation = observe(&fixture);
         assert_eq!(observation.has_work(), pending);
         let permit = fixture.gate.execution_permit();
-        let fence = fixture
-            .service
-            .try_admit_observed_shutdown(&fixture.sessions, &observation)
-            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let fence = loop {
+            match fixture
+                .service
+                .try_admit_observed_shutdown(&fixture.sessions, &observation)
+            {
+                Ok(fence) => break fence,
+                Err(ShutdownWorkError::Runtime(RuntimeWorkError::Busy)) => {
+                    permit.commit(|| ()).unwrap();
+                    assert!(std::time::Instant::now() < deadline, "runtime stayed busy");
+                    std::thread::yield_now();
+                    observation = observe(&fixture);
+                    assert_eq!(observation.has_work(), pending);
+                }
+                other => panic!("unexpected admission result: {other:?}"),
+            }
+        };
         assert_eq!(
             permit.commit(|| ()),
             Err(crate::process_admission::ProcessAdmissionError::Fenced)
@@ -308,7 +321,13 @@ fn observed_shutdown_and_connection_change_have_one_exact_publication_order() {
 
 #[test]
 fn observed_shutdown_performs_no_storage_read_and_refuses_failed_home_coherence() {
-    let fixture = Fixture::idle();
+    let mut fixture = Fixture::idle();
+    let scheduler = fixture.service.scheduler.take().unwrap();
+    scheduler.request_shutdown();
+    assert!(matches!(
+        scheduler.join().unwrap(),
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerExit::Clean
+    ));
     let observation = observe(&fixture);
     fixture
         .faults

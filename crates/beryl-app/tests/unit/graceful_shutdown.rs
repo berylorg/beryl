@@ -11,6 +11,9 @@ mod cleanup;
 #[path = "graceful_shutdown/reconciliation.rs"]
 mod reconciliation;
 
+#[path = "graceful_shutdown/observed_admission.rs"]
+mod observed_admission;
+
 fn poll(fixture: &Fixture, id: ShutdownAttemptId) -> ShutdownProgress {
     fixture
         .service
