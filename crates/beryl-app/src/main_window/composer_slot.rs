@@ -154,6 +154,31 @@ impl MainWindowComposerSlot {
         if !awaiting_release || self.selected_identity() != Some(selection) {
             return Err(MainWindowComposerSlotError::StaleActivationReceipt);
         }
+        Self::validate_widget_release_remainder(selection, requests)
+    }
+
+    pub(in crate::main_window) fn release_startup_widget_work(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        requests: impl IntoIterator<Item = gpui_text_input::RangeTextInputRequest>,
+    ) -> Result<MainWindowComposerWidgetRelease, MainWindowComposerSlotError> {
+        if self.disposed
+            || self.pending.is_some()
+            || self.disposal_stage.is_some()
+            || self.submission_successor.is_some()
+            || self.native_lineage_suspension.is_some()
+            || self.window_close.is_some()
+            || self.selected_identity() != Some(selection)
+        {
+            return Err(MainWindowComposerSlotError::StaleActivationReceipt);
+        }
+        Self::validate_widget_release_remainder(selection, requests)
+    }
+
+    fn validate_widget_release_remainder(
+        selection: MainWindowComposerSelectionIdentity,
+        requests: impl IntoIterator<Item = gpui_text_input::RangeTextInputRequest>,
+    ) -> Result<MainWindowComposerWidgetRelease, MainWindowComposerSlotError> {
         if requests.into_iter().any(|request| {
             !matches!(
                 request,

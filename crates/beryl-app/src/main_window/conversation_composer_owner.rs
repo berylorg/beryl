@@ -157,6 +157,9 @@ pub struct MainWindowConversationComposer {
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
     startup_interaction_gated: bool,
+    startup_release_started: bool,
+    startup_release_completion:
+        Option<futures_channel::oneshot::Sender<Result<MainWindowComposerWidgetRelease, String>>>,
     scheduled: bool,
     last_error: Option<String>,
     _input_subscription: Option<Subscription>,
@@ -667,6 +670,7 @@ impl MainWindowConversationComposer {
     }
 
     fn schedule_pump(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.fail_startup_release_if_needed();
         if !self.can_pump()
             || self.scheduled
             || self.active_flight.is_some()
@@ -678,6 +682,7 @@ impl MainWindowConversationComposer {
         cx.defer_in(window, |this, window, cx| {
             this.scheduled = false;
             this.pump_one(window, cx);
+            this.advance_startup_release(window, cx);
         });
     }
 

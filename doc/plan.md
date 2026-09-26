@@ -87,11 +87,18 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 582: Fence Startup Interaction And Reentrant Close (finished)
+# Phase 584: Complete Startup Editor Release Without Polling (finished)
 
-Accepted hidden-shell interaction gating and checked batch release with retained failure custody.
-All 128 affected tests, package checks and independent semantic review pass, including actual native
-close and failed-release prefix rollback; [evidence](failures/target-bootstrap-composition.md#startup-interaction-gate).
+Accepted one event-driven startup editor release with dedicated exact-selection slot admission,
+retained failure gating and observer-independent completion. All 108 affected regressions,
+package checks and independent lifecycle review pass;
+[evidence](failures/target-bootstrap-composition.md#startup-editor-release-admission).
+
+# Phase 585: Join Startup Member Native Destruction And Retirement (pending)
+
+Retain each complete startup shell through accepted editor release and its exact native destruction
+receipt, then transfer only its original worker retirement custody. Preserve set-wide publication
+disposition, failure ownership and successful process handoff; no early extraction proves disposal.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

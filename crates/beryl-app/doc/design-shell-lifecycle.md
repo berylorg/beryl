@@ -364,6 +364,22 @@ governed by [design.md](design.md). It does not independently declare engineerin
   transient reservation without deleting the acquired window, thread, draft or session record.
   This worker-side boundary does not certify native destruction or ordinary mutable-editor close;
   native-set ownership separately proves destruction and keeps interaction gated throughout.
+- Startup disposal first fences and releases GUI editor work while its exact native window remains
+  available to dispatch continuations. Each gated selected composer admits one event-driven release
+  completion using the existing semantic-quiescence and widget-release protocol. Loading and an
+  already admitted dispatch may settle; interaction cannot resume after release starts. No polling
+  queue or replacement editor is introduced. Dropping the completion observer does not cancel
+  release, and a failed or lost completion never proves release. The startup owner retains the
+  shell on failure; successful GUI release alone grants no native or durable disposal authority.
+  Startup has its own exact-selection slot release admission, excluding active selection,
+  submission, ordinary disposal and native-lineage transitions. It accepts only the existing
+  cancellation/release request remainder; it does not pretend an ordinary close or switch is active
+  or weaken those operations' release admission checks.
+- Native startup disposal retains the complete shell through editor release and exact native
+  destruction. Only after both proofs may it transfer the original transient retirement custody
+  to a worker. The complete-set owner supplies the sticky publication-started disposition for all
+  members, including members not yet shown; a member's own publication flag cannot authorize
+  acquisition abandonment after another member's native publication was attempted.
 - The process lifetime owns startup-attempt identity, failure-surface commands and retained
   enrollment, nondispatch and home-reconciliation custody outside each attempted graph. Retry
   admits only one new attempt for the same configured home after prior native/transient disposal

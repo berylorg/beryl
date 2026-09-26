@@ -204,6 +204,8 @@ impl MainWindowConversationComposer {
             release_fence_requires_restoration: false,
             window_close: None,
             startup_interaction_gated: false,
+            startup_release_started: false,
+            startup_release_completion: None,
             scheduled: false,
             last_error: None,
             _input_subscription: None,

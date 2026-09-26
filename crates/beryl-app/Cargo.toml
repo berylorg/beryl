@@ -26,6 +26,7 @@ path = "tests/support/crash_report_fixture.rs"
 required-features = ["test-faults"]
 
 [dependencies]
+futures-channel.workspace = true
 beryl-backend.workspace = true
 beryl-home-store.workspace = true
 beryl-model.workspace = true

@@ -3,7 +3,7 @@ use beryl_app::theme_runtime::GpuiAppearanceWindowSet;
 use gpui::{AppContext, EntityInputHandler};
 use std::num::NonZeroUsize;
 
-fn shell(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, MainWindowShell) {
+pub(super) fn shell(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, MainWindowShell) {
     let (fixture, prepared) = home_support::join(
         home_support::worker(move || {
             let fixture = Fixture::new(seed);
@@ -27,7 +27,7 @@ fn shell(cx: &mut gpui::TestAppContext, seed: u8) -> (Fixture, MainWindowShell) 
     (fixture, shell)
 }
 
-fn drive(shell: &MainWindowShell, cx: &mut gpui::TestAppContext) {
+pub(super) fn drive(shell: &MainWindowShell, cx: &mut gpui::TestAppContext) {
     for _ in 0..32 {
         cx.run_until_parked();
         cx.update(|app| {

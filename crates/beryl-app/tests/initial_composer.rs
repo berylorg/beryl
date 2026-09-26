@@ -8,8 +8,6 @@ mod gpui_cases;
 mod home_support;
 #[path = "initial_composer/preserved_retirement.rs"]
 mod preserved_retirement;
-#[path = "initial_composer/startup_interaction.rs"]
-mod startup_interaction;
 #[path = "initial_composer/support/restoration.rs"]
 mod restoration_support;
 #[path = "initial_composer/restored.rs"]
@@ -18,6 +16,10 @@ mod restored_cases;
 mod restored_claims;
 #[path = "initial_composer/restored_native.rs"]
 mod restored_native;
+#[path = "initial_composer/startup_interaction.rs"]
+mod startup_interaction;
+#[path = "initial_composer/startup_release.rs"]
+mod startup_release;
 #[path = "initial_composer/support.rs"]
 mod support;
 #[path = "initial_composer/threadless.rs"]

@@ -1456,4 +1456,16 @@ impl MainWindowConversationComposerService {
             .release_selected_widget_work(selection, requests)
             .map_err(|_| "conversation composer service operation failed".to_owned())
     }
+
+    pub(super) fn release_startup_widget_work(
+        &self,
+        selection: MainWindowComposerSelectionIdentity,
+        requests: Vec<RangeTextInputRequest>,
+    ) -> Result<MainWindowComposerWidgetRelease, String> {
+        self.slot
+            .lock()
+            .map_err(|_| "conversation composer service lock failed".to_owned())?
+            .release_startup_widget_work(selection, requests)
+            .map_err(|error| format!("startup composer release failed: {error}"))
+    }
 }

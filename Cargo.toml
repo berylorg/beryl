@@ -43,6 +43,7 @@ beryl-stream = { path = "crates/beryl-stream" }
 syndic-storage = { path = "crates/syndic-storage" }
 clap = { version = "4.6.1", features = ["derive"] }
 fjall = { path = "../fjall-fork", version = "=3.1.6" }
+futures-channel = "0.3.32"
 getrandom = "0.4.2"
 hex = "0.4.3"
 gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "936b801fff82e343124237608bf46e4d192f5177", default-features = false, features = ["windows-manifest"] }

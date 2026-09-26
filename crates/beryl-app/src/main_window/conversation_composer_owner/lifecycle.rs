@@ -79,6 +79,18 @@ impl MainWindowConversationComposer {
     }
 
     #[cfg(feature = "test-faults")]
+    pub fn test_block_next_selected_dispatch(
+        &self,
+    ) -> super::service::MainWindowComposerPendingDispatchTestRelease {
+        self.service.test_block_next_selected_dispatch()
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn test_widget_released(&self) -> bool {
+        matches!(self.phase, MainWindowConversationComposerPhase::Released(_))
+    }
+
+    #[cfg(feature = "test-faults")]
     pub fn test_has_active_flight(&self) -> bool {
         self.active_flight.is_some() || self.pending_dispatch.is_some()
     }
@@ -281,7 +293,7 @@ impl MainWindowConversationComposer {
         )
     }
 
-    fn release_widget_with(
+    pub(super) fn release_widget_with(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -459,6 +471,9 @@ impl MainWindowConversationComposer {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if self.startup_release_started {
+            return Err("startup composer release cannot resume interaction".to_owned());
+        }
         if !matches!(self.phase, MainWindowConversationComposerPhase::Fencing) {
             return Err("conversation composer widget is not fenced".to_owned());
         }

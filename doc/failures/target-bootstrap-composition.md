@@ -1514,6 +1514,30 @@ package checks and independent semantic review pass. Reusable shell preparation 
 behavior-named test support module. Whole-set publication, native/transient disposal and process
 transfer retain their separate acceptance boundaries.
 
+## Startup Editor Release Admission
+
+Reusing ordinary widget release directly for a gated startup composer is invalid. Its slot accepts
+release only during selection finalization, ordinary disposal, submission succession or native-lineage
+suspension; a freshly prepared startup slot has none. Independent review caught that the proposed
+path would dispose the input and then reject its release proof. Startup now uses a separate
+exact-selection admission excluding those transitions and ordinary close. The existing release
+remainder validator is shared without weakening ordinary admission.
+
+GUI release has one event-driven completion driven by existing input and dispatch settlement. It
+keeps the native window alive, gates interaction permanently for the attempt, and does not cancel
+when its observer is dropped. A failed or lost completion grants no disposal proof. Native removal
+and original candidate retirement remain separate ownership boundaries; release must precede native
+removal because dispatch completion still updates through the window.
+
+Focused run `34976f5b-48e4-4316-96ed-0d3edac2aed8` passes four tests: untouched idle startup,
+held real dispatch with completion wakeup and observer abandonment, existing terminal failure, and
+failure while dispatch is pending. The seven-target regression run passes all 108 tests in 210.982s,
+including ordinary release, selection, submission, native-lineage recovery and close. Default and
+all-test-target package checks, locked metadata and independent semantic review pass. Lost sender
+and conflicting slot states have source-review coverage. The existing locked `futures-channel`
+0.3.32 supplies the one-shot completion; no dependency version changes or new packages were needed.
+Serena restarted successfully after manifest validation.
+
 ## Reentrant Native Close Admission
 
 The registered GPUI close callback previously treated an app/window update error as permission
