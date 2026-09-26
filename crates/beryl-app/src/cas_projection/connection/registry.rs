@@ -15,7 +15,7 @@ use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
 mod work_facts;
 pub(in crate::cas_projection) use work_facts::{
-    loaded_owner_prefix, try_work_revision, work_revision,
+    loaded_owner_prefix, try_hold_work_revision, try_work_revision, work_revision,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

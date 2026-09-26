@@ -118,3 +118,228 @@ fn runtime_validation_refuses_busy_registry_without_mutation() {
     assert_eq!(revision(&fixture), expected);
     permit.commit(|| ()).unwrap();
 }
+
+#[test]
+fn retained_runtime_guards_exclude_readers_and_release_without_changing_authority() {
+    let fixture = Fixture::idle();
+    let expected = revision(&fixture);
+    let permit = fixture.gate.execution_permit();
+    let compaction = fixture.service.context_compaction.as_ref().unwrap();
+    let sessions = fixture
+        .sessions
+        .try_hold_work_revision(&expected.required.sessions)
+        .unwrap();
+    let controls = compaction
+        .try_hold_control_revisions(
+            &fixture.service.stop_coordinator,
+            expected.required.controls.stop.stamp,
+            expected.required.controls.compaction.stamp,
+        )
+        .unwrap();
+    let flights = FlightRegistry::try_hold_work_revision(expected.flights).unwrap();
+    let loaded = registry::try_hold_work_revision(expected.loaded).unwrap();
+    let commands = fixture
+        .service
+        .command_authorizer
+        .try_hold_work_open()
+        .unwrap();
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                assert_eq!(
+                    fixture.sessions.try_work_revision(),
+                    Err(RuntimeWorkError::Busy)
+                );
+                assert_eq!(
+                    fixture.service.stop_coordinator.try_work_revision(),
+                    Err(RuntimeWorkError::Busy)
+                );
+                assert_eq!(compaction.try_work_revision(), Err(RuntimeWorkError::Busy));
+                assert_eq!(
+                    FlightRegistry::try_work_revision(),
+                    Err(RuntimeWorkError::Busy)
+                );
+                assert_eq!(registry::try_work_revision(), Err(RuntimeWorkError::Busy));
+                assert_eq!(
+                    fixture.service.command_authorizer.try_check_work_open(),
+                    Err(RuntimeWorkError::Busy)
+                );
+            })
+            .join()
+            .unwrap();
+    });
+    drop((commands, loaded, flights, controls, sessions));
+    assert_eq!(revision(&fixture), expected);
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
+fn retained_runtime_guards_refuse_stale_foreign_and_partial_acquisition_without_changes() {
+    let fixture = Fixture::idle();
+    let foreign = Fixture::idle();
+    let expected = revision(&fixture);
+    let permit = fixture.gate.execution_permit();
+    let compaction = fixture.service.context_compaction.as_ref().unwrap();
+    assert_eq!(
+        foreign
+            .sessions
+            .try_hold_work_revision(&expected.required.sessions)
+            .err(),
+        Some(RuntimeWorkError::Foreign)
+    );
+    assert_eq!(
+        compaction
+            .try_hold_control_revisions(
+                &foreign.service.stop_coordinator,
+                expected.required.controls.stop.stamp,
+                expected.required.controls.compaction.stamp,
+            )
+            .err(),
+        Some(RuntimeWorkError::Foreign)
+    );
+    assert_eq!(
+        fixture
+            .service
+            .stop_coordinator
+            .try_hold_work_revision(expected.required.controls.stop.stamp + 1)
+            .err(),
+        Some(RuntimeWorkError::Stale)
+    );
+    assert_eq!(
+        FlightRegistry::try_hold_work_revision(expected.flights + 1).err(),
+        Some(RuntimeWorkError::Stale)
+    );
+    assert_eq!(
+        registry::try_hold_work_revision(expected.loaded + 1).err(),
+        Some(RuntimeWorkError::Stale)
+    );
+    // A later source refusal must release the already acquired stop and operations guards.
+    assert_eq!(
+        compaction
+            .try_hold_control_revisions(
+                &fixture.service.stop_coordinator,
+                expected.required.controls.stop.stamp,
+                expected.required.controls.compaction.stamp + 1,
+            )
+            .err(),
+        Some(RuntimeWorkError::Stale)
+    );
+    let controls = compaction
+        .try_hold_control_revisions(
+            &fixture.service.stop_coordinator,
+            expected.required.controls.stop.stamp,
+            expected.required.controls.compaction.stamp,
+        )
+        .unwrap();
+    drop(controls);
+    let held = fixture
+        .service
+        .command_authorizer
+        .try_hold_work_open()
+        .unwrap();
+    assert_eq!(
+        fixture
+            .sessions
+            .try_hold_work_revision(&expected.required.sessions)
+            .err(),
+        Some(RuntimeWorkError::Busy)
+    );
+    drop(held);
+    drop(
+        fixture
+            .sessions
+            .try_hold_work_revision(&expected.required.sessions)
+            .unwrap(),
+    );
+    assert_eq!(revision(&fixture), expected);
+    permit.commit(|| ()).unwrap();
+}
+
+fn poison_retained_guard(guard: impl Sized) {
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = guard;
+            panic!("inject retained runtime guard unwind");
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn retained_control_guards_cover_operations_and_release_partial_acquisitions() {
+    let fixture = Fixture::idle();
+    let permit = fixture.gate.execution_permit();
+    fixture
+        .service
+        .context_compaction
+        .as_ref()
+        .unwrap()
+        .verify_control_guard_exclusion_for_test();
+    permit.commit(|| ()).unwrap();
+}
+
+#[test]
+fn retained_runtime_guards_refuse_poison_without_fencing_process() {
+    let fixture = Fixture::idle();
+    let expected = revision(&fixture);
+    let permit = fixture.gate.execution_permit();
+    poison_retained_guard(
+        fixture
+            .sessions
+            .try_hold_work_revision(&expected.required.sessions)
+            .unwrap(),
+    );
+    assert_eq!(
+        fixture
+            .sessions
+            .try_hold_work_revision(&expected.required.sessions)
+            .err(),
+        Some(RuntimeWorkError::Unavailable)
+    );
+    let compaction = fixture.service.context_compaction.as_ref().unwrap();
+    poison_retained_guard(
+        compaction
+            .try_hold_control_revisions(
+                &fixture.service.stop_coordinator,
+                expected.required.controls.stop.stamp,
+                expected.required.controls.compaction.stamp,
+            )
+            .unwrap(),
+    );
+    assert_eq!(
+        compaction
+            .try_hold_control_revisions(
+                &fixture.service.stop_coordinator,
+                expected.required.controls.stop.stamp,
+                expected.required.controls.compaction.stamp,
+            )
+            .err(),
+        Some(RuntimeWorkError::Unavailable)
+    );
+    poison_retained_guard(FlightRegistry::try_hold_work_revision(expected.flights).unwrap());
+    assert_eq!(
+        FlightRegistry::try_hold_work_revision(expected.flights).err(),
+        Some(RuntimeWorkError::Unavailable)
+    );
+    poison_retained_guard(registry::try_hold_work_revision(expected.loaded).unwrap());
+    assert_eq!(
+        registry::try_hold_work_revision(expected.loaded).err(),
+        Some(RuntimeWorkError::Unavailable)
+    );
+    poison_retained_guard(
+        fixture
+            .service
+            .command_authorizer
+            .try_hold_work_open()
+            .unwrap(),
+    );
+    assert_eq!(
+        fixture
+            .service
+            .command_authorizer
+            .try_hold_work_open()
+            .err(),
+        Some(RuntimeWorkError::Unavailable)
+    );
+    permit.commit(|| ()).unwrap();
+}

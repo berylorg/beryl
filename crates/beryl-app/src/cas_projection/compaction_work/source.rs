@@ -65,6 +65,18 @@ impl SourceState {
 }
 
 impl CompactionWorkSource {
+    pub(in crate::cas_projection) fn try_hold_revision(
+        &self,
+        expected: u64,
+    ) -> Result<impl Sized + '_, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        use crate::cas_projection::runtime_work::RuntimeWorkError;
+        let state = self.state.try_lock()?;
+        if state.revision.ok_or(RuntimeWorkError::Unavailable)? != expected {
+            return Err(RuntimeWorkError::Stale);
+        }
+        Ok(state)
+    }
+
     pub(in crate::cas_projection) fn try_revision(
         &self,
     ) -> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {

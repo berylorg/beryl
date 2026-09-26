@@ -10,6 +10,32 @@ pub use types::*;
 mod observation_tests;
 
 impl ScheduledExecutionSessions {
+    pub(in crate::cas_projection) fn try_hold_work_revision(
+        &self,
+        expected: &ScheduledSessionWorkRevision,
+    ) -> Result<impl Sized + '_, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        use crate::cas_projection::runtime_work::RuntimeWorkError;
+        if !Arc::ptr_eq(&self.work_identity, &expected.owner) {
+            return Err(RuntimeWorkError::Foreign);
+        }
+        let state = self.state.try_lock()?;
+        let context = state.context.as_ref().ok_or(RuntimeWorkError::Closed)?;
+        if state.closed {
+            return Err(RuntimeWorkError::Closed);
+        }
+        context.commands.try_check_work_open()?;
+        if expected.home_id != context.home_id
+            || expected.home_generation != context.home_generation
+            || expected.service_generation != context.service_generation
+        {
+            return Err(RuntimeWorkError::Foreign);
+        }
+        if state.work_revision.ok_or(RuntimeWorkError::Unavailable)? != expected.revision {
+            return Err(RuntimeWorkError::Stale);
+        }
+        Ok(state)
+    }
+
     pub(in crate::cas_projection) fn try_work_revision(
         &self,
     ) -> Result<ScheduledSessionWorkRevision, crate::cas_projection::runtime_work::RuntimeWorkError>

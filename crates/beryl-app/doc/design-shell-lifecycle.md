@@ -532,6 +532,18 @@ by the executable composition root.
   precede admission; this runtime-only check performs no home/storage I/O. A successful revision
   check is point-in-time evidence and does not retain locks or authorize a later publication.
   Atomic admission must hold its required guards through publication of the process fence.
+- Fixed runtime sources provide opaque, read-only revision guards for scheduled sessions, stop
+  state, compaction operations and work state, projection flights, loaded-thread membership and
+  the master command gate. Acquisition is nonblocking and retains a constant number of locks;
+  it performs no traversal, I/O, notification, recovery or mutation. Exact revisions and session
+  ownership are checked while locked. Compaction control validation checks the exact shared stop
+  coordinator and retains both its stop state and operations lock, including their poison state.
+  Refusal releases all acquired guards without changing execution authority. Dropping successful
+  guards only releases locks; guards expose no mutation or execution capability.
+  Composition acquires sessions, shared stop/compaction controls, flights, loaded membership and
+  finally the master command gate before entering connection-work election. Session validation
+  checks the command gate briefly before its final retained acquisition. All acquisitions under
+  process admission remain nonblocking; publication performs no callbacks into held sources.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

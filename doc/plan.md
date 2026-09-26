@@ -89,14 +89,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 607: Track Router And Backend Response Work Changes (finished)
+# Phase 610: Retain Fixed Runtime Revision Guards (finished)
 
-Accepted shared-boundary router mutation guards, queue-consumer coverage and passive response
-registration before publication. Condition waits release their mutation interval; response guards
-retain no service graph. All 86 distinct router/boundary/real connection-work tests, the default
-app library check and independent mutation-coverage/concurrency review pass. Atomic process-fence
-publication remains phase 603.
-
+Accepted opaque nonblocking guards for sessions, shared stop/compaction controls, flights,
+loaded membership and the master command gate. Nine focused tests, the default app library
+check and independent concurrency/semantic review pass. Partial acquisition releases every
+previous guard without mutation; atomic fence publication remains phase 603.
 # Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
 
 Combine accepted runtime validation and observed coherent home election with process admission.

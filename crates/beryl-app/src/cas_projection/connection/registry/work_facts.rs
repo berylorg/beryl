@@ -1,5 +1,19 @@
 use super::*;
 
+pub(in crate::cas_projection) fn try_hold_work_revision(
+    expected: u64,
+) -> Result<impl Sized, crate::cas_projection::runtime_work::RuntimeWorkError> {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let state = LOADED_THREADS
+        .get()
+        .ok_or(RuntimeWorkError::Unavailable)?
+        .try_lock()?;
+    if state.revision.ok_or(RuntimeWorkError::Unavailable)? != expected {
+        return Err(RuntimeWorkError::Stale);
+    }
+    Ok(state)
+}
+
 pub(in crate::cas_projection) fn try_work_revision()
 -> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {
     use crate::cas_projection::runtime_work::RuntimeWorkError;

@@ -3,12 +3,18 @@ impl LiveCommandAuthorizer {
     pub(in crate::cas_projection) fn try_check_work_open(
         &self,
     ) -> Result<(), crate::cas_projection::runtime_work::RuntimeWorkError> {
+        self.try_hold_work_open().map(drop)
+    }
+
+    pub(in crate::cas_projection) fn try_hold_work_open(
+        &self,
+    ) -> Result<impl Sized + '_, crate::cas_projection::runtime_work::RuntimeWorkError> {
         use crate::cas_projection::runtime_work::RuntimeWorkError;
         let state = self.inner.state.try_lock()?;
         if self.inner.status(&state, None) != LiveCommandGateStatus::Open {
             return Err(RuntimeWorkError::Closed);
         }
-        Ok(())
+        Ok(state)
     }
 
     pub(crate) fn validate_process_settlement_fence(
