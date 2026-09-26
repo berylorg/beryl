@@ -62,8 +62,11 @@ mutation, reconciliation and health guards through the caller's publication. Obs
 the durable reads; returning successfully does not retain proof for a later publication. All 27
 focused tests passed as run `399f44a3-f217-49d1-baac-d8afffed4616`, together with the default package
 check and independent concurrency/integrity review. Nonblocking runtime-only revision checks
-and a borrowed backend response read guard were subsequently accepted. Complete shutdown
-admission remains unaccepted; point-in-time reads alone do not supply atomic publication proof.
+and a borrowed backend response read guard were subsequently accepted. Complete shutdown admission
+was accepted on 2026-09-27 after shared connection mutation coverage, fixed runtime guards and scoped
+process publication were composed. All 24 focused observation/admission/runtime tests, the default
+app library check and independent concurrency review pass. Point-in-time reads alone never supply
+atomic publication proof; the accepted composition publishes inside all required elections.
 
 ## Retaining Every Source Guard Violates The Connection Bound
 
@@ -105,5 +108,6 @@ lock ordering need explicit design authority before implementation. Do not impos
 historical-entry quota, discard failed-join evidence, speculate retirement or drain admission before
 confirmation. The Operator approved this boundary on 2026-09-26. Its target ownership, mutation
 coverage and election constraints are now defined in the app scheduling and CAS-live authorities;
-the root plan separates the primitive, source coverage and final composition. Ordinary close/Exit
-mounting remains dependent on acceptance of the complete boundary.
+the primitive, source coverage and final composition are now accepted. Ordinary close/Exit mounting
+remains separate, with its later consumed-retirement decision recorded in
+[running shutdown retirement](running-shutdown-retirement.md).

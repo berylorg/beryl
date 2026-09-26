@@ -104,14 +104,14 @@ implement exact side-effect-free native confirmation, preserve ordinary-close ve
 modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
 slices and verification from the main-windows feature and app lifecycle authority before activation.
 
-Prerequisite identified on 2026-09-26: directly revalidating the accepted shutdown observation inside the conditional
-process fence would invert existing dispatch lock order and can deadlock. No production integration
-was added. The [source evidence and proposed correction](failures/shutdown-confirmation-admission.md)
-require a dedicated admission-safe validation prerequisite before this composition proceeds.
-Recommend keeping observation outside the admission lock and refusing busy or changed sources
-through nonblocking exact checks at the atomic cut. The Operator clarified that this bounded
-technical correction is authorized and must not pause implementation. The accepted standalone
-components and their prior verification remain intact.
+Blocked on 2026-09-27 by a product/lifecycle decision: accepted final service cleanup can fail after
+consuming the graph, while ordinary Exit promises recoverable windows and restored eligible mutation
+surfaces on failure. Startup reopening and Quit Anyway explicitly do not cover that running-session
+case. Independent review confirmed the [source and contract conflict](failures/running-shutdown-retirement.md).
+Recommend an explicit irreversible final teardown boundary and read-only blocked-shutdown outcome
+with user-requested Quit Anyway for late cleanup failure. This changes running-session behavior and
+requires Operator selection before its feature/lifecycle/GUI authority or mounting is implemented.
+The earlier lock-order and bounded observation prerequisites are accepted in phase 603.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
