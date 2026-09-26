@@ -38,6 +38,13 @@ mod reopening {
     ));
 }
 
+mod failed_retirement {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/failed_retirement.rs"
+    ));
+}
+
 mod window_services {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),

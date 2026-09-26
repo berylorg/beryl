@@ -30,6 +30,7 @@ use crate::{
 };
 
 mod attempt;
+mod failed_retirement;
 mod initial_disposal;
 mod preparation;
 mod published;
@@ -118,6 +119,7 @@ impl From<ThemeRuntimeStartError> for AppServiceOpenError {
 pub(crate) struct ProcessServiceOwner {
     graph: Option<PublishedAppServices>,
     failed_close: Option<beryl_home_store::HomeCloseError>,
+    failed_retirement: Option<crate::cas_projection::CasRetirementDisposalFailure>,
     attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
     process: ProcessAdmissionGate,
@@ -161,6 +163,7 @@ impl ProcessServiceOwner {
         Self {
             graph: None,
             failed_close: None,
+            failed_retirement: None,
             attempt: InitialServiceAttemptState::Initial,
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),

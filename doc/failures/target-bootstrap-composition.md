@@ -1913,6 +1913,21 @@ The review also identified a separate technical prerequisite for the next plan s
 `validate_service`, requiring a healthy home. A postpublication persistent storage failure therefore
 cannot enter that barrier, and `finish_shutdown` requires its ready proof. CAS has a
 `retire_for_recovery` path, but the app lacks the corresponding whole-graph retirement composition.
-After resolving presentation authority, plan that bounded prerequisite with explicit retained
-custody and verified retirement outcomes; do not poll an impossible healthy-home shutdown or infer
-retirement from absence of a graph. No successful reopen or exit is owed while custody is unresolved.
+The app now composes that bounded startup retirement: it rejects live window reservations and
+unsettled outer custody, fences admission, retires CAS by its exact failed-home identity, joins the
+other components, and explicitly closes the original home. Rejected CAS, consumed retirement
+failure and pending home-close custody remain owned; only complete success retains the original
+fence for fresh initial admission. Absence of a graph is never retirement proof.
+
+A joined handoff scanner may report an exact Failed-generation read refusal; that read outcome is
+not failed worker disposal. Only direct/page-read health-gate refusal for the original generation
+is accepted. Panic, settlement/reconciliation and other read errors still block. Verification
+waits for the initial empty scanner pass before injecting targeted faults, preventing another
+worker from consuming the fixture's failure injection.
+
+Six new failed-retirement cases pass (`3ba18ea8-9a91-4caf-8a51-8f6003d721b0`), covering real
+failed-home retirement/reopen, old-source invalidation, healthy and window-custody refusal,
+retained exact home reconciliation, failure after graph consumption, and narrow read-error
+classification. The other 27 affected service/recovery cases passed in the preceding broad run;
+default app-library check and independent custody review pass. This is startup-only retirement,
+not the running-session replacement supervisor or completed native startup-owner mounting.

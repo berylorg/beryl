@@ -480,6 +480,20 @@ by the executable composition root.
   services behind their separate worker-start fence. Fresh services must not capture execution
   permits while the process gate is fenced, and old permits/references remain invalid. Failed graph
   shutdown never creates retirement authority, including errors after graph consumption.
+- After startup-native and transient ownership has settled, a published graph whose home is
+  Failed uses failed-home retirement instead of the healthy-home graceful-shutdown barrier.
+  The process owner refuses that boundary while main-window reservations or outer Activity and
+  nondispatch custody remain. It fences process admission and invalidates restore references,
+  requires exact CAS failed-home terminal retirement, then joins the remaining graph components
+  and explicitly closes the original home. Rejected CAS retirement retains its service with the
+  original graph; consumed retirement failure retains its original diagnostic custody. Home-close
+  failure retains its open-home custody. Any failed proof leaves the attempt blocked, even if
+  all service handles have been consumed. Only complete retirement and settled outer custody
+  retain the exact process fence as authority for a fresh initial startup attempt. This boundary
+  cannot retire an ordinary running window set or replace running-session same-home recovery.
+  A joined handoff scanner's direct or page-read health-gate refusal for that exact Failed home
+  generation is expected retirement evidence, not a join failure. Panic, command/reconciliation,
+  settlement and unrelated read failures still block; no failed-home read is required to succeed.
 - Startup verification includes failure of the last required preparation, stale first-member
   completion, native failure after an earlier member shows, reentrant close/Retry, cancellation,
   unchanged durable restore records after failed restoration, exact empty-header threadless

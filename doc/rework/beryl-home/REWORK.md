@@ -465,6 +465,7 @@
 - [x] Accepted dedicated startup failure surfaces with bounded selectable detail, exact Retry/Exit and native close retention; [evidence](../../failures/target-bootstrap-composition.md#dedicated-startup-failure-surfaces).
 - [x] Qualified explicit GPUI application lifetime across zero-window cleanup and reopening; [evidence](../../failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
 - [x] Accepted explicit blocked-startup cleanup presentation and user-requested Quit Anyway, preserving exact attempt and ordinary Exit semantics.
+- [x] Accepted failed-home retirement of the complete startup service graph, retaining exact failure custody and granting Retry only after proven disposal.
 - [ ] Compose the native startup owner using the accepted explicit application lifetime option.
 - [ ] Mount revision-bound paged catalog, search, lineage, activity, model, navigation-history,
   composer-history, transcript, and settings sources with virtualized presentation.

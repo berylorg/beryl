@@ -14,6 +14,8 @@ pub(crate) enum AppServiceCloseError {
     Unavailable,
     #[error("shutdown has not drained all admitted work")]
     NotReady,
+    #[error("startup retirement requires the original failed home")]
+    NotFailed,
     #[error(
         "shutdown retains {enrollments} Activity enrollments and {nondispatch} nondispatch proofs"
     )]

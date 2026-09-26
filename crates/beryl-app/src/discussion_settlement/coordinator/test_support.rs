@@ -1,6 +1,12 @@
 use super::*;
 use crate::cas_projection::initial_start::InitialStartOwner;
 
+impl HandoffCoordinator {
+    pub(crate) fn test_completed_passes(&self) -> u64 {
+        self.signal.state.lock().unwrap().probe.passes
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Probe {
     pub passes: u64,

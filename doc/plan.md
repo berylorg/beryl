@@ -87,18 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 593: Present Blocked Startup Cleanup And Explicit Quit (finished)
+# Phase 594: Retire Failed Published Startup Services (finished)
 
-Accepted the blocked-cleanup exception, exact surface-attempt snapshots and explicitly activated
-Quit Anyway. All 14 focused GUI/native/subprocess cases, default package check and independent
-admission/termination review pass. [Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
-Process-owner mounting remains in phase 568.
-
-# Phase 594: Retire Failed Published Startup Services (pending)
-
-Compose existing failed-home CAS retirement with complete app-graph worker disposal and home close.
-Preserve exact process fences and outer custody; authorize reopening only after proven retirement.
-Derive the bounded implementation from the existing recovery ownership contract before activation.
+Accepted whole-graph failed-startup retirement with exact CAS terminal proof, joined components,
+retained failure/home custody and original-fence reopening. Six new cases and 27 affected
+regressions, default package check and independent custody review pass.
+[Evidence](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 
