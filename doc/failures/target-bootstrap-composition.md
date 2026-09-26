@@ -1847,5 +1847,27 @@ needs the live GUI executor. The earlier desktop-worker lifetime lesson also exc
 post-loop shutdown. A dummy production window would conceal this gap rather than satisfy it.
 The clean prerequisite is a fork-owned explicit process-controlled quit boundary, with native
 tests proving zero-window cleanup and reopening, followed by the Beryl startup owner integration.
-The fork contract and implementation are not changed here; phase 568 remains blocked for Operator
-direction under the instruction to stop when a planned step cannot technically work.
+Operator approved the startup-only `Application::with_quit_on_last_window_close(false)` builder.
+Published GPUI revision `19ef0796613226c123a3c9047865060e7639f713` gates only automatic
+last-window quit on Windows, X11 and Wayland. Explicit quit and native cleanup remain unchanged;
+macOS and test platforms retain their existing behavior. No hidden production window is required.
+
+Four Windows application-lifetime cases pass (`9ccf2f34-aa87-4989-860c-5906272a5038`), covering
+actual native destruction, zero-window dispatch and successor creation, unchanged default and
+explicit-true behavior, and explicit quit. Six native publication cases also pass
+(`e1557b57-449a-4d40-9d88-2d16db1aac12`). Eleven focused Beryl startup-surface, native-destruction
+and native-operation cases pass (`dcf0a578-cc28-44c1-879e-ba5005372eca`), including removal of the
+startup-surface fixture's sentinel window. Independent lifecycle review accepted the change.
+Windows is natively verified; Linux and macOS changes received source review only. The native
+startup owner remains separate implementation work under phase 568.
+
+The first lifetime test executable omitted GPUI's `windows-manifest` feature and Windows failed
+before Rust entry with missing `TaskDialogIndirect` (`0xC0000139`). Native Windows verification
+must enable that feature. Agent-launched verification also uses inherited process-local
+`SetErrorMode` flags to suppress system-error dialogs, making failure status visible in stdio;
+this does not redirect the Windows dialog's exact text or change product failure UI.
+
+Canonical locked metadata resolves one GPUI source after aligning scrollbar, text-input and
+settings-window pins. Local and canonical app/widget library checks pass. Serena was refreshed
+after manifest validation. The zero-window prerequisite is accepted; process-owner composition
+is still pending.

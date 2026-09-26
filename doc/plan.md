@@ -87,12 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 591: Mount Dedicated Startup Failure Surfaces (finished)
+# Phase 592: Qualify Explicit GPUI Application Lifetime (finished)
 
-Accepted bounded read-only detail, exact deferred Retry/Exit admission, cancelled busy countdown,
-canonical controls and retained native close. All nine focused GPUI/native cases pass across the
-broad and corrected-fixture runs; package checks and independent lifecycle/GUI review pass.
-[Evidence](failures/target-bootstrap-composition.md#dedicated-startup-failure-surfaces).
+Published and canonically pinned the startup-only last-window quit option and aligned widget
+chain. All 21 selected native/lifecycle cases, local and canonical package checks, single-GPUI
+locked metadata and independent lifecycle review pass. The startup-surface fixture now verifies
+zero-window disposal without a sentinel. [Evidence](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 
@@ -102,14 +102,9 @@ custody. Preserve the separate process-entry fatal-hook mounting gate.
 Drain native operation flights and deferred GUI destruction before ordinary application quit or
 Retry; a stopped GUI executor cannot complete their ownership protocol.
 
-Blocked on 2026-09-26: Windows GPUI unconditionally posts `WM_QUIT` after destroying the last
-native window, stopping the executor before post-destruction cleanup and failure/Retry continuation.
-The native surface test reproduced this; its unrelated control window isolates presentation
-verification and is not an accepted production workaround. The next clean prerequisite is an
-explicit process-controlled quit boundary in the owned GPUI fork, with native evidence across zero
-open windows, before this controller can be implemented. No such boundary is currently exposed.
-Stopped under the Operator's instruction to report technically invalid plan steps;
-[evidence](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime).
+Use the accepted startup-only `with_quit_on_last_window_close(false)` GPUI lifetime option;
+[the zero-window executor failure](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime)
+must not be concealed by a production sentinel window.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 
