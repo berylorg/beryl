@@ -103,6 +103,15 @@ implement exact side-effect-free native confirmation, preserve ordinary-close ve
 modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
 slices and verification from the main-windows feature and app lifecycle authority before activation.
 
+Blocked on 2026-09-26: directly revalidating the accepted shutdown observation inside the conditional
+process fence would invert existing dispatch lock order and can deadlock. No production integration
+was added. The [source evidence and proposed correction](failures/shutdown-confirmation-admission.md)
+require a dedicated admission-safe validation prerequisite before this composition proceeds.
+Recommend keeping observation outside the admission lock and refusing busy or changed sources
+through nonblocking exact checks at the atomic cut. Implementation is paused under the Operator's
+instruction to report technically invalid planned approaches; the accepted standalone components
+and their prior verification remain intact.
+
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 
 Connect normalized fixed-home configuration, complete private domain registration, immutable
