@@ -1,6 +1,9 @@
 use super::*;
 
 #[cfg(target_os = "windows")]
+#[path = "threadless_construction.rs"]
+mod construction;
+#[cfg(target_os = "windows")]
 #[path = "threadless_desktop.rs"]
 mod desktop;
 #[cfg(target_os = "windows")]

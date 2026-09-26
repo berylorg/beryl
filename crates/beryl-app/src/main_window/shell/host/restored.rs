@@ -4,7 +4,7 @@ use crate::main_window::{
 };
 
 pub struct RestoredWindowShellPrepared {
-    selected: SelectedShellPrepared,
+    pub(super) selected: SelectedShellPrepared,
 }
 
 pub struct RestoredWindowShellPreparationFailure {
@@ -161,21 +161,7 @@ impl GpuiMainWindowShellHost<'_> {
         &mut self,
         prepared: RestoredWindowShellPrepared,
     ) -> Result<MainWindowShell, RestoredWindowShellHostFailure> {
-        use crate::theme_runtime::AppearancePublicationTarget;
-        let ShellContent::Restored { custody, .. } = &prepared.selected.content else {
-            unreachable!("restored shell preparation preserves custody kind")
-        };
-        let snapshot = self.appearance_owner.read(self.app).target().snapshot();
-        let validation = custody.composer.validate_shell_lifetime().and_then(|()| {
-            if snapshot.active
-                && Arc::ptr_eq(&snapshot.current, &prepared.selected.appearance.generation)
-            {
-                Ok(())
-            } else {
-                Err("restored shell appearance is no longer current".to_owned())
-            }
-        });
-        if let Err(error) = validation {
+        if let Err(error) = self.validate_restored_preparation(&prepared) {
             return Err(RestoredWindowShellHostFailure::BeforeConstruction { error, prepared });
         }
         self.construct_selected_hidden(prepared.selected)
@@ -193,6 +179,26 @@ impl GpuiMainWindowShellHost<'_> {
                     }
                 }
             })
+    }
+
+    pub(super) fn validate_restored_preparation(
+        &self,
+        prepared: &RestoredWindowShellPrepared,
+    ) -> Result<(), String> {
+        use crate::theme_runtime::AppearancePublicationTarget;
+        let ShellContent::Restored { custody, .. } = &prepared.selected.content else {
+            unreachable!("restored shell preparation preserves custody kind")
+        };
+        let snapshot = self.appearance_owner.read(self.app).target().snapshot();
+        custody.composer.validate_shell_lifetime().and_then(|()| {
+            if snapshot.active
+                && Arc::ptr_eq(&snapshot.current, &prepared.selected.appearance.generation)
+            {
+                Ok(())
+            } else {
+                Err("restored shell appearance is no longer current".to_owned())
+            }
+        })
     }
 }
 

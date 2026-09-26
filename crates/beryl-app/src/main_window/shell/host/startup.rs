@@ -7,12 +7,7 @@ impl MainWindowShell {
         }
         self.window
             .update(app, |root, window, cx| {
-                let gate = Rc::new(std::cell::Cell::new(true));
-                root.startup_interaction = Some(gate.clone());
-                window.on_window_should_close(cx, move |_, _| !gate.get());
-                let result = root.regate_startup_composer(cx);
-                root.refresh_startup_notice_gate(window, cx);
-                result
+                root.initialize_startup_interaction(window, cx, false)
             })
             .map_err(|error| error.to_string())?
     }
@@ -79,6 +74,24 @@ impl MainWindowShell {
 }
 
 impl MainWindowShellRoot {
+    pub(super) fn initialize_startup_interaction(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        no_editor: bool,
+    ) -> Result<(), String> {
+        let gate = Rc::new(std::cell::Cell::new(true));
+        self.startup_interaction = Some(gate.clone());
+        window.on_window_should_close(cx, move |_, _| !gate.get());
+        let result = if no_editor {
+            Ok(())
+        } else {
+            self.regate_startup_composer(cx)
+        };
+        self.refresh_startup_notice_gate(window, cx);
+        result
+    }
+
     pub fn startup_interaction_gated(&self) -> bool {
         self.startup_interaction
             .as_ref()

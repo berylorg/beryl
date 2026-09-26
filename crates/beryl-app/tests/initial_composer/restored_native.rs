@@ -10,6 +10,9 @@ mod native_retirement;
 #[path = "native_selected.rs"]
 mod native_selected;
 #[cfg(target_os = "windows")]
+#[path = "startup_construction.rs"]
+mod startup_construction;
+#[cfg(target_os = "windows")]
 #[path = "startup_disposal.rs"]
 mod startup_disposal;
 use super::*;

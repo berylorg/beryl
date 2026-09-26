@@ -3,10 +3,15 @@ use crate::main_window::{MainWindowCreationOwner, NewWindow};
 
 mod threadless;
 pub use threadless::*;
+mod construction;
 mod restored;
 mod selected;
 mod startup;
+#[cfg(target_os = "windows")]
+mod startup_construction;
 pub use restored::*;
+#[cfg(target_os = "windows")]
+pub use startup_construction::*;
 #[cfg(target_os = "windows")]
 mod desktop_flight;
 #[cfg(target_os = "windows")]
@@ -51,6 +56,11 @@ enum SelectedShellHostFailure {
     },
 }
 
+struct SelectedShellBeforeFailure {
+    error: String,
+    prepared: SelectedShellPrepared,
+}
+
 pub struct GpuiMainWindowShellHost<'a> {
     app: &'a mut App,
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
@@ -58,6 +68,8 @@ pub struct GpuiMainWindowShellHost<'a> {
     prepared_placement: Option<crate::main_window::PreparedWindowsWindowPlacement>,
     #[cfg(feature = "test-faults")]
     reject_mount: bool,
+    #[cfg(all(target_os = "windows", feature = "test-faults"))]
+    startup_fault: Option<MainWindowStartupConstructionFault>,
 }
 
 impl<'a> GpuiMainWindowShellHost<'a> {
@@ -70,6 +82,8 @@ impl<'a> GpuiMainWindowShellHost<'a> {
             prepared_placement: None,
             #[cfg(feature = "test-faults")]
             reject_mount: false,
+            #[cfg(all(target_os = "windows", feature = "test-faults"))]
+            startup_fault: None,
         }
     }
 
@@ -119,6 +133,34 @@ impl GpuiMainWindowShellHost<'_> {
         &mut self,
         prepared: SelectedShellPrepared,
     ) -> Result<MainWindowShell, SelectedShellHostFailure> {
+        let construction = self.construction(false);
+        let shell = self
+            .allocate_selected_hidden(prepared, construction)
+            .map_err(|failure| SelectedShellHostFailure::BeforeConstruction {
+                error: failure.error,
+                prepared: failure.prepared,
+            })?;
+        if let Some(error) = shell.root.read(self.app).construction_error.clone() {
+            let controller = shell
+                .window
+                .update(self.app, |root, window, cx| {
+                    root.retire_notices(window, cx);
+                    window.remove_window();
+                    root.controller
+                        .take()
+                        .expect("failed shell retains its controller")
+                })
+                .expect("new hidden shell");
+            return Err(SelectedShellHostFailure::Construction { error, controller });
+        }
+        Ok(shell)
+    }
+
+    fn allocate_selected_hidden(
+        &mut self,
+        prepared: SelectedShellPrepared,
+        construction: construction::ShellConstruction,
+    ) -> Result<MainWindowShell, SelectedShellBeforeFailure> {
         let mut options = WindowOptions {
             show: false,
             focus: false,
@@ -127,9 +169,11 @@ impl GpuiMainWindowShellHost<'_> {
         #[cfg(target_os = "windows")]
         {
             let (window_id, saved, required) = match &prepared.content {
-                ShellContent::Acquired { custody, .. } => {
-                    (custody.window_id(), custody.acquisition.placement(), false)
-                }
+                ShellContent::Acquired { custody, .. } => (
+                    custody.window_id(),
+                    custody.acquisition.placement(),
+                    construction.startup,
+                ),
                 ShellContent::Restored { custody, .. } => {
                     (custody.window_id(), custody.composer.placement(), true)
                 }
@@ -140,7 +184,7 @@ impl GpuiMainWindowShellHost<'_> {
             if let Err(error) =
                 self.apply_prepared_placement(&mut options, window_id, saved, required)
             {
-                return Err(SelectedShellHostFailure::BeforeConstruction { error, prepared });
+                return Err(SelectedShellBeforeFailure { error, prepared });
             }
         }
         let SelectedShellPrepared {
@@ -169,52 +213,84 @@ impl GpuiMainWindowShellHost<'_> {
         ))));
         let root_pending = Rc::clone(&pending);
         let publication = self.appearance_owner.read(self.app).target();
-        #[cfg(feature = "test-faults")]
-        let reject_mount = std::mem::take(&mut self.reject_mount);
+        #[cfg(target_os = "windows")]
+        let admission = Rc::new(RefCell::new(None));
+        #[cfg(target_os = "windows")]
+        let root_admission = admission.clone();
         let window = self
             .app
             .open_window(options, move |window, cx| {
+                #[cfg(target_os = "windows")]
+                let admission_error = construction.begin_native(window, cx, &root_admission);
+                #[cfg(not(target_os = "windows"))]
+                let admission_error: Option<String> = None;
                 let (mut controller, composer) = root_pending
                     .borrow_mut()
                     .take()
                     .expect("main-window shell host invokes its root constructor once");
                 let (composer, configurator, marker_seals, submission_request_source) = composer;
                 let mount = || {
-                    MainWindowConversationComposerMount::from_prepared_entity(
+                    MainWindowConversationComposerMount::from_prepared_entity_retained(
                         composer,
                         configurator,
                         marker_seals,
                         submission_request_source,
+                        construction.startup,
+                        #[cfg(feature = "test-faults")]
+                        construction.reject_setup,
                         window,
                         cx,
                     )
                 };
-                #[cfg(feature = "test-faults")]
-                let mounted = if reject_mount {
-                    Err("injected post-native composer mount rejection".to_owned())
+                let mounted = if let Some(error) = admission_error {
+                    Err((error, None))
+                } else if construction.reject_mount() {
+                    Err((
+                        "injected post-native composer mount rejection".to_owned(),
+                        None,
+                    ))
                 } else {
                     mount()
                 };
-                #[cfg(not(feature = "test-faults"))]
-                let mounted = mount();
-                match mounted {
+                let error = match mounted {
                     Ok(composer) => {
                         controller.composer_mount = Some(composer);
-                        cx.new(|cx| {
-                            MainWindowShellRoot::new(controller, None, publication, window, cx)
-                        })
+                        None
                     }
-                    Err(error) => cx.new(|cx| {
-                        MainWindowShellRoot::new(controller, Some(error), publication, window, cx)
-                    }),
+                    Err((error, mounted)) => {
+                        if construction.startup {
+                            controller.composer_mount = mounted;
+                        }
+                        Some(error)
+                    }
+                };
+                let no_editor = controller.composer_mount.is_none();
+                #[cfg(target_os = "windows")]
+                if let Some(admission) = root_admission.borrow_mut().as_mut() {
+                    admission.editor_never_mounted = no_editor;
                 }
+                cx.new(|cx| {
+                    let mut root =
+                        MainWindowShellRoot::new(controller, error, publication, window, cx);
+                    if construction.startup {
+                        let gate = root.initialize_startup_interaction(window, cx, no_editor);
+                        #[cfg(target_os = "windows")]
+                        if let Some(admission) = root_admission.borrow_mut().as_mut() {
+                            admission.gate_proven = gate.is_ok();
+                        }
+                        if let Err(error) = gate {
+                            root.construction_error.get_or_insert(error);
+                        }
+                    }
+                    root
+                })
             })
             .map_err(|error| {
                 let (controller, composer) = pending
                     .borrow_mut()
                     .take()
                     .expect("failed native construction leaves shell preparation intact");
-                SelectedShellHostFailure::BeforeConstruction {
+                SelectedShellBeforeFailure {
                     error: error.to_string(),
                     prepared: SelectedShellPrepared {
                         content: controller.content,
@@ -226,83 +302,12 @@ impl GpuiMainWindowShellHost<'_> {
                     },
                 }
             })?;
-        let construction = window
-            .update(self.app, |root, window, cx| {
-                if let Some(error) = root.construction_error.take() {
-                    root.retire_notices(window, cx);
-                    window.remove_window();
-                    Err((
-                        error,
-                        root.controller
-                            .take()
-                            .expect("failed shell root retains its controller"),
-                    ))
-                } else {
-                    Ok(())
-                }
-            })
-            .expect("a newly constructed hidden main-window shell retains its root");
-        match construction {
-            Ok(()) => {
-                let root = window.entity(self.app).expect("new hidden shell root");
-                root.update(self.app, |root, cx| {
-                    let mount = root
-                        .controller
-                        .as_ref()
-                        .and_then(|controller| controller.composer_mount.as_ref())
-                        .expect("complete composer mount");
-                    let input = mount
-                        .read(cx)
-                        .contribution()
-                        .expect("ordinary contribution")
-                        .read(cx)
-                        .gpui_input();
-                    root.composer_observer = Some(cx.observe(&input, |_, _, cx| cx.notify()));
-                });
-                let adapter_id = crate::theme_runtime::WindowAdapterId::new(
-                    std::num::NonZeroU64::new(root.entity_id().as_u64())
-                        .expect("GPUI entity identity"),
-                );
-                let registration = self.appearance_owner.update(self.app, |owner, cx| {
-                    owner.register(
-                        Box::new(appearance::ShellAppearanceAdapter {
-                            id: adapter_id,
-                            window,
-                        }),
-                        cx,
-                    )
-                });
-                if let Err(error) = registration {
-                    let controller = window
-                        .update(self.app, |root, window, cx| {
-                            root.retire_notices(window, cx);
-                            window.remove_window();
-                            root.controller.take().expect("unpublished controller")
-                        })
-                        .expect("new hidden shell");
-                    return Err(SelectedShellHostFailure::Construction {
-                        error: error.to_string(),
-                        controller,
-                    });
-                }
-                Ok(MainWindowShell {
-                    window,
-                    root,
-                    appearance_owner: self.appearance_owner.clone(),
-                    adapter_id,
-                    published: false,
-                    #[cfg(target_os = "windows")]
-                    startup_disposal: None,
-                    #[cfg(target_os = "windows")]
-                    desktop_placement: None,
-                    #[cfg(all(target_os = "windows", feature = "test-faults"))]
-                    desktop_worker_gate: None,
-                })
-            }
-            Err((error, controller)) => {
-                Err(SelectedShellHostFailure::Construction { error, controller })
-            }
-        }
+        Ok(self.complete_hidden_shell(
+            window,
+            construction,
+            #[cfg(target_os = "windows")]
+            admission.borrow_mut().take(),
+        ))
     }
 }
 
@@ -371,6 +376,7 @@ pub struct MainWindowShell {
     root: Entity<MainWindowShellRoot>,
     appearance_owner: Entity<GpuiAppearanceWindowSet>,
     adapter_id: crate::theme_runtime::WindowAdapterId,
+    appearance_registered: bool,
     published: bool,
     #[cfg(target_os = "windows")]
     startup_disposal: Option<startup_disposal::ShellStartupDisposalAdmission>,
@@ -425,33 +431,36 @@ impl MainWindowShell {
         let appearance = self.appearance_owner.read(app).target().snapshot();
         self.window
             .read_with(app, |root, app| {
-                root.controller.as_ref().is_some_and(|controller| {
-                    root.startup_interaction_ready(app)
-                        && appearance.active
-                        && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
-                        && match &controller.content {
-                            ShellContent::Threadless { source, .. } => {
-                                source.validate_lifetime().is_ok()
-                                    && controller.composer_mount.is_none()
-                            }
-                            ShellContent::Acquired { selection, .. }
-                            | ShellContent::Restored { selection, .. } => {
-                                if let ShellContent::Restored { custody, .. } = &controller.content
-                                {
-                                    if custody.composer.validate_shell_lifetime().is_err() {
-                                        return false;
-                                    }
+                root.construction_error.is_none()
+                    && root.controller.as_ref().is_some_and(|controller| {
+                        root.startup_interaction_ready(app)
+                            && appearance.active
+                            && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
+                            && match &controller.content {
+                                ShellContent::Threadless { source, .. } => {
+                                    source.validate_lifetime().is_ok()
+                                        && controller.composer_mount.is_none()
                                 }
-                                controller.composer_mount.as_ref().is_some_and(|mount| {
-                                    let mount = mount.read(app);
-                                    mount.selected_first_presentable(app)
-                                        && mount.contribution().is_some_and(|composer| {
-                                            composer.read(app).selection_identity() == *selection
-                                        })
-                                })
+                                ShellContent::Acquired { selection, .. }
+                                | ShellContent::Restored { selection, .. } => {
+                                    if let ShellContent::Restored { custody, .. } =
+                                        &controller.content
+                                    {
+                                        if custody.composer.validate_shell_lifetime().is_err() {
+                                            return false;
+                                        }
+                                    }
+                                    controller.composer_mount.as_ref().is_some_and(|mount| {
+                                        let mount = mount.read(app);
+                                        mount.selected_first_presentable(app)
+                                            && mount.contribution().is_some_and(|composer| {
+                                                composer.read(app).selection_identity()
+                                                    == *selection
+                                            })
+                                    })
+                                }
                             }
-                        }
-                })
+                    })
             })
             .unwrap_or(false)
     }

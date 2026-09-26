@@ -392,6 +392,15 @@ governed by [design.md](design.md). It does not independently declare engineerin
   receipt or implicit drop proves disposal. Successful destruction transfers restored or acquired
   cleanup custody with its original kind; only an unsealed acquired member exposes prepublication
   abandonment. A threadless member releases its reservation only after destruction proof.
+- Startup construction registers native destruction ownership immediately after allocation, before
+  fallible composer mounting or appearance registration. A failure before allocation returns the
+  original prepared member. A failure after allocation returns the complete hidden native owner,
+  its original controller/reservation and any mounted editor; requesting removal alone never
+  releases them. Partial composer setup retains its created entity when a later subscription or
+  autosave step fails. Cleanup skips editor release only when construction proves no editor was
+  mounted; otherwise it uses the same gated release and native-destruction protocol. Receipt
+  registration, gating or completion failure retains explicit custody and cannot authorize
+  publication or replacement. The GUI executor remains live through terminal completion.
 - The process lifetime owns startup-attempt identity, failure-surface commands and retained
   enrollment, nondispatch and home-reconciliation custody outside each attempted graph. Retry
   admits only one new attempt for the same configured home after prior native/transient disposal

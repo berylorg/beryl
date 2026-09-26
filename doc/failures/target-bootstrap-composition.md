@@ -1572,6 +1572,21 @@ destruction. Add bounded startup construction custody before these fallible stag
 original controller, any admitted editor work and native receipt through terminal cleanup. This
 is an app constructor prerequisite, not a requirement for a new GPUI lifetime mechanism.
 
+The accepted startup constructor registers the receipt before mounting, returns original
+preparation on allocation failure and retains complete hidden ownership on later failure. Shared
+construction stages preserve ordinary behavior. Partial setup returns its created editor; disposal
+skips editor release only with construction's absent-editor proof and skips appearance removal only
+when registration never succeeded. Sticky construction errors prevent later publication.
+Run `c67e3dbb-360b-4b7d-aa95-990667528c7c` passes three native tests covering eleven restored,
+acquired and threadless scenarios. They cover missing placement/receipt, early and late mount
+failure, appearance failure, successful enrollment, observer drop, reservation timing and original
+retirement kinds. Missing-receipt manual removal is test teardown, never successful disposal.
+All 107 tests across `initial_composer`, `main_window_shell`, `main_window_composer_mount`,
+`pending_composer_activation` and `resident_close_flush` pass in 244.838 seconds. Default library
+and test-feature all-target checks pass. Independent review confirms fault placement, allocation
+error ordering, sticky publication refusal and editor-before-destruction protocol; the latter two
+also rely on source review beyond the test assertions. Temporary diagnostic storage was removed.
+
 ## Startup Editor Release Admission
 
 Reusing ordinary widget release directly for a gated startup composer is invalid. Its slot accepts

@@ -294,13 +294,39 @@ impl MainWindowConversationComposerMount {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Entity<Self>, String> {
-        let service = prepared.service();
-        let assets = prepared.assets();
-        let contribution = prepared.mount(
-            MainWindowConversationComposer::production_clipboard_writer(),
+        Self::from_prepared_entity_retained(
+            prepared,
+            configurator,
+            marker_seals,
+            submission_request_source,
+            false,
+            #[cfg(feature = "test-faults")]
+            false,
             window,
             cx,
-        )?;
+        )
+        .map_err(|(error, _)| error)
+    }
+
+    pub(in crate::main_window) fn from_prepared_entity_retained(
+        prepared: MainWindowConversationComposerPreparedSelection,
+        configurator: MainWindowConversationComposerConfigurator,
+        marker_seals: DraftMarkerSealService,
+        submission_request_source: MainWindowComposerSubmissionRequestSource,
+        startup: bool,
+        #[cfg(feature = "test-faults")] reject_setup: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Entity<Self>, (String, Option<Entity<Self>>)> {
+        let service = prepared.service();
+        let assets = prepared.assets();
+        let contribution = prepared
+            .mount(
+                MainWindowConversationComposer::production_clipboard_writer(),
+                window,
+                cx,
+            )
+            .map_err(|error| (error, None))?;
         let mount = cx.new(|mount_cx| {
             Self::complete(
                 service,
@@ -312,11 +338,27 @@ impl MainWindowConversationComposerMount {
                 mount_cx,
             )
         });
-        mount.update(cx, |mount, mount_cx| {
+        let setup = mount.update(cx, |mount, mount_cx| {
+            if startup {
+                mount
+                    .contribution
+                    .as_ref()
+                    .expect("created composer contribution")
+                    .update(mount_cx, |composer, cx| {
+                        composer.gate_startup_interaction(cx)
+                    })?;
+            }
             mount.subscribe_to_contribution(window, mount_cx)?;
+            #[cfg(feature = "test-faults")]
+            if reject_setup {
+                return Err("injected composer setup rejection".to_owned());
+            }
             mount.initialize_autosave(window, mount_cx)
-        })?;
-        Ok(mount)
+        });
+        match setup {
+            Ok(()) => Ok(mount),
+            Err(error) => Err((error, Some(mount))),
+        }
     }
 
     fn complete(

@@ -2,9 +2,11 @@ use super::*;
 use std::{future::Future, pin::Pin, task::Poll};
 
 pub(super) struct ShellStartupDisposalAdmission {
-    receipt: Option<Pin<Box<gpui::WindowsNativeWindowDestroyed>>>,
-    preserve_records: bool,
-    started: bool,
+    pub(super) receipt: Option<Pin<Box<gpui::WindowsNativeWindowDestroyed>>>,
+    pub(super) preserve_records: bool,
+    pub(super) started: bool,
+    pub(super) editor_never_mounted: bool,
+    pub(super) gate_proven: bool,
 }
 
 pub struct MainWindowStartupDisposalFailure {
@@ -38,6 +40,8 @@ impl MainWindowShell {
             receipt: None,
             preserve_records: false,
             started: false,
+            editor_never_mounted: false,
+            gate_proven: true,
         });
         let receipt = self
             .window
@@ -87,6 +91,7 @@ impl MainWindowShell {
         }
         if self.startup_disposal.as_ref().is_none_or(|admission| {
             admission.started
+                || !admission.gate_proven
                 || admission.receipt.is_none()
                 || (self.published && !admission.preserve_records)
         }) {
@@ -97,6 +102,15 @@ impl MainWindowShell {
         }
         let composer = match self.root.read(app).controller.as_ref() {
             Some(controller) if controller.is_threadless() => None,
+            Some(controller)
+                if self
+                    .startup_disposal
+                    .as_ref()
+                    .is_some_and(|admission| admission.editor_never_mounted)
+                    && controller.composer_mount.is_none() =>
+            {
+                None
+            }
             Some(controller) => {
                 let composer = controller
                     .composer_mount
@@ -165,9 +179,12 @@ impl MainWindowShell {
             }
             let removal = cx
                 .update(|app| {
-                    self.appearance_owner
-                        .update(app, |owner, _| owner.unregister(self.adapter_id))
-                        .map_err(|error| error.to_string())?;
+                    if self.appearance_registered {
+                        self.appearance_owner
+                            .update(app, |owner, _| owner.unregister(self.adapter_id))
+                            .map_err(|error| error.to_string())?;
+                        self.appearance_registered = false;
+                    }
                     self.window
                         .update(app, |root, window, cx| {
                             root.retire_notices(window, cx);

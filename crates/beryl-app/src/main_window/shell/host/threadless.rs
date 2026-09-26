@@ -7,6 +7,11 @@ pub struct ThreadlessWindowShellPrepared {
     appearance: MainWindowShellAppearance,
 }
 
+pub(super) struct ThreadlessShellBeforeFailure {
+    pub(super) error: String,
+    pub(super) prepared: ThreadlessWindowShellPrepared,
+}
+
 impl ThreadlessWindowShellPrepared {
     pub fn new(
         source: ThreadlessWindowSource,
@@ -49,12 +54,37 @@ impl GpuiMainWindowShellHost<'_> {
         &mut self,
         prepared: ThreadlessWindowShellPrepared,
     ) -> Result<MainWindowShell, String> {
+        let construction = self.construction(false);
+        let shell = self
+            .allocate_threadless_hidden(prepared, construction)
+            .map_err(|failure| failure.error)?;
+        if let Some(error) = shell.root.read(self.app).construction_error.clone() {
+            let _ = shell.window.update(self.app, |root, window, cx| {
+                root.retire_notices(window, cx);
+                root.controller.take();
+                window.remove_window();
+            });
+            return Err(error);
+        }
+        Ok(shell)
+    }
+
+    pub(super) fn allocate_threadless_hidden(
+        &mut self,
+        prepared: ThreadlessWindowShellPrepared,
+        construction: construction::ShellConstruction,
+    ) -> Result<MainWindowShell, ThreadlessShellBeforeFailure> {
         use crate::theme_runtime::AppearancePublicationTarget;
-        prepared.source.validate_lifetime()?;
+        if let Err(error) = prepared.source.validate_lifetime() {
+            return Err(ThreadlessShellBeforeFailure { error, prepared });
+        }
         let publication = self.appearance_owner.read(self.app).target();
         let snapshot = publication.snapshot();
         if !snapshot.active || !Arc::ptr_eq(&snapshot.current, &prepared.appearance.generation) {
-            return Err("threadless shell appearance is no longer current".to_owned());
+            return Err(ThreadlessShellBeforeFailure {
+                error: "threadless shell appearance is no longer current".to_owned(),
+                prepared,
+            });
         }
         let minimum_size = gpui::size(px(160.), px(64.));
         let mut options = WindowOptions {
@@ -63,12 +93,14 @@ impl GpuiMainWindowShellHost<'_> {
             ..Default::default()
         };
         #[cfg(target_os = "windows")]
-        self.apply_prepared_placement(
+        if let Err(error) = self.apply_prepared_placement(
             &mut options,
             prepared.window_id(),
             prepared.placement(),
             true,
-        )?;
+        ) {
+            return Err(ThreadlessShellBeforeFailure { error, prepared });
+        }
         options.window_min_size = Some(minimum_size);
         let pending = Rc::new(RefCell::new(Some(MainWindowShellController {
             content: ShellContent::Threadless {
@@ -80,50 +112,64 @@ impl GpuiMainWindowShellHost<'_> {
             composer_mount: None,
         })));
         let root_pending = pending.clone();
+        #[cfg(target_os = "windows")]
+        let admission = Rc::new(RefCell::new(None));
+        #[cfg(target_os = "windows")]
+        let root_admission = admission.clone();
         let window = self
             .app
             .open_window(options, move |window, cx| {
+                #[cfg(target_os = "windows")]
+                let error = construction.begin_native(window, cx, &root_admission);
+                #[cfg(not(target_os = "windows"))]
+                let error = None;
                 let controller = root_pending
                     .borrow_mut()
                     .take()
                     .expect("one threadless root construction");
-                cx.new(|cx| MainWindowShellRoot::new(controller, None, publication, window, cx))
+                cx.new(|cx| {
+                    let mut root =
+                        MainWindowShellRoot::new(controller, error, publication, window, cx);
+                    if construction.startup {
+                        let gate = root.initialize_startup_interaction(window, cx, true);
+                        #[cfg(target_os = "windows")]
+                        if let Some(admission) = root_admission.borrow_mut().as_mut() {
+                            admission.gate_proven = gate.is_ok();
+                        }
+                        if let Err(error) = gate {
+                            root.construction_error.get_or_insert(error);
+                        }
+                    }
+                    root
+                })
             })
-            .map_err(|error| error.to_string())?;
-        let root = window.entity(self.app).expect("new hidden threadless root");
-        let adapter_id = crate::theme_runtime::WindowAdapterId::new(
-            std::num::NonZeroU64::new(root.entity_id().as_u64()).expect("GPUI entity identity"),
-        );
-        let registration = self.appearance_owner.update(self.app, |owner, cx| {
-            owner.register(
-                Box::new(appearance::ShellAppearanceAdapter {
-                    id: adapter_id,
-                    window,
-                }),
-                cx,
-            )
-        });
-        if let Err(error) = registration {
-            let _ = window.update(self.app, |root, window, cx| {
-                root.retire_notices(window, cx);
-                root.controller.take();
-                window.remove_window();
-            });
-            return Err(error.to_string());
-        }
-        Ok(MainWindowShell {
+            .map_err(|error| {
+                let controller = pending
+                    .borrow_mut()
+                    .take()
+                    .expect("failed allocation retains threadless preparation");
+                let ShellContent::Threadless {
+                    source,
+                    reservation,
+                } = controller.content
+                else {
+                    unreachable!("threadless allocation preserves kind")
+                };
+                ThreadlessShellBeforeFailure {
+                    error: error.to_string(),
+                    prepared: ThreadlessWindowShellPrepared {
+                        source,
+                        reservation,
+                        appearance: controller.appearance,
+                    },
+                }
+            })?;
+        Ok(self.complete_hidden_shell(
             window,
-            root,
-            appearance_owner: self.appearance_owner.clone(),
-            adapter_id,
-            published: false,
+            construction,
             #[cfg(target_os = "windows")]
-            startup_disposal: None,
-            #[cfg(target_os = "windows")]
-            desktop_placement: None,
-            #[cfg(all(target_os = "windows", feature = "test-faults"))]
-            desktop_worker_gate: None,
-        })
+            admission.borrow_mut().take(),
+        ))
     }
 }
 

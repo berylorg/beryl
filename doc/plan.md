@@ -87,27 +87,12 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 585: Join Startup Member Native Destruction And Retirement (finished)
+# Phase 587: Retain Failed Startup Construction Until Native Destruction (finished)
 
-Accepted hidden destruction-receipt enrollment, irreversible preservation sealing and consuming
-member disposal through editor release, native destruction and original typed retirement custody.
-All 68 affected app regressions, package checks and independent lifecycle review pass;
-[evidence](failures/target-bootstrap-composition.md#native-startup-member-disposal).
-
-# Phase 587: Retain Failed Startup Construction Until Native Destruction (pending)
-
-Establish startup construction custody before fallible post-allocation mount or appearance work.
-Selected and threadless failures must retain the original controller/reservation and exact native
-destruction receipt instead of extracting custody or dropping the reservation immediately after
-requesting removal. Join admitted editor work when present; native loss or failed completion
-retains an explicit failure owner. Reuse accepted member-disposal machinery where its prerequisites
-hold. Preserve ordinary construction behavior and existing worker retirement kinds.
-
-Verify native mount and appearance failures, reservation timing at terminal destruction, absent
-and mounted editors, callback loss, and successful construction enrollment. Run affected shell
-regressions, package checks and independent ownership review. This bounded prerequisite closes the
-[constructor failure gap](failures/target-bootstrap-composition.md#startup-construction-failure-custody)
-before complete-set publication can claim all-member cleanup.
+Accepted pre-mount native receipt ownership, retained partial editors and non-publishable failed
+shells using shared construction and disposal stages. Eleven real-native construction scenarios,
+all 107 affected regressions, package checks and independent ownership review pass;
+[evidence](failures/target-bootstrap-composition.md#startup-construction-failure-custody).
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 
