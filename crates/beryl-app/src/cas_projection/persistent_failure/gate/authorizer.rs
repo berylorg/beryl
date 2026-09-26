@@ -1,5 +1,14 @@
 use super::*;
 impl LiveCommandAuthorizer {
+    pub(in crate::cas_projection) fn prepare_process_closing(
+        &self,
+    ) -> Result<
+        crate::process_admission::ProcessAdmissionClosing<'_>,
+        crate::process_admission::ProcessAdmissionError,
+    > {
+        self.process.prepare_closing()
+    }
+
     pub(in crate::cas_projection) fn try_check_work_open(
         &self,
     ) -> Result<(), crate::cas_projection::runtime_work::RuntimeWorkError> {

@@ -550,6 +550,16 @@ by the executable composition root.
   fence while the caller still holds subordinate validation guards. No callback-return gap may
   separate validation from publication. A published fence keeps prior execution permits stale
   even after a coherent reopening; failed acquisition or unpublished disposal leaves them valid.
+- A shutdown work observation brackets its complete bounded runtime/durable read with the existing
+  home mutation observer and shared connection-work boundary. It retains only weak interval proofs
+  alongside its exact revision and work-presence result, and validates both intervals before return.
+  Admission validates exact service/session provenance, acquires unpublished process closing and
+  the fixed runtime guards in the order above, then elects the connection interval and coherent
+  home interval (mutation, reconciliation, health). Fence publication occurs inside both elections.
+  It performs no historical connection traversal or durable read under process admission. Busy,
+  stale, foreign or unavailable evidence refuses without a fence; a caller must collect fresh
+  evidence before retrying. This boundary admits the observed work set; native confirmation and
+  final-window policy determine when that admission is authorized.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

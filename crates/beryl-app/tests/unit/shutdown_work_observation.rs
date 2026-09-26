@@ -66,7 +66,7 @@ fn cancellation_and_foreign_sources_never_produce_an_idle_observation() {
         fixture
             .service
             .observe_shutdown_work(&foreign.sessions, &ProjectionCancellationToken::new(),),
-        Err(ProcessWorkError::ForeignSources)
+        Err(ShutdownWorkError::Work(ProcessWorkError::ForeignSources))
     ));
     let cancellation = ProjectionCancellationToken::new();
     cancellation.cancel();
@@ -96,7 +96,10 @@ fn work_acquire_release_during_observation_invalidates_the_result() {
             drop(fixture.acquired_projection_flight(fixture.thread));
         },
     );
-    assert!(matches!(result, Err(ProcessWorkError::StaleRevision)));
+    assert!(matches!(
+        result,
+        Err(ShutdownWorkError::Work(ProcessWorkError::StaleRevision))
+    ));
 }
 
 #[test]
@@ -119,7 +122,10 @@ fn durable_admission_during_observation_invalidates_the_result() {
             );
         },
     );
-    assert!(matches!(result, Err(ProcessWorkError::StaleRevision)));
+    assert!(matches!(
+        result,
+        Err(ShutdownWorkError::Work(ProcessWorkError::StaleRevision))
+    ));
     assert!(observe(&fixture).has_work());
 }
 

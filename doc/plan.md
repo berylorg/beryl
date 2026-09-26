@@ -89,25 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 611: Prepare Scoped Process Fence Publication (finished)
+# Phase 603: Publish Shutdown Admission Under Exact Work Validation (finished)
 
-Accepted an unpublished closing guard that retains the settled process gate until explicit fence
-publication. Disposal preserves execution authority; publication keeps old permits stale after
-reopening. All 13 focused admission tests, the default app library check and independent concurrency
-review pass. Atomic service/home composition remains phase 603.
-# Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
-
-Combine accepted runtime validation and observed coherent home election with process admission.
-Publish the fence while the required validation guards remain held; verify contention, stale
-evidence and refusal preserve execution authority. Keep native confirmation and process-owner
-mounting in phase 595.
-
-Operator approved the shared connection-work revision/election boundary on 2026-09-26, resolving
-the [architectural blocker](failures/shutdown-confirmation-admission.md#retaining-every-source-guard-violates-the-connection-bound).
-The app scheduling and CAS-live authorities now define its ownership and mutation coverage.
-Resume atomic composition after the prerequisite boundaries above are accepted; do not restore
-the rejected whole-registry guard collection or introduce a historical-entry quota.
-
+Accepted interval-bracketed shutdown observations and atomic fence publication under fixed runtime,
+connection and coherent-home guards. All 24 focused observation/admission/runtime tests, the default
+app library check and independent concurrency/semantic review pass. Contention, stale or foreign
+proofs and failed home coherence preserve execution authority. No durable read or historical
+connection traversal occurs under process admission. Native policy and mounting remain phase 595.
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
 Connect the accepted process shutdown coordinator and resident-preserving close primitives to the

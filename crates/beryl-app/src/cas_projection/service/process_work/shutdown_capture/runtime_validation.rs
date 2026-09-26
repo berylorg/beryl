@@ -15,9 +15,8 @@ impl ProjectionConnectionService {
 }
 
 impl ProcessWorkRead {
-    fn try_validate_shutdown_runtime(
+    pub(in crate::cas_projection::service) fn validate_shutdown_source_identity(
         &self,
-        sessions: &ScheduledExecutionSessions,
         revision: &ShutdownWorkRevision,
     ) -> Result<(), RuntimeWorkError> {
         let required = &revision.required;
@@ -61,6 +60,19 @@ impl ProcessWorkRead {
                 return Err(RuntimeWorkError::Foreign);
             }
         }
+        Ok(())
+    }
+
+    fn try_validate_shutdown_runtime(
+        &self,
+        sessions: &ScheduledExecutionSessions,
+        revision: &ShutdownWorkRevision,
+    ) -> Result<(), RuntimeWorkError> {
+        self.validate_shutdown_source_identity(revision)?;
+        let required = &revision.required;
+        let connections = &required.connections;
+        let stop = &required.controls.stop;
+        let compaction = &required.controls.compaction;
         // Two complete reads detect intervening changes; they retain no publication authority.
         for _ in 0..2 {
             self.command_authorizer.try_check_work_open()?;
