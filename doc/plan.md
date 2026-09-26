@@ -89,14 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 613: Hand Observed Admission To The Shutdown Coordinator (finished)
+# Phase 614: Own Observed Shutdown In The Process Service Graph (finished)
 
-Accepted preflighted coordinator reservation and infallible installation after observed fence
-publication. All 34 focused admission, capture and graceful-shutdown tests pass across the focused
-runs, with the default app library check and independent lifecycle/concurrency review. Two existing
-test timing assumptions were corrected: the no-read fault probe joins its idle scheduler, and a
-successful-admission probe retries only permitted busy refusal with fresh evidence. Native policy
-and process-owner mounting remain pending.
+Accepted graph-owned observation/admission using the exact installed service/session pair. Refusal
+preserves restoration authority; successful handoff retains the coordinator attempt and retires the
+old lifetime. Duplicate requests preserve readiness, and coherent cancellation grants only a fresh
+lifetime. All 14 focused owner/reopening/native-startup tests, the default app library check and
+independent lifecycle review pass. Native confirmation and window policy remain phase 595.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 

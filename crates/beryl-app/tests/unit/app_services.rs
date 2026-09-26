@@ -38,6 +38,9 @@ mod reopening {
     ));
 }
 
+#[path = "app_services/observed_shutdown.rs"]
+mod observed_shutdown;
+
 mod failed_retirement {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -54,7 +57,10 @@ mod window_services {
 
 #[cfg(target_os = "windows")]
 mod startup_owner {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/app_services/startup_owner.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/startup_owner.rs"
+    ));
 }
 
 fn fixture() -> (

@@ -3,6 +3,7 @@ use crate::{
     cas_projection::{
         ProjectionCancellationToken, ProjectionConnectionServiceCloseError,
         ProjectionConnectionServiceCloseOutcome, ShutdownCoordinatorError, ShutdownProgress,
+        ShutdownWorkError, ShutdownWorkObservation,
     },
     discussion_settlement::coordinator::HandoffCoordinatorError,
     process_admission::ProcessAdmissionError,
@@ -12,6 +13,8 @@ use crate::{
 pub(crate) enum AppServiceCloseError {
     #[error("the complete service graph is unavailable")]
     Unavailable,
+    #[error("the service graph already owns a shutdown attempt")]
+    AlreadyShuttingDown,
     #[error("shutdown has not drained all admitted work")]
     NotReady,
     #[error("startup retirement requires the original failed home")]
@@ -31,6 +34,8 @@ pub(crate) enum AppServiceCloseError {
     Admission(#[from] ProcessAdmissionError),
     #[error(transparent)]
     Coordinator(#[from] ShutdownCoordinatorError),
+    #[error(transparent)]
+    Work(#[from] ShutdownWorkError),
     #[error(transparent)]
     Handoff(#[from] HandoffCoordinatorError),
     #[error(transparent)]
@@ -56,6 +61,46 @@ pub(crate) enum AppServiceFinalizationError {
 }
 
 impl ProcessServiceOwner {
+    pub(crate) fn observe_shutdown_work(
+        &self,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<ShutdownWorkObservation, AppServiceCloseError> {
+        let graph = self
+            .graph
+            .as_ref()
+            .ok_or(AppServiceCloseError::Unavailable)?;
+        if graph.shutdown.is_some() {
+            return Err(AppServiceCloseError::AlreadyShuttingDown);
+        }
+        Ok(graph
+            .cas
+            .as_ref()
+            .ok_or(AppServiceCloseError::Unavailable)?
+            .observe_shutdown_work(&graph.sessions, cancellation)?)
+    }
+
+    pub(crate) fn try_begin_observed_shutdown(
+        &mut self,
+        observation: &ShutdownWorkObservation,
+    ) -> Result<(), AppServiceCloseError> {
+        let graph = self
+            .graph
+            .as_mut()
+            .ok_or(AppServiceCloseError::Unavailable)?;
+        if graph.shutdown.is_some() {
+            return Err(AppServiceCloseError::AlreadyShuttingDown);
+        }
+        let attempt = graph
+            .cas
+            .as_ref()
+            .ok_or(AppServiceCloseError::Unavailable)?
+            .try_begin_observed_shutdown(&graph.sessions, observation)?;
+        graph.shutdown = Some(attempt);
+        graph.shutdown_ready = false;
+        drop(graph.restore_lifetime.take());
+        Ok(())
+    }
+
     pub(crate) fn begin_shutdown(&mut self) -> Result<(), AppServiceCloseError> {
         let graph = self
             .graph

@@ -567,6 +567,13 @@ by the executable composition root.
   that exact fence before returning the attempt identity; no fallible setup or caller-owned gap may
   lose it. This handoff issues no stop or durable command. Progress and coherent failure reopening
   remain owned by the existing shutdown coordinator.
+- The process service owner observes and admits running shutdown through its installed graph's
+  exact CAS service and execution sessions. An unavailable graph or already-owned shutdown refuses
+  a new observation or admission. Successful handoff installs the returned attempt and invalidates
+  the graph's restoration lifetime; refusal preserves both. Only the existing coordinator's proven
+  coherent reopening clears that attempt and supplies a fresh restoration lifetime. Earlier window
+  preparation references remain stale. No caller supplies a replacement service, session owner or
+  process gate at this boundary.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session
