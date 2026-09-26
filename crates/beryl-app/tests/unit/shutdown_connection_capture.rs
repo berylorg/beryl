@@ -6,6 +6,8 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     let (directory, service, _state, sessions) = owned_service(6);
     let (session, server) = admitted_session(&service, 72_120);
     let connection = Arc::clone(session.connection());
+    let boundary = service.connection_work_boundary().clone();
+    let observed = boundary.try_observe().unwrap();
     let before = service.shutdown_work_revision(&sessions).unwrap();
     assert!(!before.requires_connection_cleanup());
     assert!(
@@ -15,6 +17,11 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
             .has_work()
     );
     let cleanup = connection.acquire_cleanup_owner().unwrap().unwrap();
+    assert!(matches!(
+        boundary.try_elect(&observed, || ()),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Stale)
+    ));
+    let acquired = boundary.try_observe().unwrap();
     assert!(
         service
             .validate_shutdown_work_revision(&sessions, &before)
@@ -39,6 +46,22 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
         .unwrap();
     assert!(page.records.is_empty());
     drop(cleanup);
+    assert!(matches!(
+        boundary.try_elect(&acquired, || ()),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Stale)
+    ));
+    let promotion_before = boundary.try_observe().unwrap();
+    let promotion = connection.reserve_scheduled_promotion().unwrap().unwrap();
+    assert!(matches!(
+        boundary.try_elect(&promotion_before, || ()),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Stale)
+    ));
+    let promotion_after = boundary.try_observe().unwrap();
+    drop(promotion);
+    assert!(matches!(
+        boundary.try_elect(&promotion_after, || ()),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Stale)
+    ));
     assert!(
         service
             .validate_shutdown_work_revision(&sessions, &before)
@@ -57,6 +80,10 @@ fn generic_cleanup_without_thread_is_retained_and_cleanup_aba_is_stale() {
     );
     drop(session);
     let _ = service.close().unwrap();
+    assert!(matches!(
+        boundary.try_observe(),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Closed)
+    ));
     server.join();
     drop(directory);
 }

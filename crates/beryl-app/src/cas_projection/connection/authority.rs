@@ -6,6 +6,7 @@ pub(in crate::cas_projection) use work_facts::ConnectionAuthorityWorkFact;
 
 #[derive(Debug)]
 pub(in crate::cas_projection) struct ConnectionRegistryAuthority {
+    pub(super) work_boundary: crate::cas_projection::connection_work::ConnectionWorkBoundary,
     pub(super) generation: ConnectionGeneration,
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
@@ -134,11 +135,25 @@ impl Default for ConnectionAuthorityState {
 }
 
 impl ConnectionRegistryAuthority {
+    #[cfg(test)]
     pub(in crate::cas_projection) fn new(
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
     ) -> Result<Self, ProjectionCoordinatorError> {
+        Self::with_work_boundary(
+            runtime_id,
+            process_generation,
+            crate::cas_projection::connection_work::ConnectionWorkBoundary::new(),
+        )
+    }
+
+    pub(super) fn with_work_boundary(
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        work_boundary: crate::cas_projection::connection_work::ConnectionWorkBoundary,
+    ) -> Result<Self, ProjectionCoordinatorError> {
         Ok(Self {
+            work_boundary,
             generation: allocate_connection_generation()?,
             runtime_id,
             process_generation,
@@ -168,15 +183,20 @@ impl ConnectionRegistryAuthority {
         &self,
         elect_ordinary_retirement: impl FnOnce() -> bool,
     ) -> Result<bool, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let mut state = self.lock()?;
         state.session_owner_live = false;
         self.elect_detachment_locked(&mut state, elect_ordinary_retirement)
     }
 
     pub(in crate::cas_projection) fn mark_session_owner_released(&self) {
+        let _change = self.work_boundary.begin_change();
         let mut state = match self.gate.lock() {
             Ok(state) => state,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(poisoned) => {
+                self.work_boundary.invalidate();
+                poisoned.into_inner()
+            }
         };
         state.session_owner_live = false;
     }
@@ -187,6 +207,7 @@ impl ConnectionRegistryAuthority {
         command: crate::cas_projection::persistent_failure::LiveCommandPermit,
         scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     ) -> Result<Option<ConnectionCleanupOwner>, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let mut state = self.lock()?;
         if self.is_retired() {
             return Ok(None);
@@ -236,6 +257,7 @@ impl ConnectionRegistryAuthority {
         command: crate::cas_projection::persistent_failure::LiveCommandPermit,
         scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
     ) -> Result<Option<ConnectionPromotionReservation>, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let mut state = self.lock()?;
         if self.is_retired() || state.scheduled_promotion.is_some() {
             return Ok(None);
@@ -366,7 +388,10 @@ impl ConnectionRegistryAuthority {
         observe_retirement_gate_attempt(self.generation.get());
         let (mut state, poisoned) = match self.gate.lock() {
             Ok(gate) => (gate, false),
-            Err(poisoned) => (poisoned.into_inner(), true),
+            Err(poisoned) => {
+                self.work_boundary.invalidate();
+                (poisoned.into_inner(), true)
+            }
         };
         self.retire_locked(&mut state);
         if poisoned {
@@ -375,7 +400,10 @@ impl ConnectionRegistryAuthority {
         while !state.retirement_complete {
             state = match self.retirement_changed.wait(state) {
                 Ok(state) => state,
-                Err(_) => return Err(Self::authority_state_error()),
+                Err(_) => {
+                    self.work_boundary.invalidate();
+                    return Err(Self::authority_state_error());
+                }
             };
             self.complete_retirement_locked(&mut state);
         }
@@ -388,6 +416,7 @@ impl ConnectionRegistryAuthority {
         connection: &Arc<ProjectionConnection>,
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
     ) -> Result<ExactSettlementOutcome, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let state = self.lock()?;
         let state = std::cell::RefCell::new(state);
         let result = command.commit_or_transfer(
@@ -450,11 +479,13 @@ impl ConnectionRegistryAuthority {
     }
 
     pub(super) fn retire_locked(&self, state: &mut ConnectionAuthorityState) {
+        let _change = self.work_boundary.begin_change();
         self.retired.store(true, Ordering::Release);
         self.complete_retirement_locked(state);
     }
 
     fn complete_retirement_locked(&self, state: &mut ConnectionAuthorityState) {
+        let _change = self.work_boundary.begin_change();
         if state.scheduled_promotion.is_some()
             || !state.cleanup_owners.is_empty()
             || state.retirement_complete
@@ -478,6 +509,7 @@ impl ConnectionRegistryAuthority {
         connection: &Arc<ProjectionConnection>,
         command: &crate::cas_projection::persistent_failure::LiveCommandPermit,
     ) -> Result<ExactSettlementOutcome, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let state = self.lock()?;
         let state = std::cell::RefCell::new(state);
         let result = command.commit_or_transfer(
@@ -576,6 +608,7 @@ impl ConnectionRegistryAuthority {
         match self.gate.lock() {
             Ok(gate) => Ok(gate),
             Err(poisoned) => {
+                self.work_boundary.invalidate();
                 let mut state = poisoned.into_inner();
                 self.retire_locked(&mut state);
                 drop(state);
@@ -596,6 +629,7 @@ impl ConnectionRegistryAuthority {
     #[cfg(test)]
     pub(in crate::cas_projection) fn poison_for_recovery_test(&self) {
         let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _change = self.work_boundary.begin_change();
             let _state = self
                 .gate
                 .lock()

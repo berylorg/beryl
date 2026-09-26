@@ -17,6 +17,7 @@ impl ProjectionConnectionService {
         &mut self,
     ) -> Result<ProjectionConnectionServiceCloseOutcome, ProjectionConnectionServiceCloseError>
     {
+        self.connections.work_boundary().close();
         self.outage_inventory.retire();
         if self.settled {
             return Ok(ProjectionConnectionServiceCloseOutcome::Closed);

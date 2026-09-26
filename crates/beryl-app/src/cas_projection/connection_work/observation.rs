@@ -106,6 +106,14 @@ impl ConnectionWorkBoundary {
             .unwrap_or_else(|poison| poison.into_inner());
         state.closed = true;
     }
+
+    pub(in crate::cas_projection) fn invalidate(&self) {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .revision = None;
+    }
 }
 
 impl State {

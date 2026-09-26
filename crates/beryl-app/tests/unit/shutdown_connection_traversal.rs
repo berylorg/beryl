@@ -54,6 +54,7 @@ fn failed_inventory_exceeds_worker_capacity_with_one_borrowed_handle() {
     }
     let registry = &fixture.service.connections;
     assert_eq!(registry.lock().unwrap().len(), 9);
+    let observation = registry.work_boundary().try_observe().unwrap();
     let baseline = retained.iter().map(Weak::strong_count).collect::<Vec<_>>();
     let mut visited = 0;
     registry
@@ -71,6 +72,23 @@ fn failed_inventory_exceeds_worker_capacity_with_one_borrowed_handle() {
         })
         .unwrap();
     assert_eq!(visited, 9);
+    registry
+        .work_boundary()
+        .try_elect(&observation, || ())
+        .unwrap();
+    {
+        let mut membership = registry.lock().unwrap();
+        membership.reverse();
+        assert!(matches!(
+            registry.work_boundary().try_observe(),
+            Err(crate::cas_projection::runtime_work::RuntimeWorkError::Busy)
+        ));
+        membership.reverse();
+    }
+    assert!(matches!(
+        registry.work_boundary().try_elect(&observation, || ()),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Stale)
+    ));
     visited = 0;
     registry
         .visit_cleanup_connections(
@@ -107,6 +125,52 @@ fn failed_inventory_exceeds_worker_capacity_with_one_borrowed_handle() {
         ))
     ));
     assert_eq!(registry.lock().unwrap().len(), 9);
+}
+
+#[test]
+fn connection_membership_observation_tracks_mutable_retired_owners_without_workers() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let fixture = Fixture::idle();
+    let boundary = fixture.service.connections.work_boundary();
+    let mut owners = Vec::new();
+    for generation in 74_000..74_003 {
+        let before = boundary.try_observe().unwrap();
+        let server = NormalTerminalServer::spawn_admission_only_controlled_close();
+        let session = admit(&fixture, &server, generation);
+        assert!(matches!(
+            boundary.try_elect(&before, || ()),
+            Err(RuntimeWorkError::Stale)
+        ));
+        let cleanup = session
+            .connection()
+            .acquire_cleanup_owner()
+            .unwrap()
+            .unwrap();
+        server.assert_quiet_and_close();
+        server.join();
+        drop(session);
+        let deadline = std::time::Instant::now() + TIMEOUT;
+        while fixture.service.worker_pool_diagnostics().active() != 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "connection workers did not return"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        owners.push(cleanup);
+    }
+    assert_eq!(fixture.service.connections.lock().unwrap().len(), 3);
+    assert_eq!(fixture.service.worker_pool_diagnostics().active(), 0);
+    while let Some(owner) = owners.pop() {
+        let before = boundary.try_observe().unwrap();
+        drop(owner);
+        assert!(matches!(
+            boundary.try_elect(&before, || ()),
+            Err(RuntimeWorkError::Stale)
+        ));
+    }
+    let observation = boundary.try_observe().unwrap();
+    boundary.try_elect(&observation, || ()).unwrap();
 }
 
 #[test]

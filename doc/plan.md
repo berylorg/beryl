@@ -89,18 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 605: Establish The Connection Work Observation Boundary (finished)
+# Phase 606: Track Connection Membership And Custody Changes (finished)
 
-Accepted the constant-state boundary with exact weak observations, active mutation intervals and
-nonblocking guarded election. All eight focused tests, the default app library check and independent
-concurrency/authority review pass. Source mutation coverage and shutdown mounting remain separate.
-
-# Phase 606: Track Connection Membership And Custody Changes (pending)
-
-Mount one observation boundary per service generation and cover registry membership, connection
-authority/custody and retirement, including workerless retained owners. Verify changes and cleanup
-invalidate exact observations without growing retained read state with historical registry size.
-Audit complete mutation coverage and failure/poison paths before accepting this source boundary.
+Accepted one boundary per service generation, installed before connection workers and covering
+membership, session/cleanup/promotion custody, retirement and closure. All 22 distinct focused
+tests, the default app library check and independent mutation-coverage review pass, including
+workerless mutable owners and failed-retirement inventory beyond worker capacity. Attachment,
+router and backend-response participation remains phase 607.
 
 # Phase 607: Track Router And Backend Response Work Changes (pending)
 

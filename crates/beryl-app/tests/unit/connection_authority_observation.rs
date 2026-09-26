@@ -30,3 +30,36 @@ fn runtime_work_authority_busy_and_poison_do_not_retire_the_connection() {
     assert_eq!(state.next_cleanup_id, before.next_cleanup_id);
     assert!(!state.retirement_complete);
 }
+
+#[test]
+fn connection_membership_observation_tracks_session_retirement_and_poison() {
+    let authority = ConnectionRegistryAuthority::new(
+        RuntimeId::from_bytes([59; 16]),
+        CasProcessGeneration::new(1).unwrap(),
+    )
+    .unwrap();
+    let boundary = &authority.work_boundary;
+    let before = boundary.try_observe().unwrap();
+    authority.mark_session_owner_released();
+    assert_eq!(
+        boundary.try_elect(&before, || ()),
+        Err(RuntimeWorkError::Stale)
+    );
+    let before = boundary.try_observe().unwrap();
+    authority.retire().unwrap();
+    assert_eq!(
+        boundary.try_elect(&before, || ()),
+        Err(RuntimeWorkError::Stale)
+    );
+    let before = boundary.try_observe().unwrap();
+    authority.poison_for_recovery_test();
+    assert_eq!(
+        boundary.try_elect(&before, || ()),
+        Err(RuntimeWorkError::Unavailable)
+    );
+    authority.mark_session_owner_released();
+    assert_eq!(
+        boundary.try_elect(&before, || ()),
+        Err(RuntimeWorkError::Unavailable)
+    );
+}

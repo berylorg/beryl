@@ -16,6 +16,7 @@ impl ConnectionRegistryAuthority {
         &self,
         elect_ordinary_retirement: impl FnOnce() -> bool,
     ) -> Result<bool, ProjectionCoordinatorError> {
+        let _change = self.work_boundary.begin_change();
         let mut state = self.lock()?;
         if self.is_retired()
             || !state.session_owner_live

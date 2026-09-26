@@ -93,6 +93,7 @@ impl ProjectionRuntimeRetirement {
 /// The generation is carried by the synchronization boundary itself so membership cannot cross
 /// service ownership through an untyped shared vector.
 pub(super) struct ProjectionServiceConnectionRegistry {
+    work_boundary: super::connection_work::ConnectionWorkBoundary,
     service_generation: ProjectionServiceGeneration,
     work_owner: Arc<()>,
     connections: Mutex<ConnectionRegistryState>,
@@ -105,6 +106,8 @@ struct ConnectionRegistryState {
 
 pub(super) struct ConnectionRegistryGuard<'a> {
     state: MutexGuard<'a, ConnectionRegistryState>,
+    boundary: &'a super::connection_work::ConnectionWorkBoundary,
+    change: Option<super::connection_work::ConnectionWorkMutation>,
 }
 
 impl ConnectionRegistryGuard<'_> {
@@ -123,11 +126,27 @@ impl Deref for ConnectionRegistryGuard<'_> {
 
 impl DerefMut for ConnectionRegistryGuard<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.change
+            .get_or_insert_with(|| self.boundary.begin_change());
         self.state.revision = self
             .state
             .revision
             .and_then(|revision| revision.checked_add(1));
         &mut self.state.entries
+    }
+}
+
+impl Drop for ConnectionRegistryGuard<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.boundary.invalidate();
+        }
+    }
+}
+
+impl Drop for ProjectionServiceConnectionRegistry {
+    fn drop(&mut self) {
+        self.work_boundary.close();
     }
 }
 
@@ -168,6 +187,7 @@ impl ProjectionServiceConnectionRegistry {
 
     pub(super) fn new(service_generation: ProjectionServiceGeneration) -> Arc<Self> {
         Arc::new(Self {
+            work_boundary: super::connection_work::ConnectionWorkBoundary::new(),
             service_generation,
             work_owner: Arc::new(()),
             connections: Mutex::new(ConnectionRegistryState {
@@ -185,21 +205,34 @@ impl ProjectionServiceConnectionRegistry {
         &self.work_owner
     }
 
+    pub(super) fn work_boundary(&self) -> &super::connection_work::ConnectionWorkBoundary {
+        &self.work_boundary
+    }
+
     pub(super) fn try_work_lock(
         &self,
     ) -> Result<ConnectionRegistryGuard<'_>, super::runtime_work::RuntimeWorkError> {
         Ok(ConnectionRegistryGuard {
             state: self.connections.try_lock()?,
+            boundary: &self.work_boundary,
+            change: None,
         })
     }
 
     pub(super) fn lock(&self) -> LockResult<ConnectionRegistryGuard<'_>> {
         self.connections
             .lock()
-            .map(|state| ConnectionRegistryGuard { state })
+            .map(|state| ConnectionRegistryGuard {
+                state,
+                boundary: &self.work_boundary,
+                change: None,
+            })
             .map_err(|poison| {
+                self.work_boundary.invalidate();
                 PoisonError::new(ConnectionRegistryGuard {
                     state: poison.into_inner(),
+                    boundary: &self.work_boundary,
+                    change: None,
                 })
             })
     }
@@ -221,12 +254,14 @@ impl ProjectionServiceConnectionRegistry {
 
     #[cfg(test)]
     pub(super) fn exhaust_revision_for_test(&self) {
+        self.work_boundary.invalidate();
         self.connections.lock().unwrap().revision = None;
     }
 
     #[cfg(test)]
     pub(super) fn poison_for_test(&self) {
         let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _change = self.work_boundary.begin_change();
             let _connections = self
                 .connections
                 .lock()

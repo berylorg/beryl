@@ -458,6 +458,7 @@ impl ProjectionAdmissionContext {
             self.failure_notification.clone(),
             self.terminal_disposer.clone(),
             Arc::clone(&self.outage_inventory),
+            self.connections.work_boundary().clone(),
         )
         .map_err(|source| {
             ProjectionSessionAdmissionError::connection_ownership(

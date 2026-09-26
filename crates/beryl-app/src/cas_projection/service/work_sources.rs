@@ -33,6 +33,11 @@ pub(super) struct ProcessWorkRead {
 }
 
 impl ProjectionConnectionService {
+    pub(in crate::cas_projection) fn connection_work_boundary(
+        &self,
+    ) -> &crate::cas_projection::connection_work::ConnectionWorkBoundary {
+        self.connections.work_boundary()
+    }
     #[cfg(feature = "test-faults")]
     pub fn required_session_work_for_test(
         &self,

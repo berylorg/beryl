@@ -234,10 +234,12 @@ impl ProjectionConnection {
         terminal_disposer:
             crate::cas_projection::persistent_failure::PersistentFailureTerminalDisposer,
         outage_inventory: Arc<crate::cas_projection::outage_buffer::OutageInventory>,
+        work_boundary: crate::cas_projection::connection_work::ConnectionWorkBoundary,
     ) -> Result<Arc<Self>, ProjectionCoordinatorError> {
-        let authority = Arc::new(ConnectionRegistryAuthority::new(
+        let authority = Arc::new(ConnectionRegistryAuthority::with_work_boundary(
             runtime_id,
             process_generation,
+            work_boundary,
         )?);
         let process_fact = ConnectionProcessFact::register(
             runtime_id,

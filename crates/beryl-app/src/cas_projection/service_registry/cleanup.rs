@@ -91,7 +91,11 @@ impl ProjectionServiceConnectionRegistry {
     ) -> Result<ConnectionRegistryGuard<'_>, ConnectionCleanupError> {
         match mode {
             ConnectionCleanupMode::Inspect => match self.connections.try_lock() {
-                Ok(state) => Ok(ConnectionRegistryGuard { state }),
+                Ok(state) => Ok(ConnectionRegistryGuard {
+                    state,
+                    boundary: &self.work_boundary,
+                    change: None,
+                }),
                 Err(std::sync::TryLockError::WouldBlock) => Err(ConnectionCleanupError::Deferred),
                 Err(std::sync::TryLockError::Poisoned(_)) => Err(ConnectionCleanupError::Failed),
             },
