@@ -517,6 +517,17 @@ by the executable composition root.
 
 ## Window Detachment And Process Shutdown
 
+- The running process window owner retains one native confirmation control and its completion,
+  bound to the invoking window, shutdown intent and exact observation. Windows uses the owned
+  GPUI native confirmation boundary, with feature-owned strings and Cancel-default behavior.
+  Duplicate requests reveal that same operation. Cancellation restores the invoking window's
+  retained logical focus when it still exists. Native creation or settlement failure grants no
+  shutdown or immediate-termination authority. A positive result is usable only after native
+  settlement and fresh validation of its exact process/window/work intent; it is not itself an
+  execution fence. Ordinary work changes permit a fresh observation under the same confirmed
+  shutdown intent without repeating confirmation, as required by the feature's admission policy.
+  Normal quit waits for confirmation settlement as well as other native cleanup.
+
 - [Fatal crash reporting](../../../doc/systems/crash-reporting/design.md) bypasses this ordinary
   shutdown coordinator. Its separate process initializes only a report surface with fixed
   presentation resources, never the process service graph, persisted theme, home or backend.
