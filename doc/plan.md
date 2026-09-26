@@ -42,6 +42,8 @@ for stopping a background thread when a nonfinal view closes.
 Operator clarified that bounded technical prerequisites are to be planned and implemented
 autonomously. Escalate only a material architectural change, impending scope explosion, significant
 risk, or a concrete decision needing Operator input; a discovered prerequisite alone is not a stop.
+On 2026-09-26 the Operator reaffirmed that lock-order corrections and other bounded technical
+prerequisites must proceed autonomously; only architectural or product-scope issues warrant a pause.
 
 Continue in the current conversation thread; do not request new-thread handoffs.
 
@@ -87,13 +89,19 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 599: Observe Shutdown Confirmation Work Without Side Effects (finished)
+# Phase 600: Elect Coherent State From An Exact Home Mutation Observation (finished)
 
-Accepted versioned read-only observation of live custody and durable work sources, excluding idle
-retained projections. All 31 focused work/capture tests, the default app-library check and
-independent concurrency review pass. Queued-input preservation is tested through real admission;
-both durable accepted-input presence probes were independently reviewed. Phase 595 still owns
-atomic admission revalidation, native confirmation and ordinary close/Exit composition.
+Accepted exact observed coherent election with nonblocking mutation, reconciliation and health
+checks held through publication. All 27 focused observation/coherence tests, the default home-store
+check and independent concurrency/integrity review pass. Runtime-source validation and shutdown
+mounting remain separate; this completes the durable-read prerequisite only.
+
+# Phase 601: Validate Shutdown Runtime Sources Without Blocking Admission (pending)
+
+Add exact nonblocking runtime-source revision validation, combine it with observed coherent home
+election, and verify contention against dispatch lock order, stale/foreign evidence, and refusal
+without execution-authority changes. Read complete work facts before admission; keep native
+confirmation and process-owner mounting in phase 595.
 
 # Phase 595: Compose Ordinary Window Close And Application Exit (pending)
 
@@ -103,14 +111,14 @@ implement exact side-effect-free native confirmation, preserve ordinary-close ve
 modes, and drain all native/auxiliary destruction before normal quit. Derive bounded implementation
 slices and verification from the main-windows feature and app lifecycle authority before activation.
 
-Blocked on 2026-09-26: directly revalidating the accepted shutdown observation inside the conditional
+Prerequisite identified on 2026-09-26: directly revalidating the accepted shutdown observation inside the conditional
 process fence would invert existing dispatch lock order and can deadlock. No production integration
 was added. The [source evidence and proposed correction](failures/shutdown-confirmation-admission.md)
 require a dedicated admission-safe validation prerequisite before this composition proceeds.
 Recommend keeping observation outside the admission lock and refusing busy or changed sources
-through nonblocking exact checks at the atomic cut. Implementation is paused under the Operator's
-instruction to report technically invalid planned approaches; the accepted standalone components
-and their prior verification remain intact.
+through nonblocking exact checks at the atomic cut. The Operator clarified that this bounded
+technical correction is authorized and must not pause implementation. The accepted standalone
+components and their prior verification remain intact.
 
 # Phase 596: Reconstruct The Executable Bootstrap (pending)
 

@@ -83,6 +83,18 @@ is governed by [the package design](design.md), including that design's engineer
   exact recovery to vacant scopes, active mutation, concurrent mutation/reservation and health
   transition, stale generation, contention, poisoned authority and callback noninvocation on refusal.
 
+- `HomeStore::try_elect_observed_coherent` additionally accepts an earlier mutation observation.
+  It validates the observation's exact store boundary, still-current registration and unchanged
+  mutation interval while holding the same nonblocking mutation boundary used for coherent
+  election. It then applies the existing reconciliation and healthy-generation checks without
+  reacquiring that boundary. A foreign store, revoked or stale observation, contention, or failed
+  coherence check refuses election without invoking the callback or changing state.
+  This composes already completed typed reads with a later in-memory admission decision; it
+  performs no storage read and does not replace the caller's record-validity or work-set proof.
+  The caller captures the observation before those reads and publishes its decision inside the
+  callback; a successful return is not retained proof for a later transition.
+  Callback restrictions and weak observation lifetime remain identical to the existing elections.
+
 ## Writer, Cancellation, And Durability
 
 - Exactly one command holds the writer-admission permit. The package owns no writer wait queue;

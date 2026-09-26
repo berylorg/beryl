@@ -48,10 +48,18 @@ without fencing or changing execution authority. Audit every nested source, incl
 durable revision, sessions, connections, controls and cleanup custody; changing only the router
 read is insufficient. Do not substitute a speculative fence followed by reopening on cancellation.
 
-This is a proposed correction, not accepted implementation or new design authority. Before
-resuming composition, derive its bounded prerequisite and lock-order evidence from the existing
+The Operator clarified that bounded technical corrections proceed autonomously; this finding
+does not require another approval. Derive each prerequisite and lock-order evidence from the existing
 [window lifecycle contract](../../crates/beryl-app/doc/design-shell-lifecycle.md#window-detachment-and-process-shutdown)
 and [main-window behavior](../features/main-windows/design.md#ordinary-window-close).
 Verification must cover contention with actual dispatch lock order, stale/foreign evidence,
 unchanged permits after refusal, and work appearing before the idle admission cut. Native
 confirmation, restore modes and process-owner mounting remain separate unfinished work.
+
+The durable-read prerequisite was accepted on 2026-09-26: home-store observed coherent election
+validates exact observation/store identity and unchanged mutation interval, then holds nonblocking
+mutation, reconciliation and health guards through the caller's publication. Observation precedes
+the durable reads; returning successfully does not retain proof for a later publication. All 27
+focused tests passed as run `399f44a3-f217-49d1-baac-d8afffed4616`, together with the default package
+check and independent concurrency/integrity review. Runtime-source validation and complete
+shutdown admission remain unimplemented and are not accepted by this home-store evidence.

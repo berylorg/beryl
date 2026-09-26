@@ -141,6 +141,26 @@ impl Drop for ObserverOwner {
 }
 
 impl HomeMutationObservation {
+    pub(crate) fn try_elect_for<T>(
+        &self,
+        expected: &Arc<MutationBoundary>,
+        elect: impl FnOnce() -> Result<T, crate::HomeObservedCoherenceError>,
+    ) -> Result<T, crate::HomeObservedCoherenceError> {
+        let registration = self
+            .registration
+            .upgrade()
+            .ok_or(HomeMutationObservationError::Revoked)?;
+        if !registration.boundary.ptr_eq(&Arc::downgrade(expected)) {
+            return Err(crate::HomeObservedCoherenceError::ForeignObservation);
+        }
+        let state = expected.state.try_lock().map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => HomeMutationObservationError::Busy,
+            std::sync::TryLockError::Poisoned(_) => HomeMutationObservationError::Unavailable,
+        })?;
+        state.validate_observation(&registration, self.revision)?;
+        elect()
+    }
+
     pub fn try_elect<T>(
         &self,
         elect: impl FnOnce() -> T,
@@ -157,22 +177,31 @@ impl HomeMutationObservation {
             .state
             .lock()
             .map_err(|_| HomeMutationObservationError::Unavailable)?;
-        state.validate(&registration)?;
-        if state.active {
-            return Err(HomeMutationObservationError::Busy);
-        }
-        if state
-            .revision
-            .ok_or(HomeMutationObservationError::Unavailable)?
-            != self.revision
-        {
-            return Err(HomeMutationObservationError::Stale);
-        }
+        state.validate_observation(&registration, self.revision)?;
         Ok(elect())
     }
 }
 
 impl MutationState {
+    fn validate_observation(
+        &self,
+        registration: &Arc<ObserverRegistration>,
+        revision: u64,
+    ) -> Result<(), HomeMutationObservationError> {
+        self.validate(registration)?;
+        if self.active {
+            return Err(HomeMutationObservationError::Busy);
+        }
+        if self
+            .revision
+            .ok_or(HomeMutationObservationError::Unavailable)?
+            != revision
+        {
+            return Err(HomeMutationObservationError::Stale);
+        }
+        Ok(())
+    }
+
     fn validate(
         &self,
         registration: &Arc<ObserverRegistration>,

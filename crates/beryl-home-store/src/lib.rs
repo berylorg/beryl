@@ -108,7 +108,7 @@ pub use codec::{
     KeyspaceSchemaVersion, PointReadLimit, RECORD_VERSION_BYTES, ReadLimitError, RecordCodec,
     RecordFamily, RecordVersion,
 };
-pub use coherence::HomeCoherenceError;
+pub use coherence::{HomeCoherenceError, HomeObservedCoherenceError};
 pub use command::{
     CommandBuildError, CommandCancellation, CommandError, CommandOutcome, CommitReceipt,
     CommitReceiptError, CommittedLocalFinalization, CommittedLocalFinalizationError,

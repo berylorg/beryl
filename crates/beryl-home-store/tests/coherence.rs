@@ -1,5 +1,12 @@
 mod support;
 
+#[path = "coherence/observed.rs"]
+mod observed;
+
+#[cfg(feature = "test-faults")]
+#[path = "coherence/observed_faults.rs"]
+mod observed_faults;
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use beryl_home_store::{HomeCoherenceError, HomeDomainRequirements};
