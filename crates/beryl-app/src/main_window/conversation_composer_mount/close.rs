@@ -84,6 +84,9 @@ impl MainWindowConversationComposerMount {
             .clone()
             .ok_or_else(|| "conversation composer has no resident editor".to_owned())?;
         let selection = contribution.read(cx).selection_identity();
+        if contribution.read(cx).startup_interaction_gated() {
+            return Err("conversation composer is waiting for startup".to_owned());
+        }
         let generation = self
             .window_close_generation
             .checked_add(1)

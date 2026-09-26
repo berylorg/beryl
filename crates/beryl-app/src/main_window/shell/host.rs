@@ -5,6 +5,7 @@ mod threadless;
 pub use threadless::*;
 mod restored;
 mod selected;
+mod startup;
 pub use restored::*;
 #[cfg(target_os = "windows")]
 mod desktop_flight;
@@ -413,7 +414,8 @@ impl MainWindowShell {
         self.window
             .read_with(app, |root, app| {
                 root.controller.as_ref().is_some_and(|controller| {
-                    appearance.active
+                    root.startup_interaction_ready(app)
+                        && appearance.active
                         && Arc::ptr_eq(&appearance.current, &controller.appearance.generation)
                         && match &controller.content {
                             ShellContent::Threadless { source, .. } => {
@@ -451,7 +453,7 @@ impl MainWindowShell {
     }
 
     pub fn release_published_handle(self, app: &mut App) -> Result<(), Self> {
-        if !self.published {
+        if !self.published || self.root.read(app).startup_interaction_gated() {
             return Err(self);
         }
         let owner = self.appearance_owner.clone();
@@ -507,6 +509,7 @@ impl MainWindowShell {
 }
 
 pub struct MainWindowShellRoot {
+    startup_interaction: Option<Rc<std::cell::Cell<bool>>>,
     pub(super) controller: Option<MainWindowShellController>,
     construction_error: Option<String>,
     composer_observer: Option<gpui::Subscription>,

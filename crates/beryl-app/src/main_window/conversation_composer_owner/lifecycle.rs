@@ -64,6 +64,9 @@ impl MainWindowConversationComposer {
     }
 
     pub(in crate::main_window) fn focus_input(&self, window: &mut Window, cx: &mut App) {
+        if self.startup_interaction_gated {
+            return;
+        }
         self.input.update(cx, |input, _| input.focus(window));
     }
 
@@ -200,8 +203,8 @@ impl MainWindowConversationComposer {
         self.activation_seeds.clear();
         self.route = MainWindowConversationComposerRoute::Selected;
         self.input.update(cx, |input, input_cx| {
-            input.set_read_only(false, input_cx);
-            input.set_enabled(true, input_cx);
+            input.set_read_only(self.startup_interaction_gated, input_cx);
+            input.set_enabled(!self.startup_interaction_gated, input_cx);
         });
         self.install_interactive_subscription(window, cx);
         self.schedule_pump(window, cx);
@@ -461,8 +464,9 @@ impl MainWindowConversationComposer {
         }
         self.phase = MainWindowConversationComposerPhase::Live;
         self.release_fence_requires_restoration = false;
-        self.input
-            .update(cx, |input, input_cx| input.set_enabled(true, input_cx));
+        self.input.update(cx, |input, input_cx| {
+            input.set_enabled(!self.startup_interaction_gated, input_cx)
+        });
         self.schedule_pump(window, cx);
         Ok(())
     }

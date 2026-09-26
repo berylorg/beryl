@@ -1,0 +1,52 @@
+use super::*;
+
+impl MainWindowConversationComposer {
+    pub(in crate::main_window) fn startup_interaction_gated(&self) -> bool {
+        self.startup_interaction_gated
+    }
+
+    pub(in crate::main_window) fn gate_startup_interaction(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.startup_interaction_gated = true;
+        self.input.update(cx, |input, input_cx| {
+            input.set_read_only(true, input_cx);
+            input.set_enabled(false, input_cx);
+            if input.is_enabled() {
+                Err("startup composer could not disable input".to_owned())
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    pub(in crate::main_window) fn prepare_startup_interaction_release(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if !self.startup_interaction_gated
+            || self.window_close.is_some()
+            || !self.selected_first_presentable(cx)
+        {
+            return Err("startup composer is not ready for interaction".to_owned());
+        }
+        self.input.update(cx, |input, input_cx| {
+            input.set_enabled(true, input_cx);
+            if input.is_enabled() {
+                Ok(())
+            } else {
+                Err("startup composer could not enable input".to_owned())
+            }
+        })
+    }
+
+    pub(in crate::main_window) fn commit_startup_interaction_release(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        self.startup_interaction_gated = false;
+        self.input
+            .update(cx, |input, input_cx| input.set_read_only(false, input_cx));
+    }
+}

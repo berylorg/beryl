@@ -37,6 +37,7 @@ mod realization;
 mod render;
 mod selected_preparation;
 mod service;
+mod startup;
 
 #[cfg(feature = "test-faults")]
 pub use prepublication::MainWindowNativeLineagePrepublicationDiagnostics;
@@ -155,6 +156,7 @@ pub struct MainWindowConversationComposer {
     phase: MainWindowConversationComposerPhase,
     release_fence_requires_restoration: bool,
     window_close: Option<super::MainWindowConversationComposerCloseTicket>,
+    startup_interaction_gated: bool,
     scheduled: bool,
     last_error: Option<String>,
     _input_subscription: Option<Subscription>,
@@ -208,6 +210,9 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if self.startup_interaction_gated {
+            return Err("conversation composer is waiting for startup".to_owned());
+        }
         let disposition = self
             .image_surfaces
             .activate_marker(self.selection, activation)
@@ -238,6 +243,9 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if self.startup_interaction_gated {
+            return Err("conversation composer is waiting for startup".to_owned());
+        }
         self.image_surfaces
             .invoke_view(self.selection, state)
             .map_err(|_| "composer marker view was rejected".to_owned())?;
@@ -250,7 +258,7 @@ impl MainWindowConversationComposer {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
-        if self.window_close.is_some() {
+        if self.startup_interaction_gated || self.window_close.is_some() {
             return Err("conversation composer is waiting for window close".to_owned());
         }
         let anchor = self
@@ -287,7 +295,10 @@ impl MainWindowConversationComposer {
         order: gpui_text_input::InlineObjectOrder,
         cx: &mut Context<Self>,
     ) -> Result<gpui_text_input::MutationKey, String> {
-        if !self.is_live() || self.window_close.is_some() || self.pending_marker_metadata.is_some()
+        if !self.is_live()
+            || self.startup_interaction_gated
+            || self.window_close.is_some()
+            || self.pending_marker_metadata.is_some()
         {
             return Err("composer marker insertion lane is busy".to_owned());
         }
@@ -404,7 +415,11 @@ impl MainWindowConversationComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.is_live() || self.active_flight.is_some() || self.last_error.is_some() {
+        if !self.is_live()
+            || self.startup_interaction_gated
+            || self.active_flight.is_some()
+            || self.last_error.is_some()
+        {
             return;
         }
         if kind == ClipboardKind::Cut && self.window_close.is_some() {
@@ -429,8 +444,9 @@ impl MainWindowConversationComposer {
                 self.drive_propagated_clipboard(selected_range, window, cx);
             }
             Err(error) => {
-                self.input
-                    .update(cx, |input, cx| input.set_enabled(true, cx));
+                self.input.update(cx, |input, cx| {
+                    input.set_enabled(!self.startup_interaction_gated, cx)
+                });
                 self.last_error = Some(error);
             }
         }
@@ -540,8 +556,9 @@ impl MainWindowConversationComposer {
                         };
                         self.propagated_clipboard = None;
                         if deletion.selection() != expected {
-                            self.input
-                                .update(cx, |input, cx| input.set_enabled(true, cx));
+                            self.input.update(cx, |input, cx| {
+                                input.set_enabled(!self.startup_interaction_gated, cx)
+                            });
                             self.last_error =
                                 Some("composer cut selection changed before deletion".into());
                             return;
@@ -579,8 +596,9 @@ impl MainWindowConversationComposer {
             clipboard.cancel();
         }
         if self.is_live() {
-            self.input
-                .update(cx, |input, cx| input.set_enabled(true, cx));
+            self.input.update(cx, |input, cx| {
+                input.set_enabled(!self.startup_interaction_gated, cx)
+            });
         }
     }
 
@@ -632,8 +650,9 @@ impl MainWindowConversationComposer {
                 {
                     return;
                 }
-                this.input
-                    .update(cx, |input, cx| input.set_enabled(true, cx));
+                this.input.update(cx, |input, cx| {
+                    input.set_enabled(!this.startup_interaction_gated, cx)
+                });
                 match result.and_then(|prepared| {
                     this.input
                         .update(cx, |input, input_cx| prepared.begin(input, input_cx))

@@ -1494,6 +1494,26 @@ the matching rag-rat walker traverses non-Markdown directories and propagates ra
 Discovery and reconciliation succeeded after test cleanup. Git-ignoring `/.tmp/` now prunes that
 temporary tree before traversal; a target-file exclusion alone would not do so in the pinned build.
 
+## Startup Interaction Gate
+
+An enrolled hidden shell now retains command, notice, native-close and editor gates while its
+first-presentable loading continues. Lifecycle re-enable paths compose with the gate, direct
+submission/close admission is refused, and propagated input cannot admit work. Publication checks
+actual disabled input; ordinary handoff rejects a gated shell. Complete supplied-batch release uses
+one outer window update: enable and verify all members while read-only/command gates remain closed,
+then commit admission. A rejection regates every member and retains any disabling failure in the
+returned diagnostic. Native publication/disposal and exact membership remain coordinator work.
+
+Run `95076cc3-e8d4-4df9-8b75-783f1092b57e` passes 128 tests across initial composer, shell, composer
+owner/mount, submission, pending activation, notices and resident close. New tests cover text and
+submission refusal, propagated input, notices, lifecycle resume, duplicate enrollment, later-member
+rejection with prefix rollback, ordinary editing after release, and actual native enrolled-shell
+close before/after release. Capacity-rejected enabling and pending promotion have source-review
+coverage; the rollback regression injects a late readiness failure. Default and all-test-target
+package checks and independent semantic review pass. Reusable shell preparation lives in the
+behavior-named test support module. Whole-set publication, native/transient disposal and process
+transfer retain their separate acceptance boundaries.
+
 ## Reentrant Native Close Admission
 
 The registered GPUI close callback previously treated an app/window update error as permission

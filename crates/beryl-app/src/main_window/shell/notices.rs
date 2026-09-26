@@ -228,9 +228,18 @@ impl MainWindowShellRoot {
         }
         self.refresh_notice_safe_focus(cx);
         self.notices.inert = inert;
+        let inert = inert || self.startup_interaction_gated();
         self.notices
             .widget
             .update(cx, |widget, cx| widget.set_inert(inert, window, cx));
+    }
+
+    pub(super) fn refresh_startup_notice_gate(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_notices_inert(self.notices.inert, window, cx);
     }
 
     pub fn retire_notices(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -274,7 +283,7 @@ impl MainWindowShellRoot {
         if self.notices.retired || !self.notices.scope_current() {
             return Err(Rejection::Notice(NoticeRejection::Disposed));
         }
-        if self.notices.inert {
+        if self.notices.inert || self.startup_interaction_gated() {
             return Err(Rejection::Inert);
         }
         match event {

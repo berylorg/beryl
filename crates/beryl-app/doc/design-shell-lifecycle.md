@@ -337,6 +337,16 @@ governed by [design.md](design.md). It does not independently declare engineerin
   an editor mutation, another startup attempt or an ordinary-close session deletion during this
   transition. Whole-set success transfers the members to the ordinary process window owner and
   releases interaction. It does not wait for simultaneous compositor painting.
+- Each enrolled shell closes command, notice, editor and ordinary-close admission before exposure.
+  Editor gating composes with lifecycle promotion and resume; background first-presentable loading
+  remains allowed. Existing enabled/read-only controls must actually accept the disabled state.
+  Gate refusal prevents publication and retains the shell for disposal. Denied native close while
+  startup owns the shell is ignored, without ordinary-close work or replay.
+- After complete native success, interaction release is one outer GUI update containing only
+  widget/admission state changes. A widget may reject re-enabling under its existing capacity
+  contract. The release pass then restores the gate on every attempted member before any native
+  disposal call or return to event processing. No partly released set enters ordinary ownership.
+  Native-set membership validation and final process-owner transfer remain the coordinator's role.
 - Once native publication has started, failure or cancellation before whole-set success keeps one disposal owner for every
   attempted member, including possibly visible windows. It closes the entire native set, joins
   transient work and preserves durable restore records and unresolved command custody before

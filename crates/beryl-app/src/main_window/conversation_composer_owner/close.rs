@@ -9,6 +9,7 @@ impl MainWindowConversationComposer {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if !self.is_live()
+            || self.startup_interaction_gated
             || self.is_pending_target()
             || !ticket.matches_editor(self.selection)
             || self.window_close.is_some_and(|current| current != ticket)
@@ -55,8 +56,9 @@ impl MainWindowConversationComposer {
             return Err("conversation composer close disposal is already active".to_owned());
         }
         self.window_close = None;
-        self.input
-            .update(cx, |input, cx| input.set_read_only(false, cx));
+        self.input.update(cx, |input, cx| {
+            input.set_read_only(self.startup_interaction_gated, cx)
+        });
         self.schedule_pump(window, cx);
         Ok(true)
     }

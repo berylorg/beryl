@@ -1,4 +1,5 @@
 use super::*;
+use beryl_app::main_window::MainWindowShell;
 use gpui::{AppContext, Application};
 use std::{
     cell::RefCell,
@@ -9,6 +10,99 @@ use std::{
 #[path = "../support/shell_desktop_flight.rs"]
 mod flight;
 use flight::{Case, native};
+
+#[test]
+fn native_startup_shell_ignores_close_until_interaction_release() {
+    let (mut fixture, prepared, geometry, before) = support::worker(|| {
+        let mut fixture = Fixture::with_placement(190, placement());
+        fixture.coordinator = Some(AppearanceCoordinator::new(
+            AppearanceCoordinatorConfig::new(NonZeroUsize::new(4).unwrap()),
+            flight::system_font_appearance(&fixture.state),
+        ));
+        let prepared = fixture.prepare().unwrap();
+        let geometry = beryl_app::main_window::prepare_windows_window_placement(
+            prepared.window_id(),
+            prepared.placement().clone(),
+        )
+        .unwrap();
+        let before = fixture.store.home_revision().unwrap();
+        (fixture, prepared, geometry, before)
+    })
+    .join()
+    .unwrap();
+    let completed = Arc::new(AtomicBool::new(false));
+    let result = completed.clone();
+    Application::new().run(move |app| {
+        let (control, _) = native::open(app, "startup-interaction-control");
+        app.spawn(async move |cx| {
+            let mut shell = cx
+                .update(|app| {
+                    let owner = GpuiAppearanceWindowSet::new(
+                        fixture.coordinator.as_ref().unwrap().current(),
+                        NonZeroUsize::new(4).unwrap(),
+                        app,
+                    );
+                    fixture
+                        .coordinator
+                        .as_mut()
+                        .unwrap()
+                        .attach_publication_target(owner.read(app).target())
+                        .unwrap();
+                    GpuiMainWindowShellHost::new(app, owner)
+                        .with_prepared_placement(geometry)
+                        .construct_threadless_hidden(prepared)
+                        .unwrap()
+                })
+                .unwrap();
+            cx.update(|app| shell.gate_startup_interaction(app))
+                .unwrap()
+                .unwrap();
+            let (mut shell, raw) = flight::flight(shell, Case::Ready, cx).await;
+            cx.update(|app| shell.publish(app)).unwrap().unwrap();
+            assert!(native::visible(raw));
+            unsafe {
+                windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                    native::hwnd(raw),
+                    windows::Win32::UI::WindowsAndMessaging::WM_CLOSE,
+                    Some(windows::Win32::Foundation::WPARAM(0)),
+                    Some(windows::Win32::Foundation::LPARAM(0)),
+                );
+            }
+            native::pump(cx).await;
+            assert!(native::alive(raw));
+            assert_eq!(fixture.process.main_window_occupancy(), 1);
+            cx.update(|app| {
+                MainWindowShell::release_startup_interaction(std::slice::from_ref(&shell), app)
+            })
+            .unwrap()
+            .unwrap();
+            cx.update(|app| shell.release_published_handle(app))
+                .unwrap()
+                .unwrap_or_else(|_| panic!("ordinary shell handoff"));
+            unsafe {
+                windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                    native::hwnd(raw),
+                    windows::Win32::UI::WindowsAndMessaging::WM_CLOSE,
+                    Some(windows::Win32::Foundation::WPARAM(0)),
+                    Some(windows::Win32::Foundation::LPARAM(0)),
+                );
+            }
+            flight::wait_destroyed(raw, cx).await;
+            assert_eq!(fixture.process.main_window_occupancy(), 0);
+            cx.background_executor()
+                .spawn(async move {
+                    assert_eq!(fixture.store.home_revision().unwrap(), before);
+                })
+                .await;
+            result.store(true, Ordering::SeqCst);
+            control
+                .update(cx, |_, window, _| window.remove_window())
+                .unwrap();
+        })
+        .detach();
+    });
+    assert!(completed.load(Ordering::SeqCst));
+}
 
 #[test]
 fn native_threadless_desktop_flights_preserve_shell_and_saved_state() {

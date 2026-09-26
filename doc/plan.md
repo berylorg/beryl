@@ -87,17 +87,11 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 583: Reject Close When Its Callback Cannot Execute (finished)
+# Phase 582: Fence Startup Interaction And Reentrant Close (finished)
 
-Accepted callback-error denial with later ordinary close and unchanged callback-free behavior.
-Eight native tests, package checks and independent semantic review pass. Published and aligned
-the single GPUI graph; [evidence](failures/target-bootstrap-composition.md#reentrant-native-close-admission).
-
-# Phase 582: Fence Startup Interaction And Reentrant Close (pending)
-
-Keep enrolled shell commands and composer mutation closed through complete-set admission, including
-lifecycle promotion and native close reentrancy. Qualify the required dependency close boundary
-before startup-set integration; preserve ordinary window behavior after transfer.
+Accepted hidden-shell interaction gating and checked batch release with retained failure custody.
+All 128 affected tests, package checks and independent semantic review pass, including actual native
+close and failed-release prefix rollback; [evidence](failures/target-bootstrap-composition.md#startup-interaction-gate).
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

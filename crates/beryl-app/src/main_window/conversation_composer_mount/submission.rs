@@ -219,6 +219,10 @@ impl MainWindowConversationComposerMount {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.window_close.is_some()
+            || self
+                .contribution
+                .as_ref()
+                .is_some_and(|composer| composer.read(cx).startup_interaction_gated())
             || self.submission.active.is_some()
             || matches!(
                 self.submission.status,
@@ -237,7 +241,10 @@ impl MainWindowConversationComposerMount {
         let editor = self
             .contribution
             .as_ref()
-            .filter(|contribution| contribution.read(cx).selection_identity() == selection)
+            .filter(|contribution| {
+                let composer = contribution.read(cx);
+                composer.selection_identity() == selection && !composer.startup_interaction_gated()
+            })
             .ok_or_else(|| "conversation composer submission editor is stale".to_owned())?
             .entity_id();
         self.submission.generation = generation;

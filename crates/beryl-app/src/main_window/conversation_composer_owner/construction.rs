@@ -203,6 +203,7 @@ impl MainWindowConversationComposer {
             phase: MainWindowConversationComposerPhase::Live,
             release_fence_requires_restoration: false,
             window_close: None,
+            startup_interaction_gated: false,
             scheduled: false,
             last_error: None,
             _input_subscription: None,
@@ -458,7 +459,7 @@ impl MainWindowConversationComposer {
                     this.begin_propagated_clipboard(ClipboardKind::Cut, window, cx)
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Paste) => {
-                    if this.window_close.is_some() {
+                    if this.startup_interaction_gated || this.window_close.is_some() {
                         return;
                     }
                     cx.emit(MainWindowConversationComposerEvent::RichPastePropagated {
@@ -466,7 +467,7 @@ impl MainWindowConversationComposer {
                     });
                 }
                 RangeTextInputEvent::CommandPropagated(TextInputCommand::Enter) => {
-                    if this.window_close.is_some() {
+                    if this.startup_interaction_gated || this.window_close.is_some() {
                         return;
                     }
                     cx.emit(MainWindowConversationComposerEvent::SubmitPropagated {
@@ -474,6 +475,9 @@ impl MainWindowConversationComposer {
                     });
                 }
                 RangeTextInputEvent::InlineObjectActivated(activation) => {
+                    if this.startup_interaction_gated {
+                        return;
+                    }
                     if this.activate_marker(*activation, window, cx).is_err() {
                         this.last_error = Some("composer marker activation was rejected".into());
                     }
