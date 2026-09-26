@@ -1548,6 +1548,30 @@ affected app tests, including uncertain retirement and native startup disposal. 
 test-feature all-target checks for both packages pass. The stack correction is accepted; diagnostic
 traces, crash fixtures and emitted assembly artifacts were removed.
 
+## Native Startup Member Disposal
+
+Accepted hidden receipt enrollment and all-member preservation sealing retain each complete shell
+through desktop work, editor release and exact terminal native destruction. Early extraction and
+handle-only transfer are rejected. Required completion returns original acquired, preserved,
+restored or threadless retirement kinds; failure retains the shell. Test run
+`bfe8c29d-2f85-4972-8038-b8411fcc8e90` passes all 68 affected app cases, including hidden/published
+windows, sealed-but-unshown preservation, held editor dispatch, exact desktop-flight transfer,
+threadless reservation timing and unexpected native loss. Both package check modes and independent
+lifecycle review pass. The native-loss regression removes a threadless window before disposal;
+selected-editor/native races are source-reviewed. Complete-set membership, constructor failure
+custody and process-owner transfer remain separate acceptance boundaries.
+
+## Startup Construction Failure Custody
+
+Successful-shell enrollment cannot cover every failed native startup member. In selected hidden
+construction, mount or appearance failure requests removal and immediately extracts the
+controller. Threadless appearance failure drops its controller/reservation and returns only a
+string. Neither path joins the exact native destruction receipt. A complete-set coordinator using
+only those existing results could retire transient state before the failed HWND finishes
+destruction. Add bounded startup construction custody before these fallible stages; retain the
+original controller, any admitted editor work and native receipt through terminal cleanup. This
+is an app constructor prerequisite, not a requirement for a new GPUI lifetime mechanism.
+
 ## Startup Editor Release Admission
 
 Reusing ordinary widget release directly for a gated startup composer is invalid. Its slot accepts

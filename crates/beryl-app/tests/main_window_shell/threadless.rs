@@ -3,6 +3,9 @@ use super::*;
 #[cfg(target_os = "windows")]
 #[path = "threadless_desktop.rs"]
 mod desktop;
+#[cfg(target_os = "windows")]
+#[path = "threadless_disposal.rs"]
+mod disposal;
 
 #[path = "../support/window_placement.rs"]
 mod placement_support;

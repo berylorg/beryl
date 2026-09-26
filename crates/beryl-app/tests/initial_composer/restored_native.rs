@@ -9,6 +9,9 @@ mod native_retirement;
 #[cfg(target_os = "windows")]
 #[path = "native_selected.rs"]
 mod native_selected;
+#[cfg(target_os = "windows")]
+#[path = "startup_disposal.rs"]
+mod startup_disposal;
 use super::*;
 use beryl_app::composer_host::*;
 use beryl_app::composer_marker_seal::{DraftMarkerSealService, DraftMarkerSealServiceLimits};

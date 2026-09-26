@@ -87,29 +87,27 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 586: Fit Restored Retirement Within Native Worker Stack (finished)
+# Phase 585: Join Startup Member Native Destruction And Retirement (finished)
 
-Accepted borrowed restored retirement and separate storage preparation, authentication, decoding
-and reconciliation frames on the unchanged Windows worker. Ordinary, Undo and Redo native cases,
-66 storage and 68 app regressions, package checks and independent semantic review pass;
-[evidence](failures/target-bootstrap-composition.md#native-restored-retirement-stack).
+Accepted hidden destruction-receipt enrollment, irreversible preservation sealing and consuming
+member disposal through editor release, native destruction and original typed retirement custody.
+All 68 affected app regressions, package checks and independent lifecycle review pass;
+[evidence](failures/target-bootstrap-composition.md#native-startup-member-disposal).
 
-# Phase 585: Join Startup Member Native Destruction And Retirement (wip)
+# Phase 587: Retain Failed Startup Construction Until Native Destruction (pending)
 
-Implement [member disposal](../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership)
-with hidden receipt enrollment retained through desktop placement, irreversible record-preservation
-sealing before enrolled publication, and one consuming GUI continuation. Reuse accepted editor
-release and native destruction proof before extracting original typed worker retirement custody.
-Keep enrolled early cleanup and handle-only handoff closed; retain the complete shell on failure.
-Set membership/publication coordination and process-owner composition remain separate phases.
+Establish startup construction custody before fallible post-allocation mount or appearance work.
+Selected and threadless failures must retain the original controller/reservation and exact native
+destruction receipt instead of extracting custody or dropping the reservation immediately after
+requesting removal. Join admitted editor work when present; native loss or failed completion
+retains an explicit failure owner. Reuse accepted member-disposal machinery where its prerequisites
+hold. Preserve ordinary construction behavior and existing worker retirement kinds.
 
-Verify real hidden and published native windows, threadless reservation timing, acquired pre-exposure
-and sealed preservation custody, restored record preservation, dispatch drain, unexpected native
-loss and duplicate/admission failures. Exercise exact desktop-flight custody and callback delivery;
-run affected native/composer regressions, package checks and independent lifecycle review.
-The native-worker prerequisite is accepted. Member component, native acquired/restored/threadless
-cases, 68 affected app regressions, package checks and independent lifecycle review pass. Complete
-the member acceptance record before proceeding to whole-set coordination.
+Verify native mount and appearance failures, reservation timing at terminal destruction, absent
+and mounted editors, callback loss, and successful construction enrollment. Run affected shell
+regressions, package checks and independent ownership review. This bounded prerequisite closes the
+[constructor failure gap](failures/target-bootstrap-composition.md#startup-construction-failure-custody)
+before complete-set publication can claim all-member cleanup.
 
 # Phase 567: Publish And Dispose The Complete Native Startup Set (pending)
 

@@ -11,6 +11,10 @@ pub use restored::*;
 mod desktop_flight;
 #[cfg(target_os = "windows")]
 pub use desktop_flight::*;
+#[cfg(target_os = "windows")]
+mod startup_disposal;
+#[cfg(target_os = "windows")]
+pub use startup_disposal::*;
 
 enum ShellContent {
     Acquired {
@@ -288,6 +292,8 @@ impl GpuiMainWindowShellHost<'_> {
                     adapter_id,
                     published: false,
                     #[cfg(target_os = "windows")]
+                    startup_disposal: None,
+                    #[cfg(target_os = "windows")]
                     desktop_placement: None,
                     #[cfg(all(target_os = "windows", feature = "test-faults"))]
                     desktop_worker_gate: None,
@@ -367,6 +373,8 @@ pub struct MainWindowShell {
     adapter_id: crate::theme_runtime::WindowAdapterId,
     published: bool,
     #[cfg(target_os = "windows")]
+    startup_disposal: Option<startup_disposal::ShellStartupDisposalAdmission>,
+    #[cfg(target_os = "windows")]
     desktop_placement: Option<desktop_flight::ShellDesktopPlacementAdmission>,
     #[cfg(all(target_os = "windows", feature = "test-faults"))]
     desktop_worker_gate: Option<std::sync::mpsc::Receiver<()>>,
@@ -384,6 +392,10 @@ impl MainWindowShell {
     }
 
     pub fn publish(&mut self, app: &mut App) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        if !self.startup_publication_allowed() {
+            return Err("startup publication requires record preservation sealing".to_owned());
+        }
         if self.published {
             return Ok(());
         }
@@ -453,6 +465,10 @@ impl MainWindowShell {
     }
 
     pub fn release_published_handle(self, app: &mut App) -> Result<(), Self> {
+        #[cfg(target_os = "windows")]
+        if self.startup_disposal.is_some() {
+            return Err(self);
+        }
         if !self.published || self.root.read(app).startup_interaction_gated() {
             return Err(self);
         }
@@ -474,7 +490,7 @@ impl MainWindowShell {
         app: &mut App,
     ) -> Result<MainWindowShellUnpublished, MainWindowShell> {
         #[cfg(target_os = "windows")]
-        if !self.desktop_cleanup_allowed() {
+        if !self.desktop_cleanup_allowed() || self.startup_disposal.is_some() {
             return Err(self);
         }
         if self.published

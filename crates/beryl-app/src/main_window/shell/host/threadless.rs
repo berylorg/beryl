@@ -118,6 +118,8 @@ impl GpuiMainWindowShellHost<'_> {
             adapter_id,
             published: false,
             #[cfg(target_os = "windows")]
+            startup_disposal: None,
+            #[cfg(target_os = "windows")]
             desktop_placement: None,
             #[cfg(all(target_os = "windows", feature = "test-faults"))]
             desktop_worker_gate: None,
@@ -128,7 +130,7 @@ impl GpuiMainWindowShellHost<'_> {
 impl MainWindowShell {
     pub fn close_threadless_before_publication(self, app: &mut App) -> Result<(), Self> {
         #[cfg(target_os = "windows")]
-        if !self.desktop_cleanup_allowed() {
+        if !self.desktop_cleanup_allowed() || self.startup_disposal.is_some() {
             return Err(self);
         }
         if self.published

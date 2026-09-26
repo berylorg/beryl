@@ -380,6 +380,18 @@ governed by [design.md](design.md). It does not independently declare engineerin
   to a worker. The complete-set owner supplies the sticky publication-started disposition for all
   members, including members not yet shown; a member's own publication flag cannot authorize
   acquisition abandonment after another member's native publication was attempted.
+  Hidden enrollment stores the exact destruction receipt inside the shell before desktop placement
+  or exposure. Enrolled shells reject early custody extraction and handle-only handoff. Before the
+  first publication call, the set owner seals every member for record preservation; enrolled
+  publication requires that irreversible seal. Successful set transfer keeps each complete shell
+  and receipt with the process owner.
+  Member disposal consumes the shell into one GUI continuation with a required completion callback.
+  It waits for editor release, requests native removal and awaits the registered destruction proof.
+  Unexpected native destruction before editor release, missing completion, removal failure or
+  unresolved desktop custody retains the shell with an explicit failure. No retry, replacement
+  receipt or implicit drop proves disposal. Successful destruction transfers restored or acquired
+  cleanup custody with its original kind; only an unsealed acquired member exposes prepublication
+  abandonment. A threadless member releases its reservation only after destruction proof.
 - The process lifetime owns startup-attempt identity, failure-surface commands and retained
   enrollment, nondispatch and home-reconciliation custody outside each attempted graph. Retry
   admits only one new attempt for the same configured home after prior native/transient disposal
