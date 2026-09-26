@@ -19,6 +19,14 @@ pub(super) struct StopStateGuard<'a> {
 }
 
 impl StopState {
+    pub(super) fn try_lock(
+        &self,
+    ) -> Result<StopStateGuard<'_>, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        Ok(StopStateGuard {
+            inner: self.inner.try_lock()?,
+        })
+    }
+
     pub(super) fn is_poisoned(&self) -> bool {
         self.inner.is_poisoned()
     }

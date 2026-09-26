@@ -33,6 +33,51 @@ fn fixture() -> (Arc<EventRouter>, MasterCommandGate, ProcessAdmissionGate) {
 }
 
 #[test]
+fn runtime_work_router_contention_refuses_under_process_admission() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let (router, _service, process_gate) = fixture();
+    let registration = register(&router, "observation-contention", 91, 91, None);
+    let command = live_command(&router);
+    let before = router.work_stamp().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let held = router.state.lock().unwrap();
+        let reader = scope.spawn(|| {
+            send.send(process_gate.admit(|| router.try_work_stamp()))
+                .unwrap();
+        });
+        let result = receive.recv_timeout(Duration::from_secs(2));
+        drop(held);
+        reader.join().unwrap();
+        assert_eq!(result.unwrap().unwrap(), Err(RuntimeWorkError::Busy));
+    });
+    assert_eq!(router.try_work_stamp().unwrap(), before);
+    router
+        .authorize_turn_start(&command, &registration.proof())
+        .unwrap();
+}
+
+#[test]
+fn runtime_work_router_unavailable_revision_and_poison_preserve_requests() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let (router, _service, _process) = fixture();
+    router.state.lock().unwrap().work_revision = None;
+    assert_eq!(router.try_work_stamp(), Err(RuntimeWorkError::Unavailable));
+    let before = router.state.lock().unwrap().work_requests.len();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = router.state.lock().unwrap();
+            panic!("inject router observation poison");
+        }))
+        .is_err()
+    );
+    assert_eq!(router.try_work_stamp(), Err(RuntimeWorkError::Unavailable));
+    let state = router.state.lock().err().unwrap().into_inner();
+    assert_eq!(state.work_requests.len(), before);
+    assert_eq!(state.work_revision, None);
+}
+
+#[test]
 fn pending_start_keeps_queued_epoch_and_requires_exact_undispatched_handoff() {
     let (router, _service, process_gate) = fixture();
     let registration = register(&router, "queued-start", 91, 91, None);

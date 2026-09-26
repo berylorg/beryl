@@ -4,6 +4,15 @@ use crate::cas_projection::compaction_work::{
 };
 
 impl ContextCompactionCoordinator {
+    pub(in crate::cas_projection) fn try_work_revision(
+        &self,
+    ) -> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        if self.operations.is_poisoned() || self.stop.continuation_work_is_poisoned() {
+            return Err(crate::cas_projection::runtime_work::RuntimeWorkError::Unavailable);
+        }
+        self.custody.source.try_revision()
+    }
+
     pub(in crate::cas_projection) fn shutdown_obligation_capacity(&self) -> usize {
         2 * super::COMPACTION_QUEUE_CAPACITY + 3 * super::COMPACTION_WORKER_CAPACITY
     }

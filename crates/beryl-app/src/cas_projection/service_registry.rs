@@ -185,6 +185,14 @@ impl ProjectionServiceConnectionRegistry {
         &self.work_owner
     }
 
+    pub(super) fn try_work_lock(
+        &self,
+    ) -> Result<ConnectionRegistryGuard<'_>, super::runtime_work::RuntimeWorkError> {
+        Ok(ConnectionRegistryGuard {
+            state: self.connections.try_lock()?,
+        })
+    }
+
     pub(super) fn lock(&self) -> LockResult<ConnectionRegistryGuard<'_>> {
         self.connections
             .lock()

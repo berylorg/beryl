@@ -1,5 +1,16 @@
 use super::*;
 
+pub(in crate::cas_projection) fn try_work_revision()
+-> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    LOADED_THREADS
+        .get()
+        .ok_or(RuntimeWorkError::Unavailable)?
+        .try_lock()?
+        .revision
+        .ok_or(RuntimeWorkError::Unavailable)
+}
+
 pub(in crate::cas_projection) fn work_revision() -> Result<u64, ProjectionCoordinatorError> {
     lock()?.revision.ok_or(
         ProjectionCoordinatorError::RegistryWorkRevisionUnavailable {

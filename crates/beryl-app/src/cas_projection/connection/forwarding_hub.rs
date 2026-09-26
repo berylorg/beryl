@@ -11,6 +11,10 @@ use beryl_model::CasThreadId;
 use super::{ConnectionAttachment, ConnectionRegistryAuthority, ConnectionThreadClosedOutcome};
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
+#[cfg(test)]
+#[path = "../../../tests/unit/forwarding_work_observation.rs"]
+mod observation_tests;
+
 pub(super) struct ForwardingAttachmentEndpoint {
     attachment: Arc<ConnectionAttachment>,
     sink: Box<dyn OrderedTurnStreamSink>,
@@ -170,6 +174,22 @@ impl ForwardingHub {
             .as_ref()
             .filter(|_| !state.inert)
             .map(|endpoint| Arc::clone(&endpoint.attachment)))
+    }
+
+    pub(super) fn try_with_work_attachment<T>(
+        &self,
+        read: impl FnOnce(
+            Option<&ConnectionAttachment>,
+        ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError>,
+    ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        let state = self.state.try_lock()?;
+        read(
+            state
+                .endpoint
+                .as_ref()
+                .filter(|_| !state.inert)
+                .map(|endpoint| endpoint.attachment.as_ref()),
+        )
     }
 
     pub(super) fn is_detached(&self) -> bool {

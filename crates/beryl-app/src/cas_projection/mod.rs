@@ -57,6 +57,7 @@ mod provider_identity;
 mod publication;
 mod runtime;
 mod runtime_interest;
+mod runtime_work;
 mod scheduled_ordinary;
 mod service;
 mod service_config;

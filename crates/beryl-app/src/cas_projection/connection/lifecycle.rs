@@ -156,6 +156,15 @@ impl ProjectionConnection {
         self.forwarding_hub.work_attachment()
     }
 
+    pub(super) fn try_with_work_attachment<T>(
+        &self,
+        read: impl FnOnce(
+            Option<&ConnectionAttachment>,
+        ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError>,
+    ) -> Result<T, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        self.forwarding_hub.try_with_work_attachment(read)
+    }
+
     pub(super) fn current_router(&self) -> Result<Arc<EventRouter>, ProjectionCoordinatorError> {
         self.current_attachment()
             .map(|attachment| Arc::clone(&attachment.router))

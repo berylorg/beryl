@@ -24,4 +24,24 @@ fn stop_work_revision_poison_cannot_produce_a_healthy_snapshot() {
         .is_err()
     );
     assert!(state.lock().is_err());
+    assert!(matches!(
+        state.try_lock(),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Unavailable)
+    ));
+    assert_eq!(
+        state.inner.lock().err().unwrap().into_inner().revision,
+        Some(0)
+    );
+}
+
+#[test]
+fn runtime_work_stop_lock_refuses_contention_without_advancing_revision() {
+    let state = StopState::new(StopCoordinatorState::default());
+    let held = state.lock().unwrap();
+    assert!(matches!(
+        state.try_lock(),
+        Err(crate::cas_projection::runtime_work::RuntimeWorkError::Busy)
+    ));
+    drop(held);
+    assert_eq!(state.try_lock().unwrap().revision(), Some(0));
 }

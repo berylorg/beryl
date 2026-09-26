@@ -14,7 +14,9 @@ use beryl_model::{
 use crate::cas_projection::{ProjectionCoordinatorError, ProjectionRegistryKind};
 
 mod work_facts;
-pub(in crate::cas_projection) use work_facts::{loaded_owner_prefix, work_revision};
+pub(in crate::cas_projection) use work_facts::{
+    loaded_owner_prefix, try_work_revision, work_revision,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(in crate::cas_projection) struct ConnectionGeneration(u64);

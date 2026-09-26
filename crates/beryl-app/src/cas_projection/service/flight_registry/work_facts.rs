@@ -1,6 +1,17 @@
 use super::*;
 
 impl FlightRegistry {
+    pub(in crate::cas_projection::service) fn try_work_revision()
+    -> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        use crate::cas_projection::runtime_work::RuntimeWorkError;
+        PROJECTION_FLIGHTS
+            .get()
+            .ok_or(RuntimeWorkError::Unavailable)?
+            .try_lock()?
+            .revision
+            .ok_or(RuntimeWorkError::Unavailable)
+    }
+
     pub(in crate::cas_projection::service) fn work_revision()
     -> Result<u64, ProjectionCoordinatorError> {
         let state = PROJECTION_FLIGHTS

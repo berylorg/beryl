@@ -67,6 +67,31 @@ impl RouterState {
 }
 
 impl EventRouter {
+    pub(in crate::cas_projection) fn try_work_stamp(
+        &self,
+    ) -> Result<ConnectionWorkStamp, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        use crate::cas_projection::runtime_work::RuntimeWorkError;
+        let state = self.state.try_lock()?;
+        let mut responses = 0_u64;
+        for request in state.work_requests.values() {
+            let snapshot = request
+                .response
+                .try_snapshot()
+                .map_err(|error| match error {
+                    beryl_backend::ResponseWorkError::Busy => RuntimeWorkError::Busy,
+                    _ => RuntimeWorkError::Unavailable,
+                })?;
+            responses = responses
+                .checked_add(snapshot.revision().change_count())
+                .ok_or(RuntimeWorkError::Unavailable)?;
+        }
+        Ok(ConnectionWorkStamp {
+            routers: state.work_revision.ok_or(RuntimeWorkError::Unavailable)?,
+            responses,
+            ..ConnectionWorkStamp::default()
+        })
+    }
+
     fn work_target_identity(&self, target: &TargetEntry) -> ConnectionWorkTargetIdentity {
         ConnectionWorkTargetIdentity {
             runtime_id: self.runtime_id,

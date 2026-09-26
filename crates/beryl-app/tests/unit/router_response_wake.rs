@@ -30,6 +30,11 @@ fn observing_a_written_response_wakes_while_its_capability_and_record_remain() {
         .unwrap();
     assert_eq!(notifications(&router), before + 1);
     let snapshot = observer.snapshot().unwrap();
+    assert_eq!(
+        router.try_work_stamp().unwrap(),
+        router.work_stamp().unwrap()
+    );
+    assert_eq!(notifications(&router), before + 1);
     assert!(snapshot.response_written());
     assert_eq!(snapshot.retained_capabilities(), 1);
     assert!(

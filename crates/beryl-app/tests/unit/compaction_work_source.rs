@@ -12,6 +12,44 @@ use syndic_storage::{
 fn thread(seed: u8) -> SyndicThreadId {
     SyndicThreadId::from_bytes([seed; 16])
 }
+
+#[test]
+fn runtime_work_compaction_snapshot_refuses_without_clearing_source() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let source = CompactionWorkSource::new(
+        4,
+        crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+    );
+    let retained = source.begin(thread(9), None);
+    let expected = source.revision().unwrap();
+    let held = source.state.lock().unwrap();
+    assert_eq!(source.try_revision(), Err(RuntimeWorkError::Busy));
+    drop(held);
+    assert_eq!(source.try_revision(), Ok(expected));
+    source.state.lock().unwrap().revision = None;
+    assert_eq!(source.try_revision(), Err(RuntimeWorkError::Unavailable));
+    assert_eq!(source.state.lock().unwrap().records.len(), 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = source.state.lock().unwrap();
+            panic!("inject compaction observation poison");
+        }))
+        .is_err()
+    );
+    assert_eq!(source.try_revision(), Err(RuntimeWorkError::Unavailable));
+    assert_eq!(
+        source
+            .state
+            .lock()
+            .err()
+            .unwrap()
+            .into_inner()
+            .records
+            .len(),
+        1
+    );
+    drop(retained);
+}
 fn turn(seed: u8) -> SyndicTurnId {
     SyndicTurnId::from_bytes([seed; 16])
 }

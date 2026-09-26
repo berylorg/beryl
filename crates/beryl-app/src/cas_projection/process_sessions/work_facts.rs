@@ -5,7 +5,31 @@ use super::*;
 mod types;
 pub use types::*;
 
+#[cfg(test)]
+#[path = "../../../tests/unit/session_work_observation.rs"]
+mod observation_tests;
+
 impl ScheduledExecutionSessions {
+    pub(in crate::cas_projection) fn try_work_revision(
+        &self,
+    ) -> Result<ScheduledSessionWorkRevision, crate::cas_projection::runtime_work::RuntimeWorkError>
+    {
+        use crate::cas_projection::runtime_work::RuntimeWorkError;
+        let state = self.state.try_lock()?;
+        let context = state.context.as_ref().ok_or(RuntimeWorkError::Closed)?;
+        if state.closed {
+            return Err(RuntimeWorkError::Closed);
+        }
+        context.commands.try_check_work_open()?;
+        Ok(ScheduledSessionWorkRevision {
+            owner: Arc::clone(&self.work_identity),
+            home_id: context.home_id,
+            home_generation: context.home_generation,
+            service_generation: context.service_generation,
+            revision: state.work_revision.ok_or(RuntimeWorkError::Unavailable)?,
+        })
+    }
+
     pub fn work_revision(&self) -> Result<ScheduledSessionWorkRevision, ScheduledSessionWorkError> {
         let state = self
             .state

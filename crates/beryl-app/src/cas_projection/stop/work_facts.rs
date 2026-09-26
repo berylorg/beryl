@@ -6,6 +6,15 @@ use crate::cas_projection::stop_work::{
 };
 
 impl StopCoordinator {
+    pub(in crate::cas_projection) fn try_work_revision(
+        &self,
+    ) -> Result<u64, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        self.state
+            .try_lock()?
+            .revision()
+            .ok_or(crate::cas_projection::runtime_work::RuntimeWorkError::Unavailable)
+    }
+
     pub(in crate::cas_projection) fn work_revision(&self) -> Result<u64, StopWorkError> {
         self.state
             .lock()

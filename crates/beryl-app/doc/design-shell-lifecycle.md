@@ -526,6 +526,12 @@ by the executable composition root.
   admitting shutdown or durably removing it; overlapping closes cannot each assume another
   window will survive. Confirmation carries exact attempt, window-set, and work revisions and
   owns no stop or mutation authority until the shared shutdown coordinator admits the barrier.
+- Shutdown runtime revision validation uses nonblocking read-only checks of every nested source.
+  Busy, poisoned, closed, exhausted or changed sources refuse validation without altering source
+  custody, notification, execution authority or failure state. Complete facts and durable reads
+  precede admission; this runtime-only check performs no home/storage I/O. A successful revision
+  check is point-in-time evidence and does not retain locks or authorize a later publication.
+  Atomic admission must hold its required guards through publication of the process fence.
 - The shutdown coordinator freezes all execution/successor cuts, joins exact process-owned work,
   preserves durable queue custody and proven-undispatched pending work under the CAS-live shutdown
   completion rules, and composes resident-preserving draft flush with typed session

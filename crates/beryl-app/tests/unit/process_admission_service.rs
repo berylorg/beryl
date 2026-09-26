@@ -12,6 +12,53 @@ fn service_gate(process: &ProcessAdmissionGate) -> MasterCommandGate {
 }
 
 #[test]
+fn runtime_work_check_refuses_command_contention_under_process_admission() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let process = ProcessAdmissionGate::new();
+    let service = service_gate(&process);
+    let authorizer = service.authorizer();
+    let permit = authorizer.authorize().unwrap();
+    let before = authorizer.active_command_count_for_test();
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let held = authorizer.inner.state.lock().unwrap();
+        let reader = scope.spawn(|| {
+            let result = process.admit(|| authorizer.try_check_work_open());
+            send.send(result).unwrap();
+        });
+        let result = receive.recv_timeout(std::time::Duration::from_secs(2));
+        drop(held);
+        reader.join().unwrap();
+        assert_eq!(result.unwrap().unwrap(), Err(RuntimeWorkError::Busy));
+    });
+    assert_eq!(authorizer.active_command_count_for_test(), before);
+    authorizer.try_check_work_open().unwrap();
+    permit.commit_execution_if_current(|| ()).unwrap();
+    service.close_for_shutdown();
+    assert_eq!(
+        authorizer.try_check_work_open(),
+        Err(RuntimeWorkError::Closed)
+    );
+}
+
+#[test]
+fn runtime_work_check_does_not_mutate_a_poisoned_command_gate() {
+    use crate::cas_projection::runtime_work::RuntimeWorkError;
+    let process = ProcessAdmissionGate::new();
+    let service = service_gate(&process);
+    let authorizer = service.authorizer();
+    service.poison_for_test();
+    assert_eq!(
+        authorizer.try_check_work_open(),
+        Err(RuntimeWorkError::Unavailable)
+    );
+    let state = authorizer.inner.state.lock().err().unwrap().into_inner();
+    assert!(!state.local_failure);
+    assert!(matches!(state.election, GateElection::Open));
+    assert_eq!(state.active, 0);
+}
+
+#[test]
 fn queued_execution_candidate_keeps_its_epoch_without_retaining_health_command_custody() {
     let process = ProcessAdmissionGate::new();
     let service = service_gate(&process);

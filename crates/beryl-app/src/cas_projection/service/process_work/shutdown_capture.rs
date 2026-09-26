@@ -9,6 +9,7 @@ use syndic_storage::{SelectedPathProof, SyndicPointReadLimit, SyndicReadError};
 
 mod completion;
 mod prefix;
+mod runtime_validation;
 #[cfg(all(test, feature = "test-faults"))]
 #[path = "../../../../tests/unit/shutdown_work_capture.rs"]
 mod tests;

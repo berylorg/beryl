@@ -89,18 +89,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 602: Observe Backend Response Work Without Waiting (finished)
+# Phase 601: Validate Shutdown Runtime Sources Without Blocking Admission (finished)
 
-Accepted the exact nonblocking response snapshot with typed busy/poisoned/unavailable refusal and
-unchanged custody and notification behavior. All 16 focused response tests, the default backend
-check and independent concurrency/side-effect review pass. App source validation and atomic
-shutdown admission remain separate boundaries.
-
-# Phase 601: Validate Shutdown Runtime Sources Without Blocking Admission (pending)
-
-Add exact nonblocking runtime-source revision validation and verify contention against dispatch
-lock order, stale/foreign evidence, and refusal without source mutation. Read complete work facts
-before admission. The backend response reader is phase 602; atomic composition is phase 603.
+Accepted exact runtime-only shutdown revision validation with nonblocking nested readers and
+unchanged custody, notification and execution authority on refusal. Borrowed attachment reads
+avoid final-owner disposal during validation. All 35 focused observation/admission tests, the
+default app library check and independent concurrency/side-effect review pass. This is
+point-in-time evidence; guarded atomic fence publication remains phase 603.
 
 # Phase 603: Publish Shutdown Admission Under Exact Work Validation (pending)
 

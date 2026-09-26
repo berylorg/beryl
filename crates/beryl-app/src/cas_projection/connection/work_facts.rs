@@ -82,6 +82,30 @@ impl ConnectionCustodyWorkFact {
 }
 
 impl ProjectionConnection {
+    pub(in crate::cas_projection) fn try_custody_work_fact(
+        &self,
+    ) -> Result<ConnectionCustodyWorkFact, crate::cas_projection::runtime_work::RuntimeWorkError>
+    {
+        Ok(ConnectionCustodyWorkFact {
+            authority: self.authority.try_work_fact()?,
+            detached: self.try_with_work_attachment(|attachment| Ok(attachment.is_none()))?,
+        })
+    }
+
+    pub(in crate::cas_projection) fn try_work_stamp(
+        &self,
+    ) -> Result<ConnectionWorkStamp, crate::cas_projection::runtime_work::RuntimeWorkError> {
+        let mut stamp = self.try_with_work_attachment(|attachment| match attachment {
+            Some(attachment) => attachment.router.try_work_stamp(),
+            None => Ok(ConnectionWorkStamp {
+                detached: 1,
+                ..ConnectionWorkStamp::default()
+            }),
+        })?;
+        stamp.retired = u64::from(self.is_retired());
+        Ok(stamp)
+    }
+
     pub(in crate::cas_projection) fn custody_work_fact(
         &self,
     ) -> Result<ConnectionCustodyWorkFact, ProjectionCoordinatorError> {
