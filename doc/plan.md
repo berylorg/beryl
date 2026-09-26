@@ -105,6 +105,16 @@ Retry; a stopped GUI executor cannot complete their ownership protocol.
 Use the accepted startup-only `with_quit_on_last_window_close(false)` GPUI lifetime option;
 [the zero-window executor failure](failures/target-bootstrap-composition.md#windows-last-window-executor-lifetime)
 must not be concealed by a production sentinel window.
+Blocked on 2026-09-26: readiness review and two passing native retained-failure regressions prove
+that startup cleanup can retain a live gated shell. The current feature requires closing the
+entire attempted set before presenting startup failure, while lifecycle authority forbids dropping
+unsettled custody or claiming successful Retry/Exit. The blocked-cleanup presentation requires an
+Operator decision; proposed behavior and exact evidence are recorded in
+[startup cleanup failure presentation](failures/target-bootstrap-composition.md#startup-cleanup-failure-presentation).
+Do not silently display the ordinary retryable failure state alongside retained attempted windows,
+leave a pending-operation indicator for a terminal failure, or add forced termination.
+After that decision, separately plan the bounded failed-home graph-retirement prerequisite:
+ordinary healthy-home shutdown cannot retire a graph whose home failed after publication.
 
 # Phase 382: Mount Crash Reporting At Process Entry (pending)
 

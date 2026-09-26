@@ -1871,3 +1871,41 @@ Canonical locked metadata resolves one GPUI source after aligning scrollbar, tex
 settings-window pins. Local and canonical app/widget library checks pass. Serena was refreshed
 after manifest validation. The zero-window prerequisite is accepted; process-owner composition
 is still pending.
+
+## Startup Cleanup Failure Presentation
+
+Phase 568 readiness review on 2026-09-26 invalidated treating every failed native startup as a
+settled failure followed by ordinary service shutdown and an ordinary Retry/Exit surface.
+The existing `native_release_failure_regates_members_and_retains_unreleased_editor` test proves
+that completion can return one live, interaction-gated native shell with its original editor
+custody. `native_set_destroys_windows_and_retains_each_retirement_when_shared_storage_fails`
+proves a different outcome: all native windows are destroyed, but exact transient retirement and
+window reservations remain retained. Both regressions passed in nextest run
+`62d4329f-4b7c-45ea-8a12-0cc169cbb34e` with `test-faults`; no production behavior was changed.
+
+The [main-window startup contract](../features/main-windows/design.md#startup-surface) and
+[app startup ownership](../../crates/beryl-app/doc/design-shell-lifecycle.md#restore-set-startup-ownership)
+require closing the complete attempted set before failure presentation, while retaining unresolved
+native, command and home custody. The [home failure contract](../features/beryl-home/design.md#unreadable-store-at-startup)
+defines Exit as a cleanup request, not permission to discard that custody. It does not yet define
+presentation when cleanup itself cannot complete. Current `StartupSurface::complete_failure`
+reenables Retry; `request_exit` permanently closes local admission and rejects later failure-detail
+updates. Neither is a blocked-cleanup presentation protocol.
+
+An independent readiness review confirmed the authority gap. Recommended Operator decision:
+authorize an explicit blocked-cleanup state on the dedicated startup failure surface even while
+original attempted windows remain retained and gated. Show bounded selectable failure detail,
+keep Retry unavailable, preserve Exit as an intent without claiming cleanup or process termination,
+and never introduce a force-quit or reopen capability. Define the treatment of native close and
+late completions under that state before implementation. This is a proposal, not target authority.
+The alternative of hiding all failure presentation while retaining live attempted windows is not
+silently selected. Phase 568 remains pending for that visible-failure policy decision.
+
+The review also identified a separate technical prerequisite for the next plan slice:
+`ProcessServiceOwner::begin_shutdown` uses CAS ordinary shutdown whose execution capture calls
+`validate_service`, requiring a healthy home. A postpublication persistent storage failure therefore
+cannot enter that barrier, and `finish_shutdown` requires its ready proof. CAS has a
+`retire_for_recovery` path, but the app lacks the corresponding whole-graph retirement composition.
+After resolving presentation authority, plan that bounded prerequisite with explicit retained
+custody and verified retirement outcomes; do not poll an impossible healthy-home shutdown or infer
+retirement from absence of a graph. No successful reopen or exit is owed while custody is unresolved.
