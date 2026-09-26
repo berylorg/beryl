@@ -87,12 +87,30 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 567: Publish And Dispose The Complete Native Startup Set (finished)
+# Phase 588: Retain Failed Initial Service Disposal Custody (finished)
 
-Accepted bounded native set ownership through worker validation, gated publication, interaction
-release and exact disposal/retention. Six native tests cover thirteen scenarios; all 122 affected
-regressions, package checks and independent review pass. Process Retry/Exit remains separate;
-[evidence](failures/target-bootstrap-composition.md#complete-native-startup-set).
+Accepted consuming prepared/unstarted-service disposal, explicit home closure, returned rejected
+candidates and retained original close failures. All 70 selected tests, package checks and
+independent lifecycle review pass, including real uncertain-command custody;
+[evidence](failures/target-bootstrap-composition.md#initial-service-attempt-disposal-prerequisite).
+
+# Phase 589: Reopen Proven-Retired Initial Service Attempts (pending)
+
+Add exact same-home service-attempt reopening after joined graph/home retirement, preserving the
+original process gate, enrollment and nondispatch owners. Reject unresolved or stale reopening and
+keep ordinary running-session shutdown cancellation separate.
+
+# Phase 590: Build Window Services From The Published Graph (pending)
+
+Compose one process window registry and generation-bound creation/restoration services from the
+published graph, immutable editor/identity inputs and real marker/submission services. Verify
+worker transfer, source identity and graph retirement without publishing native windows.
+
+# Phase 591: Mount Dedicated Startup Failure Surfaces (pending)
+
+Implement the prescribed busy-home and home-failure GUI compositions with bounded selectable
+detail, exact Retry/Exit events, pending-state admission and busy countdown. Keep actual attempt
+and shutdown ownership in the subsequent process controller.
 
 # Phase 568: Compose The Native Startup Attempt Owner (pending)
 

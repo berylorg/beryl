@@ -29,6 +29,7 @@ use crate::{
     theme_runtime::{PreparedThemeRuntime, ThemeRuntimeConfig, ThemeRuntimeStartError},
 };
 
+mod initial_disposal;
 mod preparation;
 mod published;
 mod shutdown;
@@ -73,6 +74,33 @@ pub(crate) enum AppServiceOpenError {
     Theme(ThemeRuntimeStartError),
 }
 
+pub(crate) struct AppServiceOpenFailure {
+    pub(crate) error: AppServiceOpenError,
+    pub(crate) rejected_candidate: Option<HomeOpenPublication>,
+}
+
+impl std::fmt::Debug for AppServiceOpenFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppServiceOpenFailure")
+            .field("error", &self.error)
+            .field("rejected_candidate", &self.rejected_candidate.is_some())
+            .finish()
+    }
+}
+
+impl std::fmt::Display for AppServiceOpenFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, formatter)
+    }
+}
+
+impl std::error::Error for AppServiceOpenFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
 impl From<ThemeRuntimeStartError> for AppServiceOpenError {
     fn from(error: ThemeRuntimeStartError) -> Self {
         Self::Theme(error)
@@ -87,6 +115,11 @@ pub(crate) struct ProcessServiceOwner {
     process: ProcessAdmissionGate,
     enrollments: RuntimeActivityEnrollmentOperations,
     settlements: DiscussionSettlementOperations,
+    #[cfg(feature = "test-faults")]
+    before_initial_publication:
+        Option<Box<dyn FnOnce(&mut HomeOpenPublication, &BerylState, &SyndicStorage) + Send>>,
+    #[cfg(feature = "test-faults")]
+    cancel_initial_worker_release: bool,
 }
 
 pub(crate) struct PublishedAppServices {
@@ -122,6 +155,10 @@ impl ProcessServiceOwner {
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
             settlements: DiscussionSettlementOperations::new(process.clone(), settlement_slots),
             process,
+            #[cfg(feature = "test-faults")]
+            before_initial_publication: None,
+            #[cfg(feature = "test-faults")]
+            cancel_initial_worker_release: false,
         }
     }
 
@@ -137,14 +174,20 @@ impl ProcessServiceOwner {
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: CommandCancellation,
-    ) -> Result<(), AppServiceOpenError> {
+    ) -> Result<(), AppServiceOpenFailure> {
         if self.published_once || self.graph.is_some() || self.failed_close.is_some() {
-            return Err(AppServiceOpenError::AlreadyInstalled);
+            return Err(AppServiceOpenFailure {
+                error: AppServiceOpenError::AlreadyInstalled,
+                rejected_candidate: Some(candidate),
+            });
         }
         if candidate.home_id() != self.home_id {
-            return Err(AppServiceOpenError::ForeignHome);
+            return Err(AppServiceOpenFailure {
+                error: AppServiceOpenError::ForeignHome,
+                rejected_candidate: Some(candidate),
+            });
         }
-        let prepared = preparation::PreparedAppServices::prepare(
+        let prepared = match preparation::PreparedAppServices::prepare(
             self,
             candidate,
             state,
@@ -152,12 +195,41 @@ impl ProcessServiceOwner {
             configuration,
             at,
             &cancellation,
-        )?;
-        let (graph, start) = prepared.publish(&cancellation)?;
+        ) {
+            Ok(prepared) => prepared,
+            Err(failure) => return Err(self.dispose_initial_failure(failure)),
+        };
+        #[cfg(feature = "test-faults")]
+        let prepared = {
+            let mut prepared = prepared;
+            if let Some(hook) = self.before_initial_publication.take() {
+                hook(
+                    prepared.candidate.as_mut().expect("prepared candidate"),
+                    &prepared.state,
+                    &prepared.syndic,
+                );
+            }
+            prepared
+        };
+        let (graph, start) = match prepared.publish(&cancellation) {
+            Ok(published) => published,
+            Err(failure) => return Err(self.dispose_initial_failure(failure)),
+        };
         self.graph = Some(graph);
+        #[cfg(feature = "test-faults")]
+        if std::mem::take(&mut self.cancel_initial_worker_release) {
+            start.gate().cancel();
+        }
         if !start.release() {
-            drop(self.graph.take());
-            return Err(AppServiceOpenError::StartupCancelled);
+            let graph = self
+                .graph
+                .take()
+                .expect("unstarted graph retains disposal custody");
+            self.retain_initial_close(graph.dispose_unstarted());
+            return Err(AppServiceOpenFailure {
+                error: AppServiceOpenError::StartupCancelled,
+                rejected_candidate: None,
+            });
         }
         self.published_once = true;
         Ok(())
@@ -166,6 +238,13 @@ impl ProcessServiceOwner {
 
 impl Drop for PublishedAppServices {
     fn drop(&mut self) {
+        self.join_components();
+        drop(self.home.take());
+    }
+}
+
+impl PublishedAppServices {
+    fn join_components(&mut self) {
         drop(self.restore_lifetime.take());
         let _ = self.process.fence();
         drop(self.handoff.take());
@@ -181,7 +260,6 @@ impl Drop for PublishedAppServices {
         }
         drop(self.cas.take());
         self.attention.close();
-        drop(self.home.take());
     }
 }
 

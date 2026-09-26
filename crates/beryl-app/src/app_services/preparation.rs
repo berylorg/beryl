@@ -17,8 +17,22 @@ pub(super) struct PreparedAppServices {
     pub(super) candidate: Option<HomeOpenPublication>,
     sessions: ScheduledExecutionSessions,
     attention: Arc<ProcessLifecycleAttentionPool>,
-    state: BerylState,
+    pub(super) state: BerylState,
     pub(super) syndic: SyndicStorage,
+}
+
+pub(super) struct PreparedAppServiceFailure {
+    pub(super) error: AppServiceOpenError,
+    pub(super) prepared: Box<PreparedAppServices>,
+}
+
+impl std::fmt::Debug for PreparedAppServiceFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedAppServiceFailure")
+            .field("error", &self.error)
+            .finish_non_exhaustive()
+    }
 }
 
 impl PreparedAppServices {
@@ -30,7 +44,7 @@ impl PreparedAppServices {
         configuration: AppServiceConfiguration,
         at: SyndicTimestamp,
         cancellation: &CommandCancellation,
-    ) -> Result<Self, AppServiceOpenError> {
+    ) -> Result<Self, PreparedAppServiceFailure> {
         let (provider, sessions) = ProcessScheduledExecutionProvider::new();
         let mut prepared = Self {
             process: owner.process.clone(),
@@ -44,96 +58,115 @@ impl PreparedAppServices {
             state,
             syndic,
         };
-        check_cancellation(cancellation)?;
-        let candidate = prepared.candidate.as_mut().expect("private candidate");
-        {
-            let access = candidate.recovery_access()?;
-            owner
-                .enrollments
-                .settle_retired_candidate(&access, &prepared.syndic, cancellation)?;
-            owner.settlements.settle_retained_nondispatch_candidate(
-                &access,
-                &prepared.state,
-                &prepared.syndic,
-                cancellation.clone(),
-            )?;
-        }
-        let settlement = DiscussionSettlementService::new(
-            owner.settlements.clone(),
-            candidate.service_reference(),
-            prepared.state.clone(),
-            prepared.syndic.clone(),
-        );
-        let provider = provider.with_discussion_settlement(settlement);
-        prepared.cas = Some(
-            PreparedCasServices::prepare(
-                owner.process.clone(),
+        let result: Result<(), AppServiceOpenError> = (|| {
+            check_cancellation(cancellation)?;
+            let candidate = prepared.candidate.as_mut().expect("private candidate");
+            {
+                let access = candidate.recovery_access()?;
+                owner.enrollments.settle_retired_candidate(
+                    &access,
+                    &prepared.syndic,
+                    cancellation,
+                )?;
+                owner.settlements.settle_retained_nondispatch_candidate(
+                    &access,
+                    &prepared.state,
+                    &prepared.syndic,
+                    cancellation.clone(),
+                )?;
+            }
+            let settlement = DiscussionSettlementService::new(
+                owner.settlements.clone(),
+                candidate.service_reference(),
+                prepared.state.clone(),
+                prepared.syndic.clone(),
+            );
+            let provider = provider.with_discussion_settlement(settlement);
+            prepared.cas = Some(
+                PreparedCasServices::prepare(
+                    owner.process.clone(),
+                    candidate,
+                    prepared.syndic.clone(),
+                    configuration.projection,
+                    Box::new(provider),
+                )?
+                .configure_managed_sessions(
+                    candidate,
+                    &prepared.sessions,
+                    configuration.runtime_interest,
+                    owner.enrollments.clone(),
+                    RuntimeSessionPreparationConfig {
+                        runtime_roots: prepared.state.runtime_roots(),
+                        assets: prepared.state.assets(),
+                        policy: configuration.session_policy,
+                        token_directories: configuration.token_directories,
+                    },
+                    &prepared.attention,
+                )?
+                .prepare_handoff(
+                    candidate,
+                    owner.settlements.clone(),
+                    prepared.state.clone(),
+                    configuration.handoff,
+                    at,
+                    cancellation.clone(),
+                )?,
+            );
+            check_cancellation(cancellation)?;
+            prepared.marker = Some(PreparedMarkerServices::prepare(
                 candidate,
                 prepared.syndic.clone(),
-                configuration.projection,
-                Box::new(provider),
-            )?
-            .configure_managed_sessions(
+                prepared.state.assets(),
+                configuration.marker,
+            )?);
+            let runtime = prepared
+                .cas
+                .as_ref()
+                .expect("prepared CAS")
+                .activity_read_source()
+                .ok_or(AppServiceOpenError::RuntimeUnavailable)?;
+            prepared.activity = Some(PreparedActivityService::prepare(
                 candidate,
-                &prepared.sessions,
-                configuration.runtime_interest,
-                owner.enrollments.clone(),
-                RuntimeSessionPreparationConfig {
-                    runtime_roots: prepared.state.runtime_roots(),
-                    assets: prepared.state.assets(),
-                    policy: configuration.session_policy,
-                    token_directories: configuration.token_directories,
-                },
-                &prepared.attention,
-            )?
-            .prepare_handoff(
+                prepared.syndic.clone(),
+                runtime,
+                configuration.activity,
+            )?);
+            prepared.theme = Some(PreparedThemeRuntime::prepare(
                 candidate,
-                owner.settlements.clone(),
-                prepared.state.clone(),
-                configuration.handoff,
-                at,
-                cancellation.clone(),
-            )?,
-        );
-        check_cancellation(cancellation)?;
-        prepared.marker = Some(PreparedMarkerServices::prepare(
-            candidate,
-            prepared.syndic.clone(),
-            prepared.state.assets(),
-            configuration.marker,
-        )?);
-        let runtime = prepared
-            .cas
-            .as_ref()
-            .expect("prepared CAS")
-            .activity_read_source()
-            .ok_or(AppServiceOpenError::RuntimeUnavailable)?;
-        prepared.activity = Some(PreparedActivityService::prepare(
-            candidate,
-            prepared.syndic.clone(),
-            runtime,
-            configuration.activity,
-        )?);
-        prepared.theme = Some(PreparedThemeRuntime::prepare(
-            candidate,
-            prepared.state.themes(),
-            configuration.theme,
-        )?);
-        check_cancellation(cancellation)?;
-        Ok(prepared)
+                prepared.state.themes(),
+                configuration.theme,
+            )?);
+            check_cancellation(cancellation)?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => Ok(prepared),
+            Err(error) => Err(PreparedAppServiceFailure {
+                error,
+                prepared: Box::new(prepared),
+            }),
+        }
     }
 
     pub(super) fn publish(
         mut self,
         cancellation: &CommandCancellation,
-    ) -> Result<(PublishedAppServices, InitialStartOwner), AppServiceOpenError> {
-        check_cancellation(cancellation)?;
+    ) -> Result<(PublishedAppServices, InitialStartOwner), PreparedAppServiceFailure> {
+        if let Err(error) = check_cancellation(cancellation) {
+            return Err(PreparedAppServiceFailure {
+                error,
+                prepared: Box::new(self),
+            });
+        }
         let home = match self.candidate.take().expect("private candidate").publish() {
             Ok(home) => home,
             Err(failure) => {
                 let (error, candidate) = failure.into_parts();
                 self.candidate = Some(candidate);
-                return Err(error.into());
+                return Err(PreparedAppServiceFailure {
+                    error: error.into(),
+                    prepared: Box::new(self),
+                });
             }
         };
         let (cas, handoff, start) = self
@@ -165,14 +198,27 @@ impl PreparedAppServices {
         };
         Ok((graph, start))
     }
-}
 
-impl Drop for PreparedAppServices {
-    fn drop(&mut self) {
+    pub(super) fn dispose(mut self) -> Result<(), beryl_home_store::HomeCloseError> {
+        self.join_components();
+        self.attention.close();
+        self.candidate
+            .take()
+            .expect("failed preparation retains its candidate")
+            .close()
+    }
+
+    fn join_components(&mut self) {
         drop(self.cas.take());
         drop(self.activity.take());
         drop(self.marker.take());
         drop(self.theme.take());
+    }
+}
+
+impl Drop for PreparedAppServices {
+    fn drop(&mut self) {
+        self.join_components();
         drop(self.candidate.take());
     }
 }

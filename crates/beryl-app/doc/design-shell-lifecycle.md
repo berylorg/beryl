@@ -57,6 +57,14 @@ governed by [design.md](design.md). It does not independently declare engineerin
   creation and attachment also complete behind the startup fence before publication; workers
   retain their exact shutdown/join custody while waiting. A construction error or cancellation
   closes their admission and joins them before the candidate can be discarded.
+- Failed initial service preparation has an explicit consuming disposal result. It joins prepared
+  components before closing the original candidate, and retains an unsuccessful home-close result
+  in the process owner while returning the original preparation failure to its caller. Publication rejection and
+  cancellation use this same boundary. A graph whose worker-start fence could not be released
+  similarly joins its unstarted services before explicitly closing its published home. Destructor
+  cleanup alone does not prove home closure or authorize another attempt. An incoming candidate
+  rejected before service-attempt admission is returned unchanged to its caller; it cannot replace
+  existing graph or failed-close custody.
 - Private CAS preparation configures runtime interest and the exact attached execution-session
   owner through candidate runtime-record and Asset-revision validation. It preserves ordinary
   policy, capacity, token-directory and owner checks while leaving ordinary admission closed.
@@ -417,6 +425,11 @@ governed by [design.md](design.md). It does not independently declare engineerin
   reuse failed prepared shells or an old graph's authority. A failure after service publication
   uses the graph's shutdown/disposal boundary. Unsettled custody retains its exact owner and
   blocks successful shutdown or a conflicting reopen; it is not cleared to enable Retry or Exit.
+- Same-home startup Retry reuses the process-owned enrollment, nondispatch and admission authorities.
+  It admits a fresh service generation only after the previous attempt's native/transient work,
+  graph retirement and home closure have settled, using the exact process reopening fence. A
+  retained close or reconciliation failure blocks reopening. This startup-attempt transition does
+  not reopen ordinary mutable windows after a cancelled running-session shutdown.
 - Startup verification includes failure of the last required preparation, stale first-member
   completion, native failure after an earlier member shows, reentrant close/Retry, cancellation,
   unchanged durable restore records after failed restoration, exact empty-header threadless

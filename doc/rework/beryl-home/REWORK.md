@@ -407,6 +407,7 @@
 - [x] Joined partial ordinary compaction-worker construction before owner disposal; [acceptance evidence](../../failures/target-bootstrap-composition.md#partial-compaction-worker-construction).
 - [x] Adapted ordinary CAS consumers to non-owning service references with exclusive owner retirement and explicit joined shutdown; [acceptance evidence](../../failures/target-bootstrap-composition.md#ordinary-cas-home-ownership).
 - [x] Accepted complete initial process service-graph publication and joined retirement with retained proof custody; [acceptance evidence](../../failures/target-bootstrap-composition.md#complete-initial-graph-publication-and-retirement).
+- [x] Accepted explicit failed initial-service disposal with original candidate return and retained home-close/reconciliation custody; [evidence](../../failures/target-bootstrap-composition.md#initial-service-attempt-disposal-prerequisite).
 - [x] Accepted cancellable dormant worker fencing and partial compaction join wakeup; [acceptance evidence](../../failures/target-bootstrap-composition.md#cancellable-initial-worker-fence).
 - [x] Accepted private initial CAS service preparation with candidate recovery and joined abandonment before home retirement; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-cas-service-preparation).
 - [x] Accepted private marker preparation and removed global discovery; [acceptance evidence](../../failures/target-bootstrap-composition.md#initial-marker-service-ownership).

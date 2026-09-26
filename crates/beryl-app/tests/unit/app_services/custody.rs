@@ -207,7 +207,9 @@ fn rejected_foreign_initial_candidate_does_not_discard_retained_enrollment() {
         .enrollments
         .settle_retired_runtime(&home, &syndic, runtime)
         .unwrap();
-    assert!(matches!(result, Err(AppServiceOpenError::ForeignHome)));
+    let failure = result.unwrap_err();
+    assert!(matches!(failure.error, AppServiceOpenError::ForeignHome));
+    failure.rejected_candidate.unwrap().close().unwrap();
     assert!(owner.graph().is_none());
     assert_eq!(retained, 1);
     assert_eq!(pending, 1);

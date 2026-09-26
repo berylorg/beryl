@@ -24,6 +24,13 @@ mod custody {
     ));
 }
 
+mod initial_disposal {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/initial_disposal.rs"
+    ));
+}
+
 fn fixture() -> (
     tempfile::TempDir,
     HomeOpenPublication,
@@ -171,17 +178,21 @@ fn complete_graph_publishes_once_and_theme_loading_waits_for_explicit_startup() 
     observation.release();
     assert!(graph.theme().unwrap().current().is_some());
     let (_other_directory, other, other_state, other_syndic, _) = fixture();
-    assert!(matches!(
-        owner.open_initial(
+    let rejected = owner
+        .open_initial(
             other,
             other_state,
             other_syndic,
             configuration(),
             SyndicTimestamp::from_unix_millis(1),
-            CommandCancellation::new()
-        ),
-        Err(AppServiceOpenError::AlreadyInstalled)
+            CommandCancellation::new(),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        rejected.error,
+        AppServiceOpenError::AlreadyInstalled
     ));
+    rejected.rejected_candidate.unwrap().close().unwrap();
     close(&mut owner);
     assert!(restore_attempt.validate_lifetime().is_err());
     assert!(owner.graph().is_none());
@@ -203,7 +214,10 @@ fn last_constructor_failure_disposes_every_component_before_releasing_home() {
         SyndicTimestamp::from_unix_millis(1),
         CommandCancellation::new(),
     );
-    assert!(matches!(result, Err(AppServiceOpenError::Theme(_))));
+    let failure = result.unwrap_err();
+    assert!(matches!(failure.error, AppServiceOpenError::Theme(_)));
+    assert!(failure.rejected_candidate.is_none());
+    assert!(owner.retained_close().is_none());
     assert!(owner.graph().is_none());
     assert_eq!(themes.diagnostics().active_subscriptions(), 0);
     assert_eq!(owner.enrollments.pending_count(), 0);
@@ -216,7 +230,7 @@ fn cancellation_and_publication_rejection_dispose_the_complete_private_graph() {
     for cancel in [false, true] {
         let (directory, candidate, state, syndic, faults) = fixture();
         let themes = state.themes();
-        let owner = owner(&candidate);
+        let mut owner = owner(&candidate);
         let cancellation = CommandCancellation::new();
         let mut prepared = preparation::PreparedAppServices::prepare(
             &owner,
@@ -241,12 +255,17 @@ fn cancellation_and_publication_rejection_dispose_the_complete_private_graph() {
                 .unwrap();
             assert!(prepared.syndic.revision_candidate(&access).is_err());
         }
-        let result = prepared.publish(&cancellation);
+        let failure = match prepared.publish(&cancellation) {
+            Err(failure) => owner.dispose_initial_failure(failure),
+            Ok(_) => panic!("rejected preparation unexpectedly published"),
+        };
         if cancel {
-            assert!(matches!(result, Err(AppServiceOpenError::Cancelled)));
+            assert!(matches!(failure.error, AppServiceOpenError::Cancelled));
         } else {
-            assert!(matches!(result, Err(AppServiceOpenError::Candidate(_))));
+            assert!(matches!(failure.error, AppServiceOpenError::Candidate(_)));
         }
+        assert!(failure.rejected_candidate.is_none());
+        assert!(owner.retained_close().is_none());
         assert!(owner.graph().is_none());
         assert_eq!(themes.diagnostics().active_subscriptions(), 0);
         assert_reopens(&directory);

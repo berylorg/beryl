@@ -1708,3 +1708,41 @@ blocking findings. Publication failure is injected before the later call, provin
 cleanup rather than inducing a fresh Win32 error. Loading notification delivery has successful
 startup and source-review evidence; this is not a held-real-loading stress test. Process Retry/Exit,
 failure surfaces, full service-graph lifetime mounting and executable entry remain separate work.
+
+## Initial Service Attempt Disposal Prerequisite
+
+Native process composition cannot treat the existing one-shot service owner as a reusable startup
+attempt. `ProcessServiceOwner::open_initial` retains `published_once` after `finish_shutdown`, and
+graph disposal fences the same process admission gate. Replacing that owner would discard the
+outer enrollment and nondispatch authorities which startup Retry must preserve. Proven-retired
+same-home reopening therefore remains a separate service-lifecycle boundary.
+
+Before adding reopening, failed preparation needs explicit home-close custody. The existing
+`PreparedAppServices` error paths join component destructors but then drop the candidate; failed
+worker release similarly drops the installed graph. `HomeOpenPublication::close` and
+`HomeStore::close` can instead return `HomeCloseError` retaining a still-open home when an exact
+reconciliation scope remains. Destructor cleanup does not expose that result to the process
+owner. The correction consumes failed prepared/unstarted services, joins them and explicitly
+closes the original candidate/home, preserving failed-close custody and the original error.
+Candidates rejected before admission return unchanged rather than displacing existing ownership.
+
+The published graph also lacks a production `MainWindowCreationServices` factory, and the dedicated
+startup failure surfaces are not yet mounted. These are distinct prerequisites before final native
+process composition; no replacement storage, CAS runtime or alternative bootstrap is required.
+
+Explicit initial-service failure disposal is now accepted. Preparation and publication failures
+return their complete private owner for consuming component joins and candidate closure. A rejected
+incoming candidate returns unchanged; an admitted failure keeps its original cause separate from
+the process-owned failed-close capability. An installed graph whose startup gate cannot release
+joins unstarted services before closing its home. Ordinary running-session shutdown is unchanged.
+
+Run `19595906-0420-4de3-9f5c-fab7505b81e9` passed all eleven graph tests, including before/after-worker
+cancellation, late constructor and publication failure, cancelled worker release and original
+candidate return. A real uncertain threadless-initialization command prevents closure, retains its
+exact reconciliation and home lock, rejects replacement without overwriting that custody, and
+settles only through explicit test teardown using the original handle. Runs
+`1e2afa0d-ab3f-43f5-999f-6133f6e14f10` and `8895abab-0eaf-4db5-88b5-f7fa32675ca8` passed 52 related
+worker/Activity/marker/shutdown cases and seven theme-preparation cases. Default-library and
+test-fault library/test-target checks passed. Independent review found no blocking issue.
+Worker joins have existing shutdown-path source evidence plus subscription and lock-release
+assertions; ownership-lock release I/O failure is source-reviewed without a new fault mechanism.
