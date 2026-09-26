@@ -91,6 +91,84 @@ fn failed_preparation_preserves_reused_pristine_thread_and_releases_window() {
 }
 
 #[test]
+fn retired_execution_authority_after_editor_configuration_disposes_prepared_custody() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let fixture = Fixture::new(71);
+    fixture.seed_pristine(80);
+    let (mut services, appearance) = services(&fixture);
+    let (wake, probe) = beryl_app::cas_projection::SubmissionExecutionWake::test_for_home(
+        &fixture.store,
+        Default::default(),
+    );
+    let probe = Arc::new(probe);
+    let configured = Arc::new(AtomicBool::new(false));
+    let called = configured.clone();
+    let mutable = Arc::get_mut(&mut services).unwrap();
+    mutable.submission_execution = wake;
+    mutable.configurator_source = Arc::new(move || {
+        let probe = probe.clone();
+        let called = called.clone();
+        Box::new(move |selection| {
+            let config = config(selection)?;
+            called.store(true, Ordering::SeqCst);
+            probe.retire();
+            Ok(config)
+        })
+    });
+    let mut creation = MainWindowCreation::admit(
+        services.clone(),
+        WindowId::from_bytes([72; 16]),
+        target(&fixture),
+    )
+    .unwrap();
+    let mut settled = false;
+    for _ in 0..32 {
+        match creation.advance(appearance.clone()) {
+            MainWindowCreationOutcome::Pending(next) => creation = next,
+            MainWindowCreationOutcome::Settled { error, .. } => {
+                assert!(error.unwrap().contains("execution authority"));
+                settled = true;
+                break;
+            }
+            MainWindowCreationOutcome::Prepared { .. } => {
+                panic!("retired service exposed prepared custody")
+            }
+        }
+    }
+    assert!(settled);
+    assert!(configured.load(Ordering::SeqCst));
+    assert_eq!(fixture.process.main_window_occupancy(), 0);
+    let candidate_state = fixture.session(SyndicDraftId::from_bytes([81; 16]), 72);
+    assert!(
+        matches!(
+            candidate_state,
+            DraftEditorCandidateSessionReadOutcomeV1::Disposed(_)
+        ),
+        "candidate after cleanup: {candidate_state:?}"
+    );
+    assert!(
+        fixture
+            .state
+            .session()
+            .minimal_bootstrap(&fixture.store)
+            .unwrap()
+            .unwrap()
+            .windows()
+            .is_empty()
+    );
+    assert!(
+        MainWindowCreation::admit(
+            services.clone(),
+            WindowId::from_bytes([73; 16]),
+            target(&fixture)
+        )
+        .is_err()
+    );
+    drop(services);
+    cleanup(fixture);
+}
+
+#[test]
 fn wrong_request_identity_has_no_durable_effect() {
     let fixture = Fixture::new(31);
     let (mut services, appearance) = services(&fixture);

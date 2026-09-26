@@ -43,6 +43,41 @@ pub struct MainWindowCreationServices {
         Option<Arc<dyn Fn(&mut MainWindowInitialComposer) + Send + Sync>>,
 }
 
+impl MainWindowCreationServices {
+    pub(crate) fn validate_source(&self) -> Result<(), String> {
+        if !Arc::ptr_eq(&self.store, &self.acquisition.home_reference()) {
+            return Err("window creation services have different source custody".to_owned());
+        }
+        let health = self.store.health();
+        if health.state() != beryl_home_store::HomeHealthState::Healthy {
+            return Err("window creation home authority is unavailable".to_owned());
+        }
+        let generation = health
+            .generation()
+            .ok_or_else(|| "window creation home generation is unavailable".to_owned())?;
+        if !self
+            .submission_execution
+            .matches_binding(self.store.home_id(), generation)
+        {
+            return Err(
+                "window submission authority belongs to another home generation".to_owned(),
+            );
+        }
+        self.submission_execution
+            .execution_candidate()
+            .map_err(|error| {
+                format!("window creation execution authority is unavailable: {error}")
+            })?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum MainWindowCreationAdmissionError {
+    Services(String),
+    Reservation(RuntimeBackedWindowMainWindowReservationError),
+}
+
 pub struct MainWindowCreation {
     services: Arc<MainWindowCreationServices>,
     window_id: WindowId,
@@ -68,11 +103,15 @@ impl MainWindowCreation {
         services: Arc<MainWindowCreationServices>,
         window_id: WindowId,
         target: RememberedTarget,
-    ) -> Result<Self, RuntimeBackedWindowMainWindowReservationError> {
+    ) -> Result<Self, MainWindowCreationAdmissionError> {
+        services
+            .validate_source()
+            .map_err(MainWindowCreationAdmissionError::Services)?;
         let reservation = services
             .acquisition
             .process_registry()
-            .reserve_main_window(window_id)?;
+            .reserve_main_window(window_id)
+            .map_err(MainWindowCreationAdmissionError::Reservation)?;
         Ok(Self {
             services,
             window_id,

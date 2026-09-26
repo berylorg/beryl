@@ -1774,3 +1774,35 @@ retired after reopening. Fresh permits, theme workers and restoration sources wo
 scheduled-job execution is not exercised here, and constructor permit capture is source-reviewed.
 Default-library and test-fault library/test-target checks passed. Independent lifecycle review has
 no blocking findings. Native process Retry/Exit mounting remains a separate acceptance boundary.
+
+## Published Graph Window Services
+
+The process owner now retains one window registry across Retry and vends a read-free service
+bundle. It accepts immutable request/activation/configuration sources while deriving home/domain,
+marker, turn-start and real submission authority from the complete graph. Acquisition and creation
+share the exact home-reference object. Worker consumption creates the restoration attempt and
+restore set, checking the existing graph lifetime around those storage-reading constructors.
+
+Creation validates source identity, healthy original home authority and real execution admission
+before reserving a window, during advancement and before prepared delivery. A closing or retired
+service redirects prepared custody to the existing typed editor/acquisition cleanup. No extra
+creation lifetime mechanism is needed: the shared process fence closes in-flight admission and
+explicit home retirement permanently invalidates the old exact health reference before Retry.
+
+The first final-delivery assertion queried a candidate after new-thread abandonment deleted its
+durable source frontier and piece root. That reader authenticates the candidate against its source
+closure, so its `InvariantFailure` was not proof of failed editor retirement. The corrected test
+reuses an existing pristine thread, retaining the source and requiring exact candidate `Disposed`
+after execution authority retires inside valid editor configuration. It also proves settlement,
+zero reservations, empty window membership and stale-admission rejection.
+
+Broad run `41898969-c31d-42e6-b4aa-29785aa1bd60` passed 103 of 104 cases in 253.389 seconds across
+the service graph, initial composer, window creation and complete restore set. Corrected focused
+run `7ffb512b-50bf-43fd-8614-2af9d072194b` passed the remaining case in 1.160 seconds without a
+production-source change. The five factory cases prove actual worker transfer and threadless
+preparation/disposal, shared registry exclusion across bundles and Retry, exact service bindings,
+read-free construction, stale references and shutdown rejection. The storage-read barrier is
+store-wide rather than thread-qualified; final worker lifetime checks also have source review.
+Default-library and test-fault library/test-target checks passed. Independent review found no
+blocking production or revised-test issue. Dedicated failure surfaces and native process entry
+remain separate mounting gates.

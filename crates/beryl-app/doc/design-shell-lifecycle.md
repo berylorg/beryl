@@ -107,6 +107,20 @@ governed by [design.md](design.md). It does not independently declare engineerin
   generation and releases the already-created subscription; it uses the ordinary startup loader
   and retains its complete fallback and typed failure outcomes. No service factory independently
   publishes the home or makes a partial graph available to consumers.
+- The process service owner retains one main-window registry across initial-service retries,
+  sharing the original process admission gate. Its published-window factory accepts only immutable
+  request, activation, operation-identity and editor-configuration sources. It derives home/domain
+  references, marker sealing, turn-start requirements and submission authority from the complete
+  published graph; callers cannot substitute those services. Acquisition and creation share the
+  same exact home-reference object.
+- The GUI-facing factory performs no storage reads and returns a worker-transferable bundle.
+  Worker consumption creates the generation-bound restoration attempt and restore set, validating
+  the graph lifetime before reads and before returning work. Creation admission validates exact
+  source identity, healthy original home authority and submission binding before reserving a window.
+  An old reference remains invalid after Retry even when its numeric generation is retained.
+  Retirement during preparation uses the existing typed cleanup path and cannot discard acquired
+  claims or prepared editor custody. No GUI entity or constructed widget configuration crosses
+  the worker boundary.
 
 ## Prepared Native Placement Dependency
 

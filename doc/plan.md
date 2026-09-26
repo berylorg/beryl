@@ -87,18 +87,13 @@ only after separately authorized prerequisites prove the route; do not substitut
 fallback or silently select a new history mode. The Operator approved proceeding with unavailable
 repair and explicit-incomplete recovery; this conditional boundary does not block phases 467–470.
 
-# Phase 589: Reopen Proven-Retired Initial Service Attempts (finished)
+# Phase 590: Build Window Services From The Published Graph (finished)
 
-Accepted explicit attempt state and exact-fence reopening before fresh service construction,
-preserving original process custody and stale-reference rejection. All 37 selected service,
-admission and shutdown tests, both package checks and independent lifecycle review pass;
-[evidence](failures/target-bootstrap-composition.md#proven-retired-initial-service-reopening).
-
-# Phase 590: Build Window Services From The Published Graph (pending)
-
-Compose one process window registry and generation-bound creation/restoration services from the
-published graph, immutable editor/identity inputs and real marker/submission services. Verify
-worker transfer, source identity and graph retirement without publishing native windows.
+Accepted read-free graph-derived window services, one process registry across Retry, worker-side
+restoration construction and stale-admission/completion rejection with original cleanup custody.
+All 104 selected cases pass across the broad run and corrected focused fixture; package checks
+and independent lifecycle review pass;
+[evidence](failures/target-bootstrap-composition.md#published-graph-window-services).
 
 # Phase 591: Mount Dedicated Startup Failure Surfaces (pending)
 

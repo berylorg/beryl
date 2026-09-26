@@ -38,6 +38,13 @@ mod reopening {
     ));
 }
 
+mod window_services {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/app_services/window_services.rs"
+    ));
+}
+
 fn fixture() -> (
     tempfile::TempDir,
     HomeOpenPublication,

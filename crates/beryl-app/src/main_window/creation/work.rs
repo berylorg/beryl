@@ -47,10 +47,20 @@ impl MainWindowCreation {
         appearance: Arc<crate::theme_runtime::AppearanceGeneration>,
     ) -> MainWindowCreationOutcome {
         for _ in 0..16 {
+            if let Err(error) = self.services.validate_source() {
+                self.error.get_or_insert(error);
+                self.cancellation.cancel();
+            }
             match self.advance_state(&appearance) {
                 CreationStep::Continue => {}
                 CreationStep::Pending => return MainWindowCreationOutcome::Pending(self),
                 CreationStep::Prepared(prepared) => {
+                    if let Err(error) = self.services.validate_source() {
+                        self.error = Some(error);
+                        self.cancellation.cancel();
+                        self.state = CreationState::Unpublished(prepared.into_unpublished());
+                        continue;
+                    }
                     return MainWindowCreationOutcome::Prepared {
                         prepared,
                         cancellation: self.cancellation,

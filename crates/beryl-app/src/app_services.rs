@@ -34,8 +34,10 @@ mod initial_disposal;
 mod preparation;
 mod published;
 mod shutdown;
+mod window_services;
 use attempt::InitialServiceAttemptState;
 pub(crate) use shutdown::{AppServiceCloseError, AppServiceShutdownProgress};
+pub(crate) use window_services::{MainWindowServiceInputs, PublishedMainWindowServices};
 
 pub(crate) struct AppServiceConfiguration {
     pub(crate) projection: ProjectionServiceConfig,
@@ -119,6 +121,7 @@ pub(crate) struct ProcessServiceOwner {
     attempt: InitialServiceAttemptState,
     home_id: BerylHomeId,
     process: ProcessAdmissionGate,
+    windows: crate::window_acquisition::RuntimeBackedWindowProcessRegistry,
     enrollments: RuntimeActivityEnrollmentOperations,
     settlements: DiscussionSettlementOperations,
     #[cfg(feature = "test-faults")]
@@ -162,6 +165,9 @@ impl ProcessServiceOwner {
             home_id,
             enrollments: RuntimeActivityEnrollmentOperations::new(home_id, enrollment_slots),
             settlements: DiscussionSettlementOperations::new(process.clone(), settlement_slots),
+            windows: crate::window_acquisition::RuntimeBackedWindowProcessRegistry::new(
+                process.clone(),
+            ),
             process,
             #[cfg(feature = "test-faults")]
             before_initial_publication: None,
